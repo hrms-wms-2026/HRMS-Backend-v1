@@ -17,17 +17,14 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Restore
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
+      - name: Build API (restores Domain/Application/Infrastructure via project refs)
+        run: dotnet build src/ONEVO.Api/ONEVO.Api.csproj --configuration Release
 
       - name: Test - Unit
-        run: dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --no-build --configuration Release
+        run: dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --configuration Release
 
       - name: Test - Architecture
-        run: dotnet test tests/ONEVO.Tests.Architecture/ONEVO.Tests.Architecture.csproj --no-build --configuration Release
+        run: dotnet test tests/ONEVO.Tests.Architecture/ONEVO.Tests.Architecture.csproj --configuration Release
 
       - name: Test - Integration
-        run: dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj --no-build --configuration Release
+        run: dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj --configuration Release
