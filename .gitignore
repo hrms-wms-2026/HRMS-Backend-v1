@@ -1,0 +1,21 @@
+# User-specific files and IDE folders
+.vs/
+.vscode/
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build folders
+bin/
+obj/
+
+# Test results and temp files
+TestResults/
+[Log]
+
+# Local environment / secret files (use .env.example as the committed template)
+
+.env.*.local
+
+# Superpowers / local agent tooling (not part of the app)
+.superpowers/
