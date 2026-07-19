@@ -41,6 +41,23 @@ public class ApplicationDbContext : DbContext
         _tenantContext = tenantContext;
     }
 
+    /// <summary>
+    /// Read by the tenant HasQueryFilter below via a reference to `this`, not
+    /// a captured ITenantContext service instance. EF Core caches the
+    /// compiled model once per process (keyed by DbContext CLR type), so a
+    /// filter that closes over a specific scoped service object freezes that
+    /// object's state for every later ApplicationDbContext instance in the
+    /// process. A filter that instead references DbContext instance
+    /// properties is resolved per DbContext instance at query time — EF Core
+    /// treats `this`-typed constants in a query filter specially and
+    /// substitutes the actual executing context, not the one that happened
+    /// to build the model first.
+    /// </summary>
+    public bool IsTenantFilterActive => _tenantContext.ContextMode == TenantContextMode.Tenant;
+
+    /// <summary>See remarks on <see cref="IsTenantFilterActive"/>.</summary>
+    public Guid CurrentTenantId => _tenantContext.TenantId;
+
     // Infrastructure
     public DbSet<User> Users => Set<User>();
 
@@ -138,6 +155,10 @@ public class ApplicationDbContext : DbContext
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
 
+        var dbContextConst = Expression.Constant(this, typeof(ApplicationDbContext));
+        var isTenantFilterActiveProperty = typeof(ApplicationDbContext).GetProperty(nameof(IsTenantFilterActive))!;
+        var currentTenantIdProperty = typeof(ApplicationDbContext).GetProperty(nameof(CurrentTenantId))!;
+
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
             if (!typeof(ITenantOwnedEntity).IsAssignableFrom(entityType.ClrType))
@@ -145,18 +166,14 @@ public class ApplicationDbContext : DbContext
 
             var param = Expression.Parameter(entityType.ClrType, "e");
 
-            // Tenant filter: only active when ContextMode == Tenant
+            // Tenant filter: only active when IsTenantFilterActive is true.
             // System/Admin mode bypasses the tenant predicate (passes all rows through)
-            var contextConst = Expression.Constant(_tenantContext);
-            var isTenantMode = Expression.Equal(
-                Expression.Property(contextConst, nameof(ITenantContext.ContextMode)),
-                Expression.Constant(TenantContextMode.Tenant));
+            var isTenantFilterActive = Expression.Property(dbContextConst, isTenantFilterActiveProperty);
             var tenantIdProp = Expression.Property(param, nameof(ITenantOwnedEntity.TenantId));
-            var tenantIdMatches = Expression.Equal(
-                tenantIdProp,
-                Expression.Property(contextConst, nameof(ITenantContext.TenantId)));
-            // (ContextMode != Tenant) OR (TenantId == _tenantContext.TenantId)
-            Expression filter = Expression.OrElse(Expression.Not(isTenantMode), tenantIdMatches);
+            var currentTenantId = Expression.Property(dbContextConst, currentTenantIdProperty);
+            var tenantIdMatches = Expression.Equal(tenantIdProp, currentTenantId);
+            // (!IsTenantFilterActive) OR (TenantId == CurrentTenantId)
+            Expression filter = Expression.OrElse(Expression.Not(isTenantFilterActive), tenantIdMatches);
 
             // BaseEntity subclasses have IsDeleted — always filter soft-deleted records
             if (typeof(BaseEntity).IsAssignableFrom(entityType.ClrType))
