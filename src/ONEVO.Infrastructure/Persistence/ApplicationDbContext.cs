@@ -13,6 +13,8 @@ using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Domain.Features.Storage.File.Entities;
+using ONEVO.Domain.Features.Storage.Quota.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 
@@ -42,6 +44,13 @@ public class ApplicationDbContext : DbContext
     // Infrastructure
     public DbSet<User> Users => Set<User>();
 
+    // Storage quota (Phase 1 tenant_storage_stats)
+    public DbSet<TenantStorageStats> TenantStorageStats => Set<TenantStorageStats>();
+
+    // Storage files (Phase 1 file_records + file_upload_reservations)
+    public DbSet<FileRecord> FileRecords => Set<FileRecord>();
+    public DbSet<FileUploadReservation> FileUploadReservations => Set<FileUploadReservation>();
+
     // Auth
     public DbSet<RoleTemplate> RoleTemplates => Set<RoleTemplate>();
     public DbSet<Role> Roles => Set<Role>();
@@ -54,6 +63,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
     public DbSet<UserMfa> UserMfas => Set<UserMfa>();
+    public DbSet<MfaChallenge> MfaChallenges => Set<MfaChallenge>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<GdprConsentRecord> GdprConsentRecords => Set<GdprConsentRecord>();
     public DbSet<UserExternalIdentity> UserExternalIdentities => Set<UserExternalIdentity>();
