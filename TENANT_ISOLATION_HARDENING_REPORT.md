@@ -77,7 +77,14 @@ Command-level results are recorded in the "Verification run" section below (popu
 
 ### Verification run
 
-_Populated by the final full-suite verification pass._
+| Command | Result |
+|---|---|
+| `dotnet build` (each project — no `.sln` in this repo, per-project builds) | 7/7 projects build, 0 errors (pre-existing, unrelated nullable-reference/obsolete-API warnings only) |
+| `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj` | **526 passed**, 0 failed (baseline 522 + 4 new: 1 in `ApplicationDbContextTenantFilterTests`, 3 in `ConfigurationStartupValidatorTests`) |
+| `dotnet test tests/ONEVO.Tests.Architecture/ONEVO.Tests.Architecture.csproj` | **84 passed**, 0 failed (baseline 77 + 7 new in `TenantIsolationArchitectureTests`) |
+| `dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj` (Docker) | **44 passed**, 0 failed (baseline 37 + 7 new in `RestrictedRoleRlsEnforcementTests`), 1m51s |
+
+No regressions in any pre-existing test across all three suites.
 
 ## Remaining risks
 
