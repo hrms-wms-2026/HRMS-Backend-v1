@@ -85,10 +85,50 @@ public class ConfigurationStartupValidator : IHostedService
                 checks.Length);
         }
 
+        WarnIfDefaultConnectionUsesSuperuserRoleName();
+
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private void WarnIfDefaultConnectionUsesSuperuserRoleName()
+    {
+        var connectionString = _configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return;
+
+        var username = ExtractUsername(connectionString);
+        if (username is null)
+            return;
+
+        if (username.Contains("postgres", StringComparison.OrdinalIgnoreCase) ||
+            username.Contains("superuser", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning(
+                "[CONFIG] ConnectionStrings:DefaultConnection username '{Username}' looks like a " +
+                "superuser role. The runtime app connection must use a restricted, non-superuser, " +
+                "non-BYPASSRLS role so PostgreSQL Row-Level Security is actually enforced. Use " +
+                "ConnectionStrings:MigrationConnection for schema migrations instead.",
+                username);
+        }
+    }
+
+    private static string? ExtractUsername(string connectionString)
+    {
+        foreach (var part in connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separatorIndex = part.IndexOf('=');
+            if (separatorIndex < 0)
+                continue;
+
+            var key = part[..separatorIndex].Trim();
+            if (key.Equals("Username", StringComparison.OrdinalIgnoreCase))
+                return part[(separatorIndex + 1)..].Trim();
+        }
+
+        return null;
+    }
 
     private static bool IsMissingOrPlaceholder(string? value)
     {

@@ -18,8 +18,16 @@ public class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Applicati
             .AddEnvironmentVariables()
             .Build();
 
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+        // Migrations (dotnet ef ...) need DDL rights (CREATE TABLE, FORCE ROW
+        // LEVEL SECURITY, CREATE POLICY) that the restricted runtime app role
+        // intentionally does not have. Prefer the elevated migration
+        // connection; fall back to DefaultConnection so `dotnet ef` still
+        // works against a single-role local setup that hasn't run the
+        // bootstrap script yet.
+        var connectionString = configuration.GetConnectionString("MigrationConnection")
+            ?? configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException(
+                "Connection string 'MigrationConnection' or 'DefaultConnection' not found.");
 
         var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
         optionsBuilder
