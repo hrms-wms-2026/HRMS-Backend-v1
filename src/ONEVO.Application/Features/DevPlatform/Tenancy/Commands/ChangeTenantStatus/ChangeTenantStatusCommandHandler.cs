@@ -13,17 +13,20 @@ namespace ONEVO.Application.Features.DevPlatform.Tenancy.Commands.ChangeTenantSt
 public class ChangeTenantStatusCommandHandler : IRequestHandler<ChangeTenantStatusCommand, Result>
 {
     private readonly ITenantRepository _tenants;
+    private readonly ITenantStatusHistoryRepository _statusHistories;
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
 
     public ChangeTenantStatusCommandHandler(
         ITenantRepository tenants,
+        ITenantStatusHistoryRepository statusHistories,
         ICurrentUser currentUser,
         IUnitOfWork unitOfWork,
         IDateTimeProvider clock)
     {
         _tenants = tenants;
+        _statusHistories = statusHistories;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
         _clock = clock;
@@ -50,9 +53,22 @@ public class ChangeTenantStatusCommandHandler : IRequestHandler<ChangeTenantStat
                 409);
 
         var now = _clock.UtcNow;
+        var previousStatus = tenant.Status;
 
         tenant.Status = target.Value;
         tenant.UpdatedAt = now;
+
+        var history = new TenantStatusHistory
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            FromStatus = previousStatus,
+            ToStatus = target.Value,
+            Reason = request.Reason,
+            ChangedById = _currentUser.UserId,
+            ChangedAt = now
+        };
+        await _statusHistories.AddAsync(history, ct);
 
         await _unitOfWork.SaveChangesAsync(ct);
 

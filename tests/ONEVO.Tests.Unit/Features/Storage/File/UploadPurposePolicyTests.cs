@@ -49,6 +49,14 @@ public class UploadPurposePolicyTests
     }
 
     [Fact]
+    public void ValidateUpload_RejectsContentTypeAndExtensionMismatch()
+    {
+        var result = _policy.ValidateUpload("employee_avatar", "photo.jpg", "image/png", 1024);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
     public void ValidateUpload_AcceptsValidAvatarUpload()
     {
         var result = _policy.ValidateUpload("employee_avatar", "photo.png", "image/png", 1024);
@@ -60,8 +68,9 @@ public class UploadPurposePolicyTests
     public void GenerateStorageKey_NeverContainsClientProvidedDirectoryTraversal()
     {
         var tenantId = Guid.NewGuid();
+        var reservationId = Guid.NewGuid();
         var safeFileName = _policy.SanitizeFileName("../../etc/passwd.png");
-        var key = _policy.GenerateStorageKey(tenantId, "employee_avatar", safeFileName);
+        var key = _policy.GenerateStorageKey(tenantId, reservationId, "employee_avatar", safeFileName);
 
         Assert.DoesNotContain("..", key);
         Assert.DoesNotContain("/etc/", key);

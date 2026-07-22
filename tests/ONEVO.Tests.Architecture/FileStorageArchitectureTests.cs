@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.DTOs.Responses;
 using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using Xunit;
@@ -63,6 +64,49 @@ public class FileStorageArchitectureTests
                 Assert.DoesNotContain("Amazon", parameterNamespace, StringComparison.OrdinalIgnoreCase);
             }
         }
+    }
+
+    [Fact]
+    public void ControllersAndApplicationHandlers_DoNotDependOnStorageAdaptersOrConcreteStorageServices()
+    {
+        var candidateTypes = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthController).Assembly.GetTypes()
+            .Where(t => t.Namespace?.StartsWith("ONEVO.Api.Controllers", StringComparison.Ordinal) == true)
+            .Concat(typeof(ONEVO.Application.DependencyInjection).Assembly.GetTypes()
+                .Where(t => t.Name.EndsWith("Handler", StringComparison.Ordinal)));
+
+        var forbiddenNames = new[]
+        {
+            nameof(IObjectStorageAdapter),
+            "CloudflareR2ObjectStorageAdapter",
+            "FileStorageService"
+        };
+
+        var offenders = candidateTypes
+            .SelectMany(t => GetDirectTypeReferences(t)
+                .Where(reference => forbiddenNames.Any(reference.Contains))
+                .Select(reference => $"{t.FullName} -> {reference}"))
+            .ToList();
+
+        Assert.Empty(offenders);
+    }
+
+    [Fact]
+    public void FileStorageResponseDtos_DoNotExposeRawObjectKeysOrCredentialFields()
+    {
+        var dtoTypes = new[] { typeof(FileRecordDto), typeof(FileUploadReservationDto) };
+        var forbiddenFragments = new[]
+        {
+            "StorageKey", "Secret", "AccessKey", "Credential", "AccountId", "Bucket", "Endpoint"
+        };
+
+        var offenders = dtoTypes
+            .SelectMany(t => t.GetProperties()
+                .Where(p => forbiddenFragments.Any(fragment =>
+                    p.Name.Contains(fragment, StringComparison.OrdinalIgnoreCase)))
+                .Select(p => $"{t.FullName}.{p.Name}"))
+            .ToList();
+
+        Assert.Empty(offenders);
     }
 
     [Fact]
@@ -156,6 +200,24 @@ public class FileStorageArchitectureTests
         };
 
         Assert.Equal(expected, columns.OrderBy(c => c, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void FileStorageTables_HaveEnabledAndForcedTenantRlsPolicies()
+    {
+        var migrationsDir = FindMigrationsDirectory();
+        var policyFile = Directory.GetFiles(migrationsDir, "*AddFileStorageRlsPolicies.cs")
+            .Single(f => !f.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase));
+        var source = File.ReadAllText(policyFile);
+
+        foreach (var table in new[] { "file_records", "file_upload_reservations" })
+        {
+            Assert.Contains($"\"{table}\"", source, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("ALTER TABLE {table} ENABLE ROW LEVEL SECURITY", source, StringComparison.Ordinal);
+        Assert.Contains("ALTER TABLE {table} FORCE ROW LEVEL SECURITY", source, StringComparison.Ordinal);
+        Assert.Contains("CREATE POLICY tenant_isolation ON {table}", source, StringComparison.Ordinal);
     }
 
     [Fact]

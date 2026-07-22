@@ -6,6 +6,34 @@ namespace ONEVO.Tests.Unit.Fakes;
 public sealed class FakeFileUploadReservationRepository : IFileUploadReservationRepository
 {
     private readonly Dictionary<Guid, FileUploadReservation> _reservations = new();
+    public int AtomicCompletionCount { get; private set; }
+    public bool ShouldFailAtomicCompletion { get; set; }
+
+    public Task<bool> TryCompleteUploadAsync(
+        FileUploadReservation reservation,
+        ONEVO.Domain.Features.Storage.File.Entities.FileRecord fileRecord,
+        DateTimeOffset completedAt,
+        CancellationToken ct = default)
+    {
+        if (ShouldFailAtomicCompletion)
+        {
+            throw new InvalidOperationException("simulated metadata completion failure");
+        }
+
+        if (!_reservations.TryGetValue(reservation.Id, out var stored)
+            || stored.TenantId != reservation.TenantId
+            || stored.Status != FileUploadReservationStatus.Active
+            || stored.ExpiresAt <= completedAt)
+        {
+            return Task.FromResult(false);
+        }
+
+        stored.Status = FileUploadReservationStatus.Completed;
+        stored.CompletedFileRecordId = fileRecord.Id;
+        stored.UpdatedAt = completedAt;
+        AtomicCompletionCount++;
+        return Task.FromResult(true);
+    }
 
     public Task<FileUploadReservation?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {

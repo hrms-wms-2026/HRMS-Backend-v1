@@ -5,12 +5,11 @@ using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 namespace ONEVO.Infrastructure.Identity;
 
 /// <summary>
-/// Phase 1 local/single-instance implementation only. Challenge state is process-local and is lost
-/// when the API restarts; another API instance cannot read it. Before production multi-instance
-/// deployment, replace this implementation with approved shared cache/session-backed challenge
-/// storage. Phase 1 does not define an mfa_challenges table, so this implementation must not be made
-/// durable by adding an unapproved table. The browser receives only the opaque challenge in the
-/// HttpOnly onevo_mfa cookie.
+/// Local development/test fallback only. Challenge state is process-local and is lost when the API
+/// restarts; another API instance cannot read it. Production/Staging must use the PostgreSQL-backed
+/// mfa_challenges table (PostgresMfaChallengeStore), which is the normal runtime implementation
+/// registered in DI. The browser receives only the opaque challenge in the HttpOnly onevo_mfa
+/// cookie.
 /// </summary>
 public sealed class MemoryMfaChallengeStore : IMfaChallengeStore
 {

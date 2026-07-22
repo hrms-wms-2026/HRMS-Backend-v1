@@ -33,9 +33,8 @@ public interface IFileStorageService
     Task<Result<FileRecordDto>> CompleteUploadAsync(
         Guid tenantId,
         Guid reservationId,
-        string storageKey,
+        string purpose,
         string originalFileName,
-        string safeFileName,
         string contentType,
         string checksumSha256,
         CancellationToken ct = default);

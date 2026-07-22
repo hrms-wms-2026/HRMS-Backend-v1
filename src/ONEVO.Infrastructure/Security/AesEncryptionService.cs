@@ -11,6 +11,7 @@ public class AesEncryptionService : IEncryptionService
     // Layout: [nonce(12)][tag(16)][ciphertext]
     private const int NonceSize = 12;
     private const int TagSize = 16;
+    private const int MinimumMasterKeyLength = 32;
 
     private readonly byte[] _key;
 
@@ -19,6 +20,10 @@ public class AesEncryptionService : IEncryptionService
         var masterKey = options.Value.MasterKey;
         if (string.IsNullOrWhiteSpace(masterKey))
             throw new InvalidOperationException("Encryption:MasterKey is not configured.");
+
+        if (masterKey.Length < MinimumMasterKeyLength)
+            throw new InvalidOperationException(
+                $"Encryption:MasterKey must be at least {MinimumMasterKeyLength} characters long.");
 
         // Derive a stable 256-bit key from the master key string
         _key = Rfc2898DeriveBytes.Pbkdf2(

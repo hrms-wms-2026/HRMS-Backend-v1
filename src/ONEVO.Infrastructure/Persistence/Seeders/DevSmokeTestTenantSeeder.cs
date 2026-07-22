@@ -64,19 +64,25 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         {
             await using var scope = _services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
             var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
             var encryption = scope.ServiceProvider.GetRequiredService<IEncryptionService>();
 
-            await SeedAsync(db, passwordHasher, encryption, _configuration, cancellationToken);
+            await SeedAsync(
+                db,
+                tenantContext,
+                passwordHasher,
+                encryption,
+                _configuration,
+                cancellationToken);
             _logger.LogInformation(
                 "Development smoke-test tenant seeded. Tenant user: {Email}",
                 UserEmail);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(
-                ex,
-                "Development smoke-test tenant seeder could not run. Skipping.");
+            _logger.LogError(ex, "Development smoke-test tenant seeder failed. Startup will stop.");
+            throw;
         }
     }
 
@@ -84,6 +90,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
     public static async Task SeedAsync(
         ApplicationDbContext db,
+        IWritableTenantContext tenantContext,
         IPasswordHasher passwordHasher,
         IEncryptionService encryption,
         IConfiguration configuration,
@@ -91,15 +98,19 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
     {
         var now = DateTimeOffset.UtcNow;
 
+        tenantContext.SetAdminMode();
         var tenant = await SeedTenantAsync(db, now, ct);
-        var user = await SeedTenantUserAsync(db, tenant.Id, passwordHasher, now, ct);
         await db.SaveChangesAsync(ct);
 
-        await SeedGlobalEmailDirectoryAsync(db, tenant.Id, ct);
+        ResolveSmokeTenantContext(tenantContext, tenant);
+        var user = await SeedTenantUserAsync(db, tenant.Id, passwordHasher, now, ct);
         await SeedTenantAuthPolicyAsync(db, tenant.Id, now, ct);
         await SeedTenantOwnerRoleAsync(db, tenant.Id, user.Id, now, ct);
         await SeedTenantSubscriptionAsync(db, tenant.Id, user.Id, now, ct);
         await db.SaveChangesAsync(ct);
+
+        tenantContext.SetAdminMode();
+        await SeedGlobalEmailDirectoryAsync(db, tenant.Id, ct);
 
         var platformUser = await GetPlatformBootstrapUserAsync(db, ct);
         if (platformUser is null)
@@ -127,10 +138,29 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
             await SeedGitHubIntegrationCatalogAsync(db, platformUser.Id, now, ct);
             await SeedGitHubModuleIntegrationLinkAsync(db, platformUser.Id, now, ct);
-            await SeedGitHubTenantApprovalAsync(db, tenant.Id, user.Id, now, ct);
         }
 
         await db.SaveChangesAsync(ct);
+
+        if (oauthApp is null)
+        {
+            return;
+        }
+
+        ResolveSmokeTenantContext(tenantContext, tenant);
+        await SeedGitHubTenantApprovalAsync(db, tenant.Id, user.Id, now, ct);
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static void ResolveSmokeTenantContext(
+        IWritableTenantContext tenantContext,
+        Tenant tenant)
+    {
+        tenantContext.Resolve(new TenantRegistryEntry(
+            tenant.Id,
+            tenant.Slug,
+            tenant.Status,
+            PlanCode: null));
     }
 
     private static async Task<Tenant> SeedTenantAsync(

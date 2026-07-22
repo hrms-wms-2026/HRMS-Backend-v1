@@ -5,6 +5,5 @@ public sealed record FileUploadReservationDto(
     Guid TenantId,
     long ReservedBytes,
     string Status,
-    string StorageKey,
     DateTimeOffset ExpiresAt,
     DateTimeOffset CreatedAt);

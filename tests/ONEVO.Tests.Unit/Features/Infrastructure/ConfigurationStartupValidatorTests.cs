@@ -7,6 +7,45 @@ namespace ONEVO.Tests.Unit.Features.Infrastructure;
 public class ConfigurationStartupValidatorTests
 {
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("<local-32-plus-character-random-secret>")]
+    [InlineData("CHANGE_ME_encryption_master_key_32_chars")]
+    [InlineData("change-me-encryption-master-key-value-123456")]
+    [InlineData("placeholder-encryption-master-key-value-1234")]
+    [InlineData("SET_VIA_ENV")]
+    [InlineData("too-short")]
+    public void ValidateRequiredLocalConfiguration_RejectsInvalidMasterKey(string? masterKey)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Encryption:MasterKey"] = masterKey
+            })
+            .Build();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
+                configuration,
+                "Development"));
+    }
+
+    [Fact]
+    public void ValidateRequiredLocalConfiguration_AcceptsLongRandomMasterKey()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Encryption:MasterKey"] = "unit-test-random-master-key-value-123456789"
+            })
+            .Build();
+
+        ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
+            configuration,
+            "Test");
+    }
+
+    [Theory]
     [InlineData("Host=localhost;Port=5432;Database=OnevoDb;Username=postgres;Password=x", true)]
     [InlineData("Host=localhost;Port=5432;Database=OnevoDb;Username=some_superuser_role;Password=x", true)]
     [InlineData("Host=localhost;Port=5432;Database=OnevoDb;Username=onevo_app;Password=x", false)]

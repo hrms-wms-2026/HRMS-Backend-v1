@@ -19,3 +19,8 @@ public interface ITenantRepository
         CancellationToken ct = default);
     Task AddAsync(Tenant tenant, CancellationToken ct = default);
 }
+
+public interface ITenantStatusHistoryRepository
+{
+    Task AddAsync(TenantStatusHistory history, CancellationToken ct = default);
+}

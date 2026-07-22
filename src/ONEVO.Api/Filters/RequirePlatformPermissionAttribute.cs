@@ -9,7 +9,7 @@ namespace ONEVO.Api.Filters;
 /// Combine with [Authorize(Policy = "AdminPolicy")]: authentication (401) is handled by
 /// the cookie scheme; this filter only turns a missing permission claim into the
 /// contract 403 body ({ code, message, required_permission }). Permission claims are
-/// resolved from the database on session retrieve — never from role names.
+/// resolved from the database on session retrieve - never from role names.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false)]
 public sealed class RequirePlatformPermissionAttribute : Attribute, IAuthorizationFilter
@@ -43,7 +43,9 @@ public sealed class RequirePlatformPermissionAttribute : Attribute, IAuthorizati
             {
                 code = "permission_denied",
                 message = "You do not have permission to perform this action.",
-                required_permission = _permission
+                required_permission = _permission,
+                correlationId = context.HttpContext.Items["X-Correlation-Id"]?.ToString()
+                    ?? Guid.NewGuid().ToString()
             })
             {
                 StatusCode = StatusCodes.Status403Forbidden

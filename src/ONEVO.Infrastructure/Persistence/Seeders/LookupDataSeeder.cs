@@ -24,12 +24,15 @@ public class LookupDataSeeder : IHostedService
         {
             await using var scope = _services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            await db.Database.MigrateAsync(cancellationToken);
             await SeedAllAsync(db, cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Lookup data seeder could not run (database may be unavailable). Skipping.");
+            _logger.LogWarning(
+                ex,
+                "Lookup data seeder could not run because the database or migrated schema is unavailable. " +
+                "Apply migrations explicitly with setup-local-db.ps1 -RunMigrations. Startup will stop.");
+            throw;
         }
     }
 

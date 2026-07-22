@@ -89,7 +89,8 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
                 DO $$
                 BEGIN
                     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{RestrictedRoleName}') THEN
-                        CREATE ROLE {RestrictedRoleName} LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
+                        CREATE ROLE {RestrictedRoleName}
+                            LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
                     END IF;
                 END
                 $$;

@@ -6,6 +6,7 @@ namespace ONEVO.Tests.Unit.Fakes;
 public sealed class FakeObjectStorageAdapter : IObjectStorageAdapter
 {
     public bool ShouldFailPut { get; set; }
+    public bool ObjectExistsResult { get; set; } = true;
     public List<string> PutObjectKeys { get; } = new();
     public List<string> DeletedObjectKeys { get; } = new();
 
@@ -33,6 +34,6 @@ public sealed class FakeObjectStorageAdapter : IObjectStorageAdapter
 
     public Task<bool> ObjectExistsAsync(string objectKey, CancellationToken ct = default)
     {
-        return Task.FromResult(PutObjectKeys.Contains(objectKey));
+        return Task.FromResult(ObjectExistsResult);
     }
 }

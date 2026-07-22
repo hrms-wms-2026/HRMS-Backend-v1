@@ -5,6 +5,7 @@ using ONEVO.Api.Extensions;
 using ONEVO.Api.Middleware;
 using ONEVO.Application;
 using ONEVO.Infrastructure;
+using ONEVO.Infrastructure.Configuration;
 using Serilog;
 using System.Security.Claims;
 
@@ -12,6 +13,15 @@ DotEnvLoader.LoadIfPresent();
 
 var builder = WebApplication.CreateBuilder(args);
 
+ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
+    builder.Configuration,
+    builder.Environment.EnvironmentName);
+
+await DatabaseConnectionStartupValidator.ValidateAndOpenAsync(
+    builder.Configuration,
+    builder.Environment.EnvironmentName,
+    DotEnvLoader.DefaultConnectionProcessOverrideActive
+        || DotEnvLoader.MigrationConnectionProcessOverrideActive);
 
 builder.Host.UseSerilog((ctx, cfg) =>
     cfg.ReadFrom.Configuration(ctx.Configuration)

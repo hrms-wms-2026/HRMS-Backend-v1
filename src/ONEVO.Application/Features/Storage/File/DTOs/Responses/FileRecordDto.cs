@@ -3,7 +3,6 @@ namespace ONEVO.Application.Features.Storage.File.DTOs.Responses;
 public sealed record FileRecordDto(
     Guid Id,
     Guid TenantId,
-    string StorageKey,
     string OriginalFileName,
     string SafeFileName,
     string ContentType,

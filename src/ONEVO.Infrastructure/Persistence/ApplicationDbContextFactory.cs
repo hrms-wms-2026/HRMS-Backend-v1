@@ -21,13 +21,11 @@ public class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Applicati
         // Migrations (dotnet ef ...) need DDL rights (CREATE TABLE, FORCE ROW
         // LEVEL SECURITY, CREATE POLICY) that the restricted runtime app role
         // intentionally does not have. Prefer the elevated migration
-        // connection; fall back to DefaultConnection so `dotnet ef` still
-        // works against a single-role local setup that hasn't run the
-        // bootstrap script yet.
+        // connection. Never fall back to the restricted runtime role.
         var connectionString = configuration.GetConnectionString("MigrationConnection")
-            ?? configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException(
-                "Connection string 'MigrationConnection' or 'DefaultConnection' not found.");
+                "Connection string 'MigrationConnection' not found. Run ops/postgres/setup-local-db.ps1 " +
+                "before using dotnet ef.");
 
         var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
         optionsBuilder

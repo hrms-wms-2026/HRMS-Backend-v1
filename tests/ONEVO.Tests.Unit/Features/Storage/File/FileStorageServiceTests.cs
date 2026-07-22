@@ -72,12 +72,11 @@ public class FileStorageServiceTests
             tenantId, Guid.NewGuid(), "photo.png", "image/png", 1024, "employee_avatar", CancellationToken.None);
 
         var complete = await service.CompleteUploadAsync(
-            tenantId, begin.Value!.Id, begin.Value.StorageKey, "photo.png", "photo.png", "image/png",
+            tenantId, begin.Value!.Id, "employee_avatar", "photo.png", "image/png",
             new string('a', 64), CancellationToken.None);
 
         Assert.True(complete.IsSuccess);
-        Assert.Equal(1, quota.CommitCallCount);
-        Assert.Equal(1024, quota.LastCommittedBytes);
+        Assert.Equal(1, reservations.AtomicCompletionCount);
     }
 
     [Fact]
@@ -112,15 +111,38 @@ public class FileStorageServiceTests
             tenantId, Guid.NewGuid(), "photo.png", "image/png", 1024, "employee_avatar", CancellationToken.None);
 
         var firstComplete = await service.CompleteUploadAsync(
-            tenantId, begin.Value!.Id, begin.Value.StorageKey, "photo.png", "photo.png", "image/png",
+            tenantId, begin.Value!.Id, "employee_avatar", "photo.png", "image/png",
             new string('a', 64), CancellationToken.None);
         var secondComplete = await service.CompleteUploadAsync(
-            tenantId, begin.Value.Id, begin.Value.StorageKey, "photo.png", "photo.png", "image/png",
+            tenantId, begin.Value.Id, "employee_avatar", "photo.png", "image/png",
             new string('a', 64), CancellationToken.None);
 
         Assert.True(firstComplete.IsSuccess);
         Assert.False(secondComplete.IsSuccess);
         Assert.Equal(409, secondComplete.StatusCode);
+    }
+
+    [Fact]
+    public async Task CompleteUploadAsync_ExpiredReservation_IsRejectedWithoutCommittingQuota()
+    {
+        var tenantId = Guid.NewGuid();
+        var reservations = new FakeFileUploadReservationRepository();
+        var quota = new FakeStorageQuotaService();
+        var service = CreateService(
+            reservations, new FakeFileRecordRepository(), quota, new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var begin = await service.BeginReservationAsync(
+            tenantId, Guid.NewGuid(), "photo.png", "image/png", 1024, "employee_avatar", CancellationToken.None);
+        var reservation = await reservations.GetByIdAsync(tenantId, begin.Value!.Id, CancellationToken.None);
+        reservation!.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+
+        var complete = await service.CompleteUploadAsync(
+            tenantId, begin.Value.Id, "employee_avatar", "photo.png", "image/png",
+            new string('a', 64), CancellationToken.None);
+
+        Assert.False(complete.IsSuccess);
+        Assert.Equal(409, complete.StatusCode);
+        Assert.Equal(0, quota.CommitCallCount);
     }
 
     [Fact]
@@ -144,6 +166,33 @@ public class FileStorageServiceTests
     }
 
     [Fact]
+    public async Task TenantCannotCompleteOrCancelAnotherTenantsReservation()
+    {
+        var ownerTenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var reservations = new FakeFileUploadReservationRepository();
+        var quota = new FakeStorageQuotaService();
+        var service = CreateService(
+            reservations, new FakeFileRecordRepository(), quota, new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var begin = await service.BeginReservationAsync(
+            ownerTenantId, Guid.NewGuid(), "photo.png", "image/png", 1024, "employee_avatar", CancellationToken.None);
+
+        var complete = await service.CompleteUploadAsync(
+            otherTenantId, begin.Value!.Id, "employee_avatar", "photo.png", "image/png",
+            new string('a', 64), CancellationToken.None);
+        var cancel = await service.CancelReservationAsync(
+            otherTenantId, begin.Value.Id, "cross_tenant_attempt", CancellationToken.None);
+
+        Assert.False(complete.IsSuccess);
+        Assert.Equal(404, complete.StatusCode);
+        Assert.False(cancel.IsSuccess);
+        Assert.Equal(404, cancel.StatusCode);
+        Assert.Equal(0, reservations.AtomicCompletionCount);
+        Assert.Equal(0, quota.ReleaseCallCount);
+    }
+
+    [Fact]
     public async Task UploadAsync_ObjectStorageFailure_ReleasesReservationAndDoesNotComplete()
     {
         var tenantId = Guid.NewGuid();
@@ -162,6 +211,26 @@ public class FileStorageServiceTests
         Assert.False(result.IsSuccess);
         Assert.Equal(1, quota.ReleaseCallCount);
         Assert.Equal(0, quota.CommitCallCount);
+    }
+
+    [Fact]
+    public async Task UploadAsync_MetadataCompletionFailure_DeletesObjectAndReleasesReservation()
+    {
+        var tenantId = Guid.NewGuid();
+        var reservations = new FakeFileUploadReservationRepository { ShouldFailAtomicCompletion = true };
+        var quota = new FakeStorageQuotaService();
+        var objectStorage = new FakeObjectStorageAdapter();
+        var service = CreateService(
+            reservations, new FakeFileRecordRepository(), quota, objectStorage, new FakeUnitOfWork());
+        using var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("fake image bytes"));
+
+        var result = await service.UploadAsync(
+            tenantId, Guid.NewGuid(), "photo.png", "image/png", "employee_avatar", content, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Single(objectStorage.DeletedObjectKeys);
+        Assert.Equal(1, quota.ReleaseCallCount);
+        Assert.Equal(0, reservations.AtomicCompletionCount);
     }
 
     [Fact]

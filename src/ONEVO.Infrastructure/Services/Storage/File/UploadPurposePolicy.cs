@@ -51,6 +51,12 @@ public sealed class UploadPurposePolicy : IUploadPurposePolicy
                 $"File extension '{extension}' is not allowed for purpose '{purpose}'.", 400);
         }
 
+        if (!ContentTypeMatchesExtension(contentType, extension))
+        {
+            return Result.Failure(
+                $"contentType '{contentType}' does not match file extension '{extension}'.", 400);
+        }
+
         return Result.Success();
     }
 
@@ -96,10 +102,24 @@ public sealed class UploadPurposePolicy : IUploadPurposePolicy
         return safeBaseName + safeExtensionBuilder.ToString().ToLowerInvariant();
     }
 
-    public string GenerateStorageKey(Guid tenantId, string purpose, string safeFileName)
+    public string GenerateStorageKey(Guid tenantId, Guid reservationId, string purpose, string safeFileName)
     {
-        var now = DateTimeOffset.UtcNow;
-        var uniqueSegment = Guid.NewGuid().ToString("N");
-        return $"tenants/{tenantId:N}/{purpose}/{now:yyyy}/{now:MM}/{uniqueSegment}-{safeFileName}";
+        return $"tenants/{tenantId:N}/{purpose}/{reservationId:N}/{safeFileName}";
+    }
+
+    private static bool ContentTypeMatchesExtension(string contentType, string extension)
+    {
+        return extension switch
+        {
+            ".png" => contentType.Equals("image/png", StringComparison.OrdinalIgnoreCase),
+            ".jpg" or ".jpeg" => contentType.Equals("image/jpeg", StringComparison.OrdinalIgnoreCase),
+            ".webp" => contentType.Equals("image/webp", StringComparison.OrdinalIgnoreCase),
+            ".pdf" => contentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase),
+            ".doc" => contentType.Equals("application/msword", StringComparison.OrdinalIgnoreCase),
+            ".docx" => contentType.Equals(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
     }
 }

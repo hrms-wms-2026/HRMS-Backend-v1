@@ -68,18 +68,6 @@ public sealed class AdminLoginCommandHandler
             return InvalidCredentials();
         }
 
-        var profile = await _permissionResolver.ResolveActiveUserAsync(user.Id, ct);
-        if (profile is null)
-        {
-            await WriteAuthEventAsync(
-                PlatformAuthEvent.LoginFailed,
-                user.Id,
-                request,
-                new { reason = "account_unavailable", method = "password" },
-                ct);
-            return InvalidCredentials();
-        }
-
         var credential = await _credentials.GetActivePasswordCredentialAsync(user.Id, ct);
         if (credential is null || string.IsNullOrWhiteSpace(credential.PasswordHash))
         {
@@ -121,6 +109,21 @@ public sealed class AdminLoginCommandHandler
                 new { reason = "invalid_credentials", method = "password" },
                 ct);
             return InvalidCredentials();
+        }
+
+        // Resolved only after the password is proven correct: an inactive account is
+        // reported as 403 to the credential holder, while wrong credentials stay a
+        // generic 401 that does not disclose account state.
+        var profile = await _permissionResolver.ResolveActiveUserAsync(user.Id, ct);
+        if (profile is null)
+        {
+            await WriteAuthEventAsync(
+                PlatformAuthEvent.LoginFailed,
+                user.Id,
+                request,
+                new { reason = "account_unavailable", method = "password" },
+                ct);
+            return Result<AdminLoginResultDto>.Failure("This account is not active.", 403);
         }
 
         credential.FailedLoginCount = 0;

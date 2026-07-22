@@ -8,6 +8,7 @@ using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Infrastructure.Persistence.Repositories.Storage.File;
 using ONEVO.Infrastructure.Persistence.Repositories.Storage.Quota;
 using Testcontainers.PostgreSql;
 
@@ -105,7 +106,8 @@ public sealed class FileStorageIntegrationTests : IAsyncLifetime
                 DO $$
                 BEGIN
                     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{RestrictedRoleName}') THEN
-                        CREATE ROLE {RestrictedRoleName} LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
+                        CREATE ROLE {RestrictedRoleName}
+                            LOGIN PASSWORD '{RestrictedRolePassword}' NOSUPERUSER NOBYPASSRLS;
                     END IF;
                 END
                 $$;
@@ -254,6 +256,60 @@ public sealed class FileStorageIntegrationTests : IAsyncLifetime
             successfulCount * perReservationBytes,
             "every successful reservation must be reflected exactly once, and no failed reservation may leak bytes");
         successfulCount.Should().Be(3, "10,000 / 3,000 allows exactly 3 successful reservations (9,000 <= 10,000)");
+    }
+
+    [Fact]
+    public async Task CompleteUpload_AtomicallyLinksMetadataAndCommitsQuotaExactlyOnce()
+    {
+        var reservation = new FileUploadReservation
+        {
+            Id = Guid.NewGuid(),
+            TenantId = _tenantAId,
+            ReservedBytes = 1024,
+            Status = FileUploadReservationStatus.Active,
+            ReservedByUserId = _userId,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30),
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var fileRecord = new FileRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = _tenantAId,
+            StorageKey = $"tenants/{_tenantAId:N}/employee_avatar/{reservation.Id:N}/photo.png",
+            OriginalFileName = "photo.png",
+            SafeFileName = "photo.png",
+            ContentType = "image/png",
+            FileSizeBytes = 1024,
+            ChecksumSha256 = new string('a', 64),
+            UploadedByUserId = _userId,
+            Status = FileRecordStatus.PendingScan,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        await using var db = CreateContext(_tenantAId, "file-storage-tenant-a");
+        db.FileUploadReservations.Add(reservation);
+        db.TenantStorageStats.Add(new ONEVO.Domain.Features.Storage.Quota.Entities.TenantStorageStats
+        {
+            TenantId = _tenantAId,
+            ReservedR2Bytes = 1024,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var repository = new EfFileUploadReservationRepository(db);
+        var first = await repository.TryCompleteUploadAsync(
+            reservation, fileRecord, DateTimeOffset.UtcNow, CancellationToken.None);
+        var second = await repository.TryCompleteUploadAsync(
+            reservation, new FileRecord { Id = Guid.NewGuid() }, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        var savedReservation = await db.FileUploadReservations.AsNoTracking().SingleAsync(r => r.Id == reservation.Id);
+        var stats = await db.TenantStorageStats.AsNoTracking().SingleAsync(s => s.TenantId == _tenantAId);
+
+        first.Should().BeTrue();
+        second.Should().BeFalse();
+        savedReservation.CompletedFileRecordId.Should().Be(fileRecord.Id);
+        stats.ReservedR2Bytes.Should().Be(0);
+        stats.UsedR2Bytes.Should().Be(1024);
     }
 
     private static Tenant NewTenant(string name, string slug) => new()

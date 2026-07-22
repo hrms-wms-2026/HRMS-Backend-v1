@@ -39,4 +39,16 @@ public sealed class EfSubscriptionRepository
 
     public Task<TenantSubscription?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
         _db.TenantSubscriptions.FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
+
+    public Task<TenantSubscription?> GetLatestActiveByTenantIdAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var activeStatuses = ONEVO.Application.Features.DevPlatform.Subscription.Helpers
+            .SubscriptionStatusRules.ActiveStatuses;
+
+        return _db.TenantSubscriptions
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId && activeStatuses.Contains(s.Status))
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+    }
 }
