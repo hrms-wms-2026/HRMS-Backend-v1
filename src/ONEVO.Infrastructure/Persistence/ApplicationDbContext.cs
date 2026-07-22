@@ -1,5 +1,7 @@
 using System.Linq.Expressions;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -48,7 +50,7 @@ public class ApplicationDbContext : DbContext
     /// filter that closes over a specific scoped service object freezes that
     /// object's state for every later ApplicationDbContext instance in the
     /// process. A filter that instead references DbContext instance
-    /// properties is resolved per DbContext instance at query time — EF Core
+    /// properties is resolved per DbContext instance at query time - EF Core
     /// treats `this`-typed constants in a query filter specially and
     /// substitutes the actual executing context, not the one that happened
     /// to build the model first.
@@ -164,27 +166,103 @@ public class ApplicationDbContext : DbContext
             if (!typeof(ITenantOwnedEntity).IsAssignableFrom(entityType.ClrType))
                 continue;
 
-            var param = Expression.Parameter(entityType.ClrType, "e");
+            var composedFilter = ComposeTenantAndSoftDeleteFilter(
+                entityType,
+                dbContextConst,
+                isTenantFilterActiveProperty,
+                currentTenantIdProperty);
 
-            // Tenant filter: only active when IsTenantFilterActive is true.
-            // System/Admin mode bypasses the tenant predicate (passes all rows through)
-            var isTenantFilterActive = Expression.Property(dbContextConst, isTenantFilterActiveProperty);
-            var tenantIdProp = Expression.Property(param, nameof(ITenantOwnedEntity.TenantId));
-            var currentTenantId = Expression.Property(dbContextConst, currentTenantIdProperty);
-            var tenantIdMatches = Expression.Equal(tenantIdProp, currentTenantId);
-            // (!IsTenantFilterActive) OR (TenantId == CurrentTenantId)
-            Expression filter = Expression.OrElse(Expression.Not(isTenantFilterActive), tenantIdMatches);
-
-            // BaseEntity subclasses have IsDeleted — always filter soft-deleted records
-            if (typeof(BaseEntity).IsAssignableFrom(entityType.ClrType))
-            {
-                var isDeletedProp = Expression.Property(param, nameof(BaseEntity.IsDeleted));
-                filter = Expression.AndAlso(filter, Expression.Not(isDeletedProp));
-            }
-
-            modelBuilder.Entity(entityType.ClrType).HasQueryFilter(Expression.Lambda(filter, param));
+            modelBuilder.Entity(entityType.ClrType).HasQueryFilter(composedFilter);
         }
 
         base.OnModelCreating(modelBuilder);
+    }
+
+    /// <summary>
+    /// HasQueryFilter replaces rather than combines the entity's existing
+    /// (default-keyed) query filter. Some entity configurations - e.g.
+    /// UserRoleConfiguration, RolePermissionConfiguration - declare their own
+    /// HasQueryFilter for reasons unrelated to tenant scoping (hiding rows
+    /// whose Role has been soft-deleted). Reading back whatever filter
+    /// ApplyConfigurationsFromAssembly already recorded for the entity and
+    /// AND-ing it with the generic tenant/soft-delete predicate here
+    /// preserves that entity-specific condition instead of silently
+    /// dropping it, while entities with no prior filter simply get the
+    /// generic predicate on its own.
+    /// </summary>
+    private static LambdaExpression ComposeTenantAndSoftDeleteFilter(
+        IMutableEntityType entityType,
+        ConstantExpression dbContextConst,
+        PropertyInfo isTenantFilterActiveProperty,
+        PropertyInfo currentTenantIdProperty)
+    {
+        var parameter = Expression.Parameter(entityType.ClrType, "e");
+
+        var genericFilterBody = BuildGenericTenantAndSoftDeleteFilterBody(
+            entityType,
+            parameter,
+            dbContextConst,
+            isTenantFilterActiveProperty,
+            currentTenantIdProperty);
+
+        // EF Core keys the query filter declared by a plain, unkeyed
+        // HasQueryFilter(expression) call (the overload IEntityTypeConfiguration
+        // implementations such as UserRoleConfiguration/RolePermissionConfiguration
+        // use) under a null key, not string.Empty - FindDeclaredQueryFilter(null)
+        // is what actually finds it.
+        var existingFilter = entityType.FindDeclaredQueryFilter(null!);
+        if (existingFilter is null)
+        {
+            return Expression.Lambda(genericFilterBody, parameter);
+        }
+
+        var existingLambda = existingFilter.Expression!;
+        var existingParameter = existingLambda.Parameters[0];
+        var existingBody = new QueryFilterParameterReplacer(existingParameter, parameter)
+            .Visit(existingLambda.Body);
+
+        var combinedBody = Expression.AndAlso(existingBody, genericFilterBody);
+        return Expression.Lambda(combinedBody, parameter);
+    }
+
+    private static Expression BuildGenericTenantAndSoftDeleteFilterBody(
+        IMutableEntityType entityType,
+        ParameterExpression parameter,
+        ConstantExpression dbContextConst,
+        PropertyInfo isTenantFilterActiveProperty,
+        PropertyInfo currentTenantIdProperty)
+    {
+        // Tenant filter: only active when IsTenantFilterActive is true.
+        // System/Admin mode bypasses the tenant predicate (passes all rows through)
+        var isTenantFilterActive = Expression.Property(dbContextConst, isTenantFilterActiveProperty);
+        var tenantIdProp = Expression.Property(parameter, nameof(ITenantOwnedEntity.TenantId));
+        var currentTenantId = Expression.Property(dbContextConst, currentTenantIdProperty);
+        var tenantIdMatches = Expression.Equal(tenantIdProp, currentTenantId);
+        // (!IsTenantFilterActive) OR (TenantId == CurrentTenantId)
+        Expression filter = Expression.OrElse(Expression.Not(isTenantFilterActive), tenantIdMatches);
+
+        // BaseEntity subclasses have IsDeleted - always filter soft-deleted records
+        if (typeof(BaseEntity).IsAssignableFrom(entityType.ClrType))
+        {
+            var isDeletedProp = Expression.Property(parameter, nameof(BaseEntity.IsDeleted));
+            filter = Expression.AndAlso(filter, Expression.Not(isDeletedProp));
+        }
+
+        return filter;
+    }
+
+    private sealed class QueryFilterParameterReplacer : ExpressionVisitor
+    {
+        private readonly ParameterExpression _oldParameter;
+        private readonly ParameterExpression _newParameter;
+
+        public QueryFilterParameterReplacer(ParameterExpression oldParameter, ParameterExpression newParameter)
+        {
+            _oldParameter = oldParameter;
+            _newParameter = newParameter;
+        }
+
+        protected override Expression VisitParameter(ParameterExpression node)
+            => node == _oldParameter ? _newParameter : base.VisitParameter(node);
     }
 }

@@ -15,9 +15,12 @@ public class SecureTokenGenerator : ISecureTokenGenerator
 
     public string GenerateCsrfToken()
     {
+        // Hex, not Base64: the token is issued as a cookie value and echoed back in the
+        // X-CSRF-Token header. Base64's '+', '/', '=' get URL-encoded in Set-Cookie, so a
+        // client using the cookie value verbatim would never match the stored hash.
         var bytes = new byte[32];
         RandomNumberGenerator.Fill(bytes);
-        return Convert.ToBase64String(bytes);
+        return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
     public string HashToken(string rawToken)

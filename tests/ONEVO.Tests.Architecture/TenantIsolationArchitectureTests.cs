@@ -54,6 +54,69 @@ public class TenantIsolationArchitectureTests
     }
 
     [Fact]
+    public void UserRoleAndRolePermission_ComposedQueryFilter_RetainsRoleSoftDeleteCondition()
+    {
+        // Guards the query-filter composition fix: UserRoleConfiguration and
+        // RolePermissionConfiguration each declare their own HasQueryFilter
+        // (hiding rows whose Role has been soft-deleted) before
+        // ApplicationDbContext's generic tenant-filter loop runs. HasQueryFilter
+        // replaces rather than combines the default-keyed filter, so without
+        // composition the generic loop would silently drop this condition. This
+        // test proves the final, composed filter still contains it.
+        using var context = CreateModelInspectionContext();
+
+        foreach (var entityTypeName in new[] { "UserRole", "RolePermission" })
+        {
+            var entityType = context.Model.GetEntityTypes().Single(e => e.ClrType.Name == entityTypeName);
+            var filter = entityType.GetDeclaredQueryFilters().Single();
+
+            var roleIsDeletedFinder = new RoleIsDeletedReferenceFinder();
+            roleIsDeletedFinder.Visit(filter.Expression);
+            Assert.True(
+                roleIsDeletedFinder.Found,
+                $"{entityTypeName}'s composed query filter no longer references Role.IsDeleted - " +
+                "the generic tenant-filter loop overwrote the entity-specific filter instead of composing with it.");
+
+            var tenantIdFinder = new TenantIdComparisonFinder();
+            tenantIdFinder.Visit(filter.Expression);
+            Assert.True(
+                tenantIdFinder.Found,
+                $"{entityTypeName}'s composed query filter no longer references TenantId scoping.");
+        }
+    }
+
+    [Fact]
+    public void EveryTenantOwnedEntity_ComposedQueryFilter_IncludesTenantScopingCondition()
+    {
+        // EveryTenantOwnedEntity_HasAQueryFilter below only proves *a* filter
+        // exists. This proves the filter that exists actually contains the
+        // tenant-scoping condition, not just whatever entity-specific predicate
+        // (if any) an IEntityTypeConfiguration declared on its own - i.e. that
+        // composition adds the generic condition rather than only preserving
+        // the existing one.
+        using var context = CreateModelInspectionContext();
+
+        var offenders = new List<string>();
+        foreach (var entityType in context.Model.GetEntityTypes())
+        {
+            if (!typeof(ITenantOwnedEntity).IsAssignableFrom(entityType.ClrType))
+                continue;
+
+            var hasTenantCondition = entityType.GetDeclaredQueryFilters().Any(filter =>
+            {
+                var finder = new TenantIdComparisonFinder();
+                finder.Visit(filter.Expression);
+                return finder.Found;
+            });
+
+            if (!hasTenantCondition)
+                offenders.Add(entityType.ClrType.Name);
+        }
+
+        Assert.Empty(offenders);
+    }
+
+    [Fact]
     public void EveryTenantOwnedEntity_HasAQueryFilter()
     {
         // Catches both "a new ITenantOwnedEntity was added with no filter at
@@ -330,6 +393,49 @@ public class TenantIsolationArchitectureTests
                 Found = true;
 
             return base.VisitConstant(node);
+        }
+    }
+
+    /// <summary>Finds an `x.Role.IsDeleted` member-access chain anywhere in the expression tree.</summary>
+    private sealed class RoleIsDeletedReferenceFinder : ExpressionVisitor
+    {
+        public bool Found { get; private set; }
+
+        protected override Expression VisitMember(MemberExpression node)
+        {
+            if (node.Member.Name == "IsDeleted" &&
+                node.Expression is MemberExpression parentMember &&
+                parentMember.Member.Name == "Role")
+            {
+                Found = true;
+            }
+
+            return base.VisitMember(node);
+        }
+    }
+
+    /// <summary>Finds a `x.TenantId == ...` equality comparison anywhere in the expression tree.</summary>
+    private sealed class TenantIdComparisonFinder : ExpressionVisitor
+    {
+        public bool Found { get; private set; }
+
+        protected override Expression VisitBinary(BinaryExpression node)
+        {
+            if (node.NodeType == ExpressionType.Equal && ReferencesTenantId(node))
+                Found = true;
+
+            return base.VisitBinary(node);
+        }
+
+        private static bool ReferencesTenantId(BinaryExpression node)
+        {
+            return IsTenantIdMember(node.Left) || IsTenantIdMember(node.Right);
+        }
+
+        private static bool IsTenantIdMember(Expression expression)
+        {
+            return expression is MemberExpression memberExpression &&
+                   memberExpression.Member.Name == nameof(ITenantOwnedEntity.TenantId);
         }
     }
 }

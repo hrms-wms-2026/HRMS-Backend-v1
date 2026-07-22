@@ -23,6 +23,63 @@ public sealed class EfFileUploadReservationRepository : IFileUploadReservationRe
         await _db.FileUploadReservations.AddAsync(reservation, ct);
     }
 
+    public async Task<bool> TryCompleteUploadAsync(
+        FileUploadReservation reservation,
+        FileRecord fileRecord,
+        DateTimeOffset completedAt,
+        CancellationToken ct = default)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(ct);
+
+        var reservationRows = await _db.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE file_upload_reservations
+            SET status = {FileUploadReservationStatus.Completed},
+                updated_at = {completedAt}
+            WHERE id = {reservation.Id}
+              AND tenant_id = {reservation.TenantId}
+              AND status = {FileUploadReservationStatus.Active}
+              AND expires_at > {completedAt}
+        ", ct);
+
+        if (reservationRows == 0)
+        {
+            await transaction.RollbackAsync(ct);
+            return false;
+        }
+
+        await _db.FileRecords.AddAsync(fileRecord, ct);
+        await _db.SaveChangesAsync(ct);
+
+        var linkRows = await _db.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE file_upload_reservations
+            SET completed_file_record_id = {fileRecord.Id},
+                updated_at = {completedAt}
+            WHERE id = {reservation.Id}
+              AND tenant_id = {reservation.TenantId}
+              AND status = {FileUploadReservationStatus.Completed}
+        ", ct);
+
+        var quotaRows = await _db.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE tenant_storage_stats
+            SET reserved_r2_bytes = reserved_r2_bytes - {reservation.ReservedBytes},
+                used_r2_bytes = used_r2_bytes + {reservation.ReservedBytes},
+                updated_at = {completedAt}
+            WHERE tenant_id = {reservation.TenantId}
+              AND reserved_r2_bytes >= {reservation.ReservedBytes}
+        ", ct);
+
+        if (linkRows != 1 || quotaRows != 1)
+        {
+            throw new InvalidOperationException("File upload completion could not update its reservation and quota atomically.");
+        }
+
+        await transaction.CommitAsync(ct);
+        reservation.Status = FileUploadReservationStatus.Completed;
+        reservation.CompletedFileRecordId = fileRecord.Id;
+        reservation.UpdatedAt = completedAt;
+        return true;
+    }
+
     public async Task<bool> TryTransitionStatusAsync(
         Guid tenantId,
         Guid reservationId,

@@ -25,15 +25,15 @@ public class PermissionSeeder : IHostedService
             await using var scope = _services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-            // Apply migrations rather than EnsureCreated: several schema objects
-            // (global_email_directory, RLS policies, module catalog seed data) exist
-            // only in migrations, so EnsureCreated produces an incomplete database.
-            await db.Database.MigrateAsync(cancellationToken);
             await SeedPermissionsAsync(db, cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Permission seeder could not run (database may be unavailable). Skipping.");
+            _logger.LogWarning(
+                ex,
+                "Permission seeder could not run because the database or migrated schema is unavailable. " +
+                "Apply migrations explicitly with setup-local-db.ps1 -RunMigrations. Startup will stop.");
+            throw;
         }
     }
 

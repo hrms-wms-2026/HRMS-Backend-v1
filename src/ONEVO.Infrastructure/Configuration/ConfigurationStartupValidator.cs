@@ -12,11 +12,15 @@ namespace ONEVO.Infrastructure.Configuration;
 /// </summary>
 public class ConfigurationStartupValidator : IHostedService
 {
+    private const int MinimumEncryptionMasterKeyLength = 32;
+
     private static readonly string[] PlaceholderMarkers =
     {
         "CHANGE_ME",
+        "CHANGE-ME",
         "__SET_ME__",
-        "REPLACE_ME"
+        "REPLACE_ME",
+        "PLACEHOLDER"
     };
 
     private readonly IConfiguration _configuration;
@@ -28,6 +32,30 @@ public class ConfigurationStartupValidator : IHostedService
     {
         _configuration = configuration;
         _logger = logger;
+    }
+
+    public static void ValidateRequiredLocalConfiguration(
+        IConfiguration configuration,
+        string environmentName)
+    {
+        if (!IsLocalValidationEnvironment(environmentName))
+        {
+            return;
+        }
+
+        var masterKey = configuration["Encryption:MasterKey"];
+        if (IsMissingOrPlaceholder(masterKey))
+        {
+            throw new InvalidOperationException(
+                "Encryption:MasterKey is required in Development/Test and must be supplied " +
+                "through the repo-root .env as Encryption__MasterKey. Placeholder values are not allowed.");
+        }
+
+        if (masterKey!.Length < MinimumEncryptionMasterKeyLength)
+        {
+            throw new InvalidOperationException(
+                $"Encryption:MasterKey must be at least {MinimumEncryptionMasterKeyLength} characters long.");
+        }
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -133,9 +161,18 @@ public class ConfigurationStartupValidator : IHostedService
     private static bool IsMissingOrPlaceholder(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return true;
+        if (value.Equals("SET_VIA_ENV", StringComparison.OrdinalIgnoreCase)) return true;
+        if (value.StartsWith('<') && value.EndsWith('>')) return true;
         foreach (var marker in PlaceholderMarkers)
             if (value.Contains(marker, StringComparison.OrdinalIgnoreCase))
                 return true;
         return false;
+    }
+
+    private static bool IsLocalValidationEnvironment(string environmentName)
+    {
+        return environmentName.Equals("Development", StringComparison.OrdinalIgnoreCase)
+            || environmentName.Equals("Test", StringComparison.OrdinalIgnoreCase)
+            || environmentName.Equals("Testing", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -72,8 +72,6 @@ public sealed class FileStorageService : IFileStorageService
 
         // Step 3: generate a fully server-controlled storage key. The client
         // never influences the path beyond the sanitized file name.
-        var safeFileName = _purposePolicy.SanitizeFileName(originalFileName);
-        var storageKey = _purposePolicy.GenerateStorageKey(tenantId, purpose, safeFileName);
         var now = _clock.UtcNow;
 
         var reservation = new FileUploadReservation
@@ -108,7 +106,6 @@ public sealed class FileStorageService : IFileStorageService
             reservation.TenantId,
             reservation.ReservedBytes,
             reservation.Status,
-            storageKey,
             reservation.ExpiresAt,
             reservation.CreatedAt));
     }
@@ -116,9 +113,8 @@ public sealed class FileStorageService : IFileStorageService
     public async Task<Result<FileRecordDto>> CompleteUploadAsync(
         Guid tenantId,
         Guid reservationId,
-        string storageKey,
+        string purpose,
         string originalFileName,
-        string safeFileName,
         string contentType,
         string checksumSha256,
         CancellationToken ct = default)
@@ -137,6 +133,31 @@ public sealed class FileStorageService : IFileStorageService
         }
 
         var now = _clock.UtcNow;
+        if (reservation.ExpiresAt <= now)
+        {
+            return Result<FileRecordDto>.Conflict("Upload reservation has expired and cannot be completed.");
+        }
+
+        var validation = _purposePolicy.ValidateUpload(
+            purpose, originalFileName, contentType, reservation.ReservedBytes);
+        if (!validation.IsSuccess)
+        {
+            return Result<FileRecordDto>.Failure(validation.Error!, validation.StatusCode ?? 400);
+        }
+
+        if (checksumSha256.Length != 64 || !checksumSha256.All(Uri.IsHexDigit))
+        {
+            return Result<FileRecordDto>.Failure("checksumSha256 must be a 64-character hexadecimal value.", 400);
+        }
+
+        var safeFileName = _purposePolicy.SanitizeFileName(originalFileName);
+        var storageKey = _purposePolicy.GenerateStorageKey(
+            tenantId, reservationId, purpose, safeFileName);
+
+        if (!await _objectStorage.ObjectExistsAsync(storageKey, ct))
+        {
+            return Result<FileRecordDto>.Conflict("Uploaded object was not found for this reservation.");
+        }
         var fileRecord = new FileRecord
         {
             Id = Guid.NewGuid(),
@@ -164,23 +185,18 @@ public sealed class FileStorageService : IFileStorageService
         // Step 2: atomically flip the reservation Active -> Completed. This is
         // the guard that makes double-complete impossible under concurrency —
         // only one caller's conditional UPDATE can match status = 'active'.
-        var transitioned = await _reservations.TryTransitionStatusAsync(
-            tenantId, reservationId, FileUploadReservationStatus.Active, FileUploadReservationStatus.Completed,
-            fileRecord.Id, ct);
-
-        if (!transitioned)
-        {
-            return Result<FileRecordDto>.Conflict("Upload reservation was already completed or cancelled.");
-        }
-
         // Step 3: persist the file_records row. If this fails, the object is
         // already sitting in R2 orphaned — roll it back, release the bytes, and
         // put the reservation into Cancelled so it is not left stuck at
         // Completed with no matching file record.
         try
         {
-            await _fileRecords.AddAsync(fileRecord, ct);
-            await _unitOfWork.SaveChangesAsync(ct);
+            var completed = await _reservations.TryCompleteUploadAsync(reservation, fileRecord, now, ct);
+            if (!completed)
+            {
+                return Result<FileRecordDto>.Conflict(
+                    "Upload reservation was already completed, cancelled, or expired.");
+            }
         }
         catch (Exception ex)
         {
@@ -194,26 +210,19 @@ public sealed class FileStorageService : IFileStorageService
             {
                 _logger.LogError(
                     deleteEx,
-                    "Failed to roll back orphaned R2 object {StorageKey} for tenant {TenantId}.",
-                    storageKey,
-                    tenantId);
+                    "Failed to roll back an orphaned R2 object for tenant {TenantId}.", tenantId);
             }
 
-            await _quota.ReleaseReservedStorageAsync(tenantId, reservation.ReservedBytes, ct);
-            await _reservations.TryTransitionStatusAsync(
-                tenantId, reservationId, FileUploadReservationStatus.Completed, FileUploadReservationStatus.Cancelled, null, ct);
+            await CancelReservationAsync(tenantId, reservationId, "metadata_completion_failed", ct);
 
             return Result<FileRecordDto>.Failure("file_metadata_save_failed", 500);
         }
 
         // Step 4: move the reserved bytes to used bytes now that both the
         // object and the metadata row are durably saved.
-        await _quota.CommitReservedStorageAsync(tenantId, reservation.ReservedBytes, ct);
-
         return Result<FileRecordDto>.Success(new FileRecordDto(
             fileRecord.Id,
             fileRecord.TenantId,
-            fileRecord.StorageKey,
             fileRecord.OriginalFileName,
             fileRecord.SafeFileName,
             fileRecord.ContentType,
@@ -289,6 +298,9 @@ public sealed class FileStorageService : IFileStorageService
         }
 
         var reservation = beginResult.Value!;
+        var safeFileName = _purposePolicy.SanitizeFileName(originalFileName);
+        var storageKey = _purposePolicy.GenerateStorageKey(
+            tenantId, reservation.Id, purpose, safeFileName);
 
         // Step 2: buffer the content once so we can both hash it and upload it
         // without requiring the caller's stream to be re-readable.
@@ -309,7 +321,7 @@ public sealed class FileStorageService : IFileStorageService
         // returns without ever creating a file_records row.
         try
         {
-            await _objectStorage.PutObjectAsync(reservation.StorageKey, buffer, contentType, ct);
+            await _objectStorage.PutObjectAsync(storageKey, buffer, contentType, ct);
         }
         catch (ObjectStorageException ex)
         {
@@ -324,9 +336,7 @@ public sealed class FileStorageService : IFileStorageService
         }
 
         // Step 4: complete the reservation now that the object is durably in R2.
-        var safeFileName = _purposePolicy.SanitizeFileName(originalFileName);
-
         return await CompleteUploadAsync(
-            tenantId, reservation.Id, reservation.StorageKey, originalFileName, safeFileName, contentType, checksum, ct);
+            tenantId, reservation.Id, purpose, originalFileName, contentType, checksum, ct);
     }
 }

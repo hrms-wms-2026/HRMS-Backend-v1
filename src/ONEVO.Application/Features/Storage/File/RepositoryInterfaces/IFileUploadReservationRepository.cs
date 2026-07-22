@@ -9,6 +9,16 @@ public interface IFileUploadReservationRepository
     Task AddAsync(FileUploadReservation reservation, CancellationToken ct = default);
 
     /// <summary>
+    /// Atomically completes an unexpired active reservation, inserts its file
+    /// record, links the two rows, and moves reserved quota into used quota.
+    /// </summary>
+    Task<bool> TryCompleteUploadAsync(
+        FileUploadReservation reservation,
+        FileRecord fileRecord,
+        DateTimeOffset completedAt,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Atomically transitions a reservation from <paramref name="fromStatus"/>
     /// to <paramref name="toStatus"/> using a single conditional UPDATE, so
     /// concurrent complete/cancel calls for the same reservation cannot both

@@ -34,6 +34,11 @@ public class AdminTestFactory : WebApplicationFactory<Program>
                 ["Jwt:Secret"] = TenantSecret,
                 ["Jwt:TenantIssuer"] = TenantIssuer,
                 ["Jwt:TenantAudience"] = TenantAudience,
+                // Host-based tenant resolution rejects unknown hosts with 400;
+                // the test client calls https://localhost.
+                ["Tenancy:RootDomain"] = "localhost",
+                // Outbox payloads are AES-encrypted at rest; tests need a key too.
+                ["Encryption:MasterKey"] = "admin-test-encryption-master-key!",
                 ["DevAdmin:Email"] = "test_admin@onevo.dev",
                 ["DevAdmin:Password"] = "test_password_123",
                 // Bootstrap the canonical platform_users row the DevAdmin login resolves.

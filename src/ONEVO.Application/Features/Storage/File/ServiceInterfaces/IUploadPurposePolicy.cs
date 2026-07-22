@@ -18,5 +18,5 @@ public interface IUploadPurposePolicy
     /// Never derived from a client-provided path — only from
     /// <paramref name="safeFileName"/> (already sanitized) plus server state.
     /// </summary>
-    string GenerateStorageKey(Guid tenantId, string purpose, string safeFileName);
+    string GenerateStorageKey(Guid tenantId, Guid reservationId, string purpose, string safeFileName);
 }
