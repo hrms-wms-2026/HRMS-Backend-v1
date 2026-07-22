@@ -286,6 +286,65 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("invitation_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.MfaChallenge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ChallengeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("challenge_hash");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consumed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<int>("FailedAttemptCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("failed_attempt_count");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_mfa_challenges");
+
+                    b.HasIndex("ChallengeHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_mfa_challenges_challenge_hash");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("ix_mfa_challenges_expires_at");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_mfa_challenges_user_id");
+
+                    b.HasIndex("TenantId", "UserId", "ExpiresAt")
+                        .HasDatabaseName("ix_mfa_challenges_tenant_id_user_id_expires_at");
+
+                    b.ToTable("mfa_challenges", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.PasswordResetToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1890,6 +1949,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("ChangedAt")
                         .HasDatabaseName("ix_tenant_status_histories_changed_at");
 
+                    b.HasIndex("ChangedById")
+                        .HasDatabaseName("ix_tenant_status_histories_changed_by_id");
+
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_tenant_status_histories_tenant_id");
 
@@ -3355,6 +3417,194 @@ namespace ONEVO.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ChecksumSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("checksum_sha256");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DetectedContentType")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("detected_content_type");
+
+                    b.Property<long>("FileSizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("file_size_bytes");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("original_file_name");
+
+                    b.Property<string>("SafeFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("safe_file_name");
+
+                    b.Property<DateTimeOffset?>("ScanCompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scan_completed_at");
+
+                    b.Property<string>("ScanProvider")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("scan_provider");
+
+                    b.Property<string>("ScanResultCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("scan_result_code");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("StorageDeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("storage_deleted_at");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(700)
+                        .HasColumnType("character varying(700)")
+                        .HasColumnName("storage_key");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UploadedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("uploaded_by_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_file_records");
+
+                    b.HasIndex("UploadedByUserId")
+                        .HasDatabaseName("ix_file_records_uploaded_by_user_id");
+
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("ix_file_records_tenant_id_status");
+
+                    b.ToTable("file_records", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Storage.File.Entities.FileUploadReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CompletedFileRecordId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("completed_file_record_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("ReservedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reserved_by_user_id");
+
+                    b.Property<long>("ReservedBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("reserved_bytes");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_file_upload_reservations");
+
+                    b.HasIndex("CompletedFileRecordId")
+                        .HasDatabaseName("ix_file_upload_reservations_completed_file_record_id");
+
+                    b.HasIndex("ReservedByUserId")
+                        .HasDatabaseName("ix_file_upload_reservations_reserved_by_user_id");
+
+                    b.HasIndex("TenantId", "Status", "ExpiresAt")
+                        .HasDatabaseName("ix_file_upload_reservations_tenant_id_status_expires_at");
+
+                    b.ToTable("file_upload_reservations", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Storage.Quota.Entities.TenantStorageStats", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("LastCalculatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_calculated_at");
+
+                    b.Property<long>("ReservedR2Bytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("reserved_r2_bytes");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("UsedDbBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("used_db_bytes");
+
+                    b.Property<long>("UsedR2Bytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("used_r2_bytes");
+
+                    b.HasKey("TenantId")
+                        .HasName("pk_tenant_storage_stats");
+
+                    b.ToTable("tenant_storage_stats", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Lookups.ApprovalStatus", b =>
                 {
                     b.Property<int>("Id")
@@ -3493,6 +3743,23 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_work_modes_code");
 
                     b.ToTable("work_modes", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.MfaChallenge", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_mfa_challenges_tenants_tenant_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_mfa_challenges_users_user_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.RefreshToken", b =>
@@ -3755,6 +4022,22 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_platform_service_keys_platform_users_updated_by_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.InfrastructureModule.Entities.TenantStatusHistory", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("ChangedById")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_tenant_status_histories_platform_users_changed_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_status_histories_tenants_tenant_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.ModuleCatalogPriceHistory", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.SharedPlatform.Entities.ModuleCatalogItem", "Module")
@@ -3861,6 +4144,56 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_user_integration_connections_users_user_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_file_records_tenants_tenant_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UploadedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_file_records_users_uploaded_by_user_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Storage.File.Entities.FileUploadReservation", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", null)
+                        .WithMany()
+                        .HasForeignKey("CompletedFileRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_file_upload_reservations_file_records_completed_file_record");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ReservedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_file_upload_reservations_users_reserved_by_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_file_upload_reservations_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Storage.Quota.Entities.TenantStorageStats", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_storage_stats_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.Permission", b =>

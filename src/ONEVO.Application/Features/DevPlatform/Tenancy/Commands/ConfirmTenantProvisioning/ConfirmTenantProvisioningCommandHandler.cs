@@ -15,7 +15,10 @@ namespace ONEVO.Application.Features.DevPlatform.Tenancy.Commands.ConfirmTenantP
 public class ConfirmTenantProvisioningCommandHandler
     : IRequestHandler<ConfirmTenantProvisioningCommand, Result<ProvisioningSummaryDto>>
 {
+    private const string ActivationReason = "provisioning_confirmed";
+
     private readonly ITenantRepository _tenants;
+    private readonly ITenantStatusHistoryRepository _statusHistories;
     private readonly IMediator _mediator;
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
@@ -23,12 +26,14 @@ public class ConfirmTenantProvisioningCommandHandler
 
     public ConfirmTenantProvisioningCommandHandler(
         ITenantRepository tenants,
+        ITenantStatusHistoryRepository statusHistories,
         IMediator mediator,
         ICurrentUser currentUser,
         IUnitOfWork unitOfWork,
         IDateTimeProvider clock)
     {
         _tenants = tenants;
+        _statusHistories = statusHistories;
         _mediator = mediator;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
@@ -67,9 +72,22 @@ public class ConfirmTenantProvisioningCommandHandler
                 statusCode: 422);
 
         var now = _clock.UtcNow;
+        var previousStatus = tenant.Status;
 
         tenant.Status = TenantStatus.Trial;
         tenant.UpdatedAt = now;
+
+        var history = new TenantStatusHistory
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            FromStatus = previousStatus,
+            ToStatus = TenantStatus.Trial,
+            Reason = ActivationReason,
+            ChangedById = _currentUser.UserId,
+            ChangedAt = now
+        };
+        await _statusHistories.AddAsync(history, ct);
 
         await _unitOfWork.SaveChangesAsync(ct);
 

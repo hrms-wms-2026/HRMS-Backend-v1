@@ -64,7 +64,8 @@ public class PlatformAccessSeeder : IHostedService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Platform access seeder could not run (database may be unavailable). Skipping.");
+            _logger.LogError(ex, "Platform access seeder failed. Startup will stop.");
+            throw;
         }
     }
 

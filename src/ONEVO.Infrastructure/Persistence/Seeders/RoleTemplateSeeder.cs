@@ -25,12 +25,15 @@ public sealed class RoleTemplateSeeder : IHostedService
         {
             await using var scope = _services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            await db.Database.MigrateAsync(cancellationToken);
             await SeedAsync(db, _logger, cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Role template seeder could not run (database may be unavailable). Skipping.");
+            _logger.LogWarning(
+                ex,
+                "Role template seeder could not run because the database or migrated schema is unavailable. " +
+                "Apply migrations explicitly with setup-local-db.ps1 -RunMigrations. Startup will stop.");
+            throw;
         }
     }
 

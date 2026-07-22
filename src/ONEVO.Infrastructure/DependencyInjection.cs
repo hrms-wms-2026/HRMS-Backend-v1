@@ -102,6 +102,7 @@ public static class DependencyInjection
 
         // Developer Platform repositories
         services.AddScoped<ITenantRepository, EfTenantRepository>();
+        services.AddScoped<ITenantStatusHistoryRepository, EfTenantStatusHistoryRepository>();
         services.AddScoped<EfLegalEntityRepository>();
         services.AddScoped<ILegalEntityRepository>(sp => sp.GetRequiredService<EfLegalEntityRepository>());
         services.AddScoped<EfSubscriptionRepository>();
@@ -121,6 +122,31 @@ public static class DependencyInjection
 
         // One-time billing charges
         services.AddScoped<ITenantOneTimeChargeRepository, EfTenantOneTimeChargeRepository>();
+
+        // Storage quota (Phase 1 tenant_storage_stats + enforcement service)
+        services.AddScoped<
+            ONEVO.Application.Features.Storage.Quota.RepositoryInterfaces.ITenantStorageStatsRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Storage.Quota.EfTenantStorageStatsRepository>();
+        services.AddScoped<
+            ONEVO.Application.Common.ServiceInterfaces.IStorageQuotaService,
+            ONEVO.Infrastructure.Services.Storage.Quota.StorageQuotaService>();
+
+        // File Storage (Phase 1 file_records + file_upload_reservations)
+        services.AddScoped<
+            ONEVO.Application.Features.Storage.File.RepositoryInterfaces.IFileRecordRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Storage.File.EfFileRecordRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Storage.File.RepositoryInterfaces.IFileUploadReservationRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Storage.File.EfFileUploadReservationRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Storage.File.ServiceInterfaces.IUploadPurposePolicy,
+            ONEVO.Infrastructure.Services.Storage.File.UploadPurposePolicy>();
+        services.AddScoped<
+            ONEVO.Application.Features.Storage.File.ServiceInterfaces.IObjectStorageAdapter,
+            ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.CloudflareR2ObjectStorageAdapter>();
+        services.AddScoped<
+            ONEVO.Application.Features.Storage.File.ServiceInterfaces.IFileStorageService,
+            ONEVO.Infrastructure.Services.Storage.File.FileStorageService>();
 
         // System Config - Payment Gateway (Phase 1 canonical tables)
         services.AddScoped<IPaymentGatewayRepository, EfPaymentGatewayRepository>();
@@ -183,7 +209,9 @@ public static class DependencyInjection
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
-        services.AddSingleton<IMfaChallengeStore, MemoryMfaChallengeStore>();
+        // Normal runtime MFA challenge storage is the PostgreSQL-backed mfa_challenges table.
+        // MemoryMfaChallengeStore exists only as an explicit local development/test fallback.
+        services.AddScoped<IMfaChallengeStore, PostgresMfaChallengeStore>();
         services.AddHostedService<Configuration.MfaChallengeStoreStartupGuard>();
         services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
         services.AddScoped<IPermissionResolver, PermissionResolver>();
@@ -209,6 +237,10 @@ public static class DependencyInjection
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
         services.Configure<PlatformUrlsOptions>(configuration.GetSection(PlatformUrlsOptions.SectionName));
         services.Configure<EncryptionOptions>(configuration.GetSection(EncryptionOptions.SectionName));
+        services.Configure<ONEVO.Infrastructure.Configuration.StorageQuotaOptions>(
+            configuration.GetSection(ONEVO.Infrastructure.Configuration.StorageQuotaOptions.SectionName));
+        services.Configure<ONEVO.Infrastructure.Configuration.FileStorageOptions>(
+            configuration.GetSection(ONEVO.Infrastructure.Configuration.FileStorageOptions.SectionName));
         services.Configure<GoogleAuthOptions>(configuration.GetSection(GoogleAuthOptions.SectionName));
         services.Configure<StripeOptions>(configuration.GetSection(StripeOptions.SectionName));
         services.Configure<PayHereOptions>(configuration.GetSection(PayHereOptions.SectionName));

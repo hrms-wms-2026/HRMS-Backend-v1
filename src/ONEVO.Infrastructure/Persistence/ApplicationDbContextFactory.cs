@@ -18,8 +18,14 @@ public class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Applicati
             .AddEnvironmentVariables()
             .Build();
 
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+        // Migrations (dotnet ef ...) need DDL rights (CREATE TABLE, FORCE ROW
+        // LEVEL SECURITY, CREATE POLICY) that the restricted runtime app role
+        // intentionally does not have. Prefer the elevated migration
+        // connection. Never fall back to the restricted runtime role.
+        var connectionString = configuration.GetConnectionString("MigrationConnection")
+            ?? throw new InvalidOperationException(
+                "Connection string 'MigrationConnection' not found. Run ops/postgres/setup-local-db.ps1 " +
+                "before using dotnet ef.");
 
         var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
         optionsBuilder

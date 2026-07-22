@@ -11,13 +11,8 @@ namespace ONEVO.Infrastructure.Services.SharedPlatform;
 public sealed class ModuleEntitlementService : IModuleEntitlementService
 {
     private static readonly HashSet<string> ActiveSubscriptionStatuses =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "active",
-            "trialing",
-            "maintenance_included",
-            "subscription_included"
-        };
+        new(ONEVO.Application.Features.DevPlatform.Subscription.Helpers.SubscriptionStatusRules.ActiveStatuses,
+            StringComparer.OrdinalIgnoreCase);
 
     private readonly ApplicationDbContext _db;
 

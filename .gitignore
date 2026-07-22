@@ -15,7 +15,9 @@ TestResults/
 
 # Local environment / secret files (use .env.example as the committed template)
 
+.env
 .env.*.local
+**/.env
 
 # Superpowers / local agent tooling (not part of the app)
 .superpowers/

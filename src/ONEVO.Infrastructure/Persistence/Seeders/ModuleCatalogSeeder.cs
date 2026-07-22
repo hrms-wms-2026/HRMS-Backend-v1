@@ -32,7 +32,8 @@ public class ModuleCatalogSeeder : IHostedService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Module Catalog seeder could not run (database may be unavailable). Skipping.");
+            _logger.LogError(ex, "Module catalog seeder failed. Startup will stop.");
+            throw;
         }
     }
 
