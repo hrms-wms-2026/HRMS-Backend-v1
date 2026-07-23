@@ -21,7 +21,7 @@ public class JwtTokenService : IJwtTokenService
     {
         _agentSecret = configuration["Jwt:AgentSecret"]
             ?? throw new InvalidOperationException("Jwt:AgentSecret is required.");
-        _issuer = configuration["Jwt:TenantIssuer"] ?? "onevo";
+        _issuer = configuration["Jwt:AgentIssuer"] ?? "onevo";
     }
 
     public string GenerateAgentToken(Guid deviceId, Guid tenantId)
