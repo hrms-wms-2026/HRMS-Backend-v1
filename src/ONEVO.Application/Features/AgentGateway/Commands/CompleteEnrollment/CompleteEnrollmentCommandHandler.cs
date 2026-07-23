@@ -5,6 +5,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.AgentGateway.DTOs;
 using ONEVO.Application.Features.AgentGateway.RepositoryInterfaces;
+using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Domain.Features.AgentGateway.Entities;
 
@@ -14,6 +15,7 @@ public class CompleteEnrollmentCommandHandler
     : IRequestHandler<CompleteEnrollmentCommand, Result<EnrollCompleteResponseDto>>
 {
     private readonly IAgentGatewayRepository _repo;
+    private readonly IUserRepository _users;
     private readonly IJwtTokenService _jwt;
     private readonly IUnitOfWork _uow;
 
@@ -28,10 +30,12 @@ public class CompleteEnrollmentCommandHandler
 
     public CompleteEnrollmentCommandHandler(
         IAgentGatewayRepository repo,
+        IUserRepository users,
         IJwtTokenService jwt,
         IUnitOfWork uow)
     {
         _repo = repo;
+        _users = users;
         _jwt = jwt;
         _uow = uow;
     }
@@ -120,6 +124,9 @@ public class CompleteEnrollmentCommandHandler
 
         await _uow.SaveChangesAsync(cancellationToken);
 
+        var user = await _users.GetByIdAsync(employeeId, cancellationToken);
+        var employeeName = user is null ? string.Empty : $"{user.FirstName} {user.LastName}".Trim();
+
         var deviceToken = _jwt.GenerateAgentToken(agentId, tenantId);
         var tokenExpiresAt = DateTimeOffset.UtcNow.AddDays(90);
 
@@ -127,7 +134,7 @@ public class CompleteEnrollmentCommandHandler
             AgentId: agentId,
             TenantId: tenantId,
             EmployeeId: employeeId,
-            EmployeeName: string.Empty,
+            EmployeeName: employeeName,
             DeviceToken: deviceToken,
             TokenExpiresAt: tokenExpiresAt,
             PolicyJson: DefaultPolicyJson));

@@ -57,6 +57,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         AuthenticationTicket ticket, HttpContext? httpContext, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
+        scope.ServiceProvider.GetRequiredService<IWritableTenantContext>().SetAdminMode();
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
@@ -91,6 +92,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         string key, AuthenticationTicket ticket, HttpContext? httpContext, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
+        scope.ServiceProvider.GetRequiredService<IWritableTenantContext>().SetAdminMode();
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
@@ -118,6 +120,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         string key, HttpContext? httpContext, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
+        scope.ServiceProvider.GetRequiredService<IWritableTenantContext>().SetAdminMode();
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
         var permissionResolver = scope.ServiceProvider.GetRequiredService<IPermissionResolver>();
@@ -160,6 +163,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
     public async Task RemoveAsync(string key, HttpContext? httpContext, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
+        scope.ServiceProvider.GetRequiredService<IWritableTenantContext>().SetAdminMode();
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
