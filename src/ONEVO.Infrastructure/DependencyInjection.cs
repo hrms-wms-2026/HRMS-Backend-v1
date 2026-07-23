@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Common.Configuration;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
@@ -14,16 +13,20 @@ using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Roles.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.ModuleCatalog.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.ServiceInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Provisioning.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.Provisioning;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.ServiceInterfaces;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.CurrentUser;
+using ONEVO.Infrastructure.Identity.ExternalIdentity;
+using ONEVO.Infrastructure.Identity.Mfa;
+using ONEVO.Infrastructure.Identity.Passwords;
+using ONEVO.Infrastructure.Identity.Tenancy;
+using ONEVO.Infrastructure.Identity.Time;
+using ONEVO.Infrastructure.Identity.Tokens;
 using ONEVO.Infrastructure.ExternalServices.Email;
 using ONEVO.Infrastructure.ExternalServices.GitHub;
 using ONEVO.Infrastructure.Configuration;
@@ -31,9 +34,7 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Invite;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
-using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Billing;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.PlatformAccess;
-using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Provisioning;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Subscription;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
 using ONEVO.Infrastructure.Persistence.Seeders;
@@ -41,6 +42,8 @@ using ONEVO.Infrastructure.Security;
 using ONEVO.Infrastructure.Services.DevPlatform.PlatformAccess;
 using ONEVO.Infrastructure.Services.DevPlatform.Provisioning;
 using ONEVO.Infrastructure.Services.DevPlatform.Tenancy;
+using ONEVO.Application.Features.DevPlatform.ConfigurationTemplates.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.ConfigurationTemplates;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.RepositoryInterfaces;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.RepositoryInterfaces;
@@ -117,12 +120,6 @@ public static class DependencyInjection
         // Auth: global email directory
         services.AddScoped<IGlobalEmailDirectoryRepository, EfGlobalEmailDirectoryRepository>();
 
-        // Setup selections
-        services.AddScoped<ITenantSetupSelectionRepository, EfTenantSetupSelectionRepository>();
-
-        // One-time billing charges
-        services.AddScoped<ITenantOneTimeChargeRepository, EfTenantOneTimeChargeRepository>();
-
         // Storage quota (Phase 1 tenant_storage_stats + enforcement service)
         services.AddScoped<
             ONEVO.Application.Features.Storage.Quota.RepositoryInterfaces.ITenantStorageStatsRepository,
@@ -151,6 +148,9 @@ public static class DependencyInjection
         // System Config - Payment Gateway (Phase 1 canonical tables)
         services.AddScoped<IPaymentGatewayRepository, EfPaymentGatewayRepository>();
         services.AddScoped<IPaymentGatewayVerificationService, PaymentGatewayVerificationService>();
+        services.AddScoped<
+            IPaymentGatewayWebhookSecretResolver,
+            PaymentGatewayWebhookSecretResolver>();
 
         // System Config - Platform Service Keys (Phase 1 canonical table)
         services.AddScoped<IPlatformServiceKeyRepository, EfPlatformServiceKeyRepository>();
@@ -163,6 +163,10 @@ public static class DependencyInjection
 
         // System Config - Integration Catalog (Phase 1 canonical tables)
         services.AddScoped<IIntegrationCatalogRepository, EfIntegrationCatalogRepository>();
+
+        // System Config - Configuration Templates (Phase 1 canonical tables)
+        services.AddScoped<IConfigurationTemplateRepository, EfConfigurationTemplateRepository>();
+        services.AddScoped<ITenantConfigurationTemplateApplicationRepository, EfTenantConfigurationTemplateApplicationRepository>();
 
         // Tenant-scoped connected integration credentials
         services.AddScoped<ITenantIntegrationCredentialRepository, EfTenantIntegrationCredentialRepository>();
@@ -209,10 +213,8 @@ public static class DependencyInjection
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
-        // Normal runtime MFA challenge storage is the PostgreSQL-backed mfa_challenges table.
-        // MemoryMfaChallengeStore exists only as an explicit local development/test fallback.
+        // Runtime MFA challenge storage is always the PostgreSQL-backed mfa_challenges table.
         services.AddScoped<IMfaChallengeStore, PostgresMfaChallengeStore>();
-        services.AddHostedService<Configuration.MfaChallengeStoreStartupGuard>();
         services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
         services.AddScoped<IPermissionResolver, PermissionResolver>();
         services.AddSingleton<IPermissionVersionService, PermissionVersionService>();
@@ -241,9 +243,6 @@ public static class DependencyInjection
             configuration.GetSection(ONEVO.Infrastructure.Configuration.StorageQuotaOptions.SectionName));
         services.Configure<ONEVO.Infrastructure.Configuration.FileStorageOptions>(
             configuration.GetSection(ONEVO.Infrastructure.Configuration.FileStorageOptions.SectionName));
-        services.Configure<GoogleAuthOptions>(configuration.GetSection(GoogleAuthOptions.SectionName));
-        services.Configure<StripeOptions>(configuration.GetSection(StripeOptions.SectionName));
-        services.Configure<PayHereOptions>(configuration.GetSection(PayHereOptions.SectionName));
 
         // -- Email: transactional sending via ONEVO-owned platform service keys --
         // Email:Provider is a non-secret selector (sendgrid/resend). The provider API
