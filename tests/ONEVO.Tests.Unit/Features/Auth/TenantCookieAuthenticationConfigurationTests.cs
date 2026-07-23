@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -28,7 +29,15 @@ public sealed class TenantCookieAuthenticationConfigurationTests
             "AddApiAuthentication",
             BindingFlags.Static | BindingFlags.NonPublic)!;
 
-        addAuthentication.Invoke(null, [services, environment.Object]);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:AgentSecret"] = "test-agent-secret-min-32-chars-abc!!",
+                ["Jwt:AgentIssuer"] = "onevo"
+            })
+            .Build();
+
+        addAuthentication.Invoke(null, [services, environment.Object, configuration]);
 
         using var provider = services.BuildServiceProvider();
         var options = provider
