@@ -6,6 +6,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities;
 using ONEVO.Domain.Features.SharedPlatform.TenantIntegrations.Entities;
@@ -133,6 +134,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<ModuleIntegrationLink> ModuleIntegrationLinks => Set<ModuleIntegrationLink>();
     public DbSet<TenantIntegrationCredential> TenantIntegrationCredentials => Set<TenantIntegrationCredential>();
     public DbSet<UserIntegrationConnection> UserIntegrationConnections => Set<UserIntegrationConnection>();
+
+    // System Config - Configuration Templates (Phase 1 canonical tables)
+    public DbSet<ConfigurationTemplate> ConfigurationTemplates => Set<ConfigurationTemplate>();
+    public DbSet<TenantConfigurationTemplateApplication> TenantConfigurationTemplateApplications => Set<TenantConfigurationTemplateApplication>();
 
     // CoreHR
     public DbSet<Employee> Employees => Set<Employee>();
