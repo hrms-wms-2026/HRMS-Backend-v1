@@ -18,6 +18,11 @@ internal static class AuthorizationExtensions
                 policy.AddAuthenticationSchemes("AdminScheme")
                       .RequireAuthenticatedUser()
                       .RequireClaim("platform_role"));
+
+            options.AddPolicy("AgentPolicy", policy =>
+                policy.AddAuthenticationSchemes("AgentScheme")
+                      .RequireAuthenticatedUser()
+                      .RequireClaim("type", "agent"));
         });
 
         return services;

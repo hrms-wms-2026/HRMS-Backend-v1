@@ -1,15 +1,22 @@
+using System.Text;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.Configuration;
 using ONEVO.Infrastructure.Identity;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Tokens;
 
 namespace ONEVO.Api.Extensions;
 
 internal static class AuthenticationExtensions
 {
-    internal static IServiceCollection AddApiAuthentication(this IServiceCollection services, IWebHostEnvironment env)
+    internal static IServiceCollection AddApiAuthentication(
+        this IServiceCollection services,
+        IWebHostEnvironment env,
+        IConfiguration configuration)
     {
         services.AddSingleton<TenantDatabaseTicketStore>();
         services.AddSingleton<AdminDatabaseTicketStore>();
@@ -87,6 +94,40 @@ internal static class AuthenticationExtensions
                         detail = "You do not have permission to access this resource.",
                         correlationId = context.HttpContext.Items["X-Correlation-Id"]?.ToString() ?? Guid.NewGuid().ToString()
                     });
+                };
+            })
+            .AddJwtBearer("AgentScheme", options =>
+            {
+                var secret = configuration["Jwt:AgentSecret"]
+                    ?? throw new InvalidOperationException("Jwt:AgentSecret is required.");
+                var issuer = configuration["Jwt:AgentIssuer"] ?? "onevo";
+
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret)),
+                    ValidateIssuer = true,
+                    ValidIssuer = issuer,
+                    ValidateAudience = true,
+                    ValidAudience = "onevo-agent",
+                    ValidateLifetime = true,
+                    ClockSkew = TimeSpan.Zero
+                };
+
+                options.Events = new JwtBearerEvents
+                {
+                    OnChallenge = context =>
+                    {
+                        context.HandleResponse();
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        return context.Response.WriteAsJsonAsync(new
+                        {
+                            type = "https://onevo.com/errors/unauthorized",
+                            title = "Unauthorized",
+                            status = 401,
+                            detail = "A valid device token is required."
+                        });
+                    }
                 };
             });
 
