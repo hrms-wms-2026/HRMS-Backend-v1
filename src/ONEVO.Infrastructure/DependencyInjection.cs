@@ -53,6 +53,8 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Re
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.SystemConfig;
 using ONEVO.Infrastructure.Persistence.Repositories.SharedPlatform;
+using ONEVO.Application.Features.AgentGateway.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.AgentGateway;
 using ONEVO.Infrastructure.Services.SharedPlatform;
 using ONEVO.Infrastructure.Services.SystemConfig;
 
@@ -232,6 +234,10 @@ public static class DependencyInjection
         services.AddScoped<IPlatformAccessManagementService, PlatformAccessManagementService>();
         services.AddScoped<IUserExternalIdentityRepository, EfUserExternalIdentityRepository>();
         services.AddScoped<ITenantAuthPolicyRepository, EfTenantAuthPolicyRepository>();
+
+        // Agent Gateway
+        services.AddScoped<EfAgentGatewayRepository>();
+        services.AddScoped<IAgentGatewayRepository>(sp => sp.GetRequiredService<EfAgentGatewayRepository>());
 
         // -- Platform options binding ------------------------------------------
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
