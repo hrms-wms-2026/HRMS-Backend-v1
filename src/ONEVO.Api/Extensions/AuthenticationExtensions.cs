@@ -98,6 +98,11 @@ internal static class AuthenticationExtensions
             })
             .AddJwtBearer("AgentScheme", options =>
             {
+                // Preserve claim names as-is (sub, tenant_id, type) — without this,
+                // the middleware remaps sub → ClaimTypes.NameIdentifier and controller
+                // FindFirst("sub") calls silently return null.
+                options.MapInboundClaims = false;
+
                 var secret = configuration["Jwt:AgentSecret"]
                     ?? throw new InvalidOperationException("Jwt:AgentSecret is required.");
                 var issuer = configuration["Jwt:AgentIssuer"] ?? "onevo";
@@ -125,7 +130,9 @@ internal static class AuthenticationExtensions
                             type = "https://onevo.com/errors/unauthorized",
                             title = "Unauthorized",
                             status = 401,
-                            detail = "A valid device token is required."
+                            detail = "A valid device token is required.",
+                            correlationId = context.HttpContext.Items["X-Correlation-Id"]?.ToString()
+                                           ?? Guid.NewGuid().ToString()
                         });
                     }
                 };
