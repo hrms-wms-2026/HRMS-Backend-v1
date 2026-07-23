@@ -13,6 +13,7 @@ using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.AgentGateway.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
@@ -146,6 +147,13 @@ public class ApplicationDbContext : DbContext
 
     // OrgStructure
     public DbSet<LegalEntity> LegalEntities => Set<LegalEntity>();
+
+    // Agent Gateway
+    public DbSet<AgentEnrollmentChallenge> AgentEnrollmentChallenges => Set<AgentEnrollmentChallenge>();
+    public DbSet<RegisteredAgent> RegisteredAgents => Set<RegisteredAgent>();
+    public DbSet<AgentSession> AgentSessions => Set<AgentSession>();
+    public DbSet<AgentPolicy> AgentPolicies => Set<AgentPolicy>();
+    public DbSet<AgentHealthLog> AgentHealthLogs => Set<AgentHealthLog>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
