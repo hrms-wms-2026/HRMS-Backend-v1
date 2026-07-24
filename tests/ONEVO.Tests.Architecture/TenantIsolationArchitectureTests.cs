@@ -2,6 +2,8 @@ using System.Linq.Expressions;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using ONEVO.Api.Controllers.AgentGateway;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.AgentGateway.Entities;
@@ -34,6 +36,30 @@ namespace ONEVO.Tests.Architecture;
 /// </summary>
 public class TenantIsolationArchitectureTests
 {
+    [Fact]
+    public void AgentSetupEndpoints_RequireActiveAgentAndAcceptNoAuthorityFields()
+    {
+        var controllerType = typeof(AgentGatewayController);
+        foreach (var methodName in new[] { "GetSetupStatus", "CaptureSetupLocation" })
+        {
+            var method = controllerType.GetMethod(methodName);
+            Assert.NotNull(method);
+            var authorize = method.GetCustomAttributes(typeof(AuthorizeAttribute), true)
+                .Cast<AuthorizeAttribute>()
+                .Single();
+            Assert.Equal("ActiveAgentPolicy", authorize.Policy);
+        }
+
+        var requestProperties = typeof(AgentGatewayController.CaptureSetupLocationRequest)
+            .GetProperties()
+            .Select(property => property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.DoesNotContain("AgentId", requestProperties);
+        Assert.DoesNotContain("EmployeeId", requestProperties);
+        Assert.DoesNotContain("TenantId", requestProperties);
+        Assert.DoesNotContain("PublicIp", requestProperties);
+    }
+
     [Fact]
     public void LocationAndVerificationPersistenceEntities_AreTenantOwned()
     {

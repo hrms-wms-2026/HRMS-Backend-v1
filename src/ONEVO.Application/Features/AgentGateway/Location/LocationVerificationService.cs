@@ -7,19 +7,15 @@ public sealed class LocationVerificationService : ILocationVerificationService
     private static readonly TimeSpan MaximumCaptureAge = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan MaximumFutureSkew = TimeSpan.FromSeconds(30);
 
-    public LocationMatchResult Evaluate(
+    public LocationMatchResult ValidateCapture(
         LocationCapture capture,
-        LocationTarget target,
         DateTimeOffset serverNow)
     {
         if (!string.Equals(capture.PermissionState, "granted", StringComparison.OrdinalIgnoreCase))
             return Invalid("permission_denied");
 
-        if (!CoordinatesAreValid(capture.Latitude, capture.Longitude) ||
-            !CoordinatesAreValid(target.Latitude, target.Longitude))
-        {
+        if (!CoordinatesAreValid(capture.Latitude, capture.Longitude))
             return Invalid("invalid_coordinates");
-        }
 
         if (capture.AccuracyMeters <= 0)
             return Invalid("invalid_accuracy");
@@ -32,6 +28,21 @@ public sealed class LocationVerificationService : ILocationVerificationService
 
         if (serverNow - capture.CapturedAt > MaximumCaptureAge)
             return Invalid("capture_stale");
+
+        return new LocationMatchResult(true, true, 0m, string.Empty);
+    }
+
+    public LocationMatchResult Evaluate(
+        LocationCapture capture,
+        LocationTarget target,
+        DateTimeOffset serverNow)
+    {
+        var validation = ValidateCapture(capture, serverNow);
+        if (!validation.IsValid)
+            return validation;
+
+        if (!CoordinatesAreValid(target.Latitude, target.Longitude))
+            return Invalid("invalid_coordinates");
 
         if (target.AllowedRadiusMeters is < 25 or > 50_000)
             return Invalid("invalid_radius");

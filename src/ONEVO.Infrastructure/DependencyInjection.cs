@@ -210,6 +210,8 @@ public static class DependencyInjection
         services.AddScoped<ITenantSettingsStatusReader, NotConfiguredSettingsStatusReader>();
 
         services.AddHttpContextAccessor();
+        services.AddScoped<IRequestNetworkContext, RequestNetworkContext>();
+        services.AddSingleton<INetworkEvidenceHasher, NetworkEvidenceHasher>();
         services.AddScoped<TenantContextAccessor>();
         services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContextAccessor>());
         services.AddScoped<IWritableTenantContext>(sp => sp.GetRequiredService<TenantContextAccessor>());

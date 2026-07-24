@@ -147,6 +147,14 @@ public sealed class EfAgentGatewayRepository : IAgentGatewayRepository
         AgentWorkLocationEvidence evidence, CancellationToken ct) =>
         await _db.AgentWorkLocationEvidence.AddAsync(evidence, ct);
 
+    public Task<AgentWorkLocationEvidence?> GetLatestWorkLocationEvidenceAsync(
+        Guid agentId, CancellationToken ct) =>
+        _db.AgentWorkLocationEvidence
+            .AsNoTracking()
+            .Where(evidence => evidence.AgentId == agentId)
+            .OrderByDescending(evidence => evidence.CapturedAt)
+            .FirstOrDefaultAsync(ct);
+
     // ── Offline detection ─────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<Guid>> MarkAgentsInactiveAndReturnIdsAsync(

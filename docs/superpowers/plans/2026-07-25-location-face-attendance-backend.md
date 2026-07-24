@@ -320,23 +320,23 @@ git commit -m "feat(attendance): add clocking persistence foundation"
 - `CaptureSetupLocationCommand(Guid AgentId, LocationCapture Capture, string? LocalNetworkClass, string? WifiBssidHash, string? GatewayMacHash, bool VpnDetected)` returns stored evidence id, match state, and remote profile state.
 - Public IP comes from `IRequestNetworkContext`, never the body.
 
-- [ ] **Step 1: Write failing handler tests**
+- [x] **Step 1: Write failing handler tests**
 
 Cover onsite match, onsite mismatch, first remote profile, stale/denied capture, and inactive agent rejection. Verify raw network values are not assigned to the entity.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Expected: missing commands/services.
 
-- [ ] **Step 3: Implement network evidence protection**
+- [x] **Step 3: Implement network evidence protection**
 
 `INetworkEvidenceHasher` accepts already locally hashed identifiers and HMACs them again with tenant id plus the configured encryption master key. Validate incoming hashes as `32..128` hex characters; reject raw MAC-like strings containing `:` or `-`.
 
-- [ ] **Step 4: Implement setup handlers**
+- [x] **Step 4: Implement setup handlers**
 
 Resolve agent and employee only through repository rows. For onsite, require Company office coordinates and use `ILocationVerificationService`. For first remote setup, create `pending_capture` when policy requires an approved reference/verification; otherwise create the first `active` profile. Never overwrite an active profile; create a pending `RemoteWorkLocationChangeRequest` on mismatch/change.
 
-- [ ] **Step 5: Add active-agent endpoints**
+- [x] **Step 5: Add active-agent endpoints**
 
 ```text
 GET  /api/v1/agent/setup/status
@@ -345,7 +345,7 @@ POST /api/v1/agent/setup/location
 
 Both use `ActiveAgentPolicy`; request bodies contain no tenant/employee/agent authority.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run focused tests, AgentGateway tests, controller tests, then:
 

@@ -46,6 +46,8 @@ public interface IAgentGatewayRepository
 
     // Work-location evidence (tenant-scoped)
     Task AddWorkLocationEvidenceAsync(AgentWorkLocationEvidence evidence, CancellationToken ct);
+    Task<AgentWorkLocationEvidence?> GetLatestWorkLocationEvidenceAsync(
+        Guid agentId, CancellationToken ct);
 
     // Offline detection (cross-tenant, runs in system mode)
     Task<IReadOnlyList<Guid>> MarkAgentsInactiveAndReturnIdsAsync(DateTimeOffset threshold, CancellationToken ct);

@@ -5,13 +5,16 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Application.Features.AgentGateway.Commands.AgentLogin;
 using ONEVO.Application.Features.AgentGateway.Commands.AgentLogout;
+using ONEVO.Application.Features.AgentGateway.Commands.CaptureSetupLocation;
 using ONEVO.Application.Features.AgentGateway.Commands.CompleteEnrollment;
 using ONEVO.Application.Features.AgentGateway.Commands.ConfirmEnrollment;
 using ONEVO.Application.Features.AgentGateway.Commands.IngestBatch;
 using ONEVO.Application.Features.AgentGateway.Commands.StartEnrollment;
 using ONEVO.Application.Features.AgentGateway.Commands.UpdateHeartbeat;
 using ONEVO.Application.Features.AgentGateway.Queries.GetAgentPolicy;
+using ONEVO.Application.Features.AgentGateway.Queries.GetAgentSetupStatus;
 using ONEVO.Application.Features.AgentGateway.Queries.GetDeviceChangeStatus;
+using ONEVO.Application.Features.AgentGateway.Location;
 
 namespace ONEVO.Api.Controllers.AgentGateway;
 
@@ -198,6 +201,75 @@ public class AgentGatewayController : ControllerBase
     }
 
     /// <summary>
+    /// Returns only the signed-in device's setup readiness. Employee, tenant,
+    /// and agent authority are resolved from the device JWT and database.
+    /// </summary>
+    [HttpGet("setup/status")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
+    public async Task<IActionResult> GetSetupStatus(CancellationToken ct)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty)
+            return Unauthorized();
+
+        var result = await _mediator.Send(new GetAgentSetupStatusQuery(agentId), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        var status = result.Value!;
+        return Ok(new
+        {
+            work_mode = status.WorkMode,
+            location_required = status.LocationRequired,
+            location_ready = status.LocationReady,
+            reference_required = status.ReferenceRequired,
+            reference_ready = status.ReferenceReady,
+            remote_profile_status = status.RemoteProfileStatus,
+            setup_state = status.SetupState
+        });
+    }
+
+    /// <summary>
+    /// Captures an explicit OS-permission location sample for setup. Public IP
+    /// comes from trusted request metadata and is never accepted in this body.
+    /// </summary>
+    [HttpPost("setup/location")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
+    public async Task<IActionResult> CaptureSetupLocation(
+        [FromBody] CaptureSetupLocationRequest request,
+        CancellationToken ct)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty)
+            return Unauthorized();
+
+        var result = await _mediator.Send(new CaptureSetupLocationCommand(
+            agentId,
+            new LocationCapture(
+                request.Latitude,
+                request.Longitude,
+                request.AccuracyMeters,
+                request.CapturedAt,
+                request.PermissionState),
+            request.LocalNetworkClass,
+            request.WifiBssidHash,
+            request.GatewayMacHash,
+            request.VpnDetected), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        var capture = result.Value!;
+        return Ok(new
+        {
+            evidence_id = capture.EvidenceId,
+            match_state = capture.MatchState,
+            remote_profile_state = capture.RemoteProfileState,
+            failure_code = capture.FailureCode,
+            distance_meters = capture.DistanceMeters
+        });
+    }
+
+    /// <summary>
     /// Accepts a batch of activity events from the agent. Stored raw for async processing.
     /// Returns 202 immediately.
     /// </summary>
@@ -279,6 +351,17 @@ public class AgentGatewayController : ControllerBase
         int MemoryMb,
         int BufferCount,
         string MonitoringState);
+
+    public sealed record CaptureSetupLocationRequest(
+        decimal Latitude,
+        decimal Longitude,
+        decimal AccuracyMeters,
+        DateTimeOffset CapturedAt,
+        string PermissionState,
+        string? LocalNetworkClass,
+        string? WifiBssidHash,
+        string? GatewayMacHash,
+        bool VpnDetected);
 
     public record IngestBatchRequest(
         Guid DeviceId,

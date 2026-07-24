@@ -16,6 +16,9 @@ public class EfLegalEntityRepository : ILegalEntityRepository
     public async Task AddAsync(LegalEntity legalEntity, CancellationToken ct = default) =>
         await _db.LegalEntities.AddAsync(legalEntity, ct);
 
+    public Task<LegalEntity?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+        _db.LegalEntities.AsNoTracking().SingleOrDefaultAsync(entity => entity.Id == id, ct);
+
     public Task<LegalEntity?> GetPrimaryByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
         _db.LegalEntities.FirstOrDefaultAsync(l => l.TenantId == tenantId && l.IsPrimary, ct);
 }
