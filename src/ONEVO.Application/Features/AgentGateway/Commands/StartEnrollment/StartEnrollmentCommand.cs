@@ -8,5 +8,6 @@ public record StartEnrollmentCommand(
     string DeviceId,
     string DeviceName,
     string OsVersion,
-    string AgentVersion
+    string AgentVersion,
+    string? RedirectUri = null
 ) : IRequest<Result<EnrollStartResponseDto>>;

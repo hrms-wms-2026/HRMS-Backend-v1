@@ -32,7 +32,7 @@ public class AgentGatewayController : ControllerBase
     public async Task<IActionResult> EnrollStart([FromBody] EnrollStartRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(
-            new StartEnrollmentCommand(request.DeviceId, request.DeviceName, request.OsVersion, request.AgentVersion), ct);
+            new StartEnrollmentCommand(request.DeviceId, request.DeviceName, request.OsVersion, request.AgentVersion, request.RedirectUri), ct);
 
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
@@ -59,7 +59,10 @@ public class AgentGatewayController : ControllerBase
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
-        return Ok(new { authorization_code = result.Value });
+        if (!string.IsNullOrEmpty(result.Value!.RedirectUri))
+            return Redirect($"{result.Value.RedirectUri}?code={Uri.EscapeDataString(result.Value.AuthorizationCode)}");
+
+        return Ok(new { authorization_code = result.Value.AuthorizationCode });
     }
 
     /// <summary>
@@ -161,7 +164,8 @@ public class AgentGatewayController : ControllerBase
         string DeviceId,
         string DeviceName,
         string OsVersion,
-        string AgentVersion);
+        string AgentVersion,
+        string? RedirectUri = null);
 
     public record EnrollConfirmRequest(Guid EnrollmentId);
 

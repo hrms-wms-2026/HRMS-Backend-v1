@@ -43,6 +43,7 @@ public class StartEnrollmentCommandHandler
             AgentVersion = request.AgentVersion.Trim(),
             Status = "pending",
             ExpiresAt = expiresAt,
+            RedirectUri = request.RedirectUri,
             CreatedAt = DateTimeOffset.UtcNow
         };
 

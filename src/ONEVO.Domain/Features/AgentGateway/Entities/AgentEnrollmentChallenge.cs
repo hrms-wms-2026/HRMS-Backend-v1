@@ -25,5 +25,6 @@ public class AgentEnrollmentChallenge
     public Guid? ConfirmedByUserId { get; set; }
 
     public DateTimeOffset ExpiresAt { get; set; }
+    public string? RedirectUri { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

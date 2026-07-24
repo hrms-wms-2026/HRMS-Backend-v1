@@ -7,4 +7,4 @@ namespace ONEVO.Application.Features.AgentGateway.Commands.ConfirmEnrollment;
 /// Called by the web frontend when the authenticated employee confirms "Yes, this is my desktop".
 /// Returns a short-lived authorization_code that the TrayApp uses in enroll/complete.
 /// </summary>
-public record ConfirmEnrollmentCommand(Guid EnrollmentId) : IRequest<Result<string>>;
+public record ConfirmEnrollmentCommand(Guid EnrollmentId) : IRequest<Result<ConfirmEnrollmentResult>>;

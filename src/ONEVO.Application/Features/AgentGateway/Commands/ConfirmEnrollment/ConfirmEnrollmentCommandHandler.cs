@@ -8,7 +8,7 @@ using ONEVO.Application.Features.AgentGateway.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.AgentGateway.Commands.ConfirmEnrollment;
 
-public class ConfirmEnrollmentCommandHandler : IRequestHandler<ConfirmEnrollmentCommand, Result<string>>
+public class ConfirmEnrollmentCommandHandler : IRequestHandler<ConfirmEnrollmentCommand, Result<ConfirmEnrollmentResult>>
 {
     private readonly IAgentGatewayRepository _repo;
     private readonly ITenantContext _tenantContext;
@@ -27,22 +27,22 @@ public class ConfirmEnrollmentCommandHandler : IRequestHandler<ConfirmEnrollment
         _uow = uow;
     }
 
-    public async Task<Result<string>> Handle(
+    public async Task<Result<ConfirmEnrollmentResult>> Handle(
         ConfirmEnrollmentCommand request, CancellationToken cancellationToken)
     {
         if (!_tenantContext.IsResolved)
-            return Result<string>.Failure("Tenant context is not resolved.", 400);
+            return Result<ConfirmEnrollmentResult>.Failure("Tenant context is not resolved.", 400);
 
         var challenge = await _repo.GetChallengeByIdAsync(request.EnrollmentId, cancellationToken);
 
         if (challenge is null)
-            return Result<string>.NotFound("Enrollment challenge not found.");
+            return Result<ConfirmEnrollmentResult>.NotFound("Enrollment challenge not found.");
 
         if (challenge.Status != "pending")
-            return Result<string>.Failure("Enrollment challenge is no longer pending.", 409);
+            return Result<ConfirmEnrollmentResult>.Failure("Enrollment challenge is no longer pending.", 409);
 
         if (challenge.ExpiresAt < DateTimeOffset.UtcNow)
-            return Result<string>.Failure("Enrollment challenge has expired.", 400);
+            return Result<ConfirmEnrollmentResult>.Failure("Enrollment challenge has expired.", 400);
 
         var plainCode = GenerateAuthCode();
         var codeHash = HashCode(plainCode);
@@ -56,9 +56,9 @@ public class ConfirmEnrollmentCommandHandler : IRequestHandler<ConfirmEnrollment
             cancellationToken);
 
         if (!confirmed)
-            return Result<string>.Conflict("Enrollment challenge was already confirmed.");
+            return Result<ConfirmEnrollmentResult>.Conflict("Enrollment challenge was already confirmed.");
 
-        return Result<string>.Success(plainCode);
+        return Result<ConfirmEnrollmentResult>.Success(new ConfirmEnrollmentResult(plainCode, challenge.RedirectUri));
     }
 
     private static string GenerateAuthCode()
