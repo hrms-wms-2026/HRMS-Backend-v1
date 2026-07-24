@@ -99,4 +99,18 @@ public sealed class EfAgentGatewayRepository : IAgentGatewayRepository
 
     public async Task AddHealthLogAsync(AgentHealthLog log, CancellationToken ct) =>
         await _db.AgentHealthLogs.AddAsync(log, ct);
+
+    // ── Activity raw buffer ───────────────────────────────────────────────────
+
+    public async Task AddRawActivityBatchAsync(ActivityRawBuffer batch, CancellationToken ct) =>
+        await _db.ActivityRawBuffer.AddAsync(batch, ct);
+
+    // ── Offline detection ─────────────────────────────────────────────────────
+
+    public async Task<int> MarkAgentsInactiveAsync(DateTimeOffset threshold, CancellationToken ct) =>
+        await _db.RegisteredAgents
+            .Where(a => a.Status == "active"
+                        && a.LastHeartbeatAt != null
+                        && a.LastHeartbeatAt < threshold)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.Status, "inactive"), ct);
 }

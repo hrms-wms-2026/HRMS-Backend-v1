@@ -28,4 +28,10 @@ public interface IAgentGatewayRepository
 
     // Health logs (tenant-scoped)
     Task AddHealthLogAsync(AgentHealthLog log, CancellationToken ct);
+
+    // Activity raw buffer (tenant-scoped)
+    Task AddRawActivityBatchAsync(ActivityRawBuffer batch, CancellationToken ct);
+
+    // Offline detection (cross-tenant, runs in system mode)
+    Task<int> MarkAgentsInactiveAsync(DateTimeOffset threshold, CancellationToken ct);
 }

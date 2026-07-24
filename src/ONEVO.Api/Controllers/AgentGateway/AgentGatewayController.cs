@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Text.Json;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -6,7 +7,10 @@ using ONEVO.Application.Features.AgentGateway.Commands.AgentLogin;
 using ONEVO.Application.Features.AgentGateway.Commands.AgentLogout;
 using ONEVO.Application.Features.AgentGateway.Commands.CompleteEnrollment;
 using ONEVO.Application.Features.AgentGateway.Commands.ConfirmEnrollment;
+using ONEVO.Application.Features.AgentGateway.Commands.IngestBatch;
 using ONEVO.Application.Features.AgentGateway.Commands.StartEnrollment;
+using ONEVO.Application.Features.AgentGateway.Commands.UpdateHeartbeat;
+using ONEVO.Application.Features.AgentGateway.Queries.GetAgentPolicy;
 
 namespace ONEVO.Api.Controllers.AgentGateway;
 
@@ -141,12 +145,24 @@ public class AgentGatewayController : ControllerBase
     }
 
     /// <summary>
-    /// Agent heartbeat every 60s. Phase 1 stub — returns ok to keep agent alive.
+    /// Agent heartbeat every 60 s. Persists health snapshot and touches last_heartbeat_at.
     /// </summary>
     [HttpPost("heartbeat")]
     [Authorize(Policy = "AgentPolicy")]
-    public IActionResult Heartbeat([FromBody] HeartbeatRequest request)
+    public async Task<IActionResult> Heartbeat([FromBody] HeartbeatRequest request, CancellationToken ct)
     {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty) return Unauthorized();
+
+        var tenantId = GetTenantId();
+        if (tenantId == Guid.Empty) return Unauthorized();
+
+        var result = await _mediator.Send(
+            new UpdateHeartbeatCommand(agentId, tenantId, (decimal)request.CpuUsage, request.MemoryMb, request.MonitoringState), ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
         return Ok(new
         {
             status = "ok",
@@ -157,6 +173,50 @@ public class AgentGatewayController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Returns the monitoring policy for the calling agent.
+    /// </summary>
+    [HttpGet("policy")]
+    [Authorize(Policy = "AgentPolicy")]
+    public async Task<IActionResult> GetPolicy(CancellationToken ct)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty) return Unauthorized();
+
+        var result = await _mediator.Send(new GetAgentPolicyQuery(agentId), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(new
+        {
+            agent_id = agentId,
+            policy_json = result.Value
+        });
+    }
+
+    /// <summary>
+    /// Accepts a batch of activity events from the agent. Stored raw for async processing.
+    /// Returns 202 immediately.
+    /// </summary>
+    [HttpPost("ingest")]
+    [Authorize(Policy = "AgentPolicy")]
+    public async Task<IActionResult> Ingest([FromBody] IngestBatchRequest request, CancellationToken ct)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty) return Unauthorized();
+
+        var tenantId = GetTenantId();
+        if (tenantId == Guid.Empty) return Unauthorized();
+
+        var eventsJson = JsonSerializer.Serialize(request.Events);
+        var result = await _mediator.Send(new IngestBatchCommand(agentId, tenantId, eventsJson), ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Accepted();
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private Guid GetAgentId()
@@ -164,6 +224,12 @@ public class AgentGatewayController : ControllerBase
         // MapInboundClaims = false on AgentScheme — "sub" is not remapped to NameIdentifier
         var value = User.FindFirst("sub")?.Value
                     ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+        return Guid.TryParse(value, out var id) ? id : Guid.Empty;
+    }
+
+    private Guid GetTenantId()
+    {
+        var value = User.FindFirst("tenant_id")?.Value;
         return Guid.TryParse(value, out var id) ? id : Guid.Empty;
     }
 
@@ -190,4 +256,6 @@ public class AgentGatewayController : ControllerBase
         int MemoryMb,
         int BufferCount,
         string MonitoringState);
+
+    public record IngestBatchRequest(JsonElement[] Events);
 }

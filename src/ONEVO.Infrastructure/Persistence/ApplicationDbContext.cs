@@ -154,6 +154,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<AgentSession> AgentSessions => Set<AgentSession>();
     public DbSet<AgentPolicy> AgentPolicies => Set<AgentPolicy>();
     public DbSet<AgentHealthLog> AgentHealthLogs => Set<AgentHealthLog>();
+    public DbSet<ActivityRawBuffer> ActivityRawBuffer => Set<ActivityRawBuffer>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
