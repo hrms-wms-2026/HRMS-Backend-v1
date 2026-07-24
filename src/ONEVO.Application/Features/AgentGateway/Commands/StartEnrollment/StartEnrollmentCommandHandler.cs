@@ -31,6 +31,17 @@ public class StartEnrollmentCommandHandler
         if (string.IsNullOrWhiteSpace(request.DeviceId))
             return Result<EnrollStartResponseDto>.Failure("device_id is required.", 400);
 
+        if (request.RedirectUri is not null)
+        {
+            if (!Uri.TryCreate(request.RedirectUri, UriKind.Absolute, out var parsedUri)
+                || parsedUri.Scheme != "http"
+                || !IsLoopback(parsedUri.Host))
+            {
+                return Result<EnrollStartResponseDto>.Failure(
+                    "redirect_uri must be an absolute http URL on a loopback address.", 400);
+            }
+        }
+
         var enrollmentId = Guid.NewGuid();
         var expiresAt = DateTimeOffset.UtcNow.AddMinutes(10);
 
@@ -54,5 +65,8 @@ public class StartEnrollmentCommandHandler
 
         return Result<EnrollStartResponseDto>.Success(
             new EnrollStartResponseDto(enrollmentId, authUrl, expiresAt));
+
+        static bool IsLoopback(string host) =>
+            host is "127.0.0.1" or "::1" or "localhost";
     }
 }

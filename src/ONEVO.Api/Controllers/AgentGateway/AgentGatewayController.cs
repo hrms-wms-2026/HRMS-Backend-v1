@@ -60,7 +60,16 @@ public class AgentGatewayController : ControllerBase
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
         if (!string.IsNullOrEmpty(result.Value!.RedirectUri))
-            return Redirect($"{result.Value.RedirectUri}?code={Uri.EscapeDataString(result.Value.AuthorizationCode)}");
+        {
+            if (!Uri.TryCreate(result.Value.RedirectUri, UriKind.Absolute, out var redirectUri)
+                || redirectUri.Scheme != "http"
+                || redirectUri.Host is not ("127.0.0.1" or "::1" or "localhost"))
+            {
+                return BadRequest("redirect_uri is not a valid loopback address.");
+            }
+            var separator = result.Value.RedirectUri.Contains('?') ? '&' : '?';
+            return Redirect($"{result.Value.RedirectUri}{separator}code={Uri.EscapeDataString(result.Value.AuthorizationCode)}");
+        }
 
         return Ok(new { authorization_code = result.Value.AuthorizationCode });
     }

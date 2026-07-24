@@ -18,6 +18,7 @@ public class AgentEnrollmentChallengeConfiguration
         builder.Property(c => c.AgentVersion).HasMaxLength(20).IsRequired();
         builder.Property(c => c.Status).HasMaxLength(20).IsRequired();
         builder.Property(c => c.AuthorizationCodeHash).HasMaxLength(128);
+        builder.Property(c => c.RedirectUri).HasMaxLength(2048);
 
         builder.HasIndex(c => c.ExpiresAt);
         builder.HasIndex(c => c.DeviceId);
