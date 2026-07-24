@@ -5,6 +5,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.AgentGateway.RepositoryInterfaces;
+using ONEVO.Application.Features.Users.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.AgentGateway.Commands.ConfirmEnrollment;
 
@@ -13,17 +14,20 @@ public class ConfirmEnrollmentCommandHandler : IRequestHandler<ConfirmEnrollment
     private readonly IAgentGatewayRepository _repo;
     private readonly ITenantContext _tenantContext;
     private readonly ICurrentUser _currentUser;
+    private readonly IUserProfileRepository _profiles;
     private readonly IUnitOfWork _uow;
 
     public ConfirmEnrollmentCommandHandler(
         IAgentGatewayRepository repo,
         ITenantContext tenantContext,
         ICurrentUser currentUser,
+        IUserProfileRepository profiles,
         IUnitOfWork uow)
     {
         _repo = repo;
         _tenantContext = tenantContext;
         _currentUser = currentUser;
+        _profiles = profiles;
         _uow = uow;
     }
 
@@ -44,6 +48,14 @@ public class ConfirmEnrollmentCommandHandler : IRequestHandler<ConfirmEnrollment
         if (challenge.ExpiresAt < DateTimeOffset.UtcNow)
             return Result<ConfirmEnrollmentResult>.Failure("Enrollment challenge has expired.", 400);
 
+        var employee = await _profiles.GetEmployeeByUserIdAsync(
+            _currentUser.UserId, cancellationToken);
+        if (employee is null || employee.TenantId != _tenantContext.TenantId)
+        {
+            return Result<ConfirmEnrollmentResult>.Forbidden(
+                "The signed-in user has no employee profile in this Company.");
+        }
+
         var plainCode = GenerateAuthCode();
         var codeHash = HashCode(plainCode);
 
@@ -51,7 +63,7 @@ public class ConfirmEnrollmentCommandHandler : IRequestHandler<ConfirmEnrollment
             request.EnrollmentId,
             codeHash,
             _tenantContext.TenantId,
-            _currentUser.UserId,
+            employee.Id,
             _currentUser.UserId,
             cancellationToken);
 
