@@ -60,6 +60,7 @@ using ONEVO.Infrastructure.Services.SharedPlatform;
 using ONEVO.Infrastructure.Services.SystemConfig;
 using ONEVO.Application.Features.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.ActivityMonitoring;
+using ONEVO.Infrastructure.Services.ActivityMonitoring;
 
 namespace ONEVO.Infrastructure;
 
@@ -247,6 +248,7 @@ public static class DependencyInjection
         services.AddScoped<EfActivityMonitoringRepository>();
         services.AddScoped<IActivityMonitoringRepository>(
             sp => sp.GetRequiredService<EfActivityMonitoringRepository>());
+        services.AddHostedService<ProcessRawBufferJob>();
 
         // -- Platform options binding ------------------------------------------
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
