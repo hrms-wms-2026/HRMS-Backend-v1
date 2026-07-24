@@ -65,6 +65,8 @@ using ONEVO.Application.Features.Users.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.Users;
 using ONEVO.Application.Features.IdentityVerification.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.IdentityVerification;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 
 namespace ONEVO.Infrastructure;
 
@@ -250,6 +252,9 @@ public static class DependencyInjection
 
         // Identity Verification
         services.AddScoped<IVerificationRepository, EfVerificationRepository>();
+
+        // Time & Attendance
+        services.AddScoped<ITimeAttendanceRepository, EfTimeAttendanceRepository>();
 
         // Activity Monitoring
         services.AddScoped<EfActivityMonitoringRepository>();

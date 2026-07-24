@@ -8,6 +8,7 @@ using ONEVO.Domain.Features.AgentGateway.Entities;
 using ONEVO.Domain.Features.Configuration.Entities;
 using ONEVO.Domain.Features.IdentityVerification.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity;
 using ONEVO.Infrastructure.Persistence;
@@ -39,6 +40,41 @@ public class TenantIsolationArchitectureTests
         Assert.True(typeof(ITenantOwnedEntity).IsAssignableFrom(typeof(VerificationRecord)));
         Assert.True(typeof(ITenantOwnedEntity).IsAssignableFrom(typeof(EmployeeRemoteWorkProfile)));
         Assert.True(typeof(ITenantOwnedEntity).IsAssignableFrom(typeof(AgentWorkLocationEvidence)));
+    }
+
+    [Fact]
+    public void TimeAttendanceClockingEntities_AreTenantOwnedAndConstrained()
+    {
+        Type[] tenantOwnedTypes =
+        [
+            typeof(WorkSchedule),
+            typeof(WorkScheduleDay),
+            typeof(WorkScheduleHoliday),
+            typeof(ScheduleAssignment),
+            typeof(ClockInPolicy),
+            typeof(AttendanceRecord),
+            typeof(PresenceSession),
+            typeof(DeviceSession),
+            typeof(BreakRecord),
+            typeof(WorkAreaChangeRequest)
+        ];
+
+        Assert.All(
+            tenantOwnedTypes,
+            type => Assert.True(typeof(ITenantOwnedEntity).IsAssignableFrom(type)));
+
+        using var context = CreateModelInspectionContext();
+        AssertUniqueIndex(context, typeof(PresenceSession), "TenantId", "EmployeeId", "Date");
+        AssertUniqueIndex(context, typeof(AttendanceRecord), "TenantId", "EmployeeId", "Date");
+        AssertUniqueIndex(context, typeof(WorkScheduleDay), "TenantId", "WorkScheduleId", "DayOfWeek");
+        AssertUniqueIndex(context, typeof(DeviceSession), "TenantId", "DeviceId");
+        AssertUniqueIndex(context, typeof(BreakRecord), "TenantId", "EmployeeId");
+        AssertUniqueIndex(
+            context,
+            typeof(WorkAreaChangeRequest),
+            "TenantId",
+            "EmployeeId",
+            "Date");
     }
 
     [Fact]
@@ -372,6 +408,21 @@ public class TenantIsolationArchitectureTests
             new SoftDeleteInterceptor(new SystemDateTimeProvider()),
             new DomainEventDispatchInterceptor(new NoOpPublisher()),
             new TenantContextAccessor());
+    }
+
+    private static void AssertUniqueIndex(
+        ApplicationDbContext context,
+        Type entityType,
+        params string[] propertyNames)
+    {
+        var modelType = context.Model.FindEntityType(entityType);
+        Assert.NotNull(modelType);
+
+        Assert.Contains(
+            modelType.GetIndexes(),
+            index => index.IsUnique &&
+                     index.Properties.Select(property => property.Name)
+                         .SequenceEqual(propertyNames));
     }
 
     private static string? ExtractUsername(string connectionString)

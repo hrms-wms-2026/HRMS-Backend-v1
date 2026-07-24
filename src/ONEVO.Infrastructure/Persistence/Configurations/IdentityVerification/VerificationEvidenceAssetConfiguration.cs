@@ -4,6 +4,7 @@ using ONEVO.Domain.Features.AgentGateway.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.IdentityVerification.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.IdentityVerification;
 
@@ -55,6 +56,10 @@ public sealed class VerificationEvidenceAssetConfiguration
         builder.HasOne<RegisteredAgent>()
             .WithMany()
             .HasForeignKey(asset => asset.AgentId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<PresenceSession>()
+            .WithMany()
+            .HasForeignKey(asset => asset.PresenceSessionId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

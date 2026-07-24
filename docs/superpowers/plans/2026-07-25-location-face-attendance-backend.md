@@ -244,7 +244,7 @@ git commit -m "feat(verification): persist location and face evidence"
 - Produces the exact Phase 1 canonical tables required for weekly schedule resolution, daily attendance, one daily presence row, multiple device sessions, breaks, policy, and one-day work-area approval.
 - Repository exposes tracked active attendance/session rows and no-tracking resolver reads.
 
-- [ ] **Step 1: Write failing model/index tests**
+- [x] **Step 1: Write failing model/index tests**
 
 Assert all ten types are tenant owned. Add model assertions for:
 
@@ -257,15 +257,15 @@ one open break per employee
 one pending work_area_change_request per employee/date
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run focused model tests. Expected: missing type failures.
 
-- [ ] **Step 3: Implement canonical focused entities**
+- [x] **Step 3: Implement canonical focused entities**
 
 Use every field defined in the approved design’s required flow from `database/schemas/time-attendance.md`. Do not add overtime, roster, shift CRUD, attendance corrections, or payroll behavior. Add `Version` xmin tokens to approval and active-session aggregates.
 
-- [ ] **Step 4: Add repository contract**
+- [x] **Step 4: Add repository contract**
 
 Include:
 
@@ -290,11 +290,11 @@ Task AddWorkAreaChangeAsync(WorkAreaChangeRequest request, CancellationToken ct)
 
 Schedule assignment precedence is employee, position (temporarily matched through current `Employee.JobTitleId`), department, then full company.
 
-- [ ] **Step 5: Generate migration and RLS**
+- [x] **Step 5: Generate migration and RLS**
 
 Generate `AddTimeAttendanceClocking`; add check constraints for enums/ranges, Restrict FKs, tenant-leading indexes, filtered unique indexes, and ENABLE/FORCE RLS for all tables.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run model/RLS tests and:
 

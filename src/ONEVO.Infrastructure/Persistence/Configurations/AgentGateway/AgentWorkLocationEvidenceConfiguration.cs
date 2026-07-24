@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.AgentGateway.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.AgentGateway;
 
@@ -58,6 +59,10 @@ public sealed class AgentWorkLocationEvidenceConfiguration
         builder.HasOne<Employee>()
             .WithMany()
             .HasForeignKey(evidence => evidence.EmployeeId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<PresenceSession>()
+            .WithMany()
+            .HasForeignKey(evidence => evidence.PresenceSessionId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

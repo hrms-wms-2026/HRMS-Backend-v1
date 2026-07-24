@@ -21,6 +21,7 @@ using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 
@@ -181,6 +182,18 @@ public class ApplicationDbContext : DbContext
     public DbSet<ActivityDailySummary> ActivityDailySummaries => Set<ActivityDailySummary>();
     public DbSet<ApplicationCategory> ApplicationCategories => Set<ApplicationCategory>();
     public DbSet<DeviceTracking> DeviceTracking => Set<DeviceTracking>();
+
+    // Time & Attendance
+    public DbSet<WorkSchedule> WorkSchedules => Set<WorkSchedule>();
+    public DbSet<WorkScheduleDay> WorkScheduleDays => Set<WorkScheduleDay>();
+    public DbSet<WorkScheduleHoliday> WorkScheduleHolidays => Set<WorkScheduleHoliday>();
+    public DbSet<ScheduleAssignment> ScheduleAssignments => Set<ScheduleAssignment>();
+    public DbSet<ClockInPolicy> ClockInPolicies => Set<ClockInPolicy>();
+    public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
+    public DbSet<PresenceSession> PresenceSessions => Set<PresenceSession>();
+    public DbSet<DeviceSession> DeviceSessions => Set<DeviceSession>();
+    public DbSet<BreakRecord> BreakRecords => Set<BreakRecord>();
+    public DbSet<WorkAreaChangeRequest> WorkAreaChangeRequests => Set<WorkAreaChangeRequest>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
