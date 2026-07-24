@@ -21,6 +21,12 @@ public interface IAgentGatewayRepository
     // Device replacement requests (tenant-scoped via query filter)
     Task<AgentDeviceChangeRequest?> GetPendingDeviceChangeByEmployeeIdAsync(
         Guid employeeId, CancellationToken ct);
+    Task<AgentDeviceChangeRequest?> GetDeviceChangeRequestByIdAsync(
+        Guid requestId, CancellationToken ct);
+    Task<AgentDeviceChangeRequest?> GetDeviceChangeRequestByRequestedAgentIdAsync(
+        Guid requestedAgentId, CancellationToken ct);
+    Task<IReadOnlyList<AgentDeviceChangeRequest>> GetPendingDeviceChangesAsync(
+        int skip, int take, CancellationToken ct);
     Task AddDeviceChangeRequestAsync(AgentDeviceChangeRequest request, CancellationToken ct);
 
     // Agent sessions (tenant-scoped via query filter)

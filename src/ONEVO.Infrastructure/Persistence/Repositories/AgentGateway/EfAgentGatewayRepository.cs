@@ -61,6 +61,27 @@ public sealed class EfAgentGatewayRepository : IAgentGatewayRepository
         _db.AgentDeviceChangeRequests.FirstOrDefaultAsync(
             request => request.EmployeeId == employeeId && request.Status == "pending", ct);
 
+    public Task<AgentDeviceChangeRequest?> GetDeviceChangeRequestByIdAsync(
+        Guid requestId, CancellationToken ct) =>
+        _db.AgentDeviceChangeRequests.FirstOrDefaultAsync(
+            request => request.Id == requestId, ct);
+
+    public Task<AgentDeviceChangeRequest?> GetDeviceChangeRequestByRequestedAgentIdAsync(
+        Guid requestedAgentId, CancellationToken ct) =>
+        _db.AgentDeviceChangeRequests
+            .OrderByDescending(request => request.RequestedAt)
+            .FirstOrDefaultAsync(request => request.RequestedAgentId == requestedAgentId, ct);
+
+    public async Task<IReadOnlyList<AgentDeviceChangeRequest>> GetPendingDeviceChangesAsync(
+        int skip, int take, CancellationToken ct) =>
+        await _db.AgentDeviceChangeRequests
+            .AsNoTracking()
+            .Where(request => request.Status == "pending")
+            .OrderBy(request => request.RequestedAt)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(ct);
+
     public async Task AddDeviceChangeRequestAsync(
         AgentDeviceChangeRequest request, CancellationToken ct) =>
         await _db.AgentDeviceChangeRequests.AddAsync(request, ct);
@@ -80,12 +101,16 @@ public sealed class EfAgentGatewayRepository : IAgentGatewayRepository
     public async Task AddSessionAsync(AgentSession session, CancellationToken ct) =>
         await _db.AgentSessions.AddAsync(session, ct);
 
-    public async Task EndActiveSessionAsync(string deviceId, DateTimeOffset endedAt, CancellationToken ct) =>
-        await _db.AgentSessions
-            .Where(s => s.DeviceId == deviceId && s.IsActive)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(x => x.IsActive, false)
-                .SetProperty(x => x.EndedAt, endedAt), ct);
+    public async Task EndActiveSessionAsync(string deviceId, DateTimeOffset endedAt, CancellationToken ct)
+    {
+        var session = await _db.AgentSessions
+            .SingleOrDefaultAsync(s => s.DeviceId == deviceId && s.IsActive, ct);
+        if (session is null)
+            return;
+
+        session.IsActive = false;
+        session.EndedAt = endedAt;
+    }
 
     public Task<AgentSession?> GetActiveSessionByDeviceIdAsync(string deviceId, CancellationToken ct) =>
         _db.AgentSessions.FirstOrDefaultAsync(s => s.DeviceId == deviceId && s.IsActive, ct);
