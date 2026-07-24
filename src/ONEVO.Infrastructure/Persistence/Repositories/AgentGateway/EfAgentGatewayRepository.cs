@@ -125,4 +125,20 @@ public sealed class EfAgentGatewayRepository : IAgentGatewayRepository
 
         return agentIds;
     }
+
+    // ── Fleet health ──────────────────────────────────────────────────────────
+
+    public async Task<IReadOnlyList<RegisteredAgent>> GetActiveAgentsAsync(CancellationToken ct) =>
+        await _db.RegisteredAgents
+            .Where(a => a.Status == "active")
+            .OrderByDescending(a => a.LastHeartbeatAt)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<AgentHealthLog>> GetRecentHealthLogsAsync(
+        Guid agentId, int count, CancellationToken ct) =>
+        await _db.AgentHealthLogs
+            .Where(h => h.AgentId == agentId)
+            .OrderByDescending(h => h.ReportedAt)
+            .Take(count)
+            .ToListAsync(ct);
 }

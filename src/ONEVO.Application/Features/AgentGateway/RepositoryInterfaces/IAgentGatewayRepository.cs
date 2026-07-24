@@ -34,4 +34,8 @@ public interface IAgentGatewayRepository
 
     // Offline detection (cross-tenant, runs in system mode)
     Task<IReadOnlyList<Guid>> MarkAgentsInactiveAndReturnIdsAsync(DateTimeOffset threshold, CancellationToken ct);
+
+    // Fleet health
+    Task<IReadOnlyList<RegisteredAgent>> GetActiveAgentsAsync(CancellationToken ct);
+    Task<IReadOnlyList<AgentHealthLog>> GetRecentHealthLogsAsync(Guid agentId, int count, CancellationToken ct);
 }
