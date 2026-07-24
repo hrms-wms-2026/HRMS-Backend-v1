@@ -143,8 +143,14 @@ public class ApplicationDbContext : DbContext
 
     // Configuration
     public DbSet<EmployeeWorkLocationSettings> EmployeeWorkLocationSettings => Set<EmployeeWorkLocationSettings>();
+    public DbSet<EmployeeRemoteWorkProfile> EmployeeRemoteWorkProfiles => Set<EmployeeRemoteWorkProfile>();
+    public DbSet<RemoteWorkLocationChangeRequest> RemoteWorkLocationChangeRequests =>
+        Set<RemoteWorkLocationChangeRequest>();
 
     // Identity Verification
+    public DbSet<VerificationPolicy> VerificationPolicies => Set<VerificationPolicy>();
+    public DbSet<VerificationRecord> VerificationRecords => Set<VerificationRecord>();
+    public DbSet<VerificationEvidenceAsset> VerificationEvidenceAssets => Set<VerificationEvidenceAsset>();
     public DbSet<VerificationReferencePhoto> VerificationReferencePhotos => Set<VerificationReferencePhoto>();
 
     // Lookups
@@ -165,6 +171,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<AgentPolicy> AgentPolicies => Set<AgentPolicy>();
     public DbSet<AgentHealthLog> AgentHealthLogs => Set<AgentHealthLog>();
     public DbSet<ActivityRawBuffer> ActivityRawBuffer => Set<ActivityRawBuffer>();
+    public DbSet<AgentWorkLocationEvidence> AgentWorkLocationEvidence => Set<AgentWorkLocationEvidence>();
 
     // Activity Monitoring
     public DbSet<ActivitySnapshot> ActivitySnapshots => Set<ActivitySnapshot>();

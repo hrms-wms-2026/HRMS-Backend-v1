@@ -11,4 +11,6 @@ public class GdprConsentRecord : ITenantOwnedEntity
     public bool Consented { get; set; }
     public DateTimeOffset ConsentedAt { get; set; } = DateTimeOffset.UtcNow;
     public string? IpAddress { get; set; }
+    public string NoticeVersion { get; set; } = string.Empty;
+    public Guid? CapturedAgentId { get; set; }
 }

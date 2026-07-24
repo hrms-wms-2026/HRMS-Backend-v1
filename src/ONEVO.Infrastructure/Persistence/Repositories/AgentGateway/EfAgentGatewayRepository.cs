@@ -143,6 +143,10 @@ public sealed class EfAgentGatewayRepository : IAgentGatewayRepository
     public async Task AddRawActivityBatchAsync(ActivityRawBuffer batch, CancellationToken ct) =>
         await _db.ActivityRawBuffer.AddAsync(batch, ct);
 
+    public async Task AddWorkLocationEvidenceAsync(
+        AgentWorkLocationEvidence evidence, CancellationToken ct) =>
+        await _db.AgentWorkLocationEvidence.AddAsync(evidence, ct);
+
     // ── Offline detection ─────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<Guid>> MarkAgentsInactiveAndReturnIdsAsync(

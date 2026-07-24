@@ -159,7 +159,7 @@ git commit -m "feat(location): add deterministic Company geofencing"
 - `RemoteWorkLocationChangeRequest` supports `pending`, `approved`, `rejected`, `captured`, `expired`; one pending per employee.
 - `IVerificationRepository` exposes active policy/reference, verification/evidence adds, remote profile/change-request reads/adds, consent/reference adds, and tracked review reads.
 
-- [ ] **Step 1: Add failing tenant/RLS model tests**
+- [x] **Step 1: Add failing tenant/RLS model tests**
 
 Add explicit entity sanity assertions and rely on the generic architecture tests to require filters and migration policy coverage.
 
@@ -169,11 +169,11 @@ Assert.True(typeof(ITenantOwnedEntity).IsAssignableFrom(typeof(EmployeeRemoteWor
 Assert.True(typeof(ITenantOwnedEntity).IsAssignableFrom(typeof(AgentWorkLocationEvidence)));
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run the three focused architecture tests. Expected: missing type compile failures.
 
-- [ ] **Step 3: Add exact entities and configurations**
+- [x] **Step 3: Add exact entities and configurations**
 
 Use the canonical columns from:
 
@@ -193,7 +193,7 @@ Add unique filtered indexes:
 
 Use `uint Version`/`IsRowVersion()` on both approval request aggregates.
 
-- [ ] **Step 4: Add repository contracts and implementations**
+- [x] **Step 4: Add repository contracts and implementations**
 
 Required signatures include:
 
@@ -212,11 +212,11 @@ Task AddRemoteChangeRequestAsync(RemoteWorkLocationChangeRequest request, Cancel
 Task AddWorkLocationEvidenceAsync(AgentWorkLocationEvidence evidence, CancellationToken ct);
 ```
 
-- [ ] **Step 5: Generate migration and add RLS**
+- [x] **Step 5: Generate migration and add RLS**
 
 Generate `AddLocationAndVerificationFoundation`. Add ENABLE/FORCE RLS and `tenant_isolation` WITH CHECK for every new table. Add FK restrictions to employee, agent, user, file record, verification, and presence targets that exist at this phase.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run focused architecture tests, full architecture suite, model-drift check, and:
 

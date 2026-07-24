@@ -44,6 +44,9 @@ public interface IAgentGatewayRepository
     // Activity raw buffer (tenant-scoped)
     Task AddRawActivityBatchAsync(ActivityRawBuffer batch, CancellationToken ct);
 
+    // Work-location evidence (tenant-scoped)
+    Task AddWorkLocationEvidenceAsync(AgentWorkLocationEvidence evidence, CancellationToken ct);
+
     // Offline detection (cross-tenant, runs in system mode)
     Task<IReadOnlyList<Guid>> MarkAgentsInactiveAndReturnIdsAsync(DateTimeOffset threshold, CancellationToken ct);
 

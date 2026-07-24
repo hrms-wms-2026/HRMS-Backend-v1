@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.AgentGateway.Entities;
+using ONEVO.Domain.Features.Configuration.Entities;
+using ONEVO.Domain.Features.IdentityVerification.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity;
@@ -31,6 +33,14 @@ namespace ONEVO.Tests.Architecture;
 /// </summary>
 public class TenantIsolationArchitectureTests
 {
+    [Fact]
+    public void LocationAndVerificationPersistenceEntities_AreTenantOwned()
+    {
+        Assert.True(typeof(ITenantOwnedEntity).IsAssignableFrom(typeof(VerificationRecord)));
+        Assert.True(typeof(ITenantOwnedEntity).IsAssignableFrom(typeof(EmployeeRemoteWorkProfile)));
+        Assert.True(typeof(ITenantOwnedEntity).IsAssignableFrom(typeof(AgentWorkLocationEvidence)));
+    }
+
     [Fact]
     public void LegalEntity_OfficeLocation_HasCanonicalPrecisionAndLimits()
     {

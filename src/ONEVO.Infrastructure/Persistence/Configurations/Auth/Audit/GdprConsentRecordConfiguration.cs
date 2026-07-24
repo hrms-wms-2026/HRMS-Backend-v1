@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ONEVO.Domain.Features.AgentGateway.Entities;
 using ONEVO.Domain.Features.Auth.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.Auth.Audit;
@@ -13,7 +14,12 @@ public class GdprConsentRecordConfiguration : IEntityTypeConfiguration<GdprConse
 
         builder.Property(g => g.ConsentType).HasMaxLength(50).IsRequired();
         builder.Property(g => g.IpAddress).HasMaxLength(45);
+        builder.Property(g => g.NoticeVersion).HasMaxLength(50).IsRequired();
 
         builder.HasIndex(g => new { g.TenantId, g.UserId, g.ConsentType });
+        builder.HasOne<RegisteredAgent>()
+            .WithMany()
+            .HasForeignKey(g => g.CapturedAgentId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

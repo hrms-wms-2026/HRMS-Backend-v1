@@ -63,6 +63,8 @@ using ONEVO.Infrastructure.Persistence.Repositories.ActivityMonitoring;
 using ONEVO.Infrastructure.Services.ActivityMonitoring;
 using ONEVO.Application.Features.Users.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.Users;
+using ONEVO.Application.Features.IdentityVerification.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.IdentityVerification;
 
 namespace ONEVO.Infrastructure;
 
@@ -245,6 +247,9 @@ public static class DependencyInjection
         services.AddScoped<EfAgentGatewayRepository>();
         services.AddScoped<IAgentGatewayRepository>(sp => sp.GetRequiredService<EfAgentGatewayRepository>());
         services.AddHostedService<DetectOfflineAgentsJob>();
+
+        // Identity Verification
+        services.AddScoped<IVerificationRepository, EfVerificationRepository>();
 
         // Activity Monitoring
         services.AddScoped<EfActivityMonitoringRepository>();

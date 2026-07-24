@@ -10,9 +10,12 @@ public class VerificationReferencePhoto : ITenantOwnedEntity
     public Guid PhotoFileId { get; set; }
     public string Source { get; set; } = "agent_first_sign_in"; // agent_first_sign_in | hr_verified_profile | admin_upload
     public string Status { get; set; } = "pending_review"; // pending_review | approved | rejected | replaced | revoked
+    public Guid? CapturedDeviceId { get; set; }
     public DateTimeOffset CapturedAt { get; set; } = DateTimeOffset.UtcNow;
     public Guid? ReviewedById { get; set; }
     public DateTimeOffset? ReviewedAt { get; set; }
+    public string? ReviewComment { get; set; }
+    public Guid? LegalAcceptanceRecordId { get; set; }
     public bool IsActive { get; set; } = false;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
