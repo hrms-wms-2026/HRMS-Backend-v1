@@ -71,7 +71,7 @@
 - Consumes: `IUserProfileRepository.GetEmployeeByUserIdAsync(Guid userId, CancellationToken ct)`.
 - Produces: confirmed enrollment challenge whose `EmployeeId` is `Employee.Id`, never `User.Id`.
 
-- [ ] **Step 1: Write the success-path failing test**
+- [x] **Step 1: Write the success-path failing test**
 
 Construct the handler with mocks for `IAgentGatewayRepository`, `ITenantContext`, `ICurrentUser`, `IUserProfileRepository`, and `IUnitOfWork`. Return an employee with a different `Id` and `UserId`, then verify the repository call receives `employee.Id`:
 
@@ -104,7 +104,7 @@ public async Task Handle_AuthenticatedEmployee_StoresEmployeeIdNotUserId()
 }
 ```
 
-- [ ] **Step 2: Write the no-employee failing test**
+- [x] **Step 2: Write the no-employee failing test**
 
 ```csharp
 [Fact]
@@ -127,7 +127,7 @@ public async Task Handle_UserWithoutEmployee_ReturnsForbiddenWithoutConfirming()
 }
 ```
 
-- [ ] **Step 3: Run the focused tests and verify RED**
+- [x] **Step 3: Run the focused tests and verify RED**
 
 Run:
 
@@ -137,7 +137,7 @@ dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter FullyQualifi
 
 Expected: compile failure because the handler constructor does not accept `IUserProfileRepository`, or assertion failure because `UserId` is still stored as `EmployeeId`.
 
-- [ ] **Step 4: Inject the profile repository and resolve the employee before changing the challenge**
+- [x] **Step 4: Inject the profile repository and resolve the employee before changing the challenge**
 
 Use this constructor and guard:
 
@@ -167,7 +167,7 @@ if (employee is null || employee.TenantId != _tenantContext.TenantId)
 
 Pass `employee.Id` as `employeeId` and `_currentUser.UserId` as `confirmedByUserId` to `TryMarkChallengeConfirmedAsync`.
 
-- [ ] **Step 5: Run focused and Agent Gateway unit tests**
+- [x] **Step 5: Run focused and Agent Gateway unit tests**
 
 Run:
 
@@ -177,7 +177,7 @@ dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter FullyQualifi
 
 Expected: all Agent Gateway unit tests pass.
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
 ```powershell
 git add src/ONEVO.Application/Features/AgentGateway/Commands/ConfirmEnrollment tests/ONEVO.Tests.Unit/Features/AgentGateway/ConfirmEnrollmentCommandHandlerTests.cs
@@ -201,7 +201,7 @@ git commit -m "fix(agent): resolve employee id during enrollment"
 - Produces: `AgentDeviceChangeRequest` and `ApplicationDbContext.AgentDeviceChangeRequests`.
 - Status values: `pending`, `approved`, `rejected`, `cancelled`, `expired`.
 
-- [ ] **Step 1: Write the tenant-isolation architecture test**
+- [x] **Step 1: Write the tenant-isolation architecture test**
 
 Add the new type to the explicit tenant-owned entity assertions used by `TenantIsolationArchitectureTests`:
 
@@ -210,7 +210,7 @@ Assert.True(typeof(ITenantOwnedEntity).IsAssignableFrom(
     typeof(AgentDeviceChangeRequest)));
 ```
 
-- [ ] **Step 2: Run the architecture test and verify RED**
+- [x] **Step 2: Run the architecture test and verify RED**
 
 Run:
 
@@ -220,7 +220,7 @@ dotnet test tests/ONEVO.Tests.Architecture/ONEVO.Tests.Architecture.csproj --fil
 
 Expected: compile failure because `AgentDeviceChangeRequest` does not exist.
 
-- [ ] **Step 3: Add the domain entity**
+- [x] **Step 3: Add the domain entity**
 
 ```csharp
 public sealed class AgentDeviceChangeRequest : ITenantOwnedEntity
@@ -242,7 +242,7 @@ public sealed class AgentDeviceChangeRequest : ITenantOwnedEntity
 }
 ```
 
-- [ ] **Step 4: Add EF configuration and DbSet**
+- [x] **Step 4: Add EF configuration and DbSet**
 
 Configure:
 
@@ -275,7 +275,7 @@ public DbSet<AgentDeviceChangeRequest> AgentDeviceChangeRequests
     => Set<AgentDeviceChangeRequest>();
 ```
 
-- [ ] **Step 5: Generate the migration**
+- [x] **Step 5: Generate the migration**
 
 Run from `HRMS-Backend-v1`:
 
@@ -285,7 +285,7 @@ dotnet ef migrations add AddApprovedDeviceReplacement --project src/ONEVO.Infras
 
 Expected: migration, designer, and model snapshot updates are generated.
 
-- [ ] **Step 6: Add RLS SQL to the generated migration**
+- [x] **Step 6: Add RLS SQL to the generated migration**
 
 The migration `Up` must include:
 
@@ -299,7 +299,7 @@ WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), ''):
 
 The migration `Down` drops the policy before dropping the table.
 
-- [ ] **Step 7: Verify migration and architecture tests**
+- [x] **Step 7: Verify migration and architecture tests**
 
 Run:
 
@@ -310,7 +310,7 @@ dotnet test tests/ONEVO.Tests.Architecture/ONEVO.Tests.Architecture.csproj --fil
 
 Expected: build and focused architecture tests pass.
 
-- [ ] **Step 8: Commit Task 2**
+- [x] **Step 8: Commit Task 2**
 
 Stage only the entity, configuration, DbContext, migration files, snapshot, and architecture test:
 
@@ -339,7 +339,7 @@ git commit -m "feat(agent): persist device replacement requests"
 - Adds `GetActiveAgentByEmployeeIdAsync`, `GetPendingDeviceChangeByEmployeeIdAsync`, and `AddDeviceChangeRequestAsync`.
 - Extends enrollment response with `DeviceApprovalStatus` and `DeviceChangeRequestId`.
 
-- [ ] **Step 1: Add failing first-device and replacement-device tests**
+- [x] **Step 1: Add failing first-device and replacement-device tests**
 
 The first-device test asserts the new agent is active, a session is created, and no replacement request is created.
 
@@ -359,7 +359,7 @@ _repo.Verify(x => x.AddSessionAsync(
     It.IsAny<AgentSession>(), It.IsAny<CancellationToken>()), Times.Never);
 ```
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -369,7 +369,7 @@ dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter FullyQualifi
 
 Expected: compile failures for the new DTO members and repository methods.
 
-- [ ] **Step 3: Add repository/profile interfaces and EF implementations**
+- [x] **Step 3: Add repository/profile interfaces and EF implementations**
 
 Use exact signatures:
 
@@ -383,7 +383,7 @@ Task AddDeviceChangeRequestAsync(AgentDeviceChangeRequest request, CancellationT
 
 Every EF query remains tenant-filtered. `GetActiveAgentByEmployeeIdAsync` filters `EmployeeId == employeeId && Status == "active"`.
 
-- [ ] **Step 4: Extend the enrollment response**
+- [x] **Step 4: Extend the enrollment response**
 
 ```csharp
 public sealed record EnrollCompleteResponseDto(
@@ -400,7 +400,7 @@ public sealed record EnrollCompleteResponseDto(
 
 Expose `device_approval_status` and `device_change_request_id` from the controller.
 
-- [ ] **Step 5: Implement first-device versus candidate behavior**
+- [x] **Step 5: Implement first-device versus candidate behavior**
 
 The handler algorithm is:
 
@@ -444,7 +444,7 @@ Do not create an active `AgentSession` or monitoring policy for an inactive cand
 
 Resolve the employee display name through `GetEmployeeByIdAsync`; remove the incorrect `_users.GetByIdAsync(employeeId)` lookup.
 
-- [ ] **Step 6: Run focused and full unit tests**
+- [x] **Step 6: Run focused and full unit tests**
 
 Run:
 
@@ -455,7 +455,7 @@ dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj
 
 Expected: all tests pass.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 ```powershell
 git commit -m "feat(agent): require approval for replacement devices"
@@ -480,7 +480,7 @@ git commit -m "feat(agent): require approval for replacement devices"
 - `GetDeviceChangeStatusQuery(Guid AgentId)`.
 - `GetPendingDeviceChangesQuery(int Page, int PageSize)`.
 
-- [ ] **Step 1: Write approval state-transition tests**
+- [x] **Step 1: Write approval state-transition tests**
 
 Test success and stale/non-pending conflicts. Success assertions:
 
@@ -496,7 +496,7 @@ _repo.Verify(x => x.EndActiveSessionAsync(
 _uow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Run:
 
@@ -506,7 +506,7 @@ dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter FullyQualifi
 
 Expected: compile failure because command and handler do not exist.
 
-- [ ] **Step 3: Add repository methods**
+- [x] **Step 3: Add repository methods**
 
 ```csharp
 Task<AgentDeviceChangeRequest?> GetDeviceChangeRequestByIdAsync(
@@ -519,7 +519,7 @@ Task<IReadOnlyList<AgentDeviceChangeRequest>> GetPendingDeviceChangesAsync(
 
 Cap `PageSize` at 100 and order pending requests by `RequestedAt`.
 
-- [ ] **Step 4: Implement approve/reject handlers**
+- [x] **Step 4: Implement approve/reject handlers**
 
 Approve validates:
 
@@ -538,7 +538,7 @@ Then revoke current, activate candidate, end the old session, create the candida
 
 Reject sets request status/reviewer fields and leaves old device active/candidate inactive.
 
-- [ ] **Step 5: Add protected controller endpoints**
+- [x] **Step 5: Add protected controller endpoints**
 
 Use browser `TenantPolicy` plus existing permission filter:
 
@@ -558,7 +558,7 @@ Use browser `TenantPolicy` plus existing permission filter:
 
 Never accept reviewer id from the request body; use `ICurrentUser.UserId`.
 
-- [ ] **Step 6: Run unit and controller architecture tests**
+- [x] **Step 6: Run unit and controller architecture tests**
 
 Run:
 
@@ -569,7 +569,7 @@ dotnet test tests/ONEVO.Tests.Architecture/ONEVO.Tests.Architecture.csproj --fil
 
 Expected: all focused tests pass.
 
-- [ ] **Step 7: Commit Task 4**
+- [x] **Step 7: Commit Task 4**
 
 ```powershell
 git commit -m "feat(agent): approve employee device replacements"
@@ -592,7 +592,7 @@ git commit -m "feat(agent): approve employee device replacements"
 - Produces authorization policy `ActiveAgentPolicy`.
 - Basic `AgentPolicy` remains available only for candidate device-change status polling.
 
-- [ ] **Step 1: Write authorization-handler tests**
+- [x] **Step 1: Write authorization-handler tests**
 
 Cover active, inactive, revoked, wrong tenant, and missing employee binding. The active test succeeds only for:
 
@@ -608,7 +608,7 @@ new RegisteredAgent
 
 The inactive and revoked cases must leave the authorization requirement unsatisfied.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -618,7 +618,7 @@ dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter FullyQualifi
 
 Expected: compile failure because the authorization types do not exist.
 
-- [ ] **Step 3: Implement the requirement and handler**
+- [x] **Step 3: Implement the requirement and handler**
 
 ```csharp
 public sealed class ActiveAgentRequirement : IAuthorizationRequirement;
@@ -656,7 +656,7 @@ options.AddPolicy("ActiveAgentPolicy", policy =>
         .AddRequirements(new ActiveAgentRequirement()));
 ```
 
-- [ ] **Step 4: Apply policies to endpoints**
+- [x] **Step 4: Apply policies to endpoints**
 
 Change login, logout, heartbeat, policy, and ingest endpoints to `ActiveAgentPolicy`.
 
@@ -670,7 +670,7 @@ public async Task<IActionResult> GetDeviceChangeStatus(CancellationToken ct)
 
 The query resolves the requested agent id from `sub`; it does not accept agent, employee, or tenant ids from query/body.
 
-- [ ] **Step 5: Run focused, API, and full backend tests**
+- [x] **Step 5: Run focused, API, and full backend tests**
 
 Run:
 
@@ -682,7 +682,7 @@ dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj --no-re
 
 Expected: all available tests pass; integration tests that require unavailable external infrastructure may be reported separately with their exact skip/failure reason.
 
-- [ ] **Step 6: Commit Task 5**
+- [x] **Step 6: Commit Task 5**
 
 ```powershell
 git commit -m "feat(agent): enforce approved device authorization"
@@ -705,7 +705,7 @@ git commit -m "feat(agent): enforce approved device authorization"
   - approval/rejection APIs;
   - immediate revoked-device denial.
 
-- [ ] **Step 1: Verify formatting and repository scope**
+- [x] **Step 1: Verify formatting and repository scope**
 
 Run:
 
@@ -716,7 +716,7 @@ git status --short --untracked-files=all
 
 Expected: formatting passes. Only known user-owned untracked files remain; no unrelated file is staged.
 
-- [ ] **Step 2: Run the complete backend build and test suites**
+- [x] **Step 2: Run the complete backend build and test suites**
 
 Run:
 
@@ -729,7 +729,13 @@ dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj --no-bu
 
 Expected: build, unit tests, architecture tests, and available integration tests pass.
 
-- [ ] **Step 3: Inspect the migration SQL**
+Verification note (2026-07-25): API build, 598 unit tests, and 107
+architecture tests passed. The 46 integration tests compiled, but the local
+environment could not execute them because Docker was unavailable; the two
+in-process API boot tests also require the intentionally uncommitted
+`Encryption__MasterKey`.
+
+- [x] **Step 3: Inspect the migration SQL**
 
 Run:
 
@@ -739,7 +745,7 @@ dotnet ef migrations script --project src/ONEVO.Infrastructure --startup-project
 
 Expected SQL contains the new table, filtered unique pending index, RLS enable/force/policy statements, and no destructive change to existing Agent Gateway data.
 
-- [ ] **Step 4: Review the branch diff**
+- [x] **Step 4: Review the branch diff**
 
 Run:
 
@@ -750,7 +756,7 @@ git diff HEAD~5..HEAD --check
 
 Expected: only approved-device foundation code, tests, migration, and this plan are present; whitespace check passes.
 
-- [ ] **Step 5: Record completion**
+- [x] **Step 5: Record completion**
 
 Mark Tasks 1-6 complete in this plan only after the commands above pass. Then create the next detailed plan from the approved master spec:
 
