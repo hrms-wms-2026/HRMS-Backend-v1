@@ -73,7 +73,7 @@
 - Produces `LocationMatchResult(bool IsValid, bool IsMatch, decimal? DistanceMeters, string FailureCode)`.
 - Produces `ILocationVerificationService.Evaluate(LocationCapture capture, LocationTarget target, DateTimeOffset serverNow)`.
 
-- [ ] **Step 1: Write failing distance and fail-closed tests**
+- [x] **Step 1: Write failing distance and fail-closed tests**
 
 Cover exact-coordinate match, outside-radius mismatch, latitude/longitude bounds, permission denied, capture older than two minutes, accuracy above 250 metres, and Haversine distance between two known points.
 
@@ -88,7 +88,7 @@ Assert.True(result.IsMatch);
 Assert.InRange(result.DistanceMeters!.Value, 0m, 0.5m);
 ```
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Run:
 
@@ -98,7 +98,7 @@ dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter FullyQualifi
 
 Expected: compile failure because the location types do not exist.
 
-- [ ] **Step 3: Implement validation and Haversine matching**
+- [x] **Step 3: Implement validation and Haversine matching**
 
 Use Earth radius `6_371_000m`, decimal inputs converted to radians, maximum capture age two minutes, maximum accepted OS accuracy 250m, and match rule:
 
@@ -108,7 +108,7 @@ distanceMeters <= target.AllowedRadiusMeters + capture.AccuracyMeters
 
 Reject radius outside `25..50_000`, non-`granted` permission, future capture beyond 30 seconds, NaN-equivalent/out-of-range coordinates, stale capture, and inaccurate capture with stable failure codes.
 
-- [ ] **Step 4: Add Company office fields and migration**
+- [x] **Step 4: Add Company office fields and migration**
 
 Add:
 
@@ -122,7 +122,7 @@ public string Timezone { get; set; } = "UTC";
 
 Configure decimal `(10,7)`, max lengths `255` and `50`, and check constraints for coordinate/radius ranges. Generate `AddCompanyOfficeLocation`; do not create a separate office table.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run focused tests, API build, migration drift check, and:
 

@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.AgentGateway.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity;
 using ONEVO.Infrastructure.Persistence;
@@ -30,6 +31,29 @@ namespace ONEVO.Tests.Architecture;
 /// </summary>
 public class TenantIsolationArchitectureTests
 {
+    [Fact]
+    public void LegalEntity_OfficeLocation_HasCanonicalPrecisionAndLimits()
+    {
+        using var context = CreateModelInspectionContext();
+        var entity = context.Model.FindEntityType(typeof(LegalEntity));
+
+        Assert.NotNull(entity);
+        var latitude = entity.FindProperty("OfficeLatitude");
+        var longitude = entity.FindProperty("OfficeLongitude");
+        var radius = entity.FindProperty("OfficeAllowedRadiusMeters");
+        var timezone = entity.FindProperty("Timezone");
+
+        Assert.NotNull(latitude);
+        Assert.Equal(10, latitude.GetPrecision());
+        Assert.Equal(7, latitude.GetScale());
+        Assert.NotNull(longitude);
+        Assert.Equal(10, longitude.GetPrecision());
+        Assert.Equal(7, longitude.GetScale());
+        Assert.NotNull(radius);
+        Assert.NotNull(timezone);
+        Assert.Equal(50, timezone.GetMaxLength());
+    }
+
     [Fact]
     public void AgentDeviceChangeRequest_IsTenantOwned()
     {
