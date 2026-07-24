@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Common;
+using ONEVO.Domain.Features.AgentGateway.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity;
 using ONEVO.Infrastructure.Persistence;
@@ -29,6 +30,20 @@ namespace ONEVO.Tests.Architecture;
 /// </summary>
 public class TenantIsolationArchitectureTests
 {
+    [Fact]
+    public void AgentDeviceChangeRequest_IsTenantOwned()
+    {
+        Assert.True(
+            typeof(ITenantOwnedEntity).IsAssignableFrom(typeof(AgentDeviceChangeRequest)),
+            "Device replacement requests must participate in automatic tenant query filtering and PostgreSQL RLS.");
+    }
+
+    [Fact]
+    public void AgentDeviceChangeRequestTable_HasRlsPolicyCoverage()
+    {
+        Assert.Contains("agent_device_change_requests", FindTablesWithRlsPolicy());
+    }
+
     [Fact]
     public void QueryFilters_DoNotCaptureTenantContextServiceAsConstant()
     {

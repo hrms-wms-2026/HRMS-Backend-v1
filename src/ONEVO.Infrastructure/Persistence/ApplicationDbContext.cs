@@ -160,6 +160,7 @@ public class ApplicationDbContext : DbContext
     // Agent Gateway
     public DbSet<AgentEnrollmentChallenge> AgentEnrollmentChallenges => Set<AgentEnrollmentChallenge>();
     public DbSet<RegisteredAgent> RegisteredAgents => Set<RegisteredAgent>();
+    public DbSet<AgentDeviceChangeRequest> AgentDeviceChangeRequests => Set<AgentDeviceChangeRequest>();
     public DbSet<AgentSession> AgentSessions => Set<AgentSession>();
     public DbSet<AgentPolicy> AgentPolicies => Set<AgentPolicy>();
     public DbSet<AgentHealthLog> AgentHealthLogs => Set<AgentHealthLog>();
