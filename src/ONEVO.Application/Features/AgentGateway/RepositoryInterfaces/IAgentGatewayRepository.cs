@@ -33,5 +33,5 @@ public interface IAgentGatewayRepository
     Task AddRawActivityBatchAsync(ActivityRawBuffer batch, CancellationToken ct);
 
     // Offline detection (cross-tenant, runs in system mode)
-    Task<int> MarkAgentsInactiveAsync(DateTimeOffset threshold, CancellationToken ct);
+    Task<IReadOnlyList<Guid>> MarkAgentsInactiveAndReturnIdsAsync(DateTimeOffset threshold, CancellationToken ct);
 }

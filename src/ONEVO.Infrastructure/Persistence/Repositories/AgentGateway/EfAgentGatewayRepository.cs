@@ -107,10 +107,22 @@ public sealed class EfAgentGatewayRepository : IAgentGatewayRepository
 
     // ── Offline detection ─────────────────────────────────────────────────────
 
-    public async Task<int> MarkAgentsInactiveAsync(DateTimeOffset threshold, CancellationToken ct) =>
-        await _db.RegisteredAgents
+    public async Task<IReadOnlyList<Guid>> MarkAgentsInactiveAndReturnIdsAsync(
+        DateTimeOffset threshold, CancellationToken ct)
+    {
+        var agentIds = await _db.RegisteredAgents
             .Where(a => a.Status == "active"
                         && a.LastHeartbeatAt != null
                         && a.LastHeartbeatAt < threshold)
+            .Select(a => a.Id)
+            .ToListAsync(ct);
+
+        if (agentIds.Count == 0) return agentIds;
+
+        await _db.RegisteredAgents
+            .Where(a => agentIds.Contains(a.Id))
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.Status, "inactive"), ct);
+
+        return agentIds;
+    }
 }

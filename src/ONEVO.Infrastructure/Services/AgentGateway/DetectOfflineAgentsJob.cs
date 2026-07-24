@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.AgentGateway.RepositoryInterfaces;
 
 namespace ONEVO.Infrastructure.Services.AgentGateway;
@@ -43,12 +45,28 @@ public sealed class DetectOfflineAgentsJob : BackgroundService
     {
         await using var scope = _services.CreateAsyncScope();
         var repo = scope.ServiceProvider.GetRequiredService<IAgentGatewayRepository>();
+        var outbox = scope.ServiceProvider.GetRequiredService<IOutboxWriter>();
+        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
         var threshold = DateTimeOffset.UtcNow.Subtract(OfflineThreshold);
-        var affected = await repo.MarkAgentsInactiveAsync(threshold, ct);
+        var agentIds = await repo.MarkAgentsInactiveAndReturnIdsAsync(threshold, ct);
 
-        if (affected > 0)
-            _logger.LogInformation("Marked {Count} agent(s) inactive (no heartbeat since {Threshold}).",
-                affected, threshold);
+        if (agentIds.Count == 0) return;
+
+        foreach (var agentId in agentIds)
+        {
+            await outbox.EnqueueAsync("AgentHeartbeatLost", new
+            {
+                agent_id = agentId,
+                detected_at = DateTimeOffset.UtcNow,
+                offline_threshold_minutes = (int)OfflineThreshold.TotalMinutes
+            }, ct: ct);
+        }
+
+        await uow.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Marked {Count} agent(s) inactive and wrote AgentHeartbeatLost outbox events (threshold: {Threshold}).",
+            agentIds.Count, threshold);
     }
 }
