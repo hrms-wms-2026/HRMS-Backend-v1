@@ -68,7 +68,8 @@ Exactly these two tables exist — confirmed by the architecture test
 **Tests**
 - `tests/ONEVO.Tests.Unit/Features/DevPlatform/ConfigurationTemplates/*` — 8 handler test classes
 - `tests/ONEVO.Tests.Architecture/ConfigurationTemplateManagerArchitectureTests.cs`
-- `tests/ONEVO.Tests.Integration/DevPlatform/ConfigurationTemplateManagerIntegrationTests.cs` (written, **not executed** — see gaps)
+- `tests/ONEVO.Tests.Integration/DevPlatform/ConfigurationTemplateManagerIntegrationTests.cs` — 2/2 passing (see below)
+- `src/ONEVO.Api/Configuration/DotEnvLoader.cs` (modified — 1-line fix, see "Deviations from the plan")
 
 ## Migration name and exact tables created
 
@@ -115,12 +116,16 @@ Total new: 25/25 passing. Full filtered run (`ConfigurationTemplate|TemplateAppl
 Full suite: **156/156 passing** (includes pre-existing `SetupOptionModelRetirementArchitectureTests`,
 `TenantOneTimeChargeActiveRetirementArchitectureTests`, and `LayerDependencyTests`).
 
-**Integration**: written but **not executed** — Docker Desktop's engine was not reachable in
-this environment (`docker info` succeeds for the CLI/client section but fails to reach the
-`dockerDesktopLinuxEngine` named pipe; the daemon itself is not running). Per the plan's Task 18
-Step 2 instruction, execution was skipped rather than forced. The task's checkbox is left
-unchecked pending a Docker-enabled run of:
-`dotnet test tests\ONEVO.Tests.Integration\ONEVO.Tests.Integration.csproj --filter "ConfigurationTemplateManagerIntegrationTests"`
+**Integration**: `ConfigurationTemplateManagerIntegrationTests` — **2/2 passing** against a real
+Testcontainers Postgres instance, once Docker Desktop was started and the issues below were
+fixed. Note: `TenantsAdminApiIntegrationTests` (pre-existing, unrelated to this feature) still
+fails 14/14 after the `DotEnvLoader` fix, but for a *different* reason — it relies on a stale
+comment ("Allow PermissionSeeder + EnsureCreated to finish") for schema setup with no actual
+`EnsureCreated`/`MigrateAsync` call anywhere in its `InitializeAsync`, so `PermissionSeeder`
+still hits `relation "permissions" does not exist` on host startup. This is the same class of
+bug this step fixed in its own integration test (see below), but left alone here since fixing
+other pre-existing test files is outside this plan's scope — flagging it as a separate,
+repo-wide integration-test gap for a future pass.
 
 ## Explicit confirmation
 
@@ -158,8 +163,38 @@ this work.
    seeds system templates through the API, so the handler now always creates
    `IsSystem = false` regardless of client input. A regression test
    (`Handle_RequestingIsSystemTrue_IsIgnored_CreatedTemplateIsNeverSystem`) was added.
-3. **Integration tests not executed** — see above; Docker daemon unavailable in this
-   environment, not a code issue.
+3. **Fixed `DotEnvLoader`'s repo-root search depth (not in the original plan).** Docker
+   Desktop was later started and the integration tests re-run. `Program.cs` calls
+   `DotEnvLoader.LoadIfPresent()` with its default `maxParentDepth=4`, but reaching the repo
+   root from `tests/<Project>/bin/Debug/net10.0/` (where `dotnet test` sets the working
+   directory) needs 5 parent hops — one more than the default allowed. This silently skipped
+   loading the repo-root `.env`, so `Program.cs`'s eager startup validators
+   (`Encryption:MasterKey`, then `ConnectionStrings:DefaultConnection`) threw before
+   `AdminTestFactory`'s config overrides could apply — for *every* `AdminTestFactory`-based
+   integration test in the repo, not just this feature's (confirmed: the pre-existing
+   `TenantsAdminApiIntegrationTests`, 14 tests, failed identically before this fix). Fixed by
+   bumping the default to 6. Re-ran `DotEnvLoaderTests` (5/5) and the full unit (711/711) and
+   architecture (156/156) suites after the change — no regressions.
+4. **Fixed two test-only bugs in `ConfigurationTemplateManagerIntegrationTests` surfaced by
+   actually running it against real Postgres (not in the original plan's code, which came
+   from the plan document verbatim):**
+   - **Host-startup ordering**: the plan's original `InitializeAsync` called
+     `_factory.CreateClient(...)` (which starts hosted services, including `PermissionSeeder`)
+     *before* calling `db.Database.MigrateAsync()`. `PermissionSeeder` queries the
+     `permissions` table on startup, which doesn't exist yet. Fixed by migrating with a
+     standalone `ApplicationDbContext` (built the same way `ApplicationDbContextFactory` does
+     for `dotnet ef`) *before* constructing `AdminTestFactory`/calling `CreateClient()`.
+   - **Tenant slug collision**: the test created a tenant with `Slug = "acme"`, which collides
+     with a tenant a dev-environment seeder already creates on host startup. Fixed by using a
+     unique slug (`$"acme-{Guid.NewGuid():N}"`).
+   - **Self-defeating FK test**: `Migration_rejects_nonexistent_tenant_and_template_foreign_keys`
+     set `SET session_replication_role = replica` to bypass the `tenant_isolation` RLS policy
+     for a raw admin insert — but that setting *also* disables the FK-constraint triggers the
+     test exists to verify, so the expected `PostgresException` never threw. Fixed by using the
+     RLS policy's actual admin escape hatch instead
+     (`SELECT set_config('app.tenant_context_mode', 'admin', false)`), which bypasses RLS
+     without touching FK enforcement.
+   Both tests pass (2/2) after these fixes.
 
 ## Remaining gaps (carried forward per plan, not attempted here)
 
@@ -179,3 +214,8 @@ this work.
 - Template recommendation is limited to the documented `type`/`active_only`/`industry_tag`
   filters — no company-size/country-ranking algorithm was built, since `backend/api-contracts.md`
   does not define that contract for this feature.
+- **Not part of this feature, flagged for a separate pass**: `TenantsAdminApiIntegrationTests`
+  and likely other pre-existing `AdminTestFactory`-based integration tests still fail (schema
+  never migrated before host startup — see "Deviations from the plan" item 4's first bullet,
+  same root cause, different file). Fixing them would mean editing test files outside this
+  plan's scope.
