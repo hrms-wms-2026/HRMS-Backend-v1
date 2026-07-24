@@ -102,7 +102,9 @@ public class AgentGatewayController : ControllerBase
             employee_name = dto.EmployeeName,
             device_token = dto.DeviceToken,
             token_expires_at = dto.TokenExpiresAt,
-            policy = dto.PolicyJson
+            policy = dto.PolicyJson,
+            device_approval_status = dto.DeviceApprovalStatus,
+            device_change_request_id = dto.DeviceChangeRequestId
         });
     }
 

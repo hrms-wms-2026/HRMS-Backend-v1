@@ -52,6 +52,19 @@ public sealed class EfAgentGatewayRepository : IAgentGatewayRepository
     public Task<RegisteredAgent?> GetAgentByIdAsync(Guid agentId, CancellationToken ct) =>
         _db.RegisteredAgents.FirstOrDefaultAsync(a => a.Id == agentId, ct);
 
+    public Task<RegisteredAgent?> GetActiveAgentByEmployeeIdAsync(Guid employeeId, CancellationToken ct) =>
+        _db.RegisteredAgents.FirstOrDefaultAsync(
+            a => a.EmployeeId == employeeId && a.Status == "active", ct);
+
+    public Task<AgentDeviceChangeRequest?> GetPendingDeviceChangeByEmployeeIdAsync(
+        Guid employeeId, CancellationToken ct) =>
+        _db.AgentDeviceChangeRequests.FirstOrDefaultAsync(
+            request => request.EmployeeId == employeeId && request.Status == "pending", ct);
+
+    public async Task AddDeviceChangeRequestAsync(
+        AgentDeviceChangeRequest request, CancellationToken ct) =>
+        await _db.AgentDeviceChangeRequests.AddAsync(request, ct);
+
     public async Task<bool> TouchHeartbeatAsync(Guid agentId, DateTimeOffset now, CancellationToken ct)
     {
         var affected = await _db.RegisteredAgents

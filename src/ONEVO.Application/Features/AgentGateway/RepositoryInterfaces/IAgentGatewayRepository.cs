@@ -15,7 +15,13 @@ public interface IAgentGatewayRepository
     Task AddAgentAsync(RegisteredAgent agent, CancellationToken ct);
     Task<RegisteredAgent?> GetAgentByDeviceIdAsync(string deviceId, CancellationToken ct);
     Task<RegisteredAgent?> GetAgentByIdAsync(Guid agentId, CancellationToken ct);
+    Task<RegisteredAgent?> GetActiveAgentByEmployeeIdAsync(Guid employeeId, CancellationToken ct);
     Task<bool> TouchHeartbeatAsync(Guid agentId, DateTimeOffset now, CancellationToken ct);
+
+    // Device replacement requests (tenant-scoped via query filter)
+    Task<AgentDeviceChangeRequest?> GetPendingDeviceChangeByEmployeeIdAsync(
+        Guid employeeId, CancellationToken ct);
+    Task AddDeviceChangeRequestAsync(AgentDeviceChangeRequest request, CancellationToken ct);
 
     // Agent sessions (tenant-scoped via query filter)
     Task AddSessionAsync(AgentSession session, CancellationToken ct);

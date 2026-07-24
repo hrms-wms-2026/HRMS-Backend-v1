@@ -5,8 +5,8 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.AgentGateway.DTOs;
 using ONEVO.Application.Features.AgentGateway.RepositoryInterfaces;
-using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+using ONEVO.Application.Features.Users.RepositoryInterfaces;
 using ONEVO.Domain.Features.AgentGateway.Entities;
 
 namespace ONEVO.Application.Features.AgentGateway.Commands.CompleteEnrollment;
@@ -15,7 +15,7 @@ public class CompleteEnrollmentCommandHandler
     : IRequestHandler<CompleteEnrollmentCommand, Result<EnrollCompleteResponseDto>>
 {
     private readonly IAgentGatewayRepository _repo;
-    private readonly IUserRepository _users;
+    private readonly IUserProfileRepository _profiles;
     private readonly IJwtTokenService _jwt;
     private readonly IUnitOfWork _uow;
 
@@ -30,12 +30,12 @@ public class CompleteEnrollmentCommandHandler
 
     public CompleteEnrollmentCommandHandler(
         IAgentGatewayRepository repo,
-        IUserRepository users,
+        IUserProfileRepository profiles,
         IJwtTokenService jwt,
         IUnitOfWork uow)
     {
         _repo = repo;
-        _users = users;
+        _profiles = profiles;
         _jwt = jwt;
         _uow = uow;
     }
@@ -70,20 +70,25 @@ public class CompleteEnrollmentCommandHandler
         var employeeId = challenge.EmployeeId!.Value;
         var now = DateTimeOffset.UtcNow;
 
-        // Create or update registered_agents
-        var existing = await _repo.GetAgentByDeviceIdAsync(request.DeviceId, cancellationToken);
-        Guid agentId;
+        var currentApproved = await _repo.GetActiveAgentByEmployeeIdAsync(
+            employeeId, cancellationToken);
 
+        // Create or refresh this installation's registered agent.
+        var existing = await _repo.GetAgentByDeviceIdAsync(request.DeviceId, cancellationToken);
+        RegisteredAgent agent;
+        var isNewAgent = existing is null;
         if (existing is not null)
         {
-            agentId = existing.Id;
+            agent = existing;
+            existing.DeviceName = challenge.DeviceName;
+            existing.OsVersion = challenge.OsVersion;
             existing.AgentVersion = challenge.AgentVersion;
             existing.EmployeeId = employeeId;
             existing.UpdatedAt = now;
         }
         else
         {
-            var agent = new RegisteredAgent
+            agent = new RegisteredAgent
             {
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
@@ -92,52 +97,97 @@ public class CompleteEnrollmentCommandHandler
                 DeviceName = challenge.DeviceName,
                 OsVersion = challenge.OsVersion,
                 AgentVersion = challenge.AgentVersion,
-                Status = "active",
+                Status = "inactive",
                 RegisteredAt = now,
                 CreatedAt = now
             };
-            await _repo.AddAgentAsync(agent, cancellationToken);
-            agentId = agent.Id;
         }
 
-        // End any previous active session for this device, create new one
-        await _repo.EndActiveSessionAsync(request.DeviceId, now, cancellationToken);
-        await _repo.AddSessionAsync(new AgentSession
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            DeviceId = request.DeviceId,
-            EmployeeId = employeeId,
-            IsActive = true,
-            CreatedAt = now
-        }, cancellationToken);
+        var sameApprovedDevice = currentApproved is not null &&
+            string.Equals(
+                currentApproved.DeviceId,
+                request.DeviceId,
+                StringComparison.OrdinalIgnoreCase);
 
-        // Create default policy
-        await _repo.AddOrUpdatePolicyAsync(new AgentPolicy
+        var approvalStatus = "approved";
+        Guid? deviceChangeRequestId = null;
+
+        if (currentApproved is null || sameApprovedDevice)
         {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            AgentId = agentId,
-            PolicyJson = DefaultPolicyJson,
-            CreatedAt = now
-        }, cancellationToken);
+            agent.Status = "active";
+
+            if (isNewAgent)
+                await _repo.AddAgentAsync(agent, cancellationToken);
+
+            await _repo.EndActiveSessionAsync(request.DeviceId, now, cancellationToken);
+            await _repo.AddSessionAsync(new AgentSession
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                DeviceId = request.DeviceId,
+                EmployeeId = employeeId,
+                IsActive = true,
+                CreatedAt = now
+            }, cancellationToken);
+
+            await _repo.AddOrUpdatePolicyAsync(new AgentPolicy
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                AgentId = agent.Id,
+                PolicyJson = DefaultPolicyJson,
+                CreatedAt = now
+            }, cancellationToken);
+        }
+        else
+        {
+            agent.Status = "inactive";
+            approvalStatus = "pending";
+
+            if (isNewAgent)
+                await _repo.AddAgentAsync(agent, cancellationToken);
+
+            var pending = await _repo.GetPendingDeviceChangeByEmployeeIdAsync(
+                employeeId, cancellationToken);
+            if (pending is null)
+            {
+                pending = new AgentDeviceChangeRequest
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenantId,
+                    EmployeeId = employeeId,
+                    CurrentAgentId = currentApproved.Id,
+                    RequestedAgentId = agent.Id,
+                    Status = "pending",
+                    RequestedAt = now,
+                    CreatedAt = now
+                };
+                await _repo.AddDeviceChangeRequestAsync(pending, cancellationToken);
+            }
+
+            deviceChangeRequestId = pending.Id;
+        }
 
         await _uow.SaveChangesAsync(cancellationToken);
 
-        var user = await _users.GetByIdAsync(employeeId, cancellationToken);
-        var employeeName = user is null ? string.Empty : $"{user.FirstName} {user.LastName}".Trim();
+        var employee = await _profiles.GetEmployeeByIdAsync(employeeId, cancellationToken);
+        var employeeName = employee is null
+            ? string.Empty
+            : $"{employee.FirstName} {employee.LastName}".Trim();
 
-        var deviceToken = _jwt.GenerateAgentToken(agentId, tenantId);
+        var deviceToken = _jwt.GenerateAgentToken(agent.Id, tenantId);
         var tokenExpiresAt = DateTimeOffset.UtcNow.AddDays(90);
 
         return Result<EnrollCompleteResponseDto>.Success(new EnrollCompleteResponseDto(
-            AgentId: agentId,
+            AgentId: agent.Id,
             TenantId: tenantId,
             EmployeeId: employeeId,
             EmployeeName: employeeName,
             DeviceToken: deviceToken,
             TokenExpiresAt: tokenExpiresAt,
-            PolicyJson: DefaultPolicyJson));
+            PolicyJson: DefaultPolicyJson,
+            DeviceApprovalStatus: approvalStatus,
+            DeviceChangeRequestId: deviceChangeRequestId));
     }
 
     private static string HashCode(string code) =>

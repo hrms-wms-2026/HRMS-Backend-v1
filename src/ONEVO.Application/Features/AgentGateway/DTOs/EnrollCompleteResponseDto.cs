@@ -7,5 +7,7 @@ public record EnrollCompleteResponseDto(
     string EmployeeName,
     string DeviceToken,
     DateTimeOffset TokenExpiresAt,
-    string PolicyJson
+    string PolicyJson,
+    string DeviceApprovalStatus,
+    Guid? DeviceChangeRequestId
 );

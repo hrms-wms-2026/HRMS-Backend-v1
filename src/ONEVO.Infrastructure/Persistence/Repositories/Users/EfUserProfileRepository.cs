@@ -26,6 +26,12 @@ public sealed class EfUserProfileRepository : IUserProfileRepository
             .Where(e => e.TenantId == _tenantContext.TenantId && e.UserId == userId && !e.IsDeleted)
             .FirstOrDefaultAsync(ct);
 
+    public async Task<Employee?> GetEmployeeByIdAsync(Guid employeeId, CancellationToken ct)
+        => await _db.Employees
+            .AsNoTracking()
+            .Where(e => e.TenantId == _tenantContext.TenantId && e.Id == employeeId && !e.IsDeleted)
+            .FirstOrDefaultAsync(ct);
+
     public async Task<IReadOnlyList<RegisteredAgent>> GetAgentsByEmployeeIdAsync(Guid employeeId, CancellationToken ct)
         => await _db.RegisteredAgents
             .AsNoTracking()

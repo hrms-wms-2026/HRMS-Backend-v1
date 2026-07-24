@@ -8,6 +8,7 @@ namespace ONEVO.Application.Features.Users.RepositoryInterfaces;
 public interface IUserProfileRepository
 {
     Task<Employee?> GetEmployeeByUserIdAsync(Guid userId, CancellationToken ct);
+    Task<Employee?> GetEmployeeByIdAsync(Guid employeeId, CancellationToken ct);
     Task<IReadOnlyList<RegisteredAgent>> GetAgentsByEmployeeIdAsync(Guid employeeId, CancellationToken ct);
     Task<EmployeeWorkLocationSettings?> GetWorkLocationSettingsAsync(Guid employeeId, CancellationToken ct);
     Task<VerificationReferencePhoto?> GetActiveReferencePhotoAsync(Guid employeeId, CancellationToken ct);
