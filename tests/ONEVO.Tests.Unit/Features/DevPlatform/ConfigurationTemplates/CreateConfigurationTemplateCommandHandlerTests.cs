@@ -113,4 +113,28 @@ public sealed class CreateConfigurationTemplateCommandHandlerTests
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(400);
     }
+
+    [Fact]
+    public async Task Handle_RequestingIsSystemTrue_IsIgnored_CreatedTemplateIsNeverSystem()
+    {
+        _templates.Setup(t => t.GetByTemplateKeyAsync("uk-office-defaults", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ConfigurationTemplate?)null);
+
+        var sut = BuildSut();
+        var result = await sut.Handle(
+            new CreateConfigurationTemplateCommand(
+                "uk-office-defaults",
+                ConfigurationTemplate.TypeConfiguration,
+                "UK Office Defaults",
+                null,
+                new List<string>(),
+                null,
+                Payload("{}"),
+                true,
+                ActorId),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.IsSystem.Should().BeFalse();
+    }
 }

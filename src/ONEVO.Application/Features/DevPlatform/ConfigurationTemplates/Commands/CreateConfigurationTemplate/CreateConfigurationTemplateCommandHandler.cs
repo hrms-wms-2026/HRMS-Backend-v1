@@ -77,7 +77,11 @@ public sealed class CreateConfigurationTemplateCommandHandler
             ModuleKeysJson = ConfigurationTemplateMapper.SerializeStringList(moduleKeys),
             IndustryProfileTag = string.IsNullOrWhiteSpace(request.IndustryProfileTag) ? null : request.IndustryProfileTag.Trim(),
             PayloadJson = request.PayloadJson.GetRawText(),
-            IsSystem = request.IsSystem,
+            // IsSystem is never taken from client input: templates created through this
+            // admin API are always editable custom templates. System (platform-curated,
+            // immutable-via-update) templates are seeded separately and are not
+            // creatable through this endpoint, regardless of what the caller requests.
+            IsSystem = false,
             IsActive = true,
             CreatedById = request.CreatedById,
             CreatedAt = DateTimeOffset.UtcNow
