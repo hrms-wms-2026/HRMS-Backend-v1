@@ -27,6 +27,7 @@ public class TenantDatabaseTicketStoreTests
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly IPermissionResolver _permissions = Substitute.For<IPermissionResolver>();
     private readonly IUnitOfWork _uow = Substitute.For<IUnitOfWork>();
+    private readonly IWritableTenantContext _tenantContext = Substitute.For<IWritableTenantContext>();
     private readonly IDateTimeProvider _clock = Substitute.For<IDateTimeProvider>();
 
     public TenantDatabaseTicketStoreTests()
@@ -38,6 +39,7 @@ public class TenantDatabaseTicketStoreTests
         _serviceProvider.GetService(typeof(IUserRepository)).Returns(_users);
         _serviceProvider.GetService(typeof(IPermissionResolver)).Returns(_permissions);
         _serviceProvider.GetService(typeof(IUnitOfWork)).Returns(_uow);
+        _serviceProvider.GetService(typeof(IWritableTenantContext)).Returns(_tenantContext);
         
         _clock.UtcNow.Returns(FixedNow);
     }

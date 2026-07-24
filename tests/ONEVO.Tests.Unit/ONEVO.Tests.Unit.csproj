@@ -11,6 +11,16 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
+  <!--
+    GHSA-2m69-gcr7-jv3q has no patched SQLitePCLRaw.lib.e_sqlite3 release.
+    This native dependency is confined to the unit-test project for the
+    relational MFA-store tests and is absent from the production API graph.
+    Keep this advisory-specific suppression local; do not disable NuGetAudit.
+  -->
+  <ItemGroup>
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="10.0.1">
       <PrivateAssets>all</PrivateAssets>
