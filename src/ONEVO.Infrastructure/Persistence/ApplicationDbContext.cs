@@ -14,6 +14,7 @@ using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entitie
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.AgentGateway.Entities;
+using ONEVO.Domain.Features.ActivityMonitoring.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
@@ -155,6 +156,15 @@ public class ApplicationDbContext : DbContext
     public DbSet<AgentPolicy> AgentPolicies => Set<AgentPolicy>();
     public DbSet<AgentHealthLog> AgentHealthLogs => Set<AgentHealthLog>();
     public DbSet<ActivityRawBuffer> ActivityRawBuffer => Set<ActivityRawBuffer>();
+
+    // Activity Monitoring
+    public DbSet<ActivitySnapshot> ActivitySnapshots => Set<ActivitySnapshot>();
+    public DbSet<ApplicationUsage> ApplicationUsage => Set<ApplicationUsage>();
+    public DbSet<MeetingSession> MeetingSessions => Set<MeetingSession>();
+    public DbSet<MonitoringEvidenceAsset> MonitoringEvidenceAssets => Set<MonitoringEvidenceAsset>();
+    public DbSet<ActivityDailySummary> ActivityDailySummaries => Set<ActivityDailySummary>();
+    public DbSet<ApplicationCategory> ApplicationCategories => Set<ApplicationCategory>();
+    public DbSet<DeviceTracking> DeviceTracking => Set<DeviceTracking>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
