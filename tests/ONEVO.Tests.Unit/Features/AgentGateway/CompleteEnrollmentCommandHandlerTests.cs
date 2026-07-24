@@ -5,6 +5,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.AgentGateway.Commands.CompleteEnrollment;
 using ONEVO.Application.Features.AgentGateway.RepositoryInterfaces;
+using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Domain.Features.AgentGateway.Entities;
 using Xunit;
@@ -14,6 +15,7 @@ namespace ONEVO.Tests.Unit.Features.AgentGateway;
 public class CompleteEnrollmentCommandHandlerTests
 {
     private readonly Mock<IAgentGatewayRepository> _repo = new();
+    private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<IJwtTokenService> _jwt = new();
     private readonly Mock<IUnitOfWork> _uow = new();
 
@@ -21,7 +23,7 @@ public class CompleteEnrollmentCommandHandlerTests
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(s))).ToLowerInvariant();
 
     private CompleteEnrollmentCommandHandler CreateHandler() =>
-        new(_repo.Object, _jwt.Object, _uow.Object);
+        new(_repo.Object, _users.Object, _jwt.Object, _uow.Object);
 
     [Fact]
     public async Task Handle_ValidCode_ReturnsDeviceToken()
