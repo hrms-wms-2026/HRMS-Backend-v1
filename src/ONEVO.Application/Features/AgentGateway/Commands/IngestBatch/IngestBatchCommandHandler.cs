@@ -23,17 +23,13 @@ public class IngestBatchCommandHandler : IRequestHandler<IngestBatchCommand, Res
         if (agent is null || agent.Status == "revoked")
             return Result.Failure("Agent not found or revoked.", 401);
 
-        if (agent.EmployeeId is null)
-            return Result.Failure("Agent has no linked employee.", 422);
-
         await _repo.AddRawActivityBatchAsync(new ActivityRawBuffer
         {
             Id = Guid.NewGuid(),
             TenantId = request.TenantId,
-            AgentId = request.AgentId,
-            EmployeeId = agent.EmployeeId.Value,
+            AgentDeviceId = request.AgentId,
             ReceivedAt = DateTimeOffset.UtcNow,
-            EventsJson = request.EventsJson
+            PayloadJson = request.PayloadJson
         }, cancellationToken);
 
         await _uow.SaveChangesAsync(cancellationToken);

@@ -10,9 +10,7 @@ public class ActivityRawBufferConfiguration : IEntityTypeConfiguration<ActivityR
     {
         builder.ToTable("activity_raw_buffer");
         builder.HasKey(b => b.Id);
-
-        builder.Property(b => b.EventsJson).HasColumnType("jsonb").IsRequired();
-
-        builder.HasIndex(b => new { b.TenantId, b.AgentId, b.ReceivedAt });
+        builder.Property(b => b.PayloadJson).HasColumnType("jsonb").IsRequired();
+        builder.HasIndex(b => new { b.TenantId, b.AgentDeviceId, b.ReceivedAt });
     }
 }

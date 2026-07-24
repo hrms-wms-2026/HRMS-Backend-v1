@@ -208,8 +208,8 @@ public class AgentGatewayController : ControllerBase
         var tenantId = GetTenantId();
         if (tenantId == Guid.Empty) return Unauthorized();
 
-        var eventsJson = JsonSerializer.Serialize(request.Events);
-        var result = await _mediator.Send(new IngestBatchCommand(agentId, tenantId, eventsJson), ct);
+        var payloadJson = JsonSerializer.Serialize(request);
+        var result = await _mediator.Send(new IngestBatchCommand(agentId, tenantId, payloadJson), ct);
 
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
@@ -257,5 +257,9 @@ public class AgentGatewayController : ControllerBase
         int BufferCount,
         string MonitoringState);
 
-    public record IngestBatchRequest(JsonElement[] Events);
+    public record IngestBatchRequest(
+        Guid DeviceId,
+        Guid EmployeeId,
+        DateTimeOffset Timestamp,
+        JsonElement[] Batch);
 }
