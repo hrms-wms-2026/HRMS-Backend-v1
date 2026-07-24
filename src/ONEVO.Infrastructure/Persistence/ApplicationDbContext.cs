@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.Configuration.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities;
@@ -12,6 +13,7 @@ using ONEVO.Domain.Features.SharedPlatform.TenantIntegrations.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
+using ONEVO.Domain.Features.IdentityVerification.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.AgentGateway.Entities;
 using ONEVO.Domain.Features.ActivityMonitoring.Entities;
@@ -138,6 +140,12 @@ public class ApplicationDbContext : DbContext
 
     // CoreHR
     public DbSet<Employee> Employees => Set<Employee>();
+
+    // Configuration
+    public DbSet<EmployeeWorkLocationSettings> EmployeeWorkLocationSettings => Set<EmployeeWorkLocationSettings>();
+
+    // Identity Verification
+    public DbSet<VerificationReferencePhoto> VerificationReferencePhotos => Set<VerificationReferencePhoto>();
 
     // Lookups
     public DbSet<EmploymentType> EmploymentTypes => Set<EmploymentType>();
