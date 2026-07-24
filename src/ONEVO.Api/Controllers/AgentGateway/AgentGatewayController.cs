@@ -208,7 +208,8 @@ public class AgentGatewayController : ControllerBase
         var tenantId = GetTenantId();
         if (tenantId == Guid.Empty) return Unauthorized();
 
-        var payloadJson = JsonSerializer.Serialize(request);
+        var payloadJson = JsonSerializer.Serialize(request,
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
         var result = await _mediator.Send(new IngestBatchCommand(agentId, tenantId, payloadJson), ct);
 
         if (!result.IsSuccess)

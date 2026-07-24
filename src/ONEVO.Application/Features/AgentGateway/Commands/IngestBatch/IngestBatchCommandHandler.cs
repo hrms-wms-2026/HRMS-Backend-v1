@@ -19,7 +19,7 @@ public class IngestBatchCommandHandler : IRequestHandler<IngestBatchCommand, Res
 
     public async Task<Result> Handle(IngestBatchCommand request, CancellationToken cancellationToken)
     {
-        var agent = await _repo.GetAgentByIdAsync(request.AgentId, cancellationToken);
+        var agent = await _repo.GetAgentByIdAsync(request.AgentDeviceId, cancellationToken);
         if (agent is null || agent.Status == "revoked")
             return Result.Failure("Agent not found or revoked.", 401);
 
@@ -27,7 +27,7 @@ public class IngestBatchCommandHandler : IRequestHandler<IngestBatchCommand, Res
         {
             Id = Guid.NewGuid(),
             TenantId = request.TenantId,
-            AgentDeviceId = request.AgentId,
+            AgentDeviceId = request.AgentDeviceId,
             ReceivedAt = DateTimeOffset.UtcNow,
             PayloadJson = request.PayloadJson
         }, cancellationToken);
