@@ -61,6 +61,8 @@ using ONEVO.Infrastructure.Services.SystemConfig;
 using ONEVO.Application.Features.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.ActivityMonitoring;
 using ONEVO.Infrastructure.Services.ActivityMonitoring;
+using ONEVO.Application.Features.Users.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.Users;
 
 namespace ONEVO.Infrastructure;
 
@@ -251,6 +253,9 @@ public static class DependencyInjection
         services.AddHostedService<ProcessRawBufferJob>();
         services.AddHostedService<AggregateDailySummaryJob>();
         services.AddHostedService<PurgeRawBufferJob>();
+
+        // Users
+        services.AddScoped<IUserProfileRepository, EfUserProfileRepository>();
 
         // -- Platform options binding ------------------------------------------
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
