@@ -11,6 +11,7 @@ using ONEVO.Application.Features.AgentGateway.Commands.IngestBatch;
 using ONEVO.Application.Features.AgentGateway.Commands.StartEnrollment;
 using ONEVO.Application.Features.AgentGateway.Commands.UpdateHeartbeat;
 using ONEVO.Application.Features.AgentGateway.Queries.GetAgentPolicy;
+using ONEVO.Application.Features.AgentGateway.Queries.GetDeviceChangeStatus;
 
 namespace ONEVO.Api.Controllers.AgentGateway;
 
@@ -114,7 +115,7 @@ public class AgentGatewayController : ControllerBase
     /// Resume/refresh employee-device session on an enrolled agent.
     /// </summary>
     [HttpPost("login")]
-    [Authorize(Policy = "AgentPolicy")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
     public async Task<IActionResult> Login(CancellationToken ct)
     {
         var agentId = GetAgentId();
@@ -136,7 +137,7 @@ public class AgentGatewayController : ControllerBase
     /// End active employee-device session.
     /// </summary>
     [HttpPost("logout")]
-    [Authorize(Policy = "AgentPolicy")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
         var deviceId = User.FindFirst("sub")?.Value ?? string.Empty;
@@ -150,7 +151,7 @@ public class AgentGatewayController : ControllerBase
     /// Agent heartbeat every 60 s. Persists health snapshot and touches last_heartbeat_at.
     /// </summary>
     [HttpPost("heartbeat")]
-    [Authorize(Policy = "AgentPolicy")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
     public async Task<IActionResult> Heartbeat([FromBody] HeartbeatRequest request, CancellationToken ct)
     {
         var agentId = GetAgentId();
@@ -179,7 +180,7 @@ public class AgentGatewayController : ControllerBase
     /// Returns the monitoring policy for the calling agent.
     /// </summary>
     [HttpGet("policy")]
-    [Authorize(Policy = "AgentPolicy")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
     public async Task<IActionResult> GetPolicy(CancellationToken ct)
     {
         var agentId = GetAgentId();
@@ -201,7 +202,7 @@ public class AgentGatewayController : ControllerBase
     /// Returns 202 immediately.
     /// </summary>
     [HttpPost("ingest")]
-    [Authorize(Policy = "AgentPolicy")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
     public async Task<IActionResult> Ingest([FromBody] IngestBatchRequest request, CancellationToken ct)
     {
         var agentId = GetAgentId();
@@ -218,6 +219,25 @@ public class AgentGatewayController : ControllerBase
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
         return Accepted();
+    }
+
+    /// <summary>
+    /// Candidate-safe approval status polling. The calling agent id is always
+    /// resolved from its signed JWT and is never accepted from request input.
+    /// </summary>
+    [HttpGet("device-change/status")]
+    [Authorize(Policy = "AgentPolicy")]
+    public async Task<IActionResult> GetDeviceChangeStatus(CancellationToken ct)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty)
+            return Unauthorized();
+
+        var result = await _mediator.Send(new GetDeviceChangeStatusQuery(agentId), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

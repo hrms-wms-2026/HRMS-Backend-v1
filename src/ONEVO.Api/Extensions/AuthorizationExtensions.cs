@@ -1,9 +1,14 @@
+using Microsoft.AspNetCore.Authorization;
+using ONEVO.Api.Authorization;
+
 namespace ONEVO.Api.Extensions;
 
 internal static class AuthorizationExtensions
 {
     internal static IServiceCollection AddApiAuthorization(this IServiceCollection services)
     {
+        services.AddScoped<IAuthorizationHandler, ActiveAgentAuthorizationHandler>();
+
         services.AddAuthorization(options =>
         {
             options.AddPolicy("TenantPolicy", policy =>
@@ -23,6 +28,12 @@ internal static class AuthorizationExtensions
                 policy.AddAuthenticationSchemes("AgentScheme")
                       .RequireAuthenticatedUser()
                       .RequireClaim("type", "agent"));
+
+            options.AddPolicy("ActiveAgentPolicy", policy =>
+                policy.AddAuthenticationSchemes("AgentScheme")
+                      .RequireAuthenticatedUser()
+                      .RequireClaim("type", "agent")
+                      .AddRequirements(new ActiveAgentRequirement()));
         });
 
         return services;
