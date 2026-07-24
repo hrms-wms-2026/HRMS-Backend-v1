@@ -249,6 +249,8 @@ public static class DependencyInjection
         services.AddScoped<IActivityMonitoringRepository>(
             sp => sp.GetRequiredService<EfActivityMonitoringRepository>());
         services.AddHostedService<ProcessRawBufferJob>();
+        services.AddHostedService<AggregateDailySummaryJob>();
+        services.AddHostedService<PurgeRawBufferJob>();
 
         // -- Platform options binding ------------------------------------------
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
