@@ -24,9 +24,10 @@ public sealed class UserProfileArchitectureTests
 
         up!.Invoke(migration, [builder]);
 
-        var sql = string.Join(
-            Environment.NewLine,
-            builder.Operations.OfType<SqlOperation>().Select(operation => operation.Sql));
+        var policyOperations = builder.Operations
+            .OfType<SqlOperation>()
+            .Select(operation => operation.Sql)
+            .ToArray();
 
         foreach (var table in new[]
                  {
@@ -34,9 +35,20 @@ public sealed class UserProfileArchitectureTests
                      "verification_reference_photos"
                  })
         {
+            var sql = policyOperations.Single(operation =>
+                operation.Contains($"CREATE POLICY tenant_isolation ON {table}", StringComparison.Ordinal));
+            const string standardBypass =
+                "current_setting('app.tenant_context_mode', true) IN ('admin', 'system')";
+            const string tenantComparison =
+                "tenant_id::text = current_setting('app.current_tenant_id', true)";
+
             Assert.Contains($"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY", sql, StringComparison.Ordinal);
             Assert.Contains($"ALTER TABLE {table} FORCE ROW LEVEL SECURITY", sql, StringComparison.Ordinal);
             Assert.Contains($"CREATE POLICY tenant_isolation ON {table}", sql, StringComparison.Ordinal);
+            Assert.Contains("USING (", sql, StringComparison.Ordinal);
+            Assert.Contains("WITH CHECK (", sql, StringComparison.Ordinal);
+            Assert.Equal(2, CountOccurrences(sql, standardBypass));
+            Assert.Equal(2, CountOccurrences(sql, tenantComparison));
         }
     }
 
@@ -80,6 +92,9 @@ public sealed class UserProfileArchitectureTests
         Assert.True(index.IsUnique);
         Assert.Equal("is_active = true", index.Filter);
     }
+
+    private static int CountOccurrences(string value, string fragment) =>
+        value.Split(fragment, StringSplitOptions.None).Length - 1;
 
     private static ApplicationDbContext CreateModelInspectionContext()
     {

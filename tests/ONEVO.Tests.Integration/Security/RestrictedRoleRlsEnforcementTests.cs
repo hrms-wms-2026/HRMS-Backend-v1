@@ -287,11 +287,14 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
     [Fact]
     public async Task UserProfileSettingsAndReferencePhotos_AreIsolatedByTenant_ThroughRestrictedRole()
     {
+        var settingsId = Guid.NewGuid();
+        var photoId = Guid.NewGuid();
+
         await using (var setupDb = CreateContext(_tenantAId, "rls-test-tenant-a", useRestrictedRole: true))
         {
             setupDb.EmployeeWorkLocationSettings.Add(new EmployeeWorkLocationSettings
             {
-                Id = Guid.NewGuid(),
+                Id = settingsId,
                 TenantId = _tenantAId,
                 EmployeeId = Guid.NewGuid(),
                 WorkMode = "hybrid",
@@ -299,7 +302,7 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
             });
             setupDb.VerificationReferencePhotos.Add(new VerificationReferencePhoto
             {
-                Id = Guid.NewGuid(),
+                Id = photoId,
                 TenantId = _tenantAId,
                 EmployeeId = Guid.NewGuid(),
                 PhotoFileId = Guid.NewGuid(),
@@ -310,12 +313,36 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
         }
 
         await using var dbA = CreateContext(_tenantAId, "rls-test-tenant-a", useRestrictedRole: true);
-        (await dbA.EmployeeWorkLocationSettings.ToListAsync()).Should().ContainSingle();
-        (await dbA.VerificationReferencePhotos.ToListAsync()).Should().ContainSingle();
+        (await dbA.EmployeeWorkLocationSettings.IgnoreQueryFilters().ToListAsync())
+            .Should().ContainSingle(settings => settings.Id == settingsId);
+        (await dbA.VerificationReferencePhotos.IgnoreQueryFilters().ToListAsync())
+            .Should().ContainSingle(photo => photo.Id == photoId);
 
         await using var dbB = CreateContext(_tenantBId, "rls-test-tenant-b", useRestrictedRole: true);
-        (await dbB.EmployeeWorkLocationSettings.ToListAsync()).Should().BeEmpty();
-        (await dbB.VerificationReferencePhotos.ToListAsync()).Should().BeEmpty();
+        (await dbB.EmployeeWorkLocationSettings.IgnoreQueryFilters().ToListAsync()).Should().BeEmpty();
+        (await dbB.VerificationReferencePhotos.IgnoreQueryFilters().ToListAsync()).Should().BeEmpty();
+
+        await using (var systemDb = CreateContext(useRestrictedRole: true))
+        {
+            (await systemDb.EmployeeWorkLocationSettings.IgnoreQueryFilters().ToListAsync())
+                .Should().ContainSingle(settings => settings.Id == settingsId);
+            (await systemDb.VerificationReferencePhotos.IgnoreQueryFilters().ToListAsync())
+                .Should().ContainSingle(photo => photo.Id == photoId);
+        }
+
+        dbB.EmployeeWorkLocationSettings.Add(new EmployeeWorkLocationSettings
+        {
+            Id = Guid.NewGuid(),
+            TenantId = _tenantAId,
+            EmployeeId = Guid.NewGuid(),
+            WorkMode = "hybrid",
+            SetById = _userAId
+        });
+
+        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => dbB.SaveChangesAsync());
+        var postgresException = Assert.IsType<PostgresException>(exception.InnerException);
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, postgresException.SqlState);
+        Assert.Contains("row-level security policy", postgresException.MessageText, StringComparison.OrdinalIgnoreCase);
     }
 
     private static Tenant NewTenant(string name, string slug) => new()

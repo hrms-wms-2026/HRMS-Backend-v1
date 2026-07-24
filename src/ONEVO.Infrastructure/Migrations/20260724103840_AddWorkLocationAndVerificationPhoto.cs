@@ -79,14 +79,14 @@ namespace ONEVO.Infrastructure.Migrations
                     DROP POLICY IF EXISTS tenant_isolation ON {table};
                     CREATE POLICY tenant_isolation ON {table}
                         USING (
-                            current_setting('app.tenant_context_mode', true) = 'admin'
+                            current_setting('app.tenant_context_mode', true) IN ('admin', 'system')
                             OR (
                                 current_setting('app.tenant_context_mode', true) = 'tenant'
                                 AND tenant_id::text = current_setting('app.current_tenant_id', true)
                             )
                         )
                         WITH CHECK (
-                            current_setting('app.tenant_context_mode', true) = 'admin'
+                            current_setting('app.tenant_context_mode', true) IN ('admin', 'system')
                             OR (
                                 current_setting('app.tenant_context_mode', true) = 'tenant'
                                 AND tenant_id::text = current_setting('app.current_tenant_id', true)
