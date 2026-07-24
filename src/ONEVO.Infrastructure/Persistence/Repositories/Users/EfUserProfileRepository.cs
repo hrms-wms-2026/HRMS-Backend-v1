@@ -22,22 +22,26 @@ public sealed class EfUserProfileRepository : IUserProfileRepository
 
     public async Task<Employee?> GetEmployeeByUserIdAsync(Guid userId, CancellationToken ct)
         => await _db.Employees
+            .AsNoTracking()
             .Where(e => e.TenantId == _tenantContext.TenantId && e.UserId == userId && !e.IsDeleted)
             .FirstOrDefaultAsync(ct);
 
     public async Task<IReadOnlyList<RegisteredAgent>> GetAgentsByEmployeeIdAsync(Guid employeeId, CancellationToken ct)
         => await _db.RegisteredAgents
+            .AsNoTracking()
             .Where(a => a.TenantId == _tenantContext.TenantId && a.EmployeeId == employeeId && a.Status != "revoked")
             .OrderByDescending(a => a.LastHeartbeatAt)
             .ToListAsync(ct);
 
     public async Task<EmployeeWorkLocationSettings?> GetWorkLocationSettingsAsync(Guid employeeId, CancellationToken ct)
         => await _db.EmployeeWorkLocationSettings
+            .AsNoTracking()
             .Where(s => s.TenantId == _tenantContext.TenantId && s.EmployeeId == employeeId)
             .FirstOrDefaultAsync(ct);
 
     public async Task<VerificationReferencePhoto?> GetActiveReferencePhotoAsync(Guid employeeId, CancellationToken ct)
         => await _db.VerificationReferencePhotos
+            .AsNoTracking()
             .Where(v => v.TenantId == _tenantContext.TenantId && v.EmployeeId == employeeId && v.IsActive)
-            .FirstOrDefaultAsync(ct);
+            .SingleOrDefaultAsync(ct);
 }

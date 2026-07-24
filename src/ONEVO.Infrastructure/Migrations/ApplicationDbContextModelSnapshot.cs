@@ -2692,8 +2692,10 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_verification_reference_photos");
 
-                    b.HasIndex("TenantId", "EmployeeId", "IsActive")
-                        .HasDatabaseName("ix_verification_reference_photos_tenant_id_employee_id_is_acti");
+                    b.HasIndex("TenantId", "EmployeeId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_verification_reference_photos_tenant_id_employee_id")
+                        .HasFilter("is_active = true");
 
                     b.ToTable("verification_reference_photos", (string)null);
                 });

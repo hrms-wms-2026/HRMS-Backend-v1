@@ -13,6 +13,8 @@ public class VerificationReferencePhotoConfiguration
         builder.HasKey(v => v.Id);
         builder.Property(v => v.Source).HasMaxLength(30).IsRequired();
         builder.Property(v => v.Status).HasMaxLength(20).IsRequired();
-        builder.HasIndex(v => new { v.TenantId, v.EmployeeId, v.IsActive });
+        builder.HasIndex(v => new { v.TenantId, v.EmployeeId })
+            .HasFilter("is_active = true")
+            .IsUnique();
     }
 }

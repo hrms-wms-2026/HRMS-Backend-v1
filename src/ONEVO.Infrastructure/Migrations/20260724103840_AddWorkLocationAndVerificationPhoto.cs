@@ -8,6 +8,12 @@ namespace ONEVO.Infrastructure.Migrations
     /// <inheritdoc />
     public partial class AddWorkLocationAndVerificationPhoto : Migration
     {
+        private static readonly string[] TenantTables =
+        [
+            "employee_work_location_settings",
+            "verification_reference_photos"
+        ];
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -59,9 +65,35 @@ namespace ONEVO.Infrastructure.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "ix_verification_reference_photos_tenant_id_employee_id_is_acti",
+                name: "ix_verification_reference_photos_tenant_id_employee_id",
                 table: "verification_reference_photos",
-                columns: new[] { "tenant_id", "employee_id", "is_active" });
+                columns: new[] { "tenant_id", "employee_id" },
+                unique: true,
+                filter: "is_active = true");
+
+            foreach (var table in TenantTables)
+            {
+                migrationBuilder.Sql($@"
+                    ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE {table} FORCE ROW LEVEL SECURITY;
+                    DROP POLICY IF EXISTS tenant_isolation ON {table};
+                    CREATE POLICY tenant_isolation ON {table}
+                        USING (
+                            current_setting('app.tenant_context_mode', true) = 'admin'
+                            OR (
+                                current_setting('app.tenant_context_mode', true) = 'tenant'
+                                AND tenant_id::text = current_setting('app.current_tenant_id', true)
+                            )
+                        )
+                        WITH CHECK (
+                            current_setting('app.tenant_context_mode', true) = 'admin'
+                            OR (
+                                current_setting('app.tenant_context_mode', true) = 'tenant'
+                                AND tenant_id::text = current_setting('app.current_tenant_id', true)
+                            )
+                        );
+                ");
+            }
         }
 
         /// <inheritdoc />

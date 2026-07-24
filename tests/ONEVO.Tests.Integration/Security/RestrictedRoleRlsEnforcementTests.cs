@@ -2,6 +2,8 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.Configuration.Entities;
+using ONEVO.Domain.Features.IdentityVerification.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
@@ -14,10 +16,11 @@ using Testcontainers.PostgreSql;
 namespace ONEVO.Tests.Integration.Security;
 
 /// <summary>
-/// Proves PostgreSQL Row-Level Security actually isolates tenants for the six
-/// tables named in the tenant isolation hardening task (users, roles,
+/// Proves PostgreSQL Row-Level Security actually isolates tenants for the
+/// tables covered by focused tenant isolation hardening tasks (users, roles,
 /// file_records, file_upload_reservations, tenant_storage_stats,
-/// mfa_challenges) when queried through a restricted, non-superuser,
+/// mfa_challenges, employee_work_location_settings, and
+/// verification_reference_photos) when queried through a restricted, non-superuser,
 /// non-BYPASSRLS role — the only connection shape under which
 /// FORCE ROW LEVEL SECURITY has any effect. Migrations run through the
 /// Testcontainers default superuser role (same as the rest of this
@@ -109,7 +112,8 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
             grantTables.CommandText = $@"
                 GRANT SELECT, INSERT, UPDATE, DELETE ON
                     users, roles, file_records, file_upload_reservations,
-                    tenant_storage_stats, mfa_challenges
+                    tenant_storage_stats, mfa_challenges,
+                    employee_work_location_settings, verification_reference_photos
                     TO {RestrictedRoleName};
                 GRANT SELECT ON tenants TO {RestrictedRoleName};
             ";
@@ -278,6 +282,40 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
         await using var dbB = CreateContext(_tenantBId, "rls-test-tenant-b", useRestrictedRole: true);
         (await dbB.FileRecords.ToListAsync()).Should().BeEmpty();
         (await dbB.FileUploadReservations.ToListAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task UserProfileSettingsAndReferencePhotos_AreIsolatedByTenant_ThroughRestrictedRole()
+    {
+        await using (var setupDb = CreateContext(_tenantAId, "rls-test-tenant-a", useRestrictedRole: true))
+        {
+            setupDb.EmployeeWorkLocationSettings.Add(new EmployeeWorkLocationSettings
+            {
+                Id = Guid.NewGuid(),
+                TenantId = _tenantAId,
+                EmployeeId = Guid.NewGuid(),
+                WorkMode = "hybrid",
+                SetById = _userAId
+            });
+            setupDb.VerificationReferencePhotos.Add(new VerificationReferencePhoto
+            {
+                Id = Guid.NewGuid(),
+                TenantId = _tenantAId,
+                EmployeeId = Guid.NewGuid(),
+                PhotoFileId = Guid.NewGuid(),
+                Status = "approved",
+                IsActive = true
+            });
+            await setupDb.SaveChangesAsync();
+        }
+
+        await using var dbA = CreateContext(_tenantAId, "rls-test-tenant-a", useRestrictedRole: true);
+        (await dbA.EmployeeWorkLocationSettings.ToListAsync()).Should().ContainSingle();
+        (await dbA.VerificationReferencePhotos.ToListAsync()).Should().ContainSingle();
+
+        await using var dbB = CreateContext(_tenantBId, "rls-test-tenant-b", useRestrictedRole: true);
+        (await dbB.EmployeeWorkLocationSettings.ToListAsync()).Should().BeEmpty();
+        (await dbB.VerificationReferencePhotos.ToListAsync()).Should().BeEmpty();
     }
 
     private static Tenant NewTenant(string name, string slug) => new()
