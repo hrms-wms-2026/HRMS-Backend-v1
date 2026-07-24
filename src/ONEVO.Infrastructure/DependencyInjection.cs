@@ -58,6 +58,8 @@ using ONEVO.Infrastructure.Persistence.Repositories.AgentGateway;
 using ONEVO.Infrastructure.Services.AgentGateway;
 using ONEVO.Infrastructure.Services.SharedPlatform;
 using ONEVO.Infrastructure.Services.SystemConfig;
+using ONEVO.Application.Features.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.ActivityMonitoring;
 
 namespace ONEVO.Infrastructure;
 
@@ -240,6 +242,11 @@ public static class DependencyInjection
         services.AddScoped<EfAgentGatewayRepository>();
         services.AddScoped<IAgentGatewayRepository>(sp => sp.GetRequiredService<EfAgentGatewayRepository>());
         services.AddHostedService<DetectOfflineAgentsJob>();
+
+        // Activity Monitoring
+        services.AddScoped<EfActivityMonitoringRepository>();
+        services.AddScoped<IActivityMonitoringRepository>(
+            sp => sp.GetRequiredService<EfActivityMonitoringRepository>());
 
         // -- Platform options binding ------------------------------------------
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
