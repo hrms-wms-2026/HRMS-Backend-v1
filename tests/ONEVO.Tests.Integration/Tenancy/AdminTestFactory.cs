@@ -3,19 +3,14 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using ONEVO.Infrastructure.ExternalServices.Messaging;
-using ONEVO.Infrastructure.Identity.CurrentUser;
-using ONEVO.Infrastructure.Identity.Tenancy;
-using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
-using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Tests.Integration.Support;
 
 namespace ONEVO.Tests.Integration.Tenancy;
 
 /// <summary>
 /// WebApplicationFactory variant used by admin/v1 integration tests. Wires the
-/// app to a Testcontainers Postgres instance 
+/// app to a Testcontainers Postgres instance
 /// </summary>
 public class AdminTestFactory : WebApplicationFactory<Program>
 {
@@ -31,29 +26,21 @@ public class AdminTestFactory : WebApplicationFactory<Program>
     /// Migrates the database schema with a standalone context BEFORE the test host starts.
     /// WebApplicationFactory.CreateClient() starts hosted services (such as PermissionSeeder)
     /// synchronously during host startup, which query database tables that must already exist.
+    /// Callers must also create an IntegrationTestEnvironmentScope before constructing the factory -
+    /// see IntegrationDatabaseBootstrap/IntegrationTestEnvironmentScope for why.
     /// </summary>
-    public static async Task MigrateDatabaseAsync(string connectionString)
-    {
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(connectionString);
-
-        var migrationOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connectionString)
-            .UseSnakeCaseNamingConvention()
-            .Options;
-        var dateTimeProvider = new SystemDateTimeProvider();
-        await using var migrationContext = new ApplicationDbContext(
-            migrationOptions,
-            new AuditableEntityInterceptor(new AnonymousCurrentUser(), dateTimeProvider),
-            new SoftDeleteInterceptor(dateTimeProvider),
-            new DomainEventDispatchInterceptor(new NoOpPublisher()),
-            new TenantContextAccessor());
-        await migrationContext.Database.MigrateAsync();
-    }
+    public static Task MigrateDatabaseAsync(string connectionString) =>
+        IntegrationDatabaseBootstrap.InitializeAsync(connectionString);
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Test");
 
+        // These values only reach post-Build() config consumers. Program.cs's pre-Build()
+        // ConfigurationStartupValidator/DatabaseConnectionStartupValidator run before
+        // ConfigureWebHost is ever applied, so callers must put the same values in process
+        // environment variables via IntegrationTestEnvironmentScope before constructing this
+        // factory - this callback cannot supply them in time.
         builder.ConfigureAppConfiguration((ctx, config) =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>

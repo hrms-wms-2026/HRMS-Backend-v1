@@ -20,6 +20,12 @@ public sealed class BaseDomainLoginTestFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Test");
 
+        // These values only reach post-Build() config consumers (e.g. the /health/ready postgres
+        // check reading builder.Configuration.GetConnectionString). Program.cs's pre-Build()
+        // ConfigurationStartupValidator/DatabaseConnectionStartupValidator run before
+        // ConfigureWebHost is ever applied, so BaseDomainLoginIntegrationTests.InitializeAsync must
+        // put the same values in process environment variables via IntegrationTestEnvironmentScope
+        // before this factory is constructed - this callback cannot supply them in time.
         builder.ConfigureAppConfiguration((ctx, config) =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>

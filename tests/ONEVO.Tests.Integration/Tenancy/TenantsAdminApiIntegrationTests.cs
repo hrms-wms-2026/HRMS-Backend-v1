@@ -8,12 +8,13 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Tenancy;
 
-[Collection("Tenancy")]
+[Collection(WebApplicationFactoryCollection.Name)]
 public class TenantsAdminApiIntegrationTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
@@ -23,6 +24,7 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
         .WithPassword("test")
         .Build();
 
+    private IntegrationTestEnvironmentScope _environmentScope = null!;
     private AdminTestFactory _factory = null!;
     private HttpClient _client = null!;
     private Guid _planId;
@@ -30,8 +32,10 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
-        await AdminTestFactory.MigrateDatabaseAsync(_postgres.GetConnectionString());
-        _factory = new AdminTestFactory(_postgres.GetConnectionString());
+        var connectionString = _postgres.GetConnectionString();
+        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
+        _factory = new AdminTestFactory(connectionString);
 
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -64,6 +68,7 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
         _client.Dispose();
         _factory.Dispose();
         await _postgres.DisposeAsync();
+        await _environmentScope.DisposeAsync();
     }
 
     // -- Helpers ----------------------------------------------------------------

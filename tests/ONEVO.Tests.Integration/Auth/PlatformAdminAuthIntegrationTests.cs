@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Helpers;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -19,6 +20,7 @@ namespace ONEVO.Tests.Integration.Auth;
 /// session-bound CSRF, database-resolved permissions on /admin/v1/tenants,
 /// and platform_auth_events on success/failure/logout.
 /// </summary>
+[Collection(WebApplicationFactoryCollection.Name)]
 public class PlatformAdminAuthIntegrationTests : IAsyncLifetime
 {
     private const string AdminEmail = "test_admin@onevo.dev";
@@ -31,14 +33,17 @@ public class PlatformAdminAuthIntegrationTests : IAsyncLifetime
         .WithPassword("test")
         .Build();
 
+    private IntegrationTestEnvironmentScope _environmentScope = null!;
     private AdminTestFactory _factory = null!;
     private HttpClient _client = null!;
 
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
-        await AdminTestFactory.MigrateDatabaseAsync(_postgres.GetConnectionString());
-        _factory = new AdminTestFactory(_postgres.GetConnectionString());
+        var connectionString = _postgres.GetConnectionString();
+        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
+        _factory = new AdminTestFactory(connectionString);
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost"),
@@ -51,6 +56,7 @@ public class PlatformAdminAuthIntegrationTests : IAsyncLifetime
         _client.Dispose();
         _factory.Dispose();
         await _postgres.DisposeAsync();
+        await _environmentScope.DisposeAsync();
     }
 
     private ApplicationDbContext GetDb(IServiceScope scope) =>

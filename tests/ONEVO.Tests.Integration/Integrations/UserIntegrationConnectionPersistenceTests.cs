@@ -6,11 +6,13 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Commands.UpsertOwnUserIntegrationConnection;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Repositories.SharedPlatform;
+using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
 using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Integrations;
 
+[Collection(WebApplicationFactoryCollection.Name)]
 public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
@@ -19,14 +21,17 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
         .WithPassword("test")
         .Build();
 
+    private IntegrationTestEnvironmentScope _environmentScope = null!;
     private AdminTestFactory _factory = null!;
     private HttpClient _client = null!;
 
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
-        await AdminTestFactory.MigrateDatabaseAsync(_postgres.GetConnectionString());
-        _factory = new AdminTestFactory(_postgres.GetConnectionString());
+        var connectionString = _postgres.GetConnectionString();
+        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
+        _factory = new AdminTestFactory(connectionString);
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost")
@@ -38,6 +43,7 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
         _client.Dispose();
         _factory.Dispose();
         await _postgres.DisposeAsync();
+        await _environmentScope.DisposeAsync();
     }
 
     [Fact]

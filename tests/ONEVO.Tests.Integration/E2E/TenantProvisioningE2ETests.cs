@@ -9,6 +9,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -25,7 +26,7 @@ namespace ONEVO.Tests.Integration.E2E;
 /// run against a local server (no Docker needed); otherwise a Testcontainers
 /// instance is started.
 /// </summary>
-[Collection("E2E")]
+[Collection(WebApplicationFactoryCollection.Name)]
 public class TenantProvisioningE2ETests : IAsyncLifetime
 {
     private const string Slug = "demo-e2e";
@@ -40,6 +41,7 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
     private readonly CapturingEmailService _email = new();
 
     private PostgreSqlContainer? _postgres;
+    private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
     private HttpClient _client = null!;
     private string _adminCookie = null!;
@@ -61,6 +63,7 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         }
 
         await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new E2ETestFactory(connectionString, _email);
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -82,6 +85,7 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         _factory.Dispose();
         if (_postgres is not null)
             await _postgres.DisposeAsync();
+        await _environmentScope.DisposeAsync();
     }
 
     [Fact]
