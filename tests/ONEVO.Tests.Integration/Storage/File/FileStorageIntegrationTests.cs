@@ -5,11 +5,14 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.CurrentUser;
+using ONEVO.Infrastructure.Identity.Tenancy;
+using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Storage.File;
 using ONEVO.Infrastructure.Persistence.Repositories.Storage.Quota;
+using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Storage.File;
@@ -67,6 +70,7 @@ public sealed class FileStorageIntegrationTests : IAsyncLifetime
     {
         await _postgres.StartAsync();
         _connectionString = _postgres.GetConnectionString();
+        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
 
         await using var db = CreateContext();
         await db.Database.MigrateAsync();

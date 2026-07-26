@@ -6,7 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Infrastructure;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.Mfa;
 using ONEVO.Infrastructure.Migrations;
 
 namespace ONEVO.Tests.Architecture;
@@ -57,6 +57,7 @@ public sealed class MfaChallengeStorageArchitectureTests
             "tenant_id",
             "user_id",
             "challenge_hash",
+            "origin",
             "failed_attempt_count",
             "expires_at",
             "consumed_at",
@@ -97,6 +98,70 @@ public sealed class MfaChallengeStorageArchitectureTests
             typeof(PostgresMfaChallengeStore),
             "the normal runtime MFA challenge store must be the PostgreSQL-backed mfa_challenges implementation");
         descriptor.Lifetime.Should().Be(ServiceLifetime.Scoped);
+    }
+
+    [Theory]
+    [InlineData("MemoryMfaChallengeStore")]
+    [InlineData("HttpContextTenantContext")]
+    [InlineData("MfaChallengeStoreStartupGuard")]
+    [InlineData("AllowProcessLocalChallengeStore")]
+    public void ProductionSource_ContainsNoRemovedIdentityFallback(string removedTypeOrOption)
+    {
+        var offenders = ScanProductionSourceFor(removedTypeOrOption);
+
+        offenders.Should().BeEmpty(
+            $"{removedTypeOrOption} was removed and must not return to production source");
+    }
+
+    [Fact]
+    public void InfrastructureIdentityFolder_ExistsAndContainsNoLooseSourceFiles()
+    {
+        var identityDirectory = Path.Combine(
+            FindProductionSourceRoot(),
+            "ONEVO.Infrastructure",
+            "Identity");
+
+        Directory.Exists(identityDirectory).Should().BeTrue(
+            "Infrastructure/Identity is the canonical parent for identity implementations");
+        Directory.GetFiles(identityDirectory, "*.cs", SearchOption.TopDirectoryOnly)
+            .Should()
+            .BeEmpty("identity implementations must be organized into responsibility subfolders");
+    }
+
+    [Theory]
+    [InlineData("Auth")]
+    [InlineData("Tenancy")]
+    [InlineData("Time")]
+    public void Infrastructure_ContainsNoUnapprovedTopLevelIdentityOwnershipFolder(
+        string folderName)
+    {
+        var directory = Path.Combine(
+            FindProductionSourceRoot(),
+            "ONEVO.Infrastructure",
+            folderName);
+
+        Directory.Exists(directory).Should().BeFalse(
+            $"{folderName} is owned by Infrastructure/Identity for this cleanup");
+    }
+
+    [Fact]
+    public void InfrastructureIdentityTenantContexts_ContainNoNotImplementedException()
+    {
+        var tenantContextDirectory = Path.Combine(
+            FindProductionSourceRoot(),
+            "ONEVO.Infrastructure",
+            "Identity",
+            "Tenancy");
+        var offenders = Directory.EnumerateFiles(
+                tenantContextDirectory,
+                "*.cs",
+                SearchOption.AllDirectories)
+            .Where(path => File.ReadAllText(path).Contains(
+                "NotImplementedException",
+                StringComparison.Ordinal))
+            .ToList();
+
+        offenders.Should().BeEmpty();
     }
 
     [Fact]

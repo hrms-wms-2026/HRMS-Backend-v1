@@ -2,19 +2,17 @@ namespace ONEVO.Infrastructure.ExternalServices.Email;
 
 /// <summary>
 /// Bound from the Email:* section of configuration. NON-SECRET settings only.
-/// Provider API keys (SendGrid/Resend) are never read from configuration — they are
+/// Provider API keys (SendGrid/Resend) are never read from configuration - they are
 /// resolved at send time from platform_service_keys via IPlatformServiceKeyResolver.
+/// There is no provider selector here: WHICH provider is active is a runtime fact
+/// derived from active platform_providers rows joined to matching active
+/// platform_service_keys credentials, not a config value. See
+/// PlatformKeyTransactionalEmailSender + IPlatformServiceKeyResolver.
+/// ResolveActiveTransactionalEmailProviderAsync.
 /// </summary>
 public class EmailOptions
 {
     public const string SectionName = "Email";
-
-    /// <summary>
-    /// Non-secret provider selector: "sendgrid" or "resend".
-    /// Empty defaults to "sendgrid". This selects WHICH platform service key row is
-    /// resolved; it never carries credential material itself.
-    /// </summary>
-    public string Provider { get; set; } = string.Empty;
 
     public string FromAddress { get; set; } = string.Empty;
     public string FromName { get; set; } = "ONEVO";

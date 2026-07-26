@@ -5,6 +5,10 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace ONEVO.Api.Middleware;
 
+/// <summary>
+/// Phase 1 process-local login limiter. This is valid only while deployment is restricted to one
+/// API instance; it must be replaced by an approved distributed limiter before horizontal scale.
+/// </summary>
 public sealed class AuthRateLimitingMiddleware
 {
     private const string MfaCookieName = "onevo_mfa";
@@ -16,9 +20,14 @@ public sealed class AuthRateLimitingMiddleware
 
     private static readonly AuthRateLimitRule[] Rules =
     [
-        new("/api/v1/auth/login", "ip", null, 20, TimeSpan.FromMinutes(1)),
-        new("/api/v1/auth/login", "email", "email", 5, TimeSpan.FromMinutes(15)),
+        new("/api/v1/auth/login", "ip", null, 20, TimeSpan.FromSeconds(300)),
+        new("/api/v1/auth/login", "email", "email", 5, TimeSpan.FromSeconds(300)),
 
+        new("/api/v1/auth/login/select-workspace", "ip", null, 20, TimeSpan.FromSeconds(300)),
+        new("/api/v1/auth/login/select-workspace", "challenge", "login_challenge", 10, TimeSpan.FromMinutes(5)),
+
+        new("/api/v1/auth/login/google", "ip", null, 20, TimeSpan.FromSeconds(300)),
+        new("/api/v1/auth/login/google", "token", "google_id_token", 5, TimeSpan.FromSeconds(300)),
 
         new("/api/v1/auth/mfa/verify", "ip", null, 20, TimeSpan.FromMinutes(5)),
         new("/api/v1/auth/mfa/verify", "mfa", null, 5, TimeSpan.FromMinutes(10)),
@@ -77,7 +86,7 @@ public sealed class AuthRateLimitingMiddleware
             var bucket = _cache.GetOrCreate(key, entry =>
             {
                 entry.AbsoluteExpirationRelativeToNow = rule.Window;
-                return new RateLimitBucket(rule.Window);
+                return new RateLimitBucket();
             })!;
 
             int count;
@@ -97,19 +106,24 @@ public sealed class AuthRateLimitingMiddleware
                 rule.MaxRequests,
                 (int)rule.Window.TotalSeconds);
 
-            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            context.Response.Headers["Retry-After"] = ((int)rule.Window.TotalSeconds).ToString();
-            await context.Response.WriteAsJsonAsync(new
-            {
-                type = "https://onevo.com/errors/rate-limit",
-                title = "Too Many Requests",
-                status = 429,
-                detail = "Too many attempts. Please try again later."
-            });
+            await WriteRateLimitExceededResponseAsync(context, rule);
             return;
         }
 
         await _next(context);
+    }
+
+    private static async Task WriteRateLimitExceededResponseAsync(HttpContext context, AuthRateLimitRule rule)
+    {
+        context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        context.Response.Headers["Retry-After"] = ((int)rule.Window.TotalSeconds).ToString();
+        await context.Response.WriteAsJsonAsync(new
+        {
+            type = "https://onevo.com/errors/rate-limit",
+            title = "Too Many Requests",
+            status = 429,
+            detail = "Too many attempts. Please try again later."
+        });
     }
 
     private static async Task<Dictionary<string, string>> ReadBodyFieldsAsync(
@@ -193,10 +207,9 @@ public sealed class AuthRateLimitingMiddleware
         return $"rate-limit:auth:{rule.Path}:{rule.Scope}:{hash}";
     }
 
-    private sealed class RateLimitBucket(TimeSpan window)
+    private sealed class RateLimitBucket
     {
         public int Count { get; set; }
-        public TimeSpan Window { get; } = window;
     }
 
     private sealed record AuthRateLimitRule(

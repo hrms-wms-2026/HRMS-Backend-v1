@@ -7,7 +7,7 @@ namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.SystemConf
 /// <summary>
 /// EF configuration for payment_gateway_credentials.
 /// Phase 1 canonical table. Secrets stored as bytea (AES-256 via IEncryptionService).
-/// Only one active row per payment_gateway_config_id — enforced at service layer.
+/// Only one active row per payment_gateway_config_id - enforced at service layer.
 /// </summary>
 public class PaymentGatewayCredentialConfiguration : IEntityTypeConfiguration<PaymentGatewayCredential>
 {
@@ -20,7 +20,7 @@ public class PaymentGatewayCredentialConfiguration : IEntityTypeConfiguration<Pa
         builder.Property(c => c.PaymentGatewayConfigId)
             .IsRequired();
 
-        // Encrypted bytea columns — never returned by API
+        // Encrypted bytea columns - never returned by API
         builder.Property(c => c.SecretEncrypted)
             .HasColumnType("bytea")
             .IsRequired();
@@ -47,7 +47,7 @@ public class PaymentGatewayCredentialConfiguration : IEntityTypeConfiguration<Pa
         builder.Property(c => c.DeactivatedById);
         builder.Property(c => c.DeactivatedAt);
 
-        // Index for active-credential lookup — one active row per config
+        // Index for active-credential lookup - one active row per config
         builder.HasIndex(c => new { c.PaymentGatewayConfigId, c.IsActive });
     }
 }

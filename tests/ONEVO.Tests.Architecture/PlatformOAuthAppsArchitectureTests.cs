@@ -107,6 +107,30 @@ public class PlatformOAuthAppsArchitectureTests
     }
 
     [Fact]
+    public void EfPlatformOAuthAppRepository_HasNoExpressionBodiedMembers()
+    {
+        var repositoryPath = FindRepositoryPath(
+            "src", "ONEVO.Infrastructure", "Persistence", "Repositories",
+            "DevPlatform", "SystemConfig", "EfPlatformOAuthAppRepository.cs");
+        var sourceLines = File.ReadAllLines(repositoryPath);
+
+        var expressionBodiedMembers = sourceLines
+            .Select((line, index) => new
+            {
+                LineNumber = index + 1,
+                Text = line.Trim()
+            })
+            .Where(line =>
+                line.Text.StartsWith("=>", StringComparison.Ordinal) ||
+                (line.Text.StartsWith("public ", StringComparison.Ordinal) &&
+                 line.Text.Contains("=>", StringComparison.Ordinal)))
+            .Select(line => $"{repositoryPath}:{line.LineNumber}: {line.Text}")
+            .ToArray();
+
+        Assert.Empty(expressionBodiedMembers);
+    }
+
+    [Fact]
     public void NoForbiddenLaterStepEntity_IsIntroduced()
     {
         // Provider-specific calendar, email, AI, and Slack entities remain later-step work.
@@ -125,5 +149,25 @@ public class PlatformOAuthAppsArchitectureTests
         foreach (var forbidden in forbiddenTypeNames)
             Assert.False(domainTypeNames.Contains(forbidden),
                 $"Forbidden later-step entity '{forbidden}' must not be introduced in this step.");
+    }
+
+    private static string FindRepositoryPath(params string[] segments)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (Directory.Exists(Path.Combine(
+                    directory.FullName,
+                    "src",
+                    "ONEVO.Api")))
+            {
+                return Path.Combine([directory.FullName, .. segments]);
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException(
+            "Could not locate the repository root.");
     }
 }

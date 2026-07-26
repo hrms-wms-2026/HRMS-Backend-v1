@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.Models;
-using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.Commands.Login;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
@@ -16,11 +15,8 @@ namespace ONEVO.Tests.Unit.Features.Auth;
 public class CrossTenantLeakageTests
 {
     private readonly Mock<IUserRepository> _users = new();
-    private readonly Mock<IUserMfaRepository> _userMfas = new();
     private readonly Mock<IPasswordHasher> _hasher = new();
-    private readonly Mock<IMfaChallengeStore> _mfaChallenges = new();
-    private readonly Mock<ILoginSessionMaterialFactory> _issuer = new();
-    private readonly Mock<IUnitOfWork> _uow = new();
+    private readonly Mock<ILoginContinuationService> _continuation = new();
 
     private LoginCommandHandler BuildHandler(Guid tenantId, TenantStatus status = TenantStatus.Active)
     {
@@ -29,9 +25,18 @@ public class CrossTenantLeakageTests
         ctx.Setup(c => c.ContextMode).Returns(TenantContextMode.Tenant);
         ctx.Setup(c => c.TenantId).Returns(tenantId);
         ctx.Setup(c => c.Status).Returns(status);
-        return new LoginCommandHandler(
-            _users.Object, _userMfas.Object, _uow.Object,
-            _hasher.Object, _mfaChallenges.Object, _issuer.Object, ctx.Object);
+        return new LoginCommandHandler(_users.Object, _hasher.Object, _continuation.Object, ctx.Object);
+    }
+
+    private void SetupContinuationSuccess(Guid tenantId, Guid userId, string email)
+    {
+        _continuation
+            .Setup(c => c.ContinueAsync(
+                It.Is<LoginContinuationRequest>(r => r.TenantId == tenantId && r.UserId == userId),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto(
+                "sess", "csrf", DateTimeOffset.UtcNow.AddMinutes(30),
+                new CurrentUserDto(userId, tenantId, email))));
     }
 
     [Fact]
@@ -47,12 +52,8 @@ public class CrossTenantLeakageTests
         _users.Setup(u => u.GetByTenantAndEmailAsync(tenantB, "shared@example.com", It.IsAny<CancellationToken>()))
               .ReturnsAsync(userB);
         _hasher.Setup(h => h.Verify(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
-        _userMfas.Setup(m => m.GetTotpAsync(It.IsAny<Guid>(), true, It.IsAny<CancellationToken>()))
-                 .ReturnsAsync((UserMfa?)null);
-        _issuer.Setup(i => i.PrepareAsync(It.IsAny<User>(), null, null, It.IsAny<CancellationToken>()))
-               .ReturnsAsync(Result<LoginResponseDto>.Success(
-                   new LoginResponseDto("sess", "csrf", DateTimeOffset.UtcNow.AddMinutes(30),
-                       new CurrentUserDto(Guid.NewGuid(), Guid.NewGuid(), "shared@example.com"))));
+        SetupContinuationSuccess(tenantA, userA.Id, "shared@example.com");
+        SetupContinuationSuccess(tenantB, userB.Id, "shared@example.com");
 
         var resultA = await BuildHandler(tenantA).Handle(new LoginCommand("shared@example.com", "pass", null, null), default);
         var resultB = await BuildHandler(tenantB).Handle(new LoginCommand("shared@example.com", "pass", null, null), default);
@@ -98,12 +99,7 @@ public class CrossTenantLeakageTests
         _users.Setup(u => u.GetByTenantAndEmailAsync(tenantId, "a@b.com", It.IsAny<CancellationToken>()))
               .ReturnsAsync(user);
         _hasher.Setup(h => h.Verify(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
-        _userMfas.Setup(m => m.GetTotpAsync(user.Id, true, It.IsAny<CancellationToken>()))
-                 .ReturnsAsync((UserMfa?)null);
-        _issuer.Setup(i => i.PrepareAsync(user, null, null, It.IsAny<CancellationToken>()))
-               .ReturnsAsync(Result<LoginResponseDto>.Success(
-                   new LoginResponseDto("sess", "csrf", DateTimeOffset.UtcNow.AddMinutes(30),
-                       new CurrentUserDto(user.Id, tenantId, user.Email))));
+        SetupContinuationSuccess(tenantId, user.Id, "a@b.com");
 
         var result = await BuildHandler(tenantId, TenantStatus.Trial)
             .Handle(new LoginCommand("a@b.com", "pass", null, null), default);

@@ -26,8 +26,10 @@ public class AssignRolePermissionsCommandHandlerTests
     private readonly Mock<IPermissionVersionService> _permissionVersion = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IUnitOfWork> _uow = new();
+    private readonly Mock<IDateTimeProvider> _clock = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly DateTimeOffset FixedNow = new(2026, 7, 23, 12, 0, 0, TimeSpan.Zero);
 
     private static PermissionCatalogDto TestCatalog() =>
         new(
@@ -40,6 +42,7 @@ public class AssignRolePermissionsCommandHandlerTests
         _currentUser.SetupGet(c => c.TenantId).Returns(TenantId);
         _catalog.Setup(c => c.GetCatalogAsync(TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(TestCatalog());
+        _clock.SetupGet(c => c.UtcNow).Returns(FixedNow);
         return new AssignRolePermissionsCommandHandler(
             _roles.Object,
             _rolePermissions.Object,
@@ -49,7 +52,8 @@ public class AssignRolePermissionsCommandHandlerTests
             _userRoles.Object,
             _permissionVersion.Object,
             _currentUser.Object,
-            _uow.Object);
+            _uow.Object,
+            _clock.Object);
     }
 
     [Fact]
@@ -79,7 +83,7 @@ public class AssignRolePermissionsCommandHandlerTests
                 It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 2),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { permKept, permNew });
-        _userRoles.Setup(u => u.ListUserIdsByRoleAsync(roleId, It.IsAny<CancellationToken>()))
+        _userRoles.Setup(u => u.ListUserIdsByRoleAsync(roleId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
         IEnumerable<RolePermission>? added = null;
@@ -119,7 +123,7 @@ public class AssignRolePermissionsCommandHandlerTests
             .ReturnsAsync(role);
         _rolePermissions.Setup(r => r.ListByRoleAsync(roleId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { new RolePermission { RoleId = roleId, PermissionId = permA } });
-        _userRoles.Setup(u => u.ListUserIdsByRoleAsync(roleId, It.IsAny<CancellationToken>()))
+        _userRoles.Setup(u => u.ListUserIdsByRoleAsync(roleId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
         var sut = BuildSut();
@@ -203,7 +207,7 @@ public class AssignRolePermissionsCommandHandlerTests
             .Returns(Task.CompletedTask);
 
         var sut = BuildSut();
-        _userRoles.Setup(u => u.ListUserIdsByRoleAsync(roleId, It.IsAny<CancellationToken>()))
+        _userRoles.Setup(u => u.ListUserIdsByRoleAsync(roleId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([user1, user2]);
         await sut.Handle(
             new AssignRolePermissionsCommand(roleId, new[] { permA.Id, permB.Id }),
@@ -211,6 +215,42 @@ public class AssignRolePermissionsCommandHandlerTests
 
         _permissionVersion.Verify(v => v.IncrementVersionAsync(user1, It.IsAny<CancellationToken>()), Times.Once);
         _permissionVersion.Verify(v => v.IncrementVersionAsync(user2, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_PassesCurrentTimeFromDateTimeProvider_ToListUserIdsByRoleAsync()
+    {
+        var roleId = Guid.NewGuid();
+        var role = new Role { Id = roleId, TenantId = TenantId, Name = "Manager", IsSystem = false };
+        var permNew = new Permission { Id = Guid.NewGuid(), Code = "leave:approve", Module = "leave" };
+
+        _roles.Setup(r => r.GetByIdForTenantAsync(TenantId, roleId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(role);
+        _rolePermissions.Setup(r => r.ListByRoleAsync(roleId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RolePermission>());
+        _permissions.Setup(p => p.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { permNew });
+        _entitlements
+            .Setup(e => e.GetAssignablePermissionsForTenantAsync(
+                TenantId,
+                It.IsAny<IReadOnlyList<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { permNew });
+        _rolePermissions
+            .Setup(r => r.AddRangeAsync(It.IsAny<IEnumerable<RolePermission>>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var sut = BuildSut();
+        _userRoles.Setup(u => u.ListUserIdsByRoleAsync(roleId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        await sut.Handle(
+            new AssignRolePermissionsCommand(roleId, new[] { permNew.Id }),
+            CancellationToken.None);
+
+        _userRoles.Verify(
+            u => u.ListUserIdsByRoleAsync(roleId, FixedNow, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

@@ -4,11 +4,10 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Helpers;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.ServiceInterfaces;
-using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.CreatePlatformOAuthApp;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.ConfigurePlatformOAuthApp;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.RotatePlatformOAuthAppSecret;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.SetPlatformOAuthAppActivation;
-using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.UpdatePlatformOAuthApp;
-using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.VerifyPlatformOAuthApp;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.ValidatePlatformOAuthAppConfig;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.DTOs.Requests;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Queries.GetPlatformOAuthApp;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Queries.ListPlatformOAuthApps;
@@ -16,17 +15,21 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Quer
 namespace ONEVO.Api.Controllers.Admin.DevPlatform.SystemConfig;
 
 /// <summary>
-/// System Config — Platform OAuth Apps endpoints (ONEVO-owned OAuth app registrations
-/// for github/google/microsoft/zoom; Slack is Phase 2).
+/// System Config - Platform OAuth Apps endpoints. Approved providers only: github,
+/// google, microsoft, zoom (Slack is Phase 2). Provider protocol metadata (authorization
+/// URL, token URL, default scopes) is backend-owned via PlatformOAuthProviderCatalog -
+/// no endpoint accepts it from the request body.
 /// Routes:
-///   GET    /admin/v1/system-config/oauth-apps                            → list (no secrets)
-///   GET    /admin/v1/system-config/oauth-apps/{provider}                 → detail (no secrets)
-///   POST   /admin/v1/system-config/oauth-apps                            → create app + credential v1
-///   PUT    /admin/v1/system-config/oauth-apps/{provider}                 → update non-secret metadata
-///   POST   /admin/v1/system-config/oauth-apps/{provider}/rotate-secret   → new credential version
-///   POST   /admin/v1/system-config/oauth-apps/{provider}/activate        → is_active = true
-///   POST   /admin/v1/system-config/oauth-apps/{provider}/deactivate      → is_active = false
-///   POST   /admin/v1/system-config/oauth-apps/{provider}/verify          → LOCAL metadata check only
+///   GET    /admin/v1/system-config/oauth-apps                              -> list all approved provider cards
+///   GET    /admin/v1/system-config/oauth-apps/{provider}                   -> detail (no secrets)
+///   PUT    /admin/v1/system-config/oauth-apps/{provider}                   -> configure (upsert) approved provider
+///   POST   /admin/v1/system-config/oauth-apps/{provider}/rotate-secret     -> new credential version
+///   POST   /admin/v1/system-config/oauth-apps/{provider}/activate          -> is_active = true
+///   POST   /admin/v1/system-config/oauth-apps/{provider}/deactivate        -> is_active = false
+///   POST   /admin/v1/system-config/oauth-apps/{provider}/validate-config   -> LOCAL metadata check only
+///
+/// There is deliberately no POST (arbitrary-provider create) endpoint: only the four
+/// catalog-approved providers can ever exist as configurable rows.
 ///
 /// SECURITY:
 /// - All endpoints require AdminPolicy (platform admin) + platform.system_config.read/manage.
@@ -34,7 +37,7 @@ namespace ONEVO.Api.Controllers.Admin.DevPlatform.SystemConfig;
 ///   (only hasActiveCredential/hasPrivateKey booleans + activeCredentialVersion).
 /// - clientSecret/privateKey request fields are encrypted by IEncryptionService before
 ///   persistence and never logged.
-/// - No live GitHub/Google/Microsoft/Zoom API is called in this step.
+/// - No live GitHub/Google/Microsoft/Zoom API is called by this controller.
 /// </summary>
 [ApiController]
 [Authorize(Policy = "AdminPolicy")]
@@ -51,7 +54,7 @@ public sealed class PlatformOAuthAppsController : ControllerBase
         _currentUser = currentUser;
     }
 
-    /// <summary>List all OAuth app registrations. Secrets never returned.</summary>
+    /// <summary>List every approved provider's card. Secrets never returned.</summary>
     [HttpGet("admin/v1/system-config/oauth-apps")]
     [RequirePlatformPermission(PlatformPermissionCatalog.SystemConfigRead)]
     public async Task<IActionResult> ListOAuthApps(CancellationToken ct)
@@ -62,7 +65,7 @@ public sealed class PlatformOAuthAppsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Get one OAuth app by provider slug (case-insensitive). Secrets never returned.</summary>
+    /// <summary>Get one approved provider's card by slug (case-insensitive). Secrets never returned.</summary>
     [HttpGet("admin/v1/system-config/oauth-apps/{provider}")]
     [RequirePlatformPermission(PlatformPermissionCatalog.SystemConfigRead)]
     public async Task<IActionResult> GetOAuthApp(string provider, CancellationToken ct)
@@ -73,55 +76,30 @@ public sealed class PlatformOAuthAppsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Create an OAuth app and its first active credential. Secrets encrypted before persistence.</summary>
-    [HttpPost("admin/v1/system-config/oauth-apps")]
+    /// <summary>
+    /// Configure (upsert) an approved OAuth provider. The provider comes from the route
+    /// only; the request body cannot contain provider/authorizationUrl/tokenUrl/
+    /// defaultScopes - those are always backend-owned. Secrets are encrypted before
+    /// persistence.
+    /// </summary>
+    [HttpPut("admin/v1/system-config/oauth-apps/{provider}")]
     [RequirePlatformPermission(PlatformPermissionCatalog.SystemConfigManage)]
-    public async Task<IActionResult> CreateOAuthApp(
-        [FromBody] CreatePlatformOAuthAppRequest request,
+    public async Task<IActionResult> ConfigureOAuthApp(
+        string provider,
+        [FromBody] ConfigurePlatformOAuthAppRequest request,
         CancellationToken ct)
     {
         var actorId = _currentUser.UserId;
         if (actorId is null)
             return Forbid();
 
-        var result = await _mediator.Send(new CreatePlatformOAuthAppCommand(
-            request.Provider,
+        var result = await _mediator.Send(new ConfigurePlatformOAuthAppCommand(
+            provider,
             request.AppName,
             request.LogoUrl,
             request.ClientId,
             request.ClientSecret,
             request.PrivateKey,
-            request.AuthorizationUrl,
-            request.TokenUrl,
-            request.DefaultScopes,
-            request.IsActive,
-            actorId.Value), ct);
-
-        return result.IsSuccess
-            ? Created($"admin/v1/system-config/oauth-apps/{result.Value!.Provider}", result.Value)
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    /// <summary>Update non-secret metadata only. Secret changes must use rotate-secret.</summary>
-    [HttpPut("admin/v1/system-config/oauth-apps/{provider}")]
-    [RequirePlatformPermission(PlatformPermissionCatalog.SystemConfigManage)]
-    public async Task<IActionResult> UpdateOAuthApp(
-        string provider,
-        [FromBody] UpdatePlatformOAuthAppRequest request,
-        CancellationToken ct)
-    {
-        var actorId = _currentUser.UserId;
-        if (actorId is null)
-            return Forbid();
-
-        var result = await _mediator.Send(new UpdatePlatformOAuthAppCommand(
-            provider,
-            request.AppName,
-            request.LogoUrl,
-            request.ClientId,
-            request.AuthorizationUrl,
-            request.TokenUrl,
-            request.DefaultScopes,
             request.IsActive,
             actorId.Value), ct);
 
@@ -150,7 +128,7 @@ public sealed class PlatformOAuthAppsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Activate an OAuth app. Requires at least one active credential.</summary>
+    /// <summary>Activate an OAuth app. Requires clientId and, if required, an active credential.</summary>
     [HttpPost("admin/v1/system-config/oauth-apps/{provider}/activate")]
     [RequirePlatformPermission(PlatformPermissionCatalog.SystemConfigManage)]
     public async Task<IActionResult> ActivateOAuthApp(string provider, CancellationToken ct)
@@ -185,18 +163,19 @@ public sealed class PlatformOAuthAppsController : ControllerBase
     }
 
     /// <summary>
-    /// LOCAL metadata verification only (no live provider API call, no decryption).
-    /// Stamps last_verified_at when all checks pass.
+    /// LOCAL configuration validation only (no live provider API call, no decryption).
+    /// Stamps last_verified_at when all checks pass. Response makes explicit that this
+    /// is a local structural check, not a live provider verification.
     /// </summary>
-    [HttpPost("admin/v1/system-config/oauth-apps/{provider}/verify")]
+    [HttpPost("admin/v1/system-config/oauth-apps/{provider}/validate-config")]
     [RequirePlatformPermission(PlatformPermissionCatalog.SystemConfigManage)]
-    public async Task<IActionResult> VerifyOAuthApp(string provider, CancellationToken ct)
+    public async Task<IActionResult> ValidateOAuthAppConfig(string provider, CancellationToken ct)
     {
         var actorId = _currentUser.UserId;
         if (actorId is null)
             return Forbid();
 
-        var result = await _mediator.Send(new VerifyPlatformOAuthAppCommand(provider, actorId.Value), ct);
+        var result = await _mediator.Send(new ValidatePlatformOAuthAppConfigCommand(provider, actorId.Value), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

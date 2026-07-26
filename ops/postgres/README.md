@@ -3,16 +3,39 @@
 This directory contains local development and test database setup tooling. It
 is not API runtime code and is not production or staging provisioning.
 
-ONEVO uses two PostgreSQL roles:
+ONEVO uses three PostgreSQL roles:
 
 | Role | Connection | Purpose |
 |---|---|---|
 | `onevo_app` | `DefaultConnection` | Restricted runtime API access. It is `NOSUPERUSER`, `NOBYPASSRLS`, and has no schema-changing privileges. |
-| `onevo_migrator` | `MigrationConnection` | Explicit EF schema migration only. It is not a superuser and cannot bypass RLS. |
+| `onevo_migrator` | `MigrationConnection` | Explicit EF schema migration only. It is not a superuser, cannot bypass RLS, and is `NOCREATEROLE` - it cannot create either of the other two roles. |
+| `onevo_auth_base_login_fn_owner` | Never connects (`NOLOGIN`) | Owns only the `auth_lookup_base_login_candidates` `SECURITY DEFINER` function, so that one function can run with `BYPASSRLS` regardless of the caller's RLS session, without any session ever being able to authenticate as this role directly. |
 
 The API must never connect as `postgres`, another administrator, or a role
 with `BYPASSRLS`. It never executes the bootstrap SQL or EF migrations during
 startup.
+
+## Required deploy order
+
+Role provisioning is always a separate, explicit step - never something an EF
+migration does silently. The `20260724174557_AddAuthLookupBaseLoginCandidatesFunction`
+migration assumes `onevo_auth_base_login_fn_owner` and `onevo_app` already
+exist; if either is missing, its `ALTER FUNCTION`/`GRANT` statements fail with
+a clear PostgreSQL "role ... does not exist" error instead of the migration
+silently creating a `BYPASSRLS`-capable role. The required order, in every
+environment, is:
+
+1. **Bootstrap privileged roles** - run `setup-local-db.ps1` locally, or the
+   equivalent DB/deployment-owned bootstrap step in staging/production - to
+   create/repair `onevo_app`, `onevo_migrator`, and
+   `onevo_auth_base_login_fn_owner` with their fixed attributes and grants.
+2. **Run EF migrations** as `onevo_migrator` (`MigrationConnection`).
+3. **Run the API** as `onevo_app` (`DefaultConnection`).
+
+Testcontainers-backed integration tests replicate step 1 in-process
+(`PrivilegedRoleTestBootstrap.EnsureRolesExistAsync`) against their own
+ephemeral database before migrating, since there is no separate deploy
+pipeline for a disposable test container.
 
 ## First-time local setup
 

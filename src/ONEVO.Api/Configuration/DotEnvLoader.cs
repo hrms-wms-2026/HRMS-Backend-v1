@@ -23,7 +23,7 @@ public static class DotEnvLoader
 
     public static bool MigrationConnectionProcessOverrideActive { get; private set; }
 
-    public static void LoadIfPresent(string fileName = ".env", int maxParentDepth = 4)
+    public static void LoadIfPresent(string fileName = ".env", int maxParentDepth = 6)
     {
         DefaultConnectionProcessOverrideActive = HasExplicitConnectionOverride(
             "ConnectionStrings__DefaultConnection");

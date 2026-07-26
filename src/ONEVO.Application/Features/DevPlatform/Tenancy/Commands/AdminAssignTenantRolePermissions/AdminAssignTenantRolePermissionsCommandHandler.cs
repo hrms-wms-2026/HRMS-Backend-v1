@@ -10,8 +10,6 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Roles.Mappers;
 using ONEVO.Application.Features.Auth.Roles.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -31,6 +29,7 @@ public sealed class AdminAssignTenantRolePermissionsCommandHandler
     private readonly IUserRoleRepository _userRoles;
     private readonly IPermissionVersionService _permissionVersion;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IDateTimeProvider _clock;
 
     public AdminAssignTenantRolePermissionsCommandHandler(
         ITenantRepository tenants,
@@ -41,7 +40,8 @@ public sealed class AdminAssignTenantRolePermissionsCommandHandler
         ITenantPermissionCatalogService permissionCatalog,
         IUserRoleRepository userRoles,
         IPermissionVersionService permissionVersion,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IDateTimeProvider clock)
     {
         _tenants = tenants;
         _roles = roles;
@@ -52,6 +52,7 @@ public sealed class AdminAssignTenantRolePermissionsCommandHandler
         _userRoles = userRoles;
         _permissionVersion = permissionVersion;
         _unitOfWork = unitOfWork;
+        _clock = clock;
     }
 
     public async Task<Result<RoleDetailDto>> Handle(
@@ -106,7 +107,7 @@ public sealed class AdminAssignTenantRolePermissionsCommandHandler
 
         if (toRemove.Count > 0 || toAdd.Count > 0)
         {
-            var affectedUserIds = await _userRoles.ListUserIdsByRoleAsync(role.Id, ct);
+            var affectedUserIds = await _userRoles.ListUserIdsByRoleAsync(role.Id, _clock.UtcNow, ct);
             foreach (var userId in affectedUserIds)
                 await _permissionVersion.IncrementVersionAsync(userId, ct);
         }

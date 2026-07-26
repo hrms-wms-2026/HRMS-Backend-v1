@@ -8,15 +8,22 @@ public sealed class EfTenantStorageStatsRepository : ITenantStorageStatsReposito
 {
     private readonly ApplicationDbContext _db;
 
-    public EfTenantStorageStatsRepository(ApplicationDbContext db) => _db = db;
+    public EfTenantStorageStatsRepository(ApplicationDbContext db)
+    {
+        _db = db;
+    }
 
     // The explicit tenant_id predicate is intentional even though the global
     // tenant query filter also applies in tenant mode: quota checks must stay
     // tenant-scoped in System/Admin context modes too.
-    public Task<TenantStorageStats?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
-        _db.TenantStorageStats
+    public async Task<TenantStorageStats?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var query = _db.TenantStorageStats
             .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
+            .Where(s => s.TenantId == tenantId);
+
+        return await query.FirstOrDefaultAsync(ct);
+    }
 
     public async Task<bool> TryReserveBytesAsync(Guid tenantId, long bytes, long limitBytes, CancellationToken ct = default)
     {

@@ -4,8 +4,6 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.DevPlatform.Tenancy.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.Tenancy.Queries.GetProvisioningSummary;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;

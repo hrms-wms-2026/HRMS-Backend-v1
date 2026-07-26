@@ -11,53 +11,78 @@ public class EfInvitationTokenRepository : IInvitationTokenRepository
 {
     private readonly ApplicationDbContext _db;
 
-    public EfInvitationTokenRepository(ApplicationDbContext db) => _db = db;
+    public EfInvitationTokenRepository(ApplicationDbContext db)
+    {
+        _db = db;
+    }
 
-    public Task<InvitationToken?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
-        _db.InvitationTokens.FirstOrDefaultAsync(i => i.Id == id, ct);
+    public async Task<InvitationToken?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        var query = _db.InvitationTokens.Where(i => i.Id == id);
+        var invitationToken = await query.FirstOrDefaultAsync(ct);
+        return invitationToken;
+    }
 
-    public Task<InvitationToken?> GetActiveByEmailAsync(
+    public async Task<InvitationToken?> GetActiveByEmailAsync(
         Guid tenantId,
         string normalizedEmail,
         DateTimeOffset now,
-        CancellationToken ct = default) =>
-        _db.InvitationTokens.FirstOrDefaultAsync(
+        CancellationToken ct = default)
+    {
+        var query = _db.InvitationTokens.Where(
             i => i.TenantId == tenantId
               && i.InvitedEmail == normalizedEmail
               && i.UsedAt == null
               && i.RevokedAt == null
-              && i.ExpiresAt > now,
-            ct);
+              && i.ExpiresAt > now);
+        var invitationToken = await query.FirstOrDefaultAsync(ct);
+        return invitationToken;
+    }
 
-    public Task<int> CountActiveByTenantAsync(
+    public async Task<int> CountActiveByTenantAsync(
         Guid tenantId,
         DateTimeOffset now,
-        CancellationToken ct = default) =>
-        _db.InvitationTokens.CountAsync(
+        CancellationToken ct = default)
+    {
+        var query = _db.InvitationTokens.Where(
             i => i.TenantId == tenantId
               && i.UsedAt == null
               && i.RevokedAt == null
-              && i.ExpiresAt > now,
-            ct);
+              && i.ExpiresAt > now);
+        var activeCount = await query.CountAsync(ct);
+        return activeCount;
+    }
 
-    public Task<bool> HasAcceptedInviteByTenantAsync(
+    public async Task<bool> HasAcceptedInviteByTenantAsync(
         Guid tenantId,
-        CancellationToken ct = default) =>
-        _db.InvitationTokens.AnyAsync(
-            i => i.TenantId == tenantId && i.UsedAt != null,
-            ct);
+        CancellationToken ct = default)
+    {
+        var query = _db.InvitationTokens.Where(
+            i => i.TenantId == tenantId && i.UsedAt != null);
+        var hasAcceptedInvite = await query.AnyAsync(ct);
+        return hasAcceptedInvite;
+    }
 
     public async Task<IReadOnlyList<InvitationToken>> ListByTenantAsync(
         Guid tenantId,
-        CancellationToken ct = default) =>
-        await _db.InvitationTokens
+        CancellationToken ct = default)
+    {
+        var query = _db.InvitationTokens
             .Where(i => i.TenantId == tenantId)
-            .OrderByDescending(i => i.CreatedAt)
-            .ToListAsync(ct);
+            .OrderByDescending(i => i.CreatedAt);
+        var invitationTokens = await query.ToListAsync(ct);
+        return invitationTokens;
+    }
 
-    public async Task AddAsync(InvitationToken invitation, CancellationToken ct = default) =>
+    public async Task AddAsync(InvitationToken invitation, CancellationToken ct = default)
+    {
         await _db.InvitationTokens.AddAsync(invitation, ct);
+    }
 
-    public Task<InvitationToken?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
-        _db.InvitationTokens.FirstOrDefaultAsync(i => i.TokenHash == tokenHash, ct);
+    public async Task<InvitationToken?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default)
+    {
+        var query = _db.InvitationTokens.Where(i => i.TokenHash == tokenHash);
+        var invitationToken = await query.FirstOrDefaultAsync(ct);
+        return invitationToken;
+    }
 }

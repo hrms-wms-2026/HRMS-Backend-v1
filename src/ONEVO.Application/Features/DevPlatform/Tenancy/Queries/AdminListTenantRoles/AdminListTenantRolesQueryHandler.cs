@@ -6,8 +6,6 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Roles.Mappers;
 using ONEVO.Application.Features.Auth.Roles.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Roles.DTOs.Responses;

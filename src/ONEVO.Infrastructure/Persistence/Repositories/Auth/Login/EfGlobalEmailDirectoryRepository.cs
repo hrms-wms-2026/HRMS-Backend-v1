@@ -7,13 +7,20 @@ public sealed class EfGlobalEmailDirectoryRepository : IGlobalEmailDirectoryRepo
 {
     private readonly ApplicationDbContext _db;
 
-    public EfGlobalEmailDirectoryRepository(ApplicationDbContext db) => _db = db;
+    public EfGlobalEmailDirectoryRepository(ApplicationDbContext db)
+    {
+        _db = db;
+    }
 
-    public Task UpsertAsync(string email, Guid tenantId, CancellationToken ct = default) =>
-        _db.Database.ExecuteSqlInterpolatedAsync(
+    public async Task UpsertAsync(string email, Guid tenantId, CancellationToken ct = default)
+    {
+        var upsertTask = _db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             INSERT INTO global_email_directory (email, tenant_id)
             VALUES ({email}, {tenantId})
             ON CONFLICT (email, tenant_id) DO NOTHING
             """, ct);
+
+        await upsertTask;
+    }
 }

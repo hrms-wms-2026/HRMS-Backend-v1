@@ -1,15 +1,71 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using ONEVO.Infrastructure.ExternalServices.Messaging;
+using ONEVO.Infrastructure.Identity.CurrentUser;
+using ONEVO.Infrastructure.Identity.Tenancy;
+using ONEVO.Infrastructure.Identity.Time;
+using ONEVO.Infrastructure.Persistence;
+using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Tests.Integration.Support;
+using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration;
 
-public class ApiBootTests : IClassFixture<WebApplicationFactory<Program>>
+/// <summary>
+/// Boots the real API host end-to-end (including hosted services like DevSmokeTestTenantSeeder)
+/// against an ephemeral Testcontainers PostgreSQL instance, the same bootstrap approach used by
+/// AdminTestFactory/BaseDomainLoginTestFactory, instead of the developer's persistent local
+/// OnevoDb. Requires Docker.
+/// </summary>
+public sealed class ApiBootTests : IAsyncLifetime
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
+        .WithDatabase("onevo_api_boot_test")
+        .WithUsername("test")
+        .WithPassword("test")
+        .Build();
 
-    public ApiBootTests(WebApplicationFactory<Program> factory)
-        => _factory = factory;
+    private ApiBootTestFactory _factory = null!;
+
+    public async Task InitializeAsync()
+    {
+        await _postgres.StartAsync();
+        var connectionString = _postgres.GetConnectionString();
+
+        // Migrate via a standalone ApplicationDbContext before the WebApplicationFactory is ever
+        // touched. Accessing _factory.Services/CreateClient() starts hosted services (such as
+        // DevSmokeTestTenantSeeder and PermissionSeeder) synchronously during host startup, which
+        // query database tables that must already exist - mirrors AdminTestFactory.MigrateDatabaseAsync.
+        await MigrateDatabaseAsync(connectionString);
+
+        _factory = new ApiBootTestFactory(connectionString);
+    }
+
+    private static async Task MigrateDatabaseAsync(string connectionString)
+    {
+        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(connectionString);
+
+        var migrationOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(connectionString)
+            .UseSnakeCaseNamingConvention()
+            .Options;
+        var dateTimeProvider = new SystemDateTimeProvider();
+        await using var migrationContext = new ApplicationDbContext(
+            migrationOptions,
+            new AuditableEntityInterceptor(new AnonymousCurrentUser(), dateTimeProvider),
+            new SoftDeleteInterceptor(dateTimeProvider),
+            new DomainEventDispatchInterceptor(new NoOpPublisher()),
+            new TenantContextAccessor());
+        await migrationContext.Database.MigrateAsync();
+    }
+
+    public async Task DisposeAsync()
+    {
+        await _factory.DisposeAsync();
+        await _postgres.DisposeAsync();
+    }
 
     [Fact]
     public async Task HealthEndpoint_ReturnsOk()

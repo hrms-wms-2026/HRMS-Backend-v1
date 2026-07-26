@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
+using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.SystemConfig;
@@ -25,11 +26,17 @@ public class PlatformServiceKeyConfiguration : IEntityTypeConfiguration<Platform
         builder.HasIndex(k => k.ServiceKey)
             .IsUnique();
 
+        builder.HasOne<PlatformProvider>()
+            .WithMany()
+            .HasForeignKey(key => key.ServiceKey)
+            .HasPrincipalKey(provider => provider.ProviderKey)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.Property(k => k.DisplayName)
             .HasMaxLength(80)
             .IsRequired();
 
-        // Encrypted text column — never returned by API
+        // Encrypted text column - never returned by API
         builder.Property(k => k.ApiKeyEncrypted)
             .HasColumnType("text")
             .IsRequired();

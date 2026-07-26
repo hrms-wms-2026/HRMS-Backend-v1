@@ -68,6 +68,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
             var encryption = scope.ServiceProvider.GetRequiredService<IEncryptionService>();
 
+            tenantContext.SetAdminMode();
             await SeedAsync(
                 db,
                 tenantContext,
@@ -111,6 +112,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
         tenantContext.SetAdminMode();
         await SeedGlobalEmailDirectoryAsync(db, tenant.Id, ct);
+        await SeedDevelopmentLegalVersionsAsync(db, now, ct);
 
         var platformUser = await GetPlatformBootstrapUserAsync(db, ct);
         if (platformUser is null)
@@ -578,5 +580,51 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         approval.ErrorMessage = null;
         approval.ConnectedByUserId = userId;
         approval.ConnectedAt = approval.ConnectedAt == default ? now : approval.ConnectedAt;
+    }
+
+    private static async Task SeedDevelopmentLegalVersionsAsync(
+        ApplicationDbContext db,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var termsExists = await db.LegalDocumentVersions.AnyAsync(
+            v => v.DocumentType == "terms" && v.Version == "1.0", ct);
+        if (!termsExists)
+        {
+            db.LegalDocumentVersions.Add(new ONEVO.Domain.Features.DevPlatform.Compliance.Entities.LegalDocumentVersion
+            {
+                Id = Guid.NewGuid(),
+                DocumentType = "terms",
+                Version = "1.0",
+                Title = "ONEVO Terms & Conditions (Bootstrap Dev)",
+                IsRequired = true,
+                BlockScope = "dashboard",
+                Status = "published",
+                PublishedAt = now,
+                PublishReason = "Development smoke-test baseline document.",
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
+
+        var privacyExists = await db.LegalDocumentVersions.AnyAsync(
+            v => v.DocumentType == "privacy_notice" && v.Version == "1.0", ct);
+        if (!privacyExists)
+        {
+            db.LegalDocumentVersions.Add(new ONEVO.Domain.Features.DevPlatform.Compliance.Entities.LegalDocumentVersion
+            {
+                Id = Guid.NewGuid(),
+                DocumentType = "privacy_notice",
+                Version = "1.0",
+                Title = "ONEVO Privacy Notice (Bootstrap Dev)",
+                IsRequired = true,
+                BlockScope = "dashboard",
+                Status = "published",
+                PublishedAt = now,
+                PublishReason = "Development smoke-test baseline document.",
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
     }
 }

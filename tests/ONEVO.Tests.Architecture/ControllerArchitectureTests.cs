@@ -13,7 +13,7 @@ namespace ONEVO.Tests.Architecture;
 public class ControllerArchitectureTests
 {
     private static readonly ArchUnitNET.Domain.Architecture Architecture = new ArchLoader()
-        .LoadAssemblies(typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthController).Assembly)
+        .LoadAssemblies(typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthLoginController).Assembly)
         .Build();
 
     [Fact]
@@ -47,7 +47,7 @@ public class ControllerArchitectureTests
     [Fact]
     public void NoDevPlatformControllers_OutsideAdmin()
     {
-        var apiAssembly = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthController).Assembly;
+        var apiAssembly = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthLoginController).Assembly;
         var devPlatformTypes = apiAssembly.GetTypes()
             .Where(t => t.Namespace != null && t.Namespace.Contains(".Controllers.") && t.Namespace.Contains(".DevPlatform"))
             .ToList();
@@ -60,7 +60,7 @@ public class ControllerArchitectureTests
     [Fact]
     public void NoAdminV1FeatureBucket()
     {
-        var apiAssembly = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthController).Assembly;
+        var apiAssembly = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthLoginController).Assembly;
         var v1Types = apiAssembly.GetTypes()
             .Where(t => t.Namespace != null && t.Namespace.Contains(".Controllers.Admin.V1"))
             .ToList();
@@ -71,7 +71,7 @@ public class ControllerArchitectureTests
     [Fact]
     public void NoLooseAdminFeatureControllers_DirectlyUnderAdmin()
     {
-        var apiAssembly = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthController).Assembly;
+        var apiAssembly = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthLoginController).Assembly;
         var adminDirectTypes = apiAssembly.GetTypes()
             .Where(t => t.Namespace == "ONEVO.Api.Controllers.Admin" && t.IsSubclassOf(typeof(ControllerBase)))
             .ToList();
@@ -85,10 +85,12 @@ public class ControllerArchitectureTests
     }
 
     [Fact]
-    public void TenantAuthController_ShouldNotExpose_FindWorkspaceRoute()
+    public void TenantAuthControllers_ShouldNotExpose_FindWorkspaceRoute()
     {
-        var routes = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthController)
-            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+        var apiAssembly = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthLoginController).Assembly;
+        var routes = apiAssembly.GetTypes()
+            .Where(t => t.Namespace == "ONEVO.Api.Controllers.Tenant.Auth")
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             .SelectMany(method => method.GetCustomAttributes<HttpPostAttribute>())
             .Select(attribute => attribute.Template);
 
@@ -99,7 +101,7 @@ public class ControllerArchitectureTests
     [Fact]
     public void TenantLoginRequest_ShouldContainOnly_EmailAndPassword()
     {
-        var propertyNames = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthController.LoginRequest)
+        var propertyNames = typeof(ONEVO.Api.Contracts.Auth.LoginRequest)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(property => property.Name)
             .OrderBy(name => name)
@@ -109,17 +111,21 @@ public class ControllerArchitectureTests
     }
 
     [Fact]
-    public void TenantAuthController_ShouldExpose_CookieSessionRoutesWithoutRefresh()
+    public void TenantAuthControllers_ShouldExpose_CookieSessionRoutesWithoutRefresh()
     {
-        var controller = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthController);
+        var loginController = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthLoginController);
+        var sessionController = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthSessionController);
 
-        Assert.Equal("login", controller.GetMethod("Login")!.GetCustomAttribute<HttpPostAttribute>()!.Template);
-        Assert.Equal("logout", controller.GetMethod("Logout")!.GetCustomAttribute<HttpPostAttribute>()!.Template);
-        Assert.Equal("me", controller.GetMethod("Me")!.GetCustomAttribute<HttpGetAttribute>()!.Template);
-        Assert.Null(controller.GetMethod("Refresh"));
+        Assert.Equal("login", loginController.GetMethod("Login")!.GetCustomAttribute<HttpPostAttribute>()!.Template);
+        Assert.Equal("logout", sessionController.GetMethod("Logout")!.GetCustomAttribute<HttpPostAttribute>()!.Template);
+        Assert.Equal("me", sessionController.GetMethod("Me")!.GetCustomAttribute<HttpGetAttribute>()!.Template);
+        Assert.Null(loginController.GetMethod("Refresh"));
+        Assert.Null(sessionController.GetMethod("Refresh"));
 
-        var postRoutes = controller
-            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+        var apiAssembly = loginController.Assembly;
+        var postRoutes = apiAssembly.GetTypes()
+            .Where(t => t.Namespace == "ONEVO.Api.Controllers.Tenant.Auth")
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             .SelectMany(method => method.GetCustomAttributes<HttpPostAttribute>())
             .Select(attribute => attribute.Template);
 
@@ -129,7 +135,7 @@ public class ControllerArchitectureTests
 
     private static System.Collections.Generic.IEnumerable<string> GetClassesWithAuthorizePolicy(string baseNamespace, string policy)
     {
-        var apiAssembly = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthController).Assembly;
+        var apiAssembly = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthLoginController).Assembly;
         var controllerTypes = apiAssembly.GetTypes()
             .Where(t => t.Namespace != null && t.Namespace.StartsWith(baseNamespace) && t.IsSubclassOf(typeof(ControllerBase)));
 
@@ -154,7 +160,7 @@ public class ControllerArchitectureTests
 
     private static System.Collections.Generic.IEnumerable<string> GetClassesWithAttribute(string baseNamespace, string attributeName)
     {
-        var apiAssembly = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthController).Assembly;
+        var apiAssembly = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthLoginController).Assembly;
         var controllerTypes = apiAssembly.GetTypes()
             .Where(t => t.Namespace != null && t.Namespace.StartsWith(baseNamespace) && t.IsSubclassOf(typeof(ControllerBase)));
 

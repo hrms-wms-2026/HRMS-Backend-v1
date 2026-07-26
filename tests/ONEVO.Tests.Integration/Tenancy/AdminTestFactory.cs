@@ -3,14 +3,19 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using ONEVO.Infrastructure.ExternalServices.Messaging;
+using ONEVO.Infrastructure.Identity.CurrentUser;
+using ONEVO.Infrastructure.Identity.Tenancy;
+using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Tests.Integration.Support;
 
 namespace ONEVO.Tests.Integration.Tenancy;
 
 /// <summary>
 /// WebApplicationFactory variant used by admin/v1 integration tests. Wires the
 /// app to a Testcontainers Postgres instance 
-/// 
 /// </summary>
 public class AdminTestFactory : WebApplicationFactory<Program>
 {
@@ -21,6 +26,29 @@ public class AdminTestFactory : WebApplicationFactory<Program>
     private readonly string _connectionString;
 
     public AdminTestFactory(string connectionString) => _connectionString = connectionString;
+
+    /// <summary>
+    /// Migrates the database schema with a standalone context BEFORE the test host starts.
+    /// WebApplicationFactory.CreateClient() starts hosted services (such as PermissionSeeder)
+    /// synchronously during host startup, which query database tables that must already exist.
+    /// </summary>
+    public static async Task MigrateDatabaseAsync(string connectionString)
+    {
+        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(connectionString);
+
+        var migrationOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(connectionString)
+            .UseSnakeCaseNamingConvention()
+            .Options;
+        var dateTimeProvider = new SystemDateTimeProvider();
+        await using var migrationContext = new ApplicationDbContext(
+            migrationOptions,
+            new AuditableEntityInterceptor(new AnonymousCurrentUser(), dateTimeProvider),
+            new SoftDeleteInterceptor(dateTimeProvider),
+            new DomainEventDispatchInterceptor(new NoOpPublisher()),
+            new TenantContextAccessor());
+        await migrationContext.Database.MigrateAsync();
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

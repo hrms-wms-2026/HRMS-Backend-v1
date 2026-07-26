@@ -11,7 +11,7 @@ using ONEVO.Application.Features.DevPlatform.PlatformAccess.Helpers;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.ServiceInterfaces;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.Sessions;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Auth;

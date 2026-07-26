@@ -3,7 +3,10 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.CurrentUser;
+using ONEVO.Infrastructure.Identity.Mfa;
+using ONEVO.Infrastructure.Identity.Tenancy;
+using ONEVO.Infrastructure.Identity.Tokens;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 
@@ -113,6 +116,39 @@ public sealed class PostgresMfaChallengeStoreTests : IDisposable
         var state = await store.GetAsync(rawChallenge);
 
         state.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PreTenantLookup_ReturnsState_AndRestoresSystemContext()
+    {
+        using var db = CreateContext();
+        var tenantContext = new TenantContextAccessor();
+        var store = new PostgresMfaChallengeStore(db, _tokens, _clock, tenantContext);
+        var rawChallenge = await store.CreateAsync(UserId, TenantId, Lifetime);
+
+        var state = await store.GetForPreTenantContinuationAsync(rawChallenge);
+
+        state.Should().NotBeNull();
+        state!.TenantId.Should().Be(TenantId);
+        tenantContext.ContextMode.Should().Be(TenantContextMode.System);
+        tenantContext.IsResolved.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PreTenantLookup_FromTenantContext_IsRejected()
+    {
+        using var db = CreateContext();
+        var tenantContext = new TenantContextAccessor();
+        tenantContext.Resolve(new TenantRegistryEntry(
+            TenantId,
+            "tenant",
+            ONEVO.Domain.Features.InfrastructureModule.Entities.TenantStatus.Active,
+            null));
+        var store = new PostgresMfaChallengeStore(db, _tokens, _clock, tenantContext);
+
+        var action = () => store.GetForPreTenantContinuationAsync("opaque");
+
+        await action.Should().ThrowAsync<InvalidOperationException>();
     }
 
     [Fact]
@@ -350,7 +386,7 @@ public sealed class PostgresMfaChallengeStoreTests : IDisposable
 
     private PostgresMfaChallengeStore CreateStore(ApplicationDbContext db)
     {
-        return new PostgresMfaChallengeStore(db, _tokens, _clock);
+        return new PostgresMfaChallengeStore(db, _tokens, _clock, new TenantContextAccessor());
     }
 
     private ApplicationDbContext CreateContext()

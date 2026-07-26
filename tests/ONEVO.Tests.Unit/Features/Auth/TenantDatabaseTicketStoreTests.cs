@@ -10,7 +10,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.Sessions;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Auth;

@@ -11,8 +11,10 @@ public sealed class AcceptInvitationPasswordCommandValidator : AbstractValidator
             .NotEmpty()
             .MinimumLength(8)
             .WithMessage("Password must be at least 8 characters.");
-        RuleFor(x => x.Phone)
-            .MaximumLength(32)
-            .When(x => x.Phone is not null);
+        RuleFor(x => x.ConfirmPassword).NotEmpty();
+        RuleFor(x => x.ConfirmPassword)
+            .Equal(x => x.Password)
+            .WithMessage("Password and confirmation must match.");
+        RuleFor(x => x.Acceptances).NotNull();
     }
 }

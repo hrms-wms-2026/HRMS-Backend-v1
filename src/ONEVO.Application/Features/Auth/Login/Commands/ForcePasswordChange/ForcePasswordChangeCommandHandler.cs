@@ -19,7 +19,7 @@ public class ForcePasswordChangeCommandHandler : IRequestHandler<ForcePasswordCh
     private readonly IUnitOfWork _unitOfWork;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IPermissionVersionService _permVersionService;
-    private readonly ILoginSessionMaterialFactory _sessionMaterialFactory;
+    private readonly ILoginContinuationService _continuation;
     private readonly IDateTimeProvider _clock;
     private readonly ITenantContext _tenantContext;
 
@@ -28,7 +28,7 @@ public class ForcePasswordChangeCommandHandler : IRequestHandler<ForcePasswordCh
         IUnitOfWork unitOfWork,
         IPasswordHasher passwordHasher,
         IPermissionVersionService permVersionService,
-        ILoginSessionMaterialFactory sessionMaterialFactory,
+        ILoginContinuationService continuation,
         IDateTimeProvider clock,
         ITenantContext tenantContext)
     {
@@ -36,7 +36,7 @@ public class ForcePasswordChangeCommandHandler : IRequestHandler<ForcePasswordCh
         _unitOfWork = unitOfWork;
         _passwordHasher = passwordHasher;
         _permVersionService = permVersionService;
-        _sessionMaterialFactory = sessionMaterialFactory;
+        _continuation = continuation;
         _clock = clock;
         _tenantContext = tenantContext;
     }
@@ -69,9 +69,13 @@ public class ForcePasswordChangeCommandHandler : IRequestHandler<ForcePasswordCh
         user.UpdatedAt = _clock.UtcNow;
 
         await _permVersionService.IncrementVersionAsync(user.Id, cancellationToken);
-        user.LastLoginAt = _clock.UtcNow;
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return await _sessionMaterialFactory.PrepareAsync(user, request.IpAddress, request.UserAgent, cancellationToken);
+        return await _continuation.FinishAuthenticatedLoginAsync(
+            user,
+            "force_password_change",
+            request.IpAddress,
+            request.UserAgent,
+            cancellationToken);
     }
 }

@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.DTOs;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.RepositoryInterfaces;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 
@@ -21,9 +22,9 @@ public sealed record CreatePaymentGatewayCommand(
     string? MerchantId,
     string? WebhookUrl,
     bool IsActive,
-    /// <summary>Plain-text secret — encrypted immediately; never stored raw.</summary>
+    /// <summary>Plain-text secret - encrypted immediately; never stored raw.</summary>
     string SecretKey,
-    /// <summary>Plain-text webhook secret — encrypted immediately; never stored raw. Nullable.</summary>
+    /// <summary>Plain-text webhook secret - encrypted immediately; never stored raw. Nullable.</summary>
     string? WebhookSecret,
     IReadOnlyList<string> CountryCodes,
     IReadOnlyList<string?> CountryNameSnapshots,
@@ -47,29 +48,44 @@ public sealed class CreatePaymentGatewayCommandHandler
         CreatePaymentGatewayCommand request,
         CancellationToken cancellationToken)
     {
-        // 1. Validate provider discriminator
+        // 1. Validate the unique, URL-safe gateway identifier.
+        if (!PaymentGatewayKeyRules.IsValid(request.GatewayKey))
+            return Result<PaymentGatewayConfigDto>.Failure(
+                "GatewayKey must be a lowercase URL-safe key that starts with a letter " +
+                "and contains only letters, digits, underscores, or hyphens (maximum 80 characters).",
+                400);
+
+        // 2. Validate provider discriminator
         if (!IsValidProvider(request.Provider))
             return Result<PaymentGatewayConfigDto>.Failure(
                 $"Provider must be one of: stripe, paddle, payhere. Got: '{request.Provider}'", 400);
 
-        // 2. Validate environment
+        // 3. Validate environment
         if (!IsValidEnvironment(request.Environment))
             return Result<PaymentGatewayConfigDto>.Failure(
                 "Environment must be 'sandbox' or 'production'.", 400);
 
-        // 3. Check gateway_key uniqueness
+        // 4. Check gateway_key uniqueness
         var existing = await _repo.GetByGatewayKeyAsync(request.GatewayKey, cancellationToken);
         if (existing is not null)
             return Result<PaymentGatewayConfigDto>.Conflict(
                 $"A gateway config with key '{request.GatewayKey}' already exists.");
 
-        // 4. Validate country routes — check for per-country conflicts
+        // 5. Validate normalized country routes and check per-country conflicts.
+        var normalizedCountryCodes = new List<string>(request.CountryCodes.Count);
+        var distinctCountryCodes = new HashSet<string>(StringComparer.Ordinal);
         for (var i = 0; i < request.CountryCodes.Count; i++)
         {
             var code = request.CountryCodes[i].ToUpperInvariant();
-            if (code.Length != 2)
+            if (code.Length != 2 || code.Any(character => character is < 'A' or > 'Z'))
                 return Result<PaymentGatewayConfigDto>.Failure(
                     $"Country code '{code}' must be a 2-character ISO 3166-1 alpha-2 code.", 400);
+
+            if (!distinctCountryCodes.Add(code))
+                return Result<PaymentGatewayConfigDto>.Conflict(
+                    $"Country code '{code}' is assigned more than once in this request.");
+
+            normalizedCountryCodes.Add(code);
 
             // For create, excludeGatewayConfigId = Guid.Empty so all existing routes are checked
             var hasConflict = await _repo.HasConflictingCountryRouteAsync(
@@ -86,13 +102,13 @@ public sealed class CreatePaymentGatewayCommandHandler
             }
         }
 
-        // 5. Encrypt credentials — NEVER stored plaintext
+        // 6. Encrypt credentials - NEVER stored plaintext
         var secretEncrypted = _encryption.EncryptBytes(request.SecretKey);
         byte[]? webhookSecretEncrypted = request.WebhookSecret is not null
             ? _encryption.EncryptBytes(request.WebhookSecret)
             : null;
 
-        // 6. Build config entity
+        // 7. Build config entity
         var configId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
 
@@ -113,7 +129,7 @@ public sealed class CreatePaymentGatewayCommandHandler
             UpdatedAt = now
         };
 
-        // 7. Build first credential version
+        // 8. Build first credential version
         var credential = new PaymentGatewayCredential
         {
             Id = Guid.NewGuid(),
@@ -127,14 +143,14 @@ public sealed class CreatePaymentGatewayCommandHandler
             RotatedAt = now
         };
 
-        // 8. Build country route rows
+        // 9. Build country route rows
         var routes = new List<PaymentGatewayCountryRoute>();
         for (var i = 0; i < request.CountryCodes.Count; i++)
         {
             routes.Add(new PaymentGatewayCountryRoute
             {
                 Id = Guid.NewGuid(),
-                CountryCode = request.CountryCodes[i].ToUpperInvariant(),
+                CountryCode = normalizedCountryCodes[i],
                 CountryNameSnapshot = request.CountryNameSnapshots.Count > i
                     ? request.CountryNameSnapshots[i]
                     : null,
@@ -147,7 +163,7 @@ public sealed class CreatePaymentGatewayCommandHandler
             });
         }
 
-        // 9. Persist — repo SaveChanges handles atomicity
+        // 10. Persist - repo SaveChanges handles atomicity
         await _repo.AddAsync(config, cancellationToken);
         await _repo.AddCredentialAsync(credential, cancellationToken);
         foreach (var route in routes)

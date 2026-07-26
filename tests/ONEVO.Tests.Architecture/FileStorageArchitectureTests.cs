@@ -69,7 +69,7 @@ public class FileStorageArchitectureTests
     [Fact]
     public void ControllersAndApplicationHandlers_DoNotDependOnStorageAdaptersOrConcreteStorageServices()
     {
-        var candidateTypes = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthController).Assembly.GetTypes()
+        var candidateTypes = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthLoginController).Assembly.GetTypes()
             .Where(t => t.Namespace?.StartsWith("ONEVO.Api.Controllers", StringComparison.Ordinal) == true)
             .Concat(typeof(ONEVO.Application.DependencyInjection).Assembly.GetTypes()
                 .Where(t => t.Name.EndsWith("Handler", StringComparison.Ordinal)));

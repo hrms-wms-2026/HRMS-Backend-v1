@@ -4,26 +4,35 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Common.Configuration;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Login.Services;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
+using ONEVO.Application.Features.Auth.Legal.RepositoryInterfaces;
+using ONEVO.Application.Features.Auth.Legal.Services;
+using ONEVO.Application.Features.DevPlatform.Compliance.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.Auth.Legal;
+using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Compliance;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Roles.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.ModuleCatalog.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.ServiceInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Provisioning.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.Provisioning;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.ServiceInterfaces;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.CurrentUser;
+using ONEVO.Infrastructure.Identity.ExternalIdentity;
+using ONEVO.Infrastructure.Identity.Mfa;
+using ONEVO.Infrastructure.Identity.Passwords;
+using ONEVO.Infrastructure.Identity.Tenancy;
+using ONEVO.Infrastructure.Identity.Time;
+using ONEVO.Infrastructure.Identity.Tokens;
 using ONEVO.Infrastructure.ExternalServices.Email;
 using ONEVO.Infrastructure.ExternalServices.GitHub;
 using ONEVO.Infrastructure.Configuration;
@@ -31,9 +40,7 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Invite;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
-using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Billing;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.PlatformAccess;
-using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Provisioning;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Subscription;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
 using ONEVO.Infrastructure.Persistence.Seeders;
@@ -41,6 +48,8 @@ using ONEVO.Infrastructure.Security;
 using ONEVO.Infrastructure.Services.DevPlatform.PlatformAccess;
 using ONEVO.Infrastructure.Services.DevPlatform.Provisioning;
 using ONEVO.Infrastructure.Services.DevPlatform.Tenancy;
+using ONEVO.Application.Features.DevPlatform.ConfigurationTemplates.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.ConfigurationTemplates;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.RepositoryInterfaces;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.RepositoryInterfaces;
@@ -49,10 +58,12 @@ using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Services;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformProviders.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.SystemConfig;
 using ONEVO.Infrastructure.Persistence.Repositories.SharedPlatform;
+using ONEVO.Infrastructure.Services.Auth.Login;
 using ONEVO.Infrastructure.Services.SharedPlatform;
 using ONEVO.Infrastructure.Services.SystemConfig;
 
@@ -117,12 +128,6 @@ public static class DependencyInjection
         // Auth: global email directory
         services.AddScoped<IGlobalEmailDirectoryRepository, EfGlobalEmailDirectoryRepository>();
 
-        // Setup selections
-        services.AddScoped<ITenantSetupSelectionRepository, EfTenantSetupSelectionRepository>();
-
-        // One-time billing charges
-        services.AddScoped<ITenantOneTimeChargeRepository, EfTenantOneTimeChargeRepository>();
-
         // Storage quota (Phase 1 tenant_storage_stats + enforcement service)
         services.AddScoped<
             ONEVO.Application.Features.Storage.Quota.RepositoryInterfaces.ITenantStorageStatsRepository,
@@ -151,11 +156,17 @@ public static class DependencyInjection
         // System Config - Payment Gateway (Phase 1 canonical tables)
         services.AddScoped<IPaymentGatewayRepository, EfPaymentGatewayRepository>();
         services.AddScoped<IPaymentGatewayVerificationService, PaymentGatewayVerificationService>();
+        services.AddScoped<
+            IPaymentGatewayWebhookSecretResolver,
+            PaymentGatewayWebhookSecretResolver>();
 
         // System Config - Platform Service Keys (Phase 1 canonical table)
         services.AddScoped<IPlatformServiceKeyRepository, EfPlatformServiceKeyRepository>();
         services.AddScoped<IPlatformServiceKeyVerificationService, PlatformServiceKeyVerificationService>();
         services.AddScoped<IPlatformServiceKeyResolver, PlatformServiceKeyResolver>();
+
+        // System Config - metadata-only provider catalog
+        services.AddScoped<IPlatformProviderRepository, EfPlatformProviderRepository>();
 
         // System Config - Platform OAuth Apps (Phase 1 canonical tables)
         services.AddScoped<IPlatformOAuthAppRepository, EfPlatformOAuthAppRepository>();
@@ -163,6 +174,10 @@ public static class DependencyInjection
 
         // System Config - Integration Catalog (Phase 1 canonical tables)
         services.AddScoped<IIntegrationCatalogRepository, EfIntegrationCatalogRepository>();
+
+        // System Config - Configuration Templates (Phase 1 canonical tables)
+        services.AddScoped<IConfigurationTemplateRepository, EfConfigurationTemplateRepository>();
+        services.AddScoped<ITenantConfigurationTemplateApplicationRepository, EfTenantConfigurationTemplateApplicationRepository>();
 
         // Tenant-scoped connected integration credentials
         services.AddScoped<ITenantIntegrationCredentialRepository, EfTenantIntegrationCredentialRepository>();
@@ -182,6 +197,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxWriter, Services.SharedPlatform.Outbox.OutboxWriter>();
         services.AddScoped<IIdempotencyStore, Persistence.Repositories.SharedPlatform.Idempotency.EfIdempotencyStore>();
         services.AddHostedService<Services.SharedPlatform.Outbox.OutboxProcessor>();
+        services.AddHostedService<Services.Auth.Login.LoginWorkspaceSelectionChallengeCleanupService>();
 
         // Provisioning services
         services.AddScoped<ITenantOwnerInvitationService, TenantOwnerInvitationService>();
@@ -209,16 +225,27 @@ public static class DependencyInjection
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
-        // Normal runtime MFA challenge storage is the PostgreSQL-backed mfa_challenges table.
-        // MemoryMfaChallengeStore exists only as an explicit local development/test fallback.
+        // Runtime MFA challenge storage is always the PostgreSQL-backed mfa_challenges table.
         services.AddScoped<IMfaChallengeStore, PostgresMfaChallengeStore>();
-        services.AddHostedService<Configuration.MfaChallengeStoreStartupGuard>();
+        services.AddScoped<IBaseLoginCandidateRepository, EfBaseLoginCandidateRepository>();
+        services.AddScoped<ILoginWorkspaceSelectionChallengeRepository, EfLoginWorkspaceSelectionChallengeRepository>();
+        services.AddScoped<IBaseLoginFixedWorkVerifier, BaseLoginFixedWorkVerifier>();
+        services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
+        services.AddScoped<ILoginWorkspaceSelectionChallengeCleanupRunner, LoginWorkspaceSelectionChallengeCleanupRunner>();
         services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
         services.AddScoped<IPermissionResolver, PermissionResolver>();
         services.AddSingleton<IPermissionVersionService, PermissionVersionService>();
         services.AddScoped<ITotpService, OtpNetTotpService>();
         services.AddScoped<ILoginSessionMaterialFactory, LoginSessionMaterialFactory>();
         services.AddScoped<IGoogleIdTokenValidator, GoogleIdTokenValidator>();
+        services.AddScoped<ILoginContinuationService, LoginContinuationService>();
+
+        // Legal acceptance and versioning
+        services.AddScoped<ILegalDocumentVersionRepository, EfLegalDocumentVersionRepository>();
+        services.AddScoped<ILegalAcceptanceRepository, EfLegalAcceptanceRepository>();
+        services.AddScoped<ILegalAcceptanceChecker, LegalAcceptanceChecker>();
+        services.AddScoped<ILegalAcceptanceSubmissionService, LegalAcceptanceSubmissionService>();
+        services.AddScoped<ILegalLoginChallengeRepository, EfLegalLoginChallengeRepository>();
 
         // Developer Platform access (canonical platform_* tables)
         services.AddScoped<EfPlatformAccessRepository>();
@@ -241,14 +268,11 @@ public static class DependencyInjection
             configuration.GetSection(ONEVO.Infrastructure.Configuration.StorageQuotaOptions.SectionName));
         services.Configure<ONEVO.Infrastructure.Configuration.FileStorageOptions>(
             configuration.GetSection(ONEVO.Infrastructure.Configuration.FileStorageOptions.SectionName));
-        services.Configure<GoogleAuthOptions>(configuration.GetSection(GoogleAuthOptions.SectionName));
-        services.Configure<StripeOptions>(configuration.GetSection(StripeOptions.SectionName));
-        services.Configure<PayHereOptions>(configuration.GetSection(PayHereOptions.SectionName));
 
         // -- Email: transactional sending via ONEVO-owned platform service keys --
-        // Email:Provider is a non-secret selector (sendgrid/resend). The provider API
-        // key is resolved per send from platform_service_keys through
-        // IPlatformServiceKeyResolver — never from appsettings.
+        // Both the active transactional email provider and its API key are resolved
+        // per send by joining platform_providers to platform_service_keys through
+        // IPlatformServiceKeyResolver - never from appsettings or a hardcoded default.
         services.AddHttpClient(SendGridEmailAdapter.HttpClientName);
         services.AddHttpClient(ResendEmailAdapter.HttpClientName);
         services.AddScoped<IEmailTemplateRenderer, EmailTemplateRenderer>();
@@ -266,6 +290,7 @@ public static class DependencyInjection
         services.AddHostedService<PlatformAccessSeeder>();
         services.AddHostedService<ModuleCatalogSeeder>();
         services.AddHostedService<DevSmokeTestTenantSeeder>();
+        services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
 
         // Boot-time configuration audit (warns about missing keys; never fatal).
         services.AddHostedService<ConfigurationStartupValidator>();

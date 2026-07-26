@@ -7,7 +7,7 @@ namespace ONEVO.Infrastructure.Services.SystemConfig;
 /// <summary>
 /// Platform service key verification.
 ///
-/// Phase 1 Foundation stub — validates key format only (non-empty, plausible shape per
+/// Phase 1 Foundation stub - validates key format only (non-empty, plausible shape per
 /// provider) with NO live external network call, matching the payment gateway
 /// verification pattern. Replace with real provider HTTP clients (Resend/SendGrid
 /// account endpoints, Cloudflare token verify) in a later delivery.
@@ -43,12 +43,13 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
 
         var success = serviceKey switch
         {
-            // Resend keys start with "re_", SendGrid with "SG." — accept any non-trivial
+            // Resend keys start with "re_", SendGrid with "SG." - accept any non-trivial
             // key to avoid false negatives; format-only check, no live call in Phase 1.
             PlatformServiceKeyCatalog.Resend => apiKeyPlaintext.Length >= 8,
             PlatformServiceKeyCatalog.Sendgrid => apiKeyPlaintext.Length >= 8,
             PlatformServiceKeyCatalog.Cloudflare => apiKeyPlaintext.Length >= 8,
             PlatformServiceKeyCatalog.CloudflareR2 => apiKeyPlaintext.Length >= 8,
+            PlatformServiceKeyCatalog.AwsRekognition => apiKeyPlaintext.Length >= 8,
             _ => false
         };
 

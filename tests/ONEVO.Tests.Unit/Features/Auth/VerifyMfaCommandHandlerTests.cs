@@ -1,13 +1,12 @@
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.Models;
-using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.Commands.MfaVerify;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 
@@ -20,12 +19,12 @@ public sealed class VerifyMfaCommandHandlerTests
     private readonly UserMfa _mfa;
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<IUserMfaRepository> _mfas = new();
-    private readonly Mock<IUnitOfWork> _uow = new();
     private readonly Mock<IMfaChallengeStore> _challenges = new();
     private readonly Mock<IEncryptionService> _encryption = new();
     private readonly Mock<ITotpService> _totp = new();
-    private readonly Mock<ILoginSessionMaterialFactory> _sessions = new();
-    private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<ILoginContinuationService> _continuation = new();
+    private readonly Mock<ITenantRepository> _tenants = new();
+    private readonly Mock<ITenantContextSwitcher> _tenantSwitcher = new();
 
     public VerifyMfaCommandHandlerTests()
     {
@@ -34,23 +33,39 @@ public sealed class VerifyMfaCommandHandlerTests
         _users.Setup(x => x.GetByIdAsync(_user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(_user);
         _mfas.Setup(x => x.GetTotpAsync(_user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync(_mfa);
         _encryption.Setup(x => x.Decrypt("encrypted")).Returns("secret");
+        _tenants.Setup(x => x.GetByIdAsync(_tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant
+            {
+                Id = _tenantId,
+                Name = "Acme",
+                Slug = "acme",
+                CompanySizeRange = "1-10",
+                Status = TenantStatus.Active
+            });
     }
 
     [Fact]
-    public async Task ValidCode_ConsumesChallengeBeforeCreatingSession()
+    public async Task ValidCode_ConsumesChallengeBeforeDelegatingToContinuation()
     {
-        var state = new MfaChallengeState(_user.Id, _tenantId, DateTimeOffset.UtcNow.AddMinutes(5), 0);
+        var state = new MfaChallengeState(
+            _user.Id,
+            _tenantId,
+            "google_sso",
+            DateTimeOffset.UtcNow.AddMinutes(5),
+            0);
         _challenges.Setup(x => x.GetAsync("opaque", It.IsAny<CancellationToken>())).ReturnsAsync(state);
         _challenges.Setup(x => x.TryConsumeAsync("opaque", It.IsAny<CancellationToken>())).ReturnsAsync(state);
         _totp.Setup(x => x.Verify("secret", "123456")).Returns(true);
-        _sessions.Setup(x => x.PrepareAsync(_user, "ip", "ua", It.IsAny<CancellationToken>()))
+        _continuation
+            .Setup(c => c.FinishAuthenticatedLoginAsync(_user, "google_sso", "ip", "ua", It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto("csrf", "hash", null)));
 
         var result = await Handler(_tenantId).Handle(new VerifyMfaCommand("opaque", "123456", "ip", "ua"), default);
 
         result.IsSuccess.Should().BeTrue();
         _challenges.Verify(x => x.TryConsumeAsync("opaque", It.IsAny<CancellationToken>()), Times.Once);
-        _sessions.Verify(x => x.PrepareAsync(_user, "ip", "ua", It.IsAny<CancellationToken>()), Times.Once);
+        _continuation.Verify(
+            c => c.FinishAuthenticatedLoginAsync(_user, "google_sso", "ip", "ua", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -77,6 +92,54 @@ public sealed class VerifyMfaCommandHandlerTests
         result.StatusCode.Should().Be(401);
         _challenges.Verify(x => x.RegisterFailedAttemptAsync("opaque", 5, It.IsAny<CancellationToken>()), Times.Once);
         _challenges.Verify(x => x.TryConsumeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _continuation.Verify(
+            c => c.FinishAuthenticatedLoginAsync(
+                It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task BaseHost_UsesPreTenantLookup_ThenSwitchesBeforeUserLookup()
+    {
+        var state = new MfaChallengeState(
+            _user.Id,
+            _tenantId,
+            "password",
+            DateTimeOffset.UtcNow.AddMinutes(5),
+            0);
+        _challenges
+            .Setup(x => x.GetForPreTenantContinuationAsync(
+                "opaque",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(state);
+        _challenges.Setup(x => x.TryConsumeAsync("opaque", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(state);
+        _totp.Setup(x => x.Verify("secret", "123456")).Returns(true);
+        _continuation
+            .Setup(c => c.FinishAuthenticatedLoginAsync(
+                _user,
+                "password",
+                null,
+                null,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto("csrf", "hash", null)));
+
+        var result = await BaseHostHandler().Handle(
+            new VerifyMfaCommand("opaque", "123456", null, null),
+            default);
+
+        result.IsSuccess.Should().BeTrue();
+        _challenges.Verify(
+            x => x.GetForPreTenantContinuationAsync("opaque", It.IsAny<CancellationToken>()),
+            Times.Once);
+        _challenges.Verify(
+            x => x.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _tenantSwitcher.Verify(
+            x => x.SwitchToTenantAsync(
+                It.Is<TenantRegistryEntry>(entry => entry.TenantId == _tenantId),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     private VerifyMfaCommandHandler Handler(Guid tenantId)
@@ -86,7 +149,19 @@ public sealed class VerifyMfaCommandHandlerTests
         tenant.SetupGet(x => x.ContextMode).Returns(TenantContextMode.Tenant);
         tenant.SetupGet(x => x.TenantId).Returns(tenantId);
         return new VerifyMfaCommandHandler(
-            _users.Object, _mfas.Object, _uow.Object, _challenges.Object, _encryption.Object,
-            _totp.Object, _sessions.Object, _clock.Object, tenant.Object);
+            _users.Object, _mfas.Object, _challenges.Object, _encryption.Object,
+            _totp.Object, _continuation.Object, tenant.Object, _tenants.Object,
+            _tenantSwitcher.Object);
+    }
+
+    private VerifyMfaCommandHandler BaseHostHandler()
+    {
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(x => x.IsResolved).Returns(false);
+        tenant.SetupGet(x => x.ContextMode).Returns(TenantContextMode.System);
+        return new VerifyMfaCommandHandler(
+            _users.Object, _mfas.Object, _challenges.Object, _encryption.Object,
+            _totp.Object, _continuation.Object, tenant.Object, _tenants.Object,
+            _tenantSwitcher.Object);
     }
 }

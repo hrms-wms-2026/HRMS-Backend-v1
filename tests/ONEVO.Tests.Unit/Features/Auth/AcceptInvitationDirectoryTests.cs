@@ -1,18 +1,19 @@
 using FluentAssertions;
-using Microsoft.Extensions.Options;
 using Moq;
-using ONEVO.Application.Common.Configuration;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.Security;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.Commands.AcceptInvitationGoogle;
 using ONEVO.Application.Features.Auth.Invite.Commands.AcceptInvitationPassword;
+using ONEVO.Application.Features.Auth.Legal.Commands.SubmitLegalAcceptance;
+using ONEVO.Application.Features.Auth.Legal.Services;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 
@@ -58,10 +59,10 @@ public class AcceptInvitationDirectoryTests
     {
         // Arrange
         var invitations = new Mock<ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces.IInvitationTokenRepository>();
-        var policies = new Mock<ITenantAuthPolicyRepository>();
         var users = new Mock<IUserRepository>();
         var passwordHasher = new Mock<IPasswordHasher>();
-        var tokenIssuer = new Mock<ILoginSessionMaterialFactory>();
+        var legalSubmission = new Mock<ILegalAcceptanceSubmissionService>();
+        var continuation = new Mock<ILoginContinuationService>();
         var unitOfWork = new Mock<IUnitOfWork>();
         var clock = new Mock<IDateTimeProvider>();
         var tenantContext = new Mock<ITenantContext>();
@@ -87,9 +88,20 @@ public class AcceptInvitationDirectoryTests
             .Setup(c => c.UtcNow)
             .Returns(DateTimeOffset.UtcNow);
 
-        tokenIssuer
-            .Setup(i => i.PrepareAsync(
+        legalSubmission
+            .Setup(s => s.ValidateAndStageAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<IReadOnlyList<LegalAcceptanceItemInput>>(),
+                true,
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<bool>.Success(true));
+        continuation
+            .Setup(i => i.FinishAuthenticatedLoginAsync(
                 It.IsAny<User>(),
+                It.IsAny<string>(),
                 It.IsAny<string?>(),
                 It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
@@ -105,10 +117,10 @@ public class AcceptInvitationDirectoryTests
 
         var handler = new AcceptInvitationPasswordCommandHandler(
             invitations.Object,
-            policies.Object,
             users.Object,
             passwordHasher.Object,
-            tokenIssuer.Object,
+            legalSubmission.Object,
+            continuation.Object,
             unitOfWork.Object,
             clock.Object,
             tenantContext.Object,
@@ -119,7 +131,8 @@ public class AcceptInvitationDirectoryTests
         var command = new AcceptInvitationPasswordCommand(
             RawToken: RawToken,
             Password: "NewPassword123!",
-            Phone: null,
+            ConfirmPassword: "NewPassword123!",
+            Acceptances: [],
             IpAddress: "127.0.0.1",
             UserAgent: "test-agent");
 
@@ -140,10 +153,10 @@ public class AcceptInvitationDirectoryTests
     {
         // Arrange
         var invitations = new Mock<ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces.IInvitationTokenRepository>();
-        var policies = new Mock<ITenantAuthPolicyRepository>();
         var users = new Mock<IUserRepository>();
         var passwordHasher = new Mock<IPasswordHasher>();
-        var tokenIssuer = new Mock<ILoginSessionMaterialFactory>();
+        var legalSubmission = new Mock<ILegalAcceptanceSubmissionService>();
+        var continuation = new Mock<ILoginContinuationService>();
         var unitOfWork = new Mock<IUnitOfWork>();
         var clock = new Mock<IDateTimeProvider>();
         var tenantContext = new Mock<ITenantContext>();
@@ -161,10 +174,10 @@ public class AcceptInvitationDirectoryTests
 
         var handler = new AcceptInvitationPasswordCommandHandler(
             invitations.Object,
-            policies.Object,
             users.Object,
             passwordHasher.Object,
-            tokenIssuer.Object,
+            legalSubmission.Object,
+            continuation.Object,
             unitOfWork.Object,
             clock.Object,
             tenantContext.Object,
@@ -175,7 +188,8 @@ public class AcceptInvitationDirectoryTests
         var command = new AcceptInvitationPasswordCommand(
             RawToken: RawToken,
             Password: "NewPassword123!",
-            Phone: null,
+            ConfirmPassword: "NewPassword123!",
+            Acceptances: [],
             IpAddress: null,
             UserAgent: null);
 
@@ -200,12 +214,13 @@ public class AcceptInvitationDirectoryTests
     {
         // Arrange
         var google = new Mock<IGoogleIdTokenValidator>();
-        var googleOptions = new Mock<IOptions<GoogleAuthOptions>>();
+        var oauthApps = new Mock<IPlatformOAuthAppResolver>();
         var invitations = new Mock<ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces.IInvitationTokenRepository>();
         var policies = new Mock<ITenantAuthPolicyRepository>();
         var users = new Mock<IUserRepository>();
         var externalIdentities = new Mock<IUserExternalIdentityRepository>();
-        var tokenIssuer = new Mock<ILoginSessionMaterialFactory>();
+        var legalSubmission = new Mock<ILegalAcceptanceSubmissionService>();
+        var continuation = new Mock<ILoginContinuationService>();
         var unitOfWork = new Mock<IUnitOfWork>();
         var clock = new Mock<IDateTimeProvider>();
         var tenantContext = new Mock<ITenantContext>();
@@ -215,12 +230,16 @@ public class AcceptInvitationDirectoryTests
         tenantContext.Setup(t => t.ContextMode).Returns(TenantContextMode.Tenant);
         tenantContext.Setup(t => t.TenantId).Returns(TenantId);
 
-        googleOptions
-            .Setup(o => o.Value)
-            .Returns(new GoogleAuthOptions
-            {
-                TenantInvite = new GoogleClientOptions { ClientId = "test-client-id" }
-            });
+        oauthApps
+            .Setup(r => r.GetActiveAppForProviderAsync(
+                "google",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedPlatformOAuthApp(
+                "google",
+                "test-client-id",
+                "https://accounts.google.com/o/oauth2/v2/auth",
+                "https://oauth2.googleapis.com/token",
+                []));
 
         google
             .Setup(g => g.ValidateAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -249,9 +268,20 @@ public class AcceptInvitationDirectoryTests
 
         clock.Setup(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
 
-        tokenIssuer
-            .Setup(i => i.PrepareAsync(
+        legalSubmission
+            .Setup(s => s.ValidateAndStageAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<IReadOnlyList<LegalAcceptanceItemInput>>(),
+                true,
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<bool>.Success(true));
+        continuation
+            .Setup(i => i.FinishAuthenticatedLoginAsync(
                 It.IsAny<User>(),
+                It.IsAny<string>(),
                 It.IsAny<string?>(),
                 It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
@@ -267,12 +297,13 @@ public class AcceptInvitationDirectoryTests
 
         var handler = new AcceptInvitationGoogleCommandHandler(
             google.Object,
-            googleOptions.Object,
+            oauthApps.Object,
             invitations.Object,
             policies.Object,
             users.Object,
             externalIdentities.Object,
-            tokenIssuer.Object,
+            legalSubmission.Object,
+            continuation.Object,
             unitOfWork.Object,
             clock.Object,
             tenantContext.Object,
@@ -283,6 +314,7 @@ public class AcceptInvitationDirectoryTests
         var command = new AcceptInvitationGoogleCommand(
             RawToken: RawToken,
             GoogleIdToken: "google-id-token",
+            Acceptances: [],
             IpAddress: "127.0.0.1",
             UserAgent: "test-agent");
 
@@ -296,6 +328,12 @@ public class AcceptInvitationDirectoryTests
             g => g.UpsertAsync(InvitedEmail, TenantId, It.IsAny<CancellationToken>()),
             Times.Once,
             "UpsertAsync must be called with the invited email and tenant ID on successful Google acceptance");
+        google.Verify(
+            validator => validator.ValidateAsync(
+                "google-id-token",
+                "test-client-id",
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -303,12 +341,13 @@ public class AcceptInvitationDirectoryTests
     {
         // Arrange
         var google = new Mock<IGoogleIdTokenValidator>();
-        var googleOptions = new Mock<IOptions<GoogleAuthOptions>>();
+        var oauthApps = new Mock<IPlatformOAuthAppResolver>();
         var invitations = new Mock<ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces.IInvitationTokenRepository>();
         var policies = new Mock<ITenantAuthPolicyRepository>();
         var users = new Mock<IUserRepository>();
         var externalIdentities = new Mock<IUserExternalIdentityRepository>();
-        var tokenIssuer = new Mock<ILoginSessionMaterialFactory>();
+        var legalSubmission = new Mock<ILegalAcceptanceSubmissionService>();
+        var continuation = new Mock<ILoginContinuationService>();
         var unitOfWork = new Mock<IUnitOfWork>();
         var clock = new Mock<IDateTimeProvider>();
         var tenantContext = new Mock<ITenantContext>();
@@ -318,12 +357,16 @@ public class AcceptInvitationDirectoryTests
         tenantContext.Setup(t => t.ContextMode).Returns(TenantContextMode.Tenant);
         tenantContext.Setup(t => t.TenantId).Returns(TenantId);
 
-        googleOptions
-            .Setup(o => o.Value)
-            .Returns(new GoogleAuthOptions
-            {
-                TenantInvite = new GoogleClientOptions { ClientId = "test-client-id" }
-            });
+        oauthApps
+            .Setup(r => r.GetActiveAppForProviderAsync(
+                "google",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedPlatformOAuthApp(
+                "google",
+                "test-client-id",
+                "https://accounts.google.com/o/oauth2/v2/auth",
+                "https://oauth2.googleapis.com/token",
+                []));
 
         google
             .Setup(g => g.ValidateAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -341,12 +384,13 @@ public class AcceptInvitationDirectoryTests
 
         var handler = new AcceptInvitationGoogleCommandHandler(
             google.Object,
-            googleOptions.Object,
+            oauthApps.Object,
             invitations.Object,
             policies.Object,
             users.Object,
             externalIdentities.Object,
-            tokenIssuer.Object,
+            legalSubmission.Object,
+            continuation.Object,
             unitOfWork.Object,
             clock.Object,
             tenantContext.Object,
@@ -357,6 +401,7 @@ public class AcceptInvitationDirectoryTests
         var command = new AcceptInvitationGoogleCommand(
             RawToken: RawToken,
             GoogleIdToken: "google-id-token",
+            Acceptances: [],
             IpAddress: null,
             UserAgent: null);
 
@@ -370,6 +415,60 @@ public class AcceptInvitationDirectoryTests
             g => g.UpsertAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never,
             "UpsertAsync must not be called when the invitation is not found");
+    }
+
+    [Fact]
+    public async Task GoogleHandler_WhenActivePlatformOAuthAppIsMissing_FailsSafely()
+    {
+        var google = new Mock<IGoogleIdTokenValidator>();
+        var oauthApps = new Mock<IPlatformOAuthAppResolver>();
+        var tenantContext = new Mock<ITenantContext>();
+
+        tenantContext.Setup(t => t.IsResolved).Returns(true);
+        tenantContext.Setup(t => t.ContextMode).Returns(TenantContextMode.Tenant);
+        oauthApps
+            .Setup(r => r.GetActiveAppForProviderAsync(
+                "google",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ResolvedPlatformOAuthApp?)null);
+
+        var handler = new AcceptInvitationGoogleCommandHandler(
+            google.Object,
+            oauthApps.Object,
+            Mock.Of<ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces.IInvitationTokenRepository>(),
+            Mock.Of<ITenantAuthPolicyRepository>(),
+            Mock.Of<IUserRepository>(),
+            Mock.Of<IUserExternalIdentityRepository>(),
+            Mock.Of<ILegalAcceptanceSubmissionService>(),
+            Mock.Of<ILoginContinuationService>(),
+            Mock.Of<IUnitOfWork>(),
+            Mock.Of<IDateTimeProvider>(),
+            tenantContext.Object,
+            Mock.Of<IGlobalEmailDirectoryRepository>(),
+            Mock.Of<IUserRoleRepository>(),
+            Mock.Of<IPositionRepository>());
+
+        var result = await handler.Handle(
+            new AcceptInvitationGoogleCommand(
+                RawToken,
+                "google-id-token",
+                [],
+                null,
+                null),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(500);
+        Assert.DoesNotContain(
+            "secret",
+            result.Error,
+            StringComparison.OrdinalIgnoreCase);
+        google.Verify(
+            validator => validator.ValidateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     #endregion

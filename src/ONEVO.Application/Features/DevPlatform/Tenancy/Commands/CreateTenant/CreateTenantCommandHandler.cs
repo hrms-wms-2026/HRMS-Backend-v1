@@ -7,13 +7,10 @@ using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Roles.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning;
 using ONEVO.Application.Features.DevPlatform.Tenancy.Provisioning;
 using ONEVO.Application.Features.DevPlatform.Tenancy.DTOs.Requests;
 using ONEVO.Application.Features.DevPlatform.Tenancy.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.Provisioning.ServiceInterfaces;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -39,7 +36,6 @@ public class CreateTenantCommandHandler
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
     private readonly ITenantOwnerInvitationService _invitationService;
-    private readonly ITenantSetupSelectionRepository _setupSelections;
 
     public CreateTenantCommandHandler(
         ITenantRepository tenants,
@@ -51,8 +47,7 @@ public class CreateTenantCommandHandler
         ICurrentUser currentUser,
         IUnitOfWork unitOfWork,
         IDateTimeProvider clock,
-        ITenantOwnerInvitationService invitationService,
-        ITenantSetupSelectionRepository setupSelections)
+        ITenantOwnerInvitationService invitationService)
     {
         _tenants = tenants;
         _legalEntities = legalEntities;
@@ -64,7 +59,6 @@ public class CreateTenantCommandHandler
         _unitOfWork = unitOfWork;
         _clock = clock;
         _invitationService = invitationService;
-        _setupSelections = setupSelections;
     }
 
     public async Task<Result<CreateTenantDraftResponseDto>> Handle(
@@ -92,18 +86,6 @@ public class CreateTenantCommandHandler
         var graceDays = request.Subscription.UnpaidGracePeriodDays ?? plan.UnpaidGracePeriodDays;
         if (trialDays < 0 || graceDays < 0)
             return Result<CreateTenantDraftResponseDto>.Failure("Trial period days and unpaid grace period days must be non-negative.", 400);
-
-        // 3b. Validate setup option keys before any entity creation
-        if (request.TenantConfigurationSetup?.SetupOptions is { Count: > 0 } setupOptionsEarly)
-        {
-            var unknownKeys = setupOptionsEarly
-                .Where(k => !TenantSetupOptionKeys.All.Contains(k))
-                .ToList();
-            if (unknownKeys.Count > 0)
-                return Result<CreateTenantDraftResponseDto>.Failure(
-                    $"Unknown setup option keys: {string.Join(", ", unknownKeys)}",
-                    400);
-        }
 
         var now = _clock.UtcNow;
         var settingsJson = JsonSerializer.Serialize(new { default_timezone = request.Timezone.Trim() });
@@ -194,12 +176,6 @@ public class CreateTenantCommandHandler
             plan.GetIncludedModules(),
             ct);
 
-        // 9. Persist setup selections (keys already validated in step 3b above)
-        if (request.TenantConfigurationSetup?.SetupOptions is { Count: > 0 } setupOptions)
-        {
-            await _setupSelections.AddRangeAsync(tenant.Id, setupOptions, now, ct);
-        }
-
         // 10. Create invite records + queue the invite email outbox message
         //     (no SaveChanges yet; the tenant name is passed along because the
         //     tenant row is still unsaved at this point).
@@ -223,7 +199,7 @@ public class CreateTenantCommandHandler
         }
 
         // 11. ONE commit covering tenant + legal entity + auth policy + subscription
-        //     + owner role + setup selections + invite records + email outbox message.
+        //     + owner role + invite records + email outbox message.
         //     The outbox worker delivers the email after this commit.
         await _unitOfWork.SaveChangesAsync(ct);
 

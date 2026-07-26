@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.Auth.Legal.Services;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 
@@ -24,4 +25,19 @@ internal static class LoginMapper
             User: ToCurrentUserDto(user),
             RequiresMfa: true,
             MfaChallenge: mfaChallenge);
+
+    public static LoginResponseDto ToLegalAcceptanceRequired(
+        User user,
+        string legalChallenge,
+        string legalCsrfToken,
+        IReadOnlyList<PendingLegalDocumentDto> pendingDocuments) =>
+        new(
+            CsrfTokenHash: string.Empty,
+            CsrfToken: string.Empty,
+            ExpiresAt: null,
+            User: ToCurrentUserDto(user),
+            RequiresLegalAcceptance: true,
+            LegalChallenge: legalChallenge,
+            LegalCsrfToken: legalCsrfToken,
+            PendingLegalDocuments: pendingDocuments);
 }

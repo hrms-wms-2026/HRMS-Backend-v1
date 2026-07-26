@@ -157,6 +157,67 @@ public class StorageQuotaArchitectureTests
     }
 
     [Fact]
+    public void EfTenantStorageStatsRepository_HasNoExpressionBodiedMembers()
+    {
+        // Scoped guard: this repository controls storage quota counters and
+        // intentionally uses raw SQL for atomic reserve/release/commit
+        // behavior, so its members must stay in readable block-bodied form.
+        // This rule is scoped only to this repository, not the whole codebase.
+        var source = ReadTenantStorageStatsRepositorySource();
+
+        var expressionBodiedMembers = Regex.Matches(
+            source,
+            @"^\s*(public|private|protected|internal)[^\{;=]*\)\s*=>",
+            RegexOptions.Multiline);
+
+        Assert.True(
+            expressionBodiedMembers.Count == 0,
+            "EfTenantStorageStatsRepository must not contain expression-bodied members: " +
+            string.Join(", ", expressionBodiedMembers.Select(m => m.Value.Trim())));
+    }
+
+    [Fact]
+    public void EfTenantStorageStatsRepository_PreservesAtomicSqlBehavior()
+    {
+        // Guards that the intentional raw-SQL atomicity for quota
+        // reserve/release/commit was not replaced by EF load-modify-save
+        // logic during the readability cleanup.
+        var source = ReadTenantStorageStatsRepositorySource();
+
+        Assert.Contains("ExecuteSqlInterpolatedAsync", source);
+        Assert.Contains("ON CONFLICT", source);
+        Assert.Contains("GREATEST(0", source);
+        Assert.Contains("tenant_storage_stats", source);
+        Assert.Contains("reserved_r2_bytes", source);
+        Assert.Contains("used_r2_bytes", source);
+    }
+
+    private static string ReadTenantStorageStatsRepositorySource()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(
+                dir.FullName,
+                "src",
+                "ONEVO.Infrastructure",
+                "Persistence",
+                "Repositories",
+                "Storage",
+                "Quota",
+                "EfTenantStorageStatsRepository.cs");
+
+            if (File.Exists(candidate))
+                return File.ReadAllText(candidate);
+
+            dir = dir.Parent;
+        }
+
+        throw new FileNotFoundException(
+            "Could not locate EfTenantStorageStatsRepository.cs above " + AppContext.BaseDirectory);
+    }
+
+    [Fact]
     public void NoMigration_Creates_TenantResourceLimits()
     {
         // tenant_resource_limits is referenced by architecture docs but is NOT

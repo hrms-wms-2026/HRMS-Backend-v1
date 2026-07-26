@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Xunit;
 
@@ -79,5 +80,41 @@ public class PlatformServiceKeysArchitectureTests
                     $"{controller.FullName} must not depend on IPlatformServiceKeyResolver.");
             }
         }
+    }
+
+    // Scoped readability guard for the Phase 1C repository cleanup.
+    // Only inspects EfPlatformServiceKeyRepository.cs; other repositories are not covered yet.
+    [Fact]
+    public void EfPlatformServiceKeyRepository_HasNoExpressionBodiedMembers()
+    {
+        var repositoryPath = FindRepositoryPath(
+            "src", "ONEVO.Infrastructure", "Persistence", "Repositories", "DevPlatform", "SystemConfig",
+            "EfPlatformServiceKeyRepository.cs");
+
+        Assert.True(File.Exists(repositoryPath), $"Expected file not found: {repositoryPath}");
+
+        var source = File.ReadAllText(repositoryPath);
+
+        var expressionBodiedMemberPattern = new Regex(@"^\s*(public|private|protected|internal)[^{;]*\)\s*=>", RegexOptions.Multiline);
+        var match = expressionBodiedMemberPattern.Match(source);
+
+        Assert.True(match.Success == false,
+            $"EfPlatformServiceKeyRepository.cs must not contain expression-bodied members. Offending text: '{match.Value.Trim()}'");
+    }
+
+    private static string FindRepositoryPath(params string[] segments)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, "src", "ONEVO.Api")))
+            {
+                return Path.Combine([directory.FullName, .. segments]);
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate the repository root.");
     }
 }

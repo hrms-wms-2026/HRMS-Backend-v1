@@ -131,4 +131,110 @@ public class EmailPlatformKeyArchitectureTests
             }
         }
     }
+
+    [Fact]
+    public void NoTenantControllerOrRequest_AcceptsOrWritesEmailProviderCredentials()
+    {
+        var nonSystemConfigControllers = ApiAssembly.GetTypes()
+            .Where(t => t.IsSubclassOf(typeof(ControllerBase)) &&
+                        t.Namespace != null &&
+                        !t.Namespace.Contains("SystemConfig"))
+            .ToList();
+
+        Assert.NotEmpty(nonSystemConfigControllers);
+
+        foreach (var controller in nonSystemConfigControllers)
+        {
+            foreach (var method in controller.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            {
+                foreach (var param in method.GetParameters())
+                {
+                    var paramTypeName = param.ParameterType.Name.ToLowerInvariant();
+                    Assert.False(
+                        paramTypeName.Contains("emailcredential") ||
+                        paramTypeName.Contains("resendkey") ||
+                        paramTypeName.Contains("sendgridkey"),
+                        $"{controller.Name}.{method.Name} parameter '{param.Name}' of type '{param.ParameterType.Name}' must not accept tenant email provider credentials.");
+
+                    foreach (var prop in param.ParameterType.GetProperties())
+                    {
+                        var propName = prop.Name.ToLowerInvariant();
+                        Assert.False(
+                            propName.Equals("resendapikey", StringComparison.OrdinalIgnoreCase) ||
+                            propName.Equals("sendgridapikey", StringComparison.OrdinalIgnoreCase) ||
+                            propName.Equals("smtppassword", StringComparison.OrdinalIgnoreCase) ||
+                            propName.Equals("emailapikey", StringComparison.OrdinalIgnoreCase),
+                            $"{param.ParameterType.Name}.{prop.Name} must not exist on a tenant request model.");
+                    }
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void EmailOptions_HasNoProviderProperty()
+    {
+        var propertyNames = typeof(ONEVO.Infrastructure.ExternalServices.Email.EmailOptions)
+            .GetProperties().Select(p => p.Name).ToList();
+        Assert.DoesNotContain("Provider", propertyNames);
+    }
+
+    [Fact]
+    public void PlatformKeyTransactionalEmailSender_HasNoConfigDrivenProviderSelectionOrSendgridFallback()
+    {
+        var source = File.ReadAllText(FindRepositoryPath(
+            "src", "ONEVO.Infrastructure", "ExternalServices", "Email", "PlatformKeyTransactionalEmailSender.cs"));
+
+        Assert.DoesNotContain("_options.Provider", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("options.Provider", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Email:Provider", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Email__Provider", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("PlatformServiceKeyCatalog.Sendgrid", source, StringComparison.Ordinal);
+        Assert.Contains("ResolveActiveTransactionalEmailProviderAsync", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EmailAndServiceKeyFlow_DoesNotReferencePlatformOAuthApps()
+    {
+        var senderSource = File.ReadAllText(FindRepositoryPath(
+            "src", "ONEVO.Infrastructure", "ExternalServices", "Email", "PlatformKeyTransactionalEmailSender.cs"));
+        var resolverSource = File.ReadAllText(FindRepositoryPath(
+            "src", "ONEVO.Infrastructure", "Services", "SystemConfig", "PlatformServiceKeyResolver.cs"));
+
+        foreach (var source in new[] { senderSource, resolverSource })
+        {
+            Assert.DoesNotContain("PlatformOAuthApp", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("platform_oauth_apps", source, StringComparison.Ordinal);
+        }
+
+        var featureDirectory = FindRepositoryPath(
+            "src", "ONEVO.Application", "Features", "DevPlatform", "SystemConfig", "PlatformServiceKeys");
+        var offenders = Directory.GetFiles(featureDirectory, "*.cs", SearchOption.AllDirectories)
+            .Where(path =>
+            {
+                var text = File.ReadAllText(path);
+                return text.Contains("PlatformOAuthApp", StringComparison.Ordinal) ||
+                       text.Contains("platform_oauth_apps", StringComparison.Ordinal);
+            })
+            .Select(Path.GetFileName)
+            .ToList();
+
+        Assert.Empty(offenders);
+    }
+
+    private static string FindRepositoryPath(params string[] segments)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, "src", "ONEVO.Api")))
+            {
+                return Path.Combine([directory.FullName, .. segments]);
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate the repository root.");
+    }
 }

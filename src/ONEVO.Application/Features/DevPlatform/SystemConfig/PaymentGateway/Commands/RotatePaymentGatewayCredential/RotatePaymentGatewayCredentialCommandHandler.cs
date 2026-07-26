@@ -14,9 +14,9 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Com
 /// </summary>
 public sealed record RotatePaymentGatewayCredentialCommand(
     Guid GatewayConfigId,
-    /// <summary>Plain-text new secret — encrypted immediately; never stored raw.</summary>
+    /// <summary>Plain-text new secret - encrypted immediately; never stored raw.</summary>
     string NewSecretKey,
-    /// <summary>Plain-text new webhook secret — encrypted immediately; nullable.</summary>
+    /// <summary>Plain-text new webhook secret - encrypted immediately; nullable.</summary>
     string? NewWebhookSecret,
     Guid ActorPlatformUserId) : IRequest<Result<Unit>>;
 
@@ -43,13 +43,16 @@ public sealed class RotatePaymentGatewayCredentialCommandHandler
         if (config is null)
             return Result<Unit>.NotFound("Payment gateway config not found.");
 
-        // 2. Deactivate current active credential
-        var current = await _repo.GetActiveCredentialAsync(request.GatewayConfigId, cancellationToken);
-        if (current is not null)
+        // 2. Deactivate every active credential, including any pre-existing duplicate state.
+        var activeCredentials = await _repo.GetActiveCredentialsAsync(
+            request.GatewayConfigId,
+            cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        foreach (var credential in activeCredentials)
         {
-            current.IsActive = false;
-            current.DeactivatedById = request.ActorPlatformUserId;
-            current.DeactivatedAt = DateTimeOffset.UtcNow;
+            credential.IsActive = false;
+            credential.DeactivatedById = request.ActorPlatformUserId;
+            credential.DeactivatedAt = now;
         }
 
         // 3. Calculate next version number
@@ -72,7 +75,7 @@ public sealed class RotatePaymentGatewayCredentialCommandHandler
             CredentialVersion = maxVersion + 1,
             IsActive = true,
             RotatedById = request.ActorPlatformUserId,
-            RotatedAt = DateTimeOffset.UtcNow
+            RotatedAt = now
         };
 
         await _repo.AddCredentialAsync(newCredential, cancellationToken);

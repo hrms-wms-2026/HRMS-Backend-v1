@@ -7,7 +7,11 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Repo
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Queries.GetPlatformOAuthApp;
 
-/// <summary>Detail lookup by provider slug (case-insensitive). Secrets are never included.</summary>
+/// <summary>
+/// Detail lookup by provider slug (case-insensitive). Rejects unsupported providers
+/// (unknown, or Phase 2 such as slack) before any repository read. A metadata-only
+/// (unconfigured) provider still returns a card; secrets are never included.
+/// </summary>
 public sealed record GetPlatformOAuthAppQuery(string Provider) : IRequest<Result<PlatformOAuthAppDto>>;
 
 public sealed class GetPlatformOAuthAppQueryHandler
@@ -24,13 +28,17 @@ public sealed class GetPlatformOAuthAppQueryHandler
     {
         var provider = PlatformOAuthProviderRules.Normalize(request.Provider);
 
-        var app = await _repo.GetByProviderAsync(provider, cancellationToken);
-        if (app is null)
-            return Result<PlatformOAuthAppDto>.NotFound(
-                $"OAuth app for provider '{provider}' was not found.");
+        if (!PlatformOAuthProviderCatalog.TryGet(provider, out var definition))
+            return Result<PlatformOAuthAppDto>.Failure(
+                $"Provider '{provider}' is not an approved OAuth provider.", 400);
 
-        var activeCredentials = await _repo.GetActiveCredentialsForAppAsync(app.Id, cancellationToken);
+        var app = await _repo.GetByProviderAsync(provider, cancellationToken);
+
+        var activeCredential = app is null
+            ? null
+            : (await _repo.GetActiveCredentialsForAppAsync(app.Id, cancellationToken)).FirstOrDefault();
+
         return Result<PlatformOAuthAppDto>.Success(
-            PlatformOAuthAppMapper.ToDto(app, activeCredentials.FirstOrDefault()));
+            PlatformOAuthAppMapper.ToDto(definition, app, activeCredential));
     }
 }

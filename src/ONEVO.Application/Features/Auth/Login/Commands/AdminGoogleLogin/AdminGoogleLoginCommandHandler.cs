@@ -1,7 +1,5 @@
 using System.Text.Json;
 using MediatR;
-using Microsoft.Extensions.Options;
-using ONEVO.Application.Common.Configuration;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.Models.Auth;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -10,6 +8,7 @@ using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 
 namespace ONEVO.Application.Features.Auth.Login.Commands.AdminGoogleLogin;
@@ -25,7 +24,7 @@ public sealed class AdminGoogleLoginCommandHandler
     : IRequestHandler<AdminGoogleLoginCommand, Result<AdminLoginResultDto>>
 {
     private readonly IGoogleIdTokenValidator _google;
-    private readonly IOptions<GoogleAuthOptions> _options;
+    private readonly IPlatformOAuthAppResolver _oauthApps;
     private readonly ISecureTokenGenerator _tokens;
     private readonly IDateTimeProvider _clock;
     private readonly IPlatformUserRepository _platformUsers;
@@ -35,7 +34,7 @@ public sealed class AdminGoogleLoginCommandHandler
 
     public AdminGoogleLoginCommandHandler(
         IGoogleIdTokenValidator google,
-        IOptions<GoogleAuthOptions> options,
+        IPlatformOAuthAppResolver oauthApps,
         ISecureTokenGenerator tokens,
         IDateTimeProvider clock,
         IPlatformUserRepository platformUsers,
@@ -44,7 +43,7 @@ public sealed class AdminGoogleLoginCommandHandler
         IUnitOfWork uow)
     {
         _google = google;
-        _options = options;
+        _oauthApps = oauthApps;
         _tokens = tokens;
         _clock = clock;
         _platformUsers = platformUsers;
@@ -57,12 +56,12 @@ public sealed class AdminGoogleLoginCommandHandler
         AdminGoogleLoginCommand request,
         CancellationToken ct)
     {
-        var admin = _options.Value.Admin;
-        if (string.IsNullOrWhiteSpace(admin.ClientId))
+        var googleApp = await _oauthApps.GetActiveAppForProviderAsync("google", ct);
+        if (googleApp is null || string.IsNullOrWhiteSpace(googleApp.ClientId))
             return Result<AdminLoginResultDto>.Failure(
-                "Google OAuth admin ClientId is not configured.", 500);
+                "Google OAuth app is not configured.", 500);
 
-        var payload = await _google.ValidateAsync(request.GoogleIdToken, admin.ClientId, ct);
+        var payload = await _google.ValidateAsync(request.GoogleIdToken, googleApp.ClientId, ct);
         if (payload is null || string.IsNullOrWhiteSpace(payload.Email))
         {
             await WriteAuthEventAsync(PlatformAuthEvent.LoginFailed, userId: null, request,

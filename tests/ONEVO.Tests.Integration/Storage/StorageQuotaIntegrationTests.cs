@@ -8,13 +8,16 @@ using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
 using ONEVO.Infrastructure.Configuration;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.CurrentUser;
+using ONEVO.Infrastructure.Identity.Tenancy;
+using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.ModuleCatalog;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Subscription;
 using ONEVO.Infrastructure.Persistence.Repositories.Storage.Quota;
 using ONEVO.Infrastructure.Services.Storage.Quota;
+using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Storage;
@@ -46,6 +49,7 @@ public sealed class StorageQuotaIntegrationTests : IAsyncLifetime
     {
         await _postgres.StartAsync();
         _connectionString = _postgres.GetConnectionString();
+        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
 
         await using var db = CreateContext();
         await db.Database.MigrateAsync();

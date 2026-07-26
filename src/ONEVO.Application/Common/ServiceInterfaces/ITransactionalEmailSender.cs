@@ -1,8 +1,14 @@
 namespace ONEVO.Application.Common.ServiceInterfaces;
 
+public static class TransactionalEmailFailureCodes
+{
+    public const string ProviderUnavailable = "email_provider_unavailable";
+    public const string ProviderAmbiguous = "email_provider_ambiguous";
+}
+
 /// <summary>
 /// Request to send one transactional/system email (invite, password reset, system notice).
-/// Carries no secret material — provider credentials are resolved server-side from
+/// Carries no secret material - provider credentials are resolved server-side from
 /// platform_service_keys by the Infrastructure sender.
 /// </summary>
 public sealed record TransactionalEmailRequest(
@@ -35,9 +41,10 @@ public sealed record TransactionalEmailResult(
 }
 
 /// <summary>
-/// Sends transactional/system email using the ONEVO-owned provider key resolved from
-/// platform_service_keys. The provider selector (Email:Provider) is non-secret config;
-/// the API key always comes from IPlatformServiceKeyResolver and never from appsettings.
+/// Sends transactional/system email using the single active transactional_email
+/// provider joined to a matching active platform_service_keys credential. Resolution
+/// happens at send time via IPlatformServiceKeyResolver; there is no config-based
+/// provider selector and never an appsettings fallback.
 /// </summary>
 public interface ITransactionalEmailSender
 {

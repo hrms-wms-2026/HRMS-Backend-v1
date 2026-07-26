@@ -17,10 +17,10 @@ internal static class InviteMapper
         var status = ComputeStatus(inv, now);
         var methods = ParseMethods(inv.CompletionMethodsJson);
         var passwordOk = methods.Count == 0
-            ? (policy?.PasswordCompletionAllowed ?? true)
+            ? true
             : methods.Contains("password", StringComparer.OrdinalIgnoreCase);
         var googleOk = methods.Count == 0
-            ? (policy?.GoogleCompletionAllowed ?? true)
+            ? true
             : methods.Contains("google", StringComparer.OrdinalIgnoreCase);
         var allowMismatch = inv.AllowGoogleEmailMismatch ?? policy?.GoogleEmailMismatchDefault ?? false;
         var domains = ParseDomains(inv.AllowedEmailDomainsJson, policy?.AllowedLoginDomainsJson);

@@ -99,10 +99,6 @@ public class TenantsController : ControllerBase
                     request.Subscription.CommercialModel,
                     request.Subscription.TrialPeriodDays,
                     request.Subscription.UnpaidGracePeriodDays),
-                TenantConfigurationSetup: request.TenantConfigurationSetup is null
-                    ? null
-                    : new TenantConfigurationSetupInfo(
-                        request.TenantConfigurationSetup.SetupOptions ?? []),
                 OwnerInvite: request.OwnerInvite),
             ct);
 

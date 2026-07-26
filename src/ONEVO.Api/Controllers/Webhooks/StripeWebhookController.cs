@@ -1,39 +1,80 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Helpers;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.ServiceInterfaces;
 using ONEVO.Application.Features.SharedPlatform.Webhooks.Stripe;
-using ONEVO.Infrastructure.Configuration;
 using Stripe;
 using Stripe.Checkout;
 
 namespace ONEVO.Api.Controllers.Webhooks;
 
 [ApiController]
-[Route("api/stripe/webhook")]
+[Route("api/payment-gateways/stripe/{gatewayKey}/webhook")]
 public class StripeWebhookController : ControllerBase
 {
     private readonly IMediator _mediator;
-    private readonly StripeOptions _stripeOptions;
+    private readonly IPaymentGatewayWebhookSecretResolver _webhookSecrets;
 
-    public StripeWebhookController(IMediator mediator, IOptions<StripeOptions> stripeOptions)
+    public StripeWebhookController(
+        IMediator mediator,
+        IPaymentGatewayWebhookSecretResolver webhookSecrets)
     {
         _mediator = mediator;
-        _stripeOptions = stripeOptions.Value;
+        _webhookSecrets = webhookSecrets;
     }
 
     [HttpPost]
-    public async Task<IActionResult> Handle(CancellationToken ct)
+    public async Task<IActionResult> Handle(
+        [FromRoute] string gatewayKey,
+        CancellationToken ct)
     {
+        if (!PaymentGatewayKeyRules.IsValid(gatewayKey))
+        {
+            return BadRequest("Invalid payment gateway key.");
+        }
+
+        var webhookSecret = await _webhookSecrets.ResolveWebhookSecretAsync(
+            "stripe",
+            gatewayKey,
+            ct);
+
+        return await ProcessWebhookWithSecretAsync(webhookSecret, ct);
+    }
+
+    [HttpPost("/api/payment-gateways/stripe/{gatewayConfigId:guid}/webhook")]
+    public async Task<IActionResult> HandleByConfigId(
+        [FromRoute] Guid gatewayConfigId,
+        CancellationToken ct)
+    {
+        var webhookSecret = await _webhookSecrets.ResolveByConfigIdAsync(
+            "stripe",
+            gatewayConfigId,
+            ct);
+
+        return await ProcessWebhookWithSecretAsync(webhookSecret, ct);
+    }
+
+    private async Task<IActionResult> ProcessWebhookWithSecretAsync(
+        string? webhookSecret,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(webhookSecret))
+        {
+            return BadRequest("Stripe webhook is not configured.");
+        }
+
         string payload;
         using (var reader = new StreamReader(HttpContext.Request.Body, System.Text.Encoding.UTF8))
+        {
             payload = await reader.ReadToEndAsync(ct);
+        }
 
         var signature = HttpContext.Request.Headers["Stripe-Signature"].FirstOrDefault() ?? string.Empty;
 
         Event stripeEvent;
         try
         {
-            stripeEvent = EventUtility.ConstructEvent(payload, signature, _stripeOptions.WebhookSecret);
+            stripeEvent = EventUtility.ConstructEvent(payload, signature, webhookSecret);
         }
         catch (StripeException)
         {
@@ -42,7 +83,9 @@ public class StripeWebhookController : ControllerBase
 
         var command = ExtractCommand(stripeEvent);
         if (command is not null)
+        {
             await _mediator.Send(command, ct);
+        }
 
         return Ok();
     }
@@ -63,7 +106,9 @@ public class StripeWebhookController : ControllerBase
 
         Guid? tenantId = null;
         if (session?.Metadata?.TryGetValue("tenant_id", out var tid) == true && Guid.TryParse(tid, out var parsed))
+        {
             tenantId = parsed;
+        }
 
         return new ProcessStripeEventCommand(
             e.Type,
