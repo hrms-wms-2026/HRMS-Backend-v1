@@ -16,12 +16,14 @@ using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.ConfigurationTemplates;
+using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
 using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.DevPlatform;
 
+[Collection(WebApplicationFactoryCollection.Name)]
 public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
@@ -30,16 +32,19 @@ public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetim
         .WithPassword("test")
         .Build();
 
+    private IntegrationTestEnvironmentScope _environmentScope = null!;
     private AdminTestFactory _factory = null!;
     private HttpClient _client = null!;
 
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
+        var connectionString = _postgres.GetConnectionString();
 
-        await AdminTestFactory.MigrateDatabaseAsync(_postgres.GetConnectionString());
+        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
-        _factory = new AdminTestFactory(_postgres.GetConnectionString());
+        _factory = new AdminTestFactory(connectionString);
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost")
@@ -51,6 +56,7 @@ public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetim
         _client.Dispose();
         _factory.Dispose();
         await _postgres.DisposeAsync();
+        await _environmentScope.DisposeAsync();
     }
 
     [Fact]

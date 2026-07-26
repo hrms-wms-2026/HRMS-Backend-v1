@@ -7,12 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
-using ONEVO.Infrastructure.ExternalServices.Messaging;
-using ONEVO.Infrastructure.Identity.CurrentUser;
-using ONEVO.Infrastructure.Identity.Tenancy;
-using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
-using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 
@@ -24,6 +19,7 @@ namespace ONEVO.Tests.Integration.Auth;
 /// PostgreSQL database (including the auth_lookup_base_login_candidates function and RLS).
 /// Requires Docker.
 /// </summary>
+[Collection(WebApplicationFactoryCollection.Name)]
 public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
@@ -32,6 +28,7 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
         .WithPassword("test")
         .Build();
 
+    private IntegrationTestEnvironmentScope _environmentScope = null!;
     private BaseDomainLoginTestFactory _factory = null!;
     private HttpClient _client = null!;
 
@@ -40,11 +37,14 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
         await _postgres.StartAsync();
         var connectionString = _postgres.GetConnectionString();
 
-        // Migrate via a standalone ApplicationDbContext before the WebApplicationFactory is ever
-        // touched. Accessing _factory.Services starts the host, including startup hosted services
-        // like PermissionSeeder, which assume migrations have already applied — mirrors
-        // AdminTestFactory.MigrateDatabaseAsync / TenantProvisioningE2ETests's ordering.
-        await MigrateDatabaseAsync(connectionString);
+        // Roles + migrations must exist before the environment scope's onevo_app connection string
+        // is opened by Program.cs's pre-Build() DatabaseConnectionStartupValidator, and the
+        // environment scope must be in place before BaseDomainLoginTestFactory is constructed -
+        // accessing _factory.Services/CreateClient() is what first triggers Program.cs's top-level
+        // startup code, including hosted services like PermissionSeeder that assume migrations have
+        // already applied.
+        await IntegrationDatabaseBootstrap.InitializeAsync(connectionString);
+        _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new BaseDomainLoginTestFactory(connectionString);
 
@@ -55,29 +55,12 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
         });
     }
 
-    private static async Task MigrateDatabaseAsync(string connectionString)
-    {
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(connectionString);
-
-        var migrationOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connectionString)
-            .UseSnakeCaseNamingConvention()
-            .Options;
-        var dateTimeProvider = new SystemDateTimeProvider();
-        await using var migrationContext = new ApplicationDbContext(
-            migrationOptions,
-            new AuditableEntityInterceptor(new AnonymousCurrentUser(), dateTimeProvider),
-            new SoftDeleteInterceptor(dateTimeProvider),
-            new DomainEventDispatchInterceptor(new NoOpPublisher()),
-            new TenantContextAccessor());
-        await migrationContext.Database.MigrateAsync();
-    }
-
     public async Task DisposeAsync()
     {
         _client.Dispose();
         await _factory.DisposeAsync();
         await _postgres.DisposeAsync();
+        await _environmentScope.DisposeAsync();
     }
 
     [Fact]
