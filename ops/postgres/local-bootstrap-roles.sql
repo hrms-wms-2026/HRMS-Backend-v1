@@ -1,4 +1,4 @@
--- Local/dev/test PostgreSQL role bootstrap helper.
+-- Local/dev/test PostgreSQL PRE-MIGRATION role bootstrap helper.
 --
 -- This operational helper creates equivalent local roles for the
 -- architecture-defined runtime/migration role model. The API must never run
@@ -11,6 +11,13 @@
 --
 -- The runtime role is restricted, NOSUPERUSER, and NOBYPASSRLS. The migration
 -- role is used only for schema migration and is also not a superuser.
+--
+-- This file runs BEFORE EF migrations, so it must only do things that are
+-- valid against an empty/pre-schema database: it must never reference the
+-- users/tenants tables (schema public), or any other migrated table/
+-- function, by name. Object grants that require those migrated objects to
+-- exist live in ops/postgres/local-post-migration-grants.sql instead, which
+-- runs after migrations succeed.
 
 \set ON_ERROR_STOP on
 
@@ -35,6 +42,13 @@ SELECT format(
 \gexec
 
 SELECT format('GRANT CREATE, USAGE ON SCHEMA public TO %I', :'migrator_user')
+\gexec
+
+-- Database-level CREATE only, and only for onevo_migrator: some migrations create new
+-- schemas (e.g. CREATE SCHEMA IF NOT EXISTS auth_internal), which requires CREATE on the
+-- database itself, not just on the public schema. onevo_app must never receive this -
+-- runtime must not be able to create schemas or tables.
+SELECT format('GRANT CREATE ON DATABASE %I TO %I', :'db_name', :'migrator_user')
 \gexec
 
 SELECT format('GRANT USAGE ON SCHEMA public TO %I', :'app_user')
@@ -76,21 +90,10 @@ SELECT format('ALTER ROLE %I WITH NOLOGIN BYPASSRLS NOSUPERUSER NOCREATEDB NOCRE
 SELECT format('GRANT USAGE ON SCHEMA public TO %I', :'base_login_fn_owner')
 \gexec
 
--- Column-level grants only: exactly the columns auth_lookup_base_login_candidates
--- references, not every column on users/tenants. Revoke first so re-running this script
--- against a database that still has an old broad table-level grant repairs it.
-SELECT format('REVOKE SELECT ON users, tenants FROM %I', :'base_login_fn_owner')
-\gexec
-
-SELECT format(
-    'GRANT SELECT (tenant_id, id, normalized_email, is_active, is_deleted, password_hash) ON public.users TO %I',
-    :'base_login_fn_owner')
-\gexec
-
-SELECT format(
-    'GRANT SELECT (id, slug, name, status) ON public.tenants TO %I',
-    :'base_login_fn_owner')
-\gexec
+-- users/tenants column-level grants for base_login_fn_owner cannot run here: on a fresh
+-- database those tables (schema public) do not exist yet until EF migrations create them.
+-- See ops/postgres/local-post-migration-grants.sql, which runs after migrations and holds
+-- those grants instead.
 
 SELECT format('GRANT %I TO %I', :'base_login_fn_owner', :'migrator_user')
 \gexec

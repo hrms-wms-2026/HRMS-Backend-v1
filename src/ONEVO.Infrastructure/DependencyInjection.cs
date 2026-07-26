@@ -206,12 +206,13 @@ public static class DependencyInjection
         services.AddScoped<ITenantPermissionCatalogService, TenantPermissionCatalogService>();
         services.AddScoped<IDefaultRoleSeeder, DefaultRoleSeeder>();
 
-        // Provisioning section readers. Member 2 owns the real impls.
-        // Default stubs return Complete=false so activation fails closed.
-        services.AddScoped<ITenantSubscriptionStatusReader, NotConfiguredSubscriptionStatusReader>();
-        services.AddScoped<ITenantModuleStatusReader, NotConfiguredModuleStatusReader>();
+        // Provisioning section readers, backed by the data CreateTenantCommandHandler
+        // seeds at tenant creation (tenant_subscriptions, its selected_modules_json,
+        // tenant.settings_json, and the seeded system roles).
+        services.AddScoped<ITenantSubscriptionStatusReader, TenantSubscriptionStatusReader>();
+        services.AddScoped<ITenantModuleStatusReader, TenantModuleStatusReader>();
         services.AddScoped<ITenantRoleStatusReader, TenantRoleStatusReader>();
-        services.AddScoped<ITenantSettingsStatusReader, NotConfiguredSettingsStatusReader>();
+        services.AddScoped<ITenantSettingsStatusReader, TenantSettingsStatusReader>();
 
         services.AddHttpContextAccessor();
         services.AddScoped<TenantContextAccessor>();

@@ -12,7 +12,9 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
 
 namespace ONEVO.Infrastructure.Identity.Sessions;
 
@@ -37,7 +39,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         _clock = clock;
     }
 
-    // ── Classic overloads (forward to the HttpContext-aware ones) ──────────
+    // Classic overloads (forward to the HttpContext-aware ones)
 
     public Task<string> StoreAsync(AuthenticationTicket ticket) =>
         StoreAsync(ticket, httpContext: null, CancellationToken.None);
@@ -51,7 +53,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
     public Task RemoveAsync(string key) =>
         RemoveAsync(key, httpContext: null, CancellationToken.None);
 
-    // ── HttpContext + CancellationToken overloads (real logic lives here) ──
+    // HttpContext + CancellationToken overloads (real logic lives here)
 
     public async Task<string> StoreAsync(
         AuthenticationTicket ticket, HttpContext? httpContext, CancellationToken cancellationToken)
@@ -59,9 +61,25 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         using var scope = _scopeFactory.CreateScope();
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
+        var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+
+        var tenantId = Guid.Parse(ticket.Properties.Items[TenantIdItemKey]!);
+
+        // This scope's DbContext/TenantContextAccessor is brand new (this class is a DI singleton,
+        // so _scopeFactory.CreateScope() never inherits the request scope's already-resolved tenant
+        // context) and defaults to System mode, so without this lookup+switch the sessions insert
+        // below would run with app.current_tenant_id unset and be rejected by the tenant_isolation
+        // RLS policy regardless of which host resolved the login.
+        var tenant = await tenants.GetByIdAsync(tenantId, cancellationToken);
+        if (tenant is null || tenant.Status is not (TenantStatus.Active or TenantStatus.Trial))
+            throw new InvalidOperationException(
+                "Cannot store a session for an unresolved or inactive tenant.");
+
+        await tenantSwitcher.SwitchToTenantAsync(
+            new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, null), cancellationToken);
 
         var userId = Guid.Parse(ticket.Principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        var tenantId = Guid.Parse(ticket.Properties.Items[TenantIdItemKey]!);
         var csrfTokenHash = ticket.Properties.Items.TryGetValue(CsrfTokenHashItemKey, out var csrfVal) ? csrfVal : string.Empty;
 
         var rawKey = GenerateRawKey();

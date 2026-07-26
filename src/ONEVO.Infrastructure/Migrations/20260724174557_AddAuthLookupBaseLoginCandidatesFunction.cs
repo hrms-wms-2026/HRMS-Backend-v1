@@ -69,8 +69,15 @@ namespace ONEVO.Infrastructure.Migrations
                 $"GRANT SELECT (tenant_id, id, email, is_active, is_deleted, password_hash) ON public.users TO {FunctionOwnerRole};");
             migrationBuilder.Sql(
                 $"GRANT SELECT (id, slug, name, status) ON public.tenants TO {FunctionOwnerRole};");
-            migrationBuilder.Sql($"GRANT USAGE ON SCHEMA auth_internal TO {FunctionOwnerRole};");
+            // ALTER FUNCTION ... OWNER TO requires the target owner to have CREATE on the
+            // function's schema at the moment ownership changes hands - USAGE alone is not
+            // enough. Grant CREATE only for that single statement, then revoke it immediately so
+            // the role is left with USAGE only, matching its NOLOGIN/BYPASSRLS-but-otherwise
+            // least-privilege shape.
+            migrationBuilder.Sql($"GRANT USAGE, CREATE ON SCHEMA auth_internal TO {FunctionOwnerRole};");
             migrationBuilder.Sql($"ALTER FUNCTION auth_internal.auth_lookup_base_login_candidates(varchar) OWNER TO {FunctionOwnerRole};");
+            migrationBuilder.Sql($"REVOKE CREATE ON SCHEMA auth_internal FROM {FunctionOwnerRole};");
+            migrationBuilder.Sql($"GRANT USAGE ON SCHEMA auth_internal TO {FunctionOwnerRole};");
             migrationBuilder.Sql("REVOKE ALL ON FUNCTION auth_internal.auth_lookup_base_login_candidates(varchar) FROM PUBLIC;");
             migrationBuilder.Sql($"GRANT EXECUTE ON FUNCTION auth_internal.auth_lookup_base_login_candidates(varchar) TO {RuntimeAppRole};");
         }

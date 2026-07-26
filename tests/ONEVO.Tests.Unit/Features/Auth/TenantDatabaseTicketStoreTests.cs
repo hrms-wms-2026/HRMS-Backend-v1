@@ -9,7 +9,9 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.Identity.Sessions;
 using Xunit;
 
@@ -28,6 +30,8 @@ public class TenantDatabaseTicketStoreTests
     private readonly IPermissionResolver _permissions = Substitute.For<IPermissionResolver>();
     private readonly IUnitOfWork _uow = Substitute.For<IUnitOfWork>();
     private readonly IDateTimeProvider _clock = Substitute.For<IDateTimeProvider>();
+    private readonly ITenantRepository _tenants = Substitute.For<ITenantRepository>();
+    private readonly ITenantContextSwitcher _tenantSwitcher = Substitute.For<ITenantContextSwitcher>();
 
     public TenantDatabaseTicketStoreTests()
     {
@@ -38,9 +42,18 @@ public class TenantDatabaseTicketStoreTests
         _serviceProvider.GetService(typeof(IUserRepository)).Returns(_users);
         _serviceProvider.GetService(typeof(IPermissionResolver)).Returns(_permissions);
         _serviceProvider.GetService(typeof(IUnitOfWork)).Returns(_uow);
-        
+        _serviceProvider.GetService(typeof(ITenantRepository)).Returns(_tenants);
+        _serviceProvider.GetService(typeof(ITenantContextSwitcher)).Returns(_tenantSwitcher);
+
         _clock.UtcNow.Returns(FixedNow);
     }
+
+    private static Tenant ActiveTenant(Guid tenantId) => new()
+    {
+        Id = tenantId,
+        Slug = "acme",
+        Status = TenantStatus.Active
+    };
 
     private TenantDatabaseTicketStore CreateSut() =>
         new(_scopeFactory, _clock);
@@ -60,6 +73,8 @@ public class TenantDatabaseTicketStoreTests
 
         var ticket = new AuthenticationTicket(principal, properties, "TenantScheme");
 
+        _tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(ActiveTenant(tenantId));
+
         Session? captured = null;
         _sessions.AddAsync(Arg.Do<Session>(s => captured = s), Arg.Any<CancellationToken>())
                  .Returns(Task.CompletedTask);
@@ -73,8 +88,65 @@ public class TenantDatabaseTicketStoreTests
         Assert.Equal(tenantId, captured.TenantId);
         Assert.Equal(csrfHash, captured.CsrfTokenHash);
         Assert.NotEmpty(captured.KeyHash);
-        
+
         await _uow.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StoreAsync_SwitchesToTenantContext_BeforeSavingSession()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+
+        var claims = new[] { new Claim(ClaimTypes.NameIdentifier, userId.ToString()) };
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TenantScheme"));
+        var properties = new AuthenticationProperties();
+        properties.Items[TenantDatabaseTicketStore.TenantIdItemKey] = tenantId.ToString();
+        var ticket = new AuthenticationTicket(principal, properties, "TenantScheme");
+
+        _tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(ActiveTenant(tenantId));
+        _sessions.AddAsync(Arg.Any<Session>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+
+        var sut = CreateSut();
+        await sut.StoreAsync(ticket, null, CancellationToken.None);
+
+        await _tenantSwitcher.Received(1).SwitchToTenantAsync(
+            Arg.Is<TenantRegistryEntry>(t => t.TenantId == tenantId),
+            Arg.Any<CancellationToken>());
+
+        Received.InOrder(async () =>
+        {
+            await _tenantSwitcher.SwitchToTenantAsync(Arg.Any<TenantRegistryEntry>(), Arg.Any<CancellationToken>());
+            await _sessions.AddAsync(Arg.Any<Session>(), Arg.Any<CancellationToken>());
+            await _uow.SaveChangesAsync(Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Theory]
+    [InlineData(true, TenantStatus.Cancelled)]
+    [InlineData(false, TenantStatus.Active)]
+    public async Task StoreAsync_TenantMissingOrInactive_DoesNotCreateSession(bool tenantExists, TenantStatus status)
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+
+        var claims = new[] { new Claim(ClaimTypes.NameIdentifier, userId.ToString()) };
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TenantScheme"));
+        var properties = new AuthenticationProperties();
+        properties.Items[TenantDatabaseTicketStore.TenantIdItemKey] = tenantId.ToString();
+        var ticket = new AuthenticationTicket(principal, properties, "TenantScheme");
+
+        _tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>())
+                .Returns(tenantExists ? new Tenant { Id = tenantId, Slug = "acme", Status = status } : null);
+
+        var sut = CreateSut();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.StoreAsync(ticket, null, CancellationToken.None));
+
+        await _tenantSwitcher.DidNotReceiveWithAnyArgs().SwitchToTenantAsync(default!, default);
+        await _sessions.DidNotReceiveWithAnyArgs().AddAsync(default!, default);
+        await _uow.DidNotReceiveWithAnyArgs().SaveChangesAsync(default);
     }
 
     [Fact]

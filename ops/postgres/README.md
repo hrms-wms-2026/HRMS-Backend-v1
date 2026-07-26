@@ -25,12 +25,36 @@ a clear PostgreSQL "role ... does not exist" error instead of the migration
 silently creating a `BYPASSRLS`-capable role. The required order, in every
 environment, is:
 
-1. **Bootstrap privileged roles** - run `setup-local-db.ps1` locally, or the
-   equivalent DB/deployment-owned bootstrap step in staging/production - to
-   create/repair `onevo_app`, `onevo_migrator`, and
-   `onevo_auth_base_login_fn_owner` with their fixed attributes and grants.
-2. **Run EF migrations** as `onevo_migrator` (`MigrationConnection`).
-3. **Run the API** as `onevo_app` (`DefaultConnection`).
+1. **Bootstrap privileged roles** (`ops/postgres/local-bootstrap-roles.sql`,
+   run by `setup-local-db.ps1` locally, or the equivalent DB/deployment-owned
+   bootstrap step in staging/production) - creates/repairs `onevo_app`,
+   `onevo_migrator`, and `onevo_auth_base_login_fn_owner` with their fixed
+   attributes and grants. This step runs against a database that may not have
+   any schema yet, so it must only touch roles and schema-level privileges -
+   never `public.users`, `public.tenants`, or any other migrated table/
+   function by name. It also grants `onevo_migrator` (only) database-level
+   `CREATE` on the target database, because migrations that create a new
+   schema (for example `CREATE SCHEMA IF NOT EXISTS auth_internal` in
+   `20260724174557_AddAuthLookupBaseLoginCandidatesFunction`) fail with
+   `permission denied for database ...` without it - `CREATE` on the `public`
+   schema alone is not enough to create a sibling schema. `onevo_app` never
+   receives this grant.
+2. **Run EF migrations** as `onevo_migrator` (`MigrationConnection`). This
+   creates `public.users`, `public.tenants`, `auth_internal`, and
+   `auth_internal.auth_lookup_base_login_candidates`.
+3. **Apply post-migration object grants**
+   (`ops/postgres/local-post-migration-grants.sql`, run by `setup-local-db.ps1`
+   when `-RunMigrations` is passed) - grants `onevo_auth_base_login_fn_owner`
+   column-level `SELECT` on exactly the `public.users`/`public.tenants`
+   columns `auth_lookup_base_login_candidates` needs. These grants cannot run
+   in step 1 because the tables do not exist until step 2 has run; running
+   them before migrations fails with a PostgreSQL
+   `relation "users" does not exist` error.
+4. **Run the API** as `onevo_app` (`DefaultConnection`).
+
+Running `setup-local-db.ps1` without `-RunMigrations` performs step 1 only and
+prints a message that step 3 was skipped, since the tables it grants on may
+not exist yet.
 
 Testcontainers-backed integration tests replicate step 1 in-process
 (`PrivilegedRoleTestBootstrap.EnsureRolesExistAsync`) against their own
@@ -101,6 +125,12 @@ dotnet ef database update --project src\ONEVO.Infrastructure\ONEVO.Infrastructur
 EF tooling requires `MigrationConnection` and cannot fall back to the runtime
 `DefaultConnection`. The helper may also set both process connection strings
 for convenience, but normal `dotnet run` does not depend on that side effect.
+
+Immediately after the EF migration command succeeds, `-RunMigrations` also
+runs `ops/postgres/local-post-migration-grants.sql` as the admin role to apply
+the post-migration object grants described above. Without `-RunMigrations`,
+the helper prints a message that this step was skipped instead of running it,
+since `public.users`/`public.tenants` may not exist yet.
 
 ## Advanced troubleshooting
 
