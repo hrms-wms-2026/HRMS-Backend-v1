@@ -25,52 +25,93 @@ public sealed class EfAuthRepository :
 {
     private readonly ApplicationDbContext _db;
 
-    public EfAuthRepository(ApplicationDbContext db) => _db = db;
+    public EfAuthRepository(ApplicationDbContext db)
+    {
+        _db = db;
+    }
 
-    public Task<User?> GetByNormalizedEmailAsync(string normalizedEmail, CancellationToken ct = default) =>
-        _db.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail && !u.IsDeleted, ct);
+    public async Task<User?> GetByNormalizedEmailAsync(string normalizedEmail, CancellationToken ct = default)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail && !u.IsDeleted, ct);
+        return user;
+    }
 
-    public Task<User?> GetActiveByNormalizedEmailAsync(string normalizedEmail, CancellationToken ct = default) =>
-        _db.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail && u.IsActive && !u.IsDeleted, ct);
+    public async Task<User?> GetActiveByNormalizedEmailAsync(string normalizedEmail, CancellationToken ct = default)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(
+            u => u.Email == normalizedEmail && u.IsActive && !u.IsDeleted,
+            ct);
+        return user;
+    }
 
-    public Task<User?> GetByIdAsync(Guid userId, CancellationToken ct = default) =>
-        _db.Users.FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted, ct);
+    public async Task<User?> GetByIdAsync(Guid userId, CancellationToken ct = default)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted, ct);
+        return user;
+    }
 
-    public Task<User?> GetByTenantAndEmailAsync(Guid tenantId, string normalizedEmail, CancellationToken ct = default) =>
-        _db.Users.FirstOrDefaultAsync(
-            u => u.TenantId == tenantId && u.Email == normalizedEmail && !u.IsDeleted, ct);
+    public async Task<User?> GetByTenantAndEmailAsync(Guid tenantId, string normalizedEmail, CancellationToken ct = default)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(
+            u => u.TenantId == tenantId && u.Email == normalizedEmail && !u.IsDeleted,
+            ct);
+        return user;
+    }
 
-    public Task AddAsync(User user, CancellationToken ct = default) =>
-        _db.Users.AddAsync(user, ct).AsTask();
+    public Task AddAsync(User user, CancellationToken ct = default)
+    {
+        var addTask = _db.Users.AddAsync(user, ct).AsTask();
+        return addTask;
+    }
 
-    public Task<RefreshToken?> GetByHashAsync(string tokenHash, CancellationToken ct = default) =>
-        _db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == tokenHash, ct);
+    public async Task<RefreshToken?> GetByHashAsync(string tokenHash, CancellationToken ct = default)
+    {
+        var refreshToken = await _db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == tokenHash, ct);
+        return refreshToken;
+    }
 
-    public async Task<IReadOnlyList<RefreshToken>> ListActiveByUserIdAsync(Guid userId, CancellationToken ct = default) =>
-        await _db.RefreshTokens
+    public async Task<IReadOnlyList<RefreshToken>> ListActiveByUserIdAsync(Guid userId, CancellationToken ct = default)
+    {
+        var refreshTokens = await _db.RefreshTokens
             .Where(t => t.UserId == userId && t.RevokedAt == null)
             .ToListAsync(ct);
+        return refreshTokens;
+    }
 
-    public Task AddAsync(RefreshToken refreshToken, CancellationToken ct = default) =>
-        _db.RefreshTokens.AddAsync(refreshToken, ct).AsTask();
+    public Task AddAsync(RefreshToken refreshToken, CancellationToken ct = default)
+    {
+        var addTask = _db.RefreshTokens.AddAsync(refreshToken, ct).AsTask();
+        return addTask;
+    }
 
-    public Task<Session?> GetLatestActiveByUserIdAsync(Guid userId, CancellationToken ct = default) =>
-        _db.Sessions
+    public async Task<Session?> GetLatestActiveByUserIdAsync(Guid userId, CancellationToken ct = default)
+    {
+        var session = await _db.Sessions
             .Where(s => s.UserId == userId && !s.IsRevoked)
             .OrderByDescending(s => s.LastActivityAt)
             .FirstOrDefaultAsync(ct);
+        return session;
+    }
 
-    Task<Session?> ISessionRepository.GetByIdAsync(Guid sessionId, CancellationToken ct) =>
-        _db.Sessions.FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+    async Task<Session?> ISessionRepository.GetByIdAsync(Guid sessionId, CancellationToken ct)
+    {
+        var session = await _db.Sessions.FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+        return session;
+    }
 
-    Task<Session?> ISessionRepository.GetByKeyHashAsync(string keyHash, CancellationToken ct) =>
-        _db.Sessions.FirstOrDefaultAsync(s => s.KeyHash == keyHash, ct);
+    async Task<Session?> ISessionRepository.GetByKeyHashAsync(string keyHash, CancellationToken ct)
+    {
+        var session = await _db.Sessions.FirstOrDefaultAsync(s => s.KeyHash == keyHash, ct);
+        return session;
+    }
 
     async Task ISessionRepository.RevokeByKeyHashAsync(string keyHash, CancellationToken ct)
     {
         var session = await _db.Sessions.FirstOrDefaultAsync(s => s.KeyHash == keyHash, ct);
         if (session is not null)
+        {
             session.IsRevoked = true;
+        }
         // Caller must call IUnitOfWork.SaveChangesAsync
     }
 
@@ -78,197 +119,303 @@ public sealed class EfAuthRepository :
     {
         var session = await _db.Sessions.FirstOrDefaultAsync(s => s.Id == sessionId, ct);
         if (session is not null)
+        {
             session.IsRevoked = true;
+        }
         // Caller must call IUnitOfWork.SaveChangesAsync
     }
 
-    public Task AddAsync(Session session, CancellationToken ct = default) =>
-        _db.Sessions.AddAsync(session, ct).AsTask();
+    public Task AddAsync(Session session, CancellationToken ct = default)
+    {
+        var addTask = _db.Sessions.AddAsync(session, ct).AsTask();
+        return addTask;
+    }
 
-    public Task<PasswordResetToken?> GetResetTokenByHashAsync(string tokenHash, CancellationToken ct = default) =>
-        _db.PasswordResetTokens.FirstOrDefaultAsync(t => t.TokenHash == tokenHash, ct);
+    public async Task<PasswordResetToken?> GetResetTokenByHashAsync(string tokenHash, CancellationToken ct = default)
+    {
+        var resetToken = await _db.PasswordResetTokens.FirstOrDefaultAsync(t => t.TokenHash == tokenHash, ct);
+        return resetToken;
+    }
 
     public async Task<IReadOnlyList<PasswordResetToken>> ListValidByUserIdAsync(
         Guid userId,
         DateTimeOffset now,
-        CancellationToken ct = default) =>
-        await _db.PasswordResetTokens
+        CancellationToken ct = default)
+    {
+        var resetTokens = await _db.PasswordResetTokens
             .Where(t => t.UserId == userId && t.UsedAt == null && t.ExpiresAt > now)
             .ToListAsync(ct);
+        return resetTokens;
+    }
 
-    public Task AddAsync(PasswordResetToken resetToken, CancellationToken ct = default) =>
-        _db.PasswordResetTokens.AddAsync(resetToken, ct).AsTask();
+    public Task AddAsync(PasswordResetToken resetToken, CancellationToken ct = default)
+    {
+        var addTask = _db.PasswordResetTokens.AddAsync(resetToken, ct).AsTask();
+        return addTask;
+    }
 
-    public Task<UserMfa?> GetTotpAsync(Guid userId, bool isVerified, CancellationToken ct = default) =>
-        _db.UserMfas.FirstOrDefaultAsync(
+    public async Task<UserMfa?> GetTotpAsync(Guid userId, bool isVerified, CancellationToken ct = default)
+    {
+        var userMfa = await _db.UserMfas.FirstOrDefaultAsync(
             m => m.UserId == userId && m.MethodType == "totp" && m.IsVerified == isVerified,
             ct);
+        return userMfa;
+    }
 
-    public Task AddAsync(UserMfa mfa, CancellationToken ct = default) =>
-        _db.UserMfas.AddAsync(mfa, ct).AsTask();
+    public Task AddAsync(UserMfa mfa, CancellationToken ct = default)
+    {
+        var addTask = _db.UserMfas.AddAsync(mfa, ct).AsTask();
+        return addTask;
+    }
 
-    public void Remove(UserMfa mfa) => _db.UserMfas.Remove(mfa);
+    public void Remove(UserMfa mfa)
+    {
+        _db.UserMfas.Remove(mfa);
+    }
 
-    public Task<Role?> GetRoleByIdAsync(Guid roleId, CancellationToken ct = default) =>
-        _db.Roles.FirstOrDefaultAsync(r => r.Id == roleId, ct);
+    public async Task<Role?> GetRoleByIdAsync(Guid roleId, CancellationToken ct = default)
+    {
+        var role = await _db.Roles.FirstOrDefaultAsync(r => r.Id == roleId, ct);
+        return role;
+    }
 
-    public Task<Role?> GetByIdForTenantAsync(Guid tenantId, Guid roleId, CancellationToken ct = default) =>
-        _db.Roles.FirstOrDefaultAsync(r => r.Id == roleId && r.TenantId == tenantId, ct);
+    public async Task<Role?> GetByIdForTenantAsync(Guid tenantId, Guid roleId, CancellationToken ct = default)
+    {
+        var role = await _db.Roles.FirstOrDefaultAsync(r => r.Id == roleId && r.TenantId == tenantId, ct);
+        return role;
+    }
 
-    public Task<Role?> GetByNameForTenantAsync(Guid tenantId, string name, CancellationToken ct = default) =>
-        _db.Roles.FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Name == name, ct);
+    public async Task<Role?> GetByNameForTenantAsync(Guid tenantId, string name, CancellationToken ct = default)
+    {
+        var role = await _db.Roles.FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Name == name, ct);
+        return role;
+    }
 
-    public Task<Role?> GetBySourceTemplateForTenantAsync(Guid tenantId, Guid templateId, CancellationToken ct = default) =>
-        _db.Roles.FirstOrDefaultAsync(
+    public async Task<Role?> GetBySourceTemplateForTenantAsync(
+        Guid tenantId,
+        Guid templateId,
+        CancellationToken ct = default)
+    {
+        var role = await _db.Roles.FirstOrDefaultAsync(
             r => r.TenantId == tenantId && r.SourceTemplateId == templateId,
             ct);
+        return role;
+    }
 
-    public async Task<IReadOnlyList<Role>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
-        await _db.Roles
+    public async Task<IReadOnlyList<Role>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var roles = await _db.Roles
             .Where(r => r.TenantId == tenantId)
             .OrderBy(r => r.Name)
             .ToListAsync(ct);
+        return roles;
+    }
 
-    public Task AddAsync(Role role, CancellationToken ct = default) =>
-        _db.Roles.AddAsync(role, ct).AsTask();
+    public Task AddAsync(Role role, CancellationToken ct = default)
+    {
+        var addTask = _db.Roles.AddAsync(role, ct).AsTask();
+        return addTask;
+    }
 
-    public void Remove(Role role) => _db.Roles.Remove(role);
+    public void Remove(Role role)
+    {
+        _db.Roles.Remove(role);
+    }
 
-    public async Task<IReadOnlyList<RolePermission>> ListByRoleAsync(Guid roleId, CancellationToken ct = default) =>
-        await _db.RolePermissions
+    public async Task<IReadOnlyList<RolePermission>> ListByRoleAsync(Guid roleId, CancellationToken ct = default)
+    {
+        var rolePermissions = await _db.RolePermissions
             .Where(rp => rp.RoleId == roleId)
             .ToListAsync(ct);
+        return rolePermissions;
+    }
 
-    public Task AddRangeAsync(IEnumerable<RolePermission> rolePermissions, CancellationToken ct = default) =>
-        _db.RolePermissions.AddRangeAsync(rolePermissions, ct);
+    public Task AddRangeAsync(IEnumerable<RolePermission> rolePermissions, CancellationToken ct = default)
+    {
+        var addRangeTask = _db.RolePermissions.AddRangeAsync(rolePermissions, ct);
+        return addRangeTask;
+    }
 
-    public void RemoveRange(IEnumerable<RolePermission> rolePermissions) =>
+    public void RemoveRange(IEnumerable<RolePermission> rolePermissions)
+    {
         _db.RolePermissions.RemoveRange(rolePermissions);
+    }
 
-    public Task<Permission?> GetByCodeAsync(string code, CancellationToken ct = default) =>
-        _db.Permissions.FirstOrDefaultAsync(p => p.Code == code, ct);
+    public async Task<Permission?> GetByCodeAsync(string code, CancellationToken ct = default)
+    {
+        var permission = await _db.Permissions.FirstOrDefaultAsync(p => p.Code == code, ct);
+        return permission;
+    }
 
     public async Task<IReadOnlyList<Permission>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken ct = default)
     {
         var idList = ids.ToList();
-        if (idList.Count == 0) return Array.Empty<Permission>();
+        if (idList.Count == 0)
+        {
+            return Array.Empty<Permission>();
+        }
 
-        return await _db.Permissions
-            .Where(p => idList.Contains(p.Id))
-            .ToListAsync(ct);
+        var query = _db.Permissions.Where(p => idList.Contains(p.Id));
+        var permissions = await query.ToListAsync(ct);
+        return permissions;
     }
 
     public async Task<IReadOnlyList<Permission>> GetByCodesAsync(IEnumerable<string> codes, CancellationToken ct = default)
     {
-        var list = codes
+        var normalizedCodes = codes
             .Where(c => !string.IsNullOrWhiteSpace(c))
             .Select(c => c.Trim())
             .Distinct(StringComparer.Ordinal)
             .ToList();
-        if (list.Count == 0)
-            return Array.Empty<Permission>();
 
-        return await _db.Permissions
-            .Where(p => list.Contains(p.Code))
-            .ToListAsync(ct);
+        if (normalizedCodes.Count == 0)
+        {
+            return Array.Empty<Permission>();
+        }
+
+        var query = _db.Permissions.Where(p => normalizedCodes.Contains(p.Code));
+        var permissions = await query.ToListAsync(ct);
+        return permissions;
     }
 
-    public Task<bool> UserHasPermissionCodeAsync(
+    public async Task<bool> UserHasPermissionCodeAsync(
         Guid userId,
         string permissionCode,
         DateTimeOffset now,
-        CancellationToken ct = default) =>
-        _db.UserRoles
+        CancellationToken ct = default)
+    {
+        var query = _db.UserRoles
             .Where(ur => ur.UserId == userId && (ur.ExpiresAt == null || ur.ExpiresAt > now))
             .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp)
-            .Join(_db.Permissions, rp => rp.PermissionId, p => p.Id, (rp, p) => p.Code)
-            .AnyAsync(code => code == permissionCode, ct);
+            .Join(_db.Permissions, rp => rp.PermissionId, p => p.Id, (rp, p) => p.Code);
+
+        var hasPermission = await query.AnyAsync(code => code == permissionCode, ct);
+        return hasPermission;
+    }
 
     public async Task<IReadOnlyList<string>> ListRolePermissionCodesAsync(
         Guid userId,
         DateTimeOffset now,
-        CancellationToken ct = default) =>
-        await _db.UserRoles
+        CancellationToken ct = default)
+    {
+        var query = _db.UserRoles
             .Where(ur => ur.UserId == userId && (ur.ExpiresAt == null || ur.ExpiresAt > now))
             .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp)
             .Join(_db.Permissions, rp => rp.PermissionId, p => p.Id, (rp, p) => p.Code)
-            .Distinct()
-            .ToListAsync(ct);
+            .Distinct();
+
+        var codes = await query.ToListAsync(ct);
+        return codes;
+    }
 
     public async Task<IReadOnlyList<PermissionCodeWithModule>> ListRolePermissionCodesWithModulesAsync(
         Guid userId,
         DateTimeOffset now,
         CancellationToken ct = default)
     {
-        var rows = await _db.UserRoles
+        var query = _db.UserRoles
             .Where(ur => ur.UserId == userId && (ur.ExpiresAt == null || ur.ExpiresAt > now))
             .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp)
             .Join(_db.Permissions, rp => rp.PermissionId, p => p.Id, (rp, p) => new { p.Code, p.Module })
-            .Distinct()
-            .ToListAsync(ct);
+            .Distinct();
 
-        return rows.Select(r => new PermissionCodeWithModule(r.Code, r.Module)).ToList();
+        var rows = await query.ToListAsync(ct);
+        var result = rows.Select(r => new PermissionCodeWithModule(r.Code, r.Module)).ToList();
+        return result;
     }
 
     public async Task<IReadOnlyList<UserPermissionOverrideGrant>> ListForUserAsync(
         Guid tenantId,
         Guid userId,
-        CancellationToken ct = default) =>
-        await _db.UserPermissionOverrides
+        CancellationToken ct = default)
+    {
+        var query = _db.UserPermissionOverrides
             .Where(o => o.UserId == userId && o.TenantId == tenantId)
             .Join(
                 _db.Permissions,
                 o => o.PermissionId,
                 p => p.Id,
-                (o, p) => new UserPermissionOverrideGrant(p.Code, o.GrantType))
-            .ToListAsync(ct);
+                (o, p) => new UserPermissionOverrideGrant(p.Code, o.GrantType));
+
+        var grants = await query.ToListAsync(ct);
+        return grants;
+    }
 
     public async Task<IReadOnlyList<UserRole>> ListActiveByUserIdAsync(
         Guid userId,
         DateTimeOffset now,
-        CancellationToken ct = default) =>
-        await _db.UserRoles
-            .Where(ur => ur.UserId == userId && (ur.ExpiresAt == null || ur.ExpiresAt > now))
-            .ToListAsync(ct);
-
-    public async Task<IReadOnlyList<Guid>> ListUserIdsByRoleAsync(Guid roleId, CancellationToken ct = default)
+        CancellationToken ct = default)
     {
-        var now = DateTimeOffset.UtcNow;
-        return await _db.UserRoles
+        var query = _db.UserRoles
+            .Where(ur => ur.UserId == userId && (ur.ExpiresAt == null || ur.ExpiresAt > now));
+
+        var userRoles = await query.ToListAsync(ct);
+        return userRoles;
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListUserIdsByRoleAsync(
+        Guid roleId,
+        DateTimeOffset now,
+        CancellationToken ct = default)
+    {
+        var query = _db.UserRoles
             .AsNoTracking()
             .Where(ur => ur.RoleId == roleId && (ur.ExpiresAt == null || ur.ExpiresAt > now))
             .Select(ur => ur.UserId)
-            .Distinct()
-            .ToListAsync(ct);
+            .Distinct();
+
+        var userIds = await query.ToListAsync(ct);
+        return userIds;
     }
 
-    public Task AddAsync(UserRole userRole, CancellationToken ct = default) =>
-        _db.UserRoles.AddAsync(userRole, ct).AsTask();
+    public Task AddAsync(UserRole userRole, CancellationToken ct = default)
+    {
+        var addTask = _db.UserRoles.AddAsync(userRole, ct).AsTask();
+        return addTask;
+    }
 
-    public async Task<IReadOnlyList<FeatureAccessGrant>> ListForTenantAsync(Guid tenantId, CancellationToken ct = default) =>
-        await _db.FeatureAccessGrants
-            .Where(g => g.TenantId == tenantId)
-            .ToListAsync(ct);
+    public async Task<IReadOnlyList<FeatureAccessGrant>> ListForTenantAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var query = _db.FeatureAccessGrants
+            .Where(g => g.TenantId == tenantId);
 
-    public Task AddAsync(AuditLog auditLog, CancellationToken ct = default) =>
-        _db.AuditLogs.AddAsync(auditLog, ct).AsTask();
+        var grants = await query.ToListAsync(ct);
+        return grants;
+    }
 
-    Task<RoleTemplate?> IRoleTemplateRepository.GetByIdAsync(Guid id, CancellationToken ct) =>
-        _db.RoleTemplates.FirstOrDefaultAsync(t => t.Id == id, ct);
+    public Task AddAsync(AuditLog auditLog, CancellationToken ct = default)
+    {
+        var addTask = _db.AuditLogs.AddAsync(auditLog, ct).AsTask();
+        return addTask;
+    }
 
-    public Task<RoleTemplate?> GetByNameAsync(string name, CancellationToken ct = default)
+    async Task<RoleTemplate?> IRoleTemplateRepository.GetByIdAsync(Guid id, CancellationToken ct)
+    {
+        var template = await _db.RoleTemplates.FirstOrDefaultAsync(t => t.Id == id, ct);
+        return template;
+    }
+
+    public async Task<RoleTemplate?> GetByNameAsync(string name, CancellationToken ct = default)
     {
         var n = name.Trim();
-        return _db.RoleTemplates.FirstOrDefaultAsync(
+        var template = await _db.RoleTemplates.FirstOrDefaultAsync(
             t => t.Name.ToLower() == n.ToLower(),
             ct);
+        return template;
     }
 
-    public async Task<IReadOnlyList<RoleTemplate>> ListAsync(CancellationToken ct = default) =>
-        await _db.RoleTemplates
-            .OrderBy(t => t.Name)
-            .ToListAsync(ct);
+    public async Task<IReadOnlyList<RoleTemplate>> ListAsync(CancellationToken ct = default)
+    {
+        var query = _db.RoleTemplates
+            .OrderBy(t => t.Name);
 
-    public Task AddAsync(RoleTemplate template, CancellationToken ct = default) =>
-        _db.RoleTemplates.AddAsync(template, ct).AsTask();
+        var templates = await query.ToListAsync(ct);
+        return templates;
+    }
+
+    public Task AddAsync(RoleTemplate template, CancellationToken ct = default)
+    {
+        var addTask = _db.RoleTemplates.AddAsync(template, ct).AsTask();
+        return addTask;
+    }
 }

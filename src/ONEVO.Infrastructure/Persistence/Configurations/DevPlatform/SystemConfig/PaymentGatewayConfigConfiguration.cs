@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.SystemConfig;
@@ -26,6 +27,12 @@ public class PaymentGatewayConfigConfiguration : IEntityTypeConfiguration<Paymen
         builder.Property(g => g.Provider)
             .HasMaxLength(30)
             .IsRequired();
+
+        builder.HasOne<PlatformProvider>()
+            .WithMany()
+            .HasForeignKey(config => config.Provider)
+            .HasPrincipalKey(provider => provider.ProviderKey)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Property(g => g.Environment)
             .HasMaxLength(20)

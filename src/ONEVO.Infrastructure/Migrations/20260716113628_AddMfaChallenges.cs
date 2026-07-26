@@ -19,6 +19,7 @@ namespace ONEVO.Infrastructure.Migrations
                     tenant_id = table.Column<Guid>(type: "uuid", nullable: false),
                     user_id = table.Column<Guid>(type: "uuid", nullable: false),
                     challenge_hash = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: false),
+                    origin = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false, defaultValue: "password"),
                     failed_attempt_count = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
                     expires_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     consumed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),

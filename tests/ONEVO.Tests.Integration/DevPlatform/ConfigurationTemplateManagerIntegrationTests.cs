@@ -37,24 +37,7 @@ public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetim
     {
         await _postgres.StartAsync();
 
-        // Migrate the schema with a standalone context BEFORE the factory starts the
-        // host: WebApplicationFactory.CreateClient() starts hosted services (including
-        // PermissionSeeder) synchronously, and those hosted services query tables that
-        // must already exist.
-        var migrationOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_postgres.GetConnectionString())
-            .UseSnakeCaseNamingConvention()
-            .Options;
-        var dateTimeProvider = new SystemDateTimeProvider();
-        await using (var migrationContext = new ApplicationDbContext(
-            migrationOptions,
-            new AuditableEntityInterceptor(new AnonymousCurrentUser(), dateTimeProvider),
-            new SoftDeleteInterceptor(dateTimeProvider),
-            new DomainEventDispatchInterceptor(new NoOpPublisher()),
-            new TenantContextAccessor()))
-        {
-            await migrationContext.Database.MigrateAsync();
-        }
+        await AdminTestFactory.MigrateDatabaseAsync(_postgres.GetConnectionString());
 
         _factory = new AdminTestFactory(_postgres.GetConnectionString());
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions

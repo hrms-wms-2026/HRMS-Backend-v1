@@ -107,31 +107,107 @@ public sealed class LocalDatabaseRuntimeArchitectureTests
     }
 
     [Fact]
-    public void AppsettingsFiles_ContainNoRealDatabasePasswords()
+    public void AppsettingsFiles_ContainNoSecretOwnedSettingsOrSecretShapedValues()
     {
         var apiDirectory = FindRepositoryPath("src", "ONEVO.Api");
         foreach (var path in Directory.GetFiles(apiDirectory, "appsettings*.json"))
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
-            if (!document.RootElement.TryGetProperty("ConnectionStrings", out var connections))
+            var text = File.ReadAllText(path);
+            using var document = JsonDocument.Parse(text);
+            var settings = FlattenJson(document.RootElement).ToList();
+
+            foreach (var marker in new[] { "CHANGE_ME", "SET_VIA_ENV" })
             {
-                continue;
+                Assert.DoesNotContain(marker, text, StringComparison.OrdinalIgnoreCase);
             }
 
-            foreach (var connection in connections.EnumerateObject())
+            var forbiddenPaths = new[]
             {
-                var value = connection.Value.GetString();
-                if (string.IsNullOrWhiteSpace(value))
-                {
-                    continue;
-                }
+                "DevAdmin:Password",
+                "Jwt:Secret",
+                "Jwt:AdminSecret",
+                "Encryption:MasterKey",
+                "GoogleAuth:Admin:ClientSecret",
+                "GoogleAuth:TenantInvite:ClientSecret",
+                "Stripe:SecretKey",
+                "Stripe:WebhookSecret",
+                "PayHere:MerchantSecret",
+                "PayHere:WebhookSecret",
+                "Email:Smtp:Password",
+                "Email:Resend:ApiKey",
+                "Email:SendGrid:ApiKey"
+            };
+            Assert.DoesNotContain(settings, setting =>
+                forbiddenPaths.Contains(setting.Path, StringComparer.OrdinalIgnoreCase));
 
-                var password = new Npgsql.NpgsqlConnectionStringBuilder(value).Password;
-                Assert.True(
-                    string.IsNullOrEmpty(password) || password == "SET_VIA_ENV",
-                    $"{Path.GetFileName(path)} contains a committed database password in {connection.Name}.");
-            }
+            Assert.DoesNotMatch(
+                new Regex(@"Password\s*=", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
+                text);
+
+            var realSecretPattern = new Regex(
+                @"^(sk_(live|test)_|rk_(live|test)_|whsec_|SG\.|re_)[A-Za-z0-9_\-.]{8,}$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            Assert.DoesNotContain(settings, setting => realSecretPattern.IsMatch(setting.Value));
         }
+    }
+
+    [Fact]
+    public void EnvironmentTemplate_ContainsOnlyApprovedEmailRuntimeSettings()
+    {
+        var lines = File.ReadAllLines(FindRepositoryPath(".env.example"));
+        var keys = lines
+            .Where(line => !string.IsNullOrWhiteSpace(line) && !line.TrimStart().StartsWith('#'))
+            .Select(line => line.Split('=', 2)[0].Trim())
+            .ToList();
+
+        var emailKeys = keys
+            .Where(key => key.StartsWith("Email__", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.Equal(
+            new[] { "Email__FromAddress", "Email__FromName" },
+            emailKeys.OrderBy(key => key, StringComparer.Ordinal).ToArray());
+
+        foreach (var forbidden in new[]
+        {
+            "Email__Provider",
+            "Email__Smtp__Password",
+            "Email__Resend__ApiKey",
+            "Email__SendGrid__ApiKey"
+        })
+        {
+            Assert.DoesNotContain(forbidden, keys, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public void PlatformAccessSeeder_HashesBootstrapPasswordAndDoesNotLogIt()
+    {
+        var source = File.ReadAllText(FindRepositoryPath(
+            "src", "ONEVO.Infrastructure", "Persistence", "Seeders", "PlatformAccessSeeder.cs"));
+
+        Assert.Contains("PasswordHash = passwordHasher.Hash(bootstrapPassword)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PasswordHash = bootstrapPassword", source, StringComparison.Ordinal);
+        Assert.DoesNotMatch(
+            new Regex(@"Log(?:Trace|Debug|Information|Warning|Error|Critical)\s*\([^;]*bootstrapPassword",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant),
+            source);
+    }
+
+    [Fact]
+    public void TransactionalEmail_ResolvesApiKeysOnlyFromPlatformServiceKeys()
+    {
+        var source = File.ReadAllText(FindRepositoryPath(
+            "src", "ONEVO.Infrastructure", "ExternalServices", "Email",
+            "PlatformKeyTransactionalEmailSender.cs"));
+
+        Assert.Contains("IPlatformServiceKeyResolver", source, StringComparison.Ordinal);
+        Assert.Contains("ResolveActiveTransactionalEmailProviderAsync(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Email:Provider", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Email__Provider", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Email:Resend:ApiKey", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Email:SendGrid:ApiKey", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Email:Smtp:Password", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("IConfiguration", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -215,5 +291,28 @@ public sealed class LocalDatabaseRuntimeArchitectureTests
             || key.Contains("Secret", StringComparison.OrdinalIgnoreCase)
             || key.Contains("ApiKey", StringComparison.OrdinalIgnoreCase)
             || key.Contains("MasterKey", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<(string Path, string Value)> FlattenJson(
+        JsonElement element,
+        string parentPath = "")
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            var path = string.IsNullOrEmpty(parentPath)
+                ? property.Name
+                : $"{parentPath}:{property.Name}";
+            if (property.Value.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var child in FlattenJson(property.Value, path))
+                {
+                    yield return child;
+                }
+            }
+            else if (property.Value.ValueKind == JsonValueKind.String)
+            {
+                yield return (path, property.Value.GetString() ?? string.Empty);
+            }
+        }
     }
 }

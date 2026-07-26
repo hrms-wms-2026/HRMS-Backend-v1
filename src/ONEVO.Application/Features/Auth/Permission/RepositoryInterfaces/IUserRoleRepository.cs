@@ -9,7 +9,10 @@ public interface IUserRoleRepository
         DateTimeOffset now,
         CancellationToken ct = default);
 
-    Task<IReadOnlyList<Guid>> ListUserIdsByRoleAsync(Guid roleId, CancellationToken ct = default);
+    Task<IReadOnlyList<Guid>> ListUserIdsByRoleAsync(
+        Guid roleId,
+        DateTimeOffset now,
+        CancellationToken ct = default);
 
     Task AddAsync(UserRole userRole, CancellationToken ct = default);
 }

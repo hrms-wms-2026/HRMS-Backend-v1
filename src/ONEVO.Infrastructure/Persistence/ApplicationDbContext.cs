@@ -6,11 +6,13 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
 using ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities;
 using ONEVO.Domain.Features.SharedPlatform.TenantIntegrations.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
+using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -84,8 +86,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
     public DbSet<UserMfa> UserMfas => Set<UserMfa>();
     public DbSet<MfaChallenge> MfaChallenges => Set<MfaChallenge>();
+    public DbSet<LoginWorkspaceSelectionChallenge> LoginWorkspaceSelectionChallenges => Set<LoginWorkspaceSelectionChallenge>();
+    public DbSet<LegalLoginChallenge> LegalLoginChallenges => Set<LegalLoginChallenge>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
-    public DbSet<GdprConsentRecord> GdprConsentRecords => Set<GdprConsentRecord>();
+    public DbSet<LegalDocumentVersion> LegalDocumentVersions => Set<LegalDocumentVersion>();
+    public DbSet<LegalAcceptanceRecord> LegalAcceptanceRecords => Set<LegalAcceptanceRecord>();
     public DbSet<UserExternalIdentity> UserExternalIdentities => Set<UserExternalIdentity>();
     public DbSet<TenantAuthPolicy> TenantAuthPolicies => Set<TenantAuthPolicy>();
     public DbSet<InvitationToken> InvitationTokens => Set<InvitationToken>();
@@ -124,6 +129,9 @@ public class ApplicationDbContext : DbContext
 
     // System Config - Platform Service Keys (Phase 1 canonical table)
     public DbSet<PlatformServiceKey> PlatformServiceKeys => Set<PlatformServiceKey>();
+
+    // System Config - Provider Catalog (Phase 1 canonical table)
+    public DbSet<PlatformProvider> PlatformProviders => Set<PlatformProvider>();
 
     // System Config - Platform OAuth Apps (Phase 1 canonical tables)
     public DbSet<PlatformOAuthApp> PlatformOAuthApps => Set<PlatformOAuthApp>();
@@ -168,7 +176,7 @@ public class ApplicationDbContext : DbContext
 
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
-            if (!typeof(ITenantOwnedEntity).IsAssignableFrom(entityType.ClrType))
+            if (!typeof(ITenantOwnedEntity).IsAssignableFrom(entityType.ClrType) || entityType.BaseType != null)
                 continue;
 
             var composedFilter = ComposeTenantAndSoftDeleteFilter(

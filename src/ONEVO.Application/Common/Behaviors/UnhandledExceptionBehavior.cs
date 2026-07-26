@@ -1,3 +1,4 @@
+using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
 
@@ -16,6 +17,10 @@ public class UnhandledExceptionBehavior<TRequest, TResponse> : IPipelineBehavior
         try
         {
             return await next();
+        }
+        catch (ValidationException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

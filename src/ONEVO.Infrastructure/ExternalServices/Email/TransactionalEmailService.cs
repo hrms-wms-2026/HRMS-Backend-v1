@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.ServiceInterfaces;
 
 namespace ONEVO.Infrastructure.ExternalServices.Email;
@@ -7,7 +8,7 @@ namespace ONEVO.Infrastructure.ExternalServices.Email;
 /// IEmailService implementation for transactional/system email (invites, password
 /// resets). Renders templates locally and delegates delivery to
 /// ITransactionalEmailSender, which resolves the ONEVO-owned provider key from
-/// platform_service_keys. A failed send throws with the sanitized error so the outbox
+/// platform_providers plus platform_service_keys. A failed send throws with the sanitized error so the outbox
 /// retry model (attempt_count / next_attempt_at / last_error) applies unchanged; the
 /// thrown message never contains key material.
 /// </summary>
@@ -63,6 +64,12 @@ public class TransactionalEmailService : IEmailService
 
         _logger.LogWarning("Email to {To} via {Provider} failed: {SafeError}",
             to, result.Provider, safeError);
+
+        if (safeError is TransactionalEmailFailureCodes.ProviderUnavailable or
+            TransactionalEmailFailureCodes.ProviderAmbiguous)
+        {
+            throw new ServiceUnavailableException(safeError);
+        }
 
         throw new InvalidOperationException(safeError);
     }

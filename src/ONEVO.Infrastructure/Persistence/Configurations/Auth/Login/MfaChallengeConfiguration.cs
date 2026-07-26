@@ -13,6 +13,7 @@ public class MfaChallengeConfiguration : IEntityTypeConfiguration<MfaChallenge>
         builder.HasKey(c => c.Id);
 
         builder.Property(c => c.ChallengeHash).HasMaxLength(128).IsRequired();
+        builder.Property(c => c.Origin).HasMaxLength(30).IsRequired().HasDefaultValue("password");
         builder.Property(c => c.FailedAttemptCount).HasDefaultValue(0);
 
         // Concurrency token makes consumption single-use: a competing UPDATE that already set

@@ -44,7 +44,7 @@ public class SystemConfigComplianceTests
     {
         var domainTypes = typeof(PaymentGatewayConfig).Assembly.GetTypes();
         // PlatformServiceKey is now a Phase 1 canonical table (platform_service_keys)
-        // per phase1-table-inventory.md — no longer illegal.
+        // per phase1-table-inventory.md - no longer illegal.
         var illegalNames = new[] { "AiProviderConfig", "TenantAiProviderOverride", "EmailProviderConfig", "SendgridConfig", "ResendConfig" };
 
         foreach (var type in domainTypes)
@@ -89,8 +89,11 @@ public class SystemConfigComplianceTests
         var repoMock = new Mock<IPaymentGatewayRepository>();
         repoMock.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), false, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PaymentGatewayConfig());
-        repoMock.Setup(r => r.GetActiveCredentialAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PaymentGatewayCredential { IsActive = true });
+        repoMock.Setup(r => r.GetActiveCredentialsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new PaymentGatewayCredential { IsActive = true }
+            ]);
 
         var handler = new RotatePaymentGatewayCredentialCommandHandler(repoMock.Object, encryptionMock.Object);
 

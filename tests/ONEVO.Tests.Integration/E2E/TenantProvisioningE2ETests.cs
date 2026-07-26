@@ -60,6 +60,8 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
             connectionString = _postgres.GetConnectionString();
         }
 
+        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+
         _factory = new E2ETestFactory(connectionString, _email);
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -102,7 +104,16 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         var (acceptBody, acceptCookies) = await PostJsonAsync(
             TenantHost,
             $"/api/v1/auth/invitations/{inviteToken}/accept-password",
-            new { password = OwnerPassword, phone = "+94770000000" });
+            new
+            {
+                password = OwnerPassword,
+                confirm_password = OwnerPassword,
+                acceptances = new[]
+                {
+                    new { document_type = "terms", version = "1.0", decision = "accepted" },
+                    new { document_type = "privacy_notice", version = "1.0", decision = "acknowledged" }
+                }
+            });
 
         acceptBody.GetProperty("authenticated").GetBoolean().Should().BeTrue();
         acceptCookies.Should().ContainKey("onevo_session");
@@ -121,9 +132,13 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         await ActivateTenantDirectlyAsync(tenantId);
 
         // ── 6. Owner logs in on the tenant host ─────────────────────────────────
-        var (loginBody, cookies) = await PostJsonAsync(
-            TenantHost, "/api/v1/auth/login",
+        // Invite completion already appended the current required legal records before issuing
+        // its session, so a later tenant-host login can issue a session directly.
+        var loginResponse = await SendAsync(HttpMethod.Post, TenantHost, "/api/v1/auth/login",
             new { email = OwnerEmail, password = OwnerPassword });
+        var loginBody = await ReadJsonAsync(loginResponse);
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.OK, loginBody.ToString());
+        var cookies = ParseSetCookies(loginResponse);
 
         loginBody.GetProperty("authenticated").GetBoolean().Should().BeTrue();
         cookies.Should().ContainKey("onevo_session");
@@ -138,7 +153,8 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         me.StatusCode.Should().Be(HttpStatusCode.OK);
         var meBody = await ReadJsonAsync(me);
         meBody.GetProperty("authenticated").GetBoolean().Should().BeTrue();
-        meBody.GetProperty("user").GetProperty("tenant_id").GetGuid().Should().Be(tenantId);
+        meBody.GetProperty("user").TryGetProperty("tenant_id", out _).Should().BeFalse();
+        meBody.GetProperty("user").TryGetProperty("user_id", out _).Should().BeFalse();
 
         var removedRefresh = await SendAsync(HttpMethod.Post, TenantHost, "/api/v1/auth/refresh",
             body: null,

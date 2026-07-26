@@ -9,8 +9,9 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.
 
 /// <summary>
 /// Activates or deactivates an OAuth app registration.
-/// Activation requires at least one active credential; deactivation never deletes
-/// credential rows.
+/// Activation requires a supported provider, a stored config row, a non-empty clientId,
+/// and - if the provider definition requires a client secret - an active credential.
+/// Deactivation never deletes credential rows and is always allowed.
 /// </summary>
 public sealed record SetPlatformOAuthAppActivationCommand(
     string Provider,
@@ -31,6 +32,10 @@ public sealed class SetPlatformOAuthAppActivationCommandHandler
     {
         var provider = PlatformOAuthProviderRules.Normalize(request.Provider);
 
+        if (!PlatformOAuthProviderCatalog.TryGet(provider, out var definition))
+            return Result<PlatformOAuthAppDto>.Failure(
+                $"Provider '{provider}' is not an approved OAuth provider.", 400);
+
         var app = await _repo.GetByProviderAsync(provider, cancellationToken);
         if (app is null)
             return Result<PlatformOAuthAppDto>.NotFound(
@@ -38,10 +43,19 @@ public sealed class SetPlatformOAuthAppActivationCommandHandler
 
         var activeCredentials = await _repo.GetActiveCredentialsForAppAsync(app.Id, cancellationToken);
 
-        // Activation requires a usable credential; deactivation is always allowed.
-        if (request.IsActive && activeCredentials.Count == 0)
-            return Result<PlatformOAuthAppDto>.Failure(
-                $"OAuth app '{provider}' cannot be activated without an active credential. Rotate its secret first.", 400);
+        if (request.IsActive)
+        {
+            var hasClientId = !string.IsNullOrWhiteSpace(app.ClientId);
+            var hasRequiredCredential = !definition.ClientSecretRequired || activeCredentials.Count > 0;
+
+            if (!hasClientId)
+                return Result<PlatformOAuthAppDto>.Failure(
+                    $"OAuth app '{provider}' cannot be activated without a clientId. Configure it first.", 400);
+
+            if (!hasRequiredCredential)
+                return Result<PlatformOAuthAppDto>.Failure(
+                    $"OAuth app '{provider}' cannot be activated without an active credential. Rotate its secret first.", 400);
+        }
 
         app.IsActive = request.IsActive;
         app.UpdatedById = request.ActorPlatformUserId;
@@ -50,6 +64,6 @@ public sealed class SetPlatformOAuthAppActivationCommandHandler
         await _repo.SaveChangesAsync(cancellationToken);
 
         return Result<PlatformOAuthAppDto>.Success(
-            PlatformOAuthAppMapper.ToDto(app, activeCredentials.FirstOrDefault()));
+            PlatformOAuthAppMapper.ToDto(definition, app, activeCredentials.FirstOrDefault()));
     }
 }

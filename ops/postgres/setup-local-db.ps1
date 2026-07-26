@@ -89,6 +89,13 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $envPath = Join-Path $repoRoot '.env'
 $bootstrapPath = Join-Path $PSScriptRoot 'local-bootstrap-roles.sql'
 
+# Fixed conventional NOLOGIN role name that owns the sole pre-tenant base-login lookup
+# function. Not password-protected (NOLOGIN), so unlike app_user/migrator_user it does not
+# need to come from .env; production/staging must provision the equivalent role and grants
+# through their own deployment process, exactly as this file's header comment already
+# requires for app_user/migrator_user.
+$baseLoginFnOwner = 'onevo_auth_base_login_fn_owner'
+
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
     throw "Local .env file was not found. Copy .env.example to .env, replace the local password placeholders, and run this command again."
 }
@@ -203,6 +210,7 @@ try {
         '--set', "app_password=$appPassword",
         '--set', "migrator_user=$migratorUser",
         '--set', "migrator_password=$migratorPassword",
+        '--set', "base_login_fn_owner=$baseLoginFnOwner",
         '--file', $bootstrapPath
     )
     Invoke-PsqlChecked -Executable $psqlExecutable -Arguments $bootstrapArguments `

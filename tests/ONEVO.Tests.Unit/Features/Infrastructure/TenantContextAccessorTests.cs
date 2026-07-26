@@ -1,7 +1,7 @@
 using FluentAssertions;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.Tenancy;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Infrastructure;

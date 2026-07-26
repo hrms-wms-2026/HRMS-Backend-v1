@@ -19,19 +19,3 @@ public class EncryptionOptions
     public const string SectionName = "Encryption";
     public string MasterKey { get; set; } = string.Empty;
 }
-
-public class StripeOptions
-{
-    public const string SectionName = "Stripe";
-    public string SecretKey { get; set; } = string.Empty;
-    public string PublishableKey { get; set; } = string.Empty;
-    public string WebhookSecret { get; set; } = string.Empty;
-}
-
-public class PayHereOptions
-{
-    public const string SectionName = "PayHere";
-    public string MerchantId { get; set; } = string.Empty;
-    public string MerchantSecret { get; set; } = string.Empty;
-    public string WebhookSecret { get; set; } = string.Empty;
-}

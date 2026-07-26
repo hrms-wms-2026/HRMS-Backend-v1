@@ -14,17 +14,20 @@ using ONEVO.Api.Controllers.Admin.DevPlatform.SystemConfig;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Helpers;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformProviders.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Commands.CreatePlatformServiceKey;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Commands.RotatePlatformServiceKey;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Commands.SetPlatformServiceKeyActivation;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Commands.UpdatePlatformServiceKey;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Commands.VerifyPlatformServiceKey;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.DTOs.Responses;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Queries.GetPlatformServiceKey;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Queries.ListPlatformServiceKeys;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities;
+using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Services.SystemConfig;
@@ -48,7 +51,25 @@ public class PlatformServiceKeysTests
         UpdatedAt = DateTimeOffset.UtcNow.AddDays(-1)
     };
 
-    // ── 1. Entity / EF mapping ───────────────────────────────────────────────
+    private static IPlatformProviderRepository ProviderRepository()
+    {
+        var repository = new Mock<IPlatformProviderRepository>();
+        repository
+            .Setup(repo => repo.GetActiveFamilyAsync(
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string providerKey, CancellationToken _) => providerKey switch
+            {
+                "resend" or "sendgrid" => PlatformProviderFamilies.TransactionalEmail,
+                "cloudflare" => PlatformProviderFamilies.Infrastructure,
+                "cloudflare_r2" => PlatformProviderFamilies.ObjectStorage,
+                "aws_rekognition" => PlatformProviderFamilies.AiVerification,
+                _ => null
+            });
+        return repository.Object;
+    }
+
+    // 1. Entity / EF mapping
 
     private static ApplicationDbContext BuildInMemoryDb()
     {
@@ -110,7 +131,7 @@ public class PlatformServiceKeysTests
             Assert.Contains(exp, props);
     }
 
-    // ── 2. Command tests ─────────────────────────────────────────────────────
+    // 2. Command tests
 
     [Fact]
     public async Task Create_EncryptsApiKeyBeforeRepositorySave()
@@ -122,11 +143,16 @@ public class PlatformServiceKeysTests
         var repo = new Mock<IPlatformServiceKeyRepository>();
         repo.Setup(r => r.GetByServiceKeyAsync("resend", It.IsAny<CancellationToken>()))
             .ReturnsAsync((PlatformServiceKey?)null);
+        repo.Setup(r => r.ListActiveForProviderFamilyAsync(
+                PlatformProviderFamilies.TransactionalEmail,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformServiceKey>());
         repo.Setup(r => r.AddAsync(It.IsAny<PlatformServiceKey>(), It.IsAny<CancellationToken>()))
             .Callback<PlatformServiceKey, CancellationToken>((k, _) => saved = k)
             .Returns(Task.CompletedTask);
 
-        var handler = new CreatePlatformServiceKeyCommandHandler(repo.Object, encryption.Object);
+        var handler = new CreatePlatformServiceKeyCommandHandler(
+            repo.Object, ProviderRepository(), encryption.Object);
         var result = await handler.Handle(
             new CreatePlatformServiceKeyCommand("resend", "Resend", "plain-api-key", Actor),
             CancellationToken.None);
@@ -146,7 +172,8 @@ public class PlatformServiceKeysTests
         repo.Setup(r => r.GetByServiceKeyAsync("resend", It.IsAny<CancellationToken>()))
             .ReturnsAsync(ExistingKey());
 
-        var handler = new CreatePlatformServiceKeyCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
+        var handler = new CreatePlatformServiceKeyCommandHandler(
+            repo.Object, ProviderRepository(), Mock.Of<IEncryptionService>());
         var result = await handler.Handle(
             new CreatePlatformServiceKeyCommand("resend", "Resend", "some-key", Actor),
             CancellationToken.None);
@@ -162,7 +189,8 @@ public class PlatformServiceKeysTests
     public async Task Create_UnsupportedOrInvalidServiceKey_ReturnsValidationError(string serviceKey)
     {
         var repo = new Mock<IPlatformServiceKeyRepository>();
-        var handler = new CreatePlatformServiceKeyCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
+        var handler = new CreatePlatformServiceKeyCommandHandler(
+            repo.Object, ProviderRepository(), Mock.Of<IEncryptionService>());
 
         var result = await handler.Handle(
             new CreatePlatformServiceKeyCommand(serviceKey, "Name", "some-key", Actor),
@@ -177,7 +205,9 @@ public class PlatformServiceKeysTests
     public async Task Create_MissingApiKey_ReturnsValidationError()
     {
         var handler = new CreatePlatformServiceKeyCommandHandler(
-            Mock.Of<IPlatformServiceKeyRepository>(), Mock.Of<IEncryptionService>());
+            Mock.Of<IPlatformServiceKeyRepository>(),
+            ProviderRepository(),
+            Mock.Of<IEncryptionService>());
 
         var result = await handler.Handle(
             new CreatePlatformServiceKeyCommand("resend", "Resend", "", Actor),
@@ -185,6 +215,51 @@ public class PlatformServiceKeysTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_ActiveSendgridWhileActiveResendExists_ReturnsConflict()
+    {
+        var activeResend = ExistingKey("resend", isActive: true);
+        var repo = new Mock<IPlatformServiceKeyRepository>();
+        repo.Setup(r => r.GetByServiceKeyAsync("sendgrid", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PlatformServiceKey?)null);
+        repo.Setup(r => r.ListActiveForProviderFamilyAsync(
+                PlatformProviderFamilies.TransactionalEmail,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformServiceKey> { activeResend });
+
+        var handler = new CreatePlatformServiceKeyCommandHandler(
+            repo.Object, ProviderRepository(), Mock.Of<IEncryptionService>());
+        var result = await handler.Handle(
+            new CreatePlatformServiceKeyCommand("sendgrid", "SendGrid", "some-key", Actor),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        repo.Verify(r => r.AddAsync(It.IsAny<PlatformServiceKey>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Create_NonEmailServiceKey_IgnoresActiveTransactionalEmailProviders()
+    {
+        var activeResend = ExistingKey("resend", isActive: true);
+        PlatformServiceKey? saved = null;
+        var repo = new Mock<IPlatformServiceKeyRepository>();
+        repo.Setup(r => r.GetByServiceKeyAsync("cloudflare", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PlatformServiceKey?)null);
+        repo.Setup(r => r.AddAsync(It.IsAny<PlatformServiceKey>(), It.IsAny<CancellationToken>()))
+            .Callback<PlatformServiceKey, CancellationToken>((k, _) => saved = k)
+            .Returns(Task.CompletedTask);
+
+        var handler = new CreatePlatformServiceKeyCommandHandler(
+            repo.Object, ProviderRepository(), Mock.Of<IEncryptionService>());
+        var result = await handler.Handle(
+            new CreatePlatformServiceKeyCommand("cloudflare", "Cloudflare", "some-key", Actor),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(saved);
     }
 
     [Fact]
@@ -238,8 +313,13 @@ public class PlatformServiceKeysTests
         var repo = new Mock<IPlatformServiceKeyRepository>();
         repo.Setup(r => r.GetByServiceKeyAsync("resend", It.IsAny<CancellationToken>()))
             .ReturnsAsync(entity);
+        repo.Setup(r => r.ListActiveForProviderFamilyAsync(
+                PlatformProviderFamilies.TransactionalEmail,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformServiceKey> { entity });
 
-        var handler = new SetPlatformServiceKeyActivationCommandHandler(repo.Object);
+        var handler = new SetPlatformServiceKeyActivationCommandHandler(
+            repo.Object, ProviderRepository());
         var result = await handler.Handle(
             new SetPlatformServiceKeyActivationCommand("resend", target, Actor), CancellationToken.None);
 
@@ -256,12 +336,74 @@ public class PlatformServiceKeysTests
         repo.Setup(r => r.GetByServiceKeyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((PlatformServiceKey?)null);
 
-        var handler = new SetPlatformServiceKeyActivationCommandHandler(repo.Object);
+        var handler = new SetPlatformServiceKeyActivationCommandHandler(
+            repo.Object, ProviderRepository());
         var result = await handler.Handle(
             new SetPlatformServiceKeyActivationCommand("cloudflare", true, Actor), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task SetActivation_ActivatingResendWhileActiveSendgridExists_ReturnsConflict()
+    {
+        var inactiveResend = ExistingKey("resend", isActive: false);
+        var activeSendgrid = ExistingKey("sendgrid", isActive: true);
+        var repo = new Mock<IPlatformServiceKeyRepository>();
+        repo.Setup(r => r.GetByServiceKeyAsync("resend", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(inactiveResend);
+        repo.Setup(r => r.ListActiveForProviderFamilyAsync(
+                PlatformProviderFamilies.TransactionalEmail,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformServiceKey> { inactiveResend, activeSendgrid });
+
+        var handler = new SetPlatformServiceKeyActivationCommandHandler(
+            repo.Object, ProviderRepository());
+        var result = await handler.Handle(
+            new SetPlatformServiceKeyActivationCommand("resend", true, Actor), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.False(inactiveResend.IsActive);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SetActivation_DeactivatingProvider_NeverChecksForConflicts()
+    {
+        var activeSendgrid = ExistingKey("sendgrid", isActive: true);
+        var repo = new Mock<IPlatformServiceKeyRepository>();
+        repo.Setup(r => r.GetByServiceKeyAsync("sendgrid", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(activeSendgrid);
+
+        var handler = new SetPlatformServiceKeyActivationCommandHandler(
+            repo.Object, ProviderRepository());
+        var result = await handler.Handle(
+            new SetPlatformServiceKeyActivationCommand("sendgrid", false, Actor), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(activeSendgrid.IsActive);
+        repo.Verify(r => r.ListActiveForProviderFamilyAsync(
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SetActivation_ActivatingCloudflareWhileActiveSendgridExists_IsUnaffected()
+    {
+        var inactiveCloudflare = ExistingKey("cloudflare", isActive: false);
+        var activeSendgrid = ExistingKey("sendgrid", isActive: true);
+        var repo = new Mock<IPlatformServiceKeyRepository>();
+        repo.Setup(r => r.GetByServiceKeyAsync("cloudflare", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(inactiveCloudflare);
+        var handler = new SetPlatformServiceKeyActivationCommandHandler(
+            repo.Object, ProviderRepository());
+        var result = await handler.Handle(
+            new SetPlatformServiceKeyActivationCommand("cloudflare", true, Actor), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(inactiveCloudflare.IsActive);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -353,7 +495,7 @@ public class PlatformServiceKeysTests
         Assert.Equal(404, result.StatusCode);
     }
 
-    // ── 3. Query / DTO tests ─────────────────────────────────────────────────
+    // 3. Query / DTO tests
 
     [Fact]
     public async Task Get_UnknownServiceKey_ReturnsNotFound()
@@ -394,7 +536,7 @@ public class PlatformServiceKeysTests
         Assert.DoesNotContain("apiKey", serialized, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ── 5. Security assertions on response DTO shapes ────────────────────────
+    // 5. Security assertions on response DTO shapes
 
     [Fact]
     public void Security_ResponseDtos_DoNotExposeKeyMaterial()
@@ -409,7 +551,7 @@ public class PlatformServiceKeysTests
         }
     }
 
-    // ── Infrastructure stubs (verification + resolver) ───────────────────────
+    // Infrastructure stubs (verification + resolver)
 
     [Fact]
     public async Task VerificationStub_AcceptsNonEmptyKey_RejectsEmptyKey()
@@ -447,7 +589,76 @@ public class PlatformServiceKeysTests
         Assert.Null(await resolver.ResolveActiveKeyAsync("cloudflare", CancellationToken.None));
     }
 
-    // ── 4. Permission tests ──────────────────────────────────────────────────
+    [Fact]
+    public void Catalog_IsTransactionalEmailProvider_TrueForSendgridAndResend_FalseForCloudflare()
+    {
+        Assert.True(PlatformServiceKeyCatalog.IsTransactionalEmailProvider("sendgrid"));
+        Assert.True(PlatformServiceKeyCatalog.IsTransactionalEmailProvider("resend"));
+        Assert.False(PlatformServiceKeyCatalog.IsTransactionalEmailProvider("cloudflare"));
+        Assert.False(PlatformServiceKeyCatalog.IsTransactionalEmailProvider("cloudflare_r2"));
+        Assert.False(PlatformServiceKeyCatalog.IsTransactionalEmailProvider("mailchimp"));
+    }
+
+    [Fact]
+    public async Task ResolveActiveTransactionalEmailProvider_ReturnsNotConfigured_WhenZeroActive()
+    {
+        var repo = new Mock<IPlatformServiceKeyRepository>();
+        repo.Setup(r => r.ListActiveForProviderFamilyAsync(
+                PlatformProviderFamilies.TransactionalEmail,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformServiceKey>());
+
+        var resolver = new PlatformServiceKeyResolver(repo.Object, Mock.Of<IEncryptionService>());
+        var result = await resolver.ResolveActiveTransactionalEmailProviderAsync(CancellationToken.None);
+
+        Assert.Equal(TransactionalEmailProviderResolutionStatus.NotConfigured, result.Status);
+        Assert.Null(result.ProviderKey);
+        Assert.Null(result.ApiKey);
+    }
+
+    [Fact]
+    public async Task ResolveActiveTransactionalEmailProvider_ReturnsResolvedWithDecryptedKey_WhenOneActive()
+    {
+        var activeSendgrid = ExistingKey("sendgrid", isActive: true);
+        var encryption = new Mock<IEncryptionService>();
+        encryption.Setup(e => e.Decrypt("OLD-ENCRYPTED")).Returns("decrypted-plain");
+
+        var repo = new Mock<IPlatformServiceKeyRepository>();
+        repo.Setup(r => r.ListActiveForProviderFamilyAsync(
+                PlatformProviderFamilies.TransactionalEmail,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformServiceKey> { activeSendgrid });
+
+        var resolver = new PlatformServiceKeyResolver(repo.Object, encryption.Object);
+        var result = await resolver.ResolveActiveTransactionalEmailProviderAsync(CancellationToken.None);
+
+        Assert.Equal(TransactionalEmailProviderResolutionStatus.Resolved, result.Status);
+        Assert.Equal("sendgrid", result.ProviderKey);
+        Assert.Equal("decrypted-plain", result.ApiKey);
+    }
+
+    [Fact]
+    public async Task ResolveActiveTransactionalEmailProvider_ReturnsAmbiguous_WhenTwoActive()
+    {
+        var repo = new Mock<IPlatformServiceKeyRepository>();
+        repo.Setup(r => r.ListActiveForProviderFamilyAsync(
+                PlatformProviderFamilies.TransactionalEmail,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformServiceKey>
+            {
+                ExistingKey("resend", isActive: true),
+                ExistingKey("sendgrid", isActive: true)
+            });
+
+        var resolver = new PlatformServiceKeyResolver(repo.Object, Mock.Of<IEncryptionService>());
+        var result = await resolver.ResolveActiveTransactionalEmailProviderAsync(CancellationToken.None);
+
+        Assert.Equal(TransactionalEmailProviderResolutionStatus.Ambiguous, result.Status);
+        Assert.Null(result.ProviderKey);
+        Assert.Null(result.ApiKey);
+    }
+
+    // 4. Permission tests
 
     [Fact]
     public void Authorization_Endpoints_RequireAdminPolicyAndCorrectPlatformPermission()

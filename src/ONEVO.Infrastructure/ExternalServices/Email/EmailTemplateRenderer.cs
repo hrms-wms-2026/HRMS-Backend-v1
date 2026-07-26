@@ -44,7 +44,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             ? Get(f, "app_base_url", fallback: string.Empty)
             : _options.AppBaseUrl;
         var inviteUrl = string.IsNullOrWhiteSpace(appBaseUrl)
-            ? $"[invite_url placeholder — set Email:AppBaseUrl] token={token}"
+            ? $"[invite_url placeholder - set Email:AppBaseUrl] token={token}"
             : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{token}";
 
         var subject = $"You're invited to manage {company} on ONEVO";
@@ -87,7 +87,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             ? Get(f, "app_base_url", fallback: string.Empty)
             : _options.AppBaseUrl;
         var resetUrl = string.IsNullOrWhiteSpace(appBaseUrl)
-            ? $"[reset_url placeholder — set Email:AppBaseUrl] token={token}"
+            ? $"[reset_url placeholder - set Email:AppBaseUrl] token={token}"
             : $"{appBaseUrl.TrimEnd('/')}/auth/reset-password?token={token}";
 
         var subject = "Reset your ONEVO password";

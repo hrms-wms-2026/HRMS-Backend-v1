@@ -12,7 +12,7 @@ namespace ONEVO.Infrastructure.ExternalServices.Email;
 /// Sends transactional email through the SendGrid v3 Mail Send API using a minimal
 /// typed HttpClient (no SendGrid SDK dependency).
 /// SECURITY: the Authorization header is built locally from the resolver-provided key,
-/// is never logged, and provider error bodies are never stored — only the HTTP status
+/// is never logged, and provider error bodies are never stored - only the HTTP status
 /// code is surfaced as a safe error.
 /// </summary>
 public sealed class SendGridEmailAdapter : IEmailProviderAdapter
@@ -94,7 +94,7 @@ public sealed class SendGridEmailAdapter : IEmailProviderAdapter
         {
             if (!response.IsSuccessStatusCode)
             {
-                // Never store the response body — surface only the status code.
+                // Never store the response body - surface only the status code.
                 _logger.LogWarning("SendGrid mail send returned {StatusCode} for recipient {Recipient}.",
                     (int)response.StatusCode, request.RecipientEmail);
                 return TransactionalEmailResult.Failed(

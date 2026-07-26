@@ -3,7 +3,7 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.
 /// <summary>
 /// Server-side resolver for ONEVO OAuth app registrations, for FUTURE tenant/user
 /// OAuth connect flows. Decrypts secret material in memory only.
-/// SECURITY: the returned models are internal-only — they must never be serialized
+/// SECURITY: the returned models are internal-only - they must never be serialized
 /// into an API response or a log. No controller may depend on this interface.
 /// </summary>
 public interface IPlatformOAuthAppResolver
@@ -31,7 +31,7 @@ public sealed record ResolvedPlatformOAuthApp(
     string[] DefaultScopes);
 
 /// <summary>
-/// Internal-only resolved credential. ClientSecret/PrivateKey are DECRYPTED plaintext —
+/// Internal-only resolved credential. ClientSecret/PrivateKey are DECRYPTED plaintext -
 /// server-side use only, never expose through any API DTO or log.
 /// </summary>
 public sealed record ResolvedPlatformOAuthAppCredential(

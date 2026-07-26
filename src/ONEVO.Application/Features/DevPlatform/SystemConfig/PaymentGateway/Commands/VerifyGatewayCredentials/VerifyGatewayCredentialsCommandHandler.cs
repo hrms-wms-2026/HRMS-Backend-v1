@@ -7,7 +7,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Service
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.VerifyGatewayCredentials;
 
 /// <summary>
-/// Verifies gateway credentials against the live provider — does NOT persist credentials.
+/// Verifies gateway credentials against the live provider - does NOT persist credentials.
 /// UI must show the verified account details before enabling Save.
 /// </summary>
 public sealed record VerifyGatewayCredentialsCommand(

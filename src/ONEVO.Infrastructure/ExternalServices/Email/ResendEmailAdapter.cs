@@ -12,7 +12,7 @@ namespace ONEVO.Infrastructure.ExternalServices.Email;
 /// Sends transactional email through the Resend HTTP API (POST /emails) using a minimal
 /// typed HttpClient. Replaces the old Resend-over-SMTP path whose password came from
 /// appsettings; the API key now always comes from platform_service_keys.
-/// SECURITY: same rules as SendGrid — Authorization built locally, never logged,
+/// SECURITY: same rules as SendGrid - Authorization built locally, never logged,
 /// provider error bodies never stored.
 /// </summary>
 public sealed class ResendEmailAdapter : IEmailProviderAdapter

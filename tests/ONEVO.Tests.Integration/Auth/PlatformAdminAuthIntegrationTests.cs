@@ -37,15 +37,13 @@ public class PlatformAdminAuthIntegrationTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
+        await AdminTestFactory.MigrateDatabaseAsync(_postgres.GetConnectionString());
         _factory = new AdminTestFactory(_postgres.GetConnectionString());
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost"),
             HandleCookies = false
         });
-
-        // Allow migrations + seeders (permissions, roles, bootstrap platform user) to finish.
-        await Task.Delay(1000);
     }
 
     public async Task DisposeAsync()

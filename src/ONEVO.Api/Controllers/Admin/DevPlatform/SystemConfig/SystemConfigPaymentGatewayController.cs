@@ -14,13 +14,13 @@ using ONEVO.Application.Features.DevPlatform.PlatformAccess.ServiceInterfaces;
 namespace ONEVO.Api.Controllers.Admin.DevPlatform.SystemConfig;
 
 /// <summary>
-/// System Config — Payment Gateway endpoints.
+/// System Config - Payment Gateway endpoints.
 /// Routes:
-///   GET    /admin/v1/system-config/payment-gateways        → list gateway metadata (no secrets)
-///   POST   /admin/v1/system-config/payment-gateways/verify → verify credentials before save (not persisted)
-///   POST   /admin/v1/system-config/payment-gateways        → create gateway config + credential + country routes
-///   POST   /admin/v1/system-config/payment-gateways/{id}/credentials/rotate → rotate credential
-///   GET    /admin/v1/payment-gateways/resolve              → resolve active gateway for country (tenant provisioning)
+///   GET    /admin/v1/system-config/payment-gateways        -> list gateway metadata (no secrets)
+///   POST   /admin/v1/system-config/payment-gateways/verify -> verify credentials before save (not persisted)
+///   POST   /admin/v1/system-config/payment-gateways        -> create gateway config + credential + country routes
+///   POST   /admin/v1/system-config/payment-gateways/{id}/credentials/rotate -> rotate credential
+///   GET    /admin/v1/payment-gateways/resolve              -> resolve active gateway for country (tenant provisioning)
 ///
 /// SECURITY:
 /// - All endpoints require AdminPolicy (platform-admin JWT) + platform.system_config.read/manage permission.
@@ -57,7 +57,7 @@ public sealed class SystemConfigPaymentGatewayController : ControllerBase
     }
 
     /// <summary>
-    /// Verify gateway credentials with the live provider — does NOT persist credentials.
+    /// Verify gateway credentials with the live provider - does NOT persist credentials.
     /// POST /admin/v1/system-config/payment-gateways/verify
     /// </summary>
     [HttpPost("admin/v1/system-config/payment-gateways/verify")]

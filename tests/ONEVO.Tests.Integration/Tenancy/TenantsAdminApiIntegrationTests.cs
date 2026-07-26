@@ -30,6 +30,7 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
+        await AdminTestFactory.MigrateDatabaseAsync(_postgres.GetConnectionString());
         _factory = new AdminTestFactory(_postgres.GetConnectionString());
 
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -37,9 +38,6 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
             BaseAddress = new Uri("https://localhost"),
             HandleCookies = false
         });
-
-        // Allow PermissionSeeder + EnsureCreated to finish.
-        await Task.Delay(500);
 
         var loginResponse = await _client.PostAsJsonAsync("/admin/v1/auth/login", new { email = "test_admin@onevo.dev", password = "test_password_123" });
         if (!loginResponse.IsSuccessStatusCode) { throw new Exception(await loginResponse.Content.ReadAsStringAsync()); }
@@ -290,12 +288,22 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
         var resp = await _client.PatchAsJsonAsync(
             $"/admin/v1/tenants/{tenantId}/status",
             new { action = "suspend" });
-        resp.IsSuccessStatusCode.Should().BeFalse();
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var body = await ReadJsonAsync(resp);
+        body.GetProperty("status").GetInt32().Should().Be(400);
+        body.GetProperty("title").GetString().Should().Be("Validation Error");
+        body.GetProperty("detail").GetString().Should().Be("One or more validation errors occurred.");
+        body.GetProperty("correlationId").GetString().Should().NotBeNullOrEmpty();
+        body.GetProperty("errors").GetProperty("Reason").EnumerateArray()
+            .Select(e => e.GetString()).Should().Contain("reason is required when suspending a tenant.");
 
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             db.TenantStatusHistories.Count(h => h.TenantId == tenantId).Should().Be(0);
+            var t = await db.Tenants.FindAsync(tenantId);
+            t!.Status.Should().Be(TenantStatus.Active);
         }
     }
 

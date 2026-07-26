@@ -46,7 +46,7 @@ public sealed class ListPaymentGatewaysQueryHandler
             Environment = config.Environment,
             DisplayName = config.DisplayName,
             LogoUrl = config.LogoUrl,
-            PublicKey = config.PublicKey,       // public identifier — safe to return
+            PublicKey = config.PublicKey,       // public identifier - safe to return
             MerchantId = config.MerchantId,
             WebhookUrl = config.WebhookUrl,
             IsActive = config.IsActive,

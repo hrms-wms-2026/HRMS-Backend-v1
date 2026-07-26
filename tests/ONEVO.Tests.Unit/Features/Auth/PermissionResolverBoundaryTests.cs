@@ -7,7 +7,6 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Roles.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
-using ONEVO.Infrastructure.Identity;
 using ONEVO.Infrastructure.Security;
 using Xunit;
 

@@ -29,7 +29,7 @@ public class PaymentGatewayCredential
     /// <summary>Key version identifier used by IEncryptionService for rotation support.</summary>
     public string EncryptionKeyVersion { get; set; } = string.Empty;
 
-    /// <summary>Monotonic version counter per gateway config (1, 2, 3…).</summary>
+    /// <summary>Monotonic version counter per gateway config (1, 2, 3...).</summary>
     public int CredentialVersion { get; set; }
 
     /// <summary>Only the active row may be used for provider calls.</summary>

@@ -201,4 +201,56 @@ public class PlatformAccessSeederTests
         (await db.PlatformUserCredentials.CountAsync()).Should().Be(0);
         hasher.Verify(value => value.Hash(It.IsAny<string>()), Times.Never);
     }
+
+    [Fact]
+    public async Task SeedAsync_DevelopmentBootstrap_WithoutPasswordOrCredential_FailsClearly()
+    {
+        using var db = BuildInMemoryDb();
+        var hasher = new Mock<IPasswordHasher>();
+
+        var action = () => PlatformAccessSeeder.SeedAsync(
+            db,
+            "boot@onevo.io",
+            "Boot Admin",
+            null,
+            true,
+            hasher.Object,
+            CancellationToken.None);
+
+        await action.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage("*DevAdmin__Password*platform_user_credentials*");
+        (await db.PlatformUserCredentials.CountAsync()).Should().Be(0);
+        hasher.Verify(value => value.Hash(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SeedAsync_DevelopmentBootstrap_WithoutPassword_ContinuesWhenCredentialExists()
+    {
+        using var db = BuildInMemoryDb();
+        var hasher = new Mock<IPasswordHasher>();
+
+        await PlatformAccessSeeder.SeedAsync(
+            db,
+            "boot@onevo.io",
+            "Boot Admin",
+            "initial-bootstrap-secret",
+            true,
+            new ONEVO.Infrastructure.Identity.Passwords.BCryptPasswordHasher(),
+            CancellationToken.None);
+
+        var originalHash = (await db.PlatformUserCredentials.SingleAsync()).PasswordHash;
+
+        await PlatformAccessSeeder.SeedAsync(
+            db,
+            "boot@onevo.io",
+            "Boot Admin",
+            null,
+            true,
+            hasher.Object,
+            CancellationToken.None);
+
+        (await db.PlatformUserCredentials.SingleAsync()).PasswordHash.Should().Be(originalHash);
+        hasher.Verify(value => value.Hash(It.IsAny<string>()), Times.Never);
+    }
 }

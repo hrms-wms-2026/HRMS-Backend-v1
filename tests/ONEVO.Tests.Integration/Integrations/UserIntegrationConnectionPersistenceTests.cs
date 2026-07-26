@@ -25,15 +25,12 @@ public sealed class UserIntegrationConnectionPersistenceTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
+        await AdminTestFactory.MigrateDatabaseAsync(_postgres.GetConnectionString());
         _factory = new AdminTestFactory(_postgres.GetConnectionString());
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost")
         });
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        await db.Database.MigrateAsync();
     }
 
     public async Task DisposeAsync()

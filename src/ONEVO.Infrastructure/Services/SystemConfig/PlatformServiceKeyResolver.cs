@@ -1,6 +1,7 @@
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
+using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 
 namespace ONEVO.Infrastructure.Services.SystemConfig;
 
@@ -29,5 +30,23 @@ public sealed class PlatformServiceKeyResolver : IPlatformServiceKeyResolver
             return null;
 
         return _encryption.Decrypt(entity.ApiKeyEncrypted);
+    }
+
+    public async Task<TransactionalEmailProviderResolution> ResolveActiveTransactionalEmailProviderAsync(
+        CancellationToken ct)
+    {
+        var matches = await _repo.ListActiveForProviderFamilyAsync(
+            PlatformProviderFamilies.TransactionalEmail,
+            ct);
+
+        if (matches.Count == 0)
+            return TransactionalEmailProviderResolution.NotConfigured();
+
+        if (matches.Count > 1)
+            return TransactionalEmailProviderResolution.Ambiguous();
+
+        var match = matches[0];
+        var apiKey = _encryption.Decrypt(match.ApiKeyEncrypted);
+        return TransactionalEmailProviderResolution.Resolved(match.ServiceKey, apiKey);
     }
 }

@@ -20,7 +20,6 @@ public class CreateTenantCommandValidatorTests
         Timezone: "UTC",
         Currency: "LKR",
         Subscription: null!,
-        TenantConfigurationSetup: null,
         OwnerInvite: null);
 
     [Theory]

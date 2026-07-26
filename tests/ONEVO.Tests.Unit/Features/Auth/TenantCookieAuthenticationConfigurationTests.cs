@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using ONEVO.Application.Common.Models.Auth;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.Sessions;
 
 namespace ONEVO.Tests.Unit.Features.Auth;
 
@@ -22,7 +22,7 @@ public sealed class TenantCookieAuthenticationConfigurationTests
         var environment = new Mock<IWebHostEnvironment>();
         environment.SetupGet(instance => instance.EnvironmentName).Returns(Environments.Development);
 
-        var extensionsType = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthController).Assembly
+        var extensionsType = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthLoginController).Assembly
             .GetType("ONEVO.Api.Extensions.AuthenticationExtensions", throwOnError: true)!;
         var addAuthentication = extensionsType.GetMethod(
             "AddApiAuthentication",

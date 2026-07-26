@@ -36,7 +36,7 @@ public class ExceptionHandlerMiddleware
         var (statusCode, title, detail, errors) = exception switch
         {
             ValidationException ve => (
-                (int)HttpStatusCode.UnprocessableEntity,
+                (int)HttpStatusCode.BadRequest,
                 "Validation Error",
                 "One or more validation errors occurred.",
                 (object?)ve.Errors
@@ -59,6 +59,12 @@ public class ExceptionHandlerMiddleware
                 (int)HttpStatusCode.Forbidden,
                 "Forbidden",
                 fe.Message,
+                (object?)null),
+
+            ServiceUnavailableException se => (
+                (int)HttpStatusCode.ServiceUnavailable,
+                "Service Unavailable",
+                se.ErrorCode,
                 (object?)null),
 
             _ => (

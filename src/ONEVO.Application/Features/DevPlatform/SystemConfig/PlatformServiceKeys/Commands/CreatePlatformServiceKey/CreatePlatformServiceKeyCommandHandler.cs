@@ -5,6 +5,8 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.DT
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformProviders.RepositoryInterfaces;
+using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities;
 
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Commands.CreatePlatformServiceKey;
@@ -24,13 +26,16 @@ public sealed class CreatePlatformServiceKeyCommandHandler
     : IRequestHandler<CreatePlatformServiceKeyCommand, Result<PlatformServiceKeyDto>>
 {
     private readonly IPlatformServiceKeyRepository _repo;
+    private readonly IPlatformProviderRepository _providerRepository;
     private readonly IEncryptionService _encryption;
 
     public CreatePlatformServiceKeyCommandHandler(
         IPlatformServiceKeyRepository repo,
+        IPlatformProviderRepository providerRepository,
         IEncryptionService encryption)
     {
         _repo = repo;
+        _providerRepository = providerRepository;
         _encryption = encryption;
     }
 
@@ -43,9 +48,15 @@ public sealed class CreatePlatformServiceKeyCommandHandler
             return Result<PlatformServiceKeyDto>.Failure(
                 "serviceKey must be a lowercase slug (letters, digits, underscores; max 50 chars).", 400);
 
-        if (!PlatformServiceKeyCatalog.IsSupported(request.ServiceKey))
+        var providerFamily = await _providerRepository.GetActiveFamilyAsync(
+            request.ServiceKey,
+            cancellationToken);
+        if (providerFamily is null ||
+            !PlatformProviderFamilies.PlatformServiceKeyFamilies.Contains(providerFamily))
+        {
             return Result<PlatformServiceKeyDto>.Failure(
-                $"serviceKey must be one of: {string.Join(", ", PlatformServiceKeyCatalog.SupportedServiceKeys)}.", 400);
+                $"Provider '{request.ServiceKey}' is not an active platform service-key provider.", 400);
+        }
 
         // 2. Validate display name
         if (string.IsNullOrWhiteSpace(request.DisplayName) || request.DisplayName.Length > 80)
@@ -62,7 +73,24 @@ public sealed class CreatePlatformServiceKeyCommandHandler
             return Result<PlatformServiceKeyDto>.Conflict(
                 $"A platform service key '{request.ServiceKey}' already exists. Use rotate-key to replace its credential.");
 
-        // 5. Encrypt — NEVER stored plaintext
+        // 4b. A newly created service key is always active immediately. If this is a
+        // transactional email provider (sendgrid/resend), it must not conflict with
+        // another already-active transactional email provider - the operator must
+        // explicitly deactivate the current one first. The backend never auto-deactivates it.
+        if (providerFamily == PlatformProviderFamilies.TransactionalEmail)
+        {
+            var activeEmailProviders = await _repo.ListActiveForProviderFamilyAsync(
+                PlatformProviderFamilies.TransactionalEmail,
+                cancellationToken);
+            foreach (var key in activeEmailProviders)
+            {
+                return Result<PlatformServiceKeyDto>.Conflict(
+                    $"Active transactional email provider '{key.ServiceKey}' already exists. " +
+                    $"Deactivate it before activating '{request.ServiceKey}'.");
+            }
+        }
+
+        // 5. Encrypt - NEVER stored plaintext
         var apiKeyEncrypted = _encryption.Encrypt(request.ApiKey);
 
         var entity = new PlatformServiceKey

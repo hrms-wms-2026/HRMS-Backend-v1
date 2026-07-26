@@ -1,14 +1,21 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.CurrentUser;
+using ONEVO.Infrastructure.Identity.Mfa;
+using ONEVO.Infrastructure.Identity.Tenancy;
+using ONEVO.Infrastructure.Identity.Time;
+using ONEVO.Infrastructure.Identity.Tokens;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Infrastructure.Persistence.Repositories.Auth.Legal;
+using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Security;
@@ -47,6 +54,7 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
     {
         await _postgres.StartAsync();
         _connectionString = _postgres.GetConnectionString();
+        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
 
         await using var db = CreateContext();
         await db.Database.MigrateAsync();
@@ -109,7 +117,7 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
             grantTables.CommandText = $@"
                 GRANT SELECT, INSERT, UPDATE, DELETE ON
                     users, roles, file_records, file_upload_reservations,
-                    tenant_storage_stats, mfa_challenges
+                    tenant_storage_stats, mfa_challenges, legal_login_challenges
                     TO {RestrictedRoleName};
                 GRANT SELECT ON tenants TO {RestrictedRoleName};
             ";
@@ -217,6 +225,72 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RootContinuationChallengeLookup_UsesAdminRlsBoundary_AndRestoresSystemMode()
+    {
+        var tokens = new SecureTokenGenerator();
+        string legalChallenge;
+        string mfaChallenge;
+
+        var seedContext = new TenantContextAccessor();
+        seedContext.Resolve(new ONEVO.Application.Common.ServiceInterfaces.TenantRegistryEntry(
+            _tenantAId,
+            "rls-test-tenant-a",
+            TenantStatus.Active,
+            null));
+        await using (var seedDb = CreateContext(seedContext, useRestrictedRole: true))
+        {
+            var legalRepository = new EfLegalLoginChallengeRepository(
+                seedDb,
+                tokens,
+                _clock,
+                seedContext);
+            var mfaStore = new PostgresMfaChallengeStore(seedDb, tokens, _clock, seedContext);
+
+            (legalChallenge, _) = await legalRepository.CreateAsync(
+                _tenantAId,
+                _userAId,
+                "password",
+                TimeSpan.FromMinutes(10));
+            mfaChallenge = await mfaStore.CreateAsync(
+                _userAId,
+                _tenantAId,
+                "password",
+                TimeSpan.FromMinutes(10));
+        }
+
+        var systemContext = new TenantContextAccessor();
+        await using var lookupDb = CreateContext(systemContext, useRestrictedRole: true);
+        var legalLookup = new EfLegalLoginChallengeRepository(
+            lookupDb,
+            tokens,
+            _clock,
+            systemContext);
+        var mfaLookup = new PostgresMfaChallengeStore(
+            lookupDb,
+            tokens,
+            _clock,
+            systemContext);
+
+        (await legalLookup.GetActiveAsync(legalChallenge)).Should().BeNull(
+            "FORCE RLS must hide legal challenges in System mode");
+        (await mfaLookup.GetAsync(mfaChallenge)).Should().BeNull(
+            "FORCE RLS must hide MFA challenges in System mode");
+
+        var legalState = await legalLookup.GetActiveForPreTenantContinuationAsync(legalChallenge);
+        systemContext.ContextMode.Should().Be(TenantContextMode.System);
+        var mfaState = await mfaLookup.GetForPreTenantContinuationAsync(mfaChallenge);
+
+        legalState.Should().NotBeNull();
+        legalState!.TenantId.Should().Be(_tenantAId);
+        legalState.UserId.Should().Be(_userAId);
+        mfaState.Should().NotBeNull();
+        mfaState!.TenantId.Should().Be(_tenantAId);
+        mfaState.UserId.Should().Be(_userAId);
+        systemContext.ContextMode.Should().Be(TenantContextMode.System);
+        systemContext.IsResolved.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task TenantStorageStats_AreIsolatedByTenant_ThroughRestrictedRole()
     {
         await using (var setupDb = CreateContext(_tenantAId, "rls-test-tenant-a", useRestrictedRole: true))
@@ -291,20 +365,26 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
 
     private ApplicationDbContext CreateContext(Guid? tenantId = null, string? slug = null, bool useRestrictedRole = false)
     {
-        var connectionString = useRestrictedRole ? _restrictedConnectionString : _connectionString;
-
         var tenantContext = new TenantContextAccessor();
-
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connectionString)
-            .UseSnakeCaseNamingConvention()
-            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
-            .Options;
 
         if (tenantId is not null && slug is not null)
         {
             tenantContext.Resolve(new ONEVO.Application.Common.ServiceInterfaces.TenantRegistryEntry(tenantId.Value, slug, TenantStatus.Active, null));
         }
+
+        return CreateContext(tenantContext, useRestrictedRole);
+    }
+
+    private ApplicationDbContext CreateContext(
+        TenantContextAccessor tenantContext,
+        bool useRestrictedRole)
+    {
+        var connectionString = useRestrictedRole ? _restrictedConnectionString : _connectionString;
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(connectionString)
+            .UseSnakeCaseNamingConvention()
+            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .Options;
 
         return new ApplicationDbContext(
             options,

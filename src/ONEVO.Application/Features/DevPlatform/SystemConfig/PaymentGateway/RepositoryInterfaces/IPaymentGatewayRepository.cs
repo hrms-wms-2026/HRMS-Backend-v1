@@ -9,7 +9,7 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Rep
 /// </summary>
 public interface IPaymentGatewayRepository
 {
-    // ── Config CRUD ──────────────────────────────────────────────────────────
+    // Config CRUD
 
     Task<IReadOnlyList<PaymentGatewayConfig>> ListAllAsync(CancellationToken ct);
 
@@ -19,7 +19,7 @@ public interface IPaymentGatewayRepository
 
     /// <summary>
     /// Returns true when an active country route for the given country + environment
-    /// already exists under a DIFFERENT gateway config — used to enforce "one country,
+    /// already exists under a DIFFERENT gateway config - used to enforce "one country,
     /// one active gateway per environment" conflict check before save.
     /// </summary>
     Task<bool> HasConflictingCountryRouteAsync(
@@ -37,13 +37,21 @@ public interface IPaymentGatewayRepository
     /// </summary>
     Task<PaymentGatewayConfig?> ResolveForCountryAsync(string countryCode, string environment, CancellationToken ct);
 
-    // ── Credentials ──────────────────────────────────────────────────────────
+    // Credentials
 
     /// <summary>
     /// Returns the current active (non-deactivated) credential row for a gateway config.
     /// Returns null when no active credential exists.
     /// </summary>
     Task<PaymentGatewayCredential?> GetActiveCredentialAsync(Guid gatewayConfigId, CancellationToken ct);
+
+    /// <summary>
+    /// Returns all active credential rows for a gateway config so rotation can
+    /// repair an already-inconsistent state before adding the next version.
+    /// </summary>
+    Task<IReadOnlyList<PaymentGatewayCredential>> GetActiveCredentialsAsync(
+        Guid gatewayConfigId,
+        CancellationToken ct);
 
     /// <summary>
     /// Returns the highest credential_version for a gateway config (0 if none).
@@ -53,7 +61,7 @@ public interface IPaymentGatewayRepository
 
     Task AddCredentialAsync(PaymentGatewayCredential credential, CancellationToken ct);
 
-    // ── Country Routes ───────────────────────────────────────────────────────
+    // Country Routes
 
     /// <summary>Lists all active routes for a gateway config.</summary>
     Task<IReadOnlyList<PaymentGatewayCountryRoute>> ListRoutesForConfigAsync(Guid gatewayConfigId, CancellationToken ct);

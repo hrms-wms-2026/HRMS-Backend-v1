@@ -2,8 +2,8 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKey
 
 /// <summary>
 /// Allowlist of supported platform service key slugs.
-/// Phase 1 supports only ONEVO-owned Resend/SendGrid (transactional email) and
-/// Cloudflare/Cloudflare R2 (DNS/WAF, object storage) credentials.
+/// Provider-card identity and family are owned by platform_providers. These constants
+/// remain only for provider-specific runtime adapters and verification rules.
 /// </summary>
 public static class PlatformServiceKeyCatalog
 {
@@ -11,15 +11,35 @@ public static class PlatformServiceKeyCatalog
     public const string Sendgrid = "sendgrid";
     public const string Cloudflare = "cloudflare";
     public const string CloudflareR2 = "cloudflare_r2";
+    public const string AwsRekognition = "aws_rekognition";
 
     public static readonly IReadOnlyList<string> SupportedServiceKeys =
-        new[] { Resend, Sendgrid, Cloudflare, CloudflareR2 };
+        new[] { Resend, Sendgrid, Cloudflare, CloudflareR2, AwsRekognition };
+
+    /// <summary>
+    /// Service keys that represent transactional email providers. This is a Phase 1
+    /// classification bridge living in code, not a new database column:
+    /// platform_service_keys has no provider_type/category column in the approved
+    /// schema, so "which rows are email providers" is answered here.
+    /// </summary>
+    public static readonly IReadOnlyList<string> TransactionalEmailProviders =
+        new[] { Sendgrid, Resend };
 
     public static bool IsSupported(string serviceKey)
     {
         foreach (var supported in SupportedServiceKeys)
         {
             if (string.Equals(supported, serviceKey, StringComparison.Ordinal))
+                return true;
+        }
+        return false;
+    }
+
+    public static bool IsTransactionalEmailProvider(string serviceKey)
+    {
+        foreach (var provider in TransactionalEmailProviders)
+        {
+            if (string.Equals(provider, serviceKey, StringComparison.Ordinal))
                 return true;
         }
         return false;

@@ -13,6 +13,7 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.
 /// Rotates an OAuth app's secret material: deactivates the current active credential
 /// row(s) and inserts a new active row with credential_version = previous max + 1.
 /// Old rows are never overwritten or deleted. One SaveChanges = one atomic transaction.
+/// Rejects unsupported providers (unknown or Phase 2) before touching the repository.
 /// SECURITY: ClientSecret/PrivateKey are plaintext in this command only; encrypted
 /// immediately and never stored, returned, or logged raw.
 /// </summary>
@@ -42,13 +43,15 @@ public sealed class RotatePlatformOAuthAppSecretCommandHandler
     {
         var provider = PlatformOAuthProviderRules.Normalize(request.Provider);
 
-        // 1. App must exist
+        if (!PlatformOAuthProviderCatalog.TryGet(provider, out var definition))
+            return Result<PlatformOAuthAppDto>.Failure(
+                $"Provider '{provider}' is not an approved OAuth provider.", 400);
+
         var app = await _repo.GetByProviderAsync(provider, cancellationToken);
         if (app is null)
             return Result<PlatformOAuthAppDto>.NotFound(
                 $"OAuth app for provider '{provider}' was not found.");
 
-        // 2. Validate new secret presence
         if (string.IsNullOrWhiteSpace(request.ClientSecret))
             return Result<PlatformOAuthAppDto>.Failure("clientSecret is required.", 400);
 
@@ -58,7 +61,6 @@ public sealed class RotatePlatformOAuthAppSecretCommandHandler
 
         var now = DateTimeOffset.UtcNow;
 
-        // 3. Deactivate current active credential rows (keep them — never overwrite)
         var activeCredentials = await _repo.GetActiveCredentialsForAppAsync(app.Id, cancellationToken);
         foreach (var credential in activeCredentials)
         {
@@ -67,10 +69,8 @@ public sealed class RotatePlatformOAuthAppSecretCommandHandler
             credential.DeactivatedAt = now;
         }
 
-        // 4. Next monotonic version
         var maxVersion = await _repo.GetMaxCredentialVersionAsync(app.Id, cancellationToken);
 
-        // 5. Encrypt new secret material — plaintext is NEVER persisted
         var newCredential = new PlatformOAuthAppCredential
         {
             Id = Guid.NewGuid(),
@@ -86,10 +86,10 @@ public sealed class RotatePlatformOAuthAppSecretCommandHandler
             RotatedAt = now
         };
 
-        // 6. One SaveChanges = deactivation + insert commit atomically
         await _repo.AddCredentialAsync(newCredential, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
 
-        return Result<PlatformOAuthAppDto>.Success(PlatformOAuthAppMapper.ToDto(app, newCredential));
+        return Result<PlatformOAuthAppDto>.Success(
+            PlatformOAuthAppMapper.ToDto(definition, app, newCredential));
     }
 }

@@ -14,45 +14,86 @@ public sealed class EfPlatformOAuthAppRepository : IPlatformOAuthAppRepository
 {
     private readonly ApplicationDbContext _db;
 
-    public EfPlatformOAuthAppRepository(ApplicationDbContext db) => _db = db;
+    public EfPlatformOAuthAppRepository(ApplicationDbContext db)
+    {
+        _db = db;
+    }
 
     public async Task<IReadOnlyList<PlatformOAuthApp>> ListAllAsync(CancellationToken ct)
-        => await _db.PlatformOAuthApps
+    {
+        var query = _db.PlatformOAuthApps
             .AsNoTracking()
-            .OrderBy(a => a.Provider)
-            .ToListAsync(ct);
+            .OrderBy(app => app.Provider);
 
-    public Task<PlatformOAuthApp?> GetByProviderAsync(string provider, CancellationToken ct)
-        => _db.PlatformOAuthApps.FirstOrDefaultAsync(a => a.Provider == provider, ct);
+        var apps = await query.ToListAsync(ct);
+
+        return apps;
+    }
+
+    public async Task<PlatformOAuthApp?> GetByProviderAsync(
+        string provider,
+        CancellationToken ct)
+    {
+        var query = _db.PlatformOAuthApps
+            .Where(app => app.Provider == provider);
+
+        var app = await query.FirstOrDefaultAsync(ct);
+
+        return app;
+    }
 
     public async Task<IReadOnlyList<PlatformOAuthAppCredential>> GetActiveCredentialsForAppAsync(
-        Guid platformOAuthAppId, CancellationToken ct)
-        => await _db.PlatformOAuthAppCredentials
-            .Where(c => c.PlatformOAuthAppId == platformOAuthAppId && c.IsActive)
-            .ToListAsync(ct);
-
-    public async Task<IReadOnlyList<PlatformOAuthAppCredential>> ListActiveCredentialsAsync(CancellationToken ct)
-        => await _db.PlatformOAuthAppCredentials
-            .AsNoTracking()
-            .Where(c => c.IsActive)
-            .ToListAsync(ct);
-
-    public async Task<int> GetMaxCredentialVersionAsync(Guid platformOAuthAppId, CancellationToken ct)
+        Guid platformOAuthAppId,
+        CancellationToken ct)
     {
-        var versions = await _db.PlatformOAuthAppCredentials
-            .Where(c => c.PlatformOAuthAppId == platformOAuthAppId)
-            .Select(c => c.CredentialVersion)
-            .ToListAsync(ct);
+        var query = _db.PlatformOAuthAppCredentials
+            .Where(credential => credential.PlatformOAuthAppId == platformOAuthAppId)
+            .Where(credential => credential.IsActive);
 
-        return versions.Count == 0 ? 0 : versions.Max();
+        var credentials = await query.ToListAsync(ct);
+
+        return credentials;
+    }
+
+    public async Task<IReadOnlyList<PlatformOAuthAppCredential>> ListActiveCredentialsAsync(
+        CancellationToken ct)
+    {
+        var query = _db.PlatformOAuthAppCredentials
+            .AsNoTracking()
+            .Where(credential => credential.IsActive);
+
+        var credentials = await query.ToListAsync(ct);
+
+        return credentials;
+    }
+
+    public async Task<int> GetMaxCredentialVersionAsync(
+        Guid platformOAuthAppId,
+        CancellationToken ct)
+    {
+        var query = _db.PlatformOAuthAppCredentials
+            .Where(credential => credential.PlatformOAuthAppId == platformOAuthAppId)
+            .Select(credential => credential.CredentialVersion);
+
+        var credentialVersions = await query.ToListAsync(ct);
+
+        return credentialVersions.Count == 0
+            ? 0
+            : credentialVersions.Max();
     }
 
     public async Task AddAsync(PlatformOAuthApp app, CancellationToken ct)
-        => await _db.PlatformOAuthApps.AddAsync(app, ct);
+    {
+        await _db.PlatformOAuthApps.AddAsync(app, ct);
+    }
 
     public async Task AddCredentialAsync(PlatformOAuthAppCredential credential, CancellationToken ct)
-        => await _db.PlatformOAuthAppCredentials.AddAsync(credential, ct);
+    {
+        await _db.PlatformOAuthAppCredentials.AddAsync(credential, ct);
+    }
 
-    public Task SaveChangesAsync(CancellationToken ct)
-        => _db.SaveChangesAsync(ct);
+    public async Task SaveChangesAsync(CancellationToken ct)
+    {
+        await _db.SaveChangesAsync(ct);
+    }
 }

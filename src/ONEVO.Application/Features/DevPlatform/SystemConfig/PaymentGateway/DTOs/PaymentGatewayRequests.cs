@@ -44,7 +44,7 @@ public sealed class CreatePaymentGatewayRequest
     public string SecretKey { get; init; } = string.Empty;
 
     /// <summary>
-    /// Provider webhook signing secret — separate from the main secret for providers that use one.
+    /// Provider webhook signing secret - separate from the main secret for providers that use one.
     /// Encrypted with IEncryptionService before persistence. NEVER returned.
     /// </summary>
     public string? WebhookSecret { get; init; }
@@ -72,7 +72,7 @@ public sealed class RotatePaymentGatewayCredentialRequest
 
 /// <summary>
 /// Request to update non-credential payment gateway metadata (display name, webhook URL, active status, country routes).
-/// Does NOT accept secret fields — use RotatePaymentGatewayCredentialRequest to change secrets.
+/// Does NOT accept secret fields - use RotatePaymentGatewayCredentialRequest to change secrets.
 /// </summary>
 public sealed class UpdatePaymentGatewayMetadataRequest
 {
@@ -105,7 +105,7 @@ public sealed class UpdatePaymentGatewayMetadataRequest
 
 /// <summary>
 /// Credentials for live account verification before save.
-/// Accepted at the verify endpoint only — NOT persisted.
+/// Accepted at the verify endpoint only - NOT persisted.
 /// </summary>
 public sealed class VerifyGatewayCredentialsRequest
 {

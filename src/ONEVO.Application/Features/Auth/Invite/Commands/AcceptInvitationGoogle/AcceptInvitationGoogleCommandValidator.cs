@@ -8,5 +8,6 @@ public sealed class AcceptInvitationGoogleCommandValidator : AbstractValidator<A
     {
         RuleFor(x => x.RawToken).NotEmpty();
         RuleFor(x => x.GoogleIdToken).NotEmpty();
+        RuleFor(x => x.Acceptances).NotNull();
     }
 }

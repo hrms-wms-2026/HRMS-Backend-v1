@@ -7,8 +7,6 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Roles.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.Commands.ApplyRoleTemplate;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -31,6 +29,7 @@ public sealed class ApplyRoleTemplateCommandHandlerTests
     private readonly Mock<IUserRoleRepository> _userRoles = new();
     private readonly Mock<IPermissionVersionService> _permVer = new();
     private readonly Mock<IUnitOfWork> _uow = new();
+    private readonly Mock<IDateTimeProvider> _clock = new();
 
     private static readonly Guid TenantId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid TemplateId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
@@ -46,7 +45,8 @@ public sealed class ApplyRoleTemplateCommandHandlerTests
             _catalog.Object,
             _userRoles.Object,
             _permVer.Object,
-            _uow.Object);
+            _uow.Object,
+            _clock.Object);
 
     [Fact]
     public async Task Handle_TenantMissing_ReturnsNotFound()
