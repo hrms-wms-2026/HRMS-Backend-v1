@@ -171,7 +171,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<AgentSession> AgentSessions => Set<AgentSession>();
     public DbSet<AgentPolicy> AgentPolicies => Set<AgentPolicy>();
     public DbSet<AgentHealthLog> AgentHealthLogs => Set<AgentHealthLog>();
+    public DbSet<AgentCommand> AgentCommands => Set<AgentCommand>();
     public DbSet<ActivityRawBuffer> ActivityRawBuffer => Set<ActivityRawBuffer>();
+    public DbSet<AgentEventReceipt> AgentEventReceipts => Set<AgentEventReceipt>();
     public DbSet<AgentWorkLocationEvidence> AgentWorkLocationEvidence => Set<AgentWorkLocationEvidence>();
 
     // Activity Monitoring

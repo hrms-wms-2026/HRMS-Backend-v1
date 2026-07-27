@@ -4,6 +4,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.AgentGateway.Commands.Screenshot;
+using ONEVO.Application.Features.AgentGateway.DTOs;
 using ONEVO.Application.Features.AgentGateway.RepositoryInterfaces;
 using ONEVO.Domain.Features.ActivityMonitoring.Entities;
 
@@ -13,9 +15,6 @@ public sealed class ProcessRawBufferJob : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(2);
     private const int BatchSize = 200;
-
-    private static readonly HashSet<string> MeetingProcesses =
-        new(StringComparer.OrdinalIgnoreCase) { "teams.exe", "zoom.exe", "webex.exe", "skype.exe" };
 
     private readonly IServiceProvider _services;
     private readonly ILogger<ProcessRawBufferJob> _logger;
@@ -51,6 +50,8 @@ public sealed class ProcessRawBufferJob : BackgroundService
         await using var scope = _services.CreateAsyncScope();
         var activityRepo = scope.ServiceProvider.GetRequiredService<IActivityMonitoringRepository>();
         var agentRepo = scope.ServiceProvider.GetRequiredService<IAgentGatewayRepository>();
+        var screenshotScheduler =
+            scope.ServiceProvider.GetRequiredService<IScreenshotCommandScheduler>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
         var batch = await activityRepo.GetPendingRawBatchAsync(BatchSize, ct);
@@ -61,13 +62,17 @@ public sealed class ProcessRawBufferJob : BackgroundService
         var meetings = new List<MeetingSession>();
         var deviceSessions = new List<(Guid TenantId, Guid EmployeeId, int ActiveMinutes)>();
         var processedIds = new List<Guid>();
+        var screenshotScheduledAgents = new HashSet<Guid>();
 
         foreach (var item in batch)
         {
             try
             {
                 var agent = await agentRepo.GetAgentByIdAsync(item.AgentDeviceId, ct);
-                if (agent is null || agent.EmployeeId is null)
+                if (agent is null ||
+                    agent.EmployeeId is null ||
+                    agent.TenantId != item.TenantId ||
+                    !string.Equals(agent.Status, "active", StringComparison.Ordinal))
                 {
                     processedIds.Add(item.Id);
                     continue;
@@ -89,18 +94,34 @@ public sealed class ProcessRawBufferJob : BackgroundService
                 {
                     if (!entry.TryGetProperty("type", out var typeEl)) continue;
                     var type = typeEl.GetString();
-                    if (!entry.TryGetProperty("data", out var data)) continue;
+
+                    var envelope = DeserializeEnvelope(entry);
+                    if (envelope is null) continue;
 
                     switch (type)
                     {
                         case "activity_snapshot":
-                            snapshots.Add(ParseSnapshot(data, tenantId, employeeId, item.ReceivedAt));
+                            var snapshot = ActivityEventParser.ParseActivitySnapshot(envelope, tenantId, employeeId);
+                            snapshots.Add(snapshot);
+                            if (!screenshotScheduledAgents.Contains(agent.Id) &&
+                                await screenshotScheduler.TryScheduleAsync(
+                                    agent,
+                                    snapshot,
+                                    ct))
+                            {
+                                screenshotScheduledAgents.Add(agent.Id);
+                            }
                             break;
                         case "app_usage":
-                            appUsage.Add(ParseAppUsage(data, tenantId, employeeId, DateOnly.FromDateTime(item.ReceivedAt.UtcDateTime)));
+                            var usage = ActivityEventParser.ParseAppUsage(envelope, tenantId, employeeId);
+                            if (usage is not null) appUsage.Add(usage);
+                            break;
+                        case "meeting_app_usage":
+                            var meeting = ActivityEventParser.ParseMeetingAppUsage(envelope, tenantId, employeeId);
+                            if (meeting is not null) meetings.Add(meeting);
                             break;
                         case "device_session":
-                            if (data.TryGetProperty("active_minutes", out var am))
+                            if (envelope.Data.TryGetProperty("active_minutes", out var am))
                                 deviceSessions.Add((tenantId, employeeId, am.GetInt32()));
                             break;
                     }
@@ -113,22 +134,6 @@ public sealed class ProcessRawBufferJob : BackgroundService
                 _logger.LogWarning(ex, "Failed to process raw buffer item {Id}; skipping.", item.Id);
                 processedIds.Add(item.Id);
             }
-        }
-
-        foreach (var usage in appUsage.Where(u => MeetingProcesses.Contains(u.ProcessName)))
-        {
-            meetings.Add(new MeetingSession
-            {
-                Id = Guid.NewGuid(),
-                TenantId = usage.TenantId,
-                EmployeeId = usage.EmployeeId,
-                MeetingStart = DateTimeOffset.UtcNow.Date.ToUniversalTime(),
-                MeetingEnd = DateTimeOffset.UtcNow,
-                Platform = usage.ProcessName.Replace(".exe", "", StringComparison.OrdinalIgnoreCase),
-                DurationMinutes = usage.TotalSeconds / 60,
-                HadCameraOn = false,
-                HadMicActivity = false
-            });
         }
 
         if (snapshots.Count > 0) await activityRepo.BulkInsertSnapshotsAsync(snapshots, ct);
@@ -158,52 +163,46 @@ public sealed class ProcessRawBufferJob : BackgroundService
             snapshots.Count, appUsage.Count, meetings.Count, batch.Count);
     }
 
-    private static ActivitySnapshot ParseSnapshot(JsonElement data, Guid tenantId, Guid employeeId, DateTimeOffset capturedAt)
+    private static AgentEventEnvelope? DeserializeEnvelope(
+        JsonElement entry)
     {
-        var keyboardCount = data.TryGetProperty("keyboard_events_count", out var k) ? k.GetInt32() : 0;
-        var mouseCount = data.TryGetProperty("mouse_events_count", out var m) ? m.GetInt32() : 0;
-        var activeSeconds = data.TryGetProperty("active_seconds", out var a) ? a.GetInt32() : 0;
-        var idleSeconds = data.TryGetProperty("idle_seconds", out var i) ? i.GetInt32() : 0;
-        var processName = data.TryGetProperty("foreground_process_name", out var p) ? p.GetString() ?? string.Empty : string.Empty;
-
-        const int maxExpected = 3000;
-        var intensity = Math.Min((decimal)(keyboardCount + mouseCount) / maxExpected * 100, 100);
-
-        return new ActivitySnapshot
+        try
         {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            EmployeeId = employeeId,
-            CapturedAt = capturedAt,
-            KeyboardEventsCount = keyboardCount,
-            MouseEventsCount = mouseCount,
-            ActiveSeconds = activeSeconds,
-            IdleSeconds = idleSeconds,
-            IntensityScore = intensity,
-            ForegroundProcessName = processName,
-            CreatedAt = DateTimeOffset.UtcNow
-        };
-    }
+            if (!entry.TryGetProperty("event_id", out var eidEl) ||
+                !Guid.TryParse(eidEl.GetString(), out var eventId))
+                return null;
 
-    private static ApplicationUsage ParseAppUsage(JsonElement data, Guid tenantId, Guid employeeId, DateOnly date)
-    {
-        var processName = data.TryGetProperty("process_name", out var p) ? p.GetString() ?? string.Empty : string.Empty;
-        var appName = data.TryGetProperty("application_name", out var a) ? a.GetString() ?? string.Empty : string.Empty;
-        var category = data.TryGetProperty("app_category_type", out var c) ? c.GetString() : null;
-        var titleHash = data.TryGetProperty("window_title_hash", out var h) ? h.GetString() : null;
-        var duration = data.TryGetProperty("duration_seconds", out var d) ? d.GetInt32() : 0;
+            if (!entry.TryGetProperty("captured_at", out var catEl) ||
+                !DateTimeOffset.TryParse(catEl.GetString(), out var capturedAt))
+                return null;
 
-        return new ApplicationUsage
+            if (!entry.TryGetProperty("presence_session_id", out var psEl) ||
+                !Guid.TryParse(psEl.GetString(), out var presenceSessionId))
+                return null;
+
+            if (!entry.TryGetProperty("data", out var data))
+                return null;
+
+            Guid? taskId = null;
+            if (entry.TryGetProperty("task_id", out var tidEl) &&
+                tidEl.ValueKind == JsonValueKind.String &&
+                Guid.TryParse(tidEl.GetString(), out var parsedTaskId))
+                taskId = parsedTaskId;
+
+            return new AgentEventEnvelope
+            {
+                EventId = eventId,
+                Type = entry.TryGetProperty("type", out var t) ? t.GetString() ?? string.Empty : string.Empty,
+                SchemaVersion = entry.TryGetProperty("schema_version", out var sv) ? sv.GetString() ?? string.Empty : string.Empty,
+                CapturedAt = capturedAt,
+                PresenceSessionId = presenceSessionId,
+                TaskId = taskId,
+                Data = data
+            };
+        }
+        catch
         {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            EmployeeId = employeeId,
-            Date = date,
-            ProcessName = processName,
-            ApplicationName = appName,
-            ApplicationCategory = category,
-            WindowTitleHash = titleHash,
-            TotalSeconds = duration
-        };
+            return null;
+        }
     }
 }
