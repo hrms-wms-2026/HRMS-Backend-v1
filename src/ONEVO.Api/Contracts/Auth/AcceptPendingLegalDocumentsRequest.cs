@@ -8,5 +8,4 @@ public record LegalAcceptanceItemRequest(
     [property: JsonPropertyName("decision")] string Decision);
 
 public record AcceptPendingLegalDocumentsRequest(
-    [property: JsonPropertyName("csrf_token")] string CsrfToken,
     [property: JsonPropertyName("acceptances")] IReadOnlyList<LegalAcceptanceItemRequest> Acceptances);

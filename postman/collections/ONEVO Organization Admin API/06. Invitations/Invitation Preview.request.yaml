@@ -1,0 +1,5 @@
+$kind: http-request
+name: Invitation Preview
+method: GET
+url: '{{tenant_host}}/api/v1/auth/invitations/{{invite_token}}'
+order: 1000

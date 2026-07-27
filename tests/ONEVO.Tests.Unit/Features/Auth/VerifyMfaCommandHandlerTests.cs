@@ -81,6 +81,25 @@ public sealed class VerifyMfaCommandHandlerTests
     }
 
     [Fact]
+    public async Task NoVerifiedMfaRecord_ReturnsMfaNotConfigured_WithoutFallingBackToUnverifiedSetup()
+    {
+        var state = new MfaChallengeState(_user.Id, _tenantId, DateTimeOffset.UtcNow.AddMinutes(5), 0);
+        _challenges.Setup(x => x.GetAsync("opaque", It.IsAny<CancellationToken>())).ReturnsAsync(state);
+        _mfas.Setup(x => x.GetTotpAsync(_user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync((UserMfa?)null);
+        var pendingSetup = new UserMfa { UserId = _user.Id, TenantId = _tenantId, Secret = "encrypted", IsVerified = false };
+        _mfas.Setup(x => x.GetTotpAsync(_user.Id, false, It.IsAny<CancellationToken>())).ReturnsAsync(pendingSetup);
+
+        var result = await Handler(_tenantId).Handle(new VerifyMfaCommand("opaque", "123456", null, null), default);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("MFA is not configured.");
+        pendingSetup.IsVerified.Should().BeFalse();
+        _mfas.Verify(x => x.GetTotpAsync(_user.Id, false, It.IsAny<CancellationToken>()), Times.Never,
+            "mfa/verify must never confirm a pending setup - that is mfa/confirm-setup's job");
+        _totp.Verify(x => x.Verify(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
     public async Task InvalidCode_RegistersAttemptAndDoesNotConsumeChallenge()
     {
         var state = new MfaChallengeState(_user.Id, _tenantId, DateTimeOffset.UtcNow.AddMinutes(5), 0);

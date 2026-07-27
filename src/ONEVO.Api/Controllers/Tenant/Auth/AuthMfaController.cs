@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Auth;
+using ONEVO.Application.Features.Auth.Login.Commands.MfaConfirmSetup;
 using ONEVO.Application.Features.Auth.Login.Commands.MfaEnable;
 using ONEVO.Application.Features.Auth.Login.Commands.MfaVerify;
 
@@ -32,7 +33,7 @@ public class AuthMfaController : ControllerBase
         return Ok(result.Value);
     }
 
-    /// <summary>Verify TOTP code to complete MFA challenge or finish MFA setup.</summary>
+    /// <summary>Verify TOTP code for a login MFA challenge.</summary>
     [HttpPost("mfa/verify")]
     [AllowAnonymous]
     public async Task<IActionResult> VerifyMfa([FromBody] VerifyMfaRequest request, CancellationToken ct)
@@ -54,5 +55,16 @@ public class AuthMfaController : ControllerBase
 
         this.DeleteTenantCookie("onevo_mfa", httpOnly: true, _env, path: "/api/v1/auth/mfa/verify");
         return await this.HandleSessionResultAsync(result, _env);
+    }
+
+    /// <summary>Confirm first-time TOTP setup for the current authenticated user.</summary>
+    [HttpPost("mfa/confirm-setup")]
+    [Authorize(Policy = "TenantPolicy")]
+    public async Task<IActionResult> ConfirmMfaSetup([FromBody] ConfirmMfaSetupRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new ConfirmMfaSetupCommand(request.Code), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        return Ok(new { success = true });
     }
 }

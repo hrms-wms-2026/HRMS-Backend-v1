@@ -1,0 +1,22 @@
+$kind: http-request
+name: Invite Tenant Admin
+method: POST
+url: '{{admin_base_url}}/admin/v1/tenants/{{tenant_id}}/invite-admin'
+order: 7000
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: X-CSRF-Token
+    value: '{{admin_csrf_token}}'
+body:
+  type: json
+  content: |-
+    {
+      "email": "admin2@acme.test",
+      "first_name": "Admin",
+      "last_name": "Two",
+      "role_id": "{{role_id}}",
+      "completion_methods": ["password"],
+      "allow_google_email_mismatch": false,
+      "allowed_email_domains": ["acme.test"]
+    }

@@ -1,0 +1,21 @@
+$kind: http-request
+name: Configure Google OAuth
+method: PUT
+url: '{{admin_base_url}}/admin/v1/system-config/oauth-apps/google'
+order: 3000
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: X-CSRF-Token
+    value: '{{admin_csrf_token}}'
+body:
+  type: json
+  content: |-
+    {
+      "appName": "ONEVO Admin Google SSO",
+      "logoUrl": null,
+      "clientId": "xxxxxxxxxxxx.apps.googleusercontent.com",
+      "clientSecret": "GOCSPX-xxxxxxxxxxxxxxxx",
+      "privateKey": null,
+      "isActive": true
+    }

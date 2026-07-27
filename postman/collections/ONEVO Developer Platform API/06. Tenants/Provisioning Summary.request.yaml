@@ -1,0 +1,5 @@
+$kind: http-request
+name: Provisioning Summary
+method: GET
+url: '{{admin_base_url}}/admin/v1/tenants/{{tenant_id}}/provisioning-summary'
+order: 8000

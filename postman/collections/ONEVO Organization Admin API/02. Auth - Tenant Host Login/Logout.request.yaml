@@ -1,0 +1,8 @@
+$kind: http-request
+name: Logout
+method: POST
+url: '{{tenant_host}}/api/v1/auth/logout'
+order: 3000
+headers:
+  - key: X-CSRF-Token
+    value: '{{tenant_csrf_token}}'

@@ -1,0 +1,5 @@
+$kind: http-request
+name: List Payment Gateway Providers
+method: GET
+url: '{{admin_base_url}}/admin/v1/system-config/payment-gateway-providers'
+order: 3000

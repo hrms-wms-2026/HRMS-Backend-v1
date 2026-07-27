@@ -1,0 +1,8 @@
+$kind: http-request
+name: Webhook Config ID Route
+method: GET
+url: '{{admin_base_url}}/system-config/payment-gateways/:id/webhook-config'
+order: 5000
+pathVariables:
+  - key: id
+    value: ''

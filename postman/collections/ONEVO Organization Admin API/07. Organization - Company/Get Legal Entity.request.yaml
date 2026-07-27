@@ -1,0 +1,8 @@
+$kind: http-request
+name: Get Legal Entity
+method: GET
+url: '{{tenant_host}}/organization/legal-entities/:id'
+order: 2000
+pathVariables:
+  - key: id
+    value: ''

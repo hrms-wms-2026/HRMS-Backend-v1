@@ -37,8 +37,8 @@ public class TransactionalEmailService : IEmailService
         return SendInternalAsync(to, rendered.Subject, rendered.HtmlBody, rendered.TextBody, ct);
     }
 
-    public Task SendPasswordResetAsync(string to, string resetToken, CancellationToken ct = default)
-        => SendTemplateAsync(to, "password_reset", new { reset_token = resetToken }, ct);
+    public Task SendPasswordResetAsync(string to, string resetToken, string? tenantSlug = null, CancellationToken ct = default)
+        => SendTemplateAsync(to, "password_reset", new { reset_token = resetToken, tenant_slug = tenantSlug }, ct);
 
     private async Task SendInternalAsync(
         string to,

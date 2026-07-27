@@ -84,14 +84,8 @@ public class VerifyMfaCommandHandler : IRequestHandler<VerifyMfaCommand, Result<
             return Result<LoginResponseDto>.Failure("Invalid or expired MFA session.", 401);
 
         var mfaRecord = await _userMfas.GetTotpAsync(user.Id, isVerified: true, cancellationToken);
-
         if (mfaRecord is null)
-        {
-            // First-time verification (not yet marked verified)
-            mfaRecord = await _userMfas.GetTotpAsync(user.Id, isVerified: false, cancellationToken);
-            if (mfaRecord is null)
-                return Result<LoginResponseDto>.Failure("MFA is not configured.", 400);
-        }
+            return Result<LoginResponseDto>.Failure("MFA is not configured.", 400);
 
         var secret = _encryption.Decrypt(mfaRecord.Secret);
         if (!_totpService.Verify(secret, request.Code))
@@ -111,11 +105,6 @@ public class VerifyMfaCommandHandler : IRequestHandler<VerifyMfaCommand, Result<
             || consumedChallenge.TenantId != challengeState.TenantId)
         {
             return Result<LoginResponseDto>.Failure("Invalid or expired MFA session.", 401);
-        }
-
-        if (!mfaRecord.IsVerified)
-        {
-            mfaRecord.IsVerified = true;
         }
 
         return await _continuation.FinishAuthenticatedLoginAsync(

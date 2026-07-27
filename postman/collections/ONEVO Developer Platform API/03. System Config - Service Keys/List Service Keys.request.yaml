@@ -1,0 +1,5 @@
+$kind: http-request
+name: List Service Keys
+method: GET
+url: '{{admin_base_url}}/admin/v1/system-config/service-keys'
+order: 1000
