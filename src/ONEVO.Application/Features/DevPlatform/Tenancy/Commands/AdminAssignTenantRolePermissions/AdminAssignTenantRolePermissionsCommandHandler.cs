@@ -94,7 +94,7 @@ public sealed class AdminAssignTenantRolePermissionsCommandHandler
         var toRemove = existing.Where(rp => !requestedSet.Contains(rp.PermissionId)).ToList();
         var toAdd = requestedIds
             .Where(id => !existingPermissionIds.Contains(id))
-            .Select(id => new RolePermission { RoleId = role.Id, PermissionId = id })
+            .Select(id => new RolePermission { TenantId = request.TenantId, RoleId = role.Id, PermissionId = id })
             .ToList();
 
         if (toRemove.Count > 0)

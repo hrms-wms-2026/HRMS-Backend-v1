@@ -12,7 +12,9 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
 
 namespace ONEVO.Infrastructure.Identity.Sessions;
 
@@ -37,7 +39,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         _clock = clock;
     }
 
-    // ── Classic overloads (forward to the HttpContext-aware ones) ──────────
+    // Classic overloads (forward to the HttpContext-aware ones)
 
     public Task<string> StoreAsync(AuthenticationTicket ticket) =>
         StoreAsync(ticket, httpContext: null, CancellationToken.None);
@@ -51,7 +53,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
     public Task RemoveAsync(string key) =>
         RemoveAsync(key, httpContext: null, CancellationToken.None);
 
-    // ── HttpContext + CancellationToken overloads (real logic lives here) ──
+    // HttpContext + CancellationToken overloads (real logic lives here)
 
     public async Task<string> StoreAsync(
         AuthenticationTicket ticket, HttpContext? httpContext, CancellationToken cancellationToken)
@@ -59,9 +61,32 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         using var scope = _scopeFactory.CreateScope();
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
+        var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+
+        var tenantId = Guid.Parse(ticket.Properties.Items[TenantIdItemKey]!);
+
+        // This scope's DbContext/TenantContextAccessor is brand new (this class is a DI singleton,
+        // so _scopeFactory.CreateScope() never inherits the request scope's already-resolved tenant
+        // context) and defaults to System mode, so without this lookup+switch the sessions insert
+        // below would run with app.current_tenant_id unset and be rejected by the tenant_isolation
+        // RLS policy regardless of which host resolved the login.
+        //
+        // Deliberately a denylist (Suspended/Cancelled), not an Active/Trial allowlist: StoreAsync is
+        // a shared infrastructure chokepoint reached by invite-accept and password-reset flows too,
+        // not just login, and those legitimately create a session while the tenant is still
+        // Provisioning (before admin confirmation flips it to Trial). The stricter Active/Trial
+        // business rule for login specifically already lives upstream in
+        // LoginContinuationService.ContinueAsync. This is only a backstop against writing a session
+        // for a tenant that is definitely dead.
+        var tenant = await tenants.GetByIdAsync(tenantId, cancellationToken);
+        if (tenant is null || tenant.Status is TenantStatus.Suspended or TenantStatus.Cancelled)
+            throw new InvalidOperationException(
+                "Cannot store a session for an unresolved or inactive tenant.");
+
+        await SwitchToTenantAsync(tenantSwitcher, tenant, cancellationToken);
 
         var userId = Guid.Parse(ticket.Principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        var tenantId = Guid.Parse(ticket.Properties.Items[TenantIdItemKey]!);
         var csrfTokenHash = ticket.Properties.Items.TryGetValue(CsrfTokenHashItemKey, out var csrfVal) ? csrfVal : string.Empty;
 
         var rawKey = GenerateRawKey();
@@ -93,6 +118,22 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         using var scope = _scopeFactory.CreateScope();
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
+        var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+
+        // Unlike RetrieveAsync/RemoveAsync, the ticket passed here already carries the tenant id
+        // (RetrieveAsync always sets it on the ticket it returns), so this scope can switch tenant
+        // context up front, the same shape as the StoreAsync fix, without needing the
+        // session_key_lookup RLS policy at all.
+        if (!ticket.Properties.Items.TryGetValue(TenantIdItemKey, out var tenantIdValue) ||
+            !Guid.TryParse(tenantIdValue, out var tenantId))
+            return;
+
+        var tenant = await tenants.GetByIdAsync(tenantId, cancellationToken);
+        if (tenant is null)
+            return;
+
+        await SwitchToTenantAsync(tenantSwitcher, tenant, cancellationToken);
 
         var session = await sessions.GetByKeyHashAsync(HashKey(key), cancellationToken);
         if (session is null || session.IsRevoked)
@@ -121,13 +162,24 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
         var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
         var permissionResolver = scope.ServiceProvider.GetRequiredService<IPermissionResolver>();
+        var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
+        var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
 
-        var session = await sessions.GetByKeyHashAsync(HashKey(key), cancellationToken);
+        // This scope has no tenant id yet - only the cookie's session key - so the only row this
+        // scope is allowed to see before switching context is the one satisfying the
+        // session_key_lookup RLS policy (matches on this session's own key_hash).
+        var session = await sessions.GetByKeyHashForTenantResolutionAsync(HashKey(key), cancellationToken);
         if (session is null || session.IsRevoked || session.ExpiresAt <= _clock.UtcNow)
             return null;
 
         if (_clock.UtcNow >= session.StartedAt.Add(SessionPolicy.AbsoluteLifetime))
             return null;
+
+        var tenant = await tenants.GetByIdAsync(session.TenantId, cancellationToken);
+        if (tenant is null)
+            return null;
+
+        await SwitchToTenantAsync(tenantSwitcher, tenant, cancellationToken);
 
         var user = await users.GetByIdAsync(session.UserId, cancellationToken);
         if (user is null || !user.IsActive)
@@ -162,10 +214,31 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         using var scope = _scopeFactory.CreateScope();
         var sessions = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
+        var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
 
-        await sessions.RevokeByKeyHashAsync(HashKey(key), cancellationToken);
+        // Same bootstrap problem as RetrieveAsync: only a session key is available here, so the
+        // session_key_lookup RLS policy is what lets this scope find the row at all. Revoking it
+        // (an UPDATE) still requires the correct tenant context - tenant_isolation, not
+        // session_key_lookup, governs UPDATE/DELETE.
+        var session = await sessions.GetByKeyHashForTenantResolutionAsync(HashKey(key), cancellationToken);
+        if (session is null)
+            return;
+
+        var tenant = await tenants.GetByIdAsync(session.TenantId, cancellationToken);
+        if (tenant is null)
+            return;
+
+        await SwitchToTenantAsync(tenantSwitcher, tenant, cancellationToken);
+
+        session.IsRevoked = true;
         await uow.SaveChangesAsync(cancellationToken);
     }
+
+    private static Task SwitchToTenantAsync(
+        ITenantContextSwitcher tenantSwitcher, Tenant tenant, CancellationToken cancellationToken) =>
+        tenantSwitcher.SwitchToTenantAsync(
+            new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, null), cancellationToken);
 
     private static void ReissueCsrfCookie(HttpContext? httpContext, string cookieName, DateTimeOffset expiresAt)
     {

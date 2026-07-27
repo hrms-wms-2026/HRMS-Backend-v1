@@ -152,7 +152,7 @@ public class GetProvisioningSummaryQueryHandler
             blockers.Add(new ProvisioningIssue(
                 Code: pendingCount > 0 ? "owner_invite_pending" : "owner_invite_missing",
                 Message: pendingCount > 0
-                    ? "owner has been invited but has not yet set their password and phone number."
+                    ? "owner has been invited but has not yet set their password."
                     : "send a tenant owner invite before activation.",
                 Section: "owner_invite"));
         }

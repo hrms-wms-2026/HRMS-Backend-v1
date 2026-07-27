@@ -5,7 +5,6 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.Persistence;
@@ -123,17 +122,16 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         acceptCookies.Should().ContainKey("onevo_session");
         acceptCookies.Should().ContainKey("onevo_csrf");
 
-        // ── 5. Provisioning confirm is currently blocked by the stub readers ───
-        // subscription / modules / settings section readers are NotConfigured
-        // placeholders that fail closed, so activation via the API returns 422.
-        // When the real readers land, flip this assertion to NoContent and
-        // delete ActivateTenantDirectlyAsync below.
+        // ── 5. Provisioning confirm activates the tenant for real ──────────────
+        // subscription / modules / settings / roles are all seeded by tenant
+        // creation, and the owner invite was just accepted above, so the
+        // activation guard is satisfied without any direct DB write.
         var confirm = await SendAsync(HttpMethod.Patch, AdminHost,
             $"/admin/v1/tenants/{tenantId}/provision/confirm",
             new { confirm = true }, cookie: _adminCookie, csrfToken: _adminCsrfToken);
-        confirm.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        confirm.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        await ActivateTenantDirectlyAsync(tenantId);
+        await AssertTenantStatusAsync(tenantId, TenantStatus.Trial);
 
         // ── 6. Owner logs in on the tenant host ─────────────────────────────────
         // Invite completion already appended the current required legal records before issuing
@@ -276,18 +274,12 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         return null;
     }
 
-    private async Task ActivateTenantDirectlyAsync(Guid tenantId)
+    private async Task AssertTenantStatusAsync(Guid tenantId, TenantStatus expected)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var tenant = await db.Set<Tenant>().SingleAsync(t => t.Id == tenantId);
-        tenant.Status = TenantStatus.Active;
-        await db.SaveChangesAsync();
-
-        // HostTenantResolutionMiddleware caches slug -> status for 2 minutes;
-        // evict so the next request sees the tenant as active.
-        var cache = _factory.Services.GetRequiredService<IMemoryCache>();
-        cache.Remove($"tenant:slug:{Slug}");
+        tenant.Status.Should().Be(expected);
     }
 
     private async Task WaitForSeedersAsync()

@@ -87,6 +87,33 @@ public sealed class LocalDatabaseRuntimeArchitectureTests
     }
 
     [Fact]
+    public void LocalSetupScript_RunsPostMigrationGrantsOnlyAfterEfMigrationCommand()
+    {
+        var setupScript = File.ReadAllText(
+            FindRepositoryPath("ops", "postgres", "setup-local-db.ps1"));
+
+        var efMigrationIndex = setupScript.IndexOf("ef database update", StringComparison.Ordinal);
+        var postMigrationGrantsIndex = setupScript.IndexOf(
+            "$postMigrationGrantsArguments", StringComparison.Ordinal);
+
+        Assert.True(efMigrationIndex >= 0, "expected the script to run 'dotnet ef database update'");
+        Assert.True(postMigrationGrantsIndex >= 0, "expected the script to build arguments for local-post-migration-grants.sql");
+        Assert.True(postMigrationGrantsIndex > efMigrationIndex,
+            "post-migration object grants must run after the EF migration command block, since they " +
+            "depend on tables/functions the migrations create");
+    }
+
+    [Fact]
+    public void LocalBootstrapRolesSql_DoesNotReferenceUsersOrTenantsTables()
+    {
+        var bootstrapSql = File.ReadAllText(
+            FindRepositoryPath("ops", "postgres", "local-bootstrap-roles.sql"));
+
+        Assert.DoesNotContain("public.users", bootstrapSql, StringComparison.Ordinal);
+        Assert.DoesNotContain("public.tenants", bootstrapSql, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EnvironmentTemplate_ContainsOnlyEmptyOrPlaceholderSecretValues()
     {
         var templateLines = File.ReadAllLines(FindRepositoryPath(".env.example"));

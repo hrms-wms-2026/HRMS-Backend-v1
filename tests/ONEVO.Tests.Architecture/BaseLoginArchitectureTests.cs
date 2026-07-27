@@ -26,10 +26,14 @@ public sealed class BaseLoginArchitectureTests
     {
         var migrationPath = FindLatestNormalizedEmailMigration();
         var bootstrapPath = Path.Combine(FindRepositoryRoot(), "ops", "postgres", "local-bootstrap-roles.sql");
+        var postMigrationGrantsPath = Path.Combine(
+            FindRepositoryRoot(), "ops", "postgres", "local-post-migration-grants.sql");
         File.Exists(bootstrapPath).Should().BeTrue($"expected {bootstrapPath} to exist");
+        File.Exists(postMigrationGrantsPath).Should().BeTrue($"expected {postMigrationGrantsPath} to exist");
 
         var migrationText = File.ReadAllText(migrationPath);
         var bootstrapText = File.ReadAllText(bootstrapPath);
+        var postMigrationGrantsText = File.ReadAllText(postMigrationGrantsPath);
 
         var broadGrantPattern = new System.Text.RegularExpressions.Regex(
             @"GRANT\s+SELECT\s+ON\s+users\s*,\s*tenants", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -38,6 +42,8 @@ public sealed class BaseLoginArchitectureTests
             "the migration must not grant broad table-level SELECT on users/tenants");
         broadGrantPattern.IsMatch(bootstrapText).Should().BeFalse(
             "local-bootstrap-roles.sql must not grant broad table-level SELECT on users/tenants");
+        broadGrantPattern.IsMatch(postMigrationGrantsText).Should().BeFalse(
+            "local-post-migration-grants.sql must not grant broad table-level SELECT on users/tenants");
 
         const string usersColumnGrant =
             "GRANT SELECT (tenant_id, id, normalized_email, is_active, is_deleted, password_hash) ON public.users";
@@ -45,10 +51,20 @@ public sealed class BaseLoginArchitectureTests
 
         migrationText.Should().Contain(usersColumnGrant,
             "the normalized-email migration must grant column-level SELECT including normalized_email, not email");
-        bootstrapText.Should().Contain(usersColumnGrant,
-            "local-bootstrap-roles.sql must grant column-level SELECT including normalized_email, not email");
-        bootstrapText.Should().Contain(tenantsColumnGrant,
-            "local-bootstrap-roles.sql must grant column-level SELECT on exactly the tenants columns the function needs");
+
+        // local-bootstrap-roles.sql runs before EF migrations, when public.users/public.tenants do
+        // not exist yet on a fresh database - it must never reference them by name. The
+        // column-level grants live in local-post-migration-grants.sql instead, which runs after
+        // migrations create those tables.
+        bootstrapText.Should().NotContain("public.users",
+            "local-bootstrap-roles.sql runs before migrations and must not reference public.users, which may not exist yet");
+        bootstrapText.Should().NotContain("public.tenants",
+            "local-bootstrap-roles.sql runs before migrations and must not reference public.tenants, which may not exist yet");
+
+        postMigrationGrantsText.Should().Contain(usersColumnGrant,
+            "local-post-migration-grants.sql must grant column-level SELECT including normalized_email, not email");
+        postMigrationGrantsText.Should().Contain(tenantsColumnGrant,
+            "local-post-migration-grants.sql must grant column-level SELECT on exactly the tenants columns the function needs");
     }
 
     private static string FindLatestNormalizedEmailMigration()

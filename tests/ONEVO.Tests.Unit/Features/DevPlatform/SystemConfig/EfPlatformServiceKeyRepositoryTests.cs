@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
@@ -12,6 +13,120 @@ namespace ONEVO.Tests.Unit.Features.DevPlatform.SystemConfig;
 
 public sealed class EfPlatformServiceKeyRepositoryTests
 {
+    // ListActiveForProviderFamilyAsync is the real DB-backed join between
+    // platform_service_keys and platform_providers that PlatformServiceKeyResolver
+    // relies on to decide zero/one/many active transactional email providers.
+    // These run against EF Core's InMemory provider, translating the same LINQ
+    // join the repository issues against PostgreSQL in production.
+
+    [Fact]
+    public async Task ListActiveForProviderFamily_ReturnsEmpty_WhenNoKeyHasAMatchingActiveProvider()
+    {
+        await using var db = BuildInMemoryDb();
+        db.PlatformServiceKeys.Add(CreateKey("sendgrid", isActive: true));
+        db.PlatformProviders.Add(CreateProvider("sendgrid", PlatformProviderFamilies.TransactionalEmail, isActive: false));
+        await db.SaveChangesAsync();
+
+        var repository = new EfPlatformServiceKeyRepository(db);
+        var matches = await repository.ListActiveForProviderFamilyAsync(
+            PlatformProviderFamilies.TransactionalEmail, CancellationToken.None);
+
+        Assert.Empty(matches);
+    }
+
+    [Fact]
+    public async Task ListActiveForProviderFamily_ReturnsSingleMatch_WhenExactlyOneKeyAndProviderAreBothActive()
+    {
+        await using var db = BuildInMemoryDb();
+        db.PlatformServiceKeys.Add(CreateKey("resend", isActive: true));
+        db.PlatformProviders.Add(CreateProvider("resend", PlatformProviderFamilies.TransactionalEmail, isActive: true));
+        await db.SaveChangesAsync();
+
+        var repository = new EfPlatformServiceKeyRepository(db);
+        var matches = await repository.ListActiveForProviderFamilyAsync(
+            PlatformProviderFamilies.TransactionalEmail, CancellationToken.None);
+
+        var match = Assert.Single(matches);
+        Assert.Equal("resend", match.ServiceKey);
+    }
+
+    [Fact]
+    public async Task ListActiveForProviderFamily_ReturnsBothMatches_WhenTwoProvidersAreBothActive()
+    {
+        await using var db = BuildInMemoryDb();
+        db.PlatformServiceKeys.AddRange(
+            CreateKey("resend", isActive: true),
+            CreateKey("sendgrid", isActive: true));
+        db.PlatformProviders.AddRange(
+            CreateProvider("resend", PlatformProviderFamilies.TransactionalEmail, isActive: true),
+            CreateProvider("sendgrid", PlatformProviderFamilies.TransactionalEmail, isActive: true));
+        await db.SaveChangesAsync();
+
+        var repository = new EfPlatformServiceKeyRepository(db);
+        var matches = await repository.ListActiveForProviderFamilyAsync(
+            PlatformProviderFamilies.TransactionalEmail, CancellationToken.None);
+
+        Assert.Equal(
+            new[] { "resend", "sendgrid" },
+            matches.Select(m => m.ServiceKey).OrderBy(k => k).ToArray());
+    }
+
+    [Fact]
+    public async Task ListActiveForProviderFamily_ExcludesActiveKey_WhenItsProviderCardIsInactive()
+    {
+        await using var db = BuildInMemoryDb();
+        db.PlatformServiceKeys.Add(CreateKey("sendgrid", isActive: true));
+        db.PlatformProviders.Add(CreateProvider("sendgrid", PlatformProviderFamilies.TransactionalEmail, isActive: false));
+        await db.SaveChangesAsync();
+
+        var repository = new EfPlatformServiceKeyRepository(db);
+        var matches = await repository.ListActiveForProviderFamilyAsync(
+            PlatformProviderFamilies.TransactionalEmail, CancellationToken.None);
+
+        Assert.Empty(matches);
+    }
+
+    [Fact]
+    public async Task ListActiveForProviderFamily_ExcludesInactiveKey_EvenWhenItsProviderCardIsActive()
+    {
+        await using var db = BuildInMemoryDb();
+        db.PlatformServiceKeys.Add(CreateKey("sendgrid", isActive: false));
+        db.PlatformProviders.Add(CreateProvider("sendgrid", PlatformProviderFamilies.TransactionalEmail, isActive: true));
+        await db.SaveChangesAsync();
+
+        var repository = new EfPlatformServiceKeyRepository(db);
+        var matches = await repository.ListActiveForProviderFamilyAsync(
+            PlatformProviderFamilies.TransactionalEmail, CancellationToken.None);
+
+        Assert.Empty(matches);
+    }
+
+    [Fact]
+    public async Task ListActiveForProviderFamily_ExcludesActiveKeyAndProvider_FromADifferentFamily()
+    {
+        await using var db = BuildInMemoryDb();
+        db.PlatformServiceKeys.Add(CreateKey("cloudflare", isActive: true));
+        db.PlatformProviders.Add(CreateProvider("cloudflare", PlatformProviderFamilies.Infrastructure, isActive: true));
+        await db.SaveChangesAsync();
+
+        var repository = new EfPlatformServiceKeyRepository(db);
+        var matches = await repository.ListActiveForProviderFamilyAsync(
+            PlatformProviderFamilies.TransactionalEmail, CancellationToken.None);
+
+        Assert.Empty(matches);
+    }
+
+    private static PlatformProvider CreateProvider(string providerKey, string family, bool isActive) => new()
+    {
+        Id = Guid.NewGuid(),
+        ProviderKey = providerKey,
+        DisplayName = providerKey,
+        ProviderFamily = family,
+        IsActive = isActive,
+        CreatedAt = DateTimeOffset.UtcNow,
+        UpdatedAt = DateTimeOffset.UtcNow
+    };
+
     [Fact]
     public async Task ListAllAsync_OrdersByServiceKeyAndDoesNotTrackResults()
     {
@@ -130,7 +245,7 @@ public sealed class EfPlatformServiceKeyRepositoryTests
             tenantContext.Object);
     }
 
-    private static PlatformServiceKey CreateKey(string serviceKey)
+    private static PlatformServiceKey CreateKey(string serviceKey, bool isActive = true)
     {
         return new PlatformServiceKey
         {
@@ -138,7 +253,7 @@ public sealed class EfPlatformServiceKeyRepositoryTests
             ServiceKey = serviceKey,
             DisplayName = $"ONEVO {serviceKey}",
             ApiKeyEncrypted = "encrypted-value",
-            IsActive = true,
+            IsActive = isActive,
             UpdatedById = Guid.NewGuid()
         };
     }
