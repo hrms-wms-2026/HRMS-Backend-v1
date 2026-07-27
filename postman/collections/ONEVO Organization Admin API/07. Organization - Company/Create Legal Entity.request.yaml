@@ -1,0 +1,17 @@
+$kind: http-request
+name: Create Legal Entity
+method: POST
+url: '{{tenant_host}}/organization/legal-entities'
+order: 1000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "Acme Pvt Ltd",
+      "registrationNumber": "REG-001",
+      "country": "LK",
+      "address": "123 Main Street, Colombo"
+    }

@@ -1,0 +1,5 @@
+$kind: http-request
+name: List Service Key Providers
+method: GET
+url: '{{admin_base_url}}/admin/v1/system-config/service-key-providers'
+order: 1000

@@ -1,0 +1,5 @@
+$kind: http-request
+name: List OAuth Providers
+method: GET
+url: '{{admin_base_url}}/admin/v1/system-config/oauth-providers'
+order: 2000

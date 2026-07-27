@@ -32,14 +32,14 @@ public sealed class EfAuthRepository :
 
     public async Task<User?> GetByNormalizedEmailAsync(string normalizedEmail, CancellationToken ct = default)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail && !u.IsDeleted, ct);
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == normalizedEmail && !u.IsDeleted, ct);
         return user;
     }
 
     public async Task<User?> GetActiveByNormalizedEmailAsync(string normalizedEmail, CancellationToken ct = default)
     {
         var user = await _db.Users.FirstOrDefaultAsync(
-            u => u.Email == normalizedEmail && u.IsActive && !u.IsDeleted,
+            u => u.NormalizedEmail == normalizedEmail && u.IsActive && !u.IsDeleted,
             ct);
         return user;
     }
@@ -53,7 +53,7 @@ public sealed class EfAuthRepository :
     public async Task<User?> GetByTenantAndEmailAsync(Guid tenantId, string normalizedEmail, CancellationToken ct = default)
     {
         var user = await _db.Users.FirstOrDefaultAsync(
-            u => u.TenantId == tenantId && u.Email == normalizedEmail && !u.IsDeleted,
+            u => u.TenantId == tenantId && u.NormalizedEmail == normalizedEmail && !u.IsDeleted,
             ct);
         return user;
     }
@@ -171,6 +171,29 @@ public sealed class EfAuthRepository :
     {
         var addTask = _db.PasswordResetTokens.AddAsync(resetToken, ct).AsTask();
         return addTask;
+    }
+
+    public async Task<Guid?> TryConsumeResetTokenAsync(
+        string tokenHash, Guid tenantId, DateTimeOffset now, CancellationToken ct = default)
+    {
+        var rowsAffected = await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE password_reset_tokens
+            SET used_at = {now}
+            WHERE token_hash = {tokenHash}
+              AND tenant_id = {tenantId}
+              AND used_at IS NULL
+              AND expires_at > {now}
+            """, ct);
+
+        if (rowsAffected != 1)
+            return null;
+
+        var consumedToken = await _db.PasswordResetTokens
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.TokenHash == tokenHash && t.TenantId == tenantId, ct);
+
+        return consumedToken?.UserId;
     }
 
     public async Task<UserMfa?> GetTotpAsync(Guid userId, bool isVerified, CancellationToken ct = default)

@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Common.Behaviors;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Login.OutboxHandlers;
 using ONEVO.Application.Features.DevPlatform.Provisioning.OutboxHandlers;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Helpers;
 
@@ -28,6 +29,7 @@ public static class DependencyInjection
 
         // Outbox message consumers (dispatched by the Infrastructure outbox worker).
         services.AddScoped<IOutboxMessageHandler, TenantOwnerInviteEmailOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, PasswordResetEmailOutboxHandler>();
         services.AddScoped<GitHubUserIntegrationAvailability>();
 
         return services;

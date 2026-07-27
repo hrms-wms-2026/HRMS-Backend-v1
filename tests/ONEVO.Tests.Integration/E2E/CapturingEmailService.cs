@@ -27,7 +27,7 @@ public sealed class CapturingEmailService : IEmailService
         return Task.CompletedTask;
     }
 
-    public Task SendPasswordResetAsync(string to, string resetToken, CancellationToken ct = default)
+    public Task SendPasswordResetAsync(string to, string resetToken, string? tenantSlug = null, CancellationToken ct = default)
         => Task.CompletedTask;
 
     public string? LastInviteToken()

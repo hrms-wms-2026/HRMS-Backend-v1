@@ -1,0 +1,5 @@
+$kind: http-request
+name: List OAuth Apps
+method: GET
+url: '{{admin_base_url}}/admin/v1/system-config/oauth-apps'
+order: 1000

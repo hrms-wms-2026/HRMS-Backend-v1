@@ -1,0 +1,42 @@
+name: New Environment
+values:
+  - key: base_url
+    value: 'http://localhost:5139'
+  - key: admin_base_url
+    value: 'http://admin.localhost:5139'
+  - key: tenant_base_url
+    value: 'http://localhost:5139'
+  - key: tenant_slug
+    value: acme
+  - key: tenant_host
+    value: 'http://acme.localhost:5139'
+  - key: admin_email
+    value: dev@onevo.io
+  - key: admin_password
+    value: 'YourLocalDevPassword123!'
+  - key: tenant_email
+    value: siyasiyamala932@gmail.com
+  - key: tenant_password
+    value: 'Password123!'
+  - key: admin_csrf_token
+    value: ''
+  - key: tenant_csrf_token
+    value: ''
+  - key: legal_csrf_token
+    value: ''
+  - key: tenant_id
+    value: ''
+  - key: plan_id
+    value: ''
+  - key: role_id
+    value: ''
+  - key: invite_token
+    value: ''
+  - key: login_challenge
+    value: ''
+  - key: reset_token
+    value: ''
+  - key: gateway_config_id
+    value: ''
+  - key: service_key
+    value: sendgrid

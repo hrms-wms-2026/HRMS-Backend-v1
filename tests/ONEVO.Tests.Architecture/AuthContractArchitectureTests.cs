@@ -35,6 +35,31 @@ public sealed class AuthContractArchitectureTests
     }
 
     [Fact]
+    public void AcceptPendingLegalDocumentsRequest_HasNoCsrfTokenProperty()
+    {
+        typeof(AcceptPendingLegalDocumentsRequest)
+            .GetProperties()
+            .Select(p => p.Name)
+            .Should()
+            .BeEquivalentTo("Acceptances");
+    }
+
+    [Fact]
+    public void PendingLegalController_ReadsCsrfTokenFromHeaderNotBody()
+    {
+        var source = ReadSource(
+            "src",
+            "ONEVO.Api",
+            "Controllers",
+            "Tenant",
+            "Auth",
+            "AuthPendingLegalController.cs");
+
+        source.Should().Contain("Request.Headers[\"X-CSRF-Token\"]");
+        source.Should().NotContain("request.CsrfToken");
+    }
+
+    [Fact]
     public void PendingLegalCompletion_UsesOnlyCanonicalRoute()
     {
         var source = ReadSource(

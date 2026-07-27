@@ -8,6 +8,7 @@ using Moq;
 using ONEVO.Api.Contracts.Auth;
 using ONEVO.Api.Controllers.Tenant.Auth;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.Auth.Login.Commands.MfaConfirmSetup;
 using ONEVO.Application.Features.Auth.Login.Commands.MfaVerify;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 
@@ -77,5 +78,60 @@ public sealed class AuthMfaControllerTests
         mediator.Verify(
             instance => instance.Send(It.IsAny<VerifyMfaCommand>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task ConfirmMfaSetup_Success_ReturnsSuccessTrueWithoutRequiringMfaCookie()
+    {
+        var mediator = new Mock<IMediator>();
+        mediator
+            .Setup(instance => instance.Send(It.IsAny<ConfirmMfaSetupCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+
+        var environment = new Mock<IWebHostEnvironment>();
+        environment.Setup(instance => instance.EnvironmentName).Returns(Environments.Development);
+
+        var controller = new AuthMfaController(mediator.Object, environment.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        // No onevo_mfa cookie set — confirm-setup must not require it.
+        var result = await controller.ConfirmMfaSetup(new ConfirmMfaSetupRequest("123456"), CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        okResult.Value.Should().BeEquivalentTo(new { success = true });
+        mediator.Verify(
+            instance => instance.Send(
+                It.Is<ConfirmMfaSetupCommand>(c => c.Code == "123456"), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ConfirmMfaSetup_HandlerFailure_ReturnsProblemWithHandlerStatusCode()
+    {
+        var mediator = new Mock<IMediator>();
+        mediator
+            .Setup(instance => instance.Send(It.IsAny<ConfirmMfaSetupCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure("No pending MFA setup exists.", 400));
+
+        var environment = new Mock<IWebHostEnvironment>();
+        environment.Setup(instance => instance.EnvironmentName).Returns(Environments.Development);
+
+        var controller = new AuthMfaController(mediator.Object, environment.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        var result = await controller.ConfirmMfaSetup(new ConfirmMfaSetupRequest("000000"), CancellationToken.None);
+
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(400);
     }
 }

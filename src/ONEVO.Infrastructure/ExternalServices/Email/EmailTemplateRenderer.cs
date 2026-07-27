@@ -83,9 +83,11 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
     private RenderedEmail RenderPasswordReset(IReadOnlyDictionary<string, object?> f)
     {
         var token = Get(f, "reset_token");
+        var tenantSlug = Get(f, "tenant_slug");
         var appBaseUrl = string.IsNullOrWhiteSpace(_options.AppBaseUrl)
             ? Get(f, "app_base_url", fallback: string.Empty)
             : _options.AppBaseUrl;
+        appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
         var resetUrl = string.IsNullOrWhiteSpace(appBaseUrl)
             ? $"[reset_url placeholder - set Email:AppBaseUrl] token={token}"
             : $"{appBaseUrl.TrimEnd('/')}/auth/reset-password?token={token}";
@@ -100,6 +102,24 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             """;
         var text = $"Reset your ONEVO password: {resetUrl}";
         return new RenderedEmail(subject, html, text);
+    }
+
+    /// <summary>
+    /// Base-domain forgot-password can match users in multiple tenants; each reset link must land
+    /// the browser on that tenant's host so HostTenantResolutionMiddleware resolves the same tenant
+    /// the token was issued for. Reuses the app's own host shape (subdomain-of-root, same
+    /// scheme/port as configured) rather than inventing a second convention.
+    /// </summary>
+    private static string ApplyTenantSlug(string appBaseUrl, string tenantSlug)
+    {
+        if (string.IsNullOrWhiteSpace(appBaseUrl) || string.IsNullOrWhiteSpace(tenantSlug))
+            return appBaseUrl;
+
+        if (!Uri.TryCreate(appBaseUrl, UriKind.Absolute, out var parsed))
+            return appBaseUrl;
+
+        var builder = new UriBuilder(parsed) { Host = $"{tenantSlug}.{parsed.Host}" };
+        return builder.Uri.ToString();
     }
 
     private static string Get(

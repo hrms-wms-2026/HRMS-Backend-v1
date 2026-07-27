@@ -1,0 +1,8 @@
+$kind: http-request
+name: Activate OAuth App
+method: POST
+url: '{{admin_base_url}}/admin/v1/system-config/oauth-apps/google/activate'
+order: 6000
+headers:
+  - key: X-CSRF-Token
+    value: '{{admin_csrf_token}}'

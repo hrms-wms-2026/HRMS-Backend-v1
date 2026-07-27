@@ -17,4 +17,5 @@ public interface IOutboxMessageHandler
 public static class OutboxMessageTypes
 {
     public const string TenantOwnerInviteEmail = "tenant_owner_invite_email";
+    public const string PasswordResetEmail = "password_reset_email";
 }

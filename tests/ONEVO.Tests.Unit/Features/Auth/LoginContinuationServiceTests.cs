@@ -197,6 +197,40 @@ public sealed class LoginContinuationServiceTests
     }
 
     [Fact]
+    public async Task ContinueAsync_OnlyUnverifiedTotpSetupExists_DoesNotRequireMfa_SoLoginNeverCompletesFirstTimeSetup()
+    {
+        // LoginContinuationService only ever checks GetTotpAsync(userId, isVerified: true, ...) to decide
+        // whether to create an onevo_mfa challenge. A pending (unverified) TOTP setup from mfa/enable is
+        // invisible here, so no challenge is issued and mfa/verify is never reached for first-time setup -
+        // confirming setup is only possible through mfa/confirm-setup.
+        var fixture = new Fixture();
+        var tenant = ActiveTenant(Guid.NewGuid());
+        var user = ActiveUser(tenant.Id, Guid.NewGuid());
+        var pending = new UserMfa { Id = Guid.NewGuid(), UserId = user.Id, MethodType = "totp", IsVerified = false };
+        fixture.Tenants.Setup(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
+        fixture.Users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        fixture.UserMfas.Setup(m => m.GetTotpAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync((UserMfa?)null);
+        fixture.UserMfas.Setup(m => m.GetTotpAsync(user.Id, false, It.IsAny<CancellationToken>())).ReturnsAsync(pending);
+        fixture.SessionMaterialFactory
+            .Setup(f => f.PrepareAsync(user, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto("c", "h", null)));
+
+        var request = new LoginContinuationRequest(tenant.Id, user.Id, true, "generic-failure", "password", null, null);
+        var result = await fixture.Build().ContinueAsync(request);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.RequiresMfa.Should().BeFalse();
+        pending.IsVerified.Should().BeFalse();
+        fixture.MfaChallenges.Verify(
+            m => m.CreateAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        fixture.UserMfas.Verify(
+            m => m.GetTotpAsync(It.IsAny<Guid>(), false, It.IsAny<CancellationToken>()), Times.Never,
+            "login must never consult a pending setup when deciding whether to issue an MFA challenge");
+    }
+
+    [Fact]
     public async Task ContinueAsync_LegalAcceptancePending_ReturnsLegalAcceptanceRequired_WithoutCreatingSessionOrUpdatingLastLoginAt()
     {
         var fixture = new Fixture();

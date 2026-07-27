@@ -52,6 +52,7 @@ public sealed class AuthControllerSplitArchitectureTests
             (typeof(AuthLoginController), "POST", "api/v1/auth/login/google"),
             (typeof(AuthMfaController), "POST", "api/v1/auth/mfa/enable"),
             (typeof(AuthMfaController), "POST", "api/v1/auth/mfa/verify"),
+            (typeof(AuthMfaController), "POST", "api/v1/auth/mfa/confirm-setup"),
             (typeof(AuthPasswordController), "POST", "api/v1/auth/forgot-password"),
             (typeof(AuthPasswordController), "POST", "api/v1/auth/reset-password"),
             (typeof(AuthPasswordController), "POST", "api/v1/auth/force-change-password"),

@@ -1,0 +1,8 @@
+$kind: http-request
+name: Resend Owner Invite
+method: POST
+url: '{{admin_base_url}}/tenants/:id/resend-invite'
+order: 6000
+pathVariables:
+  - key: id
+    value: ''

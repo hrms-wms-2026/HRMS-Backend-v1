@@ -33,6 +33,12 @@ public class AuthPendingLegalController : ControllerBase
             return Problem("Legal acceptance session is missing or expired.", statusCode: 401);
         }
 
+        var csrfToken = Request.Headers["X-CSRF-Token"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(csrfToken))
+        {
+            return Problem("A valid CSRF token is required for this request.", statusCode: 403);
+        }
+
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var ua = Request.Headers.UserAgent.ToString();
 
@@ -41,7 +47,7 @@ public class AuthPendingLegalController : ControllerBase
             .ToList();
 
         var result = await _mediator.Send(
-            new AcceptPendingLegalDocumentsCommand(legalChallenge, request.CsrfToken, items, ip, ua), ct);
+            new AcceptPendingLegalDocumentsCommand(legalChallenge, csrfToken, items, ip, ua), ct);
 
         if (result.IsSuccess && result.Value?.RequiresLegalAcceptance == false)
         {

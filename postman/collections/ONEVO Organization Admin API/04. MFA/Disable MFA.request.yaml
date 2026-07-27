@@ -1,0 +1,14 @@
+$kind: http-request
+name: Disable MFA
+method: POST
+url: '{{tenant_host}}/auth/mfa/disable'
+order: 4000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "code": "123456"
+    }

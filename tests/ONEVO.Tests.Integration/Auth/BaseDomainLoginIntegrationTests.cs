@@ -602,6 +602,41 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
             continueUrl.PathAndQuery);
         request.Headers.Host = continueUrl.Host;
         request.Headers.Add("Cookie", $"onevo_legal_pending={legalPending}; onevo_legal_csrf={legalCsrf}");
+        request.Headers.Add("X-CSRF-Token", legalCsrf);
+        request.Content = JsonContent.Create(new
+        {
+            acceptances = new[]
+            {
+                new { document_type = "terms", version = "1.0", decision = "accepted" },
+                new { document_type = "privacy_notice", version = "1.0", decision = "acknowledged" }
+            }
+        });
+
+        return await _client.SendAsync(request);
+    }
+
+    [Fact]
+    public async Task LegalAcceptance_CsrfTokenInBody_IsIgnored_HeaderIsTheOnlySource()
+    {
+        // Proves there is no fallback to a body-supplied csrf_token: the correct token is placed
+        // only in the JSON body (never in X-CSRF-Token), so this must be rejected exactly like a
+        // request with no CSRF token at all.
+        var user = await SeedActiveUserAsync(
+            "legal-body-fallback-tenant", "legalbodyfallback@test.onevo.dev", "CorrectPass1!");
+        var login = await PostLoginAsync(user.Email, "CorrectPass1!");
+        var legalPending = ExtractCookieValue(login, "onevo_legal_pending");
+        var legalCsrf = ExtractCookieValue(login, "onevo_legal_csrf");
+        var priorBody = await login.Content.ReadAsStringAsync();
+        using var priorDocument = JsonDocument.Parse(priorBody);
+        var continueUrl = new Uri(
+            priorDocument.RootElement.GetProperty("continue_url").GetString()!,
+            UriKind.Absolute);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, continueUrl.PathAndQuery);
+        request.Headers.Host = continueUrl.Host;
+        request.Headers.Add("Cookie", $"onevo_legal_pending={legalPending}; onevo_legal_csrf={legalCsrf}");
+        // Deliberately no X-CSRF-Token header - the (correct) token is only in the body, where the
+        // deserializer for AcceptPendingLegalDocumentsRequest has no property to bind it to.
         request.Content = JsonContent.Create(new
         {
             csrf_token = legalCsrf,
@@ -612,6 +647,71 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
             }
         });
 
-        return await _client.SendAsync(request);
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task LegalAcceptance_SuccessResponse_NeverLeaksPendingChallengeOrCsrfValue()
+    {
+        var user = await SeedActiveUserAsync(
+            "legal-no-leak-tenant", "legalnoleak@test.onevo.dev", "CorrectPass1!");
+        var login = await PostLoginAsync(user.Email, "CorrectPass1!");
+        var legalPending = ExtractCookieValue(login, "onevo_legal_pending");
+        var legalCsrf = ExtractCookieValue(login, "onevo_legal_csrf");
+
+        var completed = await CompleteLegalAcceptanceAsync(login);
+
+        completed.StatusCode.Should().Be(
+            HttpStatusCode.OK, await completed.Content.ReadAsStringAsync());
+        var completedBody = await completed.Content.ReadAsStringAsync();
+        completedBody.Should().NotContain(legalPending);
+        completedBody.Should().NotContain(legalCsrf);
+        completedBody.Should().NotContain("onevo_legal_pending");
+    }
+
+    [Fact]
+    public async Task LegalAcceptance_MissingCsrfHeader_IsRejected()
+    {
+        var user = await SeedActiveUserAsync(
+            "legal-missing-csrf-tenant", "legalmissingcsrf@test.onevo.dev", "CorrectPass1!");
+        var login = await PostLoginAsync(user.Email, "CorrectPass1!");
+        var legalPending = ExtractCookieValue(login, "onevo_legal_pending");
+        var legalCsrf = ExtractCookieValue(login, "onevo_legal_csrf");
+        var priorBody = await login.Content.ReadAsStringAsync();
+        using var priorDocument = JsonDocument.Parse(priorBody);
+        var continueUrl = new Uri(
+            priorDocument.RootElement.GetProperty("continue_url").GetString()!,
+            UriKind.Absolute);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, continueUrl.PathAndQuery);
+        request.Headers.Host = continueUrl.Host;
+        request.Headers.Add("Cookie", $"onevo_legal_pending={legalPending}; onevo_legal_csrf={legalCsrf}");
+        request.Content = JsonContent.Create(new
+        {
+            acceptances = new[]
+            {
+                new { document_type = "terms", version = "1.0", decision = "accepted" },
+                new { document_type = "privacy_notice", version = "1.0", decision = "acknowledged" }
+            }
+        });
+
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task LegalAcceptance_ValidCsrfHeader_Succeeds()
+    {
+        var user = await SeedActiveUserAsync(
+            "legal-valid-csrf-tenant", "legalvalidcsrf@test.onevo.dev", "CorrectPass1!");
+        var login = await PostLoginAsync(user.Email, "CorrectPass1!");
+
+        var completed = await CompleteLegalAcceptanceAsync(login);
+
+        completed.StatusCode.Should().Be(
+            HttpStatusCode.OK, await completed.Content.ReadAsStringAsync());
     }
 }

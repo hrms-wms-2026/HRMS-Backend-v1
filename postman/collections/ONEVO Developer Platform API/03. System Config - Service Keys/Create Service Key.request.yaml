@@ -1,0 +1,18 @@
+$kind: http-request
+name: Create Service Key
+method: POST
+url: '{{admin_base_url}}/admin/v1/system-config/service-keys'
+order: 3000
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: X-CSRF-Token
+    value: '{{admin_csrf_token}}'
+body:
+  type: json
+  content: |-
+    {
+      "serviceKey": "sendgrid",
+      "displayName": "SendGrid Transactional Email",
+      "apiKey": "SG.xxxxxxxxxxxxxxxxx"
+    }

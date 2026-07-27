@@ -106,6 +106,49 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     }
 
     [Fact]
+    public async Task GetByNormalizedEmailAsync_MatchesRegardlessOfStoredEmailCasingOrWhitespace()
+    {
+        using var db = CreateContext();
+        var repo = new EfAuthRepository(db);
+        var user = NewUser(Guid.NewGuid(), "  Mixed.Case@Example.com ");
+        await SeedAsync(user);
+
+        var found = await repo.GetByNormalizedEmailAsync("mixed.case@example.com");
+
+        found.Should().NotBeNull();
+        found!.Id.Should().Be(user.Id);
+    }
+
+    [Fact]
+    public async Task GetActiveByNormalizedEmailAsync_MatchesRegardlessOfStoredEmailCasingOrWhitespace()
+    {
+        using var db = CreateContext();
+        var repo = new EfAuthRepository(db);
+        var user = NewUser(Guid.NewGuid(), " Active.Mixed@Example.com");
+        await SeedAsync(user);
+
+        var found = await repo.GetActiveByNormalizedEmailAsync("active.mixed@example.com");
+
+        found.Should().NotBeNull();
+        found!.Id.Should().Be(user.Id);
+    }
+
+    [Fact]
+    public async Task GetByTenantAndEmailAsync_MatchesRegardlessOfStoredEmailCasingOrWhitespace()
+    {
+        using var db = CreateContext();
+        var repo = new EfAuthRepository(db);
+        var tenantId = Guid.NewGuid();
+        var user = NewUser(tenantId, "Tenant.Mixed@Example.COM ");
+        await SeedAsync(user);
+
+        var found = await repo.GetByTenantAndEmailAsync(tenantId, "tenant.mixed@example.com");
+
+        found.Should().NotBeNull();
+        found!.Id.Should().Be(user.Id);
+    }
+
+    [Fact]
     public async Task GetByIdAsync_RequiresMatchingIdAndNonDeleted()
     {
         using var db = CreateContext();

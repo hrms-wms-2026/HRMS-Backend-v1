@@ -1,0 +1,39 @@
+$kind: http-request
+name: Create Tenant With Owner Invite
+method: POST
+url: '{{admin_base_url}}/admin/v1/tenants'
+order: 2000
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: X-CSRF-Token
+    value: '{{admin_csrf_token}}'
+body:
+  type: json
+  content: |-
+    {
+      "company_name": "Acme Pvt Ltd",
+      "slug": "acme",
+      "industry_profile": "technology",
+      "company_size_range": "1-10",
+      "legal_entity_name": "Acme Pvt Ltd",
+      "registration_number": "PV-12345",
+      "country": "LK",
+      "timezone": "Asia/Colombo",
+      "currency": "LKR",
+      "subscription": {
+        "plan_id": "{{plan_id}}",
+        "billing_cycle": "monthly",
+        "commercial_model": "trial",
+        "trial_period_days": 14,
+        "unpaid_grace_period_days": 7
+      },
+      "owner_invite": {
+        "email": "{{tenant_email}}",
+        "first_name": "Tenant",
+        "last_name": "Owner",
+        "completion_methods": ["password", "google"],
+        "allow_google_email_mismatch": false,
+        "allowed_email_domains": ["gmail.com"]
+      }
+    }

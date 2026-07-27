@@ -28,7 +28,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
     private const string TenantSlug = "acme";
     private const string TenantName = "Acme Test";
-    private const string UserEmail = "owner@acme.test";
+    private const string UserEmail = "siyasiyamala932@gmail.com";
     private const string UserPassword = "Password123!";
     private const string RoleName = "Tenant Owner";
     private const string GitHubProvider = "github";
@@ -201,9 +201,12 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         DateTimeOffset now,
         CancellationToken ct)
     {
-        var user = await db.Users.FirstOrDefaultAsync(
-            u => u.TenantId == tenantId && u.Email == UserEmail,
-            ct);
+        // Matched by the seeder's fixed UserId, not by email: an existing dev/test database seeded
+        // before the smoke-tenant owner email changed still has this row under the old address, and
+        // looking it up by email would fall through to the Add() branch below with the same
+        // hardcoded Id - a primary-key violation. Id is the stable anchor; email is just a field on
+        // the row it updates.
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == UserId, ct);
         if (user is null)
         {
             user = new User
@@ -225,6 +228,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             return user;
         }
 
+        user.Email = UserEmail;
         user.FirstName = "Acme";
         user.LastName = "Owner";
         user.IsActive = true;
@@ -239,12 +243,22 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         return user;
     }
 
-    private static Task SeedGlobalEmailDirectoryAsync(
+    private static async Task SeedGlobalEmailDirectoryAsync(
         ApplicationDbContext db,
         Guid tenantId,
         CancellationToken ct)
     {
-        return db.Database.ExecuteSqlInterpolatedAsync(
+        // Remove any directory row left over from a previous seed's email for this tenant before
+        // inserting the current one, so re-seeding an existing dev database never leaves a stale
+        // entry for an address that no longer belongs to any user.
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            DELETE FROM global_email_directory
+            WHERE tenant_id = {tenantId} AND email <> {UserEmail}
+            """,
+            ct);
+
+        await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             INSERT INTO global_email_directory (email, tenant_id)
             VALUES ({UserEmail}, {tenantId})

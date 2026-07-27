@@ -1,0 +1,10 @@
+$kind: http-request
+name: Resolve Gateway For Country
+method: GET
+url: '{{admin_base_url}}/admin/v1/payment-gateways/resolve'
+order: 5000
+queryParams:
+  - key: country
+    value: LK
+  - key: environment
+    value: sandbox
