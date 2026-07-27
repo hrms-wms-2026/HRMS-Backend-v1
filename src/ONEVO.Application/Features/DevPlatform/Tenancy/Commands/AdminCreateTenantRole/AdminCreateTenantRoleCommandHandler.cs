@@ -93,7 +93,7 @@ public sealed class AdminCreateTenantRoleCommandHandler
         if (resolvedPermissions.Count > 0)
         {
             var rolePermissions = resolvedPermissions
-                .Select(p => new RolePermission { RoleId = role.Id, PermissionId = p.Id })
+                .Select(p => new RolePermission { TenantId = request.TenantId, RoleId = role.Id, PermissionId = p.Id })
                 .ToList();
             await _rolePermissions.AddRangeAsync(rolePermissions, ct);
         }

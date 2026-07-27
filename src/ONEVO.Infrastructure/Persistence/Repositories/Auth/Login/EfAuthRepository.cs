@@ -105,6 +105,25 @@ public sealed class EfAuthRepository :
         return session;
     }
 
+    async Task<Session?> ISessionRepository.GetByKeyHashForTenantResolutionAsync(string keyHash, CancellationToken ct)
+    {
+        // set_config(..., is_local: true) reverts automatically at transaction end, so this never
+        // leaks onto the pooled physical connection for a later, unrelated caller to see.
+        // CreateExecutionStrategy() wrapping is required because the runtime connection has
+        // EnableRetryOnFailure configured - EF Core forbids a user-initiated BeginTransactionAsync
+        // under a retrying execution strategy unless it runs inside ExecuteAsync.
+        var executionStrategy = _db.Database.CreateExecutionStrategy();
+        return await executionStrategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await _db.Database.BeginTransactionAsync(ct);
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT set_config('app.session_lookup_key_hash', {keyHash}, true)", ct);
+            var session = await _db.Sessions.FirstOrDefaultAsync(s => s.KeyHash == keyHash, ct);
+            await transaction.CommitAsync(ct);
+            return session;
+        });
+    }
+
     async Task ISessionRepository.RevokeByKeyHashAsync(string keyHash, CancellationToken ct)
     {
         var session = await _db.Sessions.FirstOrDefaultAsync(s => s.KeyHash == keyHash, ct);

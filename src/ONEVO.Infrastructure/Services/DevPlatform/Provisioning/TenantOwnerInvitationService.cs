@@ -139,6 +139,7 @@ public class TenantOwnerInvitationService : ITenantOwnerInvitationService
 
         var userRole = new UserRole
         {
+            TenantId = tenantId,
             UserId = user.Id,
             RoleId = roleId,
             AssignedAt = now,

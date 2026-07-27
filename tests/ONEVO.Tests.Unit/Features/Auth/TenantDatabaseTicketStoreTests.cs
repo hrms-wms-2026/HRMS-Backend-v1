@@ -124,8 +124,9 @@ public class TenantDatabaseTicketStoreTests
 
     [Theory]
     [InlineData(true, TenantStatus.Cancelled)]
+    [InlineData(true, TenantStatus.Suspended)]
     [InlineData(false, TenantStatus.Active)]
-    public async Task StoreAsync_TenantMissingOrInactive_DoesNotCreateSession(bool tenantExists, TenantStatus status)
+    public async Task StoreAsync_TenantMissingOrDead_DoesNotCreateSession(bool tenantExists, TenantStatus status)
     {
         var userId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
@@ -149,6 +150,35 @@ public class TenantDatabaseTicketStoreTests
         await _uow.DidNotReceiveWithAnyArgs().SaveChangesAsync(default);
     }
 
+    [Theory]
+    [InlineData(TenantStatus.Provisioning)]
+    [InlineData(TenantStatus.Trial)]
+    [InlineData(TenantStatus.Active)]
+    public async Task StoreAsync_TenantNotDead_CreatesSession(TenantStatus status)
+    {
+        // Invite-accept and password-reset flows also funnel through StoreAsync, and legitimately
+        // create a session while the tenant is still Provisioning (before admin confirmation flips
+        // it to Trial) - StoreAsync must not reject those, only tenants that are actually dead.
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+
+        var claims = new[] { new Claim(ClaimTypes.NameIdentifier, userId.ToString()) };
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TenantScheme"));
+        var properties = new AuthenticationProperties();
+        properties.Items[TenantDatabaseTicketStore.TenantIdItemKey] = tenantId.ToString();
+        var ticket = new AuthenticationTicket(principal, properties, "TenantScheme");
+
+        _tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>())
+                .Returns(new Tenant { Id = tenantId, Slug = "acme", Status = status });
+        _sessions.AddAsync(Arg.Any<Session>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+
+        var sut = CreateSut();
+        var rawKey = await sut.StoreAsync(ticket, null, CancellationToken.None);
+
+        Assert.NotNull(rawKey);
+        await _sessions.Received(1).AddAsync(Arg.Any<Session>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task RetrieveAsync_ValidKey_ReturnsPopulatedTicket()
     {
@@ -164,8 +194,9 @@ public class TenantDatabaseTicketStoreTests
             CsrfTokenHash = "csrf-hash"
         };
 
-        _sessions.GetByKeyHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _sessions.GetByKeyHashForTenantResolutionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                  .Returns(session);
+        _tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(ActiveTenant(tenantId));
 
         var user = new ONEVO.Domain.Features.InfrastructureModule.Entities.User
             { Id = userId, Email = "a@b.com", IsActive = true };
@@ -183,6 +214,15 @@ public class TenantDatabaseTicketStoreTests
         Assert.Equal("perm.read", ticket.Principal.FindFirstValue("permission"));
         Assert.Equal(tenantId.ToString(), ticket.Properties.Items[TenantDatabaseTicketStore.TenantIdItemKey]);
         Assert.Equal("csrf-hash", ticket.Properties.Items[TenantDatabaseTicketStore.CsrfTokenHashItemKey]);
+
+        await _tenantSwitcher.Received(1).SwitchToTenantAsync(
+            Arg.Is<TenantRegistryEntry>(t => t.TenantId == tenantId), Arg.Any<CancellationToken>());
+        Received.InOrder(async () =>
+        {
+            await _sessions.GetByKeyHashForTenantResolutionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            await _tenantSwitcher.SwitchToTenantAsync(Arg.Any<TenantRegistryEntry>(), Arg.Any<CancellationToken>());
+            await _users.GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        });
     }
 
     [Fact]
@@ -194,7 +234,7 @@ public class TenantDatabaseTicketStoreTests
             StartedAt = FixedNow.AddMinutes(-30),
             ExpiresAt = FixedNow.AddMinutes(-1)
         };
-        _sessions.GetByKeyHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _sessions.GetByKeyHashForTenantResolutionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                  .Returns(session);
 
         var sut = CreateSut();
@@ -212,7 +252,7 @@ public class TenantDatabaseTicketStoreTests
             StartedAt = FixedNow.AddMinutes(-10),
             ExpiresAt = FixedNow.AddMinutes(10)
         };
-        _sessions.GetByKeyHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        _sessions.GetByKeyHashForTenantResolutionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(session);
 
         var ticket = await CreateSut().RetrieveAsync(
@@ -226,8 +266,31 @@ public class TenantDatabaseTicketStoreTests
     }
 
     [Fact]
+    public async Task RetrieveAsync_TenantMissing_ReturnsNull_DoesNotSwitchOrReadUser()
+    {
+        var tenantId = Guid.NewGuid();
+        var session = new Session
+        {
+            TenantId = tenantId,
+            IsRevoked = false,
+            StartedAt = FixedNow.AddMinutes(-10),
+            ExpiresAt = FixedNow.AddMinutes(10)
+        };
+        _sessions.GetByKeyHashForTenantResolutionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(session);
+        _tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns((Tenant?)null);
+
+        var ticket = await CreateSut().RetrieveAsync("some-raw-key", null, CancellationToken.None);
+
+        Assert.Null(ticket);
+        await _tenantSwitcher.DidNotReceiveWithAnyArgs().SwitchToTenantAsync(default!, default);
+        await _users.DidNotReceiveWithAnyArgs().GetByIdAsync(default, default);
+    }
+
+    [Fact]
     public async Task RenewAsync_ExtendsExpiry_ReissuesCsrfCookie()
     {
+        var tenantId = Guid.NewGuid();
         var session = new Session
         {
             IsRevoked = false,
@@ -237,6 +300,7 @@ public class TenantDatabaseTicketStoreTests
         };
         _sessions.GetByKeyHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                  .Returns(session);
+        _tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(ActiveTenant(tenantId));
 
         var httpContext = new DefaultHttpContext();
         var env = Substitute.For<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
@@ -246,15 +310,18 @@ public class TenantDatabaseTicketStoreTests
         httpContext.RequestServices = mockSp;
         httpContext.Request.Headers["Cookie"] = "onevo_csrf=existing_csrf_val";
 
-        
         var sut = CreateSut();
-        var ticket = new AuthenticationTicket(new ClaimsPrincipal(), new AuthenticationProperties(), "TenantScheme");
-        
+        var properties = new AuthenticationProperties();
+        properties.Items[TenantDatabaseTicketStore.TenantIdItemKey] = tenantId.ToString();
+        var ticket = new AuthenticationTicket(new ClaimsPrincipal(), properties, "TenantScheme");
+
         await sut.RenewAsync("some-raw-key", ticket, httpContext, CancellationToken.None);
 
         Assert.Equal(FixedNow.Add(SessionPolicy.SlidingWindow), session.ExpiresAt);
         await _uow.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
-        
+        await _tenantSwitcher.Received(1).SwitchToTenantAsync(
+            Arg.Is<TenantRegistryEntry>(t => t.TenantId == tenantId), Arg.Any<CancellationToken>());
+
         var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
         Assert.Contains("onevo_csrf=existing_csrf_val", setCookieHeader);
         Assert.Contains("expires=", setCookieHeader, StringComparison.OrdinalIgnoreCase);
@@ -262,12 +329,46 @@ public class TenantDatabaseTicketStoreTests
     }
 
     [Fact]
+    public async Task RenewAsync_TicketMissingTenantId_DoesNotRenew()
+    {
+        var sut = CreateSut();
+        var ticket = new AuthenticationTicket(new ClaimsPrincipal(), new AuthenticationProperties(), "TenantScheme");
+
+        await sut.RenewAsync("some-raw-key", ticket, null, CancellationToken.None);
+
+        await _tenantSwitcher.DidNotReceiveWithAnyArgs().SwitchToTenantAsync(default!, default);
+        await _sessions.DidNotReceiveWithAnyArgs().GetByKeyHashAsync(default!, default);
+        await _uow.DidNotReceiveWithAnyArgs().SaveChangesAsync(default);
+    }
+
+    [Fact]
     public async Task RemoveAsync_RevokesSession()
     {
+        var tenantId = Guid.NewGuid();
+        var session = new Session { TenantId = tenantId, IsRevoked = false };
+        _sessions.GetByKeyHashForTenantResolutionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(session);
+        _tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(ActiveTenant(tenantId));
+
         var sut = CreateSut();
         await sut.RemoveAsync("some-raw-key", null, CancellationToken.None);
 
-        await _sessions.Received(1).RevokeByKeyHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        Assert.True(session.IsRevoked);
+        await _tenantSwitcher.Received(1).SwitchToTenantAsync(
+            Arg.Is<TenantRegistryEntry>(t => t.TenantId == tenantId), Arg.Any<CancellationToken>());
         await _uow.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RemoveAsync_SessionNotFound_DoesNotSwitchOrSave()
+    {
+        _sessions.GetByKeyHashForTenantResolutionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((Session?)null);
+
+        var sut = CreateSut();
+        await sut.RemoveAsync("some-raw-key", null, CancellationToken.None);
+
+        await _tenantSwitcher.DidNotReceiveWithAnyArgs().SwitchToTenantAsync(default!, default);
+        await _uow.DidNotReceiveWithAnyArgs().SaveChangesAsync(default);
     }
 }

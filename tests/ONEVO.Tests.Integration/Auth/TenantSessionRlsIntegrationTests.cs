@@ -7,6 +7,7 @@ using Npgsql;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
+using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
@@ -113,7 +114,7 @@ public sealed class TenantSessionRlsIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task StoreAsync_UnderRealOnevoAppRole_TenantInactive_DoesNotInsertSession_NoRlsBypass()
+    public async Task StoreAsync_UnderRealOnevoAppRole_TenantCancelled_DoesNotInsertSession_NoRlsBypass()
     {
         var (tenantId, userId) = await SeedActiveTenantAndUserAsync();
         await SetTenantStatusAsync(tenantId, TenantStatus.Cancelled);
@@ -128,7 +129,101 @@ public sealed class TenantSessionRlsIntegrationTests : IAsyncLifetime
 
         await using var verifyDb = BuildAdminDbContext();
         (await verifyDb.Sessions.AnyAsync(s => s.UserId == userId)).Should().BeFalse(
-            "an inactive tenant must never result in a session row, regardless of RLS");
+            "a cancelled tenant must never result in a session row, regardless of RLS");
+    }
+
+    [Fact]
+    public async Task StoreAsync_UnderRealOnevoAppRole_TenantProvisioning_InsertsSessionWithoutRlsViolation()
+    {
+        // Mirrors TenantProvisioningE2ETests.Full_tenant_provisioning_flow: invite-accept
+        // legitimately creates a session while the tenant is still Provisioning, before admin
+        // confirmation flips it to Trial.
+        var (tenantId, userId) = await SeedActiveTenantAndUserAsync();
+        await SetTenantStatusAsync(tenantId, TenantStatus.Provisioning);
+
+        var scopeFactory = BuildProductionLikeScopeFactory();
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _clock);
+        var ticket = BuildTicket(tenantId, userId);
+
+        var act = () => sut.StoreAsync(ticket, httpContext: null, CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
+
+        await using var verifyDb = BuildAdminDbContext();
+        (await verifyDb.Sessions.AnyAsync(s => s.UserId == userId)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_UnderRealOnevoAppRoleWithRlsInterceptor_ReturnsTicketForSessionStoreAsyncWrote()
+    {
+        var (tenantId, userId) = await SeedActiveTenantAndUserAsync();
+
+        var scopeFactory = BuildProductionLikeScopeFactory();
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _clock);
+        var storeTicket = BuildTicket(tenantId, userId);
+        var rawKey = await sut.StoreAsync(storeTicket, httpContext: null, CancellationToken.None);
+
+        // RetrieveAsync only ever has the session key (not the tenant id) when the framework calls
+        // it - unlike StoreAsync, it cannot switch tenant context until it has read the session, and
+        // it can only read it at all via the session_key_lookup RLS policy (matches on key_hash, not
+        // tenant_id) added by this fix.
+        var act = () => sut.RetrieveAsync(rawKey, httpContext: null, CancellationToken.None);
+
+        var retrieved = await act.Should().NotThrowAsync(
+            "RetrieveAsync must resolve the session's own tenant via the key-hash lookup policy and " +
+            "switch into it before reading users/permissions, or a just-logged-in user would look " +
+            "logged out on their very next request");
+        retrieved.Which.Should().NotBeNull();
+        retrieved.Which!.Principal.FindFirstValue(ClaimTypes.NameIdentifier).Should().Be(userId.ToString());
+        retrieved.Which.Properties.Items[TenantDatabaseTicketStore.TenantIdItemKey].Should().Be(tenantId.ToString());
+    }
+
+    [Fact]
+    public async Task RenewAsync_UnderRealOnevoAppRoleWithRlsInterceptor_ExtendsExpiryWithoutRlsViolation()
+    {
+        var (tenantId, userId) = await SeedActiveTenantAndUserAsync();
+
+        var scopeFactory = BuildProductionLikeScopeFactory();
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _clock);
+        var storeTicket = BuildTicket(tenantId, userId);
+        var rawKey = await sut.StoreAsync(storeTicket, httpContext: null, CancellationToken.None);
+
+        var expiresAtBeforeRenew = (await BuildAdminDbContext().Sessions.SingleAsync(s => s.UserId == userId)).ExpiresAt;
+
+        // Mirrors how CookieAuthenticationHandler actually calls RenewAsync: a ticket carrying the
+        // tenant id (from the earlier RetrieveAsync-constructed ticket) but with a freshly computed
+        // ExpiresUtc for the sliding window, not the original ExpiresUtc echoed back unchanged.
+        var renewTicket = BuildTicket(tenantId, userId);
+        var act = () => sut.RenewAsync(rawKey, renewTicket, httpContext: null, CancellationToken.None);
+        await act.Should().NotThrowAsync(
+            "RenewAsync must switch into the tenant carried on the already-authenticated ticket " +
+            "before touching the RLS-protected sessions row");
+
+        await using var verifyDb = BuildAdminDbContext();
+        var session = await verifyDb.Sessions.SingleAsync(s => s.UserId == userId);
+        session.ExpiresAt.Should().BeOnOrAfter(expiresAtBeforeRenew);
+        session.LastActivityAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
+    public async Task RemoveAsync_UnderRealOnevoAppRoleWithRlsInterceptor_RevokesSessionWithoutRlsViolation()
+    {
+        var (tenantId, userId) = await SeedActiveTenantAndUserAsync();
+
+        var scopeFactory = BuildProductionLikeScopeFactory();
+        var sut = new TenantDatabaseTicketStore(scopeFactory, _clock);
+        var storeTicket = BuildTicket(tenantId, userId);
+        var rawKey = await sut.StoreAsync(storeTicket, httpContext: null, CancellationToken.None);
+
+        // Same bootstrap problem as RetrieveAsync: logout/RemoveAsync only has the session key.
+        var act = () => sut.RemoveAsync(rawKey, httpContext: null, CancellationToken.None);
+        await act.Should().NotThrowAsync(
+            "RemoveAsync must resolve the session's tenant via the key-hash lookup policy and switch " +
+            "into it before revoking, or logout would silently no-op under RLS instead of revoking");
+
+        await using var verifyDb = BuildAdminDbContext();
+        var session = await verifyDb.Sessions.SingleAsync(s => s.UserId == userId);
+        session.IsRevoked.Should().BeTrue();
     }
 
     private static AuthenticationTicket BuildTicket(Guid tenantId, Guid userId)
@@ -168,8 +263,10 @@ public sealed class TenantSessionRlsIntegrationTests : IAsyncLifetime
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<EfAuthRepository>();
         services.AddScoped<ISessionRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
+        services.AddScoped<IUserRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
         services.AddScoped<ITenantRepository, EfTenantRepository>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
+        services.AddScoped<IPermissionResolver, NoOpPermissionResolver>();
 
         return services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
     }
@@ -224,5 +321,11 @@ public sealed class TenantSessionRlsIntegrationTests : IAsyncLifetime
         var tenant = await db.Tenants.SingleAsync(t => t.Id == tenantId);
         tenant.Status = status;
         await db.SaveChangesAsync();
+    }
+
+    private sealed class NoOpPermissionResolver : IPermissionResolver
+    {
+        public Task<List<string>> ResolveAsync(Guid userId, Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult(new List<string>());
     }
 }

@@ -184,7 +184,7 @@ public sealed class ApplyRoleTemplateCommandHandler
         var toRemove = existingRps.Where(rp => !requestedSet.Contains(rp.PermissionId)).ToList();
         var toAdd = requestedPermIds
             .Where(id => !existingPermIds.Contains(id))
-            .Select(id => new RolePermission { RoleId = role.Id, PermissionId = id })
+            .Select(id => new RolePermission { TenantId = request.TenantId, RoleId = role.Id, PermissionId = id })
             .ToList();
 
         if (toRemove.Count > 0)
