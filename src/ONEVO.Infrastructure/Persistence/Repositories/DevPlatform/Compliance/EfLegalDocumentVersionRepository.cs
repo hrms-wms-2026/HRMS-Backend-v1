@@ -42,4 +42,55 @@ public class EfLegalDocumentVersionRepository : ILegalDocumentVersionRepository
     {
         await _db.LegalDocumentVersions.AddAsync(entity, ct);
     }
+
+    public async Task<IReadOnlyList<LegalDocumentVersion>> ListAsync(
+        string? documentType, string? status, CancellationToken ct = default)
+    {
+        var query = _db.LegalDocumentVersions.AsNoTracking().AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(documentType))
+        {
+            query = query.Where(x => x.DocumentType == documentType);
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = query.Where(x => x.Status == status);
+        }
+
+        var results = await query
+            .OrderByDescending(x => x.CreatedAt)
+            .ToListAsync(ct);
+
+        return results;
+    }
+
+    public async Task<LegalDocumentVersion?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        var entity = await _db.LegalDocumentVersions
+            .FirstOrDefaultAsync(x => x.Id == id, ct);
+
+        return entity;
+    }
+
+    public async Task<LegalDocumentVersion?> GetPublishedAsync(
+        string documentType, string version, CancellationToken ct = default)
+    {
+        var entity = await _db.LegalDocumentVersions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x => x.DocumentType == documentType && x.Version == version && x.Status == "published",
+                ct);
+
+        return entity;
+    }
+
+    public async Task<LegalDocumentVersion?> GetCurrentPublishedByDocumentTypeAsync(
+        string documentType, CancellationToken ct = default)
+    {
+        var entity = await _db.LegalDocumentVersions
+            .FirstOrDefaultAsync(x => x.DocumentType == documentType && x.Status == "published", ct);
+
+        return entity;
+    }
 }

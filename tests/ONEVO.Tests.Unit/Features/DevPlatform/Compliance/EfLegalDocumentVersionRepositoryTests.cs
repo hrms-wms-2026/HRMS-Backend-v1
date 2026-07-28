@@ -64,6 +64,88 @@ public sealed class EfLegalDocumentVersionRepositoryTests
         result[0].DocumentType.Should().Be("biometric_photo_consent");
     }
 
+    [Fact]
+    public async Task ListAsync_FiltersByDocumentTypeAndStatus()
+    {
+        await using var db = BuildInMemoryDb();
+
+        var draftTerms = BuildVersion("terms", "dashboard");
+        draftTerms.Status = "draft";
+        var publishedTerms = BuildVersion("terms", "dashboard");
+        var publishedPrivacy = BuildVersion("privacy_notice", "dashboard");
+
+        db.LegalDocumentVersions.AddRange(draftTerms, publishedTerms, publishedPrivacy);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalDocumentVersionRepository(db, BuildClock());
+
+        var result = await repository.ListAsync("terms", "published", CancellationToken.None);
+
+        result.Should().ContainSingle();
+        result[0].Id.Should().Be(publishedTerms.Id);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_ReturnsTrackedEntity_ForMutation()
+    {
+        await using var db = BuildInMemoryDb();
+
+        var version = BuildVersion("terms", "dashboard");
+        db.LegalDocumentVersions.Add(version);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalDocumentVersionRepository(db, BuildClock());
+
+        var found = await repository.GetByIdAsync(version.Id, CancellationToken.None);
+        found.Should().NotBeNull();
+        found!.Title = "Changed";
+        await db.SaveChangesAsync();
+
+        db.ChangeTracker.Clear();
+        var reloaded = await db.LegalDocumentVersions.FindAsync(version.Id);
+        reloaded!.Title.Should().Be("Changed");
+    }
+
+    [Theory]
+    [InlineData("draft")]
+    [InlineData("archived")]
+    public async Task GetPublishedAsync_ReturnsNull_WhenStatusIsNotPublished(string status)
+    {
+        await using var db = BuildInMemoryDb();
+
+        var version = BuildVersion("terms", "dashboard");
+        version.Status = status;
+        db.LegalDocumentVersions.Add(version);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalDocumentVersionRepository(db, BuildClock());
+
+        var found = await repository.GetPublishedAsync("terms", "1.0", CancellationToken.None);
+
+        found.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetCurrentPublishedByDocumentTypeAsync_ReturnsPublishedRow()
+    {
+        await using var db = BuildInMemoryDb();
+
+        var published = BuildVersion("terms", "dashboard");
+        db.LegalDocumentVersions.Add(published);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalDocumentVersionRepository(db, BuildClock());
+
+        var found = await repository.GetCurrentPublishedByDocumentTypeAsync("terms", CancellationToken.None);
+
+        found.Should().NotBeNull();
+        found!.Id.Should().Be(published.Id);
+    }
+
     private static LegalDocumentVersion BuildVersion(string documentType, string blockScope)
     {
         return new LegalDocumentVersion

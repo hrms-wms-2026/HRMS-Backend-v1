@@ -17,12 +17,12 @@ namespace ONEVO.Tests.Unit.Features.Auth.Legal;
 public class LegalAcceptanceInfrastructureTests
 {
     [Fact]
-    public void LegalDocumentVersion_HasExact13ApprovedColumns()
+    public void LegalDocumentVersion_HasExact17ApprovedColumns()
     {
         var properties = typeof(LegalDocumentVersion).GetProperties(BindingFlags.Public | BindingFlags.Instance);
-        
-        properties.Length.Should().Be(13);
-        
+
+        properties.Length.Should().Be(17);
+
         var names = properties.Select(p => p.Name).ToList();
         names.Should().Contain(nameof(LegalDocumentVersion.Id));
         names.Should().Contain(nameof(LegalDocumentVersion.DocumentType));
@@ -37,6 +37,10 @@ public class LegalAcceptanceInfrastructureTests
         names.Should().Contain(nameof(LegalDocumentVersion.PublishReason));
         names.Should().Contain(nameof(LegalDocumentVersion.CreatedAt));
         names.Should().Contain(nameof(LegalDocumentVersion.UpdatedAt));
+        names.Should().Contain(nameof(LegalDocumentVersion.ContentJson));
+        names.Should().Contain(nameof(LegalDocumentVersion.ContentHtml));
+        names.Should().Contain(nameof(LegalDocumentVersion.ContentText));
+        names.Should().Contain(nameof(LegalDocumentVersion.ContentHash));
     }
 
     [Fact]
@@ -143,6 +147,22 @@ public class LegalAcceptanceInfrastructureTests
             _versions.Add(entity);
             return Task.CompletedTask;
         }
+
+        public Task<IReadOnlyList<LegalDocumentVersion>> ListAsync(string? documentType, string? status, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<LegalDocumentVersion>>(_versions
+                .Where(v => documentType == null || v.DocumentType == documentType)
+                .Where(v => status == null || v.Status == status)
+                .ToList());
+
+        public Task<LegalDocumentVersion?> GetByIdAsync(Guid id, CancellationToken ct = default)
+            => Task.FromResult(_versions.FirstOrDefault(v => v.Id == id));
+
+        public Task<LegalDocumentVersion?> GetPublishedAsync(string documentType, string version, CancellationToken ct = default)
+            => Task.FromResult(_versions.FirstOrDefault(
+                v => v.DocumentType == documentType && v.Version == version && v.Status == "published"));
+
+        public Task<LegalDocumentVersion?> GetCurrentPublishedByDocumentTypeAsync(string documentType, CancellationToken ct = default)
+            => Task.FromResult(_versions.FirstOrDefault(v => v.DocumentType == documentType && v.Status == "published"));
     }
 
     private class TestAcceptanceRepository : ONEVO.Application.Features.Auth.Legal.RepositoryInterfaces.ILegalAcceptanceRepository

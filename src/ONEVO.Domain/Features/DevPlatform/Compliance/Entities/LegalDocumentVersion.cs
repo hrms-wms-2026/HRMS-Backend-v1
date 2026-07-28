@@ -15,4 +15,8 @@ public class LegalDocumentVersion
     public string? PublishReason { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public string ContentJson { get; set; } = string.Empty;
+    public string ContentHtml { get; set; } = string.Empty;
+    public string ContentText { get; set; } = string.Empty;
+    public string ContentHash { get; set; } = string.Empty;
 }

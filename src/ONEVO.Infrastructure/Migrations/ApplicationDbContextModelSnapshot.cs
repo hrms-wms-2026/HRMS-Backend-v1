@@ -1282,6 +1282,27 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(40)")
                         .HasColumnName("block_scope");
 
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("content_hash");
+
+                    b.Property<string>("ContentHtml")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("content_html");
+
+                    b.Property<string>("ContentJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("content_json");
+
+                    b.Property<string>("ContentText")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("content_text");
+
                     b.Property<string>("ContentUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
@@ -1337,6 +1358,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_legal_document_versions");
+
+                    b.HasIndex("ContentHash")
+                        .HasDatabaseName("ix_legal_document_versions_content_hash");
 
                     b.HasIndex("DocumentType")
                         .IsUnique()
