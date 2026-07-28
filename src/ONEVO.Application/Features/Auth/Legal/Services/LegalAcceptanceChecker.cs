@@ -60,7 +60,9 @@ public class LegalAcceptanceChecker : ILegalAcceptanceChecker
                     Version: requiredVer.Version,
                     Title: requiredVer.Title,
                     EffectiveAt: requiredVer.PublishedAt,
-                    ContentUrl: requiredVer.ContentUrl));
+                    ContentUrl: requiredVer.ContentUrl,
+                    ContentEndpoint: $"/api/v1/legal/documents/{requiredVer.DocumentType}/{requiredVer.Version}",
+                    ContentHash: requiredVer.ContentHash));
             }
         }
 

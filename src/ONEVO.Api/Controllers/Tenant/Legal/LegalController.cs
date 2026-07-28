@@ -55,7 +55,7 @@ public class LegalController : ControllerBase
         var ua = Request.Headers.UserAgent.ToString();
 
         var items = request.Acceptances?
-            .Select(x => new LegalAcceptanceItemInput(x.DocumentType, x.Version, x.Decision))
+            .Select(x => new LegalAcceptanceItemInput(x.DocumentType, x.Version, x.Decision, x.ContentHash))
             .ToList() ?? [];
 
         var command = new SubmitLegalAcceptanceCommand(items, ip, ua);
@@ -70,7 +70,8 @@ public class LegalController : ControllerBase
     public record AcceptanceItemRequest(
         [property: JsonPropertyName("document_type")] string DocumentType,
         [property: JsonPropertyName("version")] string Version,
-        [property: JsonPropertyName("decision")] string Decision
+        [property: JsonPropertyName("decision")] string Decision,
+        [property: JsonPropertyName("content_hash")] string? ContentHash = null
     );
 
     public record SubmitAcceptancesRequest(

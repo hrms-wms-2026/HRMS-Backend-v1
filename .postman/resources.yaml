@@ -1,9 +1,8 @@
-# Use this workspace to collaborate
 workspace:
   id: 8b3d0488-8471-417e-98a0-71a7ed889e4f
-
-# All resources in the `postman/` folder are automatically registered in Local View.
-# Point to additional files outside the `postman/` folder to register them individually. Example:
-#localResources:
-#  collections:
-#    - ../tests/E2E Test Collection/
+cloudResources:
+  collections:
+    ../postman/collections/ONEVO Developer Platform API: 49350681-4dfe60eb-f982-407e-ba25-05cf734993d4
+    ../postman/collections/ONEVO Organization Admin API: 49350681-47a8ae07-b96d-44bf-868b-bbe9a47c6b8c
+  environments:
+    ../postman/environments/New Environment.environment.yaml: 49350681-15a38cab-0464-4353-95f2-6ffe227e29ef

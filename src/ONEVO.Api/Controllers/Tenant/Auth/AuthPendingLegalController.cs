@@ -43,7 +43,7 @@ public class AuthPendingLegalController : ControllerBase
         var ua = Request.Headers.UserAgent.ToString();
 
         var items = request.Acceptances
-            .Select(x => new LegalAcceptanceItemInput(x.DocumentType, x.Version, x.Decision))
+            .Select(x => new LegalAcceptanceItemInput(x.DocumentType, x.Version, x.Decision, x.ContentHash))
             .ToList();
 
         var result = await _mediator.Send(

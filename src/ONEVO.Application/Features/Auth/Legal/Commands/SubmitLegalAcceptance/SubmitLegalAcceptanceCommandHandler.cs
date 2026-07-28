@@ -7,7 +7,7 @@ using ONEVO.Domain.Features.Auth.Entities;
 
 namespace ONEVO.Application.Features.Auth.Legal.Commands.SubmitLegalAcceptance;
 
-public record LegalAcceptanceItemInput(string DocumentType, string Version, string Decision);
+public record LegalAcceptanceItemInput(string DocumentType, string Version, string Decision, string? ContentHash = null);
 
 public record SubmitLegalAcceptanceCommand(
     IReadOnlyList<LegalAcceptanceItemInput> Acceptances,
@@ -81,6 +81,14 @@ public class SubmitLegalAcceptanceCommandHandler : IRequestHandler<SubmitLegalAc
             if (!docVer.IsRequired)
             {
                 return Result<bool>.Failure($"Document version '{item.Version}' is not a required document.", 400);
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.ContentHash)
+                && !string.Equals(item.ContentHash, docVer.ContentHash, StringComparison.OrdinalIgnoreCase))
+            {
+                return Result<bool>.Failure(
+                    $"content_hash for '{item.DocumentType}' version '{item.Version}' does not match the current published content.",
+                    409);
             }
 
             if (!docVer.PublishedAt.HasValue)

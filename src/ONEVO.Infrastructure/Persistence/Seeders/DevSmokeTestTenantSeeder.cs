@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Compliance.Helpers;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities;
@@ -616,6 +617,10 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 Status = "published",
                 PublishedAt = now,
                 PublishReason = "Development smoke-test baseline document.",
+                ContentJson = LegalDocumentBootstrapContent.TermsJson,
+                ContentHtml = LegalDocumentBootstrapContent.TermsHtml,
+                ContentText = LegalDocumentBootstrapContent.TermsText,
+                ContentHash = LegalContentHasher.ComputeHash(LegalDocumentBootstrapContent.TermsHtml),
                 CreatedAt = now,
                 UpdatedAt = now
             });
@@ -636,6 +641,10 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 Status = "published",
                 PublishedAt = now,
                 PublishReason = "Development smoke-test baseline document.",
+                ContentJson = LegalDocumentBootstrapContent.PrivacyJson,
+                ContentHtml = LegalDocumentBootstrapContent.PrivacyHtml,
+                ContentText = LegalDocumentBootstrapContent.PrivacyText,
+                ContentHash = LegalContentHasher.ComputeHash(LegalDocumentBootstrapContent.PrivacyHtml),
                 CreatedAt = now,
                 UpdatedAt = now
             });

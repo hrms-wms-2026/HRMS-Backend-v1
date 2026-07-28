@@ -64,6 +64,14 @@ public sealed class LegalAcceptanceSubmissionService : ILegalAcceptanceSubmissio
                     400);
             }
 
+            if (!string.IsNullOrWhiteSpace(item.ContentHash)
+                && !string.Equals(item.ContentHash, current.ContentHash, StringComparison.OrdinalIgnoreCase))
+            {
+                return Result<bool>.Failure(
+                    $"content_hash for '{item.DocumentType}' version '{item.Version}' does not match the current published content.",
+                    409);
+            }
+
             var validDecision =
                 string.Equals(item.Decision, "accepted", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(item.Decision, "acknowledged", StringComparison.OrdinalIgnoreCase);

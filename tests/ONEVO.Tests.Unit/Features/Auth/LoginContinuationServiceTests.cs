@@ -239,7 +239,7 @@ public sealed class LoginContinuationServiceTests
         fixture.Tenants.Setup(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
         fixture.Users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         fixture.UserMfas.Setup(m => m.GetTotpAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync((UserMfa?)null);
-        var pendingDocs = new[] { new PendingLegalDocumentDto("terms", "v2", "Terms", null, null) };
+        var pendingDocs = new[] { new PendingLegalDocumentDto("terms", "v2", "Terms", null, null, "/api/v1/legal/documents/terms/v2", "hash") };
         fixture.LegalChecker
             .Setup(c => c.CheckAsync(tenant.Id, user.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegalAcceptanceCheckResult(LegalAcceptanceStatus.Pending, false, pendingDocs));

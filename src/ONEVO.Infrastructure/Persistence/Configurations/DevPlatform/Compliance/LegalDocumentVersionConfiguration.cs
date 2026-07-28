@@ -21,6 +21,11 @@ public class LegalDocumentVersionConfiguration : IEntityTypeConfiguration<LegalD
         builder.Property(x => x.Status).HasMaxLength(20).IsRequired();
         builder.Property(x => x.PublishReason);
 
+        builder.Property(x => x.ContentJson).HasColumnType("jsonb").IsRequired();
+        builder.Property(x => x.ContentHtml).HasColumnType("text").IsRequired();
+        builder.Property(x => x.ContentText).HasColumnType("text").IsRequired();
+        builder.Property(x => x.ContentHash).HasMaxLength(128).IsRequired();
+
         builder.HasIndex(x => new { x.DocumentType, x.Version }).IsUnique();
 
         builder.HasIndex(x => x.DocumentType)
@@ -29,6 +34,9 @@ public class LegalDocumentVersionConfiguration : IEntityTypeConfiguration<LegalD
             .HasFilter("status = 'published'");
 
         builder.HasIndex(x => new { x.DocumentType, x.Status, x.IsRequired, x.PublishedAt });
+
+        builder.HasIndex(x => x.ContentHash)
+            .HasDatabaseName("ix_legal_document_versions_content_hash");
 
         builder.HasOne<PlatformUser>()
             .WithMany()

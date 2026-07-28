@@ -14,7 +14,9 @@ public record PendingLegalDocumentDto(
     [property: JsonPropertyName("version")] string Version,
     [property: JsonPropertyName("title")] string Title,
     [property: JsonPropertyName("effective_at")] DateTimeOffset? EffectiveAt,
-    [property: JsonPropertyName("content_url")] string? ContentUrl
+    [property: JsonPropertyName("content_url")] string? ContentUrl,
+    [property: JsonPropertyName("content_endpoint")] string ContentEndpoint,
+    [property: JsonPropertyName("content_hash")] string ContentHash
 );
 
 public record LegalAcceptanceCheckResult(
