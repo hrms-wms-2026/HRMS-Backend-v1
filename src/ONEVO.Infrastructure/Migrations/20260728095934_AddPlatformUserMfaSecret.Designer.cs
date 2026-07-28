@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ONEVO.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260728095934_AddPlatformUserMfaSecret")]
+    partial class AddPlatformUserMfaSecret
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1282,27 +1285,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(40)")
                         .HasColumnName("block_scope");
 
-                    b.Property<string>("ContentHash")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasColumnName("content_hash");
-
-                    b.Property<string>("ContentHtml")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("content_html");
-
-                    b.Property<string>("ContentJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("content_json");
-
-                    b.Property<string>("ContentText")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("content_text");
-
                     b.Property<string>("ContentUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
@@ -1358,9 +1340,6 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_legal_document_versions");
-
-                    b.HasIndex("ContentHash")
-                        .HasDatabaseName("ix_legal_document_versions_content_hash");
 
                     b.HasIndex("DocumentType")
                         .IsUnique()

@@ -19,6 +19,7 @@ public sealed class AdminLoginCommandHandlerTests
     private readonly Mock<IPasswordHasher> _passwordHasher = new();
     private readonly Mock<IPlatformPermissionResolver> _resolver = new();
     private readonly Mock<IPlatformAuthEventRepository> _authEvents = new();
+    private readonly Mock<IPlatformMfaChallengeStore> _mfaChallenges = new();
     private readonly Mock<IUnitOfWork> _uow = new();
     private readonly List<PlatformAuthEvent> _writtenEvents = [];
     private readonly DateTimeOffset _now = new(2026, 7, 12, 8, 0, 0, TimeSpan.Zero);
@@ -135,6 +136,30 @@ public sealed class AdminLoginCommandHandlerTests
         json.Should().NotContain("hashed-csrf");
     }
 
+    [Fact]
+    public async Task Handle_MfaEnrolledUser_ReturnsChallengeInsteadOfSession()
+    {
+        var setup = SetupActiveUserAndCredential();
+        setup.User.MfaStatus = PlatformUser.MfaEnrolled;
+        _passwordHasher.Setup(value => value.Verify("correct", "stored-hash")).Returns(true);
+        _mfaChallenges
+            .Setup(value => value.CreateAsync(setup.User.Id, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("raw-mfa-challenge");
+
+        var result = await Handler().Handle(
+            new AdminLoginCommand(setup.User.Email, "correct"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.RequiresMfa.Should().BeTrue();
+        result.Value!.MfaSessionToken.Should().Be("raw-mfa-challenge");
+        result.Value!.CsrfToken.Should().BeEmpty();
+        result.Value!.PlatformUserId.Should().Be(Guid.Empty);
+        var sessionResponse = result.Value!.ToSessionResponse();
+        sessionResponse.MfaRequired.Should().BeTrue();
+        sessionResponse.Email.Should().BeEmpty();
+    }
+
     private AdminLoginCommandHandler Handler()
     {
         return new AdminLoginCommandHandler(
@@ -145,6 +170,7 @@ public sealed class AdminLoginCommandHandlerTests
             _passwordHasher.Object,
             _resolver.Object,
             _authEvents.Object,
+            _mfaChallenges.Object,
             _uow.Object);
     }
 

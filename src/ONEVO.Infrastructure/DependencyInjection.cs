@@ -228,6 +228,10 @@ public static class DependencyInjection
         services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
         // Runtime MFA challenge storage is always the PostgreSQL-backed mfa_challenges table.
         services.AddScoped<IMfaChallengeStore, PostgresMfaChallengeStore>();
+        // Admin/platform MFA challenge storage — in-memory for now (v1), no PostgreSQL-backed
+        // equivalent yet. Fine for a single-instance local/dev deployment; revisit before running
+        // multiple API instances behind a load balancer.
+        services.AddScoped<IPlatformMfaChallengeStore, MemoryPlatformMfaChallengeStore>();
         services.AddScoped<IBaseLoginCandidateRepository, EfBaseLoginCandidateRepository>();
         services.AddScoped<ILoginWorkspaceSelectionChallengeRepository, EfLoginWorkspaceSelectionChallengeRepository>();
         services.AddScoped<IBaseLoginFixedWorkVerifier, BaseLoginFixedWorkVerifier>();
