@@ -23,6 +23,8 @@ public class GetDailySummaryQueryHandler
             summary.TotalActiveMinutes, summary.TotalIdleMinutes, summary.TotalMeetingMinutes,
             summary.ActivePercentage, summary.ProductiveAppMinutes, summary.PersonalAppMinutes,
             summary.ActivityScore, summary.TopAppsJson, summary.IntensityAvg,
-            summary.KeyboardTotal, summary.MouseTotal));
+            summary.KeyboardTotal, summary.MouseTotal,
+            summary.ScreenshotDeniedCount,
+            summary.HasConsentDenialNotice));
     }
 }

@@ -18,7 +18,16 @@ public class AgentLogoutCommandHandler : IRequestHandler<AgentLogoutCommand, Res
 
     public async Task<Result> Handle(AgentLogoutCommand request, CancellationToken cancellationToken)
     {
-        await _repo.EndActiveSessionAsync(request.DeviceId, DateTimeOffset.UtcNow, cancellationToken);
+        var agent = await _repo.GetAgentByIdAsync(
+            request.AgentId,
+            cancellationToken);
+        if (agent is null)
+            return Result.NotFound("Agent not found.");
+
+        await _repo.EndActiveSessionAsync(
+            agent.DeviceId,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
         await _uow.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }

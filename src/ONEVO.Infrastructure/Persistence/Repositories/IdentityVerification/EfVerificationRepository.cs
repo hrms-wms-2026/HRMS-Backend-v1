@@ -43,6 +43,21 @@ public sealed class EfVerificationRepository : IVerificationRepository
                 profile => profile.EmployeeId == employeeId && profile.Status == "active",
                 ct);
 
+    public Task<GdprConsentRecord?> GetLatestConsentAsync(
+        Guid tenantId,
+        Guid userId,
+        string consentType,
+        CancellationToken ct) =>
+        _db.GdprConsentRecords
+            .AsNoTracking()
+            .Where(consent =>
+                consent.TenantId == tenantId &&
+                consent.UserId == userId &&
+                consent.ConsentType == consentType)
+            .OrderByDescending(consent => consent.ConsentedAt)
+            .ThenByDescending(consent => consent.Id)
+            .FirstOrDefaultAsync(ct);
+
     public Task<EmployeeRemoteWorkProfile?> GetRemoteProfileAsync(
         Guid id, CancellationToken ct) =>
         _db.EmployeeRemoteWorkProfiles.SingleOrDefaultAsync(profile => profile.Id == id, ct);
@@ -52,6 +67,20 @@ public sealed class EfVerificationRepository : IVerificationRepository
         _db.RemoteWorkLocationChangeRequests.SingleOrDefaultAsync(
             request => request.EmployeeId == employeeId && request.Status == "pending",
             ct);
+
+    public async Task<IReadOnlyList<RemoteWorkLocationChangeRequest>>
+        GetPendingRemoteChangesAsync(
+            int skip,
+            int take,
+            CancellationToken ct) =>
+        await _db.RemoteWorkLocationChangeRequests
+            .AsNoTracking()
+            .Where(request => request.Status == "pending")
+            .OrderBy(request => request.RequestedAt)
+            .ThenBy(request => request.Id)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(ct);
 
     public Task<RemoteWorkLocationChangeRequest?> GetRemoteChangeRequestAsync(
         Guid id, CancellationToken ct) =>

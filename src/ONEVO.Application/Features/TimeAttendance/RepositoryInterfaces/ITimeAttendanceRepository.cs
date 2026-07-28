@@ -28,6 +28,8 @@ public interface ITimeAttendanceRepository
     Task AddBreakAsync(BreakRecord record, CancellationToken ct);
     Task<WorkAreaChangeRequest?> GetPendingWorkAreaChangeAsync(
         Guid employeeId, DateOnly date, CancellationToken ct);
+    Task<IReadOnlyList<WorkAreaChangeRequest>> GetPendingWorkAreaChangesAsync(
+        int skip, int take, CancellationToken ct);
     Task<WorkAreaChangeRequest?> GetWorkAreaChangeAsync(Guid id, CancellationToken ct);
     Task AddWorkAreaChangeAsync(WorkAreaChangeRequest request, CancellationToken ct);
 }

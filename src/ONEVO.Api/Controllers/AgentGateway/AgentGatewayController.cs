@@ -6,15 +6,23 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Application.Features.AgentGateway.Commands.AgentLogin;
 using ONEVO.Application.Features.AgentGateway.Commands.AgentLogout;
 using ONEVO.Application.Features.AgentGateway.Commands.CaptureSetupLocation;
+using ONEVO.Application.Features.AgentGateway.Commands.CompleteScreenshotCommand;
 using ONEVO.Application.Features.AgentGateway.Commands.CompleteEnrollment;
 using ONEVO.Application.Features.AgentGateway.Commands.ConfirmEnrollment;
 using ONEVO.Application.Features.AgentGateway.Commands.IngestBatch;
 using ONEVO.Application.Features.AgentGateway.Commands.StartEnrollment;
+using ONEVO.Application.Features.AgentGateway.Commands.RespondAgentCommand;
+using ONEVO.Application.Features.AgentGateway.Commands.RecordMonitoringConsent;
+using ONEVO.Application.Features.AgentGateway.Commands.RecordConsentEvent;
 using ONEVO.Application.Features.AgentGateway.Commands.UpdateHeartbeat;
 using ONEVO.Application.Features.AgentGateway.Queries.GetAgentPolicy;
+using ONEVO.Application.Features.AgentGateway.Queries.GetPendingAgentCommands;
 using ONEVO.Application.Features.AgentGateway.Queries.GetAgentSetupStatus;
+using ONEVO.Application.Features.AgentGateway.Queries.GetAgentWorkContext;
 using ONEVO.Application.Features.AgentGateway.Queries.GetDeviceChangeStatus;
 using ONEVO.Application.Features.AgentGateway.Location;
+using ONEVO.Application.Features.IdentityVerification.Commands.EnrollReferencePhoto;
+using ONEVO.Application.Features.IdentityVerification.Commands.VerifyFace;
 
 namespace ONEVO.Api.Controllers.AgentGateway;
 
@@ -118,7 +126,7 @@ public class AgentGatewayController : ControllerBase
     /// Resume/refresh employee-device session on an enrolled agent.
     /// </summary>
     [HttpPost("login")]
-    [Authorize(Policy = "ActiveAgentPolicy")]
+    [Authorize(Policy = "AgentPolicy")]
     public async Task<IActionResult> Login(CancellationToken ct)
     {
         var agentId = GetAgentId();
@@ -143,8 +151,11 @@ public class AgentGatewayController : ControllerBase
     [Authorize(Policy = "ActiveAgentPolicy")]
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
-        var deviceId = User.FindFirst("sub")?.Value ?? string.Empty;
-        var result = await _mediator.Send(new AgentLogoutCommand(deviceId), ct);
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty)
+            return Unauthorized();
+
+        var result = await _mediator.Send(new AgentLogoutCommand(agentId), ct);
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
         return Ok();
@@ -169,13 +180,19 @@ public class AgentGatewayController : ControllerBase
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
+        var pendingCommands = await _mediator.Send(
+            new GetPendingAgentCommandsQuery(agentId, 20),
+            ct);
+        var pendingCount = pendingCommands.IsSuccess
+            ? pendingCommands.Value!.Count
+            : 0;
         return Ok(new
         {
             status = "ok",
             update_available = false,
             update_url = (string?)null,
-            has_pending_commands = false,
-            pending_command_count = 0
+            has_pending_commands = pendingCount > 0,
+            pending_command_count = pendingCount
         });
     }
 
@@ -196,8 +213,76 @@ public class AgentGatewayController : ControllerBase
         return Ok(new
         {
             agent_id = agentId,
-            policy_json = result.Value
+            policy = result.Value,
+            // Temporary compatibility field for an older tray build that
+            // expects the effective policy as an encoded JSON string.
+            policy_json = JsonSerializer.Serialize(result.Value)
         });
+    }
+
+    /// <summary>
+    /// Authoritative server-side work context: schedule, monitoring state, effective policy.
+    /// Agent reconciles local state against this on startup and after reconnect.
+    /// </summary>
+    [HttpGet("work-context")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
+    public async Task<IActionResult> GetWorkContext(CancellationToken ct)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty) return Unauthorized();
+
+        var result = await _mediator.Send(new GetAgentWorkContextQuery(agentId), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
+    }
+
+    [HttpPost("monitoring-consent")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
+    public async Task<IActionResult> RecordMonitoringConsent(
+        [FromBody] MonitoringConsentRequest request,
+        CancellationToken ct)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty)
+            return Unauthorized();
+
+        var result = await _mediator.Send(
+            new RecordMonitoringConsentCommand(
+                agentId,
+                request.Consented,
+                request.NoticeVersion),
+            ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Records a per-incident screenshot consent decision (allowed / denied / timeout /
+    /// upload_failed_no_image). Idempotent — first terminal decision wins.
+    /// </summary>
+    [HttpPost("consent-events")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
+    public async Task<IActionResult> RecordConsentEvent(
+        [FromBody] ConsentEventRequest request,
+        CancellationToken ct)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty) return Unauthorized();
+
+        var tenantId = GetTenantId();
+        if (tenantId == Guid.Empty) return Unauthorized();
+
+        var result = await _mediator.Send(
+            new RecordConsentEventCommand(tenantId, agentId, request.IncidentId, request.Decision, request.OccurredAt),
+            ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok();
     }
 
     /// <summary>
@@ -269,6 +354,64 @@ public class AgentGatewayController : ControllerBase
         });
     }
 
+    [HttpPost("setup/reference-photo")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public async Task<IActionResult> EnrollReferencePhoto(
+        [FromForm] IFormFile photo,
+        [FromForm] string noticeVersion,
+        CancellationToken ct)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty)
+            return Unauthorized();
+        if (photo is null || photo.Length <= 0)
+            return BadRequest(new { error = "Reference photo is required." });
+
+        await using var stream = photo.OpenReadStream();
+        var result = await _mediator.Send(
+            new EnrollReferencePhotoCommand(
+                agentId,
+                noticeVersion,
+                photo.FileName,
+                photo.ContentType,
+                stream),
+            ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
+    }
+
+    [HttpPost("verification/face")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public async Task<IActionResult> VerifyFace(
+        [FromForm] IFormFile photo,
+        [FromForm] string trigger,
+        CancellationToken ct)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty)
+            return Unauthorized();
+        if (photo is null || photo.Length <= 0)
+            return BadRequest(new { error = "Verification photo is required." });
+
+        await using var stream = photo.OpenReadStream();
+        var result = await _mediator.Send(
+            new VerifyFaceCommand(
+                agentId,
+                trigger,
+                photo.FileName,
+                photo.ContentType,
+                stream),
+            ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
+    }
+
     /// <summary>
     /// Accepts a batch of activity events from the agent. Stored raw for async processing.
     /// Returns 202 immediately.
@@ -291,6 +434,74 @@ public class AgentGatewayController : ControllerBase
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
         return Accepted();
+    }
+
+    [HttpGet("commands")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
+    public async Task<IActionResult> GetCommands(
+        [FromQuery] int limit = 10,
+        CancellationToken ct = default)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty)
+            return Unauthorized();
+
+        var result = await _mediator.Send(
+            new GetPendingAgentCommandsQuery(agentId, limit),
+            ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(new { commands = result.Value });
+    }
+
+    [HttpPost("commands/{id:guid}/response")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
+    public async Task<IActionResult> RespondToCommand(
+        Guid id,
+        [FromBody] AgentCommandResponseRequest request,
+        CancellationToken ct)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty)
+            return Unauthorized();
+
+        var result = await _mediator.Send(new RespondAgentCommand(
+            agentId,
+            id,
+            request.Decision,
+            request.ConsentNoticeVersion), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
+    }
+
+    [HttpPost("commands/{id:guid}/screenshot")]
+    [Authorize(Policy = "ActiveAgentPolicy")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public async Task<IActionResult> CompleteScreenshot(
+        Guid id,
+        [FromForm] IFormFile screenshot,
+        CancellationToken ct)
+    {
+        var agentId = GetAgentId();
+        if (agentId == Guid.Empty)
+            return Unauthorized();
+        if (screenshot is null || screenshot.Length <= 0)
+            return BadRequest(new { error = "Screenshot file is required." });
+
+        await using var stream = screenshot.OpenReadStream();
+        var result = await _mediator.Send(new CompleteScreenshotCommand(
+            agentId,
+            id,
+            screenshot.FileName,
+            screenshot.ContentType,
+            stream), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
     }
 
     /// <summary>
@@ -364,8 +575,19 @@ public class AgentGatewayController : ControllerBase
         bool VpnDetected);
 
     public record IngestBatchRequest(
-        Guid DeviceId,
-        Guid EmployeeId,
         DateTimeOffset Timestamp,
         JsonElement[] Batch);
+
+    public sealed record AgentCommandResponseRequest(
+        string Decision,
+        string ConsentNoticeVersion);
+
+    public sealed record MonitoringConsentRequest(
+        bool Consented,
+        string NoticeVersion);
+
+    public sealed record ConsentEventRequest(
+        Guid IncidentId,
+        string Decision,
+        DateTimeOffset OccurredAt);
 }

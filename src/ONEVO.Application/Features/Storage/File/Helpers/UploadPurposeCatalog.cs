@@ -10,6 +10,8 @@ public static class UploadPurposeCatalog
     public const string CompanyLogo = "company_logo";
     public const string EmployeeAvatar = "employee_avatar";
     public const string GenericDocument = "generic_document";
+    public const string MonitoringScreenshot = "monitoring_screenshot";
+    public const string IdentityVerificationPhoto = "identity_verification_photo";
 
     private static readonly IReadOnlyList<string> ImageContentTypes = new[]
     {
@@ -25,6 +27,14 @@ public static class UploadPurposeCatalog
     {
         [CompanyLogo] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [EmployeeAvatar] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
+        [MonitoringScreenshot] = new UploadPurposeRule(
+            5 * 1024 * 1024,
+            new[] { "image/png", "image/jpeg" },
+            new[] { ".png", ".jpg", ".jpeg" }),
+        [IdentityVerificationPhoto] = new UploadPurposeRule(
+            5 * 1024 * 1024,
+            new[] { "image/png", "image/jpeg" },
+            new[] { ".png", ".jpg", ".jpeg" }),
         [GenericDocument] = new UploadPurposeRule(
             25 * 1024 * 1024,
             new[]

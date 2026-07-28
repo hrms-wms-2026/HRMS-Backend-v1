@@ -13,4 +13,6 @@ public record ActivityDailySummaryDto(
     string TopAppsJson,
     decimal IntensityAvg,
     int KeyboardTotal,
-    int MouseTotal);
+    int MouseTotal,
+    int ScreenshotDeniedCount,
+    bool HasConsentDenialNotice);

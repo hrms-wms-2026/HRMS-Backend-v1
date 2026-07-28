@@ -177,6 +177,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<AgentWorkLocationEvidence> AgentWorkLocationEvidence => Set<AgentWorkLocationEvidence>();
 
     // Activity Monitoring
+    public DbSet<MonitoringConsentEvent> MonitoringConsentEvents => Set<MonitoringConsentEvent>();
     public DbSet<ActivitySnapshot> ActivitySnapshots => Set<ActivitySnapshot>();
     public DbSet<ApplicationUsage> ApplicationUsage => Set<ApplicationUsage>();
     public DbSet<MeetingSession> MeetingSessions => Set<MeetingSession>();

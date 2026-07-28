@@ -71,14 +71,75 @@ public class ActiveAgentAuthorizationHandlerTests
         Assert.False(await AuthorizeAsync(agent, agent.Id, tenantId));
     }
 
+    [Fact]
+    public async Task ActiveAgent_WithoutActiveEmployeeSession_IsDenied()
+    {
+        var tenantId = Guid.NewGuid();
+        var agent = new RegisteredAgent
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeId = Guid.NewGuid(),
+            DeviceId = "employee-device",
+            Status = "active"
+        };
+
+        Assert.False(await AuthorizeAsync(
+            agent,
+            agent.Id,
+            tenantId,
+            includeActiveSession: false));
+    }
+
+    [Fact]
+    public async Task ActiveAgent_WithSessionForDifferentEmployee_IsDenied()
+    {
+        var tenantId = Guid.NewGuid();
+        var agent = new RegisteredAgent
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeId = Guid.NewGuid(),
+            DeviceId = "employee-device",
+            Status = "active"
+        };
+        var session = new AgentSession
+        {
+            TenantId = tenantId,
+            DeviceId = agent.DeviceId,
+            EmployeeId = Guid.NewGuid(),
+            IsActive = true
+        };
+
+        Assert.False(await AuthorizeAsync(agent, agent.Id, tenantId, session));
+    }
+
     private static async Task<bool> AuthorizeAsync(
         RegisteredAgent? agent,
         Guid claimAgentId,
-        Guid claimTenantId)
+        Guid claimTenantId,
+        AgentSession? activeSession = null,
+        bool includeActiveSession = true)
     {
         var repo = new Mock<IAgentGatewayRepository>();
         repo.Setup(r => r.GetAgentByIdAsync(claimAgentId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
+        if (agent is not null)
+        {
+            activeSession ??= includeActiveSession && agent.EmployeeId.HasValue
+                ? new AgentSession
+                {
+                    TenantId = agent.TenantId,
+                    DeviceId = agent.DeviceId,
+                    EmployeeId = agent.EmployeeId.Value,
+                    IsActive = true
+                }
+                : null;
+            repo.Setup(r => r.GetActiveSessionByDeviceIdAsync(
+                    agent.DeviceId,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(activeSession);
+        }
 
         var requirement = new ActiveAgentRequirement();
         var principal = new ClaimsPrincipal(new ClaimsIdentity(

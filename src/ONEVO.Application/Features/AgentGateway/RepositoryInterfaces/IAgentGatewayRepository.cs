@@ -41,6 +41,18 @@ public interface IAgentGatewayRepository
     // Health logs (tenant-scoped)
     Task AddHealthLogAsync(AgentHealthLog log, CancellationToken ct);
 
+    // Durable commands (tenant and approved-agent scoped)
+    Task AddCommandAsync(AgentCommand command, CancellationToken ct);
+    Task<AgentCommand?> GetCommandByIdAsync(Guid commandId, CancellationToken ct);
+    Task<AgentCommand?> GetLatestCommandAsync(
+        Guid agentId, string commandType, CancellationToken ct);
+    Task<IReadOnlyList<AgentCommand>> GetPendingCommandsAsync(
+        Guid agentId, DateTimeOffset now, int take, CancellationToken ct);
+    Task<int> CountPendingCommandsAsync(
+        Guid agentId, DateTimeOffset now, CancellationToken ct);
+    Task<int> ExpireCommandsAsync(
+        Guid agentId, DateTimeOffset now, CancellationToken ct);
+
     // Activity raw buffer (tenant-scoped)
     Task AddRawActivityBatchAsync(ActivityRawBuffer batch, CancellationToken ct);
 

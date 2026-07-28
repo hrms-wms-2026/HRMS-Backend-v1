@@ -22,12 +22,21 @@ public sealed class ActiveAgentAuthorizationHandler
         }
 
         var agent = await _repo.GetAgentByIdAsync(agentId, CancellationToken.None);
-        if (agent is not null &&
-            agent.TenantId == tenantId &&
-            agent.EmployeeId.HasValue &&
-            string.Equals(agent.Status, "active", StringComparison.Ordinal))
-        {
-            context.Succeed(requirement);
-        }
+        if (agent is null ||
+            agent.TenantId != tenantId ||
+            !agent.EmployeeId.HasValue ||
+            !string.Equals(agent.Status, "active", StringComparison.Ordinal))
+            return;
+
+        var session = await _repo.GetActiveSessionByDeviceIdAsync(
+            agent.DeviceId,
+            CancellationToken.None);
+        if (session is null ||
+            !session.IsActive ||
+            session.TenantId != tenantId ||
+            session.EmployeeId != agent.EmployeeId.Value)
+            return;
+
+        context.Succeed(requirement);
     }
 }

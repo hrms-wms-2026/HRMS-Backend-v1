@@ -17,4 +17,8 @@ public interface IOutboxMessageHandler
 public static class OutboxMessageTypes
 {
     public const string TenantOwnerInviteEmail = "tenant_owner_invite_email";
+    public const string PresenceSessionStarted = "presence_session_started";
+    public const string PresenceSessionEnded = "presence_session_ended";
+    public const string PresenceBreakStarted = "presence_break_started";
+    public const string PresenceBreakEnded = "presence_break_ended";
 }

@@ -101,8 +101,15 @@ public sealed class EfActivityMonitoringRepository : IActivityMonitoringReposito
             existing.IntensityAvg = summary.IntensityAvg;
             existing.KeyboardTotal = summary.KeyboardTotal;
             existing.MouseTotal = summary.MouseTotal;
+            existing.ScreenshotDeniedCount = summary.ScreenshotDeniedCount;
+            existing.HasConsentDenialNotice = summary.HasConsentDenialNotice;
         }
     }
+
+    public async Task AddMonitoringEvidenceAsync(
+        MonitoringEvidenceAsset evidence,
+        CancellationToken ct) =>
+        await _db.MonitoringEvidenceAssets.AddAsync(evidence, ct);
 
     public Task<ActivityDailySummary?> GetDailySummaryAsync(Guid employeeId, DateOnly date, CancellationToken ct) =>
         _db.ActivityDailySummaries
@@ -132,6 +139,34 @@ public sealed class EfActivityMonitoringRepository : IActivityMonitoringReposito
             .Where(c => c.Id == id)
             .ExecuteDeleteAsync(ct);
         return rows > 0;
+    }
+
+    public async Task<bool> AddConsentEventAsync(MonitoringConsentEvent consent, CancellationToken ct)
+    {
+        var rows = await _db.Database.ExecuteSqlAsync(
+            $"""
+            INSERT INTO monitoring_consent_events
+                (id, tenant_id, employee_id, agent_device_id, incident_id, decision, occurred_at)
+            VALUES
+                ({consent.Id}, {consent.TenantId}, {consent.EmployeeId}, {consent.AgentDeviceId},
+                 {consent.IncidentId}, {consent.Decision}, {consent.OccurredAt})
+            ON CONFLICT (tenant_id, incident_id) DO NOTHING
+            """,
+            ct);
+        return rows > 0;
+    }
+
+    public async Task<IReadOnlyList<MonitoringConsentEvent>> GetConsentNoticesAsync(
+        Guid employeeId, DateOnly date, CancellationToken ct)
+    {
+        var startUtc = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var endUtc = new DateTimeOffset(date.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero);
+        return await _db.MonitoringConsentEvents
+            .Where(e => e.EmployeeId == employeeId
+                        && e.OccurredAt >= startUtc
+                        && e.OccurredAt <= endUtc)
+            .OrderBy(e => e.OccurredAt)
+            .ToListAsync(ct);
     }
 
     public async Task<int> DeleteRawBufferOlderThanAsync(DateTimeOffset cutoff, CancellationToken ct) =>

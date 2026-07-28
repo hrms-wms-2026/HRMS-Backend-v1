@@ -4,6 +4,8 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using ONEVO.Api.Controllers.AgentGateway;
+using ONEVO.Api.Controllers.ActivityMonitoring;
+using ONEVO.Api.Filters;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.AgentGateway.Entities;
@@ -58,6 +60,56 @@ public class TenantIsolationArchitectureTests
         Assert.DoesNotContain("EmployeeId", requestProperties);
         Assert.DoesNotContain("TenantId", requestProperties);
         Assert.DoesNotContain("PublicIp", requestProperties);
+    }
+
+    [Fact]
+    public void ActivityEndpoints_UseTenantPolicyAndExplicitMonitoringPermissions()
+    {
+        var controllerType = typeof(ActivityMonitoringController);
+        var controllerAuthorize = controllerType
+            .GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>()
+            .Single();
+        Assert.Equal("TenantPolicy", controllerAuthorize.Policy);
+
+        foreach (var methodName in new[]
+                 {
+                     "GetDailySummary",
+                     "GetSnapshots",
+                     "GetAppUsage",
+                     "GetMeetings",
+                     "GetMySummary",
+                     "GetMyAppUsage",
+                     "GetMyMeetings"
+                 })
+        {
+            var method = controllerType.GetMethod(methodName);
+            Assert.NotNull(method);
+            Assert.Single(method.GetCustomAttributes(
+                typeof(RequirePermissionAttribute),
+                true));
+        }
+    }
+
+    [Fact]
+    public void AgentIngestEndpoint_RequiresActiveAgentAndAcceptsNoAuthorityFields()
+    {
+        var controllerType = typeof(AgentGatewayController);
+        var method = controllerType.GetMethod("Ingest");
+        Assert.NotNull(method);
+        var authorize = method.GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>()
+            .Single();
+        Assert.Equal("ActiveAgentPolicy", authorize.Policy);
+
+        var requestProperties = typeof(AgentGatewayController.IngestBatchRequest)
+            .GetProperties()
+            .Select(property => property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.DoesNotContain("AgentId", requestProperties);
+        Assert.DoesNotContain("DeviceId", requestProperties);
+        Assert.DoesNotContain("EmployeeId", requestProperties);
+        Assert.DoesNotContain("TenantId", requestProperties);
     }
 
     [Fact]

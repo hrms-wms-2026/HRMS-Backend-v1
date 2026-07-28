@@ -13,9 +13,16 @@ public interface IVerificationRepository
     Task<VerificationRecord?> GetVerificationRecordAsync(Guid id, CancellationToken ct);
     Task<EmployeeRemoteWorkProfile?> GetActiveRemoteProfileAsync(
         Guid employeeId, CancellationToken ct);
+    Task<GdprConsentRecord?> GetLatestConsentAsync(
+        Guid tenantId,
+        Guid userId,
+        string consentType,
+        CancellationToken ct);
     Task<EmployeeRemoteWorkProfile?> GetRemoteProfileAsync(Guid id, CancellationToken ct);
     Task<RemoteWorkLocationChangeRequest?> GetPendingRemoteChangeAsync(
         Guid employeeId, CancellationToken ct);
+    Task<IReadOnlyList<RemoteWorkLocationChangeRequest>>
+        GetPendingRemoteChangesAsync(int skip, int take, CancellationToken ct);
     Task<RemoteWorkLocationChangeRequest?> GetRemoteChangeRequestAsync(
         Guid id, CancellationToken ct);
     Task AddVerificationRecordAsync(VerificationRecord record, CancellationToken ct);

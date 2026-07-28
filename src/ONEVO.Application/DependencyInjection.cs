@@ -4,6 +4,10 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Common.Behaviors;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.AgentGateway.Location;
+using ONEVO.Application.Features.AgentGateway.Policy;
+using ONEVO.Application.Features.AgentGateway.Commands.Screenshot;
+using ONEVO.Application.Features.TimeAttendance.Context;
+using ONEVO.Application.Features.IdentityVerification.Services;
 using ONEVO.Application.Features.DevPlatform.Provisioning.OutboxHandlers;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Helpers;
 
@@ -27,6 +31,10 @@ public static class DependencyInjection
 
         services.AddValidatorsFromAssembly(assembly);
         services.AddSingleton<ILocationVerificationService, LocationVerificationService>();
+        services.AddSingleton<IEffectiveAgentPolicyResolver, EffectiveAgentPolicyResolver>();
+        services.AddScoped<IClockInContextResolver, ClockInContextResolver>();
+        services.AddScoped<IScreenshotCommandScheduler, ScreenshotCommandScheduler>();
+        services.AddSingleton<IIdentityImageValidator, IdentityImageValidator>();
 
         // Outbox message consumers (dispatched by the Infrastructure outbox worker).
         services.AddScoped<IOutboxMessageHandler, TenantOwnerInviteEmailOutboxHandler>();

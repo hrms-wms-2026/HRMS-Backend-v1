@@ -17,6 +17,8 @@ public interface IActivityMonitoringRepository
     Task<IReadOnlyList<ApplicationUsage>> GetAppUsageForDayAsync(Guid employeeId, DateOnly date, CancellationToken ct);
     Task<IReadOnlyList<MeetingSession>> GetMeetingsForDayAsync(Guid employeeId, DateOnly date, CancellationToken ct);
     Task UpsertDailySummaryAsync(ActivityDailySummary summary, CancellationToken ct);
+    Task AddMonitoringEvidenceAsync(
+        MonitoringEvidenceAsset evidence, CancellationToken ct);
 
     // Queries
     Task<ActivityDailySummary?> GetDailySummaryAsync(Guid employeeId, DateOnly date, CancellationToken ct);
@@ -26,6 +28,11 @@ public interface IActivityMonitoringRepository
     Task<IReadOnlyList<ApplicationCategory>> GetCategoriesAsync(CancellationToken ct);
     Task AddCategoryAsync(ApplicationCategory category, CancellationToken ct);
     Task<bool> DeleteCategoryAsync(Guid id, CancellationToken ct);
+
+    // Consent events — returns false when incident_id already has a terminal decision
+    Task<bool> AddConsentEventAsync(MonitoringConsentEvent consent, CancellationToken ct);
+    Task<IReadOnlyList<MonitoringConsentEvent>> GetConsentNoticesAsync(
+        Guid employeeId, DateOnly date, CancellationToken ct);
 
     // Purge
     Task<int> DeleteRawBufferOlderThanAsync(DateTimeOffset cutoff, CancellationToken ct);

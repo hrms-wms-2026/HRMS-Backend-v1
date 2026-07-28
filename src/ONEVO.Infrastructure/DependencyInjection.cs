@@ -64,9 +64,12 @@ using ONEVO.Infrastructure.Services.ActivityMonitoring;
 using ONEVO.Application.Features.Users.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.Users;
 using ONEVO.Application.Features.IdentityVerification.RepositoryInterfaces;
+using ONEVO.Application.Features.IdentityVerification.Services;
+using ONEVO.Infrastructure.ExternalServices.IdentityVerification;
 using ONEVO.Infrastructure.Persistence.Repositories.IdentityVerification;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
+using ONEVO.Application.Features.ActivityMonitoring.Access;
 
 namespace ONEVO.Infrastructure;
 
@@ -254,6 +257,7 @@ public static class DependencyInjection
 
         // Identity Verification
         services.AddScoped<IVerificationRepository, EfVerificationRepository>();
+        services.AddSingleton<IFaceComparisonService, RekognitionFaceComparisonService>();
 
         // Time & Attendance
         services.AddScoped<ITimeAttendanceRepository, EfTimeAttendanceRepository>();
@@ -262,6 +266,7 @@ public static class DependencyInjection
         services.AddScoped<EfActivityMonitoringRepository>();
         services.AddScoped<IActivityMonitoringRepository>(
             sp => sp.GetRequiredService<EfActivityMonitoringRepository>());
+        services.AddScoped<IMonitoringAccessResolver, MonitoringAccessResolver>();
         services.AddHostedService<ProcessRawBufferJob>();
         services.AddHostedService<AggregateDailySummaryJob>();
         services.AddHostedService<PurgeRawBufferJob>();

@@ -22,4 +22,6 @@ public class ActivityDailySummary : ITenantOwnedEntity
     public decimal IntensityAvg { get; set; }
     public int KeyboardTotal { get; set; }
     public int MouseTotal { get; set; }
+    public int ScreenshotDeniedCount { get; set; }
+    public bool HasConsentDenialNotice { get; set; }
 }

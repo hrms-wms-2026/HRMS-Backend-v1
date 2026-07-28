@@ -156,6 +156,20 @@ public sealed class EfTimeAttendanceRepository : ITimeAttendanceRepository
                        request.Status == "pending",
             ct);
 
+    public async Task<IReadOnlyList<WorkAreaChangeRequest>>
+        GetPendingWorkAreaChangesAsync(
+            int skip,
+            int take,
+            CancellationToken ct) =>
+        await _db.WorkAreaChangeRequests
+            .AsNoTracking()
+            .Where(request => request.Status == "pending")
+            .OrderBy(request => request.RequestedAt)
+            .ThenBy(request => request.Id)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(ct);
+
     public Task<WorkAreaChangeRequest?> GetWorkAreaChangeAsync(
         Guid id, CancellationToken ct) =>
         _db.WorkAreaChangeRequests.SingleOrDefaultAsync(request => request.Id == id, ct);

@@ -25,8 +25,12 @@ public class AgentLoginCommandHandler : IRequestHandler<AgentLoginCommand, Resul
         AgentLoginCommand request, CancellationToken cancellationToken)
     {
         var agent = await _repo.GetAgentByIdAsync(request.AgentId, cancellationToken);
-        if (agent is null || agent.Status == "revoked")
-            return Result<AgentLoginResponseDto>.Failure("Agent not found or revoked.", 401);
+        if (agent is null ||
+            !string.Equals(agent.Status, "active", StringComparison.Ordinal) ||
+            !agent.EmployeeId.HasValue)
+            return Result<AgentLoginResponseDto>.Failure(
+                "This employee device is not approved and active.",
+                403);
 
         var now = DateTimeOffset.UtcNow;
 

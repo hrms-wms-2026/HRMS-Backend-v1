@@ -65,6 +65,7 @@ public sealed class AggregateDailySummaryJob : BackgroundService
             var snapshots = await repo.GetSnapshotsForDayAsync(emp.EmployeeId, today, ct);
             var appUsage = await repo.GetAppUsageForDayAsync(emp.EmployeeId, today, ct);
             var meetings = await repo.GetMeetingsForDayAsync(emp.EmployeeId, today, ct);
+            var consentEvents = await repo.GetConsentNoticesAsync(emp.EmployeeId, today, ct);
 
             var totalActiveMin = snapshots.Sum(s => s.ActiveSeconds) / 60;
             var totalIdleMin = snapshots.Sum(s => s.IdleSeconds) / 60;
@@ -91,6 +92,8 @@ public sealed class AggregateDailySummaryJob : BackgroundService
                 .ToList();
             var topAppsJson = JsonSerializer.Serialize(topApps);
 
+            var screenshotDeniedCount = consentEvents.Count(e => e.Decision != "allowed");
+
             var summary = new ActivityDailySummary
             {
                 Id = Guid.NewGuid(),
@@ -110,7 +113,9 @@ public sealed class AggregateDailySummaryJob : BackgroundService
                 TopAppsJson = topAppsJson,
                 IntensityAvg = Math.Round((decimal)intensityAvg, 2),
                 KeyboardTotal = keyboardTotal,
-                MouseTotal = mouseTotal
+                MouseTotal = mouseTotal,
+                ScreenshotDeniedCount = screenshotDeniedCount,
+                HasConsentDenialNotice = screenshotDeniedCount > 0
             };
 
             await repo.UpsertDailySummaryAsync(summary, ct);

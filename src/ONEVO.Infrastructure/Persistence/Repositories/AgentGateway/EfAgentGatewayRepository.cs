@@ -138,6 +138,70 @@ public sealed class EfAgentGatewayRepository : IAgentGatewayRepository
     public async Task AddHealthLogAsync(AgentHealthLog log, CancellationToken ct) =>
         await _db.AgentHealthLogs.AddAsync(log, ct);
 
+    public async Task AddCommandAsync(AgentCommand command, CancellationToken ct) =>
+        await _db.AgentCommands.AddAsync(command, ct);
+
+    public Task<AgentCommand?> GetCommandByIdAsync(
+        Guid commandId,
+        CancellationToken ct) =>
+        _db.AgentCommands.SingleOrDefaultAsync(
+            command => command.Id == commandId,
+            ct);
+
+    public Task<AgentCommand?> GetLatestCommandAsync(
+        Guid agentId,
+        string commandType,
+        CancellationToken ct) =>
+        _db.AgentCommands
+            .AsNoTracking()
+            .Where(command =>
+                command.AgentId == agentId &&
+                command.CommandType == commandType)
+            .OrderByDescending(command => command.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+
+    public async Task<IReadOnlyList<AgentCommand>> GetPendingCommandsAsync(
+        Guid agentId,
+        DateTimeOffset now,
+        int take,
+        CancellationToken ct) =>
+        await _db.AgentCommands
+            .AsNoTracking()
+            .Where(command =>
+                command.AgentId == agentId &&
+                command.Status == "pending" &&
+                command.AvailableAt <= now &&
+                command.ExpiresAt > now)
+            .OrderBy(command => command.CreatedAt)
+            .Take(take)
+            .ToListAsync(ct);
+
+    public Task<int> CountPendingCommandsAsync(
+        Guid agentId,
+        DateTimeOffset now,
+        CancellationToken ct) =>
+        _db.AgentCommands.CountAsync(command =>
+            command.AgentId == agentId &&
+            command.Status == "pending" &&
+            command.AvailableAt <= now &&
+            command.ExpiresAt > now,
+            ct);
+
+    public Task<int> ExpireCommandsAsync(
+        Guid agentId,
+        DateTimeOffset now,
+        CancellationToken ct) =>
+        _db.AgentCommands
+            .Where(command =>
+                command.AgentId == agentId &&
+                command.Status == "pending" &&
+                command.ExpiresAt <= now)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(command => command.Status, "expired")
+                .SetProperty(command => command.ResultCode, "consent_timeout")
+                .SetProperty(command => command.CompletedAt, now),
+                ct);
+
     // ── Activity raw buffer ───────────────────────────────────────────────────
 
     public async Task AddRawActivityBatchAsync(ActivityRawBuffer batch, CancellationToken ct) =>

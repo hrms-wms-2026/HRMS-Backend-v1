@@ -393,6 +393,52 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("meeting_sessions", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.ActivityMonitoring.Entities.MonitoringConsentEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AgentDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agent_device_id");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("decision");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<Guid>("IncidentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("incident_id");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_monitoring_consent_events");
+
+                    b.HasIndex("TenantId", "IncidentId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_monitoring_consent_events_tenant_id_incident_id");
+
+                    b.HasIndex("TenantId", "EmployeeId", "OccurredAt")
+                        .HasDatabaseName("ix_monitoring_consent_events_tenant_id_employee_id_occurred_at");
+
+                    b.ToTable("monitoring_consent_events", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.ActivityMonitoring.Entities.MonitoringEvidenceAsset", b =>
                 {
                     b.Property<Guid>("Id")

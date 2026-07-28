@@ -8,10 +8,10 @@ namespace ONEVO.Api.Filters;
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class)]
 public class RequirePermissionAttribute : Attribute, IAuthorizationFilter
 {
-    private readonly string _permission;
+    public string Permission { get; }
 
     public RequirePermissionAttribute(string permission)
-        => _permission = permission;
+        => Permission = permission;
 
     public void OnAuthorization(AuthorizationFilterContext context)
     {
@@ -23,14 +23,14 @@ public class RequirePermissionAttribute : Attribute, IAuthorizationFilter
             return;
         }
 
-        if (!currentUser.HasPermission(_permission))
+        if (!currentUser.HasPermission(Permission))
         {
             context.Result = new ObjectResult(new
             {
                 type = "https://onevo.com/errors/forbidden",
                 title = "Forbidden",
                 status = 403,
-                detail = $"Permission '{_permission}' required."
+                detail = $"Permission '{Permission}' required."
             })
             { StatusCode = 403 };
         }
