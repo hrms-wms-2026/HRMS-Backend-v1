@@ -62,23 +62,26 @@ public sealed class AttendanceApprovalCommandHandlerTests
     {
         var tenantId = Guid.NewGuid();
         var reviewerId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
         var current = new EmployeeRemoteWorkProfile
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
+            EmployeeId = employeeId,
             Status = "active"
         };
         var candidate = new EmployeeRemoteWorkProfile
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
+            EmployeeId = employeeId,
             Status = "pending_capture"
         };
         var request = new RemoteWorkLocationChangeRequest
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
-            EmployeeId = Guid.NewGuid(),
+            EmployeeId = employeeId,
             CurrentProfileId = current.Id,
             NewProfileId = candidate.Id,
             Status = "pending",

@@ -49,10 +49,11 @@ public sealed class IdentityImageValidatorTests
     [Fact]
     public async Task Validate_OverConfiguredLimit_RejectsBeforeProviderCall()
     {
-        await using var stream = new MemoryStream(new byte[1025]);
-        stream.GetBuffer()[0] = 0xFF;
-        stream.GetBuffer()[1] = 0xD8;
-        stream.GetBuffer()[2] = 0xFF;
+        var buffer = new byte[1025];
+        buffer[0] = 0xFF;
+        buffer[1] = 0xD8;
+        buffer[2] = 0xFF;
+        await using var stream = new MemoryStream(buffer);
 
         var result = await _validator.ValidateAsync(
             stream,
