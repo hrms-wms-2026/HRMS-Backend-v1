@@ -162,6 +162,7 @@ public class ApplicationDbContext : DbContext
         Set<RemoteWorkLocationChangeRequest>();
 
     // Identity Verification
+    public DbSet<GdprConsentRecord> GdprConsentRecords => Set<GdprConsentRecord>();
     public DbSet<VerificationPolicy> VerificationPolicies => Set<VerificationPolicy>();
     public DbSet<VerificationRecord> VerificationRecords => Set<VerificationRecord>();
     public DbSet<VerificationEvidenceAsset> VerificationEvidenceAssets => Set<VerificationEvidenceAsset>();
