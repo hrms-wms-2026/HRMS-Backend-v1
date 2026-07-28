@@ -16,6 +16,7 @@ public class PlatformUserConfiguration : IEntityTypeConfiguration<PlatformUser>
         builder.Property(u => u.GoogleSub).HasMaxLength(255);
         builder.Property(u => u.Status).HasMaxLength(20).IsRequired();
         builder.Property(u => u.MfaStatus).HasMaxLength(20).IsRequired();
+        builder.Property(u => u.MfaSecret).HasMaxLength(500);
         builder.Property(u => u.InviteStatus).HasMaxLength(20).IsRequired();
 
         builder.HasIndex(u => u.Email).IsUnique();

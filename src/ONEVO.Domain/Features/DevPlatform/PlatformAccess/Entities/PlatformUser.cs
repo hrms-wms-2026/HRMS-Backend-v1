@@ -26,6 +26,7 @@ public class PlatformUser
     public string? GoogleSub { get; set; }
     public string Status { get; set; } = StatusPending;
     public string MfaStatus { get; set; } = MfaNotEnrolled;
+    public string? MfaSecret { get; set; }
     public string InviteStatus { get; set; } = InvitePending;
     public Guid? CreatedById { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

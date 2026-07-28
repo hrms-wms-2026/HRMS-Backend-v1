@@ -8,6 +8,9 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Infrastructure.Identity.Sessions;
 using ONEVO.Application.Features.Auth.Login.Commands.AdminGoogleLogin;
 using ONEVO.Application.Features.Auth.Login.Commands.AdminLogin;
+using ONEVO.Application.Features.Auth.Login.Commands.AdminMfaConfirmSetup;
+using ONEVO.Application.Features.Auth.Login.Commands.AdminMfaEnable;
+using ONEVO.Application.Features.Auth.Login.Commands.AdminMfaVerify;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Application.Features.Auth.Login.Queries.GetAdminGoogleSsoConfig;
 
@@ -71,8 +74,55 @@ public sealed class AdminAuthController : ControllerBase
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 401);
 
+        var dto = result.Value!;
+
+        if (dto.RequiresMfa)
+        {
+            SetAdminMfaChallengeCookie(dto.MfaSessionToken!);
+            return StatusCode(202, dto.ToSessionResponse());
+        }
+
+        await SignInAsync(dto);
+        return Ok(dto.ToSessionResponse());
+    }
+
+    /// <summary>Begin MFA setup for the calling admin - returns TOTP secret + QR code URI.</summary>
+    [HttpPost("mfa/enable")]
+    [Authorize(Policy = "AdminPolicy")]
+    public async Task<IActionResult> EnableMfa(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new EnableAdminMfaCommand(), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        return Ok(result.Value);
+    }
+
+    /// <summary>Confirms a freshly generated TOTP secret and turns MFA on for this admin.</summary>
+    [HttpPost("mfa/confirm-setup")]
+    [Authorize(Policy = "AdminPolicy")]
+    public async Task<IActionResult> ConfirmMfaSetup([FromBody] ConfirmAdminMfaSetupRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new ConfirmAdminMfaSetupCommand(request.Code), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        return Ok(new { success = true });
+    }
+
+    /// <summary>Login step 2 - completes an MFA-gated admin login using the admin_mfa challenge cookie.</summary>
+    [HttpPost("mfa/verify")]
+    [AllowAnonymous]
+    public async Task<IActionResult> VerifyMfa([FromBody] VerifyAdminMfaRequest request, CancellationToken ct)
+    {
+        if (!Request.Cookies.TryGetValue("admin_mfa", out var challenge) || string.IsNullOrWhiteSpace(challenge))
+            return Problem("MFA challenge is missing or expired.", statusCode: 401);
+
+        var result = await _mediator.Send(new VerifyAdminMfaCommand(challenge, request.Code), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 401);
+
+        Response.Cookies.Delete("admin_mfa", new CookieOptions { Path = "/admin/v1/auth" });
         await SignInAsync(result.Value!);
-        return Ok(result.Value.ToSessionResponse());
+        return Ok(result.Value!.ToSessionResponse());
     }
 
     /// <summary>Logout - revokes the server-side admin session.</summary>
@@ -83,6 +133,18 @@ public sealed class AdminAuthController : ControllerBase
         await HttpContext.SignOutAsync("AdminScheme");
         Response.Cookies.Delete("admin_csrf");
         return NoContent();
+    }
+
+    private void SetAdminMfaChallengeCookie(string challenge)
+    {
+        Response.Cookies.Append("admin_mfa", challenge, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = !_env.IsDevelopment(),
+            SameSite = SameSiteMode.Strict,
+            Path = "/admin/v1/auth",
+            Expires = DateTimeOffset.UtcNow.AddMinutes(10)
+        });
     }
 
     private async Task SignInAsync(AdminLoginResultDto dto)

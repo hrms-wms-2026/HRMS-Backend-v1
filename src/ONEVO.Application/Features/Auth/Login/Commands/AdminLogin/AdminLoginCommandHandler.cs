@@ -29,7 +29,10 @@ public sealed class AdminLoginCommandHandler
     private readonly IPasswordHasher _passwordHasher;
     private readonly IPlatformPermissionResolver _permissionResolver;
     private readonly IPlatformAuthEventRepository _authEvents;
+    private readonly IPlatformMfaChallengeStore _mfaChallenges;
     private readonly IUnitOfWork _uow;
+
+    private static readonly TimeSpan MfaChallengeLifetime = TimeSpan.FromMinutes(10);
 
     public AdminLoginCommandHandler(
         ISecureTokenGenerator tokens,
@@ -39,6 +42,7 @@ public sealed class AdminLoginCommandHandler
         IPasswordHasher passwordHasher,
         IPlatformPermissionResolver permissionResolver,
         IPlatformAuthEventRepository authEvents,
+        IPlatformMfaChallengeStore mfaChallenges,
         IUnitOfWork uow)
     {
         _tokens = tokens;
@@ -48,6 +52,7 @@ public sealed class AdminLoginCommandHandler
         _passwordHasher = passwordHasher;
         _permissionResolver = permissionResolver;
         _authEvents = authEvents;
+        _mfaChallenges = mfaChallenges;
         _uow = uow;
     }
 
@@ -131,6 +136,27 @@ public sealed class AdminLoginCommandHandler
         credential.LastUsedAt = now;
         credential.UpdatedAt = now;
         _credentials.Update(credential);
+
+        if (user.MfaStatus == PlatformUser.MfaEnrolled)
+        {
+            await WriteAuthEventAsync(
+                PlatformAuthEvent.LoginSucceeded,
+                user.Id,
+                request,
+                new { method = "password", mfa_pending = true },
+                ct);
+
+            var mfaChallenge = await _mfaChallenges.CreateAsync(user.Id, MfaChallengeLifetime, ct);
+            return Result<AdminLoginResultDto>.Success(new AdminLoginResultDto(
+                CsrfToken: string.Empty,
+                CsrfTokenHash: string.Empty,
+                ExpiresAt: null,
+                PlatformUserId: Guid.Empty,
+                Email: string.Empty,
+                PlatformRole: string.Empty,
+                RequiresMfa: true,
+                MfaSessionToken: mfaChallenge));
+        }
 
         user.LastLoginAt = now;
         await WriteAuthEventAsync(
