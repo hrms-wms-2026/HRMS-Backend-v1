@@ -8,12 +8,13 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Tenancy;
 
-[Collection("Tenancy")]
+[Collection(WebApplicationFactoryCollection.Name)]
 public class TenantsAdminApiIntegrationTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
@@ -23,6 +24,7 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
         .WithPassword("test")
         .Build();
 
+    private IntegrationTestEnvironmentScope _environmentScope = null!;
     private AdminTestFactory _factory = null!;
     private HttpClient _client = null!;
     private Guid _planId;
@@ -30,16 +32,16 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
-        _factory = new AdminTestFactory(_postgres.GetConnectionString());
+        var connectionString = _postgres.GetConnectionString();
+        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
+        _factory = new AdminTestFactory(connectionString);
 
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost"),
             HandleCookies = false
         });
-
-        // Allow PermissionSeeder + EnsureCreated to finish.
-        await Task.Delay(500);
 
         var loginResponse = await _client.PostAsJsonAsync("/admin/v1/auth/login", new { email = "test_admin@onevo.dev", password = "test_password_123" });
         if (!loginResponse.IsSuccessStatusCode) { throw new Exception(await loginResponse.Content.ReadAsStringAsync()); }
@@ -66,6 +68,7 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
         _client.Dispose();
         _factory.Dispose();
         await _postgres.DisposeAsync();
+        await _environmentScope.DisposeAsync();
     }
 
     // -- Helpers ----------------------------------------------------------------
@@ -290,12 +293,22 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
         var resp = await _client.PatchAsJsonAsync(
             $"/admin/v1/tenants/{tenantId}/status",
             new { action = "suspend" });
-        resp.IsSuccessStatusCode.Should().BeFalse();
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var body = await ReadJsonAsync(resp);
+        body.GetProperty("status").GetInt32().Should().Be(400);
+        body.GetProperty("title").GetString().Should().Be("Validation Error");
+        body.GetProperty("detail").GetString().Should().Be("One or more validation errors occurred.");
+        body.GetProperty("correlationId").GetString().Should().NotBeNullOrEmpty();
+        body.GetProperty("errors").GetProperty("Reason").EnumerateArray()
+            .Select(e => e.GetString()).Should().Contain("reason is required when suspending a tenant.");
 
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             db.TenantStatusHistories.Count(h => h.TenantId == tenantId).Should().Be(0);
+            var t = await db.Tenants.FindAsync(tenantId);
+            t!.Status.Should().Be(TenantStatus.Active);
         }
     }
 

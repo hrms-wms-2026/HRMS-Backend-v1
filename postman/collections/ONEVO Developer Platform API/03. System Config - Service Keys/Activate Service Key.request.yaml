@@ -1,0 +1,8 @@
+$kind: http-request
+name: Activate Service Key
+method: POST
+url: '{{admin_base_url}}/admin/v1/system-config/service-keys/{{service_key}}/activate'
+order: 7000
+headers:
+  - key: X-CSRF-Token
+    value: '{{admin_csrf_token}}'

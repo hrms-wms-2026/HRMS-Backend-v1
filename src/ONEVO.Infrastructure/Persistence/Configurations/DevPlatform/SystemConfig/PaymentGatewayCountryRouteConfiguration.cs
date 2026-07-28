@@ -7,7 +7,7 @@ namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.SystemConf
 /// <summary>
 /// EF configuration for payment_gateway_country_routes.
 /// Phase 1 canonical table.
-/// Business rule: one active route per (country_code, environment) — enforced at service layer.
+/// Business rule: one active route per (country_code, environment) - enforced at service layer.
 /// </summary>
 public class PaymentGatewayCountryRouteConfiguration : IEntityTypeConfiguration<PaymentGatewayCountryRoute>
 {

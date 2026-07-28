@@ -3,9 +3,14 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.CurrentUser;
+using ONEVO.Infrastructure.Identity.Mfa;
+using ONEVO.Infrastructure.Identity.Tenancy;
+using ONEVO.Infrastructure.Identity.Time;
+using ONEVO.Infrastructure.Identity.Tokens;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Auth;
@@ -35,6 +40,7 @@ public sealed class MfaChallengeStoreConcurrencyTests : IAsyncLifetime
     {
         await _postgres.StartAsync();
         _connectionString = _postgres.GetConnectionString();
+        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
 
         using var db = CreateContext();
         await db.Database.MigrateAsync();
@@ -199,7 +205,7 @@ public sealed class MfaChallengeStoreConcurrencyTests : IAsyncLifetime
 
     private PostgresMfaChallengeStore CreateStore(ApplicationDbContext db)
     {
-        return new PostgresMfaChallengeStore(db, _tokens, _clock);
+        return new PostgresMfaChallengeStore(db, _tokens, _clock, new TenantContextAccessor());
     }
 
     private ApplicationDbContext CreateContext()

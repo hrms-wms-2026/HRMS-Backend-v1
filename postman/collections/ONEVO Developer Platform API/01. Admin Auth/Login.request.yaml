@@ -1,0 +1,23 @@
+$kind: http-request
+name: Login
+method: POST
+url: '{{admin_base_url}}/admin/v1/auth/login'
+order: 1000
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: X-CSRF-Token
+    value: '{{admin_csrf_token}}'
+body:
+  type: json
+  content: |-
+    {
+      "email": "{{admin_email}}",
+      "password": "{{admin_password}}"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const csrf = pm.cookies.get("admin_csrf");
+      if (csrf) pm.environment.set("admin_csrf_token", csrf);

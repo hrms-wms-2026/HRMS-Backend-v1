@@ -36,7 +36,7 @@ public sealed class PaymentGatewayVerificationService : IPaymentGatewayVerificat
         // SECURITY: Do NOT log the credentials dictionary.
         _logger.LogInformation("Gateway credential verification requested for provider {Provider}", provider);
 
-        // Phase 1 Foundation stub — replace with live HTTP calls per provider.
+        // Phase 1 Foundation stub - replace with live HTTP calls per provider.
         // The verify endpoint still works end-to-end; it just returns a predictable
         // result until the live provider clients are wired in.
         var result = new GatewayVerificationResult

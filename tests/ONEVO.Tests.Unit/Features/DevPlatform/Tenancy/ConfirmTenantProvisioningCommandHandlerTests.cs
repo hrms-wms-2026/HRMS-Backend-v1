@@ -8,6 +8,7 @@ using ONEVO.Application.Features.DevPlatform.Tenancy.Commands.ConfirmTenantProvi
 using ONEVO.Application.Features.DevPlatform.Tenancy.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.Tenancy.Queries.GetProvisioningSummary;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.ServiceInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using Xunit;
 
@@ -17,6 +18,7 @@ public class ConfirmTenantProvisioningCommandHandlerTests
 {
     private readonly Mock<ITenantRepository> _tenants = new();
     private readonly Mock<ITenantStatusHistoryRepository> _histories = new();
+    private readonly Mock<ITenantCacheInvalidator> _cacheInvalidator = new();
     private readonly Mock<IMediator> _mediator = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IUnitOfWork> _uow = new();
@@ -33,6 +35,7 @@ public class ConfirmTenantProvisioningCommandHandlerTests
         return new ConfirmTenantProvisioningCommandHandler(
             _tenants.Object,
             _histories.Object,
+            _cacheInvalidator.Object,
             _mediator.Object,
             _currentUser.Object,
             _uow.Object,
@@ -99,6 +102,7 @@ public class ConfirmTenantProvisioningCommandHandlerTests
         written.ChangedAt.Should().Be(Now);
 
         _uow.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _cacheInvalidator.Verify(c => c.InvalidateBySlug(tenant.Slug), Times.Once);
     }
 
     [Fact]
@@ -116,6 +120,7 @@ public class ConfirmTenantProvisioningCommandHandlerTests
 
         _histories.Verify(h => h.AddAsync(It.IsAny<TenantStatusHistory>(), It.IsAny<CancellationToken>()), Times.Never);
         _uow.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        _cacheInvalidator.Verify(c => c.InvalidateBySlug(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]

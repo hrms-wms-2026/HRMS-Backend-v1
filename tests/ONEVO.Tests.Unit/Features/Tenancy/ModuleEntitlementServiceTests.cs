@@ -7,7 +7,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.Tenancy;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Services.DevPlatform.Provisioning;

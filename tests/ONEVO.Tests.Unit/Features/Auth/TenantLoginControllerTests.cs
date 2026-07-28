@@ -5,8 +5,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Hosting;
 using Moq;
+using ONEVO.Api.Contracts.Auth;
 using ONEVO.Api.Controllers.Tenant.Auth;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.Commands.Login;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using System.Text.Json;
@@ -28,7 +30,7 @@ public sealed class TenantLoginControllerTests
             "onevo_session=stale-invalid-ticket; onevo_csrf=stale-csrf";
 
         var result = await controller.Login(
-            new AuthController.LoginRequest("owner@acme.test", "Password123!"),
+            new LoginRequest("owner@acme.test", "Password123!"),
             CancellationToken.None);
 
         result.Should().BeOfType<ObjectResult>();
@@ -58,7 +60,7 @@ public sealed class TenantLoginControllerTests
         var controller = CreateController(mediator.Object);
 
         var result = await controller.Login(
-            new AuthController.LoginRequest("owner@acme.test", "Password123!"),
+            new LoginRequest("owner@acme.test", "Password123!"),
             CancellationToken.None);
 
         var response = result.Should().BeOfType<ObjectResult>().Subject;
@@ -73,12 +75,15 @@ public sealed class TenantLoginControllerTests
         JsonSerializer.Serialize(response.Value).Should().NotContain(mfaChallenge);
     }
 
-    private static AuthController CreateController(IMediator mediator)
+    private static AuthLoginController CreateController(IMediator mediator)
     {
         var environment = new Mock<IWebHostEnvironment>();
         environment.Setup(instance => instance.EnvironmentName).Returns(Environments.Development);
 
-        return new AuthController(mediator, environment.Object)
+        var tenantContext = new Mock<ITenantContext>();
+        tenantContext.Setup(instance => instance.ContextMode).Returns(TenantContextMode.Tenant);
+
+        return new AuthLoginController(mediator, environment.Object, tenantContext.Object)
         {
             ControllerContext = new ControllerContext
             {

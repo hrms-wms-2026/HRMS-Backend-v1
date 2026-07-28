@@ -13,8 +13,6 @@ using ONEVO.Application.Features.DevPlatform.Provisioning;
 using ONEVO.Application.Features.DevPlatform.Provisioning.OutboxHandlers;
 using ONEVO.Application.Features.DevPlatform.Tenancy.Provisioning;
 using ONEVO.Application.Features.DevPlatform.Provisioning.ServiceInterfaces;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -141,6 +139,7 @@ public class TenantOwnerInvitationService : ITenantOwnerInvitationService
 
         var userRole = new UserRole
         {
+            TenantId = tenantId,
             UserId = user.Id,
             RoleId = roleId,
             AssignedAt = now,

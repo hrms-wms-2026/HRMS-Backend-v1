@@ -6,6 +6,27 @@ namespace ONEVO.Tests.Architecture;
 public sealed class DevSmokeTestTenantSeederArchitectureTests
 {
     [Fact]
+    public void StartAsync_EntersAdminModeBeforeInvokingTheBootstrapRoutine()
+    {
+        var source = ReadSeederSource();
+        var contextResolution = source.IndexOf(
+            "GetRequiredService<IWritableTenantContext>()",
+            StringComparison.Ordinal);
+        var adminMode = source.IndexOf(
+            "tenantContext.SetAdminMode();",
+            contextResolution,
+            StringComparison.Ordinal);
+        var seedInvocation = source.IndexOf(
+            "await SeedAsync(",
+            contextResolution,
+            StringComparison.Ordinal);
+
+        Assert.True(contextResolution >= 0);
+        Assert.True(adminMode > contextResolution);
+        Assert.True(seedInvocation > adminMode);
+    }
+
+    [Fact]
     public void Seeder_EstablishesAdminAndTenantContextsBeforeCorrespondingWrites()
     {
         var source = ReadSeederSource();

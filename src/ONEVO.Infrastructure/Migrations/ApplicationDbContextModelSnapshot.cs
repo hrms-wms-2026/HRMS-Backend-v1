@@ -1450,6 +1450,230 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("invitation_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.LegalAcceptanceRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("decision");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("document_type");
+
+                    b.Property<string>("DocumentVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("document_version");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<bool>("Required")
+                        .HasColumnType("boolean")
+                        .HasColumnName("required");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("source");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("user_agent");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_legal_acceptance_records");
+
+                    b.HasIndex("TenantId", "UserId", "DocumentType")
+                        .HasDatabaseName("ix_legal_acceptance_records_tenant_id_user_id_document_type");
+
+                    b.ToTable("legal_acceptance_records", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.LegalLoginChallenge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ChallengeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("challenge_hash");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consumed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CsrfTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("csrf_token_hash");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("origin");
+
+                    b.Property<DateTimeOffset?>("SupersededAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("superseded_at");
+
+                    b.Property<Guid?>("SupersededById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("superseded_by_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_legal_login_challenges");
+
+                    b.HasIndex("ChallengeHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_legal_login_challenges_challenge_hash");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("ix_legal_login_challenges_expires_at");
+
+                    b.HasIndex("SupersededById")
+                        .HasDatabaseName("ix_legal_login_challenges_superseded_by_id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_legal_login_challenges_user_id");
+
+                    b.HasIndex("TenantId", "UserId", "ExpiresAt")
+                        .HasDatabaseName("ix_legal_login_challenges_tenant_id_user_id_expires_at");
+
+                    b.ToTable("legal_login_challenges", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.LoginWorkspaceSelectionChallenge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CandidateWorkspacesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("candidate_workspaces_json");
+
+                    b.Property<string>("ChallengeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("challenge_hash");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consumed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<int>("FailedAttemptCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("failed_attempt_count");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("normalized_email");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasDefaultValue("workspace_selection")
+                        .HasColumnName("purpose");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("user_agent");
+
+                    b.HasKey("Id")
+                        .HasName("pk_login_workspace_selection_challenges");
+
+                    b.HasIndex("ChallengeHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_login_workspace_selection_challenges_challenge_hash");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("ix_login_workspace_selection_challenges_expires_at");
+
+                    b.HasIndex("NormalizedEmail", "CreatedAt")
+                        .HasDatabaseName("ix_login_workspace_selection_challenges_normalized_email_creat");
+
+                    b.ToTable("login_workspace_selection_challenges", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_login_workspace_selection_challenges_failed_attempt_count", "failed_attempt_count BETWEEN 0 AND 5");
+
+                            t.HasCheckConstraint("ck_login_workspace_selection_challenges_purpose", "purpose = 'workspace_selection'");
+                        });
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.MfaChallenge", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1481,6 +1705,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0)
                         .HasColumnName("failed_attempt_count");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("password")
+                        .HasColumnName("origin");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
@@ -2478,6 +2710,248 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("employees", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Compliance.Entities.LegalDocumentVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("BlockScope")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("block_scope");
+
+                    b.Property<string>("ContentUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("content_url");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("document_type");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_required");
+
+                    b.Property<string>("PublishReason")
+                        .HasColumnType("text")
+                        .HasColumnName("publish_reason");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("published_at");
+
+                    b.Property<Guid?>("PublishedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("published_by_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_legal_document_versions");
+
+                    b.HasIndex("DocumentType")
+                        .IsUnique()
+                        .HasDatabaseName("ix_legal_document_versions_document_type_published")
+                        .HasFilter("status = 'published'");
+
+                    b.HasIndex("PublishedById")
+                        .HasDatabaseName("ix_legal_document_versions_published_by_id");
+
+                    b.HasIndex("DocumentType", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ix_legal_document_versions_document_type_version");
+
+                    b.HasIndex("DocumentType", "Status", "IsRequired", "PublishedAt")
+                        .HasDatabaseName("ix_legal_document_versions_document_type_status_is_required_pu");
+
+                    b.ToTable("legal_document_versions", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities.ConfigurationTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("IndustryProfileTag")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("industry_profile_tag");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsSystem")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_system");
+
+                    b.Property<string>("ModuleKeysJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("module_keys_json");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload_json");
+
+                    b.Property<string>("TemplateKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("template_key");
+
+                    b.Property<string>("TemplateType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("template_type");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_configuration_templates");
+
+                    b.HasIndex("CreatedById")
+                        .HasDatabaseName("ix_configuration_templates_created_by_id");
+
+                    b.HasIndex("TemplateKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_configuration_templates_template_key");
+
+                    b.HasIndex("TemplateType")
+                        .HasDatabaseName("ix_configuration_templates_template_type");
+
+                    b.ToTable("configuration_templates", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities.TenantConfigurationTemplateApplication", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AppliedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("applied_at");
+
+                    b.Property<Guid>("AppliedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("applied_by_id");
+
+                    b.Property<string>("AppliedPayloadJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("applied_payload_json");
+
+                    b.Property<int>("AppliedVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("applied_version");
+
+                    b.Property<Guid>("ConfigurationTemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("configuration_template_id");
+
+                    b.Property<string>("CustomPayloadJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("custom_payload_json");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TemplateType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("template_type");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("WarningsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("warnings_json");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tenant_configuration_template_applications");
+
+                    b.HasIndex("AppliedById")
+                        .HasDatabaseName("ix_tenant_configuration_template_applications_applied_by_id");
+
+                    b.HasIndex("ConfigurationTemplateId")
+                        .HasDatabaseName("ix_tenant_configuration_template_applications_configuration_te");
+
+                    b.HasIndex("TenantId", "AppliedAt")
+                        .HasDatabaseName("ix_tenant_configuration_template_applications_tenant_id_applie");
+
+                    b.ToTable("tenant_configuration_template_applications", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_tenant_config_template_apps_status", "status IN ('applied')");
+                        });
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformAuthEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3189,6 +3663,182 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("platform_oauth_app_credentials", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities.PlatformProvider", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("display_name");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("ProviderFamily")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("provider_family");
+
+                    b.Property<string>("ProviderKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("provider_key");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_platform_providers");
+
+                    b.HasAlternateKey("ProviderKey")
+                        .HasName("ak_platform_providers_provider_key");
+
+                    b.HasIndex("ProviderFamily", "IsActive", "DisplayName")
+                        .HasDatabaseName("ix_platform_providers_provider_family_is_active_display_name");
+
+                    b.ToTable("platform_providers", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_platform_providers_provider_family", "provider_family IN ('oauth_app', 'transactional_email', 'infrastructure', 'object_storage', 'ai_verification', 'payment_gateway')");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000001"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Google",
+                            IsActive = true,
+                            ProviderFamily = "oauth_app",
+                            ProviderKey = "google",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000002"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "GitHub",
+                            IsActive = true,
+                            ProviderFamily = "oauth_app",
+                            ProviderKey = "github",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000003"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Microsoft",
+                            IsActive = true,
+                            ProviderFamily = "oauth_app",
+                            ProviderKey = "microsoft",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000004"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Zoom",
+                            IsActive = true,
+                            ProviderFamily = "oauth_app",
+                            ProviderKey = "zoom",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000005"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "SendGrid",
+                            IsActive = true,
+                            ProviderFamily = "transactional_email",
+                            ProviderKey = "sendgrid",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000006"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Resend",
+                            IsActive = true,
+                            ProviderFamily = "transactional_email",
+                            ProviderKey = "resend",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000007"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Cloudflare",
+                            IsActive = true,
+                            ProviderFamily = "infrastructure",
+                            ProviderKey = "cloudflare",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000008"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Cloudflare R2",
+                            IsActive = true,
+                            ProviderFamily = "object_storage",
+                            ProviderKey = "cloudflare_r2",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000009"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "AWS Rekognition",
+                            IsActive = true,
+                            ProviderFamily = "ai_verification",
+                            ProviderKey = "aws_rekognition",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000010"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Stripe",
+                            IsActive = true,
+                            ProviderFamily = "payment_gateway",
+                            ProviderKey = "stripe",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000011"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "PayHere",
+                            IsActive = true,
+                            ProviderFamily = "payment_gateway",
+                            ProviderKey = "payhere",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000012"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            DisplayName = "Paddle",
+                            IsActive = true,
+                            ProviderFamily = "payment_gateway",
+                            ProviderKey = "paddle",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 7, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
+                        });
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities.PlatformServiceKey", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3833,6 +4483,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("must_change_password");
 
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("normalized_email")
+                        .HasComputedColumnSql("lower(trim(email))", true);
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -3870,6 +4528,14 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "Email")
                         .IsUnique()
                         .HasDatabaseName("ix_users_tenant_id_email");
+
+                    b.HasIndex("TenantId", "NormalizedEmail")
+                        .IsUnique()
+                        .HasDatabaseName("ix_users_tenant_id_normalized_email");
+
+                    b.HasIndex("NormalizedEmail", "TenantId", "Id")
+                        .HasDatabaseName("ix_users_normalized_email_active_lookup")
+                        .HasFilter("is_active = true AND is_deleted = false");
 
                     b.ToTable("users", (string)null);
                 });
@@ -4943,6 +5609,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("GatewayKey")
                         .IsUnique()
                         .HasDatabaseName("ix_payment_gateway_configs_gateway_key");
+
+                    b.HasIndex("Provider")
+                        .HasDatabaseName("ix_payment_gateway_configs_provider");
 
                     b.ToTable("payment_gateway_configs", (string)null);
                 });
@@ -6672,6 +7341,29 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_gdpr_consent_records_registered_agents_captured_agent_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.LegalLoginChallenge", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Auth.Entities.LegalLoginChallenge", null)
+                        .WithMany()
+                        .HasForeignKey("SupersededById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_legal_login_challenges_legal_login_challenges_superseded_by");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_legal_login_challenges_tenants_tenant_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_legal_login_challenges_users_user_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.MfaChallenge", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
@@ -6809,6 +7501,49 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ManagerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_employees_employees_manager_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.Compliance.Entities.LegalDocumentVersion", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("PublishedById")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_legal_document_versions_platform_users_published_by_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities.ConfigurationTemplate", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_configuration_templates_platform_users_created_by_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities.TenantConfigurationTemplateApplication", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("AppliedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_configuration_template_applications_platform_users_a");
+
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities.ConfigurationTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("ConfigurationTemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_configuration_template_applications_configuration_te");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_configuration_template_applications_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformAuthEvent", b =>
@@ -6958,6 +7693,14 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities.PlatformOAuthApp", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities.PlatformProvider", null)
+                        .WithMany()
+                        .HasForeignKey("Provider")
+                        .HasPrincipalKey("ProviderKey")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_platform_oauth_apps_platform_providers_provider");
+
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
                         .WithMany()
                         .HasForeignKey("UpdatedById")
@@ -6991,6 +7734,14 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities.PlatformServiceKey", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities.PlatformProvider", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceKey")
+                        .HasPrincipalKey("ProviderKey")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_platform_service_keys_platform_providers_service_key");
+
                     b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
                         .WithMany()
                         .HasForeignKey("UpdatedById")
@@ -7147,6 +7898,17 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_module_permission_ownership_module_catalog_module_key");
 
                     b.Navigation("Module");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities.PaymentGatewayConfig", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities.PlatformProvider", null)
+                        .WithMany()
+                        .HasForeignKey("Provider")
+                        .HasPrincipalKey("ProviderKey")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_payment_gateway_configs_platform_providers_provider");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities.PaymentGatewayCountryRoute", b =>

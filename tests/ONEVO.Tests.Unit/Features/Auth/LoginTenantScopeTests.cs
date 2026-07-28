@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.Models;
-using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.Commands.Login;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
@@ -16,11 +15,8 @@ namespace ONEVO.Tests.Unit.Features.Auth;
 public class LoginTenantScopeTests
 {
     private readonly Mock<IUserRepository> _users = new();
-    private readonly Mock<IUserMfaRepository> _userMfas = new();
     private readonly Mock<IPasswordHasher> _hasher = new();
-    private readonly Mock<IMfaChallengeStore> _mfaChallenges = new();
-    private readonly Mock<ILoginSessionMaterialFactory> _issuer = new();
-    private readonly Mock<IUnitOfWork> _uow = new();
+    private readonly Mock<ILoginContinuationService> _continuation = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
 
@@ -38,7 +34,20 @@ public class LoginTenantScopeTests
     }
 
     private LoginCommandHandler BuildHandler(ITenantContext ctx) =>
-        new(_users.Object, _userMfas.Object, _uow.Object, _hasher.Object, _mfaChallenges.Object, _issuer.Object, ctx);
+        new(_users.Object, _hasher.Object, _continuation.Object, ctx);
+
+    private void SetupContinuationSuccess(Guid userId, string email)
+    {
+        _continuation
+            .Setup(c => c.ContinueAsync(
+                It.Is<LoginContinuationRequest>(r => r.TenantId == _tenantId && r.UserId == userId),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto(
+                CsrfTokenHash: "sess",
+                CsrfToken: "csrf",
+                ExpiresAt: DateTimeOffset.UtcNow.AddMinutes(30),
+                User: new CurrentUserDto(userId, _tenantId, email))));
+    }
 
     [Fact]
     public async Task Login_UsesTenantScopedLookup_NotGlobalEmail()
@@ -54,14 +63,7 @@ public class LoginTenantScopeTests
         _users.Setup(u => u.GetByTenantAndEmailAsync(_tenantId, "a@b.com", It.IsAny<CancellationToken>()))
               .ReturnsAsync(user);
         _hasher.Setup(h => h.Verify(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
-        _userMfas.Setup(m => m.GetTotpAsync(user.Id, true, It.IsAny<CancellationToken>()))
-                 .ReturnsAsync((UserMfa?)null);
-        _issuer.Setup(i => i.PrepareAsync(user, null, null, It.IsAny<CancellationToken>()))
-               .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto(
-                   CsrfTokenHash: "sess",
-                   CsrfToken: "csrf",
-                   ExpiresAt: DateTimeOffset.UtcNow.AddMinutes(30),
-                   User: new CurrentUserDto(user.Id, _tenantId, user.Email))));
+        SetupContinuationSuccess(user.Id, "a@b.com");
 
         var handler = BuildHandler(TenantCtx().Object);
         var result = await handler.Handle(new LoginCommand("a@b.com", "pass", null, null), default);
@@ -129,14 +131,7 @@ public class LoginTenantScopeTests
         _users.Setup(u => u.GetByTenantAndEmailAsync(_tenantId, "trial@b.com", It.IsAny<CancellationToken>()))
               .ReturnsAsync(user);
         _hasher.Setup(h => h.Verify(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
-        _userMfas.Setup(m => m.GetTotpAsync(user.Id, true, It.IsAny<CancellationToken>()))
-                 .ReturnsAsync((UserMfa?)null);
-        _issuer.Setup(i => i.PrepareAsync(user, null, null, It.IsAny<CancellationToken>()))
-               .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto(
-                   CsrfTokenHash: "sess",
-                   CsrfToken: "csrf",
-                   ExpiresAt: DateTimeOffset.UtcNow.AddMinutes(30),
-                   User: new CurrentUserDto(user.Id, _tenantId, user.Email))));
+        SetupContinuationSuccess(user.Id, "trial@b.com");
 
         var handler = BuildHandler(TenantCtx(status: TenantStatus.Trial).Object);
         var result = await handler.Handle(new LoginCommand("trial@b.com", "pass", null, null), default);

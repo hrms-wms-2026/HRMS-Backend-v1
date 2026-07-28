@@ -15,96 +15,167 @@ public sealed class EfPaymentGatewayRepository : IPaymentGatewayRepository
 {
     private readonly ApplicationDbContext _db;
 
-    public EfPaymentGatewayRepository(ApplicationDbContext db) => _db = db;
+    public EfPaymentGatewayRepository(ApplicationDbContext db)
+    {
+        _db = db;
+    }
 
-    // ── Config ───────────────────────────────────────────────────────────────
+    // Config
 
     public async Task<IReadOnlyList<PaymentGatewayConfig>> ListAllAsync(CancellationToken ct)
-        => await _db.PaymentGatewayConfigs
+    {
+        var query = _db.PaymentGatewayConfigs
             .AsNoTracking()
             .OrderBy(g => g.Provider)
-            .ThenBy(g => g.DisplayName)
-            .ToListAsync(ct);
+            .ThenBy(g => g.DisplayName);
 
-    public Task<PaymentGatewayConfig?> GetByIdAsync(
+        var configs = await query.ToListAsync(ct);
+
+        return configs;
+    }
+
+    public async Task<PaymentGatewayConfig?> GetByIdAsync(
         Guid id,
         bool includeCredentials,
         bool includeRoutes,
         CancellationToken ct)
     {
-        IQueryable<PaymentGatewayConfig> q = _db.PaymentGatewayConfigs;
-        if (includeCredentials) q = q.Include(g => g.Credentials);
-        if (includeRoutes) q = q.Include(g => g.CountryRoutes);
-        return q.FirstOrDefaultAsync(g => g.Id == id, ct);
+        IQueryable<PaymentGatewayConfig> query = _db.PaymentGatewayConfigs;
+
+        if (includeCredentials)
+        {
+            query = query.Include(g => g.Credentials);
+        }
+
+        if (includeRoutes)
+        {
+            query = query.Include(g => g.CountryRoutes);
+        }
+
+        var config = await query.FirstOrDefaultAsync(g => g.Id == id, ct);
+
+        return config;
     }
 
-    public Task<PaymentGatewayConfig?> GetByGatewayKeyAsync(string gatewayKey, CancellationToken ct)
-        => _db.PaymentGatewayConfigs.FirstOrDefaultAsync(g => g.GatewayKey == gatewayKey, ct);
+    public async Task<PaymentGatewayConfig?> GetByGatewayKeyAsync(
+        string gatewayKey,
+        CancellationToken ct)
+    {
+        var query = _db.PaymentGatewayConfigs
+            .Where(config => config.GatewayKey == gatewayKey);
 
-    public Task<bool> HasConflictingCountryRouteAsync(
+        var config = await query.FirstOrDefaultAsync(ct);
+
+        return config;
+    }
+
+    public async Task<bool> HasConflictingCountryRouteAsync(
         string countryCode,
         string environment,
         Guid excludeGatewayConfigId,
         CancellationToken ct)
-        => _db.PaymentGatewayCountryRoutes.AnyAsync(
-            r => r.CountryCode == countryCode
-                 && r.Environment == environment
-                 && r.IsActive
-                 && r.GatewayConfigId != excludeGatewayConfigId,
-            ct);
+    {
+        var query = _db.PaymentGatewayCountryRoutes
+            .Where(route => route.CountryCode == countryCode)
+            .Where(route => route.Environment == environment)
+            .Where(route => route.IsActive)
+            .Where(route => route.GatewayConfigId != excludeGatewayConfigId);
+
+        var exists = await query.AnyAsync(ct);
+
+        return exists;
+    }
 
     public async Task AddAsync(PaymentGatewayConfig config, CancellationToken ct)
-        => await _db.PaymentGatewayConfigs.AddAsync(config, ct);
+    {
+        await _db.PaymentGatewayConfigs.AddAsync(config, ct);
+    }
 
     public async Task<PaymentGatewayConfig?> ResolveForCountryAsync(
         string countryCode,
         string environment,
         CancellationToken ct)
     {
-        var route = await _db.PaymentGatewayCountryRoutes
+        var query = _db.PaymentGatewayCountryRoutes
             .AsNoTracking()
             .Include(r => r.GatewayConfig)
-            .FirstOrDefaultAsync(
-                r => r.CountryCode == countryCode
-                     && r.Environment == environment
-                     && r.IsActive
-                     && r.GatewayConfig!.IsActive,
-                ct);
+            .Where(route => route.CountryCode == countryCode)
+            .Where(route => route.Environment == environment)
+            .Where(route => route.IsActive)
+            .Where(route => route.GatewayConfig!.IsActive);
+
+        var route = await query.FirstOrDefaultAsync(ct);
 
         return route?.GatewayConfig;
     }
 
-    // ── Credentials ──────────────────────────────────────────────────────────
+    // Credentials
 
-    public Task<PaymentGatewayCredential?> GetActiveCredentialAsync(Guid gatewayConfigId, CancellationToken ct)
-        => _db.PaymentGatewayCredentials.FirstOrDefaultAsync(
-            c => c.PaymentGatewayConfigId == gatewayConfigId && c.IsActive, ct);
+    public async Task<PaymentGatewayCredential?> GetActiveCredentialAsync(
+        Guid gatewayConfigId,
+        CancellationToken ct)
+    {
+        var query = _db.PaymentGatewayCredentials
+            .Where(credential => credential.PaymentGatewayConfigId == gatewayConfigId)
+            .Where(credential => credential.IsActive);
+
+        var credential = await query.FirstOrDefaultAsync(ct);
+
+        return credential;
+    }
+
+    public async Task<IReadOnlyList<PaymentGatewayCredential>> GetActiveCredentialsAsync(
+        Guid gatewayConfigId,
+        CancellationToken ct)
+    {
+        var query = _db.PaymentGatewayCredentials
+            .Where(credential => credential.PaymentGatewayConfigId == gatewayConfigId)
+            .Where(credential => credential.IsActive);
+
+        var credentials = await query.ToListAsync(ct);
+
+        return credentials;
+    }
 
     public async Task<int> GetMaxCredentialVersionAsync(Guid gatewayConfigId, CancellationToken ct)
     {
-        var max = await _db.PaymentGatewayCredentials
-            .Where(c => c.PaymentGatewayConfigId == gatewayConfigId)
-            .MaxAsync(c => (int?)c.CredentialVersion, ct);
-        return max ?? 0;
+        var query = _db.PaymentGatewayCredentials
+            .Where(credential => credential.PaymentGatewayConfigId == gatewayConfigId);
+
+        var maxCredentialVersion = await query
+            .MaxAsync(credential => (int?)credential.CredentialVersion, ct);
+
+        return maxCredentialVersion ?? 0;
     }
 
     public async Task AddCredentialAsync(PaymentGatewayCredential credential, CancellationToken ct)
-        => await _db.PaymentGatewayCredentials.AddAsync(credential, ct);
+    {
+        await _db.PaymentGatewayCredentials.AddAsync(credential, ct);
+    }
 
-    // ── Country Routes ───────────────────────────────────────────────────────
+    // Country Routes
 
     public async Task<IReadOnlyList<PaymentGatewayCountryRoute>> ListRoutesForConfigAsync(
         Guid gatewayConfigId,
         CancellationToken ct)
-        => await _db.PaymentGatewayCountryRoutes
+    {
+        var query = _db.PaymentGatewayCountryRoutes
             .AsNoTracking()
-            .Where(r => r.GatewayConfigId == gatewayConfigId)
-            .OrderBy(r => r.CountryCode)
-            .ToListAsync(ct);
+            .Where(route => route.GatewayConfigId == gatewayConfigId)
+            .OrderBy(route => route.CountryCode);
+
+        var routes = await query.ToListAsync(ct);
+
+        return routes;
+    }
 
     public async Task AddCountryRouteAsync(PaymentGatewayCountryRoute route, CancellationToken ct)
-        => await _db.PaymentGatewayCountryRoutes.AddAsync(route, ct);
+    {
+        await _db.PaymentGatewayCountryRoutes.AddAsync(route, ct);
+    }
 
-    public Task SaveChangesAsync(CancellationToken ct)
-        => _db.SaveChangesAsync(ct);
+    public async Task SaveChangesAsync(CancellationToken ct)
+    {
+        await _db.SaveChangesAsync(ct);
+    }
 }

@@ -1,0 +1,18 @@
+$kind: http-request
+name: Update Legal Entity
+method: PATCH
+url: '{{tenant_host}}/organization/legal-entities/:id'
+order: 3000
+headers:
+  - key: Content-Type
+    value: application/json
+pathVariables:
+  - key: id
+    value: ''
+body:
+  type: json
+  content: |-
+    {
+      "name": "Acme Pvt Ltd Updated",
+      "address": "456 New Street, Colombo"
+    }

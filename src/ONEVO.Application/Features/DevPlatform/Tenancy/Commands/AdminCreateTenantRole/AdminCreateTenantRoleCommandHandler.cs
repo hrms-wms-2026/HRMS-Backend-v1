@@ -10,8 +10,6 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Roles.Mappers;
 using ONEVO.Application.Features.Auth.Roles.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -95,7 +93,7 @@ public sealed class AdminCreateTenantRoleCommandHandler
         if (resolvedPermissions.Count > 0)
         {
             var rolePermissions = resolvedPermissions
-                .Select(p => new RolePermission { RoleId = role.Id, PermissionId = p.Id })
+                .Select(p => new RolePermission { TenantId = request.TenantId, RoleId = role.Id, PermissionId = p.Id })
                 .ToList();
             await _rolePermissions.AddRangeAsync(rolePermissions, ct);
         }

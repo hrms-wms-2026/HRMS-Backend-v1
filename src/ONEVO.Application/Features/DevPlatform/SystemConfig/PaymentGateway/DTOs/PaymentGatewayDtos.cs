@@ -26,7 +26,7 @@ public sealed class PaymentGatewayConfigDto
     public IReadOnlyList<PaymentGatewayCountryRouteDto> CountryRoutes { get; init; } = [];
 }
 
-/// <summary>Country route summary — no secret data.</summary>
+/// <summary>Country route summary - no secret data.</summary>
 public sealed class PaymentGatewayCountryRouteDto
 {
     public Guid Id { get; init; }

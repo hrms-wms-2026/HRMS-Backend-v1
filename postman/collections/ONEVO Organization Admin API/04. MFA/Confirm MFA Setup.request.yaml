@@ -1,0 +1,16 @@
+$kind: http-request
+name: Confirm MFA Setup
+method: POST
+url: '{{tenant_host}}/api/v1/auth/mfa/confirm-setup'
+order: 2000
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: X-CSRF-Token
+    value: '{{tenant_csrf_token}}'
+body:
+  type: json
+  content: |-
+    {
+      "code": "123456"
+    }

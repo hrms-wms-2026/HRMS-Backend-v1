@@ -1,0 +1,5 @@
+$kind: http-request
+name: Admin Google Config
+method: GET
+url: '{{admin_base_url}}/admin/v1/auth/google-config'
+order: 2000

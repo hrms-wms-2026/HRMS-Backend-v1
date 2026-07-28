@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Provisioning.OutboxHandlers;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Infrastructure.ExternalServices.Email;
@@ -14,9 +15,10 @@ namespace ONEVO.Tests.Unit.Features.SharedPlatform.Email;
 
 /// <summary>
 /// Transactional email wiring against platform_service_keys:
-/// provider selection from non-secret Email:Provider config, key resolution through
-/// IPlatformServiceKeyResolver, safe failure when no active key exists, provider
-/// adapters (fake HttpClient, no real network), and no-secret-leak guarantees.
+/// provider selection is DB-backed (ResolveActiveTransactionalEmailProviderAsync),
+/// never from Email:Provider/Email__Provider config and never defaulted to sendgrid;
+/// NotConfigured/Ambiguous outcomes fail safely; provider adapters use a fake
+/// HttpClient (no real network); and no-secret-leak guarantees hold throughout.
 /// </summary>
 public class TransactionalEmailPlatformKeyTests
 {
@@ -26,25 +28,30 @@ public class TransactionalEmailPlatformKeyTests
         new(TenantId: null, RecipientEmail: to, Subject: "Hello",
             HtmlBody: "<p>Hi</p>", TextBody: "Hi");
 
-    private static EmailOptions Options(string provider = "sendgrid") => new()
+    private static EmailOptions Options() => new()
     {
-        Provider = provider,
         FromAddress = "no-reply@onevo.io",
         FromName = "ONEVO",
         ReplyToEmail = "support@onevo.io"
     };
 
-    // ── Fakes ────────────────────────────────────────────────────────────────
+    // Fakes
 
     private sealed class FakeResolver : IPlatformServiceKeyResolver
     {
-        public List<string> RequestedSlugs { get; } = new();
-        public string? KeyToReturn { get; set; } = FakeKey;
+        public TransactionalEmailProviderResolution ResolutionToReturn { get; set; } =
+            TransactionalEmailProviderResolution.Resolved(PlatformServiceKeyCatalog.Sendgrid, FakeKey);
+
+        public int ResolveTransactionalEmailProviderCallCount { get; private set; }
 
         public Task<string?> ResolveActiveKeyAsync(string serviceKey, CancellationToken ct)
+            => Task.FromResult<string?>(null);
+
+        public Task<TransactionalEmailProviderResolution> ResolveActiveTransactionalEmailProviderAsync(
+            CancellationToken ct)
         {
-            RequestedSlugs.Add(serviceKey);
-            return Task.FromResult(KeyToReturn);
+            ResolveTransactionalEmailProviderCallCount++;
+            return Task.FromResult(ResolutionToReturn);
         }
     }
 
@@ -105,95 +112,111 @@ public class TransactionalEmailPlatformKeyTests
         => new(resolver, adapters, Microsoft.Extensions.Options.Options.Create(options),
             NullLogger<PlatformKeyTransactionalEmailSender>.Instance);
 
-    // ── 1. Provider key resolution ───────────────────────────────────────────
+    // 1. DB-backed provider resolution (no Email:Provider config, no default)
 
     [Fact]
-    public async Task Sender_Requests_Sendgrid_Key_When_Provider_Is_Sendgrid()
+    public async Task Sender_Sends_Through_Sendgrid_Adapter_When_Sendgrid_Is_The_Resolved_Provider()
     {
-        var resolver = new FakeResolver();
+        var resolver = new FakeResolver
+        {
+            ResolutionToReturn = TransactionalEmailProviderResolution.Resolved("sendgrid", FakeKey)
+        };
         var adapter = new FakeAdapter("sendgrid");
-        var sender = BuildSender(resolver, Options("sendgrid"), adapter);
+        var sender = BuildSender(resolver, Options(), adapter);
 
         var result = await sender.SendAsync(Request());
 
-        Assert.Equal(new[] { "sendgrid" }, resolver.RequestedSlugs);
+        Assert.Equal(1, resolver.ResolveTransactionalEmailProviderCallCount);
         Assert.Single(adapter.Calls);
         Assert.Equal(FakeKey, adapter.Calls[0].ApiKey);
         Assert.True(result.Success);
     }
 
     [Fact]
-    public async Task Sender_Requests_Resend_Key_When_Provider_Is_Resend()
+    public async Task Sender_Sends_Through_Resend_Adapter_When_Resend_Is_The_Resolved_Provider()
     {
-        var resolver = new FakeResolver();
+        var resolver = new FakeResolver
+        {
+            ResolutionToReturn = TransactionalEmailProviderResolution.Resolved("resend", FakeKey)
+        };
         var adapter = new FakeAdapter("resend");
-        var sender = BuildSender(resolver, Options("resend"), adapter);
+        var sender = BuildSender(resolver, Options(), adapter);
 
         await sender.SendAsync(Request());
 
-        Assert.Equal(new[] { "resend" }, resolver.RequestedSlugs);
+        Assert.Equal(1, resolver.ResolveTransactionalEmailProviderCallCount);
         Assert.Single(adapter.Calls);
     }
 
     [Fact]
-    public async Task Sender_Defaults_To_Sendgrid_When_Provider_Empty()
+    public async Task NotConfigured_Resolution_Fails_Safely_And_Does_Not_Default_To_Sendgrid()
     {
-        var resolver = new FakeResolver();
-        var adapter = new FakeAdapter("sendgrid");
-        var sender = BuildSender(resolver, Options(provider: ""), adapter);
-
-        await sender.SendAsync(Request());
-
-        Assert.Equal(new[] { "sendgrid" }, resolver.RequestedSlugs);
-    }
-
-    [Fact]
-    public async Task Missing_Active_Key_Fails_Safely_And_Does_Not_Call_Provider()
-    {
-        var resolver = new FakeResolver { KeyToReturn = null };
-        var adapter = new FakeAdapter("sendgrid");
-        var sender = BuildSender(resolver, Options("sendgrid"), adapter);
+        var resolver = new FakeResolver
+        {
+            ResolutionToReturn = TransactionalEmailProviderResolution.NotConfigured()
+        };
+        var sendgridAdapter = new FakeAdapter("sendgrid");
+        var sender = BuildSender(resolver, Options(), sendgridAdapter);
 
         var result = await sender.SendAsync(Request());
 
         Assert.False(result.Success);
-        Assert.Empty(adapter.Calls);
-        Assert.Equal(
-            "Active platform service key not configured for provider 'sendgrid'.",
-            result.SafeError);
+        Assert.Empty(sendgridAdapter.Calls);
+        Assert.Equal(TransactionalEmailFailureCodes.ProviderUnavailable, result.SafeError);
         Assert.Null(result.ProviderMessageId);
         Assert.Null(result.SentAt);
     }
 
     [Fact]
-    public async Task Unsupported_Provider_Fails_Safely_Without_Resolving_Key()
+    public async Task Ambiguous_Resolution_Fails_Safely_And_Does_Not_Call_Any_Adapter()
     {
-        var resolver = new FakeResolver();
-        var sender = BuildSender(resolver, Options("smtp"), new FakeAdapter("sendgrid"));
+        var resolver = new FakeResolver
+        {
+            ResolutionToReturn = TransactionalEmailProviderResolution.Ambiguous()
+        };
+        var sendgridAdapter = new FakeAdapter("sendgrid");
+        var resendAdapter = new FakeAdapter("resend");
+        var sender = BuildSender(resolver, Options(), sendgridAdapter, resendAdapter);
 
         var result = await sender.SendAsync(Request());
 
         Assert.False(result.Success);
-        Assert.Empty(resolver.RequestedSlugs);
-        Assert.Contains("Unsupported email provider 'smtp'", result.SafeError);
+        Assert.Empty(sendgridAdapter.Calls);
+        Assert.Empty(resendAdapter.Calls);
+        Assert.Equal(TransactionalEmailFailureCodes.ProviderAmbiguous, result.SafeError);
     }
 
     [Fact]
-    public async Task Missing_FromAddress_Fails_Safely_Without_Resolving_Key()
+    public async Task Missing_Adapter_For_Resolved_Provider_Fails_Safely()
+    {
+        var resolver = new FakeResolver
+        {
+            ResolutionToReturn = TransactionalEmailProviderResolution.Resolved("resend", FakeKey)
+        };
+        var sender = BuildSender(resolver, Options(), new FakeAdapter("sendgrid"));
+
+        var result = await sender.SendAsync(Request());
+
+        Assert.False(result.Success);
+        Assert.Equal("No email adapter registered for provider 'resend'.", result.SafeError);
+    }
+
+    [Fact]
+    public async Task Missing_FromAddress_Fails_Safely_Without_Resolving_Provider()
     {
         var resolver = new FakeResolver();
-        var options = Options("sendgrid");
+        var options = Options();
         options.FromAddress = "";
         var sender = BuildSender(resolver, options, new FakeAdapter("sendgrid"));
 
         var result = await sender.SendAsync(Request());
 
         Assert.False(result.Success);
-        Assert.Empty(resolver.RequestedSlugs);
+        Assert.Equal(0, resolver.ResolveTransactionalEmailProviderCallCount);
         Assert.Equal("Email:FromAddress is not configured.", result.SafeError);
     }
 
-    // ── 2. SendGrid adapter ──────────────────────────────────────────────────
+    // 2. SendGrid adapter
 
     [Fact]
     public async Task SendGridAdapter_Builds_Authorized_Request_And_Captures_MessageId()
@@ -254,7 +277,7 @@ public class TransactionalEmailPlatformKeyTests
         Assert.DoesNotContain("bad key", result.SafeError);
     }
 
-    // ── 3. Resend adapter ────────────────────────────────────────────────────
+    // 3. Resend adapter
 
     [Fact]
     public async Task ResendAdapter_Builds_Authorized_Request_And_Parses_Id()
@@ -293,14 +316,14 @@ public class TransactionalEmailPlatformKeyTests
             new FakeHttpClientFactory(new CapturingHandler(response)),
             FixedClock(DateTimeOffset.UtcNow), NullLogger<ResendEmailAdapter>.Instance);
 
-        var result = await adapter.SendAsync(FakeKey, Options("resend"), Request(), CancellationToken.None);
+        var result = await adapter.SendAsync(FakeKey, Options(), Request(), CancellationToken.None);
 
         Assert.False(result.Success);
         Assert.Contains("422", result.SafeError);
         Assert.DoesNotContain(FakeKey, result.SafeError);
     }
 
-    // ── 4. IEmailService wrapper (outbox-facing behavior) ───────────────────
+    // 4. IEmailService wrapper (outbox-facing behavior)
 
     private sealed class FakeSender : ITransactionalEmailSender
     {
@@ -365,7 +388,7 @@ public class TransactionalEmailPlatformKeyTests
         Assert.Contains("tok-123", request.HtmlBody);
     }
 
-    // ── 5. Outbox invite handler uses the platform-key path end to end ──────
+    // 5. Outbox invite handler uses the platform-key path end to end
 
     [Fact]
     public async Task InviteOutboxHandler_Queued_Email_Is_Sent_Through_Platform_Key_Sender()
@@ -409,7 +432,7 @@ public class TransactionalEmailPlatformKeyTests
         Assert.DoesNotContain(FakeKey, ex.Message);
     }
 
-    // ── 6. No-secret-shape guarantees ────────────────────────────────────────
+    // 6. No-secret-shape guarantees
 
     [Theory]
     [InlineData(typeof(TransactionalEmailRequest))]
@@ -426,6 +449,13 @@ public class TransactionalEmailPlatformKeyTests
                 name.Contains("encrypted"),
                 $"{type.Name}.{property.Name} looks like a secret field and must not exist.");
         }
+    }
+
+    [Fact]
+    public void EmailOptions_HasNoProviderProperty()
+    {
+        var propertyNames = typeof(EmailOptions).GetProperties().Select(p => p.Name).ToList();
+        Assert.DoesNotContain("Provider", propertyNames);
     }
 
     [Fact]

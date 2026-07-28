@@ -1,0 +1,8 @@
+$kind: http-request
+name: Admin Logout
+method: POST
+url: '{{admin_base_url}}/admin/v1/auth/logout'
+order: 4000
+headers:
+  - key: X-CSRF-Token
+    value: '{{admin_csrf_token}}'

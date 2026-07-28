@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
+using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.DevPlatform.SystemConfig;
 
@@ -25,6 +26,12 @@ public class PlatformOAuthAppConfiguration : IEntityTypeConfiguration<PlatformOA
 
         builder.HasIndex(a => a.Provider)
             .IsUnique();
+
+        builder.HasOne<PlatformProvider>()
+            .WithMany()
+            .HasForeignKey(app => app.Provider)
+            .HasPrincipalKey(provider => provider.ProviderKey)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Property(a => a.AppName)
             .HasMaxLength(100)

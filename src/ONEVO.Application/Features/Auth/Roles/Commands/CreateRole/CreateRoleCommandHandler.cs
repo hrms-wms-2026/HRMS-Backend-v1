@@ -93,7 +93,7 @@ public class CreateRoleCommandHandler : IRequestHandler<CreateRoleCommand, Resul
         if (resolvedPermissions.Count > 0)
         {
             var rolePermissions = resolvedPermissions
-                .Select(p => new RolePermission { RoleId = role.Id, PermissionId = p.Id })
+                .Select(p => new RolePermission { TenantId = tenantId, RoleId = role.Id, PermissionId = p.Id })
                 .ToList();
             await _rolePermissions.AddRangeAsync(rolePermissions, ct);
         }

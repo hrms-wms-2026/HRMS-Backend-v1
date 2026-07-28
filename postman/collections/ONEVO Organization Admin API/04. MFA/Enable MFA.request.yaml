@@ -1,0 +1,8 @@
+$kind: http-request
+name: Enable MFA
+method: POST
+url: '{{tenant_host}}/api/v1/auth/mfa/enable'
+order: 1000
+headers:
+  - key: X-CSRF-Token
+    value: '{{tenant_csrf_token}}'

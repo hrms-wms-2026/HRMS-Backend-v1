@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Login.OutboxHandlers;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
@@ -17,7 +18,7 @@ public class RequestPasswordResetCommandHandler : IRequestHandler<RequestPasswor
     private readonly IPasswordResetTokenRepository _passwordResetTokens;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ISecureTokenGenerator _tokenService;
-    private readonly IEmailService _emailService;
+    private readonly IOutboxWriter _outbox;
     private readonly IDateTimeProvider _clock;
     private readonly ITenantContext _tenantContext;
 
@@ -26,7 +27,7 @@ public class RequestPasswordResetCommandHandler : IRequestHandler<RequestPasswor
         IPasswordResetTokenRepository passwordResetTokens,
         IUnitOfWork unitOfWork,
         ISecureTokenGenerator tokenService,
-        IEmailService emailService,
+        IOutboxWriter outbox,
         IDateTimeProvider clock,
         ITenantContext tenantContext)
     {
@@ -34,21 +35,28 @@ public class RequestPasswordResetCommandHandler : IRequestHandler<RequestPasswor
         _passwordResetTokens = passwordResetTokens;
         _unitOfWork = unitOfWork;
         _tokenService = tokenService;
-        _emailService = emailService;
+        _outbox = outbox;
         _clock = clock;
         _tenantContext = tenantContext;
     }
 
     public async Task<Result> Handle(RequestPasswordResetCommand request, CancellationToken cancellationToken)
     {
-        // Silently succeed if context is not a resolved tenant — avoids enumeration
+        // Silently succeed if context is not a resolved tenant - avoids enumeration
         if (!_tenantContext.IsResolved || _tenantContext.ContextMode != TenantContextMode.Tenant)
+            return Result.Success();
+
+        // A resolved tenant context without a slug is malformed - fail closed rather than
+        // enqueue a reset email whose link would resolve to the base host (EmailTemplateRenderer
+        // only builds a tenant-host reset URL when a slug is supplied). No token is created and
+        // no repository/outbox call is made, so this is indistinguishable from an unknown user.
+        if (string.IsNullOrWhiteSpace(_tenantContext.Slug))
             return Result.Success();
 
         var email = request.Email.Trim().ToLowerInvariant();
         var user = await _users.GetByTenantAndEmailAsync(_tenantContext.TenantId, email, cancellationToken);
 
-        // Treat inactive users the same as not found — avoid enumeration
+        // Treat inactive users the same as not found - avoid enumeration
         if (user is not null && !user.IsActive)
             user = null;
 
@@ -75,10 +83,17 @@ public class RequestPasswordResetCommandHandler : IRequestHandler<RequestPasswor
             CreatedAt = _clock.UtcNow
         }, cancellationToken);
 
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        // Enqueue the reset email in the same unit of work as the token: one SaveChangesAsync
+        // commits both atomically, so a token can never exist without a durable, retryable email
+        // job (and vice versa). The outbox processor retries delivery on a transient provider
+        // failure; the client only ever sees the caller's generic 200 either way.
+        await _outbox.EnqueueAsync(
+            OutboxMessageTypes.PasswordResetEmail,
+            new PasswordResetEmailPayload(user.TenantId, user.Id, user.Email, rawToken, _tenantContext.Slug),
+            tenantId: user.TenantId,
+            cancellationToken);
 
-        // Fire-and-forget email — don't await to keep response fast
-        _ = _emailService.SendPasswordResetAsync(user.Email, rawToken, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
     }

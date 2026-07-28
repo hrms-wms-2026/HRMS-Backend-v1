@@ -88,6 +88,14 @@ function Find-PsqlExecutable {
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $envPath = Join-Path $repoRoot '.env'
 $bootstrapPath = Join-Path $PSScriptRoot 'local-bootstrap-roles.sql'
+$postMigrationGrantsPath = Join-Path $PSScriptRoot 'local-post-migration-grants.sql'
+
+# Fixed conventional NOLOGIN role name that owns the sole pre-tenant base-login lookup
+# function. Not password-protected (NOLOGIN), so unlike app_user/migrator_user it does not
+# need to come from .env; production/staging must provision the equivalent role and grants
+# through their own deployment process, exactly as this file's header comment already
+# requires for app_user/migrator_user.
+$baseLoginFnOwner = 'onevo_auth_base_login_fn_owner'
 
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
     throw "Local .env file was not found. Copy .env.example to .env, replace the local password placeholders, and run this command again."
@@ -199,10 +207,12 @@ try {
     Write-Host "Applying restricted local runtime and migration roles..."
     $bootstrapArguments = $commonArguments + @(
         '--dbname', $databaseName,
+        '--set', "db_name=$databaseName",
         '--set', "app_user=$appUser",
         '--set', "app_password=$appPassword",
         '--set', "migrator_user=$migratorUser",
         '--set', "migrator_password=$migratorPassword",
+        '--set', "base_login_fn_owner=$baseLoginFnOwner",
         '--file', $bootstrapPath
     )
     Invoke-PsqlChecked -Executable $psqlExecutable -Arguments $bootstrapArguments `
@@ -257,4 +267,26 @@ if ($RunMigrations) {
     }
 
     Write-Host "EF migrations completed successfully."
+
+    Write-Host "Applying post-migration object grants..."
+    $previousPgPasswordForGrants = [Environment]::GetEnvironmentVariable('PGPASSWORD', 'Process')
+    try {
+        [Environment]::SetEnvironmentVariable('PGPASSWORD', $adminPassword, 'Process')
+
+        $postMigrationGrantsArguments = $commonArguments + @(
+            '--dbname', $databaseName,
+            '--set', "base_login_fn_owner=$baseLoginFnOwner",
+            '--file', $postMigrationGrantsPath
+        )
+        Invoke-PsqlChecked -Executable $psqlExecutable -Arguments $postMigrationGrantsArguments `
+            -FailureMessage 'Local PostgreSQL post-migration object grants failed.'
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable('PGPASSWORD', $previousPgPasswordForGrants, 'Process')
+    }
+
+    Write-Host "Post-migration object grants applied successfully."
+}
+else {
+    Write-Host "Skipping post-migration object grants: pass -RunMigrations to apply them, because public.users/public.tenants may not exist yet without migrations."
 }

@@ -5,10 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authentication;
 using System.Security.Claims;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Infrastructure.Identity;
+using ONEVO.Infrastructure.Identity.Sessions;
 using ONEVO.Application.Features.Auth.Login.Commands.AdminGoogleLogin;
 using ONEVO.Application.Features.Auth.Login.Commands.AdminLogin;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
+using ONEVO.Application.Features.Auth.Login.Queries.GetAdminGoogleSsoConfig;
 
 namespace ONEVO.Api.Controllers.Admin.DevPlatform.Auth;
 
@@ -23,6 +24,19 @@ public sealed class AdminAuthController : ControllerBase
     {
         _mediator = mediator;
         _env = env;
+    }
+
+    /// <summary>
+    /// Public Google SSO config for the admin login page. Anonymous because the login
+    /// page needs it before the admin authenticates. Never returns secret material -
+    /// only whether Google SSO is currently usable and its public clientId.
+    /// </summary>
+    [HttpGet("google-config")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GoogleConfig(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetAdminGoogleSsoConfigQuery(), ct);
+        return Ok(result.Value);
     }
 
     /// <summary>Exchange a Google ID token for a cookie-backed platform-admin session.</summary>
@@ -61,7 +75,7 @@ public sealed class AdminAuthController : ControllerBase
         return Ok(result.Value.ToSessionResponse());
     }
 
-    /// <summary>Logout — revokes the server-side admin session.</summary>
+    /// <summary>Logout - revokes the server-side admin session.</summary>
     [HttpPost("logout")]
     [Authorize(Policy = "AdminPolicy")]
     public async Task<IActionResult> Logout(CancellationToken ct)

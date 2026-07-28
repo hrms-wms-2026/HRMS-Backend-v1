@@ -1,0 +1,15 @@
+$kind: http-request
+name: Configure Country Route
+method: POST
+url: '{{admin_base_url}}/system-config/payment-gateways/country-routes'
+order: 4000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "countryCode": "LK",
+      "gatewayProvider": "payhere"
+    }

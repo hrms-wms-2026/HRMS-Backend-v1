@@ -5,10 +5,10 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -25,7 +25,7 @@ namespace ONEVO.Tests.Integration.E2E;
 /// run against a local server (no Docker needed); otherwise a Testcontainers
 /// instance is started.
 /// </summary>
-[Collection("E2E")]
+[Collection(WebApplicationFactoryCollection.Name)]
 public class TenantProvisioningE2ETests : IAsyncLifetime
 {
     private const string Slug = "demo-e2e";
@@ -40,6 +40,7 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
     private readonly CapturingEmailService _email = new();
 
     private PostgreSqlContainer? _postgres;
+    private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
     private HttpClient _client = null!;
     private string _adminCookie = null!;
@@ -59,6 +60,9 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
             await _postgres.StartAsync();
             connectionString = _postgres.GetConnectionString();
         }
+
+        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new E2ETestFactory(connectionString, _email);
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -80,6 +84,7 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         _factory.Dispose();
         if (_postgres is not null)
             await _postgres.DisposeAsync();
+        await _environmentScope.DisposeAsync();
     }
 
     [Fact]
@@ -102,28 +107,40 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         var (acceptBody, acceptCookies) = await PostJsonAsync(
             TenantHost,
             $"/api/v1/auth/invitations/{inviteToken}/accept-password",
-            new { password = OwnerPassword, phone = "+94770000000" });
+            new
+            {
+                password = OwnerPassword,
+                confirm_password = OwnerPassword,
+                acceptances = new[]
+                {
+                    new { document_type = "terms", version = "1.0", decision = "accepted" },
+                    new { document_type = "privacy_notice", version = "1.0", decision = "acknowledged" }
+                }
+            });
 
         acceptBody.GetProperty("authenticated").GetBoolean().Should().BeTrue();
         acceptCookies.Should().ContainKey("onevo_session");
         acceptCookies.Should().ContainKey("onevo_csrf");
 
-        // ── 5. Provisioning confirm is currently blocked by the stub readers ───
-        // subscription / modules / settings section readers are NotConfigured
-        // placeholders that fail closed, so activation via the API returns 422.
-        // When the real readers land, flip this assertion to NoContent and
-        // delete ActivateTenantDirectlyAsync below.
+        // ── 5. Provisioning confirm activates the tenant for real ──────────────
+        // subscription / modules / settings / roles are all seeded by tenant
+        // creation, and the owner invite was just accepted above, so the
+        // activation guard is satisfied without any direct DB write.
         var confirm = await SendAsync(HttpMethod.Patch, AdminHost,
             $"/admin/v1/tenants/{tenantId}/provision/confirm",
             new { confirm = true }, cookie: _adminCookie, csrfToken: _adminCsrfToken);
-        confirm.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        confirm.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        await ActivateTenantDirectlyAsync(tenantId);
+        await AssertTenantStatusAsync(tenantId, TenantStatus.Trial);
 
         // ── 6. Owner logs in on the tenant host ─────────────────────────────────
-        var (loginBody, cookies) = await PostJsonAsync(
-            TenantHost, "/api/v1/auth/login",
+        // Invite completion already appended the current required legal records before issuing
+        // its session, so a later tenant-host login can issue a session directly.
+        var loginResponse = await SendAsync(HttpMethod.Post, TenantHost, "/api/v1/auth/login",
             new { email = OwnerEmail, password = OwnerPassword });
+        var loginBody = await ReadJsonAsync(loginResponse);
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.OK, loginBody.ToString());
+        var cookies = ParseSetCookies(loginResponse);
 
         loginBody.GetProperty("authenticated").GetBoolean().Should().BeTrue();
         cookies.Should().ContainKey("onevo_session");
@@ -138,7 +155,8 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         me.StatusCode.Should().Be(HttpStatusCode.OK);
         var meBody = await ReadJsonAsync(me);
         meBody.GetProperty("authenticated").GetBoolean().Should().BeTrue();
-        meBody.GetProperty("user").GetProperty("tenant_id").GetGuid().Should().Be(tenantId);
+        meBody.GetProperty("user").TryGetProperty("tenant_id", out _).Should().BeFalse();
+        meBody.GetProperty("user").TryGetProperty("user_id", out _).Should().BeFalse();
 
         var removedRefresh = await SendAsync(HttpMethod.Post, TenantHost, "/api/v1/auth/refresh",
             body: null,
@@ -256,18 +274,12 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         return null;
     }
 
-    private async Task ActivateTenantDirectlyAsync(Guid tenantId)
+    private async Task AssertTenantStatusAsync(Guid tenantId, TenantStatus expected)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var tenant = await db.Set<Tenant>().SingleAsync(t => t.Id == tenantId);
-        tenant.Status = TenantStatus.Active;
-        await db.SaveChangesAsync();
-
-        // HostTenantResolutionMiddleware caches slug -> status for 2 minutes;
-        // evict so the next request sees the tenant as active.
-        var cache = _factory.Services.GetRequiredService<IMemoryCache>();
-        cache.Remove($"tenant:slug:{Slug}");
+        tenant.Status.Should().Be(expected);
     }
 
     private async Task WaitForSeedersAsync()

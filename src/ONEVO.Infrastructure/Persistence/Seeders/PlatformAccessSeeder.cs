@@ -106,7 +106,7 @@ public class PlatformAccessSeeder : IHostedService
             bootstrapFullName,
             null,
             false,
-            new ONEVO.Infrastructure.Identity.BCryptPasswordHasher(),
+            new ONEVO.Infrastructure.Identity.Passwords.BCryptPasswordHasher(),
             ct);
     }
 
@@ -292,7 +292,7 @@ public class PlatformAccessSeeder : IHostedService
         IPasswordHasher passwordHasher,
         CancellationToken ct)
     {
-        if (!allowCredentialBootstrap || string.IsNullOrWhiteSpace(bootstrapPassword))
+        if (!allowCredentialBootstrap)
         {
             return;
         }
@@ -317,6 +317,14 @@ public class PlatformAccessSeeder : IHostedService
             {
                 return;
             }
+        }
+
+        if (string.IsNullOrWhiteSpace(bootstrapPassword))
+        {
+            throw new InvalidOperationException(
+                "Developer Platform bootstrap user has no active password credential. " +
+                "Set DevAdmin__Password once in the local Development/Test environment, " +
+                "then remove it after platform_user_credentials contains the password hash.");
         }
 
         var now = DateTimeOffset.UtcNow;

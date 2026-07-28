@@ -1,0 +1,27 @@
+$kind: http-request
+name: Authenticated Legal Acceptance
+method: POST
+url: '{{tenant_host}}/api/v1/legal/acceptances'
+order: 3000
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: X-CSRF-Token
+    value: '{{tenant_csrf_token}}'
+body:
+  type: json
+  content: |-
+    {
+      "acceptances": [
+        {
+          "document_type": "privacy_notice",
+          "version": "1.0",
+          "decision": "accepted"
+        },
+        {
+          "document_type": "terms",
+          "version": "1.0",
+          "decision": "accepted"
+        }
+      ]
+    }

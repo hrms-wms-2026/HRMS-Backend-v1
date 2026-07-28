@@ -4,7 +4,7 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Ser
 
 /// <summary>
 /// Verifies payment gateway credentials against the live provider API before save.
-/// This service does NOT persist credentials — it is called at the verify endpoint only.
+/// This service does NOT persist credentials - it is called at the verify endpoint only.
 /// Implementation lives in Infrastructure (HTTP client per provider).
 /// </summary>
 public interface IPaymentGatewayVerificationService

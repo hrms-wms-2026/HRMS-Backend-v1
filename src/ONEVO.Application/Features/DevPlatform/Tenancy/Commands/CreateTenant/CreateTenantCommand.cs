@@ -12,9 +12,6 @@ public sealed record SubscriptionInfo(
     int? TrialPeriodDays = null,
     int? UnpaidGracePeriodDays = null);
 
-public sealed record TenantConfigurationSetupInfo(
-    IReadOnlyList<string> SetupOptions);
-
 public sealed record CreateTenantCommand(
     string Name,
     string Slug,
@@ -26,5 +23,4 @@ public sealed record CreateTenantCommand(
     string Timezone,
     string Currency,
     SubscriptionInfo Subscription,
-    TenantConfigurationSetupInfo? TenantConfigurationSetup = null,
     TenantOwnerInviteRequest? OwnerInvite = null) : IRequest<Result<CreateTenantDraftResponseDto>>;

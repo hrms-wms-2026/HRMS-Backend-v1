@@ -11,8 +11,6 @@ using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Roles.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -154,7 +152,7 @@ public class GetProvisioningSummaryQueryHandler
             blockers.Add(new ProvisioningIssue(
                 Code: pendingCount > 0 ? "owner_invite_pending" : "owner_invite_missing",
                 Message: pendingCount > 0
-                    ? "owner has been invited but has not yet set their password and phone number."
+                    ? "owner has been invited but has not yet set their password."
                     : "send a tenant owner invite before activation.",
                 Section: "owner_invite"));
         }

@@ -14,20 +14,54 @@ public sealed class EfPlatformServiceKeyRepository : IPlatformServiceKeyReposito
 {
     private readonly ApplicationDbContext _db;
 
-    public EfPlatformServiceKeyRepository(ApplicationDbContext db) => _db = db;
+    public EfPlatformServiceKeyRepository(ApplicationDbContext db)
+    {
+        _db = db;
+    }
 
     public async Task<IReadOnlyList<PlatformServiceKey>> ListAllAsync(CancellationToken ct)
-        => await _db.PlatformServiceKeys
+    {
+        var query = _db.PlatformServiceKeys
             .AsNoTracking()
-            .OrderBy(k => k.ServiceKey)
-            .ToListAsync(ct);
+            .OrderBy(k => k.ServiceKey);
 
-    public Task<PlatformServiceKey?> GetByServiceKeyAsync(string serviceKey, CancellationToken ct)
-        => _db.PlatformServiceKeys.FirstOrDefaultAsync(k => k.ServiceKey == serviceKey, ct);
+        var result = await query.ToListAsync(ct);
+        return result;
+    }
+
+    public async Task<PlatformServiceKey?> GetByServiceKeyAsync(string serviceKey, CancellationToken ct)
+    {
+        var query = _db.PlatformServiceKeys
+            .Where(k => k.ServiceKey == serviceKey);
+
+        var result = await query.FirstOrDefaultAsync(ct);
+        return result;
+    }
+
+    public async Task<IReadOnlyList<PlatformServiceKey>> ListActiveForProviderFamilyAsync(
+        string providerFamily,
+        CancellationToken ct)
+    {
+        var query =
+            from key in _db.PlatformServiceKeys.AsNoTracking()
+            join provider in _db.PlatformProviders.AsNoTracking()
+                on key.ServiceKey equals provider.ProviderKey
+            where key.IsActive &&
+                  provider.IsActive &&
+                  provider.ProviderFamily == providerFamily
+            orderby key.ServiceKey
+            select key;
+
+        return await query.ToListAsync(ct);
+    }
 
     public async Task AddAsync(PlatformServiceKey key, CancellationToken ct)
-        => await _db.PlatformServiceKeys.AddAsync(key, ct);
+    {
+        await _db.PlatformServiceKeys.AddAsync(key, ct);
+    }
 
-    public Task SaveChangesAsync(CancellationToken ct)
-        => _db.SaveChangesAsync(ct);
+    public async Task SaveChangesAsync(CancellationToken ct)
+    {
+        await _db.SaveChangesAsync(ct);
+    }
 }

@@ -37,7 +37,7 @@ public sealed class DefaultRoleSeeder : IDefaultRoleSeeder
         };
 
         owner.RolePermissions = explicitPermissions
-            .Select(p => new RolePermission { RoleId = owner.Id, PermissionId = p.Id })
+            .Select(p => new RolePermission { TenantId = tenantId, RoleId = owner.Id, PermissionId = p.Id })
             .ToList();
 
         var employee = new Role

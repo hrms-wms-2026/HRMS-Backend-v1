@@ -4,8 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.DevPlatform.Tenancy.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.Tenancy.Queries.GetProvisioningSummary;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -19,6 +18,7 @@ public class ConfirmTenantProvisioningCommandHandler
 
     private readonly ITenantRepository _tenants;
     private readonly ITenantStatusHistoryRepository _statusHistories;
+    private readonly ITenantCacheInvalidator _cacheInvalidator;
     private readonly IMediator _mediator;
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
@@ -27,6 +27,7 @@ public class ConfirmTenantProvisioningCommandHandler
     public ConfirmTenantProvisioningCommandHandler(
         ITenantRepository tenants,
         ITenantStatusHistoryRepository statusHistories,
+        ITenantCacheInvalidator cacheInvalidator,
         IMediator mediator,
         ICurrentUser currentUser,
         IUnitOfWork unitOfWork,
@@ -34,6 +35,7 @@ public class ConfirmTenantProvisioningCommandHandler
     {
         _tenants = tenants;
         _statusHistories = statusHistories;
+        _cacheInvalidator = cacheInvalidator;
         _mediator = mediator;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
@@ -90,6 +92,11 @@ public class ConfirmTenantProvisioningCommandHandler
         await _statusHistories.AddAsync(history, ct);
 
         await _unitOfWork.SaveChangesAsync(ct);
+
+        // HostTenantResolutionMiddleware caches slug -> status for 2 minutes;
+        // evict so the next request on the tenant host sees the new status
+        // instead of the "provisioning" entry cached by earlier invite requests.
+        _cacheInvalidator.InvalidateBySlug(tenant.Slug);
 
         return Result<ProvisioningSummaryDto>.Success(summary with
         {

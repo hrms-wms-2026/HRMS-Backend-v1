@@ -70,21 +70,16 @@ public class ConfigurationStartupValidator : IHostedService
             ("Urls:AppBaseUrl", "tenant app base URL (used in invite/reset links)", true),
             ("Urls:AdminConsoleBaseUrl", "admin console base URL", true),
             ("Urls:WebhookBaseUrl", "public webhook callback base URL", false),
-            ("Email:Provider", "email provider selector (sendgrid/resend, non-secret)", true),
-            ("Email:FromAddress", "default From: address", true),
-            ("GoogleAuth:Admin:ClientId", "Google OAuth client ID for admin login", false),
-            ("GoogleAuth:TenantInvite:ClientId", "Google OAuth client ID for tenant invite Google accept", false),
-            ("Stripe:PublishableKey", "Stripe publishable key (client-side, not secret)", false),
-            ("PayHere:MerchantId", "PayHere merchant ID", false)
+            ("Email:FromAddress", "default From: address", true)
         };
 
-        // Provider secrets (GoogleAuth:*:ClientSecret, Stripe:SecretKey, Stripe:WebhookSecret,
-        // PayHere:MerchantSecret, PayHere:WebhookSecret) are intentionally NOT checked here and must
-        // never live in appsettings.*.json. SendGrid/Resend transactional email API keys are stored
-        // encrypted in platform_service_keys and resolved at send time via IPlatformServiceKeyResolver;
-        // no email secret exists in configuration at all. Remaining payment credentials live in
-        // payment_gateway_credentials; until fully wired, supply them only via environment
-        // variables / user-secrets for local runs that need a real provider.
+        // Provider registrations, credentials, and provider SELECTION are intentionally
+        // not configuration checks. OAuth apps resolve from
+        // platform_oauth_apps/platform_oauth_app_credentials, the active SendGrid/Resend
+        // transactional email provider and Cloudflare/Cloudflare R2 keys resolve from
+        // platform_service_keys, and payment providers resolve from
+        // payment_gateway_configs/payment_gateway_credentials. No provider secret and no
+        // provider selector belongs in appsettings, .env, or startup warning guidance.
 
         var missing = 0;
         foreach (var check in checks)

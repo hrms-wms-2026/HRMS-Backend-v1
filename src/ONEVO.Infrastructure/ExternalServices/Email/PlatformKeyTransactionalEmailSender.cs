@@ -1,22 +1,26 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
 
 namespace ONEVO.Infrastructure.ExternalServices.Email;
 
 /// <summary>
 /// Transactional email sender backed by ONEVO-owned platform service keys.
-/// - Provider comes from non-secret Email:Provider config ("sendgrid"/"resend",
-///   default "sendgrid" when empty).
-/// - The API key is resolved per send from platform_service_keys via
-///   IPlatformServiceKeyResolver, decrypted in memory only, never cached, never logged.
-/// - When no active key is configured there is NO appsettings fallback: the attempt
-///   fails with a safe error that contains no secret material.
+/// - Provider selection is entirely DB-backed: the active transactional email
+///   provider is resolved by joining active transactional_email rows in
+///   platform_providers to matching active platform_service_keys credentials.
+///   There is no configuration-based provider selector and no default provider.
+/// - Zero active providers and more than one active provider both fail safely with
+///   no secret material; the backend never guesses between candidates.
+/// - The API key is decrypted in memory only for the duration of the send and is
+///   never cached or logged.
 /// </summary>
 public sealed class PlatformKeyTransactionalEmailSender : ITransactionalEmailSender
 {
+    /// <summary>Provider slot used on TransactionalEmailResult.Failed when no provider was resolved.</summary>
+    private const string NoProviderResolved = "unresolved";
+
     private readonly IPlatformServiceKeyResolver _keyResolver;
     private readonly IEnumerable<IEmailProviderAdapter> _adapters;
     private readonly EmailOptions _options;
@@ -38,25 +42,37 @@ public sealed class PlatformKeyTransactionalEmailSender : ITransactionalEmailSen
         TransactionalEmailRequest request,
         CancellationToken ct = default)
     {
-        // Step 1: resolve the configured provider (non-secret selector, default sendgrid).
-        var provider = string.IsNullOrWhiteSpace(_options.Provider)
-            ? PlatformServiceKeyCatalog.Sendgrid
-            : _options.Provider.Trim().ToLowerInvariant();
+        // Step 1: validate non-secret sender configuration before touching the database.
+        if (string.IsNullOrWhiteSpace(_options.FromAddress))
+            return TransactionalEmailResult.Failed(NoProviderResolved, "Email:FromAddress is not configured.");
+        if (string.IsNullOrWhiteSpace(_options.FromName))
+            return TransactionalEmailResult.Failed(NoProviderResolved, "Email:FromName is not configured.");
+        if (string.IsNullOrWhiteSpace(request.RecipientEmail))
+            return TransactionalEmailResult.Failed(NoProviderResolved, "Recipient email is empty.");
 
-        if (provider != PlatformServiceKeyCatalog.Sendgrid &&
-            provider != PlatformServiceKeyCatalog.Resend)
+        // Step 2: resolve the single active transactional email provider from
+        // platform_service_keys. No appsettings fallback exists by design, and the
+        // backend never picks one arbitrarily when zero or multiple rows are active.
+        var resolution = await _keyResolver.ResolveActiveTransactionalEmailProviderAsync(ct);
+
+        if (resolution.Status == TransactionalEmailProviderResolutionStatus.NotConfigured)
         {
-            return TransactionalEmailResult.Failed(provider,
-                $"Unsupported email provider '{provider}'. Allowed values: sendgrid, resend.");
+            _logger.LogWarning(
+                "Transactional email send blocked: no active configured transactional email provider.");
+            return TransactionalEmailResult.Failed(
+                NoProviderResolved, TransactionalEmailFailureCodes.ProviderUnavailable);
         }
 
-        // Step 2: validate non-secret sender configuration.
-        if (string.IsNullOrWhiteSpace(_options.FromAddress))
-            return TransactionalEmailResult.Failed(provider, "Email:FromAddress is not configured.");
-        if (string.IsNullOrWhiteSpace(_options.FromName))
-            return TransactionalEmailResult.Failed(provider, "Email:FromName is not configured.");
-        if (string.IsNullOrWhiteSpace(request.RecipientEmail))
-            return TransactionalEmailResult.Failed(provider, "Recipient email is empty.");
+        if (resolution.Status == TransactionalEmailProviderResolutionStatus.Ambiguous)
+        {
+            _logger.LogWarning(
+                "Transactional email send blocked: more than one active configured transactional email provider.");
+            return TransactionalEmailResult.Failed(
+                NoProviderResolved, TransactionalEmailFailureCodes.ProviderAmbiguous);
+        }
+
+        var provider = resolution.ProviderKey!;
+        var apiKey = resolution.ApiKey!;
 
         IEmailProviderAdapter? adapter = null;
         foreach (var candidate in _adapters)
@@ -73,19 +89,7 @@ public sealed class PlatformKeyTransactionalEmailSender : ITransactionalEmailSen
                 $"No email adapter registered for provider '{provider}'.");
         }
 
-        // Step 3: resolve the active ONEVO-owned key from platform_service_keys.
-        // No appsettings fallback exists by design.
-        var apiKey = await _keyResolver.ResolveActiveKeyAsync(provider, ct);
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            _logger.LogWarning(
-                "Transactional email send blocked: no active platform service key for provider {Provider}.",
-                provider);
-            return TransactionalEmailResult.Failed(provider,
-                $"Active platform service key not configured for provider '{provider}'.");
-        }
-
-        // Step 4: call the provider adapter. The decrypted key stays in memory inside
+        // Step 3: call the provider adapter. The decrypted key stays in memory inside
         // the adapter call and is never logged or returned.
         var result = await adapter.SendAsync(apiKey, _options, request, ct);
 

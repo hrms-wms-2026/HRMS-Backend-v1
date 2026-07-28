@@ -1,0 +1,10 @@
+$kind: http-request
+name: Validate Tenant
+method: GET
+url: '{{admin_base_url}}/admin/v1/tenants/validate'
+order: 1000
+queryParams:
+  - key: slug
+    value: acme
+  - key: companyName
+    value: 'Acme Pvt Ltd'

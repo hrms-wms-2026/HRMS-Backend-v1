@@ -28,7 +28,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
     private const string TenantSlug = "acme";
     private const string TenantName = "Acme Test";
-    private const string UserEmail = "owner@acme.test";
+    private const string UserEmail = "siyasiyamala932@gmail.com";
     private const string UserPassword = "Password123!";
     private const string RoleName = "Tenant Owner";
     private const string GitHubProvider = "github";
@@ -68,6 +68,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
             var encryption = scope.ServiceProvider.GetRequiredService<IEncryptionService>();
 
+            tenantContext.SetAdminMode();
             await SeedAsync(
                 db,
                 tenantContext,
@@ -111,6 +112,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
         tenantContext.SetAdminMode();
         await SeedGlobalEmailDirectoryAsync(db, tenant.Id, ct);
+        await SeedDevelopmentLegalVersionsAsync(db, now, ct);
 
         var platformUser = await GetPlatformBootstrapUserAsync(db, ct);
         if (platformUser is null)
@@ -199,9 +201,12 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         DateTimeOffset now,
         CancellationToken ct)
     {
-        var user = await db.Users.FirstOrDefaultAsync(
-            u => u.TenantId == tenantId && u.Email == UserEmail,
-            ct);
+        // Matched by the seeder's fixed UserId, not by email: an existing dev/test database seeded
+        // before the smoke-tenant owner email changed still has this row under the old address, and
+        // looking it up by email would fall through to the Add() branch below with the same
+        // hardcoded Id - a primary-key violation. Id is the stable anchor; email is just a field on
+        // the row it updates.
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == UserId, ct);
         if (user is null)
         {
             user = new User
@@ -223,6 +228,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             return user;
         }
 
+        user.Email = UserEmail;
         user.FirstName = "Acme";
         user.LastName = "Owner";
         user.IsActive = true;
@@ -237,12 +243,22 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         return user;
     }
 
-    private static Task SeedGlobalEmailDirectoryAsync(
+    private static async Task SeedGlobalEmailDirectoryAsync(
         ApplicationDbContext db,
         Guid tenantId,
         CancellationToken ct)
     {
-        return db.Database.ExecuteSqlInterpolatedAsync(
+        // Remove any directory row left over from a previous seed's email for this tenant before
+        // inserting the current one, so re-seeding an existing dev database never leaves a stale
+        // entry for an address that no longer belongs to any user.
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            DELETE FROM global_email_directory
+            WHERE tenant_id = {tenantId} AND email <> {UserEmail}
+            """,
+            ct);
+
+        await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             INSERT INTO global_email_directory (email, tenant_id)
             VALUES ({UserEmail}, {tenantId})
@@ -578,5 +594,51 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         approval.ErrorMessage = null;
         approval.ConnectedByUserId = userId;
         approval.ConnectedAt = approval.ConnectedAt == default ? now : approval.ConnectedAt;
+    }
+
+    private static async Task SeedDevelopmentLegalVersionsAsync(
+        ApplicationDbContext db,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var termsExists = await db.LegalDocumentVersions.AnyAsync(
+            v => v.DocumentType == "terms" && v.Version == "1.0", ct);
+        if (!termsExists)
+        {
+            db.LegalDocumentVersions.Add(new ONEVO.Domain.Features.DevPlatform.Compliance.Entities.LegalDocumentVersion
+            {
+                Id = Guid.NewGuid(),
+                DocumentType = "terms",
+                Version = "1.0",
+                Title = "ONEVO Terms & Conditions (Bootstrap Dev)",
+                IsRequired = true,
+                BlockScope = "dashboard",
+                Status = "published",
+                PublishedAt = now,
+                PublishReason = "Development smoke-test baseline document.",
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
+
+        var privacyExists = await db.LegalDocumentVersions.AnyAsync(
+            v => v.DocumentType == "privacy_notice" && v.Version == "1.0", ct);
+        if (!privacyExists)
+        {
+            db.LegalDocumentVersions.Add(new ONEVO.Domain.Features.DevPlatform.Compliance.Entities.LegalDocumentVersion
+            {
+                Id = Guid.NewGuid(),
+                DocumentType = "privacy_notice",
+                Version = "1.0",
+                Title = "ONEVO Privacy Notice (Bootstrap Dev)",
+                IsRequired = true,
+                BlockScope = "dashboard",
+                Status = "published",
+                PublishedAt = now,
+                PublishReason = "Development smoke-test baseline document.",
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
     }
 }

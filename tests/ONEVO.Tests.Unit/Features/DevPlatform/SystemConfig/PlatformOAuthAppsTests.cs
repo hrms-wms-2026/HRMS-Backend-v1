@@ -9,12 +9,12 @@ using ONEVO.Api.Controllers.Admin.DevPlatform.SystemConfig;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Helpers;
-using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.CreatePlatformOAuthApp;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.ConfigurePlatformOAuthApp;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.RotatePlatformOAuthAppSecret;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.SetPlatformOAuthAppActivation;
-using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.UpdatePlatformOAuthApp;
-using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.VerifyPlatformOAuthApp;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Commands.ValidatePlatformOAuthAppConfig;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.DTOs.Responses;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Queries.GetPlatformOAuthApp;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Queries.ListPlatformOAuthApps;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
@@ -31,16 +31,17 @@ public class PlatformOAuthAppsTests
 {
     private static readonly Guid Actor = Guid.NewGuid();
 
-    private static PlatformOAuthApp ExistingApp(string provider = "github", bool isActive = true) => new()
+    private static PlatformOAuthApp ExistingApp(
+        string provider = "github", bool isActive = true, string clientId = "Iv1.abc123") => new()
     {
         Id = Guid.NewGuid(),
         Provider = provider,
         AppName = "ONEVO for GitHub",
         LogoUrl = null,
-        ClientId = "Iv1.abc123",
+        ClientId = clientId,
         AuthorizationUrl = "https://github.com/login/oauth/authorize",
         TokenUrl = "https://github.com/login/oauth/access_token",
-        DefaultScopes = new[] { "repo", "read:user" },
+        DefaultScopes = new[] { "read:user" },
         IsActive = isActive,
         LastVerifiedAt = null,
         UpdatedById = Guid.NewGuid(),
@@ -61,23 +62,17 @@ public class PlatformOAuthAppsTests
         RotatedAt = DateTimeOffset.UtcNow.AddDays(-1)
     };
 
-    private static CreatePlatformOAuthAppCommand ValidCreateCommand(
+    private static ConfigurePlatformOAuthAppCommand ConfigureCommand(
         string provider = "github",
-        string clientSecret = "plain-secret",
-        string? privateKey = null) => new(
-        provider,
-        "ONEVO for GitHub",
-        null,
-        "Iv1.abc123",
-        clientSecret,
-        privateKey,
-        "https://github.com/login/oauth/authorize",
-        "https://github.com/login/oauth/access_token",
-        new[] { "repo", "read:user" },
-        true,
-        Actor);
+        string? appName = null,
+        string? logoUrl = null,
+        string? clientId = null,
+        string? clientSecret = null,
+        string? privateKey = null,
+        bool? isActive = null) => new(
+        provider, appName, logoUrl, clientId, clientSecret, privateKey, isActive, Actor);
 
-    // ── 1. Migration / EF mapping ────────────────────────────────────────────
+    // -- 1. Migration / EF mapping (unchanged schema) ---------------------------
 
     [Fact]
     public void Migration_CreatesOnlyTheTwoOAuthTables_AndNoOtherOperations()
@@ -95,7 +90,6 @@ public class PlatformOAuthAppsTests
         Assert.Contains("platform_oauth_apps", createTables);
         Assert.Contains("platform_oauth_app_credentials", createTables);
 
-        // No drops/alters/column changes to any other table
         var touchedTables = builder.Operations
             .Select(o => o switch
             {
@@ -138,7 +132,6 @@ public class PlatformOAuthAppsTests
         Assert.NotNull(entityType);
         Assert.Equal("platform_oauth_apps", entityType!.GetTableName());
 
-        // UNIQUE(provider), varchar(30)
         var providerProp = entityType.FindProperty(nameof(PlatformOAuthApp.Provider));
         Assert.NotNull(providerProp);
         Assert.False(providerProp!.IsNullable);
@@ -209,160 +202,276 @@ public class PlatformOAuthAppsTests
         Assert.Equal(credExpected.OrderBy(x => x), credProps.OrderBy(x => x));
     }
 
-    // ── 2. Create ────────────────────────────────────────────────────────────
+    // -- 2. Provider catalog boundary ---------------------------------------------
 
     [Fact]
-    public async Task Create_EncryptsSecretsBeforeRepositorySave_AndNeverPersistsPlaintext()
+    public void Catalog_ContainsExactlyGithubGoogleMicrosoftZoom()
+    {
+        var providers = PlatformOAuthProviderCatalog.GetAll().Select(d => d.Provider).OrderBy(p => p).ToArray();
+        Assert.Equal(new[] { "github", "google", "microsoft", "zoom" }, providers);
+    }
+
+    [Theory]
+    [InlineData("slack")]
+    [InlineData("aws")]
+    [InlineData("aws_rekognition")]
+    [InlineData("rekognition")]
+    [InlineData("aws_s3")]
+    [InlineData("provider_service")]
+    [InlineData("not-a-real-provider")]
+    public void Catalog_RejectsUnapprovedProviders(string provider)
+    {
+        Assert.False(PlatformOAuthProviderCatalog.IsApproved(provider));
+    }
+
+    [Fact]
+    public void Catalog_Slack_IsPhase2NotApproved()
+    {
+        Assert.True(PlatformOAuthProviderCatalog.IsPhase2("slack"));
+        Assert.False(PlatformOAuthProviderCatalog.IsApproved("slack"));
+    }
+
+    // -- 3. Configure (upsert) -----------------------------------------------------
+
+    [Fact]
+    public async Task Configure_NewProvider_CreatesRowFromCatalogMetadata_NotActiveByDefault()
+    {
+        PlatformOAuthApp? saved = null;
+        var repo = new Mock<IPlatformOAuthAppRepository>();
+        repo.Setup(r => r.GetByProviderAsync("github", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PlatformOAuthApp?)null);
+        repo.Setup(r => r.AddAsync(It.IsAny<PlatformOAuthApp>(), It.IsAny<CancellationToken>()))
+            .Callback<PlatformOAuthApp, CancellationToken>((a, _) => saved = a)
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.GetActiveCredentialsForAppAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformOAuthAppCredential>());
+
+        var handler = new ConfigurePlatformOAuthAppCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
+        var result = await handler.Handle(ConfigureCommand(clientId: "Iv1.new"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(saved);
+        Assert.Equal("github", saved!.Provider);
+        Assert.Equal("Iv1.new", saved.ClientId);
+        Assert.Equal("https://github.com/login/oauth/authorize", saved.AuthorizationUrl);
+        Assert.Equal("https://github.com/login/oauth/access_token", saved.TokenUrl);
+        Assert.Equal(new[] { "read:user" }, saved.DefaultScopes);
+        Assert.False(saved.IsActive);
+        Assert.Equal("GitHub", saved.AppName); // defaults to catalog display name
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Configure_UnknownProvider_ReturnsValidationError()
+    {
+        var repo = new Mock<IPlatformOAuthAppRepository>();
+        var handler = new ConfigurePlatformOAuthAppCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
+
+        var result = await handler.Handle(ConfigureCommand(provider: "aws_rekognition"), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        repo.Verify(r => r.AddAsync(It.IsAny<PlatformOAuthApp>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Configure_SlackProvider_IsRejectedAsPhase2()
+    {
+        var repo = new Mock<IPlatformOAuthAppRepository>();
+        var handler = new ConfigurePlatformOAuthAppCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
+
+        var result = await handler.Handle(ConfigureCommand(provider: "slack"), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        repo.Verify(r => r.AddAsync(It.IsAny<PlatformOAuthApp>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Configure_WithClientSecret_EncryptsAndCreatesCredentialV1_NeverExposesPlaintext()
     {
         var encryption = new Mock<IEncryptionService>();
         encryption.Setup(e => e.Encrypt("plain-secret")).Returns("ENCRYPTED-SECRET");
-        encryption.Setup(e => e.Encrypt("plain-private-key")).Returns("ENCRYPTED-PK");
 
-        PlatformOAuthApp? savedApp = null;
-        PlatformOAuthAppCredential? savedCredential = null;
         var repo = new Mock<IPlatformOAuthAppRepository>();
         repo.Setup(r => r.GetByProviderAsync("github", It.IsAny<CancellationToken>()))
             .ReturnsAsync((PlatformOAuthApp?)null);
         repo.Setup(r => r.AddAsync(It.IsAny<PlatformOAuthApp>(), It.IsAny<CancellationToken>()))
-            .Callback<PlatformOAuthApp, CancellationToken>((a, _) => savedApp = a)
             .Returns(Task.CompletedTask);
+        PlatformOAuthAppCredential? savedCredential = null;
         repo.Setup(r => r.AddCredentialAsync(It.IsAny<PlatformOAuthAppCredential>(), It.IsAny<CancellationToken>()))
             .Callback<PlatformOAuthAppCredential, CancellationToken>((c, _) => savedCredential = c)
             .Returns(Task.CompletedTask);
+        repo.Setup(r => r.GetMaxCredentialVersionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+        repo.Setup(r => r.GetActiveCredentialsForAppAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformOAuthAppCredential>());
 
-        var handler = new CreatePlatformOAuthAppCommandHandler(repo.Object, encryption.Object);
+        var handler = new ConfigurePlatformOAuthAppCommandHandler(repo.Object, encryption.Object);
         var result = await handler.Handle(
-            ValidCreateCommand(privateKey: "plain-private-key"), CancellationToken.None);
+            ConfigureCommand(clientId: "Iv1.abc", clientSecret: "plain-secret"), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.NotNull(savedApp);
         Assert.NotNull(savedCredential);
         Assert.Equal("ENCRYPTED-SECRET", savedCredential!.ClientSecretEncrypted);
-        Assert.Equal("ENCRYPTED-PK", savedCredential.PrivateKeyEncrypted);
         Assert.Equal(1, savedCredential.CredentialVersion);
         Assert.True(savedCredential.IsActive);
-        Assert.Equal(savedApp!.Id, savedCredential.PlatformOAuthAppId);
-        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
 
-        // Neither plaintext nor encrypted secret material leaks into the response DTO
         var serialized = System.Text.Json.JsonSerializer.Serialize(result.Value);
         Assert.DoesNotContain("plain-secret", serialized);
-        Assert.DoesNotContain("plain-private-key", serialized);
         Assert.DoesNotContain("ENCRYPTED-SECRET", serialized);
-        Assert.DoesNotContain("ENCRYPTED-PK", serialized);
         Assert.True(result.Value!.HasActiveCredential);
-        Assert.Equal(1, result.Value.ActiveCredentialVersion);
-        Assert.True(result.Value.HasPrivateKey);
     }
 
     [Fact]
-    public async Task Create_SlackProvider_IsRejectedAsPhase2()
+    public async Task Configure_ExistingApp_AlwaysRefreshesProtocolMetadataFromCatalog()
     {
+        // Even a row with drifted/legacy protocol fields is corrected back to the
+        // backend-owned catalog values - the request has no way to influence them.
+        var app = ExistingApp();
+        app.AuthorizationUrl = "https://legacy.example/authorize";
+        app.TokenUrl = "https://legacy.example/token";
+        app.DefaultScopes = new[] { "legacy_scope" };
+
         var repo = new Mock<IPlatformOAuthAppRepository>();
-        var handler = new CreatePlatformOAuthAppCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
+        repo.Setup(r => r.GetByProviderAsync("github", It.IsAny<CancellationToken>())).ReturnsAsync(app);
+        repo.Setup(r => r.GetActiveCredentialsForAppAsync(app.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformOAuthAppCredential> { ExistingCredential(app.Id) });
 
-        var result = await handler.Handle(ValidCreateCommand(provider: "slack"), CancellationToken.None);
+        var handler = new ConfigurePlatformOAuthAppCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
+        var result = await handler.Handle(ConfigureCommand(appName: "Renamed"), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(400, result.StatusCode);
-        repo.Verify(r => r.AddAsync(It.IsAny<PlatformOAuthApp>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Theory]
-    [InlineData("git hub")]  // whitespace inside
-    [InlineData("")]         // empty
-    [InlineData("1github")]  // must start with a letter
-    public async Task Create_InvalidProviderSlug_ReturnsValidationError(string provider)
-    {
-        var repo = new Mock<IPlatformOAuthAppRepository>();
-        var handler = new CreatePlatformOAuthAppCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
-
-        var result = await handler.Handle(ValidCreateCommand(provider: provider), CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(400, result.StatusCode);
-        repo.Verify(r => r.AddAsync(It.IsAny<PlatformOAuthApp>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.True(result.IsSuccess);
+        Assert.Equal("https://github.com/login/oauth/authorize", app.AuthorizationUrl);
+        Assert.Equal("https://github.com/login/oauth/access_token", app.TokenUrl);
+        Assert.Equal(new[] { "read:user" }, app.DefaultScopes);
+        Assert.Equal("Renamed", app.AppName);
     }
 
     [Fact]
-    public async Task Create_UppercaseProviderInput_IsNormalizedToLowercaseAfterTrim()
+    public async Task Configure_ExistingApp_RotatesCredentialWhenSecretProvided_DeactivatesOld()
     {
-        // " GITHUB " normalizes to "github" — a valid slug — and is stored lowercase.
+        var app = ExistingApp();
+        var oldCredential = ExistingCredential(app.Id, version: 1);
+
         var encryption = new Mock<IEncryptionService>();
-        encryption.Setup(e => e.Encrypt(It.IsAny<string>())).Returns("ENC");
+        encryption.Setup(e => e.Encrypt("new-secret")).Returns("NEW-ENCRYPTED");
 
-        PlatformOAuthApp? savedApp = null;
+        var repo = new Mock<IPlatformOAuthAppRepository>();
+        repo.Setup(r => r.GetByProviderAsync("github", It.IsAny<CancellationToken>())).ReturnsAsync(app);
+        repo.Setup(r => r.GetActiveCredentialsForAppAsync(app.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformOAuthAppCredential> { oldCredential });
+        repo.Setup(r => r.GetMaxCredentialVersionAsync(app.Id, It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        PlatformOAuthAppCredential? added = null;
+        repo.Setup(r => r.AddCredentialAsync(It.IsAny<PlatformOAuthAppCredential>(), It.IsAny<CancellationToken>()))
+            .Callback<PlatformOAuthAppCredential, CancellationToken>((c, _) => added = c)
+            .Returns(Task.CompletedTask);
+
+        var handler = new ConfigurePlatformOAuthAppCommandHandler(repo.Object, encryption.Object);
+        var result = await handler.Handle(ConfigureCommand(clientSecret: "new-secret"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(oldCredential.IsActive);
+        Assert.NotNull(added);
+        Assert.Equal(2, added!.CredentialVersion);
+        Assert.Equal("NEW-ENCRYPTED", added.ClientSecretEncrypted);
+    }
+
+    [Fact]
+    public async Task Configure_ActivateWithoutClientId_Fails()
+    {
         var repo = new Mock<IPlatformOAuthAppRepository>();
         repo.Setup(r => r.GetByProviderAsync("github", It.IsAny<CancellationToken>()))
             .ReturnsAsync((PlatformOAuthApp?)null);
         repo.Setup(r => r.AddAsync(It.IsAny<PlatformOAuthApp>(), It.IsAny<CancellationToken>()))
-            .Callback<PlatformOAuthApp, CancellationToken>((a, _) => savedApp = a)
             .Returns(Task.CompletedTask);
+        repo.Setup(r => r.GetActiveCredentialsForAppAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformOAuthAppCredential>());
 
-        var handler = new CreatePlatformOAuthAppCommandHandler(repo.Object, encryption.Object);
-        var result = await handler.Handle(ValidCreateCommand(provider: " GITHUB "), CancellationToken.None);
+        var handler = new ConfigurePlatformOAuthAppCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
+        var result = await handler.Handle(ConfigureCommand(isActive: true), CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal("github", savedApp!.Provider);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Create_DuplicateProvider_ReturnsConflict()
+    public async Task Configure_ActivateWithClientIdButNoCredential_Fails()
     {
+        var app = ExistingApp(isActive: false);
+        var repo = new Mock<IPlatformOAuthAppRepository>();
+        repo.Setup(r => r.GetByProviderAsync("github", It.IsAny<CancellationToken>())).ReturnsAsync(app);
+        repo.Setup(r => r.GetActiveCredentialsForAppAsync(app.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformOAuthAppCredential>());
+
+        var handler = new ConfigurePlatformOAuthAppCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
+        var result = await handler.Handle(ConfigureCommand(isActive: true), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        Assert.False(app.IsActive);
+    }
+
+    [Fact]
+    public async Task Configure_ActivateWithClientIdAndSecretInSameRequest_Succeeds()
+    {
+        var encryption = new Mock<IEncryptionService>();
+        encryption.Setup(e => e.Encrypt(It.IsAny<string>())).Returns("ENC");
+
         var repo = new Mock<IPlatformOAuthAppRepository>();
         repo.Setup(r => r.GetByProviderAsync("github", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ExistingApp());
+            .ReturnsAsync((PlatformOAuthApp?)null);
+        repo.Setup(r => r.AddAsync(It.IsAny<PlatformOAuthApp>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.AddCredentialAsync(It.IsAny<PlatformOAuthAppCredential>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        repo.Setup(r => r.GetMaxCredentialVersionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+        repo.Setup(r => r.GetActiveCredentialsForAppAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformOAuthAppCredential>());
 
-        var handler = new CreatePlatformOAuthAppCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
-        var result = await handler.Handle(ValidCreateCommand(), CancellationToken.None);
+        var handler = new ConfigurePlatformOAuthAppCommandHandler(repo.Object, encryption.Object);
+        var result = await handler.Handle(
+            ConfigureCommand(clientId: "Iv1.abc", clientSecret: "s3cret", isActive: true), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(409, result.StatusCode);
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.IsActive);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Create_EmptyClientSecret_ReturnsValidationError()
+    public async Task Configure_DeactivateAlwaysAllowed()
+    {
+        var app = ExistingApp(isActive: true);
+        var repo = new Mock<IPlatformOAuthAppRepository>();
+        repo.Setup(r => r.GetByProviderAsync("github", It.IsAny<CancellationToken>())).ReturnsAsync(app);
+        repo.Setup(r => r.GetActiveCredentialsForAppAsync(app.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformOAuthAppCredential> { ExistingCredential(app.Id) });
+
+        var handler = new ConfigurePlatformOAuthAppCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
+        var result = await handler.Handle(ConfigureCommand(isActive: false), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(app.IsActive);
+    }
+
+    // -- 4. Rotate ------------------------------------------------------------
+
+    [Fact]
+    public async Task Rotate_UnknownProvider_ReturnsValidationErrorBeforeRepositoryLookup()
     {
         var repo = new Mock<IPlatformOAuthAppRepository>();
-        var handler = new CreatePlatformOAuthAppCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
+        var handler = new RotatePlatformOAuthAppSecretCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
 
-        var result = await handler.Handle(ValidCreateCommand(clientSecret: " "), CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(400, result.StatusCode);
-        repo.Verify(r => r.AddCredentialAsync(It.IsAny<PlatformOAuthAppCredential>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Theory]
-    [InlineData("not-a-url")]
-    [InlineData("ftp://example.com/authorize")]
-    [InlineData("")]
-    public async Task Create_NonHttpAuthorizationUrl_ReturnsValidationError(string url)
-    {
-        var command = ValidCreateCommand() with { AuthorizationUrl = url };
-        var handler = new CreatePlatformOAuthAppCommandHandler(
-            Mock.Of<IPlatformOAuthAppRepository>(), Mock.Of<IEncryptionService>());
-
-        var result = await handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(
+            new RotatePlatformOAuthAppSecretCommand("aws_rekognition", "secret", null, Actor),
+            CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
+        repo.Verify(r => r.GetByProviderAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
-
-    [Fact]
-    public async Task Create_EmptyDefaultScopes_ReturnsValidationError()
-    {
-        var command = ValidCreateCommand() with { DefaultScopes = Array.Empty<string>() };
-        var handler = new CreatePlatformOAuthAppCommandHandler(
-            Mock.Of<IPlatformOAuthAppRepository>(), Mock.Of<IEncryptionService>());
-
-        var result = await handler.Handle(command, CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(400, result.StatusCode);
-    }
-
-    // ── 3. Rotate ────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Rotate_DeactivatesOldCredential_CreatesNewActiveVersion_NeverExposesSecrets()
@@ -392,13 +501,11 @@ public class PlatformOAuthAppsTests
 
         Assert.True(result.IsSuccess);
 
-        // Old row deactivated, not overwritten
         Assert.False(oldCredential.IsActive);
         Assert.Equal(Actor, oldCredential.DeactivatedById);
         Assert.NotNull(oldCredential.DeactivatedAt);
         Assert.Equal("OLD-ENCRYPTED", oldCredential.ClientSecretEncrypted);
 
-        // New row: version = previous max + 1, active, encrypted
         Assert.NotNull(added);
         Assert.Equal(4, added!.CredentialVersion);
         Assert.True(added.IsActive);
@@ -414,10 +521,10 @@ public class PlatformOAuthAppsTests
     }
 
     [Fact]
-    public async Task Rotate_UnknownProvider_ReturnsNotFound()
+    public async Task Rotate_ApprovedProviderWithoutRow_ReturnsNotFound()
     {
         var repo = new Mock<IPlatformOAuthAppRepository>();
-        repo.Setup(r => r.GetByProviderAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByProviderAsync("zoom", It.IsAny<CancellationToken>()))
             .ReturnsAsync((PlatformOAuthApp?)null);
 
         var handler = new RotatePlatformOAuthAppSecretCommandHandler(repo.Object, Mock.Of<IEncryptionService>());
@@ -447,61 +554,39 @@ public class PlatformOAuthAppsTests
         repo.Verify(r => r.AddCredentialAsync(It.IsAny<PlatformOAuthAppCredential>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // ── 4. Update metadata ───────────────────────────────────────────────────
+    // -- 5. Activate / deactivate ------------------------------------------------
 
     [Fact]
-    public async Task Update_ChangesMetadataOnly_DoesNotTouchCredentialRows()
+    public async Task Activate_UnknownProvider_ReturnsValidationError()
     {
-        var app = ExistingApp();
-        var credential = ExistingCredential(app.Id);
+        var repo = new Mock<IPlatformOAuthAppRepository>();
+        var handler = new SetPlatformOAuthAppActivationCommandHandler(repo.Object);
+
+        var result = await handler.Handle(
+            new SetPlatformOAuthAppActivationCommand("aws_rekognition", true, Actor), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Activate_WithoutClientId_Fails()
+    {
+        var app = ExistingApp(isActive: false, clientId: "");
         var repo = new Mock<IPlatformOAuthAppRepository>();
         repo.Setup(r => r.GetByProviderAsync("github", It.IsAny<CancellationToken>()))
             .ReturnsAsync(app);
         repo.Setup(r => r.GetActiveCredentialsForAppAsync(app.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<PlatformOAuthAppCredential> { credential });
+            .ReturnsAsync(new List<PlatformOAuthAppCredential> { ExistingCredential(app.Id) });
 
-        var handler = new UpdatePlatformOAuthAppCommandHandler(repo.Object);
-        var result = await handler.Handle(new UpdatePlatformOAuthAppCommand(
-            "github",
-            "ONEVO GitHub App (Prod)",
-            "https://cdn.onevo.app/logos/github.png",
-            "Iv1.newclientid",
-            "https://github.com/login/oauth/authorize",
-            "https://github.com/login/oauth/access_token",
-            new[] { "repo" },
-            true,
-            Actor), CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal("ONEVO GitHub App (Prod)", app.AppName);
-        Assert.Equal("Iv1.newclientid", app.ClientId);
-        Assert.Equal(Actor, app.UpdatedById);
-
-        // Credential row untouched
-        Assert.True(credential.IsActive);
-        Assert.Equal("OLD-ENCRYPTED", credential.ClientSecretEncrypted);
-        Assert.Equal(1, credential.CredentialVersion);
-        repo.Verify(r => r.AddCredentialAsync(It.IsAny<PlatformOAuthAppCredential>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task Update_UnknownProvider_ReturnsNotFound()
-    {
-        var repo = new Mock<IPlatformOAuthAppRepository>();
-        repo.Setup(r => r.GetByProviderAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((PlatformOAuthApp?)null);
-
-        var handler = new UpdatePlatformOAuthAppCommandHandler(repo.Object);
-        var result = await handler.Handle(new UpdatePlatformOAuthAppCommand(
-            "zoom", "Name", null, "cid",
-            "https://zoom.us/oauth/authorize", "https://zoom.us/oauth/token",
-            new[] { "meeting:read" }, true, Actor), CancellationToken.None);
+        var handler = new SetPlatformOAuthAppActivationCommandHandler(repo.Object);
+        var result = await handler.Handle(
+            new SetPlatformOAuthAppActivationCommand("github", true, Actor), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(400, result.StatusCode);
+        Assert.False(app.IsActive);
     }
-
-    // ── 5. Activate / deactivate ─────────────────────────────────────────────
 
     [Fact]
     public async Task Activate_WithoutActiveCredential_Fails()
@@ -523,7 +608,7 @@ public class PlatformOAuthAppsTests
     }
 
     [Fact]
-    public async Task Activate_WithActiveCredential_Succeeds()
+    public async Task Activate_WithClientIdAndActiveCredential_Succeeds()
     {
         var app = ExistingApp(isActive: false);
         var repo = new Mock<IPlatformOAuthAppRepository>();
@@ -558,14 +643,14 @@ public class PlatformOAuthAppsTests
 
         Assert.True(result.IsSuccess);
         Assert.False(app.IsActive);
-        Assert.True(credential.IsActive); // credential rows untouched
+        Assert.True(credential.IsActive);
     }
 
     [Fact]
-    public async Task SetActivation_UnknownProvider_ReturnsNotFound()
+    public async Task SetActivation_ApprovedProviderWithoutRow_ReturnsNotFound()
     {
         var repo = new Mock<IPlatformOAuthAppRepository>();
-        repo.Setup(r => r.GetByProviderAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.GetByProviderAsync("zoom", It.IsAny<CancellationToken>()))
             .ReturnsAsync((PlatformOAuthApp?)null);
 
         var handler = new SetPlatformOAuthAppActivationCommandHandler(repo.Object);
@@ -576,10 +661,10 @@ public class PlatformOAuthAppsTests
         Assert.Equal(404, result.StatusCode);
     }
 
-    // ── 6. Verify (local only) ───────────────────────────────────────────────
+    // -- 6. Validate config (local only) ------------------------------------------
 
     [Fact]
-    public async Task Verify_AllLocalChecksPass_StampsLastVerifiedAt_ReturnsHealthy()
+    public async Task ValidateConfig_AllLocalChecksPass_StampsLastVerifiedAt_ReturnsValidWithLocalType()
     {
         var app = ExistingApp();
         var repo = new Mock<IPlatformOAuthAppRepository>();
@@ -588,19 +673,20 @@ public class PlatformOAuthAppsTests
         repo.Setup(r => r.GetActiveCredentialsForAppAsync(app.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<PlatformOAuthAppCredential> { ExistingCredential(app.Id) });
 
-        var handler = new VerifyPlatformOAuthAppCommandHandler(repo.Object);
+        var handler = new ValidatePlatformOAuthAppConfigCommandHandler(repo.Object);
         var result = await handler.Handle(
-            new VerifyPlatformOAuthAppCommand("github", Actor), CancellationToken.None);
+            new ValidatePlatformOAuthAppConfigCommand("github", Actor), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("healthy", result.Value!.Status);
+        Assert.Equal("valid", result.Value!.Status);
+        Assert.Equal("local", result.Value.VerificationType);
         Assert.NotNull(result.Value.VerifiedAt);
         Assert.NotNull(app.LastVerifiedAt);
         repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Verify_InactiveAppOrMissingCredential_ReturnsError_DoesNotStamp()
+    public async Task ValidateConfig_InactiveAppOrMissingCredential_ReturnsError_DoesNotStamp()
     {
         var app = ExistingApp(isActive: false);
         var repo = new Mock<IPlatformOAuthAppRepository>();
@@ -609,46 +695,115 @@ public class PlatformOAuthAppsTests
         repo.Setup(r => r.GetActiveCredentialsForAppAsync(app.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<PlatformOAuthAppCredential>());
 
-        var handler = new VerifyPlatformOAuthAppCommandHandler(repo.Object);
+        var handler = new ValidatePlatformOAuthAppConfigCommandHandler(repo.Object);
         var result = await handler.Handle(
-            new VerifyPlatformOAuthAppCommand("github", Actor), CancellationToken.None);
+            new ValidatePlatformOAuthAppConfigCommand("github", Actor), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("error", result.Value!.Status);
+        Assert.Equal("local", result.Value.VerificationType);
         Assert.Null(result.Value.VerifiedAt);
         Assert.Null(app.LastVerifiedAt);
         repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Verify_UnknownProvider_ReturnsNotFound()
+    public async Task ValidateConfig_UnknownProvider_ReturnsValidationError()
     {
         var repo = new Mock<IPlatformOAuthAppRepository>();
-        repo.Setup(r => r.GetByProviderAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        var handler = new ValidatePlatformOAuthAppConfigCommandHandler(repo.Object);
+
+        var result = await handler.Handle(
+            new ValidatePlatformOAuthAppConfigCommand("nope", Actor), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task ValidateConfig_ApprovedProviderWithoutRow_ReturnsNotFound()
+    {
+        var repo = new Mock<IPlatformOAuthAppRepository>();
+        repo.Setup(r => r.GetByProviderAsync("zoom", It.IsAny<CancellationToken>()))
             .ReturnsAsync((PlatformOAuthApp?)null);
 
-        var handler = new VerifyPlatformOAuthAppCommandHandler(repo.Object);
+        var handler = new ValidatePlatformOAuthAppConfigCommandHandler(repo.Object);
         var result = await handler.Handle(
-            new VerifyPlatformOAuthAppCommand("nope", Actor), CancellationToken.None);
+            new ValidatePlatformOAuthAppConfigCommand("zoom", Actor), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
     }
 
-    // ── 7. Queries / DTO safety ──────────────────────────────────────────────
+    // -- 7. List / detail - catalog merge + DTO safety ----------------------------
 
     [Fact]
-    public async Task Get_UnknownProvider_ReturnsNotFound()
+    public async Task List_ReturnsAllFourApprovedProviders_EvenWithNoDbRows()
     {
         var repo = new Mock<IPlatformOAuthAppRepository>();
-        repo.Setup(r => r.GetByProviderAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((PlatformOAuthApp?)null);
+        repo.Setup(r => r.ListAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformOAuthApp>());
+        repo.Setup(r => r.ListActiveCredentialsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformOAuthAppCredential>());
 
+        var handler = new ListPlatformOAuthAppsQueryHandler(repo.Object);
+        var result = await handler.Handle(new ListPlatformOAuthAppsQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(4, result.Value!.Count);
+        Assert.Equal(new[] { "github", "google", "microsoft", "zoom" },
+            result.Value.Select(d => d.Provider).OrderBy(p => p));
+        Assert.All(result.Value, dto => Assert.False(dto.Configured));
+    }
+
+    [Fact]
+    public async Task List_MergesDbRowIntoMatchingProviderCard()
+    {
+        var app = ExistingApp();
+        var credential = ExistingCredential(app.Id);
+        var repo = new Mock<IPlatformOAuthAppRepository>();
+        repo.Setup(r => r.ListAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformOAuthApp> { app });
+        repo.Setup(r => r.ListActiveCredentialsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PlatformOAuthAppCredential> { credential });
+
+        var handler = new ListPlatformOAuthAppsQueryHandler(repo.Object);
+        var result = await handler.Handle(new ListPlatformOAuthAppsQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var githubCard = result.Value!.Single(d => d.Provider == "github");
+        Assert.True(githubCard.Configured);
+        Assert.True(githubCard.HasActiveCredential);
+        var others = result.Value!.Where(d => d.Provider != "github");
+        Assert.All(others, dto => Assert.False(dto.Configured));
+    }
+
+    [Fact]
+    public async Task Get_UnknownProvider_ReturnsValidationError()
+    {
+        var repo = new Mock<IPlatformOAuthAppRepository>();
         var handler = new GetPlatformOAuthAppQueryHandler(repo.Object);
+
         var result = await handler.Handle(new GetPlatformOAuthAppQuery("nope"), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(400, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Get_ApprovedProviderWithoutRow_ReturnsUnconfiguredCard()
+    {
+        var repo = new Mock<IPlatformOAuthAppRepository>();
+        repo.Setup(r => r.GetByProviderAsync("zoom", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PlatformOAuthApp?)null);
+
+        var handler = new GetPlatformOAuthAppQueryHandler(repo.Object);
+        var result = await handler.Handle(new GetPlatformOAuthAppQuery("zoom"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("zoom", result.Value!.Provider);
+        Assert.False(result.Value.Configured);
+        Assert.Null(result.Value.ClientId);
     }
 
     [Fact]
@@ -690,10 +845,10 @@ public class PlatformOAuthAppsTests
 
         Assert.True(listResult.IsSuccess);
         Assert.True(getResult.IsSuccess);
-        Assert.Single(listResult.Value!);
-        Assert.True(listResult.Value![0].HasActiveCredential);
-        Assert.True(listResult.Value[0].HasPrivateKey);
-        Assert.Equal(1, listResult.Value[0].ActiveCredentialVersion);
+        var githubCard = listResult.Value!.Single(d => d.Provider == "github");
+        Assert.True(githubCard.HasActiveCredential);
+        Assert.True(githubCard.HasPrivateKey);
+        Assert.Equal(1, githubCard.ActiveCredentialVersion);
 
         var serialized = System.Text.Json.JsonSerializer.Serialize(listResult.Value)
             + System.Text.Json.JsonSerializer.Serialize(getResult.Value);
@@ -706,18 +861,19 @@ public class PlatformOAuthAppsTests
     [Fact]
     public void Security_ResponseDtos_DoNotExposeSecretFields()
     {
-        var dtoTypes = new[] { typeof(PlatformOAuthAppDto), typeof(OAuthAppVerificationResultDto) };
+        var dtoTypes = new[] { typeof(PlatformOAuthAppDto), typeof(OAuthAppValidateConfigResultDto) };
         foreach (var dtoType in dtoTypes)
         {
             var props = dtoType.GetProperties().Select(p => p.Name.ToLowerInvariant()).ToList();
-            Assert.DoesNotContain(props, p => p.Contains("secret"));
+            // clientSecretRequired is a safe boolean flag (whether the provider needs a
+            // secret at all) - it never carries secret material, unlike clientSecret*.
+            Assert.DoesNotContain(props, p => p.Contains("secret") && p != "clientsecretrequired");
             Assert.DoesNotContain(props, p => p.Contains("encrypted"));
-            // hasPrivateKey boolean is allowed; raw privatekey field is not
             Assert.DoesNotContain(props, p => p == "privatekey");
         }
     }
 
-    // ── 8. Resolver (server-side only) ───────────────────────────────────────
+    // -- 8. Resolver (server-side only, unchanged surface) ------------------------
 
     [Fact]
     public async Task Resolver_ReturnsActiveAppMetadata_NullForInactiveOrUnknown()
@@ -768,13 +924,12 @@ public class PlatformOAuthAppsTests
         Assert.Equal("decrypted-pk", resolved.PrivateKey);
         Assert.Equal(2, resolved.CredentialVersion);
 
-        // No active credential → null
         repo.Setup(r => r.GetActiveCredentialsForAppAsync(app.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<PlatformOAuthAppCredential>());
         Assert.Null(await resolver.GetActiveCredentialForProviderAsync("github", CancellationToken.None));
     }
 
-    // ── 9. Permissions ───────────────────────────────────────────────────────
+    // -- 9. Permissions / route surface --------------------------------------------
 
     [Fact]
     public void Authorization_Endpoints_RequireAdminPolicyAndCorrectPlatformPermission()
@@ -787,7 +942,7 @@ public class PlatformOAuthAppsTests
 
         var readEndpoints = new[] { "ListOAuthApps", "GetOAuthApp" };
         var methods = controllerType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-        Assert.Equal(8, methods.Length);
+        Assert.Equal(7, methods.Length);
 
         foreach (var method in methods)
         {
@@ -799,5 +954,21 @@ public class PlatformOAuthAppsTests
             else
                 Assert.Equal(PlatformPermissionCatalog.SystemConfigManage, permissionAttr!.Permission);
         }
+    }
+
+    [Fact]
+    public void Controller_HasNoArbitraryCreateEndpoint()
+    {
+        var controllerType = typeof(PlatformOAuthAppsController);
+        var httpPostMethods = controllerType
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => m.GetCustomAttributes()
+                .Any(a => a.GetType().Name == "HttpPostAttribute"))
+            .ToList();
+
+        // Every POST action must target a specific {provider} sub-route
+        // (rotate-secret / activate / deactivate / validate-config) - none may create
+        // an arbitrary provider via a bare POST /oauth-apps.
+        Assert.DoesNotContain(httpPostMethods, m => m.Name == "CreateOAuthApp");
     }
 }

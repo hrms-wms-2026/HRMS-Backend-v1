@@ -4,13 +4,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Infrastructure.Persistence;
+using ONEVO.Tests.Integration.Support;
 
 namespace ONEVO.Tests.Integration.Tenancy;
 
 /// <summary>
 /// WebApplicationFactory variant used by admin/v1 integration tests. Wires the
-/// app to a Testcontainers Postgres instance 
-/// 
+/// app to a Testcontainers Postgres instance
 /// </summary>
 public class AdminTestFactory : WebApplicationFactory<Program>
 {
@@ -22,10 +22,25 @@ public class AdminTestFactory : WebApplicationFactory<Program>
 
     public AdminTestFactory(string connectionString) => _connectionString = connectionString;
 
+    /// <summary>
+    /// Migrates the database schema with a standalone context BEFORE the test host starts.
+    /// WebApplicationFactory.CreateClient() starts hosted services (such as PermissionSeeder)
+    /// synchronously during host startup, which query database tables that must already exist.
+    /// Callers must also create an IntegrationTestEnvironmentScope before constructing the factory -
+    /// see IntegrationDatabaseBootstrap/IntegrationTestEnvironmentScope for why.
+    /// </summary>
+    public static Task MigrateDatabaseAsync(string connectionString) =>
+        IntegrationDatabaseBootstrap.InitializeAsync(connectionString);
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Test");
 
+        // These values only reach post-Build() config consumers. Program.cs's pre-Build()
+        // ConfigurationStartupValidator/DatabaseConnectionStartupValidator run before
+        // ConfigureWebHost is ever applied, so callers must put the same values in process
+        // environment variables via IntegrationTestEnvironmentScope before constructing this
+        // factory - this callback cannot supply them in time.
         builder.ConfigureAppConfiguration((ctx, config) =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>

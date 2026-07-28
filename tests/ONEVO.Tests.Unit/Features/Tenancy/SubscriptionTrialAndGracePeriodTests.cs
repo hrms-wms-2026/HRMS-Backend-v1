@@ -9,11 +9,8 @@ using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Roles.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.Commands.CreateTenant;
 using ONEVO.Application.Features.DevPlatform.Tenancy.DTOs.Requests;
-using ONEVO.Application.Features.DevPlatform.Provisioning;
 using ONEVO.Application.Features.DevPlatform.Tenancy.Provisioning;
 using ONEVO.Application.Features.DevPlatform.Provisioning.ServiceInterfaces;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -36,7 +33,6 @@ public class SubscriptionTrialAndGracePeriodTests
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Mock<ITenantOwnerInvitationService> _invitationService = new();
-    private readonly Mock<ITenantSetupSelectionRepository> _setupSelections = new();
 
     private readonly DateTimeOffset _now = new DateTimeOffset(2025, 6, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -50,14 +46,12 @@ public class SubscriptionTrialAndGracePeriodTests
         _currentUser.Object,
         _unitOfWork.Object,
         _clock.Object,
-        _invitationService.Object,
-        _setupSelections.Object);
+        _invitationService.Object);
 
     private static CreateTenantCommand BuildCommand(int? trialPeriodDays = null, int? unpaidGracePeriodDays = null) =>
         new("Acme Corp", "acme-corp", "office_it", "51-200",
             "Acme Legal Ltd", "REG123", "LK", "Asia/Colombo", "LKR",
             new SubscriptionInfo(PlanId, "monthly", "subscription", trialPeriodDays, unpaidGracePeriodDays),
-            null,
             null);
 
     private TenantSubscription? _capturedSubscription;
@@ -98,14 +92,6 @@ public class SubscriptionTrialAndGracePeriodTests
                     Name = "Owner",
                     IsSystem = true
                 });
-
-        _setupSelections
-            .Setup(r => r.AddRangeAsync(
-                It.IsAny<Guid>(),
-                It.IsAny<IReadOnlyList<string>>(),
-                It.IsAny<DateTimeOffset>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
 
         // Capture the subscription entity passed to AddAsync
         _subscriptions

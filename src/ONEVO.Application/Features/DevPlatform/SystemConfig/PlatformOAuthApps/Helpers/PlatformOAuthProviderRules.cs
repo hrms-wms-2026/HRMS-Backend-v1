@@ -3,9 +3,11 @@ using System.Text.RegularExpressions;
 namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Helpers;
 
 /// <summary>
-/// Validation rules for ONEVO OAuth app registrations.
-/// Providers are operator-set lowercase slugs (docs: lowercase, hyphens; e.g. github,
-/// google, microsoft, zoom). Slack is Phase 2 and must be rejected in Phase 1.
+/// Validation rules for ONEVO OAuth app registrations. The approved provider boundary
+/// itself lives in <see cref="PlatformOAuthProviderCatalog"/>; this type only normalizes
+/// input and validates the operator-writable fields (logo URL format, slug shape).
+/// Providers are the fixed catalog set: github, google, microsoft, zoom.
+/// Slack is Phase 2 and must be rejected; unknown providers must be rejected.
 /// </summary>
 public static class PlatformOAuthProviderRules
 {
@@ -22,7 +24,11 @@ public static class PlatformOAuthProviderRules
         => !string.IsNullOrWhiteSpace(provider) && SlugPattern.IsMatch(provider);
 
     public static bool IsPhase2Provider(string provider)
-        => provider == SlackProvider;
+        => provider == SlackProvider || PlatformOAuthProviderCatalog.IsPhase2(provider);
+
+    /// <summary>True only for the fixed approved set: github, google, microsoft, zoom.</summary>
+    public static bool IsApprovedProvider(string provider)
+        => PlatformOAuthProviderCatalog.IsApproved(provider);
 
     public static bool IsAbsoluteHttpUrl(string? url)
         => Uri.TryCreate(url, UriKind.Absolute, out var uri)

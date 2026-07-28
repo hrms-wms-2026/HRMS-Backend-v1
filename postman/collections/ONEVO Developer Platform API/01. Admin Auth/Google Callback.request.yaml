@@ -1,0 +1,14 @@
+$kind: http-request
+name: Admin Google Callback
+method: POST
+url: '{{admin_base_url}}/admin/v1/auth/google-callback'
+order: 3000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "google_id_token": "<google-id-token>"
+    }

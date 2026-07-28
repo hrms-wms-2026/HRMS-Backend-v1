@@ -31,6 +31,11 @@ public class E2ETestFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Test");
 
+        // These values only reach post-Build() config consumers. Program.cs's pre-Build()
+        // ConfigurationStartupValidator/DatabaseConnectionStartupValidator run before
+        // ConfigureWebHost is ever applied, so TenantProvisioningE2ETests.InitializeAsync must put
+        // the same values in process environment variables via IntegrationTestEnvironmentScope
+        // before constructing this factory - this callback cannot supply them in time.
         builder.ConfigureAppConfiguration((ctx, config) =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>

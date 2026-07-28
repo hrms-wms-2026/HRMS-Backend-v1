@@ -28,6 +28,7 @@ public class AssignRolePermissionsCommandHandler
     private readonly IPermissionVersionService _permissionVersion;
     private readonly ICurrentUser _currentUser;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IDateTimeProvider _clock;
 
     public AssignRolePermissionsCommandHandler(
         IRoleRepository roles,
@@ -38,7 +39,8 @@ public class AssignRolePermissionsCommandHandler
         IUserRoleRepository userRoles,
         IPermissionVersionService permissionVersion,
         ICurrentUser currentUser,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IDateTimeProvider clock)
     {
         _roles = roles;
         _rolePermissions = rolePermissions;
@@ -49,6 +51,7 @@ public class AssignRolePermissionsCommandHandler
         _permissionVersion = permissionVersion;
         _currentUser = currentUser;
         _unitOfWork = unitOfWork;
+        _clock = clock;
     }
 
     public async Task<Result<RoleDetailDto>> Handle(AssignRolePermissionsCommand request, CancellationToken ct)
@@ -92,7 +95,7 @@ public class AssignRolePermissionsCommandHandler
         var toRemove = existing.Where(rp => !requestedSet.Contains(rp.PermissionId)).ToList();
         var toAdd = requestedIds
             .Where(id => !existingPermissionIds.Contains(id))
-            .Select(id => new RolePermission { RoleId = role.Id, PermissionId = id })
+            .Select(id => new RolePermission { TenantId = tenantId, RoleId = role.Id, PermissionId = id })
             .ToList();
 
         if (toRemove.Count > 0)
@@ -105,7 +108,7 @@ public class AssignRolePermissionsCommandHandler
 
         if (toRemove.Count > 0 || toAdd.Count > 0)
         {
-            var affectedUserIds = await _userRoles.ListUserIdsByRoleAsync(role.Id, ct);
+            var affectedUserIds = await _userRoles.ListUserIdsByRoleAsync(role.Id, _clock.UtcNow, ct);
             foreach (var userId in affectedUserIds)
                 await _permissionVersion.IncrementVersionAsync(userId, ct);
         }

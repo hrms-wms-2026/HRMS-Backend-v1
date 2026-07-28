@@ -9,8 +9,6 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Roles.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.DTOs.Responses;
-using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
-using ONEVO.Application.Features.DevPlatform.Provisioning.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -30,6 +28,7 @@ public sealed class ApplyRoleTemplateCommandHandler
     private readonly IUserRoleRepository _userRoles;
     private readonly IPermissionVersionService _permissionVersion;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IDateTimeProvider _clock;
 
     public ApplyRoleTemplateCommandHandler(
         ITenantRepository tenants,
@@ -41,7 +40,8 @@ public sealed class ApplyRoleTemplateCommandHandler
         ITenantPermissionCatalogService permissionCatalog,
         IUserRoleRepository userRoles,
         IPermissionVersionService permissionVersion,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IDateTimeProvider clock)
     {
         _tenants = tenants;
         _templates = templates;
@@ -53,6 +53,7 @@ public sealed class ApplyRoleTemplateCommandHandler
         _userRoles = userRoles;
         _permissionVersion = permissionVersion;
         _unitOfWork = unitOfWork;
+        _clock = clock;
     }
 
     public async Task<Result<ApplyRoleTemplateResultDto>> Handle(ApplyRoleTemplateCommand request, CancellationToken ct)
@@ -183,7 +184,7 @@ public sealed class ApplyRoleTemplateCommandHandler
         var toRemove = existingRps.Where(rp => !requestedSet.Contains(rp.PermissionId)).ToList();
         var toAdd = requestedPermIds
             .Where(id => !existingPermIds.Contains(id))
-            .Select(id => new RolePermission { RoleId = role.Id, PermissionId = id })
+            .Select(id => new RolePermission { TenantId = request.TenantId, RoleId = role.Id, PermissionId = id })
             .ToList();
 
         if (toRemove.Count > 0)
@@ -196,7 +197,7 @@ public sealed class ApplyRoleTemplateCommandHandler
 
         if (toRemove.Count > 0 || toAdd.Count > 0)
         {
-            var affectedUserIds = await _userRoles.ListUserIdsByRoleAsync(role.Id, ct);
+            var affectedUserIds = await _userRoles.ListUserIdsByRoleAsync(role.Id, _clock.UtcNow, ct);
             foreach (var userId in affectedUserIds)
                 await _permissionVersion.IncrementVersionAsync(userId, ct);
         }

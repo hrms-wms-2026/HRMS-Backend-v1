@@ -1,0 +1,28 @@
+$kind: http-request
+name: Create Stripe Gateway
+method: POST
+url: '{{admin_base_url}}/admin/v1/system-config/payment-gateways'
+order: 3000
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: X-CSRF-Token
+    value: '{{admin_csrf_token}}'
+body:
+  type: json
+  content: |-
+    {
+      "gatewayKey": "stripe_sandbox_lk",
+      "provider": "stripe",
+      "environment": "sandbox",
+      "displayName": "Stripe Sandbox Sri Lanka",
+      "logoUrl": null,
+      "publicKey": "pk_test_xxxxxxxxx",
+      "merchantId": null,
+      "webhookUrl": "http://localhost:5139/api/payment-gateways/stripe/{{gateway_config_id}}/webhook",
+      "isActive": true,
+      "secretKey": "sk_test_xxxxxxxxx",
+      "webhookSecret": "whsec_xxxxxxxxx",
+      "countryCodes": ["LK"],
+      "countryNameSnapshots": ["Sri Lanka"]
+    }

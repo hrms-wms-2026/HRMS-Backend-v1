@@ -1,0 +1,27 @@
+$kind: http-request
+name: Complete Pending Login Legal Acceptance
+method: POST
+url: '{{base_url}}/api/v1/legal/acceptances/complete-login'
+order: 2000
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: X-CSRF-Token
+    value: '{{legal_csrf_token}}'
+body:
+  type: json
+  content: |-
+    {
+      "acceptances": [
+        {
+          "document_type": "privacy_notice",
+          "version": "1.0",
+          "decision": "accepted"
+        },
+        {
+          "document_type": "terms",
+          "version": "1.0",
+          "decision": "accepted"
+        }
+      ]
+    }
