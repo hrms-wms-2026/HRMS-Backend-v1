@@ -133,10 +133,21 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
 
         await AssertTenantStatusAsync(tenantId, TenantStatus.Trial);
 
-        // ── 6. Owner logs in on the tenant host ─────────────────────────────────
-        // Invite completion already appended the current required legal records before issuing
-        // its session, so a later tenant-host login can issue a session directly.
-        var loginResponse = await SendAsync(HttpMethod.Post, TenantHost, "/api/v1/auth/login",
+        // ── 6. Owner logs in via base-domain credential-first login ────────────
+        // Tenant-host password login is retired; the base host resolves the single eligible
+        // workspace from verified credentials. Invite completion already appended the current
+        // required legal records before issuing its session, so this login can issue a session
+        // directly (no legal/MFA challenge in between).
+        const string BaseHost = "localhost";
+        var rejectedTenantHostLogin = await SendAsync(HttpMethod.Post, TenantHost, "/api/v1/auth/login",
+            new { email = OwnerEmail, password = OwnerPassword });
+        rejectedTenantHostLogin.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var rejectedBody = await rejectedTenantHostLogin.Content.ReadAsStringAsync();
+        rejectedBody.Should().Contain("Tenant-host password login is not supported.");
+        rejectedTenantHostLogin.Headers.Contains("Set-Cookie").Should().BeFalse(
+            "a rejected tenant-host password login must not issue any session cookie");
+
+        var loginResponse = await SendAsync(HttpMethod.Post, BaseHost, "/api/v1/auth/login",
             new { email = OwnerEmail, password = OwnerPassword });
         var loginBody = await ReadJsonAsync(loginResponse);
         loginResponse.StatusCode.Should().Be(HttpStatusCode.OK, loginBody.ToString());

@@ -236,43 +236,34 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task TenantHostPasswordLogin_MfaVerify_StillCompletesOnTenantHost()
+    public async Task TenantHostPasswordLogin_IsRejected_AndCreatesNoSession()
     {
         var user = await SeedActiveUserAsync(
-            "tenant-mfa-host",
-            "tenant-mfa-host@test.onevo.dev",
+            "tenant-reject-host",
+            "tenant-reject-host@test.onevo.dev",
             "CorrectPass1!");
-        await SeedVerifiedMfaAsync(user.TenantId, user.UserId);
 
         using var loginRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/login");
-        loginRequest.Headers.Host = "tenant-mfa-host.localhost";
+        loginRequest.Headers.Host = "tenant-reject-host.localhost";
         loginRequest.Content = JsonContent.Create(new
         {
             email = user.Email,
             password = "CorrectPass1!"
         });
-        var login = await _client.SendAsync(loginRequest);
+        var response = await _client.SendAsync(loginRequest);
 
-        login.StatusCode.Should().Be(HttpStatusCode.Accepted);
-        var loginBody = await login.Content.ReadAsStringAsync();
-        using var loginDocument = JsonDocument.Parse(loginBody);
-        var continueUrl = new Uri(
-            loginDocument.RootElement.GetProperty("continue_url").GetString()!,
-            UriKind.Absolute);
-        continueUrl.Host.Should().Be("tenant-mfa-host.localhost");
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("Tenant-host password login is not supported.");
+        body.Should().NotContain("main login page");
 
-        var mfaCookie = ExtractCookieValue(login, "onevo_mfa");
-        using var verifyRequest = new HttpRequestMessage(HttpMethod.Post, continueUrl.PathAndQuery);
-        verifyRequest.Headers.Host = continueUrl.Host;
-        verifyRequest.Headers.Add("Cookie", $"onevo_mfa={mfaCookie}");
-        verifyRequest.Content = JsonContent.Create(new { code = "123456" });
-        var verified = await _client.SendAsync(verifyRequest);
+        response.Headers.TryGetValues("Set-Cookie", out _).Should().BeFalse(
+            "a rejected tenant-host password login must not set onevo_session, onevo_csrf, or onevo_mfa");
 
-        verified.StatusCode.Should().Be(HttpStatusCode.Accepted);
-        var completed = await CompleteLegalAcceptanceAsync(verified);
-        completed.StatusCode.Should().Be(
-            HttpStatusCode.OK,
-            await completed.Content.ReadAsStringAsync());
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var hasSession = await db.Sessions.AnyAsync(s => s.UserId == user.UserId);
+        hasSession.Should().BeFalse("no session row may be created by a rejected tenant-host password login");
     }
 
     [Fact]

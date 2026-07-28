@@ -1,5 +1,0 @@
-$kind: http-request
-name: Get Google OAuth App
-method: GET
-url: '{{admin_base_url}}/admin/v1/system-config/oauth-apps/google'
-order: 2000

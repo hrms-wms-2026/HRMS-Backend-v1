@@ -7,7 +7,6 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.Commands.BaseGoogleLogin;
 using ONEVO.Application.Features.Auth.Login.Commands.BaseLogin;
-using ONEVO.Application.Features.Auth.Login.Commands.Login;
 using ONEVO.Application.Features.Auth.Login.Commands.SelectWorkspace;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 
@@ -28,21 +27,18 @@ public class AuthLoginController : ControllerBase
         _tenantContext = tenantContext;
     }
 
-    /// <summary>Login with email + password. Tenant host: direct tenant login. Base host: credential-first resolver.</summary>
+    /// <summary>Base-host credential-first email + password login only. Tenant-host password login is not supported.</summary>
     [HttpPost("login")]
     [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
         this.ClearInvalidTenantSessionCookies(_env);
 
+        if (_tenantContext.ContextMode == TenantContextMode.Tenant)
+            return Problem("Tenant-host password login is not supported.", statusCode: 400);
+
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var ua = Request.Headers.UserAgent.ToString();
-
-        if (_tenantContext.ContextMode == TenantContextMode.Tenant)
-        {
-            var tenantResult = await _mediator.Send(new LoginCommand(request.Email, request.Password, ip, ua), ct);
-            return await this.HandleSessionResultAsync(tenantResult, _env);
-        }
 
         var baseResult = await _mediator.Send(new BaseLoginCommand(request.Email, request.Password, ip, ua), ct);
 
