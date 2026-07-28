@@ -1,78 +1,42 @@
 using FluentAssertions;
-using MediatR;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Hosting;
+using MediatR;
 using Moq;
 using ONEVO.Api.Contracts.Auth;
 using ONEVO.Api.Controllers.Tenant.Auth;
-using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.Auth.Login.Commands.Login;
-using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
-using System.Text.Json;
 
 namespace ONEVO.Tests.Unit.Features.Auth;
 
 public sealed class TenantLoginControllerTests
 {
     [Fact]
-    public async Task Login_WithStaleInvalidSessionCookie_ClearsCookiesAndContinuesLogin()
+    public async Task Login_OnTenantHost_ReturnsSafeRejection_AndNeverCallsMediator()
     {
         var mediator = new Mock<IMediator>();
-        mediator
-            .Setup(instance => instance.Send(It.IsAny<LoginCommand>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<LoginResponseDto>.Failure("Invalid email or password.", 401));
-
         var controller = CreateController(mediator.Object);
-        controller.Request.Headers.Cookie =
-            "onevo_session=stale-invalid-ticket; onevo_csrf=stale-csrf";
 
         var result = await controller.Login(
             new LoginRequest("owner@acme.test", "Password123!"),
             CancellationToken.None);
 
-        result.Should().BeOfType<ObjectResult>();
+        var problem = result.Should().BeOfType<ObjectResult>().Subject;
+        problem.StatusCode.Should().Be(400);
+        var problemDetails = problem.Value.Should().BeOfType<ProblemDetails>().Subject;
+        problemDetails.Detail.Should().Be("Tenant-host password login is not supported.");
+        problemDetails.Detail.Should().NotContain("main login page");
+
         mediator.Verify(
-            instance => instance.Send(It.IsAny<LoginCommand>(), It.IsAny<CancellationToken>()),
-            Times.Once);
+            instance => instance.Send(It.IsAny<object>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "tenant-host password login must not reach MediatR at all - no command, no session, no side effect");
 
         var setCookie = controller.Response.Headers.SetCookie.ToString();
-        setCookie.Should().Contain("onevo_session=");
-        setCookie.Should().Contain("onevo_csrf=");
-    }
-
-    [Fact]
-    public async Task Login_WhenMfaIsRequired_StoresChallengeInHttpOnlyCookieOnly()
-    {
-        const string mfaChallenge = "opaque-mfa-challenge";
-        var mediator = new Mock<IMediator>();
-        mediator
-            .Setup(instance => instance.Send(It.IsAny<LoginCommand>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto(
-                CsrfToken: string.Empty,
-                CsrfTokenHash: string.Empty,
-                ExpiresAt: null,
-                RequiresMfa: true,
-                MfaChallenge: mfaChallenge)));
-
-        var controller = CreateController(mediator.Object);
-
-        var result = await controller.Login(
-            new LoginRequest("owner@acme.test", "Password123!"),
-            CancellationToken.None);
-
-        var response = result.Should().BeOfType<ObjectResult>().Subject;
-        response.StatusCode.Should().Be(StatusCodes.Status202Accepted);
-        response.Value.Should().BeOfType<AuthSessionResponseDto>();
-
-        var setCookie = controller.Response.Headers.SetCookie.ToString();
-        setCookie.Should().Contain("onevo_mfa=");
-        setCookie.Should().Contain("httponly");
-        setCookie.Should().Contain("path=/api/v1/auth");
-        setCookie.Should().NotContain("header.payload.signature");
-        JsonSerializer.Serialize(response.Value).Should().NotContain(mfaChallenge);
+        setCookie.Should().NotContain("onevo_session=");
+        setCookie.Should().NotContain("onevo_mfa=");
     }
 
     private static AuthLoginController CreateController(IMediator mediator)

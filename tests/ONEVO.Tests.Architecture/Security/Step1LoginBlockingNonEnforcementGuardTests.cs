@@ -36,32 +36,36 @@ public class Step1LoginBlockingNonEnforcementGuardTests
     }
 
     [Fact]
-    public void Step2_LoginHandlersNowRouteThroughLoginContinuationServiceForLegalBlocking()
+    public void Step2_LoginHandlersRouteThroughLoginContinuationServiceForLegalBlocking()
     {
-        // Supersedes the former Step1_LoginHandlersDoNotEnforceSessionBlockingYet guard: Step 2
-        // (production-readiness pass) wires legal_login_challenges blocking into a shared
-        // ILoginContinuationService, so LoginCommandHandler/BaseLoginCommandHandler/
-        // SelectWorkspaceCommandHandler no longer call ILoginSessionMaterialFactory directly -
-        // they all delegate through the continuation service, which owns the legal check and the
-        // final PrepareAsync call.
+        // Supersedes the former Step1_LoginHandlersDoNotEnforceSessionBlockingYet guard, then later
+        // retargeted off the retired tenant-host LoginCommandHandler (deleted along with direct
+        // tenant-host password login - see TENANT_HOST_PASSWORD_LOGIN_RETIREMENT_REPORT.md).
+        // BaseLoginCommandHandler/SelectWorkspaceCommandHandler must not call
+        // ILoginSessionMaterialFactory directly - they delegate through the continuation service,
+        // which owns the legal check and the final PrepareAsync call.
         var srcDir = FindSrcDirectory();
-        var loginHandlerFile = Path.Combine(
-            srcDir,
-            "ONEVO.Application",
-            "Features",
-            "Auth",
-            "Login",
-            "Commands",
-            "Login",
-            "LoginCommandHandler.cs");
+        var handlerFiles = new[]
+        {
+            Path.Combine(srcDir, "ONEVO.Application", "Features", "Auth", "Login", "Commands", "BaseLogin", "BaseLoginCommandHandler.cs"),
+            Path.Combine(srcDir, "ONEVO.Application", "Features", "Auth", "Login", "Commands", "SelectWorkspace", "SelectWorkspaceCommandHandler.cs")
+        };
 
-        File.Exists(loginHandlerFile).Should().BeTrue();
-        var code = File.ReadAllText(loginHandlerFile);
+        foreach (var handlerFile in handlerFiles)
+        {
+            File.Exists(handlerFile).Should().BeTrue();
+            var code = File.ReadAllText(handlerFile);
 
-        code.Should().NotContain("_sessionMaterialFactory.PrepareAsync",
-            "session issuance is now owned exclusively by ILoginContinuationService, not the handler");
-        code.Should().Contain("ILoginContinuationService");
-        code.Should().Contain("_continuation.ContinueAsync");
+            code.Should().NotContain("_sessionMaterialFactory.PrepareAsync",
+                $"{Path.GetFileName(handlerFile)}: session issuance is owned exclusively by ILoginContinuationService");
+            code.Should().Contain("ILoginContinuationService");
+            code.Should().Contain("_continuation.ContinueAsync");
+        }
+
+        var deletedLoginCommandHandler = Path.Combine(
+            srcDir, "ONEVO.Application", "Features", "Auth", "Login", "Commands", "Login", "LoginCommandHandler.cs");
+        File.Exists(deletedLoginCommandHandler).Should().BeFalse(
+            "the tenant-host password-login LoginCommandHandler was retired and must not be recreated");
     }
 
     private static string FindMigrationsDirectory()
