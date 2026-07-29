@@ -53,8 +53,7 @@ public class AuthPendingLegalController : ControllerBase
         {
             this.DeleteTenantCookie(
                 "onevo_legal_pending", httpOnly: true, _env, path: "/api/v1/legal/acceptances/complete-login");
-            this.DeleteTenantCookie(
-                "onevo_legal_csrf", httpOnly: false, _env, path: "/api/v1/legal/acceptances/complete-login");
+            this.DeleteTenantCookie("onevo_legal_csrf", httpOnly: false, _env);
         }
 
         return await this.HandleSessionResultAsync(result, _env);

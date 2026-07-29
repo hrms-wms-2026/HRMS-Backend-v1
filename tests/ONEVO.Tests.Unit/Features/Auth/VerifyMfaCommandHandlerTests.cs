@@ -57,7 +57,9 @@ public sealed class VerifyMfaCommandHandlerTests
         _challenges.Setup(x => x.TryConsumeAsync("opaque", It.IsAny<CancellationToken>())).ReturnsAsync(state);
         _totp.Setup(x => x.Verify("secret", "123456")).Returns(true);
         _continuation
-            .Setup(c => c.FinishAuthenticatedLoginAsync(_user, "google_sso", "ip", "ua", It.IsAny<CancellationToken>()))
+            .Setup(c => c.FinishAuthenticatedLoginAsync(
+                _user, "google_sso", "ip", "ua", LoginFinalizationMode.TenantHostDirect,
+                It.IsAny<CancellationToken>(), It.IsAny<Tenant>()))
             .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto("csrf", "hash", null)));
 
         var result = await Handler(_tenantId).Handle(new VerifyMfaCommand("opaque", "123456", "ip", "ua"), default);
@@ -65,7 +67,10 @@ public sealed class VerifyMfaCommandHandlerTests
         result.IsSuccess.Should().BeTrue();
         _challenges.Verify(x => x.TryConsumeAsync("opaque", It.IsAny<CancellationToken>()), Times.Once);
         _continuation.Verify(
-            c => c.FinishAuthenticatedLoginAsync(_user, "google_sso", "ip", "ua", It.IsAny<CancellationToken>()), Times.Once);
+            c => c.FinishAuthenticatedLoginAsync(
+                _user, "google_sso", "ip", "ua", LoginFinalizationMode.TenantHostDirect,
+                It.IsAny<CancellationToken>(), It.Is<Tenant>(t => t.Id == _tenantId)),
+            Times.Once);
     }
 
     [Fact]
@@ -113,7 +118,8 @@ public sealed class VerifyMfaCommandHandlerTests
         _challenges.Verify(x => x.TryConsumeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         _continuation.Verify(
             c => c.FinishAuthenticatedLoginAsync(
-                It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+                It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<LoginFinalizationMode>(), It.IsAny<CancellationToken>(), It.IsAny<Tenant>()),
             Times.Never);
     }
 
@@ -140,7 +146,9 @@ public sealed class VerifyMfaCommandHandlerTests
                 "password",
                 null,
                 null,
-                It.IsAny<CancellationToken>()))
+                LoginFinalizationMode.BaseDomainExchange,
+                It.IsAny<CancellationToken>(),
+                It.IsAny<Tenant>()))
             .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto("csrf", "hash", null)));
 
         var result = await BaseHostHandler().Handle(

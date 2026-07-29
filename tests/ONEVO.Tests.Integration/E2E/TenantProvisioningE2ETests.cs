@@ -147,13 +147,29 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         rejectedTenantHostLogin.Headers.Contains("Set-Cookie").Should().BeFalse(
             "a rejected tenant-host password login must not issue any session cookie");
 
+        // The base host never signs in directly, even once every gate clears - it hands off to the
+        // tenant host via a one-time exchange code (TENANT_SESSION_EXCHANGE_LOGIN_FLOW_REPORT.md).
         var loginResponse = await SendAsync(HttpMethod.Post, BaseHost, "/api/v1/auth/login",
             new { email = OwnerEmail, password = OwnerPassword });
         var loginBody = await ReadJsonAsync(loginResponse);
-        loginResponse.StatusCode.Should().Be(HttpStatusCode.OK, loginBody.ToString());
-        var cookies = ParseSetCookies(loginResponse);
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, loginBody.ToString());
+        loginResponse.Headers.TryGetValues("Set-Cookie", out _).Should().BeFalse(
+            "the base host must never set onevo_session/onevo_csrf");
 
-        loginBody.GetProperty("authenticated").GetBoolean().Should().BeTrue();
+        loginBody.GetProperty("authenticated").GetBoolean().Should().BeFalse();
+        loginBody.GetProperty("redirect_required").GetBoolean().Should().BeTrue();
+        var continueUrl = new Uri(loginBody.GetProperty("continue_url").GetString()!, UriKind.Absolute);
+        continueUrl.Host.Should().Be(TenantHost);
+        var exchangeCode = Microsoft.AspNetCore.WebUtilities.QueryHelpers
+            .ParseQuery(continueUrl.Query)["code"].ToString();
+
+        var exchangeResponse = await SendAsync(
+            HttpMethod.Post, TenantHost, "/api/v1/auth/session-exchange", new { code = exchangeCode });
+        var exchangeBody = await ReadJsonAsync(exchangeResponse);
+        exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK, exchangeBody.ToString());
+        var cookies = ParseSetCookies(exchangeResponse);
+
+        exchangeBody.GetProperty("authenticated").GetBoolean().Should().BeTrue();
         cookies.Should().ContainKey("onevo_session");
         cookies.Should().ContainKey("onevo_csrf");
 

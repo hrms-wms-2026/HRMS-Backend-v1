@@ -79,7 +79,8 @@ public class SelectWorkspaceCommandHandler : IRequestHandler<SelectWorkspaceComm
             GenericFailureMessage: GenericSelectionFailureMessage,
             LegalChallengeOrigin: consumedState.Origin,
             IpAddress: request.IpAddress,
-            UserAgent: request.UserAgent);
+            UserAgent: request.UserAgent,
+            FinalizationMode: LoginFinalizationMode.BaseDomainExchange);
 
         return await _continuation.ContinueAsync(continuationRequest, cancellationToken);
     }

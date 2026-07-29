@@ -85,7 +85,7 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ExactOneMatch_LogsIn_ReturnsLegalAcceptanceRequired_ThenAcceptingIssuesSessionAndCsrfCookies()
+    public async Task ExactOneMatch_LogsIn_ReturnsLegalAcceptanceRequired_ThenAcceptingReturnsTenantSessionExchange_ThenExchangeIssuesSessionAndCsrfCookies()
     {
         var user = await SeedActiveUserAsync("one-match-tenant", "onematch@test.onevo.dev", "CorrectPass1!");
 
@@ -101,19 +101,30 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
         body.Should().NotContain("\"tenant_id\"");
         body.Should().NotContain("\"user_id\"");
 
-        var finalResponse = await CompleteLegalAcceptanceAsync(response);
+        var legalCompleted = await CompleteLegalAcceptanceAsync(response);
 
-        finalResponse.StatusCode.Should().Be(
-            HttpStatusCode.OK,
-            await finalResponse.Content.ReadAsStringAsync());
-        var setCookies = finalResponse.Headers.TryGetValues("Set-Cookie", out var cookieValues)
+        // Every gate cleared, but this response is still on the base host: it must hand off to the
+        // tenant host via a one-time exchange code instead of setting onevo_session/onevo_csrf here.
+        legalCompleted.StatusCode.Should().Be(
+            HttpStatusCode.Accepted,
+            await legalCompleted.Content.ReadAsStringAsync());
+        var legalCompletedBody = await legalCompleted.Content.ReadAsStringAsync();
+        legalCompletedBody.Should().Contain("\"redirect_required\":true");
+        legalCompletedBody.Should().Contain("\"authenticated\":false");
+        AssertNoTenantSessionCookies(legalCompleted);
+
+        var exchanged = await CompleteTenantSessionExchangeAsync(legalCompleted);
+
+        exchanged.StatusCode.Should().Be(HttpStatusCode.OK, await exchanged.Content.ReadAsStringAsync());
+        var setCookies = exchanged.Headers.TryGetValues("Set-Cookie", out var cookieValues)
             ? cookieValues.ToList()
             : new List<string>();
         setCookies.Should().Contain(c => c.StartsWith("onevo_session=", StringComparison.Ordinal));
         setCookies.Should().Contain(c => c.StartsWith("onevo_csrf=", StringComparison.Ordinal));
-        var finalBody = await finalResponse.Content.ReadAsStringAsync();
-        finalBody.Should().NotContain("\"tenant_id\"");
-        finalBody.Should().NotContain("\"user_id\"");
+        var exchangedBody = await exchanged.Content.ReadAsStringAsync();
+        exchangedBody.Should().Contain("\"authenticated\":true");
+        exchangedBody.Should().NotContain("\"tenant_id\"");
+        exchangedBody.Should().NotContain("\"user_id\"");
     }
 
     [Fact]
@@ -130,7 +141,9 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
             .ToArray();
         var responses = await Task.WhenAll(race);
 
-        responses.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(
+        // The winner now receives 202 + redirect_required (tenant session exchange), not an
+        // immediate 200 session - the base host never signs in directly.
+        responses.Count(r => r.StatusCode == HttpStatusCode.Accepted).Should().Be(
             1,
             string.Join(
                 Environment.NewLine,
@@ -147,7 +160,7 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task BasePasswordLogin_MfaThenLegal_CompletesOnRootHost()
+    public async Task BasePasswordLogin_MfaThenLegal_ThenTenantSessionExchangeCompletes()
     {
         var user = await SeedActiveUserAsync(
             "mfa-continue-tenant",
@@ -162,6 +175,8 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
         var mfaContinue = new Uri(
             loginDocument.RootElement.GetProperty("continue_url").GetString()!,
             UriKind.Absolute);
+        // MFA/legal challenges stay on the base host throughout - only the final, fully-authenticated
+        // outcome hands off to a different (tenant) host.
         mfaContinue.Host.Should().Be("localhost");
         loginBody.Should().NotContain("\"tenant_id\"");
         loginBody.Should().NotContain("\"user_id\"");
@@ -178,17 +193,28 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
             .Should()
             .Contain("\"legal_acceptance_required\":true");
 
-        var completed = await CompleteLegalAcceptanceAsync(verified);
-        completed.StatusCode.Should().Be(
-            HttpStatusCode.OK,
-            await completed.Content.ReadAsStringAsync());
-        var completedBody = await completed.Content.ReadAsStringAsync();
-        completedBody.Should().NotContain("\"tenant_id\"");
-        completedBody.Should().NotContain("\"user_id\"");
+        var legalCompleted = await CompleteLegalAcceptanceAsync(verified);
+        legalCompleted.StatusCode.Should().Be(
+            HttpStatusCode.Accepted,
+            await legalCompleted.Content.ReadAsStringAsync());
+        var legalCompletedBody = await legalCompleted.Content.ReadAsStringAsync();
+        legalCompletedBody.Should().Contain("\"redirect_required\":true");
+        legalCompletedBody.Should().NotContain("\"tenant_id\"");
+        legalCompletedBody.Should().NotContain("\"user_id\"");
+        AssertNoTenantSessionCookies(legalCompleted);
+
+        var exchanged = await CompleteTenantSessionExchangeAsync(legalCompleted);
+
+        exchanged.StatusCode.Should().Be(HttpStatusCode.OK, await exchanged.Content.ReadAsStringAsync());
+        var setCookies = exchanged.Headers.TryGetValues("Set-Cookie", out var cookieValues)
+            ? cookieValues.ToList()
+            : new List<string>();
+        setCookies.Should().Contain(c => c.StartsWith("onevo_session=", StringComparison.Ordinal));
+        setCookies.Should().Contain(c => c.StartsWith("onevo_csrf=", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task BaseGoogleLogin_MfaThenLegal_CompletesOnRootHost()
+    public async Task BaseGoogleLogin_MfaThenLegal_ThenTenantSessionExchangeCompletes()
     {
         var user = await SeedActiveUserAsync(
             "google-mfa-tenant",
@@ -219,10 +245,18 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
         var verified = await _client.SendAsync(verifyRequest);
 
         verified.StatusCode.Should().Be(HttpStatusCode.Accepted);
-        var completed = await CompleteLegalAcceptanceAsync(verified);
-        completed.StatusCode.Should().Be(
-            HttpStatusCode.OK,
-            await completed.Content.ReadAsStringAsync());
+        var legalCompleted = await CompleteLegalAcceptanceAsync(verified);
+        legalCompleted.StatusCode.Should().Be(
+            HttpStatusCode.Accepted,
+            await legalCompleted.Content.ReadAsStringAsync());
+        AssertNoTenantSessionCookies(legalCompleted);
+
+        var exchanged = await CompleteTenantSessionExchangeAsync(legalCompleted);
+        exchanged.StatusCode.Should().Be(HttpStatusCode.OK, await exchanged.Content.ReadAsStringAsync());
+        var setCookies = exchanged.Headers.TryGetValues("Set-Cookie", out var cookieValues)
+            ? cookieValues.ToList()
+            : new List<string>();
+        setCookies.Should().Contain(c => c.StartsWith("onevo_session=", StringComparison.Ordinal));
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -288,7 +322,7 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task WorkspaceSelection_CompletesLogin_AndSetsSessionCookie()
+    public async Task WorkspaceSelection_CompletesLogin_ThenTenantSessionExchangeSetsSessionCookie()
     {
         const string sharedEmail = "selectcompletes@test.onevo.dev";
         const string sharedPassword = "SharedPass1!";
@@ -304,12 +338,17 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
         var selectionBody = await selectionResponse.Content.ReadAsStringAsync();
         selectionBody.Should().Contain("\"legal_acceptance_required\":true");
 
-        var finalResponse = await CompleteLegalAcceptanceAsync(selectionResponse);
+        var legalCompleted = await CompleteLegalAcceptanceAsync(selectionResponse);
 
-        finalResponse.StatusCode.Should().Be(
-            HttpStatusCode.OK,
-            await finalResponse.Content.ReadAsStringAsync());
-        var setCookies = finalResponse.Headers.TryGetValues("Set-Cookie", out var cookieValues)
+        legalCompleted.StatusCode.Should().Be(
+            HttpStatusCode.Accepted,
+            await legalCompleted.Content.ReadAsStringAsync());
+        AssertNoTenantSessionCookies(legalCompleted);
+
+        var exchanged = await CompleteTenantSessionExchangeAsync(legalCompleted);
+
+        exchanged.StatusCode.Should().Be(HttpStatusCode.OK, await exchanged.Content.ReadAsStringAsync());
+        var setCookies = exchanged.Headers.TryGetValues("Set-Cookie", out var cookieValues)
             ? cookieValues.ToList()
             : new List<string>();
         setCookies.Should().Contain(c => c.StartsWith("onevo_session=", StringComparison.Ordinal));
@@ -574,6 +613,24 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Confirms onevo_session/onevo_csrf are absent, without over-asserting "no Set-Cookie header
+    /// at all" - a legal-acceptance response legitimately deletes onevo_legal_pending/
+    /// onevo_legal_csrf via Set-Cookie even on the exchange-required path.
+    /// </summary>
+    private static void AssertNoTenantSessionCookies(HttpResponseMessage response)
+    {
+        var cookies = response.Headers.TryGetValues("Set-Cookie", out var values)
+            ? values.ToList()
+            : new List<string>();
+        cookies.Should().NotContain(
+            c => c.StartsWith("onevo_session=", StringComparison.Ordinal),
+            "the base host must never set onevo_session");
+        cookies.Should().NotContain(
+            c => c.StartsWith("onevo_csrf=", StringComparison.Ordinal),
+            "the base host must never set onevo_csrf");
+    }
+
+    /// <summary>
     /// Completes the pre-session Legal &amp; Privacy flow using the onevo_legal_pending/
     /// onevo_legal_csrf cookies from a legal_acceptance_required response, accepting the bootstrap
     /// dev terms/privacy_notice versions.
@@ -655,7 +712,7 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
         var completed = await CompleteLegalAcceptanceAsync(login);
 
         completed.StatusCode.Should().Be(
-            HttpStatusCode.OK, await completed.Content.ReadAsStringAsync());
+            HttpStatusCode.Accepted, await completed.Content.ReadAsStringAsync());
         var completedBody = await completed.Content.ReadAsStringAsync();
         completedBody.Should().NotContain(legalPending);
         completedBody.Should().NotContain(legalCsrf);
@@ -703,6 +760,156 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
         var completed = await CompleteLegalAcceptanceAsync(login);
 
         completed.StatusCode.Should().Be(
-            HttpStatusCode.OK, await completed.Content.ReadAsStringAsync());
+            HttpStatusCode.Accepted, await completed.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>
+    /// Extracts continue_url + opaque code from a fully-authenticated base-host response and
+    /// completes the handoff by POSTing to the tenant host's session-exchange endpoint.
+    /// </summary>
+    private async Task<HttpResponseMessage> CompleteTenantSessionExchangeAsync(HttpResponseMessage priorResponse)
+    {
+        var priorBody = await priorResponse.Content.ReadAsStringAsync();
+        using var priorDocument = JsonDocument.Parse(priorBody);
+        var continueUrl = new Uri(
+            priorDocument.RootElement.GetProperty("continue_url").GetString()!,
+            UriKind.Absolute);
+        var code = Microsoft.AspNetCore.WebUtilities.QueryHelpers
+            .ParseQuery(continueUrl.Query)["code"].ToString();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/session-exchange");
+        request.Headers.Host = continueUrl.Host;
+        request.Content = JsonContent.Create(new { code });
+        return await _client.SendAsync(request);
+    }
+
+    [Fact]
+    public async Task TenantSessionExchange_BaseLoginSingleTenant_FullFlow()
+    {
+        var user = await SeedActiveUserAsync(
+            "exchange-single-tenant", "exchange-single@test.onevo.dev", "CorrectPass1!");
+
+        var login = await PostLoginAsync(user.Email, "CorrectPass1!");
+        var legalCompleted = await CompleteLegalAcceptanceAsync(login);
+
+        legalCompleted.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        AssertNoTenantSessionCookies(legalCompleted);
+        var legalCompletedBody = await legalCompleted.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(legalCompletedBody);
+        var continueUrl = new Uri(document.RootElement.GetProperty("continue_url").GetString()!, UriKind.Absolute);
+        continueUrl.Host.Should().Be("exchange-single-tenant.localhost");
+
+        var exchanged = await CompleteTenantSessionExchangeAsync(legalCompleted);
+
+        exchanged.StatusCode.Should().Be(HttpStatusCode.OK, await exchanged.Content.ReadAsStringAsync());
+        var setCookies = exchanged.Headers.TryGetValues("Set-Cookie", out var cookieValues)
+            ? cookieValues.ToList()
+            : new List<string>();
+        setCookies.Should().Contain(c => c.StartsWith("onevo_session=", StringComparison.Ordinal));
+        setCookies.Should().Contain(c => c.StartsWith("onevo_csrf=", StringComparison.Ordinal));
+        var sessionCookie = ExtractCookieValue(exchanged, "onevo_session");
+
+        using var meRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
+        meRequest.Headers.Host = continueUrl.Host;
+        meRequest.Headers.Add("Cookie", $"onevo_session={sessionCookie}");
+        var me = await _client.SendAsync(meRequest);
+
+        me.StatusCode.Should().Be(HttpStatusCode.OK, await me.Content.ReadAsStringAsync());
+        var meBody = await me.Content.ReadAsStringAsync();
+        meBody.Should().Contain("\"slug\":\"exchange-single-tenant\"");
+    }
+
+    [Fact]
+    public async Task TenantSessionExchange_MultiWorkspace_ExchangeOnWrongTenantFails_CorrectTenantSucceeds()
+    {
+        const string sharedEmail = "exchange-multi@test.onevo.dev";
+        const string sharedPassword = "SharedPass1!";
+        await SeedActiveUserAsync("exchange-multi-a", sharedEmail, sharedPassword);
+        await SeedActiveUserAsync("exchange-multi-b", sharedEmail, sharedPassword);
+
+        var loginResponse = await PostLoginAsync(sharedEmail, sharedPassword);
+        var loginChallenge = await ExtractLoginChallengeAsync(loginResponse);
+        var selectionResponse = await PostSelectWorkspaceAsync(loginChallenge, "exchange-multi-a");
+        var legalCompleted = await CompleteLegalAcceptanceAsync(selectionResponse);
+        legalCompleted.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+        var legalCompletedBody = await legalCompleted.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(legalCompletedBody);
+        var continueUrl = new Uri(document.RootElement.GetProperty("continue_url").GetString()!, UriKind.Absolute);
+        var code = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(continueUrl.Query)["code"].ToString();
+
+        using var wrongTenantRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/session-exchange");
+        wrongTenantRequest.Headers.Host = "exchange-multi-b.localhost";
+        wrongTenantRequest.Content = JsonContent.Create(new { code });
+        var wrongTenantResponse = await _client.SendAsync(wrongTenantRequest);
+
+        wrongTenantResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        wrongTenantResponse.Headers.TryGetValues("Set-Cookie", out _).Should().BeFalse();
+
+        var correctTenantResponse = await CompleteTenantSessionExchangeAsync(legalCompleted);
+
+        correctTenantResponse.StatusCode.Should().Be(
+            HttpStatusCode.OK, await correctTenantResponse.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task TenantSessionExchange_CalledOnBaseHost_Returns400()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/session-exchange");
+        request.Headers.Host = "localhost";
+        request.Content = JsonContent.Create(new { code = "irrelevant" });
+
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task TenantSessionExchange_CodeIsSingleUse()
+    {
+        var user = await SeedActiveUserAsync(
+            "exchange-reuse-tenant", "exchange-reuse@test.onevo.dev", "CorrectPass1!");
+        var login = await PostLoginAsync(user.Email, "CorrectPass1!");
+        var legalCompleted = await CompleteLegalAcceptanceAsync(login);
+
+        var first = await CompleteTenantSessionExchangeAsync(legalCompleted);
+        var second = await CompleteTenantSessionExchangeAsync(legalCompleted);
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK, await first.Content.ReadAsStringAsync());
+        second.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        second.Headers.TryGetValues("Set-Cookie", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TenantSessionExchange_RawCodeIsNeverPersisted_AndResponseLeaksNoIdsOrSecrets()
+    {
+        var user = await SeedActiveUserAsync(
+            "exchange-security-tenant", "exchange-security@test.onevo.dev", "CorrectPass1!");
+        var login = await PostLoginAsync(user.Email, "CorrectPass1!");
+        var legalCompleted = await CompleteLegalAcceptanceAsync(login);
+
+        var legalCompletedBody = await legalCompleted.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(legalCompletedBody);
+        var continueUrl = new Uri(document.RootElement.GetProperty("continue_url").GetString()!, UriKind.Absolute);
+        var rawCode = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(continueUrl.Query)["code"].ToString();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var storedHashes = await db.TenantSessionExchangeChallenges
+            .Where(c => c.TenantId == user.TenantId && c.UserId == user.UserId)
+            .Select(c => c.CodeHash)
+            .ToListAsync();
+        storedHashes.Should().NotContain(rawCode, "only the SHA-256 hash of the code may ever be persisted");
+        storedHashes.Should().NotBeEmpty();
+
+        var exchanged = await CompleteTenantSessionExchangeAsync(legalCompleted);
+        var exchangedBody = await exchanged.Content.ReadAsStringAsync();
+
+        exchangedBody.Should().NotContain(user.TenantId.ToString());
+        exchangedBody.Should().NotContain(user.UserId.ToString());
+        exchangedBody.Should().NotContain("password_hash");
+        exchangedBody.Should().NotContain("access_token");
+        exchangedBody.Should().NotContain("refresh_token");
+        exchangedBody.Should().NotContain("\"jwt\"");
     }
 }

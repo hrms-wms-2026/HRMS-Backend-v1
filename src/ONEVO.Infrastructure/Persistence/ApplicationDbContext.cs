@@ -88,6 +88,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<MfaChallenge> MfaChallenges => Set<MfaChallenge>();
     public DbSet<LoginWorkspaceSelectionChallenge> LoginWorkspaceSelectionChallenges => Set<LoginWorkspaceSelectionChallenge>();
     public DbSet<LegalLoginChallenge> LegalLoginChallenges => Set<LegalLoginChallenge>();
+    public DbSet<TenantSessionExchangeChallenge> TenantSessionExchangeChallenges => Set<TenantSessionExchangeChallenge>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<LegalDocumentVersion> LegalDocumentVersions => Set<LegalDocumentVersion>();
     public DbSet<LegalAcceptanceRecord> LegalAcceptanceRecords => Set<LegalAcceptanceRecord>();

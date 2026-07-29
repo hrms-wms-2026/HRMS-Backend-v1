@@ -9,6 +9,7 @@ public interface ILoginSessionMaterialFactory
 {
     Task<Result<LoginResponseDto>> PrepareAsync(
         User user,
+        Tenant tenant,
         string? ipAddress,
         string? userAgent,
         CancellationToken ct = default);

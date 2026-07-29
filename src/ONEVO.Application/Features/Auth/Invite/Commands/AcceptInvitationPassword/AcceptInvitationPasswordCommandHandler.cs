@@ -119,7 +119,8 @@ public sealed class AcceptInvitationPasswordCommandHandler
         await _unitOfWork.SaveChangesAsync(ct);
 
         return await _continuation.FinishAuthenticatedLoginAsync(
-            user, "invitation_password", request.IpAddress, request.UserAgent, ct);
+            user, "invitation_password", request.IpAddress, request.UserAgent,
+            LoginFinalizationMode.TenantHostDirect, ct);
     }
 
     private static string? CheckInvitationUsable(InvitationToken inv, DateTimeOffset now)

@@ -104,6 +104,7 @@ public class AcceptInvitationDirectoryTests
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
                 It.IsAny<string?>(),
+                It.IsAny<LoginFinalizationMode>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<LoginResponseDto>.Success(MakeLoginResponse()));
 
@@ -284,6 +285,7 @@ public class AcceptInvitationDirectoryTests
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
                 It.IsAny<string?>(),
+                It.IsAny<LoginFinalizationMode>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<LoginResponseDto>.Success(MakeLoginResponse()));
 

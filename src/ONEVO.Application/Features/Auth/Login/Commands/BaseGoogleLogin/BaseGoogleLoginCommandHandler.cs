@@ -70,7 +70,8 @@ public class BaseGoogleLoginCommandHandler : IRequestHandler<BaseGoogleLoginComm
                 GenericFailureMessage: GenericFailureMessage,
                 LegalChallengeOrigin: LegalChallengeOrigin,
                 IpAddress: request.IpAddress,
-                UserAgent: request.UserAgent);
+                UserAgent: request.UserAgent,
+                FinalizationMode: LoginFinalizationMode.BaseDomainExchange);
 
             var result = await _continuation.ContinueAsync(continuationRequest, ct);
             if (!result.IsSuccess)

@@ -244,6 +244,8 @@ public static class DependencyInjection
         services.AddScoped<ILoginSessionMaterialFactory, LoginSessionMaterialFactory>();
         services.AddScoped<IGoogleIdTokenValidator, GoogleIdTokenValidator>();
         services.AddScoped<ILoginContinuationService, LoginContinuationService>();
+        services.AddScoped<ITenantSessionExchangeChallengeRepository, EfTenantSessionExchangeChallengeRepository>();
+        services.AddScoped<ITenantSessionExchangeService, TenantSessionExchangeService>();
 
         // Legal acceptance and versioning
         services.AddScoped<ILegalDocumentVersionRepository, EfLegalDocumentVersionRepository>();

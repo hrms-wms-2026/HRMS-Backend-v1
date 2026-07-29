@@ -173,11 +173,14 @@ public class LegalDocumentRichContentIntegrationTests : IAsyncLifetime
             new { confirm = true }, cookie: _adminCookie, csrfToken: _adminCsrfToken);
         confirm.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
+        // The base host never signs in directly, even once every gate clears (including the legal
+        // gate, already satisfied at invite time) - it hands off to the tenant host via a one-time
+        // exchange code instead.
         var firstLogin = await SendAsync(HttpMethod.Post, BaseHost, "/api/v1/auth/login",
             new { email = OwnerEmail, password = OwnerPassword });
         var firstLoginBody = await ReadJsonAsync(firstLogin);
-        firstLogin.StatusCode.Should().Be(HttpStatusCode.OK, firstLoginBody.ToString());
-        firstLoginBody.GetProperty("authenticated").GetBoolean().Should().BeTrue(
+        firstLogin.StatusCode.Should().Be(HttpStatusCode.Accepted, firstLoginBody.ToString());
+        firstLoginBody.GetProperty("redirect_required").GetBoolean().Should().BeTrue(
             "the owner already accepted the current required versions during invite completion");
 
         // -- Now publish a new terms draft, superseding terms/1.0. --
@@ -245,8 +248,8 @@ public class LegalDocumentRichContentIntegrationTests : IAsyncLifetime
             cookie: $"onevo_legal_pending={cookies["onevo_legal_pending"]}",
             csrfToken: legalCsrfHeader);
         var completeLoginBody = await ReadJsonAsync(completeLoginResponse);
-        completeLoginResponse.StatusCode.Should().Be(HttpStatusCode.OK, completeLoginBody.ToString());
-        completeLoginBody.GetProperty("authenticated").GetBoolean().Should().BeTrue();
+        completeLoginResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, completeLoginBody.ToString());
+        completeLoginBody.GetProperty("redirect_required").GetBoolean().Should().BeTrue();
     }
 
     // -- Flow steps --

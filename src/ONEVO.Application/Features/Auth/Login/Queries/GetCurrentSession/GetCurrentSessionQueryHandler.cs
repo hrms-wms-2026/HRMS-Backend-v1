@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.Auth.Login.Queries.GetCurrentSession;
 
@@ -11,15 +12,18 @@ public sealed class GetCurrentSessionQueryHandler
     private readonly ICurrentUser _currentUser;
     private readonly ITenantContext _tenantContext;
     private readonly IModuleEntitlementService _entitlements;
+    private readonly ITenantRepository _tenants;
 
     public GetCurrentSessionQueryHandler(
         ICurrentUser currentUser,
         ITenantContext tenantContext,
-        IModuleEntitlementService entitlements)
+        IModuleEntitlementService entitlements,
+        ITenantRepository tenants)
     {
         _currentUser = currentUser;
         _tenantContext = tenantContext;
         _entitlements = entitlements;
+        _tenants = tenants;
     }
 
     public async Task<Result<AuthSessionResponseDto>> Handle(
@@ -38,6 +42,12 @@ public sealed class GetCurrentSessionQueryHandler
             _tenantContext.TenantId,
             ct);
 
+        // ITenantContext exposes Slug but not a display name, so the tenant repository is the
+        // source of truth for the human-readable name here.
+        var tenant = await _tenants.GetByIdAsync(_tenantContext.TenantId, ct);
+        if (tenant is null)
+            return Result<AuthSessionResponseDto>.Failure("Authentication required.", 401);
+
         var response = new AuthSessionResponseDto(
             Authenticated: true,
             User: new CurrentUserDto(
@@ -48,7 +58,11 @@ public sealed class GetCurrentSessionQueryHandler
             ActiveModules: activeModules,
             MustChangePassword: false,
             MfaRequired: false,
-            ExpiresAt: _currentUser.SessionExpiresAt);
+            ExpiresAt: _currentUser.SessionExpiresAt,
+            // Slug comes from the already-resolved host context (ITenantContext), not the fresh
+            // repository read - the repository lookup exists only because display name isn't on
+            // ITenantContext.
+            Workspace: new WorkspaceResponseDto(_tenantContext.Slug!, tenant.Name));
 
         return Result<AuthSessionResponseDto>.Success(response);
     }
