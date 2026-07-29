@@ -38,6 +38,11 @@ public sealed class BaseDomainLoginTestFactory : WebApplicationFactory<Program>
                 // calls https://localhost for base-domain requests and https://{slug}.localhost
                 // for direct tenant-host requests, mirroring E2ETestFactory/TenantProvisioningE2ETests.
                 ["Tenancy:RootDomain"] = "localhost",
+                // TenantSessionExchangeService.BuildContinueUrl reads scheme/port from here; the
+                // test client itself uses BaseAddress https://localhost, so continue_url ends up
+                // https://{slug}.localhost/auth/continue?code=... - a different host string the
+                // same in-memory TestServer still routes via the Host header.
+                ["Urls:AppBaseUrl"] = "https://localhost",
                 ["Encryption:MasterKey"] = "base-login-test-encryption-master-key!",
                 ["DevAdmin:Email"] = "test_admin@onevo.dev",
                 ["DevAdmin:Password"] = "test_password_123",

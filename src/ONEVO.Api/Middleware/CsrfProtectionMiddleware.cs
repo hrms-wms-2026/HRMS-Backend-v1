@@ -32,6 +32,7 @@ public class CsrfProtectionMiddleware
         "/api/v1/auth/mfa/verify",
         "/api/v1/auth/login/select-workspace",
         "/api/v1/auth/login/google",
+        "/api/v1/auth/session-exchange",
         "/api/v1/legal/acceptances/complete-login",
         "/admin/v1/auth/login",
         "/admin/v1/auth/google-callback",

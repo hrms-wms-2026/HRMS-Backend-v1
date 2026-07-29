@@ -80,6 +80,21 @@ public class CsrfProtectionMiddlewareTests
     }
 
     [Fact]
+    public async Task UnsafeMethod_ExemptSessionExchangePath_IsNotBlocked()
+    {
+        // session-exchange is the call that creates onevo_session; it must never be blocked by
+        // CSRF validation, including when the browser carries a stale/invalid onevo_session cookie
+        // from an unrelated prior session - the exchange code itself is what proves authorization.
+        var ctx = MakeContext("POST", "/api/v1/auth/session-exchange");
+        ctx.Request.Headers["Cookie"] = "onevo_session=stale-unrelated-session";
+
+        var sut = CreateSut();
+        await sut.InvokeAsync(ctx, _tokenService);
+
+        Assert.True(_nextCalled);
+    }
+
+    [Fact]
     public async Task UnsafeMethod_NoSessionCookie_IsNotBlocked()
     {
         var ctx = MakeContext("POST", "/api/v1/employees");

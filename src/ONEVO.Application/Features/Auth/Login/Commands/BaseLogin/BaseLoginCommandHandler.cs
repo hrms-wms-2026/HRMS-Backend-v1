@@ -69,7 +69,8 @@ public class BaseLoginCommandHandler : IRequestHandler<BaseLoginCommand, Result<
             GenericFailureMessage: GenericCredentialFailureMessage,
             LegalChallengeOrigin: LegalChallengeOrigin,
             IpAddress: ipAddress,
-            UserAgent: userAgent);
+            UserAgent: userAgent,
+            FinalizationMode: LoginFinalizationMode.BaseDomainExchange);
 
         var result = await _continuation.ContinueAsync(continuationRequest, ct);
         if (!result.IsSuccess)

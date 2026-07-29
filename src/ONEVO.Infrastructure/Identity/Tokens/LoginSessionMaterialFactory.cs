@@ -39,6 +39,7 @@ public class LoginSessionMaterialFactory : ILoginSessionMaterialFactory
 
     public async Task<Result<LoginResponseDto>> PrepareAsync(
         User user,
+        Tenant tenant,
         string? ipAddress,
         string? userAgent,
         CancellationToken ct = default)
@@ -55,7 +56,8 @@ public class LoginSessionMaterialFactory : ILoginSessionMaterialFactory
             ExpiresAt: _clock.UtcNow.Add(SessionPolicy.SlidingWindow),
             User: new CurrentUserDto(user.Id, user.TenantId, user.Email),
             Permissions: permissions,
-            ActiveModules: activeModules
+            ActiveModules: activeModules,
+            Workspace: new WorkspaceResponseDto(tenant.Slug, tenant.Name)
         ));
     }
 }

@@ -45,6 +45,8 @@ public class E2ETestFactory : WebApplicationFactory<Program>
                 ["Jwt:TenantIssuer"] = AdminTestFactory.TenantIssuer,
                 ["Jwt:TenantAudience"] = AdminTestFactory.TenantAudience,
                 ["Tenancy:RootDomain"] = "localhost",
+                // TenantSessionExchangeService.BuildContinueUrl reads scheme/port from here.
+                ["Urls:AppBaseUrl"] = "https://localhost",
                 ["DevAdmin:Email"] = "test_admin@onevo.dev",
                 ["DevAdmin:Password"] = "test_password_123",
                 // Bootstrap the canonical platform_users row the DevAdmin login resolves.

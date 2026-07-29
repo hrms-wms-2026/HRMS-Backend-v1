@@ -108,6 +108,12 @@ public class VerifyMfaCommandHandler : IRequestHandler<VerifyMfaCommand, Result<
         }
 
         return await _continuation.FinishAuthenticatedLoginAsync(
-            user, consumedChallenge.Origin, request.IpAddress, request.UserAgent, cancellationToken);
+            user,
+            consumedChallenge.Origin,
+            request.IpAddress,
+            request.UserAgent,
+            isTenantContext ? LoginFinalizationMode.TenantHostDirect : LoginFinalizationMode.BaseDomainExchange,
+            cancellationToken,
+            tenant);
     }
 }

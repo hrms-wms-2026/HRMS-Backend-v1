@@ -26,6 +26,7 @@ public sealed class LoginContinuationServiceTests
         public Mock<ITenantContextSwitcher> TenantSwitcher { get; } = new();
         public Mock<ILegalAcceptanceChecker> LegalChecker { get; } = new();
         public Mock<ILegalLoginChallengeRepository> LegalChallenges { get; } = new();
+        public Mock<ITenantSessionExchangeService> TenantSessionExchange { get; } = new();
         public Mock<ILoginSessionMaterialFactory> SessionMaterialFactory { get; } = new();
         public Mock<IUnitOfWork> UnitOfWork { get; } = new();
         public Mock<IDateTimeProvider> Clock { get; } = new();
@@ -40,7 +41,8 @@ public sealed class LoginContinuationServiceTests
 
         public LoginContinuationService Build() => new(
             Tenants.Object, Users.Object, UserMfas.Object, MfaChallenges.Object, TenantSwitcher.Object,
-            LegalChecker.Object, LegalChallenges.Object, SessionMaterialFactory.Object, UnitOfWork.Object, Clock.Object);
+            LegalChecker.Object, LegalChallenges.Object, TenantSessionExchange.Object,
+            SessionMaterialFactory.Object, UnitOfWork.Object, Clock.Object);
     }
 
     private static Tenant ActiveTenant(Guid id) => new()
@@ -54,6 +56,14 @@ public sealed class LoginContinuationServiceTests
         FirstName = "Jane", LastName = "Doe", IsActive = true
     };
 
+    private static LoginResponseDto ExchangeResponse(User user, Tenant tenant) => new(
+        CsrfToken: string.Empty,
+        CsrfTokenHash: string.Empty,
+        ExpiresAt: null,
+        User: new CurrentUserDto(user.Id, user.TenantId, user.Email),
+        Workspace: new WorkspaceResponseDto(tenant.Slug, tenant.Name),
+        TenantSessionExchange: new TenantSessionExchangeMaterial("https://acme.localhost:4200/auth/continue?code=raw", DateTimeOffset.Parse("2026-07-25T12:02:00Z")));
+
     [Fact]
     public async Task ContinueAsync_TenantNotFound_ReturnsGenericFailure_AndNeverSwitches()
     {
@@ -61,7 +71,9 @@ public sealed class LoginContinuationServiceTests
         var tenantId = Guid.NewGuid();
         fixture.Tenants.Setup(t => t.GetByIdAsync(tenantId, It.IsAny<CancellationToken>())).ReturnsAsync((Tenant?)null);
 
-        var request = new LoginContinuationRequest(tenantId, Guid.NewGuid(), true, "generic-failure", "password", null, null);
+        var request = new LoginContinuationRequest(
+            tenantId, Guid.NewGuid(), true, "generic-failure", "password", null, null,
+            LoginFinalizationMode.BaseDomainExchange);
         var result = await fixture.Build().ContinueAsync(request);
 
         result.IsSuccess.Should().BeFalse();
@@ -79,7 +91,9 @@ public sealed class LoginContinuationServiceTests
         tenant.Status = TenantStatus.Suspended;
         fixture.Tenants.Setup(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
 
-        var request = new LoginContinuationRequest(tenant.Id, Guid.NewGuid(), true, "generic-failure", "password", null, null);
+        var request = new LoginContinuationRequest(
+            tenant.Id, Guid.NewGuid(), true, "generic-failure", "password", null, null,
+            LoginFinalizationMode.BaseDomainExchange);
         var result = await fixture.Build().ContinueAsync(request);
 
         result.IsSuccess.Should().BeFalse();
@@ -95,11 +109,13 @@ public sealed class LoginContinuationServiceTests
         fixture.Tenants.Setup(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
         fixture.Users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         fixture.UserMfas.Setup(m => m.GetTotpAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync((UserMfa?)null);
-        fixture.SessionMaterialFactory
-            .Setup(f => f.PrepareAsync(user, null, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto("c", "h", null)));
+        fixture.TenantSessionExchange
+            .Setup(f => f.CreateAsync(user, tenant, "password", null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(ExchangeResponse(user, tenant)));
 
-        var request = new LoginContinuationRequest(tenant.Id, user.Id, false, "generic-failure", "password", null, null);
+        var request = new LoginContinuationRequest(
+            tenant.Id, user.Id, false, "generic-failure", "password", null, null,
+            LoginFinalizationMode.BaseDomainExchange);
         await fixture.Build().ContinueAsync(request);
 
         fixture.TenantSwitcher.Verify(
@@ -116,7 +132,9 @@ public sealed class LoginContinuationServiceTests
         fixture.Tenants.Setup(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
         fixture.Users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
 
-        var request = new LoginContinuationRequest(tenant.Id, user.Id, true, "generic-failure", "password", null, null);
+        var request = new LoginContinuationRequest(
+            tenant.Id, user.Id, true, "generic-failure", "password", null, null,
+            LoginFinalizationMode.BaseDomainExchange);
         var result = await fixture.Build().ContinueAsync(request);
 
         result.IsSuccess.Should().BeFalse();
@@ -134,11 +152,16 @@ public sealed class LoginContinuationServiceTests
         fixture.Tenants.Setup(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
         fixture.Users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
 
-        var request = new LoginContinuationRequest(tenant.Id, user.Id, true, "generic-failure", "password", null, null);
+        var request = new LoginContinuationRequest(
+            tenant.Id, user.Id, true, "generic-failure", "password", null, null,
+            LoginFinalizationMode.BaseDomainExchange);
         var result = await fixture.Build().ContinueAsync(request);
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.RequiresPasswordChange.Should().BeTrue();
+        result.Value.Workspace.Should().NotBeNull();
+        result.Value.Workspace!.Slug.Should().Be(tenant.Slug);
+        result.Value.Workspace.DisplayName.Should().Be(tenant.Name);
         fixture.UserMfas.Verify(
             m => m.GetTotpAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
         fixture.LegalChecker.Verify(
@@ -157,7 +180,9 @@ public sealed class LoginContinuationServiceTests
         fixture.Tenants.Setup(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
         fixture.Users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
 
-        var request = new LoginContinuationRequest(tenant.Id, user.Id, true, "generic-failure", "password", null, null);
+        var request = new LoginContinuationRequest(
+            tenant.Id, user.Id, true, "generic-failure", "password", null, null,
+            LoginFinalizationMode.BaseDomainExchange);
         var result = await fixture.Build().ContinueAsync(request);
 
         result.IsSuccess.Should().BeFalse();
@@ -165,7 +190,7 @@ public sealed class LoginContinuationServiceTests
     }
 
     [Fact]
-    public async Task ContinueAsync_VerifiedMfaExists_ReturnsMfaRequired_WithoutCheckingLegalOrCreatingSession()
+    public async Task ContinueAsync_VerifiedMfaExists_ReturnsMfaRequired_WithoutCheckingLegalOrCreatingExchange()
     {
         var fixture = new Fixture();
         var tenant = ActiveTenant(Guid.NewGuid());
@@ -183,16 +208,23 @@ public sealed class LoginContinuationServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync("raw-mfa-challenge");
 
-        var request = new LoginContinuationRequest(tenant.Id, user.Id, true, "generic-failure", "password", null, null);
+        var request = new LoginContinuationRequest(
+            tenant.Id, user.Id, true, "generic-failure", "password", null, null,
+            LoginFinalizationMode.BaseDomainExchange);
         var result = await fixture.Build().ContinueAsync(request);
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.RequiresMfa.Should().BeTrue();
         result.Value.MfaChallenge.Should().Be("raw-mfa-challenge");
+        result.Value.Workspace.Should().NotBeNull();
+        result.Value.Workspace!.Slug.Should().Be(tenant.Slug);
+        result.Value.Workspace.DisplayName.Should().Be(tenant.Name);
         fixture.LegalChecker.Verify(
             c => c.CheckAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        fixture.SessionMaterialFactory.Verify(
-            f => f.PrepareAsync(It.IsAny<User>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+        fixture.TenantSessionExchange.Verify(
+            f => f.CreateAsync(
+                It.IsAny<User>(), It.IsAny<Tenant>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -211,11 +243,13 @@ public sealed class LoginContinuationServiceTests
         fixture.Users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         fixture.UserMfas.Setup(m => m.GetTotpAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync((UserMfa?)null);
         fixture.UserMfas.Setup(m => m.GetTotpAsync(user.Id, false, It.IsAny<CancellationToken>())).ReturnsAsync(pending);
-        fixture.SessionMaterialFactory
-            .Setup(f => f.PrepareAsync(user, null, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<LoginResponseDto>.Success(new LoginResponseDto("c", "h", null)));
+        fixture.TenantSessionExchange
+            .Setup(f => f.CreateAsync(user, tenant, "password", null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(ExchangeResponse(user, tenant)));
 
-        var request = new LoginContinuationRequest(tenant.Id, user.Id, true, "generic-failure", "password", null, null);
+        var request = new LoginContinuationRequest(
+            tenant.Id, user.Id, true, "generic-failure", "password", null, null,
+            LoginFinalizationMode.BaseDomainExchange);
         var result = await fixture.Build().ContinueAsync(request);
 
         result.IsSuccess.Should().BeTrue();
@@ -231,7 +265,7 @@ public sealed class LoginContinuationServiceTests
     }
 
     [Fact]
-    public async Task ContinueAsync_LegalAcceptancePending_ReturnsLegalAcceptanceRequired_WithoutCreatingSessionOrUpdatingLastLoginAt()
+    public async Task ContinueAsync_LegalAcceptancePending_ReturnsLegalAcceptanceRequired_WithoutCreatingExchange()
     {
         var fixture = new Fixture();
         var tenant = ActiveTenant(Guid.NewGuid());
@@ -247,7 +281,9 @@ public sealed class LoginContinuationServiceTests
             .Setup(l => l.CreateAsync(tenant.Id, user.Id, "password", TimeSpan.FromMinutes(10), It.IsAny<CancellationToken>()))
             .ReturnsAsync(("raw-legal-challenge", "raw-legal-csrf"));
 
-        var request = new LoginContinuationRequest(tenant.Id, user.Id, true, "generic-failure", "password", null, null);
+        var request = new LoginContinuationRequest(
+            tenant.Id, user.Id, true, "generic-failure", "password", null, null,
+            LoginFinalizationMode.BaseDomainExchange);
         var result = await fixture.Build().ContinueAsync(request);
 
         result.IsSuccess.Should().BeTrue();
@@ -255,35 +291,45 @@ public sealed class LoginContinuationServiceTests
         result.Value.LegalChallenge.Should().Be("raw-legal-challenge");
         result.Value.LegalCsrfToken.Should().Be("raw-legal-csrf");
         result.Value.PendingLegalDocuments.Should().BeEquivalentTo(pendingDocs);
-        fixture.SessionMaterialFactory.Verify(
-            f => f.PrepareAsync(It.IsAny<User>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+        result.Value.Workspace.Should().NotBeNull();
+        result.Value.Workspace!.Slug.Should().Be(tenant.Slug);
+        result.Value.Workspace.DisplayName.Should().Be(tenant.Name);
+        fixture.TenantSessionExchange.Verify(
+            f => f.CreateAsync(
+                It.IsAny<User>(), It.IsAny<Tenant>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()),
             Times.Never);
-        fixture.UnitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never,
-            "LastLoginAt must be updated only when the final session is actually issued");
     }
 
     [Fact]
-    public async Task ContinueAsync_LegalAcceptanceComplete_IssuesSession_AndUpdatesLastLoginAtOnce()
+    public async Task ContinueAsync_LegalAcceptanceComplete_BaseDomainExchange_DelegatesToTenantSessionExchange_NotDirectSignIn()
     {
         var fixture = new Fixture();
         var tenant = ActiveTenant(Guid.NewGuid());
         var user = ActiveUser(tenant.Id, Guid.NewGuid());
-        var sessionDto = new LoginResponseDto("csrf-raw", "csrf-hash", DateTimeOffset.UtcNow.AddHours(8),
-            new CurrentUserDto(user.Id, user.TenantId, user.Email));
+        var exchangeDto = ExchangeResponse(user, tenant);
         fixture.Tenants.Setup(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
         fixture.Users.Setup(u => u.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
         fixture.UserMfas.Setup(m => m.GetTotpAsync(user.Id, true, It.IsAny<CancellationToken>())).ReturnsAsync((UserMfa?)null);
-        fixture.SessionMaterialFactory
-            .Setup(f => f.PrepareAsync(user, "127.0.0.1", "test-agent", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<LoginResponseDto>.Success(sessionDto));
+        fixture.TenantSessionExchange
+            .Setup(f => f.CreateAsync(user, tenant, "password", "127.0.0.1", "test-agent", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(exchangeDto));
 
-        var request = new LoginContinuationRequest(tenant.Id, user.Id, true, "generic-failure", "password", "127.0.0.1", "test-agent");
+        var request = new LoginContinuationRequest(
+            tenant.Id, user.Id, true, "generic-failure", "password", "127.0.0.1", "test-agent",
+            LoginFinalizationMode.BaseDomainExchange);
         var result = await fixture.Build().ContinueAsync(request);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Should().Be(sessionDto);
-        user.LastLoginAt.Should().Be(fixture.Clock.Object.UtcNow);
-        fixture.UnitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        result.Value.Should().Be(exchangeDto);
+        result.Value!.RequiresTenantSessionExchange.Should().BeTrue();
+        // Base-domain login never signs in itself - no CsrfToken/CsrfTokenHash material is ever
+        // produced by this path.
+        result.Value.CsrfToken.Should().BeEmpty();
+        result.Value.CsrfTokenHash.Should().BeEmpty();
+        fixture.SessionMaterialFactory.Verify(
+            f => f.PrepareAsync(It.IsAny<User>(), It.IsAny<Tenant>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
         fixture.TenantSwitcher.Verify(
             s => s.SwitchToTenantAsync(
                 It.Is<TenantRegistryEntry>(e => e.TenantId == tenant.Id && e.Slug == tenant.Slug),
@@ -292,21 +338,97 @@ public sealed class LoginContinuationServiceTests
     }
 
     [Fact]
-    public async Task FinishAuthenticatedLoginAsync_SkipsTenantAndUserResolution_AndRunsLegalThenSession()
+    public async Task FinishAuthenticatedLoginAsync_TenantHostDirect_SignsInImmediately_AndUpdatesLastLoginAt()
     {
+        // Invite acceptance / forced password change already run on the correct tenant host - there
+        // is no host to hand off to, so this must sign in directly instead of issuing an exchange code.
         var fixture = new Fixture();
         var tenant = ActiveTenant(Guid.NewGuid());
         var user = ActiveUser(tenant.Id, Guid.NewGuid());
-        var sessionDto = new LoginResponseDto("csrf-raw", "csrf-hash", DateTimeOffset.UtcNow.AddHours(8));
+        var sessionDto = new LoginResponseDto(
+            "csrf-raw", "csrf-hash", DateTimeOffset.UtcNow.AddHours(8),
+            new CurrentUserDto(user.Id, user.TenantId, user.Email));
         fixture.SessionMaterialFactory
-            .Setup(f => f.PrepareAsync(user, "ip", "ua", It.IsAny<CancellationToken>()))
+            .Setup(f => f.PrepareAsync(user, tenant, "ip", "ua", It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<LoginResponseDto>.Success(sessionDto));
 
-        var result = await fixture.Build().FinishAuthenticatedLoginAsync(user, "mfa", "ip", "ua");
+        var result = await fixture.Build().FinishAuthenticatedLoginAsync(
+            user, "invitation_password", "ip", "ua", LoginFinalizationMode.TenantHostDirect, tenant: tenant);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().Be(sessionDto);
+        result.Value!.RequiresTenantSessionExchange.Should().BeFalse();
+        user.LastLoginAt.Should().Be(fixture.Clock.Object.UtcNow);
+        fixture.UnitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        fixture.TenantSessionExchange.Verify(
+            f => f.CreateAsync(
+                It.IsAny<User>(), It.IsAny<Tenant>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task FinishAuthenticatedLoginAsync_WithTenantSupplied_SkipsTenantAndUserResolution_AndRunsLegalThenExchange()
+    {
+        // Callers that already loaded the Tenant themselves (e.g. VerifyMfaCommandHandler,
+        // AcceptPendingLegalDocumentsCommandHandler) pass it in to avoid a redundant lookup here.
+        var fixture = new Fixture();
+        var tenant = ActiveTenant(Guid.NewGuid());
+        var user = ActiveUser(tenant.Id, Guid.NewGuid());
+        var exchangeDto = ExchangeResponse(user, tenant);
+        fixture.TenantSessionExchange
+            .Setup(f => f.CreateAsync(user, tenant, "mfa", "ip", "ua", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(exchangeDto));
+
+        var result = await fixture.Build().FinishAuthenticatedLoginAsync(
+            user, "mfa", "ip", "ua", LoginFinalizationMode.BaseDomainExchange, tenant: tenant);
 
         result.IsSuccess.Should().BeTrue();
         fixture.Tenants.Verify(t => t.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         fixture.Users.Verify(u => u.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         fixture.LegalChecker.Verify(c => c.CheckAsync(user.TenantId, user.Id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task FinishAuthenticatedLoginAsync_WithoutTenantSupplied_FetchesTenantByUserTenantId()
+    {
+        // Callers that only have the User (e.g. ForcePasswordChangeCommandHandler,
+        // AcceptInvitationPasswordCommandHandler) omit tenant and rely on this fallback lookup so the
+        // response can still include workspace.
+        var fixture = new Fixture();
+        var tenant = ActiveTenant(Guid.NewGuid());
+        var user = ActiveUser(tenant.Id, Guid.NewGuid());
+        var sessionDto = new LoginResponseDto(
+            "csrf-raw", "csrf-hash", DateTimeOffset.UtcNow.AddHours(8),
+            new CurrentUserDto(user.Id, user.TenantId, user.Email));
+        fixture.Tenants.Setup(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>())).ReturnsAsync(tenant);
+        fixture.SessionMaterialFactory
+            .Setup(f => f.PrepareAsync(user, tenant, "ip", "ua", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(sessionDto));
+
+        var result = await fixture.Build().FinishAuthenticatedLoginAsync(
+            user, "force_password_change", "ip", "ua", LoginFinalizationMode.TenantHostDirect);
+
+        result.IsSuccess.Should().BeTrue();
+        fixture.Tenants.Verify(t => t.GetByIdAsync(tenant.Id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task FinishAuthenticatedLoginAsync_TenantNotFound_ReturnsFailure()
+    {
+        var fixture = new Fixture();
+        var user = ActiveUser(Guid.NewGuid(), Guid.NewGuid());
+        fixture.Tenants.Setup(t => t.GetByIdAsync(user.TenantId, It.IsAny<CancellationToken>())).ReturnsAsync((Tenant?)null);
+
+        var result = await fixture.Build().FinishAuthenticatedLoginAsync(
+            user, "mfa", "ip", "ua", LoginFinalizationMode.BaseDomainExchange);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(401);
+        fixture.TenantSessionExchange.Verify(
+            f => f.CreateAsync(
+                It.IsAny<User>(), It.IsAny<Tenant>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 }

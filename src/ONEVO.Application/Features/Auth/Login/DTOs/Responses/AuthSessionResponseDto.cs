@@ -10,6 +10,16 @@ public record CurrentUserDto(
     [property: JsonPropertyName("email")] string Email
 );
 
+/// <summary>
+/// Public workspace identity exposed to the browser once a tenant has been resolved. Only the slug
+/// (used to build the tenant app URL, e.g. https://{slug}.onevo.com) and a human-readable display
+/// name are ever serialized here - never the tenant's internal Guid id.
+/// </summary>
+public record WorkspaceResponseDto(
+    [property: JsonPropertyName("slug")] string Slug,
+    [property: JsonPropertyName("display_name")] string DisplayName
+);
+
 public record AuthSessionResponseDto(
     [property: JsonPropertyName("authenticated")] bool Authenticated,
     [property: JsonPropertyName("user")] CurrentUserDto? User,
@@ -20,5 +30,6 @@ public record AuthSessionResponseDto(
     [property: JsonPropertyName("legal_acceptance_required")] bool LegalAcceptanceRequired = false,
     [property: JsonPropertyName("pending_legal_documents")] IReadOnlyList<PendingLegalDocumentDto>? PendingLegalDocuments = null,
     [property: JsonPropertyName("expires_at")] DateTimeOffset? ExpiresAt = null,
-    [property: JsonPropertyName("continue_url")] string? ContinueUrl = null
+    [property: JsonPropertyName("continue_url")] string? ContinueUrl = null,
+    [property: JsonPropertyName("workspace")] WorkspaceResponseDto? Workspace = null
 );

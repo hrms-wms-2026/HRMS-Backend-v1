@@ -56,7 +56,7 @@ public sealed class TenantEnforcementMiddleware
         if (!Guid.TryParse(jwtTenantClaim, out var jwtTenantId) ||
             jwtTenantId != tenantCtx.TenantId)
         {
-            context.Response.Cookies.Delete("onevo_session");
+            context.Response.Cookies.Delete("onevo_session", new CookieOptions { Path = "/" });
             await WriteProblem(context, 403, "Token tenant does not match request host tenant.");
             return;
         }

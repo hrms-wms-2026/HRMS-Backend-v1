@@ -76,6 +76,7 @@ public class ForcePasswordChangeCommandHandler : IRequestHandler<ForcePasswordCh
             "force_password_change",
             request.IpAddress,
             request.UserAgent,
+            LoginFinalizationMode.TenantHostDirect,
             cancellationToken);
     }
 }

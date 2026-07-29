@@ -63,6 +63,7 @@ public sealed class ForcePasswordChangeLegalTests
                 "force_password_change",
                 "ip",
                 "ua",
+                LoginFinalizationMode.TenantHostDirect,
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<LoginResponseDto>.Success(legalRequired));
 

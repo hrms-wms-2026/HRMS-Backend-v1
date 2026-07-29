@@ -9,11 +9,15 @@ namespace ONEVO.Api.Extensions;
 
 internal static class AuthenticationExtensions
 {
-    internal static IServiceCollection AddApiAuthentication(this IServiceCollection services, IWebHostEnvironment env)
+    internal static IServiceCollection AddApiAuthentication(
+        this IServiceCollection services, IWebHostEnvironment env)
     {
         services.AddSingleton<TenantDatabaseTicketStore>();
         services.AddSingleton<AdminDatabaseTicketStore>();
 
+        // Tenant session exchange (see TenantSessionExchangeService) always completes the real
+        // sign-in on the tenant host itself, so onevo_session stays host-scoped (no Domain) -
+        // there is no cross-subdomain cookie sharing to support.
         services.AddAuthentication("TenantScheme")
             .AddCookie("TenantScheme", options =>
             {

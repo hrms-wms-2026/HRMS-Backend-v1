@@ -24,6 +24,7 @@ public sealed class LoginContinuationService : ILoginContinuationService
     private readonly ITenantContextSwitcher _tenantSwitcher;
     private readonly ILegalAcceptanceChecker _legalChecker;
     private readonly ILegalLoginChallengeRepository _legalChallenges;
+    private readonly ITenantSessionExchangeService _tenantSessionExchange;
     private readonly ILoginSessionMaterialFactory _sessionMaterialFactory;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
@@ -36,6 +37,7 @@ public sealed class LoginContinuationService : ILoginContinuationService
         ITenantContextSwitcher tenantSwitcher,
         ILegalAcceptanceChecker legalChecker,
         ILegalLoginChallengeRepository legalChallenges,
+        ITenantSessionExchangeService tenantSessionExchange,
         ILoginSessionMaterialFactory sessionMaterialFactory,
         IUnitOfWork unitOfWork,
         IDateTimeProvider clock)
@@ -47,6 +49,7 @@ public sealed class LoginContinuationService : ILoginContinuationService
         _tenantSwitcher = tenantSwitcher;
         _legalChecker = legalChecker;
         _legalChallenges = legalChallenges;
+        _tenantSessionExchange = tenantSessionExchange;
         _sessionMaterialFactory = sessionMaterialFactory;
         _unitOfWork = unitOfWork;
         _clock = clock;
@@ -79,7 +82,7 @@ public sealed class LoginContinuationService : ILoginContinuationService
                     "Temporary password has expired. Request a new one from your administrator.");
             }
 
-            return Result<LoginResponseDto>.Success(LoginMapper.ToPasswordChangeRequired(user));
+            return Result<LoginResponseDto>.Success(LoginMapper.ToPasswordChangeRequired(user, tenant));
         }
 
         var mfaRecord = await _userMfas.GetTotpAsync(user.Id, isVerified: true, ct);
@@ -91,20 +94,36 @@ public sealed class LoginContinuationService : ILoginContinuationService
                 request.LegalChallengeOrigin,
                 MfaChallengeLifetime,
                 ct);
-            return Result<LoginResponseDto>.Success(LoginMapper.ToMfaRequired(user, mfaChallenge));
+            return Result<LoginResponseDto>.Success(LoginMapper.ToMfaRequired(user, tenant, mfaChallenge));
         }
 
         return await FinishAuthenticatedLoginAsync(
-            user, request.LegalChallengeOrigin, request.IpAddress, request.UserAgent, ct);
+            user, request.LegalChallengeOrigin, request.IpAddress, request.UserAgent,
+            request.FinalizationMode, ct, tenant);
     }
 
+    /// <summary>
+    /// Runs the legal-check-and-tail for every login entry point (base-domain password/Google,
+    /// workspace selection, post-MFA, post-legal-acceptance, invite acceptance, forced password
+    /// change). <paramref name="finalizationMode"/> is required and caller-supplied - this method
+    /// never infers it from ITenantContext/a host string itself. BaseDomainExchange hands off to
+    /// the tenant host via TenantSessionExchangeService instead of signing in (the base host must
+    /// never set onevo_session/onevo_csrf); TenantHostDirect signs in immediately via
+    /// ILoginSessionMaterialFactory, the same as every login did before the exchange flow existed.
+    /// </summary>
     public async Task<Result<LoginResponseDto>> FinishAuthenticatedLoginAsync(
         User user,
         string legalChallengeOrigin,
         string? ipAddress,
         string? userAgent,
-        CancellationToken ct = default)
+        LoginFinalizationMode finalizationMode,
+        CancellationToken ct = default,
+        Tenant? tenant = null)
     {
+        var resolvedTenant = tenant ?? await _tenants.GetByIdAsync(user.TenantId, ct);
+        if (resolvedTenant is null)
+            return Result<LoginResponseDto>.Failure("Invalid or expired session.", 401);
+
         var legalCheck = await _legalChecker.CheckAsync(user.TenantId, user.Id, ct);
         if (legalCheck.Status == LegalAcceptanceStatus.Pending)
         {
@@ -112,10 +131,17 @@ public sealed class LoginContinuationService : ILoginContinuationService
                 user.TenantId, user.Id, legalChallengeOrigin, LegalChallengeLifetime, ct);
 
             return Result<LoginResponseDto>.Success(
-                LoginMapper.ToLegalAcceptanceRequired(user, rawChallenge, rawCsrf, legalCheck.PendingDocuments));
+                LoginMapper.ToLegalAcceptanceRequired(
+                    user, resolvedTenant, rawChallenge, rawCsrf, legalCheck.PendingDocuments));
         }
 
-        var sessionResult = await _sessionMaterialFactory.PrepareAsync(user, ipAddress, userAgent, ct);
+        if (finalizationMode == LoginFinalizationMode.BaseDomainExchange)
+        {
+            return await _tenantSessionExchange.CreateAsync(
+                user, resolvedTenant, legalChallengeOrigin, ipAddress, userAgent, ct);
+        }
+
+        var sessionResult = await _sessionMaterialFactory.PrepareAsync(user, resolvedTenant, ipAddress, userAgent, ct);
         if (!sessionResult.IsSuccess)
             return sessionResult;
 

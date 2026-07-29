@@ -16,6 +16,28 @@ public sealed class TenantCookieAuthenticationConfigurationTests
     [Fact]
     public void TenantScheme_UsesCookieAuthenticationSlidingExpirationAndTicketStore()
     {
+        var options = InvokeAddApiAuthentication();
+
+        Assert.Equal("onevo_session", options.Cookie.Name);
+        Assert.True(options.Cookie.HttpOnly);
+        Assert.True(options.SlidingExpiration);
+        Assert.Equal(SessionPolicy.SlidingWindow, options.ExpireTimeSpan);
+        Assert.IsType<TenantDatabaseTicketStore>(options.SessionStore);
+    }
+
+    [Fact]
+    public void TenantScheme_CookieDomain_IsHostScopedOnly()
+    {
+        // Tenant session exchange (TenantSessionExchangeService) always completes the real sign-in
+        // on the tenant host itself, so onevo_session must never carry a shared parent-domain
+        // Domain attribute - there is no cross-subdomain cookie sharing to support.
+        var options = InvokeAddApiAuthentication();
+
+        Assert.Null(options.Cookie.Domain);
+    }
+
+    private static CookieAuthenticationOptions InvokeAddApiAuthentication()
+    {
         var services = new ServiceCollection();
         services.AddSingleton(Mock.Of<IDateTimeProvider>());
 
@@ -31,14 +53,8 @@ public sealed class TenantCookieAuthenticationConfigurationTests
         addAuthentication.Invoke(null, [services, environment.Object]);
 
         using var provider = services.BuildServiceProvider();
-        var options = provider
+        return provider
             .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
             .Get("TenantScheme");
-
-        Assert.Equal("onevo_session", options.Cookie.Name);
-        Assert.True(options.Cookie.HttpOnly);
-        Assert.True(options.SlidingExpiration);
-        Assert.Equal(SessionPolicy.SlidingWindow, options.ExpireTimeSpan);
-        Assert.IsType<TenantDatabaseTicketStore>(options.SessionStore);
     }
 }

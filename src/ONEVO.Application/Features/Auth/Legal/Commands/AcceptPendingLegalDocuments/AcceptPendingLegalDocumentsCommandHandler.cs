@@ -128,13 +128,20 @@ public class AcceptPendingLegalDocumentsCommandHandler
             return Result<LoginResponseDto>.Success(
                 LoginMapper.ToLegalAcceptanceRequired(
                     user,
+                    tenant,
                     commit.ReplacementRawChallenge!,
                     commit.ReplacementRawCsrfToken!,
                     remaining.PendingDocuments));
         }
 
         return await _continuation.FinishAuthenticatedLoginAsync(
-            user, challenge.Origin, request.IpAddress, request.UserAgent, ct);
+            user,
+            challenge.Origin,
+            request.IpAddress,
+            request.UserAgent,
+            isTenantContext ? LoginFinalizationMode.TenantHostDirect : LoginFinalizationMode.BaseDomainExchange,
+            ct,
+            tenant);
     }
 
     private static bool FixedTimeHashEquals(string a, string b)

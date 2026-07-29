@@ -1,8 +1,6 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using System.Security.Claims;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
@@ -38,6 +36,11 @@ internal static class TenantAuthResponseWriter
             controller.SetLegalPendingCookies(dto.LegalChallenge, dto.LegalCsrfToken, env);
             return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()));
         }
+
+        // Every gate cleared on the base host: hand off to the tenant host instead of signing in
+        // here. No onevo_session/onevo_csrf are ever set on the base host.
+        if (dto.RequiresTenantSessionExchange)
+            return controller.StatusCode(202, dto.ToTenantSessionExchangeResponse());
 
         await controller.SignInAsync(dto, env);
         return controller.Ok(dto.ToSessionResponse());
@@ -95,7 +98,6 @@ internal static class TenantAuthResponseWriter
             Secure = !env.IsDevelopment(),
             SameSite = SameSiteMode.Strict,
             Path = "/api/v1/auth/mfa/verify",
-            Domain = controller.GetPendingCookieDomain(),
             Expires = DateTimeOffset.UtcNow.AddMinutes(10)
         });
     }
@@ -114,19 +116,19 @@ internal static class TenantAuthResponseWriter
             Secure = !env.IsDevelopment(),
             SameSite = SameSiteMode.Strict,
             Path = "/api/v1/legal/acceptances/complete-login",
-            Domain = controller.GetPendingCookieDomain(),
             Expires = expires
         });
 
         // Readable double-submit CSRF value for the accept mutation. Mirrors onevo_csrf: never
         // HttpOnly, since same-origin JS must read it to attach to the follow-up request body.
+        // Path must be "/" (not the narrow accept-endpoint path) so the SPA can read this cookie
+        // via document.cookie from whatever route it's actually running on (e.g. /auth/legal-consent).
         controller.Response.Cookies.Append("onevo_legal_csrf", legalCsrfToken, new CookieOptions
         {
             HttpOnly = false,
             Secure = !env.IsDevelopment(),
             SameSite = SameSiteMode.Strict,
-            Path = "/api/v1/legal/acceptances/complete-login",
-            Domain = controller.GetPendingCookieDomain(),
+            Path = "/",
             Expires = expires
         });
     }
@@ -139,8 +141,7 @@ internal static class TenantAuthResponseWriter
             HttpOnly = httpOnly,
             Secure = !env.IsDevelopment(),
             SameSite = SameSiteMode.Strict,
-            Path = path,
-            Domain = IsPendingCookie(name) ? controller.GetPendingCookieDomain() : null
+            Path = path
         });
     }
 
@@ -169,16 +170,4 @@ internal static class TenantAuthResponseWriter
         };
     }
 
-    private static string? GetPendingCookieDomain(this ControllerBase controller)
-    {
-        var services = controller.HttpContext?.RequestServices;
-        if (services is null)
-            return null;
-        var configuration = services.GetRequiredService<IConfiguration>();
-        var rootDomain = configuration["Tenancy:RootDomain"]?.Trim().TrimStart('.');
-        return string.IsNullOrWhiteSpace(rootDomain) ? null : rootDomain;
-    }
-
-    private static bool IsPendingCookie(string name) =>
-        name is "onevo_mfa" or "onevo_legal_pending" or "onevo_legal_csrf";
 }
