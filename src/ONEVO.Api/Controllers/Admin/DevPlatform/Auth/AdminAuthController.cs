@@ -66,6 +66,8 @@ public sealed class AdminAuthController : ControllerBase
     public async Task<IActionResult> Login(
         [FromBody] AdminLoginRequest request, CancellationToken ct)
     {
+        ClearStaleAdminSessionCookies();
+
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var ua = Request.Headers.UserAgent.ToString();
 
@@ -133,6 +135,31 @@ public sealed class AdminAuthController : ControllerBase
         await HttpContext.SignOutAsync("AdminScheme");
         Response.Cookies.Delete("admin_csrf");
         return NoContent();
+    }
+
+    /// <summary>
+    /// Deletes a leftover admin_session/admin_csrf pair before a fresh login attempt.
+    /// CsrfProtectionMiddleware only checks for the presence of admin_session to decide whether
+    /// CSRF must be validated - a stale cookie from an earlier session (still within its sliding
+    /// window) makes it wrongly demand a CSRF token on pre-auth calls like mfa/verify.
+    /// </summary>
+    private void ClearStaleAdminSessionCookies()
+    {
+        if (!Request.Cookies.ContainsKey("admin_session"))
+            return;
+
+        Response.Cookies.Delete("admin_session", new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = !_env.IsDevelopment(),
+            SameSite = SameSiteMode.Strict,
+        });
+        Response.Cookies.Delete("admin_csrf", new CookieOptions
+        {
+            HttpOnly = false,
+            Secure = !_env.IsDevelopment(),
+            SameSite = SameSiteMode.Strict,
+        });
     }
 
     private void SetAdminMfaChallengeCookie(string challenge)
