@@ -12,6 +12,7 @@ using ONEVO.Application.Features.Auth.Login.Commands.AdminMfaConfirmSetup;
 using ONEVO.Application.Features.Auth.Login.Commands.AdminMfaEnable;
 using ONEVO.Application.Features.Auth.Login.Commands.AdminMfaVerify;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
+using ONEVO.Application.Features.Auth.Login.Queries.GetAdminSessionContext;
 using ONEVO.Application.Features.Auth.Login.Queries.GetAdminGoogleSsoConfig;
 
 namespace ONEVO.Api.Controllers.Admin.DevPlatform.Auth;
@@ -108,6 +109,17 @@ public sealed class AdminAuthController : ControllerBase
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
         return Ok(new { success = true });
+    }
+
+    /// <summary>Return safe metadata for the current admin session (used to restore state on page refresh).</summary>
+    [HttpGet("me")]
+    [Authorize(Policy = "AdminPolicy")]
+    public async Task<IActionResult> Me(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetAdminSessionContextQuery(), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 401);
+        return Ok(result.Value);
     }
 
     /// <summary>Login step 2 - completes an MFA-gated admin login using the admin_mfa challenge cookie.</summary>
