@@ -14,6 +14,7 @@ using ONEVO.Application.Features.DevPlatform.Tenancy.Provisioning;
 using ONEVO.Application.Features.DevPlatform.Provisioning.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 
