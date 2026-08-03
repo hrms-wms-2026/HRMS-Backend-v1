@@ -24,25 +24,13 @@ Only `project_ core/` documents (the architecture docs, the tables file) get con
 
 **Origin:** established 2026-08-03, see `docs/superpowers/specs/2026-08-03-doc-audit-and-process-setup-design.md`.
 
-## 6. Every finished API endpoint gets a Postman request
+## 6. Every finished API endpoint gets a plain-Markdown doc under `docs/postman-request/`
 
-When a backend task finishes an API endpoint (controller action reachable over HTTP), add or update a matching request file before the task is considered done — do not defer this to a later cleanup pass.
+Do **not** maintain `postman/collections/**/*.request.yaml` files for new work — that was tried for one endpoint (`Work Management/Create Project`) and dropped the same day in favor of this single lighter-weight format. `docs/postman-request/` is the one place API request/response shape is documented going forward.
 
-- Location: `postman/collections/<Collection Name>/<NN. Section>/<Request Name>.request.yaml`, one file per request, following the existing `$kind: http-request` schema (see any existing file for the exact shape).
-- Collection choice: tenant/customer-facing endpoints (`/api/v1/...`) go under `ONEVO Organization Admin API`; platform/admin endpoints (`/admin/v1/...`) go under `ONEVO Developer Platform API`.
-- Section choice: reuse an existing numbered folder (e.g. `05. Password`) if the endpoint belongs to that area; otherwise create the next-numbered folder (e.g. `07. Work Management`) — `99. Health` always stays last.
-- The request body must reflect the actual request contract (real field names, matching the controller's bound request type) — not a placeholder guess.
-- `postman/` is git-ignored in this repo (synced separately through Postman's own workspace sync, not git) — writing the `.request.yaml` file to disk is the complete action; it is never staged or committed.
-
-**Origin:** established 2026-08-03, per user request after the Work Management Foundation slice shipped without one.
-
-## 7. Every finished API endpoint also gets a plain-Markdown doc under `docs/postman-request/`
-
-This is separate from rule 6 and both apply to the same finished endpoint — rule 6's `.request.yaml` is for importing into the Postman app; this one is a plain-text doc anyone can read on GitHub without Postman, for the team to skim without opening the app.
-
-- Location: `docs/postman-request/<Module>/<Endpoint Name>.md` — one `.md` file per endpoint. `<Module>` matches the module/feature name (e.g. `Work Management`, `Password`, `Invitations`) — reuse the same module grouping used in the Postman collection's section names where one already exists.
+- Location: `docs/postman-request/<Module>/<Endpoint Name>.md` — one `.md` file per endpoint. `<Module>` matches the module/feature name (e.g. `Work Management`, `Password`, `Invitations`).
 - Required sections in every file, in this order: method + route, auth/permission/idempotency line, description, request body (as a JSON-shaped example even when the real transport is form-data — annotate the content type), response body example, an error-status table, and a "Source" section linking the controller/handler files and the originating plan.
-- This is committed to git normally (unlike `postman/`, `docs/` is not git-ignored).
+- This is committed to git normally.
 - Started 2026-08-03 with one example (`Work Management/Create Project.md`) rather than backfilled for every pre-existing endpoint — grows forward from here; backfilling old endpoints is a separate, explicitly-requested task, not implied by this rule.
 
-**Origin:** established 2026-08-03, per user request, same day as rule 6.
+**Origin:** established 2026-08-03, per user request. Superseded an earlier same-day rule requiring a `postman/collections/` `.request.yaml` per endpoint — the user decided the yaml/Postman-app format was unnecessary overhead and this Markdown-only format is now the single source.
