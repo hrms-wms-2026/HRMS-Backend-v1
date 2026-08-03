@@ -257,6 +257,14 @@ public class PermissionSeeder : IHostedService
         Perm("resources:manage", "Manage resource planning.", "work_management"),
         Perm("roadmaps:read", "View roadmaps.", "work_management"),
         Perm("roadmaps:write", "Create and edit roadmaps.", "work_management"),
+
+        // Work Management — Projects (Foundation slice additions)
+        Perm("members:read", "View project members.", "work_management"),
+        Perm("members:manage", "Activate, deactivate, or remove project members.", "work_management"),
+        Perm("invitations:manage", "Send and cancel project/objective invitations.", "work_management"),
+        Perm("invitations:respond", "Accept or decline a project/objective invitation.", "work_management"),
+        Perm("versions:write", "Create and change project version status.", "work_management"),
+        Perm("labels:manage", "Create and edit project labels.", "work_management"),
     ];
 
     private static Permission Perm(string code, string description, string module) => new()
