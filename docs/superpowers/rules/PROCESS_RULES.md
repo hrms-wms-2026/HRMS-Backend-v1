@@ -35,3 +35,14 @@ When a backend task finishes an API endpoint (controller action reachable over H
 - `postman/` is git-ignored in this repo (synced separately through Postman's own workspace sync, not git) — writing the `.request.yaml` file to disk is the complete action; it is never staged or committed.
 
 **Origin:** established 2026-08-03, per user request after the Work Management Foundation slice shipped without one.
+
+## 7. Every finished API endpoint also gets a plain-Markdown doc under `docs/postman-request/`
+
+This is separate from rule 6 and both apply to the same finished endpoint — rule 6's `.request.yaml` is for importing into the Postman app; this one is a plain-text doc anyone can read on GitHub without Postman, for the team to skim without opening the app.
+
+- Location: `docs/postman-request/<Module>/<Endpoint Name>.md` — one `.md` file per endpoint. `<Module>` matches the module/feature name (e.g. `Work Management`, `Password`, `Invitations`) — reuse the same module grouping used in the Postman collection's section names where one already exists.
+- Required sections in every file, in this order: method + route, auth/permission/idempotency line, description, request body (as a JSON-shaped example even when the real transport is form-data — annotate the content type), response body example, an error-status table, and a "Source" section linking the controller/handler files and the originating plan.
+- This is committed to git normally (unlike `postman/`, `docs/` is not git-ignored).
+- Started 2026-08-03 with one example (`Work Management/Create Project.md`) rather than backfilled for every pre-existing endpoint — grows forward from here; backfilling old endpoints is a separate, explicitly-requested task, not implied by this rule.
+
+**Origin:** established 2026-08-03, per user request, same day as rule 6.
