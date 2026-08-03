@@ -1,0 +1,8 @@
+using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
+
+namespace ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+
+public interface IProjectMemberRepository
+{
+    Task AddAsync(ProjectMember member, CancellationToken ct = default);
+}

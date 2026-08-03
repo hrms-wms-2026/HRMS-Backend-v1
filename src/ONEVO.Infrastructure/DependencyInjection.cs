@@ -7,6 +7,14 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ReleaseCalendar.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
+using ONEVO.Infrastructure.Persistence.Repositories;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.Services;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
@@ -124,6 +132,26 @@ public static class DependencyInjection
         services.AddScoped<IInvitationTokenRepository, EfInvitationTokenRepository>();
         services.AddScoped<IPositionRepository, EfPositionRepository>();
         services.AddScoped<IModuleCatalogRepository, ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.ModuleCatalog.ModuleCatalogRepository>();
+
+        // Work Management - Foundation slice
+        services.AddScoped<EfProjectCategoryRepository>();
+        services.AddScoped<IProjectCategoryRepository>(sp => sp.GetRequiredService<EfProjectCategoryRepository>());
+        services.AddScoped<EfProjectRepository>();
+        services.AddScoped<IProjectRepository>(sp => sp.GetRequiredService<EfProjectRepository>());
+        services.AddScoped<EfObjectiveRepository>();
+        services.AddScoped<IObjectiveRepository>(sp => sp.GetRequiredService<EfObjectiveRepository>());
+        services.AddScoped<EfProjectMemberRepository>();
+        services.AddScoped<IProjectMemberRepository>(sp => sp.GetRequiredService<EfProjectMemberRepository>());
+        services.AddScoped<EfProjectVersionRepository>();
+        services.AddScoped<IProjectVersionRepository>(sp => sp.GetRequiredService<EfProjectVersionRepository>());
+        services.AddScoped<EfReleaseCalendarRepository>();
+        services.AddScoped<IReleaseCalendarRepository>(sp => sp.GetRequiredService<EfReleaseCalendarRepository>());
+        services.AddScoped<EfLabelRepository>();
+        services.AddScoped<ILabelRepository>(sp => sp.GetRequiredService<EfLabelRepository>());
+        services.AddScoped<EfEntityAssetRepository>();
+        services.AddScoped<IEntityAssetRepository>(sp => sp.GetRequiredService<EfEntityAssetRepository>());
+        services.AddScoped<EfEmployeeRepository>();
+        services.AddScoped<IEmployeeRepository>(sp => sp.GetRequiredService<EfEmployeeRepository>());
 
         // Auth: global email directory
         services.AddScoped<IGlobalEmailDirectoryRepository, EfGlobalEmailDirectoryRepository>();
