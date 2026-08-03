@@ -62,4 +62,5 @@ Content type: `multipart/form-data` (not raw JSON — a file field is included).
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs`
 Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Commands/CreateProject/CreateProjectCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-03-work-management-foundation.md`
+Response mapping: `src/ONEVO.Api/Contracts/WorkManagement/Projects/ProjectCreationViewModel.cs` + `ProjectViewModelMapper.cs` — the controller maps the handler's `ProjectCreationResponse` (Application-layer DTO) to `ProjectCreationViewModel` (API-layer view model) before returning it; field names/shape are a 1:1 mirror, so the response example above is unaffected.
+Plan: `docs/superpowers/plans/2026-08-03-work-management-foundation.md`, `docs/superpowers/plans/2026-08-03-view-model-retrofit-phase1.md` (added the ViewModel mapping layer)
