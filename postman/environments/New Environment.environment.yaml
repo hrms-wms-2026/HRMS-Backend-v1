@@ -26,6 +26,8 @@ values:
     value: ''
   - key: tenant_id
     value: ''
+  - key: legal_entity_id
+    value: ''
   - key: plan_id
     value: ''
   - key: role_id
