@@ -52,7 +52,7 @@ public class ProjectsController : ControllerBase
         var result = await _mediator.Send(command, ct);
 
         return result.IsSuccess
-            ? CreatedAtAction(nameof(GetById), new { id = result.Value!.Project.Id }, result.Value)
+            ? CreatedAtAction(nameof(GetById), new { id = result.Value!.Project.Id }, result.Value.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
