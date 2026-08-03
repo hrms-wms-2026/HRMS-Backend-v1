@@ -23,3 +23,15 @@ When a `workflow/` report explicitly states it is code-verified (for example `au
 Only `project_ core/` documents (the architecture docs, the tables file) get content edits during doc-sync work. Other folders (`plans/`, `workflow/`) only receive **new** files (new plans, new workflow reports) — an existing file there is only changed if the user explicitly asks for that specific file to change.
 
 **Origin:** established 2026-08-03, see `docs/superpowers/specs/2026-08-03-doc-audit-and-process-setup-design.md`.
+
+## 6. Every finished API endpoint gets a Postman request
+
+When a backend task finishes an API endpoint (controller action reachable over HTTP), add or update a matching request file before the task is considered done — do not defer this to a later cleanup pass.
+
+- Location: `postman/collections/<Collection Name>/<NN. Section>/<Request Name>.request.yaml`, one file per request, following the existing `$kind: http-request` schema (see any existing file for the exact shape).
+- Collection choice: tenant/customer-facing endpoints (`/api/v1/...`) go under `ONEVO Organization Admin API`; platform/admin endpoints (`/admin/v1/...`) go under `ONEVO Developer Platform API`.
+- Section choice: reuse an existing numbered folder (e.g. `05. Password`) if the endpoint belongs to that area; otherwise create the next-numbered folder (e.g. `07. Work Management`) — `99. Health` always stays last.
+- The request body must reflect the actual request contract (real field names, matching the controller's bound request type) — not a placeholder guess.
+- `postman/` is git-ignored in this repo (synced separately through Postman's own workspace sync, not git) — writing the `.request.yaml` file to disk is the complete action; it is never staged or committed.
+
+**Origin:** established 2026-08-03, per user request after the Work Management Foundation slice shipped without one.
