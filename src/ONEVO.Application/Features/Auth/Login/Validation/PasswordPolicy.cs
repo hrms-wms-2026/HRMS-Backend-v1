@@ -16,4 +16,20 @@ public static class PasswordPolicy
             .NotEmpty()
             .MinimumLength(MinimumLength)
             .WithMessage($"Password must be at least {MinimumLength} characters.");
+
+    public const int AdminMinimumLength = 12;
+    public const int AdminMaximumLength = 64;
+
+    /// <summary>
+    /// Stricter than ApplyPasswordPolicy: Platform Admin accounts require a 12-64 character
+    /// password per the MFA journey security review. Kept separate from the shared tenant
+    /// policy so tenant behaviour never changes.
+    /// </summary>
+    public static IRuleBuilderOptions<T, string> ApplyAdminPasswordPolicy<T>(this IRuleBuilder<T, string> ruleBuilder)
+        => ruleBuilder
+            .NotEmpty()
+            .MinimumLength(AdminMinimumLength)
+            .WithMessage($"Password must be at least {AdminMinimumLength} characters.")
+            .MaximumLength(AdminMaximumLength)
+            .WithMessage($"Password must be at most {AdminMaximumLength} characters.");
 }
