@@ -93,4 +93,15 @@ public sealed class EmailTemplateRendererTests
         rendered.TextBody.Should().Contain("token=tok-abc");
         rendered.TextBody.Should().Contain("placeholder");
     }
+
+    [Fact]
+    public void RenderAdminPasswordChanged_ProducesSecurityNoticeCopy()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("admin_password_changed", new { });
+
+        rendered.HtmlBody.Should().Contain("password was changed");
+        rendered.TextBody.Should().Contain("If this wasn't you", "must tell the recipient how to react if this wasn't them");
+    }
 }

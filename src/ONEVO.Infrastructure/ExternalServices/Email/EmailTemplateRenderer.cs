@@ -30,6 +30,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             "tenant_owner_invite" => RenderTenantOwnerInvite(fields),
             "password_reset" => RenderPasswordReset(fields),
             "admin_password_reset" => RenderAdminPasswordReset(fields),
+            "admin_password_changed" => RenderAdminPasswordChanged(),
             _ => throw new InvalidOperationException(
                 $"Unknown email template '{templateId}'. Add a case in EmailTemplateRenderer.")
         };
@@ -121,6 +122,20 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             </body></html>
             """;
         var text = $"A password reset was requested for your account: {resetUrl}\nIf this wasn't you, contact platform support.";
+        return new RenderedEmail(subject, html, text);
+    }
+
+    private RenderedEmail RenderAdminPasswordChanged()
+    {
+        const string subject = "Your ONEXSO Platform Administration password was changed";
+        const string html = """
+            <!doctype html><html><body>
+              <p>Your Platform Administration password was changed.</p>
+              <p>All existing sessions have been signed out. Your next sign-in will require multi-factor authentication.</p>
+              <p>If this wasn't you, contact platform support immediately.</p>
+            </body></html>
+            """;
+        const string text = "Your Platform Administration password was changed. All existing sessions have been signed out. If this wasn't you, contact platform support immediately.";
         return new RenderedEmail(subject, html, text);
     }
 

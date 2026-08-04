@@ -19,4 +19,5 @@ public static class OutboxMessageTypes
     public const string TenantOwnerInviteEmail = "tenant_owner_invite_email";
     public const string PasswordResetEmail = "password_reset_email";
     public const string AdminPasswordResetEmail = "admin_password_reset_email";
+    public const string AdminPasswordChangedEmail = "admin_password_changed_email";
 }

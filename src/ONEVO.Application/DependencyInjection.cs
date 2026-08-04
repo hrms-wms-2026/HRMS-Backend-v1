@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler, TenantOwnerInviteEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, PasswordResetEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, AdminPasswordResetEmailOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, AdminPasswordChangedEmailOutboxHandler>();
         services.AddScoped<GitHubUserIntegrationAvailability>();
 
         return services;
