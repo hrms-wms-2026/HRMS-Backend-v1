@@ -30,4 +30,15 @@ public static class ProjectMapper
 
     public static ProjectMembershipSummaryDto ToSummary(ProjectMember member) => new(
         member.Id, member.ObjectiveId, member.UserId, member.MembershipSource);
+
+    public static ProjectDetailResponse ToDetail(Project project, bool isLead) => new(
+        project.Id, project.Name, project.Identifier, project.CategoryId, project.Description,
+        project.LeadId, project.StartDate, project.TargetDate, project.Color,
+        project.ActualHours, project.AllocatedHours, project.CompletedHours,
+        project.IsActive, project.CreatedAt, project.UpdatedAt, isLead);
+
+    public static ProjectListItemResponse ToListItem(Project project, bool isLead) => new(
+        project.Id, project.Name, project.Identifier, project.CategoryId, project.LeadId,
+        project.StartDate, project.TargetDate, project.Color, project.IsActive,
+        project.AllocatedHours, project.CompletedHours, isLead);
 }
