@@ -29,6 +29,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         {
             "tenant_owner_invite" => RenderTenantOwnerInvite(fields),
             "password_reset" => RenderPasswordReset(fields),
+            "admin_password_reset" => RenderAdminPasswordReset(fields),
             _ => throw new InvalidOperationException(
                 $"Unknown email template '{templateId}'. Add a case in EmailTemplateRenderer.")
         };
@@ -101,6 +102,25 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             </body></html>
             """;
         var text = $"Reset your ONEVO password: {resetUrl}";
+        return new RenderedEmail(subject, html, text);
+    }
+
+    private RenderedEmail RenderAdminPasswordReset(IReadOnlyDictionary<string, object?> f)
+    {
+        var token = Get(f, "reset_token");
+        var resetUrl = string.IsNullOrWhiteSpace(_options.AdminConsoleBaseUrl)
+            ? $"[reset_url placeholder - set Email:AdminConsoleBaseUrl] token={token}"
+            : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/reset-password?token={token}";
+
+        var subject = "Reset your ONEXSO Platform Administration password";
+        var html = $"""
+            <!doctype html><html><body>
+              <p>A password reset was requested for your Platform Administration account.</p>
+              <p><a href="{Escape(resetUrl)}">Reset password</a></p>
+              <p>If this wasn't you, contact platform support. This link expires in 1 hour.</p>
+            </body></html>
+            """;
+        var text = $"A password reset was requested for your account: {resetUrl}\nIf this wasn't you, contact platform support.";
         return new RenderedEmail(subject, html, text);
     }
 
