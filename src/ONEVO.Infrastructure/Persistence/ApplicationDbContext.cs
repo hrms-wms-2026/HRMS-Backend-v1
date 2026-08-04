@@ -18,6 +18,7 @@ using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
@@ -68,6 +69,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<TrayActivationCode> TrayActivationCodes => Set<TrayActivationCode>();
     public DbSet<TrayDeviceRegistration> TrayDeviceRegistrations => Set<TrayDeviceRegistration>();
     public DbSet<TrayDeviceRefreshToken> TrayDeviceRefreshTokens => Set<TrayDeviceRefreshToken>();
+
+    // Monitoring - Employee Check-In
+    public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
+    public DbSet<MonitoringFaceScan> MonitoringFaceScans => Set<MonitoringFaceScan>();
 
     // Infrastructure
     public DbSet<User> Users => Set<User>();

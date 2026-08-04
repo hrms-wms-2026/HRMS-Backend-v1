@@ -65,9 +65,13 @@ using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.SystemConfig;
 using ONEVO.Infrastructure.Persistence.Repositories.SharedPlatform;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.TrayActivation;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.CheckIn;
 using ONEVO.Infrastructure.Services.Auth.Login;
 using ONEVO.Infrastructure.Services.Monitoring.TrayActivation;
+using ONEVO.Infrastructure.Services.Monitoring.CheckIn;
 using ONEVO.Infrastructure.Services.SharedPlatform;
 using ONEVO.Infrastructure.Services.SystemConfig;
 
@@ -230,6 +234,10 @@ public static class DependencyInjection
         // Monitoring - Tray App Activation
         services.AddScoped<ITrayActivationRepository, EfTrayActivationRepository>();
         services.AddSingleton<ITrayTokenService, TrayTokenService>();
+
+        // Monitoring - Check-In
+        services.AddScoped<ICheckInRepository, EfCheckInRepository>();
+        services.AddScoped<ITrayCurrentDevice, TrayCurrentDeviceService>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();

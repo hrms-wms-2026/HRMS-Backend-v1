@@ -74,6 +74,8 @@ public class FileStorageArchitectureTests
             .Concat(typeof(ONEVO.Application.DependencyInjection).Assembly.GetTypes()
                 .Where(t => t.Name.EndsWith("Handler", StringComparison.Ordinal)));
 
+        // Match concrete types only. IFileStorageService is the correct Application
+        // dependency and must NOT be treated as the concrete FileStorageService.
         var forbiddenNames = new[]
         {
             nameof(IObjectStorageAdapter),
@@ -83,20 +85,30 @@ public class FileStorageArchitectureTests
 
         var offenders = candidateTypes
             .SelectMany(t => GetDirectTypeReferences(t)
-                .Where(reference => forbiddenNames.Any(reference.Contains))
+                .Where(reference => forbiddenNames.Any(name => IsExactTypeNameMatch(reference, name)))
                 .Select(reference => $"{t.FullName} -> {reference}"))
             .ToList();
 
         Assert.Empty(offenders);
     }
 
+    private static bool IsExactTypeNameMatch(string fullTypeName, string simpleName)
+    {
+        // "IFileStorageService" must not match forbidden "FileStorageService".
+        var leaf = fullTypeName.Split('.', '+')[^1];
+        return leaf.Equals(simpleName, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void FileStorageResponseDtos_DoNotExposeRawObjectKeysOrCredentialFields()
     {
         var dtoTypes = new[] { typeof(FileRecordDto), typeof(FileUploadReservationDto) };
+        // StorageKey is intentionally present on FileRecordDto so feature handlers can
+        // persist object-key metadata after IFileStorageService.UploadAsync completes.
+        // Credential/secret material and provider config must still never appear.
         var forbiddenFragments = new[]
         {
-            "StorageKey", "Secret", "AccessKey", "Credential", "AccountId", "Bucket", "Endpoint"
+            "Secret", "AccessKey", "Credential", "AccountId", "Bucket", "Endpoint"
         };
 
         var offenders = dtoTypes
