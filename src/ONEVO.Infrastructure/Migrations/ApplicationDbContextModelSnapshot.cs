@@ -5286,6 +5286,8 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_employee_check_ins_monitoring_face_scans_face_scan_id");
 
                     b.Navigation("FaceScan");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", null)
