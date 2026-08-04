@@ -240,8 +240,7 @@ public class PermissionSeeder : IHostedService
 
         // Projects
         Perm("projects:read", "View projects.", "work_management"),
-        Perm("projects:write", "Edit project details.", "work_management"),
-        Perm("projects:create", "Create new projects.", "work_management"),
+        Perm("projects:access", "Work Management module access — create/edit/delete your own projects and milestones.", "work_management"),
 
         // Work Management
         Perm("okr:read", "View OKRs and goals.", "work_management"),
@@ -259,12 +258,10 @@ public class PermissionSeeder : IHostedService
         Perm("roadmaps:write", "Create and edit roadmaps.", "work_management"),
 
         // Work Management — Projects (Foundation slice additions)
-        Perm("members:read", "View project members.", "work_management"),
-        Perm("members:manage", "Activate, deactivate, or remove project members.", "work_management"),
-        Perm("invitations:manage", "Send and cancel project/objective invitations.", "work_management"),
-        Perm("invitations:respond", "Accept or decline a project/objective invitation.", "work_management"),
-        Perm("versions:write", "Create and change project version status.", "work_management"),
-        Perm("labels:manage", "Create and edit project labels.", "work_management"),
+        // (members:read, members:manage, invitations:manage, invitations:respond, versions:write,
+        // labels:manage retired 2026-08-04 - collapsed into projects:access per the milestone-hierarchy
+        // design's "multiple features mapped onto a single permission" decision. They were seeded
+        // ahead of any endpoint using them and are removed before any handler ever checked them.)
     ];
 
     private static Permission Perm(string code, string description, string module) => new()
