@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 
@@ -12,5 +13,12 @@ public class EfProjectMemberRepository : IProjectMemberRepository
     public async Task AddAsync(ProjectMember member, CancellationToken ct = default)
     {
         await _db.ProjectMembers.AddAsync(member, ct);
+    }
+
+    public async Task<bool> HasActiveMembershipAsync(Guid tenantId, Guid projectId, Guid userId, CancellationToken ct = default)
+    {
+        return await _db.ProjectMembers
+            .AsNoTracking()
+            .AnyAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.UserId == userId && m.IsActive, ct);
     }
 }
