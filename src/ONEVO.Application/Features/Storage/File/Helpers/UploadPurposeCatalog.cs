@@ -26,7 +26,7 @@ public static class UploadPurposeCatalog
     {
         [CompanyLogo] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [EmployeeAvatar] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
-        [MonitoringFaceScan] = new UploadPurposeRule(10 * 1024 * 1024, ImageContentTypes, ImageExtensions),
+        [MonitoringFaceScan] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [GenericDocument] = new UploadPurposeRule(
             25 * 1024 * 1024,
             new[]
