@@ -11,6 +11,7 @@ public class PlatformAuthEvent
     public const string LoginFailed = "login_failed";
     public const string SessionRevoked = "session_revoked";
     public const string LogoutSucceeded = "logout_succeeded";
+    public const string AdminPasswordResetRequested = "admin_password_reset_requested";
 
     public Guid Id { get; set; }
     public Guid? UserId { get; set; }
