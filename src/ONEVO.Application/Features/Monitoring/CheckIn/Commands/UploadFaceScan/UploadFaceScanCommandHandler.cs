@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
@@ -16,6 +17,8 @@ public class UploadFaceScanCommandHandler
 {
     private readonly ICheckInRepository _repository;
     private readonly ITrayCurrentDevice _device;
+    private readonly ITenantRepository _tenants;
+    private readonly ITenantContextSwitcher _tenantSwitcher;
     private readonly IFileStorageService _fileStorage;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
@@ -23,12 +26,16 @@ public class UploadFaceScanCommandHandler
     public UploadFaceScanCommandHandler(
         ICheckInRepository repository,
         ITrayCurrentDevice device,
+        ITenantRepository tenants,
+        ITenantContextSwitcher tenantSwitcher,
         IFileStorageService fileStorage,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork)
     {
         _repository = repository;
         _device = device;
+        _tenants = tenants;
+        _tenantSwitcher = tenantSwitcher;
         _fileStorage = fileStorage;
         _clock = clock;
         _unitOfWork = unitOfWork;
@@ -38,6 +45,22 @@ public class UploadFaceScanCommandHandler
         UploadFaceScanCommand request,
         CancellationToken cancellationToken)
     {
+        if (!_device.IsAuthenticated
+            || _device.TenantId == Guid.Empty
+            || _device.UserId == Guid.Empty
+            || _device.DeviceRegistrationId == Guid.Empty)
+        {
+            return Result<FaceScanUploadResponseDto>.Failure("A valid tray device token is required.", 401);
+        }
+
+        var tenant = await _tenants.GetByIdAsync(_device.TenantId, cancellationToken);
+        if (tenant is null)
+            return Result<FaceScanUploadResponseDto>.Failure("Tenant not found.", 401);
+
+        await _tenantSwitcher.SwitchToTenantAsync(
+            new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null),
+            cancellationToken);
+
         var checkIn = await _repository.FindCheckInAsync(
             request.CheckInId, _device.TenantId, cancellationToken);
 
