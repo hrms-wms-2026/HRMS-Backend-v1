@@ -5,6 +5,8 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 
 namespace ONEVO.Application.Features.Monitoring.CheckIn.Commands.UploadFaceScan;
@@ -14,14 +16,14 @@ public class UploadFaceScanCommandHandler
 {
     private readonly ICheckInRepository _repository;
     private readonly ITrayCurrentDevice _device;
-    private readonly IStorageService _fileStorage;
+    private readonly IFileStorageService _fileStorage;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
 
     public UploadFaceScanCommandHandler(
         ICheckInRepository repository,
         ITrayCurrentDevice device,
-        IStorageService fileStorage,
+        IFileStorageService fileStorage,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork)
     {
@@ -45,29 +47,43 @@ public class UploadFaceScanCommandHandler
         if (checkIn.UserId != _device.UserId)
             return Result<FaceScanUploadResponseDto>.Forbidden();
 
-        var faceScanId = Guid.NewGuid();
         var ext = request.ContentType switch
         {
             "image/png"  => "png",
             "image/webp" => "webp",
             _            => "jpg"
         };
-        var storageKey = $"tenants/{_device.TenantId}/monitoring/face-scans/{faceScanId}/scan.{ext}";
+        var originalFileName = $"scan.{ext}";
 
-        await _fileStorage.UploadAsync(request.ImageStream, storageKey, request.ContentType, cancellationToken);
+        var uploadResult = await _fileStorage.UploadAsync(
+            _device.TenantId,
+            _device.UserId,
+            originalFileName,
+            request.ContentType,
+            UploadPurposeCatalog.MonitoringFaceScan,
+            request.ImageStream,
+            cancellationToken);
+
+        if (!uploadResult.IsSuccess)
+        {
+            return Result<FaceScanUploadResponseDto>.Failure(
+                uploadResult.Error!, uploadResult.StatusCode ?? 500);
+        }
+
+        var fileRecord = uploadResult.Value!;
 
         var now = _clock.UtcNow;
         var faceScan = new MonitoringFaceScan
         {
-            Id          = faceScanId,
-            TenantId    = _device.TenantId,
-            CheckInId   = request.CheckInId,
-            StorageKey  = storageKey,
+            Id            = Guid.NewGuid(),
+            TenantId      = _device.TenantId,
+            CheckInId     = request.CheckInId,
+            StorageKey    = fileRecord.StorageKey,
             FileSizeBytes = request.FileSizeBytes,
-            ContentType = request.ContentType,
-            Status      = MonitoringFaceScanStatus.Available,
-            CreatedAt   = now,
-            UpdatedAt   = now
+            ContentType   = request.ContentType,
+            Status        = MonitoringFaceScanStatus.Available,
+            CreatedAt     = now,
+            UpdatedAt     = null
         };
 
         await _repository.AddFaceScanAsync(faceScan, cancellationToken);

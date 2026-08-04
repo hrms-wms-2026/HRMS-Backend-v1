@@ -223,6 +223,7 @@ public sealed class FileStorageService : IFileStorageService
         return Result<FileRecordDto>.Success(new FileRecordDto(
             fileRecord.Id,
             fileRecord.TenantId,
+            fileRecord.StorageKey,
             fileRecord.OriginalFileName,
             fileRecord.SafeFileName,
             fileRecord.ContentType,
