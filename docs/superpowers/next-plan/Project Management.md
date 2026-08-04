@@ -1,39 +1,6 @@
-# Future Feature: Milestone (Objective) In-Charge Role & Permission System
+# Future Feature: Milestone (Objective) In-Charge Role & Permission System — SUPERSEDED
 
-**Status:** Not started. Captured from user context during brainstorming for the Work Management Slice 2/3 endpoints (Edit/Delete Project, Get/List Projects) on 2026-08-04, so this isn't lost when that session ends. Not yet brainstormed/spec'd — this file is raw context for that future brainstorm, not a design.
-
-## The idea, as described by the user
-
-Every Project has a Default Objective (a "Milestone" in frontend/user language — the backend name stays `objectives`). The Default Objective always has a **Milestone-in-charge** (an owner) — at creation this is the Project's creator/lead.
-
-From there it's a **tree structure**:
-
-- A Milestone-in-charge (owner of a given Objective) can create any number of **sub-milestones** under their milestone.
-- When creating a sub-milestone, the owner can assign a Milestone-in-charge to it. If they don't assign one, **the creator becomes the sub-milestone's in-charge** by default.
-- For a sub-milestone, its Milestone-in-charge's **reporting manager is automatically the parent milestone's in-charge**. This reporting chain mirrors the objective tree.
-- Business rule: whatever happens inside a sub-milestone (its deadline, its allocated work hours) **must not conflict with its parent milestone's** deadline / allocated hours. (Today, `projects`/`objectives` hour indicators are warning-only per `phase1-table-inventory.md` — unclear yet whether this new parent/child constraint should also be warning-only or a hard block; needs deciding when this is actually designed.)
-
-## The permission angle
-
-The user wants project/milestone-scoped **capabilities** tied to a member's position in this tree — not just tenant-wide RBAC permission codes (`projects:read`/`projects:write`/etc. from `PermissionSeeder.cs`). Examples named explicitly: view milestone, create milestone, create task, edit milestone, delete milestone — "etc." (the user's word), implying this list isn't exhaustive and needs to be drawn out properly in a real brainstorm.
-
-## Why this is out of scope for the current Work Management endpoint work (2026-08-04)
-
-- `project_members` (see `docs/superpowers/project_ core/phase1-table-inventory.md`, `### project_members`) explicitly lists **"Forbidden: `role`"** — "permission/business-scope checks are separate from membership." Today there is no role/capability column on membership at all. This feature needs a schema change.
-- Milestone (Objective) CRUD endpoints (create/edit/delete sub-objective, assign in-charge) don't exist yet — only the Default Objective gets created, implicitly, inside `POST /api/v1/work/projects`.
-- Task creation/CRUD doesn't exist yet either (separate future Work Management phase, "Task Management + Worklogs" per the table inventory's pillar breakdown).
-- The reporting-manager chain and deadline/hours-conflict-with-parent validation are net-new business rules not reflected anywhere in the current schema or handlers.
-
-Given all of the above, this needs its own schema design (a role/capability model scoped to `project_members` or `objectives`), its own brainstorm, and depends on Objective CRUD + Task CRUD existing first (or being designed alongside it). It's a genuinely separate feature, not an extension of the Edit/Delete/Get/List Project endpoints being built right now.
-
-## Suggested next step (when picked up)
-
-Run `superpowers:brainstorming` fresh on this topic. Good opening questions to work through:
-- Is the reporting-manager chain purely informational (for display/notifications) or does it gate anything (e.g., approvals)?
-- Full list of capabilities needed per the user's "etc." — view/create/edit/delete milestone, create/edit/delete task, others?
-- Are capabilities assigned automatically by tree position (in-charge vs. not) or is there ever manual override?
-- Warning-only vs. hard-block for child-vs-parent deadline/hours conflicts (matches or diverges from the existing warning-only pattern on `projects`/`objectives` hours)?
-- Does this replace or sit alongside the existing tenant-wide `projects:*` permission codes?
+**Status:** Designed. This raw-context capture (originally written 2026-08-04) has been fully brainstormed and superseded by an approved design — see `docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md`. That design covers: the module-wide `projects:access`/`projects:read` permission model, `Objective.HeadUserId`/`ReportingManagerId` schema, the fully-recursive hardcoded tree-authorization rule, the `objective_change_requests` approval workflow for delete/conflicting-edit/transfer on a Head's own node, and the Objective CRUD + approval endpoint list. Kept here only as a pointer so this section's original "not yet designed" status isn't mistaken as still current.
 
 ---
 
@@ -53,7 +20,7 @@ Today `projects` has neither — only `is_active: boolean`, and `phase1-table-in
 - New-project approval: Draft → Submit for approval → Approver reviews (Approve / Request changes / Reject) → project starts.
 - Baseline-change approval: edits to an *already-approved* project's target date, planned effort, or owner should show current-vs-proposed-vs-impact and require approval before taking effect; the currently-approved value stays authoritative until then.
 
-No approval entity/table/handler exists for Projects. `role_assignments` (`phase1-table-inventory.md` line ~545, `PendingApproval` status) and other tenant-scoped approval-status patterns already in this schema are the closest existing precedent worth reviewing before designing a new one from scratch.
+No approval entity/table/handler exists for Projects. `role_assignments` (`phase1-table-inventory.md` line ~545, `PendingApproval` status) and other tenant-scoped approval-status patterns already in this schema are the closest existing precedent worth reviewing before designing a new one from scratch — **and now so is `objective_change_requests`** (`docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md` §3), a request/approval table built for a different trigger (Objective-level delete/conflicting-edit/transfer, approved by the Objective's Reporting Manager) but a possibly-reusable shape for this Project-level baseline-change approval. They are not the same feature and should not be silently merged — read that design before assuming a shared table works here.
 
 **3. Archive/restore, replacing permanent delete.** The current Edit/Delete/GetById/List spec's Delete is already a soft delete (`is_active = false`, no cascade) — that part already avoids the manager's core objection (permanent data loss). Not yet covered by any existing spec:
 - Restore endpoint (none exists today).
