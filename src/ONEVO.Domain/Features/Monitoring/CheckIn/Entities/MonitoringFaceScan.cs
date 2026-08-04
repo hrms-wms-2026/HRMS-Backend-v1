@@ -13,9 +13,8 @@ public class MonitoringFaceScan : ITenantOwnedEntity
     public long FileSizeBytes { get; set; }
     public string ContentType { get; set; } = string.Empty;
 
-    // pending_scan | available | failed
-    public string Status { get; set; } = "pending_scan";
+    public string Status { get; set; } = MonitoringFaceScanStatus.PendingScan;
 
     public DateTimeOffset CreatedAt { get; set; }
-    public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
 }
