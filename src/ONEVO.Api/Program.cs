@@ -36,7 +36,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddMemoryCache();
 builder.Services.AddControllers();
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddApiAuthentication(builder.Environment);
+builder.Services.AddApiAuthentication(builder.Environment, builder.Configuration);
 builder.Services.AddApiAuthorization();
 builder.Services.AddApiSwagger();
 builder.Services.AddApiCors(builder.Configuration);
