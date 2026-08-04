@@ -3091,6 +3091,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("address_json");
 
+                    b.Property<string>("CompanyCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("company_code");
+
                     b.Property<string>("CountryCode")
                         .IsRequired()
                         .HasMaxLength(3)
@@ -3107,6 +3112,39 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(3)")
                         .HasColumnName("currency_code");
 
+                    b.Property<string>("DateFormat")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("DD MMM YYYY")
+                        .HasColumnName("date_format");
+
+                    b.Property<string>("DefaultLanguage")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("en-US")
+                        .HasColumnName("default_language");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("email");
+
+                    b.Property<int>("FinancialYearStartMonth")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("financial_year_start_month");
+
+                    b.Property<int>("FirstDayOfWeek")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("first_day_of_week");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
@@ -3115,32 +3153,107 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_primary");
 
+                    b.Property<Guid?>("LogoFileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("logo_file_id");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
+                    b.Property<Guid?>("ParentLegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_legal_entity_id");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("phone_number");
+
                     b.Property<string>("RegistrationNumber")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
                         .HasColumnName("registration_number");
 
+                    b.Property<string>("StandardWorkingDays")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[1,2,3,4,5]")
+                        .HasColumnName("standard_working_days");
+
+                    b.Property<string>("TaxRegistrationNumber")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("tax_registration_number");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
+
+                    b.Property<string>("TimeFormat")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("12h")
+                        .HasColumnName("time_format");
+
+                    b.Property<string>("Timezone")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("timezone");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
+                    b.Property<string>("VatGstNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("vat_gst_number");
+
+                    b.Property<string>("Website")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("website");
+
                     b.HasKey("Id")
                         .HasName("pk_legal_entities");
+
+                    b.HasIndex("LogoFileId")
+                        .HasDatabaseName("ix_legal_entities_logo_file_id");
+
+                    b.HasIndex("ParentLegalEntityId")
+                        .HasDatabaseName("ix_legal_entities_parent_legal_entity_id");
 
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_legal_entities_tenant_id");
 
-                    b.ToTable("legal_entities", (string)null);
+                    b.HasIndex("TenantId", "CompanyCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_legal_entities_tenant_id_company_code")
+                        .HasFilter("company_code IS NOT NULL");
+
+                    b.HasIndex("TenantId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_legal_entities_tenant_id_name");
+
+                    b.HasIndex("TenantId", "RegistrationNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_legal_entities_tenant_id_registration_number")
+                        .HasFilter("registration_number IS NOT NULL");
+
+                    b.ToTable("legal_entities", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_legal_entities_financial_year_start_month", "financial_year_start_month BETWEEN 1 AND 12");
+
+                            t.HasCheckConstraint("ck_legal_entities_first_day_of_week", "first_day_of_week BETWEEN 1 AND 7");
+
+                            t.HasCheckConstraint("ck_legal_entities_time_format", "time_format IN ('12h', '24h')");
+                        });
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.Position", b =>
@@ -5173,6 +5286,19 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_employee_check_ins_monitoring_face_scans_face_scan_id");
 
                     b.Navigation("FaceScan");
+            modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", null)
+                        .WithMany()
+                        .HasForeignKey("LogoFileId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_legal_entities_file_records_logo_file_id");
+
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ParentLegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_legal_entities_legal_entities_parent_legal_entity_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.SharedPlatform.Entities.ModuleCatalogPriceHistory", b =>

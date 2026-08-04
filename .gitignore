@@ -24,3 +24,6 @@ TestResults/
 # Postman workspace metadata & collections
 .postman/
 postman/
+
+# mkcert local dev certificates
+.certs/

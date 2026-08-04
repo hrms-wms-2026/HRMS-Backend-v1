@@ -155,7 +155,8 @@ public sealed class AdminLoginCommandHandler
                 Email: string.Empty,
                 PlatformRole: string.Empty,
                 RequiresMfa: true,
-                MfaSessionToken: mfaChallenge));
+                MfaSessionToken: mfaChallenge,
+                Permissions: Array.Empty<string>()));
         }
 
         user.LastLoginAt = now;
@@ -175,7 +176,8 @@ public sealed class AdminLoginCommandHandler
             ExpiresAt: now.Add(SessionPolicy.SlidingWindow),
             PlatformUserId: user.Id,
             Email: user.Email,
-            PlatformRole: profile.RoleNames.Count > 0 ? profile.RoleNames[0] : string.Empty));
+            PlatformRole: profile.RoleNames.Count > 0 ? profile.RoleNames[0] : string.Empty,
+            Permissions: profile.PermissionCodes.ToList()));
     }
 
     private static Result<AdminLoginResultDto> InvalidCredentials()

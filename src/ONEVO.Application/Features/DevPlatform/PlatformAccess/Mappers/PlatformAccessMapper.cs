@@ -6,13 +6,13 @@ namespace ONEVO.Application.Features.DevPlatform.PlatformAccess.Mappers;
 
 public static class PlatformAccessMapper
 {
-    public static PlatformUserResponse Map(PlatformUser user)
+    public static PlatformUserResponse Map(PlatformUser user, string role)
     {
         return new PlatformUserResponse(
             user.Id,
             user.Email,
             user.FullName,
-            null,
+            role,
             user.Status == PlatformUser.StatusActive,
             user.CreatedAt,
             user.LastLoginAt);

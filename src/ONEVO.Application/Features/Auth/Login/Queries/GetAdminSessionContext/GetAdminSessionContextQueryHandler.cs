@@ -54,6 +54,7 @@ public sealed class GetAdminSessionContextQueryHandler
             Email: user.Email,
             PlatformRole: profile.RoleNames.Count > 0 ? profile.RoleNames[0] : string.Empty,
             ExpiresAt: _clock.UtcNow.Add(SessionPolicy.SlidingWindow),
-            MfaRequired: false));
+            MfaRequired: false,
+            Permissions: profile.PermissionCodes.ToList()));
     }
 }

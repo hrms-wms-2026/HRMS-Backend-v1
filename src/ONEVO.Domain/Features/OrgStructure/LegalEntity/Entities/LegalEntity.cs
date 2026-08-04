@@ -10,9 +10,38 @@ public class LegalEntity : ITenantOwnedEntity
     public string? RegistrationNumber { get; set; }
     public string CountryCode { get; set; } = string.Empty;
     public string CurrencyCode { get; set; } = string.Empty;
+
+    // Registered business address payload (JSON). This is the same field the
+    // General Settings screen calls "registered business address" - kept
+    // under its original name rather than renamed, per Part 2A scope.
     public string? AddressJson { get; set; }
+
     public bool IsActive { get; set; } = true;
     public bool IsPrimary { get; set; } = true;
+
+    public string? CompanyCode { get; set; }
+    public Guid? LogoFileId { get; set; }
+    public Guid? ParentLegalEntityId { get; set; }
+    public string? TaxRegistrationNumber { get; set; }
+    public string? VatGstNumber { get; set; }
+    public string? Email { get; set; }
+    public string? PhoneNumber { get; set; }
+    public string? Website { get; set; }
+    public string? Timezone { get; set; }
+    public int FinancialYearStartMonth { get; set; } = 1;
+
+    // 1=Monday .. 7=Sunday.
+    public int FirstDayOfWeek { get; set; } = 1;
+
+    // JSON array of weekday numbers (1=Monday..7=Sunday), e.g. "[1,2,3,4,5]".
+    public string StandardWorkingDays { get; set; } = "[1,2,3,4,5]";
+
+    public string DefaultLanguage { get; set; } = "en-US";
+    public string DateFormat { get; set; } = "DD MMM YYYY";
+
+    // Fixed values only: "12h" or "24h".
+    public string TimeFormat { get; set; } = "12h";
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
 }
