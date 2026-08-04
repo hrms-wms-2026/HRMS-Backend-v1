@@ -63,7 +63,11 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Re
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.SystemConfig;
 using ONEVO.Infrastructure.Persistence.Repositories.SharedPlatform;
+using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.TrayActivation;
 using ONEVO.Infrastructure.Services.Auth.Login;
+using ONEVO.Infrastructure.Services.Monitoring.TrayActivation;
 using ONEVO.Infrastructure.Services.SharedPlatform;
 using ONEVO.Infrastructure.Services.SystemConfig;
 
@@ -222,6 +226,10 @@ public static class DependencyInjection
         services.AddScoped<ICurrentPlatformUserContext, CurrentPlatformUserContext>();
         services.AddSingleton<ICacheService, MemoryCacheService>();
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
+
+        // Monitoring - Tray App Activation
+        services.AddScoped<ITrayActivationRepository, EfTrayActivationRepository>();
+        services.AddSingleton<ITrayTokenService, TrayTokenService>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
