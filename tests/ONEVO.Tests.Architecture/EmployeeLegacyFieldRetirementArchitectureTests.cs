@@ -60,10 +60,15 @@ public sealed class EmployeeLegacyFieldRetirementArchitectureTests
     }
 
     [Fact]
-    public void NoApplicationFeature_ReferencesEmployeeManagerIdOrJobTitleId()
+    public void NoApplicationOrInfrastructureCode_ReferencesEmployeeManagerIdOrJobTitleId()
     {
-        var sourceRoot = FindRepositoryPath("src", "ONEVO.Application");
-        var offenders = Directory.GetFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
+        // Covers both layers: a prior gap here (Application-only) let
+        // MonitoringToggleResolverService.cs (Infrastructure) keep reading
+        // employee.JobTitleId undetected until it broke the build on merge.
+        var offenders = new[] { "ONEVO.Application", "ONEVO.Infrastructure" }
+            .SelectMany(project => Directory.GetFiles(
+                FindRepositoryPath("src", project), "*.cs", SearchOption.AllDirectories))
+            .Where(path => !path.Replace('\\', '/').Contains("/Migrations/", StringComparison.Ordinal))
             .Where(path =>
             {
                 var text = File.ReadAllText(path);
@@ -73,7 +78,7 @@ public sealed class EmployeeLegacyFieldRetirementArchitectureTests
             .ToList();
 
         Assert.True(offenders.Count == 0,
-            "No Application feature may reference Employee.ManagerId/JobTitleId (retired): " +
+            "No Application/Infrastructure code may reference Employee.ManagerId/JobTitleId (retired): " +
             string.Join("; ", offenders));
 
         // Touch the assembly reference so the field stays exercised if this test is ever trimmed.

@@ -65,6 +65,43 @@ has unrelated, pre-existing uncommitted changes from an earlier session's dev-sm
 work, which this task did not touch or revert). It already seeds exactly one `Employee` row
 per smoke `User` (4 total: 3 Acme + 1 Dapi), keyed by `UserId`, idempotently.
 
+## Post-push merge conflict found and fixed (development branch)
+
+The feature branch alone (`feature/mkcert-tenant-subdomain-https`) built and tested clean, but
+PR #36's CI (which builds the merge of the branch into `development`) failed with:
+
+```
+error CS1061: 'Employee' does not contain a definition for 'JobTitleId' ...
+  src/ONEVO.Infrastructure/Services/Monitoring/ActivityMonitoring/MonitoringToggleResolverService.cs(67,37)
+```
+
+`development` already contained a Monitoring-toggle-resolution feature (not present on this
+feature branch) that read `employee?.JobTitleId` as a stand-in `positionId` for resolving
+position-scoped monitoring policy overrides. Because this file didn't exist on the feature
+branch, the original repo-wide audit (grep across the checked-out working tree) never saw it -
+it only surfaced once the two branches were actually merged, which is exactly the semantic
+(not textual) conflict git's own "no conflicts with base branch" check cannot detect.
+
+Fix applied on this branch (so it lands with the same PR): in
+`MonitoringToggleResolverService.ResolveAsync`,
+`Guid? positionId = employee?.JobTitleId;` was changed to
+`Guid? positionId = null; // TODO: resolve via position_assignments once it exists`. This is a
+behavioral no-op in practice - the Task 1 audit already confirmed nothing in the codebase ever
+wrote to `employee.JobTitleId` (including the dev smoke seeder), so `positionId` was always
+null before this change too; position-scoped monitoring policy resolution will start working
+once `position_assignments` exists and this TODO is picked up.
+
+The `EmployeeLegacyFieldRetirementArchitectureTests` guard
+(`NoApplicationOrInfrastructureCode_ReferencesEmployeeManagerIdOrJobTitleId`) was widened from
+scanning only `src/ONEVO.Application` to also scan `src/ONEVO.Infrastructure`, so this class of
+regression fails locally next time instead of only surfacing in CI after a merge.
+
+`development` was merged into this feature branch locally (`git merge --no-commit --no-ff
+origin/development`) to bring in the missing file and reproduce exactly what CI builds; the
+merge was clean at the text level (only a mechanical auto-merge in
+`ApplicationDbContextModelSnapshot.cs`). The full suite was re-run against the merged tree (see
+Test Results) and passes.
+
 ## Migration safety notes
 
 - EF detected both a foreign key (`fk_employees_employees_manager_id`) and its supporting
@@ -87,6 +124,8 @@ per smoke `User` (4 total: 3 Acme + 1 Dapi), keyed by `UserId`, idempotently.
 
 ## Test results
 
+Against the feature branch alone (before the `development` merge):
+
 - `dotnet build src\ONEVO.Api\ONEVO.Api.csproj --no-restore --verbosity minimal` - **Build
   succeeded, 0 Warning(s), 0 Error(s)**.
 - `dotnet test tests\ONEVO.Tests.Unit\ONEVO.Tests.Unit.csproj --no-restore --verbosity minimal`
@@ -102,6 +141,25 @@ per smoke `User` (4 total: 3 Acme + 1 Dapi), keyed by `UserId`, idempotently.
   `dotnet test tests\ONEVO.Tests.Integration\ONEVO.Tests.Integration.csproj --no-restore
   --verbosity minimal` - **254 passed, 0 failed, 0 skipped** (44m 2s; Testcontainers-provisioned
   PostgreSQL, full migration history including the new migration applied from scratch).
+
+Re-run against the merged tree (feature branch + `development`, matching what PR #36's CI
+actually builds), after fixing `MonitoringToggleResolverService.cs`:
+
+- `dotnet build src\ONEVO.Api\ONEVO.Api.csproj --verbosity minimal` - **Build succeeded, 1
+  Warning(s) (pre-existing, unrelated `AdminAuthController.cs` nullable-dereference warning), 0
+  Error(s)**.
+- `dotnet test tests\ONEVO.Tests.Unit\ONEVO.Tests.Unit.csproj --no-restore --verbosity minimal`
+  - **1406 passed, 0 failed, 0 skipped** (34 additional tests came in from `development`).
+- `dotnet test tests\ONEVO.Tests.Architecture\ONEVO.Tests.Architecture.csproj --no-restore
+  --verbosity minimal` - **531 passed, 0 failed, 0 skipped**, including the widened
+  `NoApplicationOrInfrastructureCode_ReferencesEmployeeManagerIdOrJobTitleId` guard.
+- `dotnet ef migrations script` - succeeded; `RemoveLegacyEmployeeJobTitleAndManagerFields`
+  remains the last migration applied (it sorts after `development`'s newest migration,
+  `20260805045300_AddActivityMonitoring`).
+- `git diff --check` - clean.
+- The Docker-backed integration suite was not re-run a second time against the merged tree
+  (the 44-minute run above already validates the migration end-to-end); re-running is
+  recommended before merging the PR if time allows.
 
 ## Remaining deferred work
 
