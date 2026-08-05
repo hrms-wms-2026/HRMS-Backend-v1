@@ -64,7 +64,7 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
                 ct);
 
         Guid? departmentId = employee?.DepartmentId;
-        Guid? positionId = employee?.JobTitleId;
+        Guid? positionId = null; // TODO: resolve via position_assignments once it exists
         Guid userIdForRoles = employee?.UserId ?? employeeId;
 
         var roleIds = await _db.UserRoles

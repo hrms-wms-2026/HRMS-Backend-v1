@@ -14,8 +14,6 @@ public class Employee : BaseEntity
     public string? Gender { get; set; }
     public Guid? NationalityId { get; set; }
     public Guid? DepartmentId { get; set; }
-    public Guid? JobTitleId { get; set; }
-    public Guid? ManagerId { get; set; }
     public Guid? LegalEntityId { get; set; }
     public int EmploymentTypeId { get; set; } = 1;
     public int EmploymentStatusId { get; set; } = 1;

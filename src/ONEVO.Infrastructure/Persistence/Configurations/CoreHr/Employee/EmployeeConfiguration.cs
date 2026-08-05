@@ -20,12 +20,6 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<EmployeeEntity>
         builder.Property(e => e.EmploymentStatusId).IsRequired();
         builder.Property(e => e.WorkModeId).IsRequired();
 
-        builder.HasOne<EmployeeEntity>()
-            .WithMany()
-            .HasForeignKey(e => e.ManagerId)
-            .OnDelete(DeleteBehavior.Restrict)
-            .IsRequired(false);
-
         builder.HasIndex(e => new { e.TenantId, e.EmployeeNumber }).IsUnique();
         builder.HasIndex(e => e.UserId).IsUnique();
     }

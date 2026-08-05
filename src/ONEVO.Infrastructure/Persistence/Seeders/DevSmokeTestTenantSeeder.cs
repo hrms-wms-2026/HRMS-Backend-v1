@@ -8,6 +8,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Compliance.Helpers;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
@@ -43,13 +44,19 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         string Timezone,
         bool IsPrimary);
 
+    private sealed record SmokeEmployeeDefinition(
+        Guid UserId,
+        Guid LegalEntityId,
+        string EmployeeNumber);
+
     private sealed record SmokeTenantDefinition(
         Guid TenantId,
         string Slug,
         string Name,
         Guid SubscriptionId,
         IReadOnlyList<SmokeUserDefinition> Users,
-        IReadOnlyList<SmokeLegalEntityDefinition> LegalEntities);
+        IReadOnlyList<SmokeLegalEntityDefinition> LegalEntities,
+        IReadOnlyList<SmokeEmployeeDefinition> Employees);
 
     private static readonly Guid AcmeTenantId = Guid.Parse("da810816-3fed-4e71-9a44-f93e9b509bc7");
     private static readonly Guid AcmeOwnerUserId = Guid.Parse("c468afc2-967a-4b9a-beae-6bce6652ffc1");
@@ -80,6 +87,17 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
     private const string AcmeHrManagerEmail = "paramanathanmuthaiya@gmail.com";
     private const string AcmeWorkManagerEmail = "mrt15473@gmail.com";
     private const string DapiOwnerEmail = "dapiyshanth1908@gmail.com";
+
+    private const string AcmeOwnerEmployeeNumber = "ACME-0001";
+    private const string AcmeHrManagerEmployeeNumber = "ACME-0002";
+    private const string AcmeWorkManagerEmployeeNumber = "ACME-0003";
+    private const string DapiOwnerEmployeeNumber = "DAPI-0001";
+
+    private const int SmokeDefaultEmploymentTypeId = 1;   // "full_time" - seeded by LookupDataSeeder
+    private const int SmokeDefaultEmploymentStatusId = 1; // "active"    - seeded by LookupDataSeeder
+    private const int SmokeDefaultWorkModeId = 1;          // "on_site"   - seeded by LookupDataSeeder
+
+    private static readonly DateOnly SmokeEmployeeHireDate = new(2025, 1, 1);
 
     private const string GitHubProvider = "github";
     private const string GitHubIntegrationKey = "github";
@@ -173,12 +191,21 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             ResolveSmokeTenantContext(tenantContext, tenant);
             await SeedTenantLegalEntitiesAsync(db, tenant.Id, tenantDefinition.LegalEntities, now, ct);
 
+            await EnsureSmokeEmployeeReferenceDataAsync(db, ct);
+
             User? firstUser = null;
             foreach (var userDefinition in tenantDefinition.Users)
             {
                 var user = await SeedTenantUserAsync(db, tenant.Id, userDefinition, passwordHasher, now, ct);
                 firstUser ??= user;
                 await SeedTenantRoleAsync(db, tenant.Id, user.Id, userDefinition, now, ct);
+
+                var employeeDefinition = tenantDefinition.Employees
+                    .FirstOrDefault(e => e.UserId == user.Id);
+                if (employeeDefinition is not null)
+                {
+                    await SeedTenantEmployeeAsync(db, tenant.Id, user, employeeDefinition, now, ct);
+                }
             }
 
             await SeedTenantAuthPolicyAsync(db, tenant.Id, now, ct);
@@ -270,6 +297,11 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                         AcmeLegalEntitySolutionsId, "Acme Solutions", "ACMESOL", "LK", "LKR", "Asia/Colombo", false),
                     new SmokeLegalEntityDefinition(
                         AcmeLegalEntityGlobalServicesId, "Acme Global Services", "ACMEGS", "LK", "LKR", "Asia/Colombo", false)
+                ],
+                [
+                    new SmokeEmployeeDefinition(AcmeOwnerUserId, AcmeLegalEntityTechnologiesId, AcmeOwnerEmployeeNumber),
+                    new SmokeEmployeeDefinition(AcmeHrManagerUserId, AcmeLegalEntityTechnologiesId, AcmeHrManagerEmployeeNumber),
+                    new SmokeEmployeeDefinition(AcmeWorkManagerUserId, AcmeLegalEntitySolutionsId, AcmeWorkManagerEmployeeNumber)
                 ]),
             new SmokeTenantDefinition(
                 DapiTenantId,
@@ -285,6 +317,9 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 [
                     new SmokeLegalEntityDefinition(
                         DapiLegalEntityId, "Dapi Technologies", "DAPI", "LK", "LKR", "Asia/Colombo", true)
+                ],
+                [
+                    new SmokeEmployeeDefinition(DapiOwnerUserId, DapiLegalEntityId, DapiOwnerEmployeeNumber)
                 ])
         ];
     }
@@ -542,6 +577,84 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         }
 
         return permissions;
+    }
+
+    private static async Task EnsureSmokeEmployeeReferenceDataAsync(
+        ApplicationDbContext db,
+        CancellationToken ct)
+    {
+        // LookupDataSeeder (DependencyInjection.cs) is registered and runs before
+        // DevSmokeTestTenantSeeder in the hosted-service startup order, seeding fixed
+        // Id=1 rows for employment_types("full_time"), employment_statuses("active"), and
+        // work_modes("on_site"). This check turns a broken startup order into a clear failure
+        // instead of silently writing Employee rows with dangling lookup ids.
+        var typeOk = await db.EmploymentTypes.AnyAsync(t => t.Id == SmokeDefaultEmploymentTypeId, ct);
+        var statusOk = await db.EmploymentStatuses.AnyAsync(s => s.Id == SmokeDefaultEmploymentStatusId, ct);
+        var workModeOk = await db.WorkModes.AnyAsync(w => w.Id == SmokeDefaultWorkModeId, ct);
+
+        if (!typeOk || !statusOk || !workModeOk)
+        {
+            throw new InvalidOperationException(
+                "Development smoke-test seeder requires employment_types/employment_statuses/work_modes " +
+                $"to already contain Id={SmokeDefaultEmploymentTypeId} rows (LookupDataSeeder must run " +
+                "before DevSmokeTestTenantSeeder). Refusing to seed Employee rows with dangling lookup ids.");
+        }
+    }
+
+    private static async Task SeedTenantEmployeeAsync(
+        ApplicationDbContext db,
+        Guid tenantId,
+        User user,
+        SmokeEmployeeDefinition definition,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var numberConflict = await db.Employees.FirstOrDefaultAsync(
+            e => e.TenantId == tenantId &&
+                 e.EmployeeNumber == definition.EmployeeNumber &&
+                 e.UserId != user.Id,
+            ct);
+        if (numberConflict is not null)
+        {
+            throw new InvalidOperationException(
+                $"Development smoke-test seeder found employee_number '{definition.EmployeeNumber}' " +
+                $"in tenant {tenantId} already assigned to user {numberConflict.UserId}, but it is " +
+                $"expected for user {user.Id}. The development database is in an inconsistent state " +
+                "and must be reconciled manually before re-seeding.");
+        }
+
+        var employee = await db.Employees.FirstOrDefaultAsync(e => e.UserId == user.Id, ct);
+        if (employee is null)
+        {
+            db.Employees.Add(new Employee
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                UserId = user.Id,
+                EmployeeNumber = definition.EmployeeNumber,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.Email,
+                LegalEntityId = definition.LegalEntityId,
+                EmploymentTypeId = SmokeDefaultEmploymentTypeId,
+                EmploymentStatusId = SmokeDefaultEmploymentStatusId,
+                WorkModeId = SmokeDefaultWorkModeId,
+                HireDate = SmokeEmployeeHireDate,
+                CreatedAt = now,
+                CreatedById = user.Id
+            });
+            return;
+        }
+
+        employee.EmployeeNumber = definition.EmployeeNumber;
+        employee.FirstName = user.FirstName;
+        employee.LastName = user.LastName;
+        employee.Email = user.Email;
+        employee.LegalEntityId = definition.LegalEntityId;
+        employee.EmploymentTypeId = SmokeDefaultEmploymentTypeId;
+        employee.EmploymentStatusId = SmokeDefaultEmploymentStatusId;
+        employee.WorkModeId = SmokeDefaultWorkModeId;
+        employee.UpdatedAt = now;
     }
 
     private static async Task SeedTenantLegalEntitiesAsync(

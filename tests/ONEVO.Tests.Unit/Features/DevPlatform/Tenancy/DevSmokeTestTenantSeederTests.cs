@@ -8,6 +8,7 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
@@ -98,9 +99,27 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
         return hasher;
     }
 
+    private static async Task SeedLookupDataAsync(ApplicationDbContext db)
+    {
+        if (!await db.EmploymentTypes.AnyAsync())
+        {
+            db.EmploymentTypes.Add(new EmploymentType { Id = 1, Code = "full_time", Label = "Full-Time" });
+        }
+        if (!await db.EmploymentStatuses.AnyAsync())
+        {
+            db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        }
+        if (!await db.WorkModes.AnyAsync())
+        {
+            db.WorkModes.Add(new WorkMode { Id = 1, Code = "on_site", Label = "On-Site" });
+        }
+        await db.SaveChangesAsync();
+    }
+
     private static async Task RunSeederAsync(ApplicationDbContext db)
     {
         await SeedPermissionsAsync(db);
+        await SeedLookupDataAsync(db);
         var tenantContext = new TenantContextAccessor();
         await DevSmokeTestTenantSeeder.SeedAsync(
             db,
@@ -297,7 +316,65 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
     }
 
     [Fact]
-    public async Task SeedAsync_DoesNotCreateAnyEmployeeRowForWorkManager()
+    public async Task SeedAsync_CreatesExactlyOneEmployeeRowPerSeededUser()
+    {
+        using (var first = CreateContext())
+        {
+            await RunSeederAsync(first);
+        }
+
+        using var verify = CreateContext();
+        var seededUserIds = await verify.Users
+            .Where(u => u.Email == AcmeOwnerEmail || u.Email == AcmeHrManagerEmail ||
+                        u.Email == AcmeWorkManagerEmail || u.Email == DapiOwnerEmail)
+            .Select(u => u.Id)
+            .ToListAsync();
+
+        var employees = await verify.Set<Employee>()
+            .Where(e => seededUserIds.Contains(e.UserId))
+            .ToListAsync();
+
+        employees.Should().HaveCount(4);
+        employees.Select(e => e.UserId).Should().OnlyHaveUniqueItems();
+    }
+
+    [Fact]
+    public async Task SeedAsync_AcmeOwnerGetsAcmeTechnologiesEmployeeNumberAcme0001()
+    {
+        using var db = CreateContext();
+        await RunSeederAsync(db);
+
+        using var verify = CreateContext();
+        var acmeTenant = await verify.Tenants.SingleAsync(t => t.Slug == "acme");
+        var technologies = await verify.LegalEntities.SingleAsync(l => l.Name == "Acme Technologies");
+        var owner = await verify.Users.SingleAsync(u => u.Email == AcmeOwnerEmail);
+        var employee = await verify.Set<Employee>().SingleAsync(e => e.UserId == owner.Id);
+
+        employee.TenantId.Should().Be(acmeTenant.Id);
+        employee.LegalEntityId.Should().Be(technologies.Id);
+        employee.EmployeeNumber.Should().Be("ACME-0001");
+        employee.FirstName.Should().Be(owner.FirstName);
+        employee.LastName.Should().Be(owner.LastName);
+        employee.Email.Should().Be(owner.Email);
+    }
+
+    [Fact]
+    public async Task SeedAsync_AcmeHrManagerGetsAcmeTechnologiesEmployeeNumberAcme0002()
+    {
+        using var db = CreateContext();
+        await RunSeederAsync(db);
+
+        using var verify = CreateContext();
+        var technologies = await verify.LegalEntities.SingleAsync(l => l.Name == "Acme Technologies");
+        var user = await verify.Users.SingleAsync(u => u.Email == AcmeHrManagerEmail);
+        var employee = await verify.Set<Employee>().SingleAsync(e => e.UserId == user.Id);
+
+        employee.LegalEntityId.Should().Be(technologies.Id);
+        employee.EmployeeNumber.Should().Be("ACME-0002");
+    }
+
+    [Fact]
+    public async Task SeedAsync_AcmeWorkManagerHasExactlyOneEmployeeRowUnderAcmeSolutions()
     {
         using (var first = CreateContext())
         {
@@ -309,9 +386,164 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
         }
 
         using var verify = CreateContext();
+        var solutions = await verify.LegalEntities.SingleAsync(l => l.Name == "Acme Solutions");
         var user = await verify.Users.SingleAsync(u => u.Email == AcmeWorkManagerEmail);
+        var employees = await verify.Set<Employee>().Where(e => e.UserId == user.Id).ToListAsync();
 
-        (await verify.Set<Employee>().AnyAsync(e => e.UserId == user.Id)).Should().BeFalse();
+        employees.Should().ContainSingle();
+        employees[0].LegalEntityId.Should().Be(solutions.Id);
+        employees[0].EmployeeNumber.Should().Be("ACME-0003");
+    }
+
+    [Fact]
+    public async Task SeedAsync_DapiOwnerGetsDapiLegalEntityEmployeeNumberDapi0001()
+    {
+        using var db = CreateContext();
+        await RunSeederAsync(db);
+
+        using var verify = CreateContext();
+        var dapiTenant = await verify.Tenants.SingleAsync(t => t.Slug == "dapi");
+        var dapiLegalEntity = await verify.LegalEntities.SingleAsync(l => l.TenantId == dapiTenant.Id);
+        var owner = await verify.Users.SingleAsync(u => u.Email == DapiOwnerEmail);
+        var employee = await verify.Set<Employee>().SingleAsync(e => e.UserId == owner.Id);
+
+        employee.TenantId.Should().Be(dapiTenant.Id);
+        employee.LegalEntityId.Should().Be(dapiLegalEntity.Id);
+        employee.EmployeeNumber.Should().Be("DAPI-0001");
+    }
+
+    [Fact]
+    public async Task SeedAsync_NoEmployeeRowIsCreatedForAUserInTheWrongTenant()
+    {
+        using var db = CreateContext();
+        await RunSeederAsync(db);
+
+        using var verify = CreateContext();
+        var dapiTenant = await verify.Tenants.SingleAsync(t => t.Slug == "dapi");
+        var acmeOwner = await verify.Users.SingleAsync(u => u.Email == AcmeOwnerEmail);
+        var employee = await verify.Set<Employee>().SingleAsync(e => e.UserId == acmeOwner.Id);
+
+        employee.TenantId.Should().NotBe(dapiTenant.Id);
+    }
+
+    [Fact]
+    public async Task SeedAsync_IsIdempotentAcrossRepeatedRunsForEmployees()
+    {
+        using (var first = CreateContext())
+        {
+            await RunSeederAsync(first);
+        }
+        using (var second = CreateContext())
+        {
+            await RunSeederAsync(second);
+        }
+        using (var third = CreateContext())
+        {
+            await RunSeederAsync(third);
+        }
+
+        using var verify = CreateContext();
+        (await verify.Set<Employee>().CountAsync()).Should().Be(4);
+    }
+
+    [Fact]
+    public async Task SeedAsync_EmployeeNumbersAreUniquePerTenant()
+    {
+        using var db = CreateContext();
+        await RunSeederAsync(db);
+
+        using var verify = CreateContext();
+        var acmeTenant = await verify.Tenants.SingleAsync(t => t.Slug == "acme");
+        var numbers = await verify.Set<Employee>()
+            .Where(e => e.TenantId == acmeTenant.Id)
+            .Select(e => e.EmployeeNumber)
+            .ToListAsync();
+
+        numbers.Should().OnlyHaveUniqueItems();
+        numbers.Should().BeEquivalentTo(["ACME-0001", "ACME-0002", "ACME-0003"]);
+    }
+
+    [Fact]
+    public async Task SeedAsync_LeavesDepartmentIdNullForEverySmokeEmployee()
+    {
+        using var db = CreateContext();
+        await RunSeederAsync(db);
+
+        using var verify = CreateContext();
+        var departmentIds = await verify.Set<Employee>().Select(e => e.DepartmentId).ToListAsync();
+
+        departmentIds.Should().AllSatisfy(id => id.Should().BeNull());
+    }
+
+    [Fact]
+    public async Task SeedAsync_ReusesExistingEmployeeRowInsteadOfDuplicatingOnRerun()
+    {
+        using (var first = CreateContext())
+        {
+            await RunSeederAsync(first);
+        }
+
+        Guid employeeId;
+        using (var mid = CreateContext())
+        {
+            var owner = await mid.Users.SingleAsync(u => u.Email == AcmeOwnerEmail);
+            employeeId = (await mid.Set<Employee>().SingleAsync(e => e.UserId == owner.Id)).Id;
+        }
+
+        using (var second = CreateContext())
+        {
+            await RunSeederAsync(second);
+        }
+
+        using var verify = CreateContext();
+        var ownerAfter = await verify.Users.SingleAsync(u => u.Email == AcmeOwnerEmail);
+        var employeeAfter = await verify.Set<Employee>().SingleAsync(e => e.UserId == ownerAfter.Id);
+
+        employeeAfter.Id.Should().Be(employeeId);
+    }
+
+    [Fact]
+    public async Task SeedAsync_ThrowsWhenEmployeeNumberCollidesWithADifferentUserInTheSameTenant()
+    {
+        using var db = CreateContext();
+        await SeedPermissionsAsync(db);
+        await SeedLookupDataAsync(db);
+
+        var tenantContext = new TenantContextAccessor();
+
+        // Seed tenants/users/legal entities first via one normal pass so the tenant + user rows
+        // exist, then hand-plant a conflicting employee_number under a foreign UserId before the
+        // *next* pass tries to seed the real ACME-0001 row for the real owner - this simulates a
+        // dirty dev database rather than a fresh one.
+        await DevSmokeTestTenantSeeder.SeedAsync(
+            db, tenantContext, CreatePasswordHasher().Object,
+            new Mock<IEncryptionService>().Object, new ConfigurationBuilder().Build(), CancellationToken.None);
+
+        var owner = await db.Users.SingleAsync(u => u.Email == AcmeOwnerEmail);
+        var conflictingEmployee = await db.Set<Employee>().SingleAsync(e => e.UserId == owner.Id);
+
+        // Repoint the existing ACME-0001 row onto a different, unrelated user id so the next
+        // seeder pass sees "employee_number ACME-0001 belongs to someone else."
+        conflictingEmployee.UserId = Guid.NewGuid();
+        await db.SaveChangesAsync();
+
+        var act = () => DevSmokeTestTenantSeeder.SeedAsync(
+            db, tenantContext, CreatePasswordHasher().Object,
+            new Mock<IEncryptionService>().Object, new ConfigurationBuilder().Build(), CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*ACME-0001*");
+    }
+
+    [Fact]
+    public void EmployeeEntity_UserIdIndex_IsUnique()
+    {
+        using var db = CreateContext();
+        var entityType = db.Model.FindEntityType(typeof(Employee))!;
+        var index = entityType.GetIndexes()
+            .Single(i => i.Properties.Select(p => p.Name).SequenceEqual(["UserId"]));
+
+        index.IsUnique.Should().BeTrue();
     }
 
     [Fact]
