@@ -17,5 +17,10 @@ public interface IObjectiveRepository
     /// </summary>
     Task<Objective?> GetTrackedDefaultByProjectIdAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 
+    Task<Objective?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
+    /// <summary>Every Objective for a Project, unordered - the caller builds the tree from ParentObjectiveId.</summary>
+    Task<IReadOnlyList<Objective>> GetTreeByProjectIdAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
+
     void Update(Objective objective);
 }
