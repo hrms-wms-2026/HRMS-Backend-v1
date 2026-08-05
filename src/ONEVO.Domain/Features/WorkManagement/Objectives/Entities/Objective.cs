@@ -10,6 +10,7 @@ public class Objective : BaseEntity
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
     public Guid OwnerId { get; set; }
+    public Guid? ReportingManagerId { get; set; }
     public bool IsActive { get; set; } = true;
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }

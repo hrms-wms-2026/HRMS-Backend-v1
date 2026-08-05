@@ -21,6 +21,8 @@ public class ObjectiveConfiguration : IEntityTypeConfiguration<Objective>
             .HasDatabaseName("ix_objectives_tenant_id_project_id_parent_objective_id");
         builder.HasIndex(o => new { o.TenantId, o.OwnerId, o.IsActive })
             .HasDatabaseName("ix_objectives_tenant_id_owner_id_is_active");
+        builder.HasIndex(o => new { o.TenantId, o.ReportingManagerId })
+            .HasDatabaseName("ix_objectives_tenant_id_reporting_manager_id");
         builder.HasIndex(o => new { o.TenantId, o.ProjectId })
             .IsUnique()
             .HasFilter("is_default = true")

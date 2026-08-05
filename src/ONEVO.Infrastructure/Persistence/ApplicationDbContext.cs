@@ -22,6 +22,7 @@ using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
+using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
@@ -176,6 +177,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ProjectCategory> ProjectCategories => Set<ProjectCategory>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<Objective> Objectives => Set<Objective>();
+    public DbSet<ObjectiveChangeRequest> ObjectiveChangeRequests => Set<ObjectiveChangeRequest>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
     public DbSet<ProjectMemberInvitation> ProjectMemberInvitations => Set<ProjectMemberInvitation>();
     public DbSet<VersionStatus> VersionStatuses => Set<VersionStatus>();
