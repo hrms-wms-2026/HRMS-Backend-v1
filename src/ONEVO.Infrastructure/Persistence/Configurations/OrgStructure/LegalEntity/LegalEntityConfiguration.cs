@@ -18,8 +18,8 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
                 "ck_legal_entities_financial_year_start_month",
                 "financial_year_start_month BETWEEN 1 AND 12");
             table.HasCheckConstraint(
-                "ck_legal_entities_first_day_of_week",
-                "first_day_of_week BETWEEN 1 AND 7");
+                "ck_legal_entities_week_start_day",
+                "week_start_day BETWEEN 1 AND 7");
             table.HasCheckConstraint(
                 "ck_legal_entities_time_format",
                 "time_format IN ('12h', '24h')");
@@ -46,7 +46,16 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
         builder.Property(l => l.Website).HasMaxLength(255);
         builder.Property(l => l.Timezone).HasMaxLength(50);
         builder.Property(l => l.FinancialYearStartMonth).IsRequired().HasDefaultValue(1);
-        builder.Property(l => l.FirstDayOfWeek).IsRequired().HasDefaultValue(1);
+
+        // Canonical docs (database/schemas/org-structure.md) name this column
+        // week_start_day; the CLR/DTO name FirstDayOfWeek is kept as-is (it is
+        // the established API/domain vocabulary) and mapped explicitly rather
+        // than renaming the property, per the reconciliation task's rule to
+        // prefer explicit column mapping over a cross-layer rename.
+        builder.Property(l => l.FirstDayOfWeek)
+            .HasColumnName("week_start_day")
+            .IsRequired()
+            .HasDefaultValue(1);
 
         // JSON array of weekday numbers using the 1=Monday..7=Sunday convention
         // (matches AddressJson's existing raw-JSON-string pattern rather than a

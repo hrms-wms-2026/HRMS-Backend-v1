@@ -12,14 +12,18 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
 {
     private readonly Mock<ILegalEntityRepository> _legalEntities = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
+    private readonly Mock<IDateTimeProvider> _dateTimeProvider = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly DateTimeOffset FixedNow = new(2026, 8, 3, 12, 0, 0, TimeSpan.Zero);
 
     private UpdateLegalEntityGeneralSettingsCommandHandler BuildSut()
     {
         _currentUser.SetupGet(c => c.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(c => c.TenantId).Returns(TenantId);
-        return new UpdateLegalEntityGeneralSettingsCommandHandler(_legalEntities.Object, _currentUser.Object);
+        _dateTimeProvider.SetupGet(d => d.UtcNow).Returns(FixedNow);
+        return new UpdateLegalEntityGeneralSettingsCommandHandler(
+            _legalEntities.Object, _currentUser.Object, _dateTimeProvider.Object);
     }
 
     private static LegalEntityEntity ExistingEntity(Guid id) => new()
@@ -85,6 +89,21 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         _legalEntities.Verify(r => r.GetByIdForTenantAsync(TenantId, entity.Id, It.IsAny<CancellationToken>()), Times.Once);
         _legalEntities.Verify(r => r.Update(entity), Times.Once);
         _legalEntities.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_SetsUpdatedAt_FromDateTimeProvider_NotSystemClock()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        _legalEntities.Setup(r => r.GetByIdForTenantAsync(TenantId, entity.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        await sut.Handle(ValidCommand(entity.Id), CancellationToken.None);
+
+        entity.UpdatedAt.Should().Be(FixedNow);
+        _dateTimeProvider.VerifyGet(d => d.UtcNow, Times.AtLeastOnce);
     }
 
     [Fact]

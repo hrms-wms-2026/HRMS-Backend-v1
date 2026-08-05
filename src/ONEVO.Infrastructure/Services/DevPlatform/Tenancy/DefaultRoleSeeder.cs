@@ -22,8 +22,11 @@ public sealed class DefaultRoleSeeder : IDefaultRoleSeeder
         IReadOnlyList<string> moduleKeys,
         CancellationToken ct = default)
     {
-        var permissions = await _entitlements.GetEntitledPermissionsAsync(moduleKeys, ct);
-        var explicitPermissions = permissions
+        var subscribedPermissions = await _entitlements.GetEntitledPermissionsAsync(moduleKeys, ct);
+        var baselinePermissions = await _entitlements.GetEntitledPermissionsAsync(PlatformBaselineModules.Keys, ct);
+        var explicitPermissions = subscribedPermissions
+            .Concat(baselinePermissions)
+            .DistinctBy(p => p.Id)
             .Where(p => p.Code != "*" && !ModuleAutoGrants.Contains(p.Code))
             .ToList();
 

@@ -34,6 +34,15 @@ public class PermissionResolver : IPermissionResolver
         var activeModuleKeys = await _entitlements.GetActiveModuleKeysForTenantAsync(tenantId, ct);
         var activeModules = activeModuleKeys.ToHashSet(StringComparer.Ordinal);
 
+        // Platform/system capability modules (roles administration, tenant configuration
+        // bootstrap, user administration, notifications administration) are never
+        // subscribed product modules, so they never appear in activeModuleKeys. They must
+        // still gate permissions open here - otherwise RolePermission rows DefaultRoleSeeder
+        // grants for these modules (e.g. roles:read/roles:manage) would be silently
+        // filtered out below. This union is local to gating; it does not affect the
+        // active_modules API response, which is sourced from activeModuleKeys directly.
+        activeModules.UnionWith(PlatformBaselineModules.Keys);
+
         var roleRows = await _permissions.ListRolePermissionCodesWithModulesAsync(userId, now, ct);
         var overrides = await _permissionOverrides.ListForUserAsync(tenantId, userId, ct);
 

@@ -116,6 +116,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantStatusHistoryRepository, EfTenantStatusHistoryRepository>();
         services.AddScoped<EfLegalEntityRepository>();
         services.AddScoped<ILegalEntityRepository>(sp => sp.GetRequiredService<EfLegalEntityRepository>());
+        services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
         services.AddScoped<EfSubscriptionRepository>();
         services.AddScoped<ISubscriptionPlanRepository>(sp => sp.GetRequiredService<EfSubscriptionRepository>());
         services.AddScoped<ITenantSubscriptionRepository>(sp => sp.GetRequiredService<EfSubscriptionRepository>());

@@ -10,8 +10,8 @@ internal static class ConfigurationTemplateModuleRequirement
             [ConfigurationTemplate.TypeConfiguration] = null,
             [ConfigurationTemplate.TypePositionTemplate] = "core_hr",
             [ConfigurationTemplate.TypeTimeOffPolicy] = "time_off",
-            [ConfigurationTemplate.TypeMonitoringPolicy] = "monitoring",
-            [ConfigurationTemplate.TypeAppAllowlist] = "configuration",
+            [ConfigurationTemplate.TypeMonitoringPolicy] = "activity_monitoring",
+            [ConfigurationTemplate.TypeAppAllowlist] = "activity_monitoring",
             [ConfigurationTemplate.TypeOnboarding] = "core_hr",
             [ConfigurationTemplate.TypeDataImportMapping] = "core_hr",
         };

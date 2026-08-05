@@ -89,8 +89,8 @@ public class PermissionSeeder : IHostedService
         Perm("employees:delete", "Delete employee records.", "core_hr"),
 
         // Organization
-        Perm("org:read", "View org structure, departments, hierarchy.", "org"),
-        Perm("org:manage", "Create and edit org structure, departments.", "org"),
+        Perm("org:read", "View org structure, departments, hierarchy.", "org_structure"),
+        Perm("org:manage", "Create and edit org structure, departments.", "org_structure"),
 
         // Leave (Legacy compatibility alias - to be migrated to time_off. Not used for Module Catalog ownership)
         Perm("leave:read", "View leave records for all employees in scope.", "leave"),

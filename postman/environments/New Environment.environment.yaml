@@ -1,15 +1,15 @@
 name: New Environment
 values:
   - key: base_url
-    value: 'http://localhost:5139'
+    value: 'https://localhost:7229'
   - key: admin_base_url
-    value: 'http://admin.localhost:5139'
+    value: 'https://admin.localhost:7229'
   - key: tenant_base_url
-    value: 'http://localhost:5139'
+    value: 'https://localhost:7229'
   - key: tenant_slug
     value: acme
   - key: tenant_host
-    value: 'http://acme.localhost:5139'
+    value: 'https://acme.localhost:7229'
   - key: admin_email
     value: dev@onevo.io
   - key: admin_password
@@ -27,6 +27,10 @@ values:
   - key: tenant_id
     value: ''
   - key: legal_entity_id
+    value: ''
+  - key: department_id
+    value: ''
+  - key: position_id
     value: ''
   - key: plan_id
     value: ''
