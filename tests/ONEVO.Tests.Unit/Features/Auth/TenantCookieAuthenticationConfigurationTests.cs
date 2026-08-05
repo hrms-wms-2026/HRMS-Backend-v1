@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -44,13 +45,23 @@ public sealed class TenantCookieAuthenticationConfigurationTests
         var environment = new Mock<IWebHostEnvironment>();
         environment.SetupGet(instance => instance.EnvironmentName).Returns(Environments.Development);
 
+        // AddApiAuthentication now requires IConfiguration for TrayDeviceScheme JWT setup.
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TrayApp:Jwt:Secret"] = "unit-test-tray-jwt-secret-min-32-chars!!",
+                ["TrayApp:Jwt:Issuer"] = "onevo-tray",
+                ["TrayApp:Jwt:Audience"] = "onevo-tray-app"
+            })
+            .Build();
+
         var extensionsType = typeof(ONEVO.Api.Controllers.Tenant.Auth.AuthLoginController).Assembly
             .GetType("ONEVO.Api.Extensions.AuthenticationExtensions", throwOnError: true)!;
         var addAuthentication = extensionsType.GetMethod(
             "AddApiAuthentication",
             BindingFlags.Static | BindingFlags.NonPublic)!;
 
-        addAuthentication.Invoke(null, [services, environment.Object]);
+        addAuthentication.Invoke(null, [services, environment.Object, configuration]);
 
         using var provider = services.BuildServiceProvider();
         return provider

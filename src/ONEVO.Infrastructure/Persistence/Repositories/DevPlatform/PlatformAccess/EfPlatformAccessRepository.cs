@@ -40,6 +40,24 @@ public sealed class EfPlatformAccessRepository :
     public async Task<IReadOnlyList<PlatformUser>> ListUsersAsync(CancellationToken ct = default) =>
         await _db.PlatformUsers.AsNoTracking().ToListAsync(ct);
 
+    public async Task<IReadOnlyDictionary<Guid, string>> GetFirstRoleNamesByUserIdsAsync(
+        IEnumerable<Guid> userIds, CancellationToken ct = default)
+    {
+        var ids = userIds.ToList();
+        if (ids.Count == 0)
+            return new Dictionary<Guid, string>();
+
+        var assignments = await _db.PlatformUserRoles
+            .Where(ur => ids.Contains(ur.UserId))
+            .Join(_db.PlatformRoles, ur => ur.RoleId, r => r.Id,
+                (ur, r) => new { ur.UserId, ur.AssignedAt, RoleName = r.Name })
+            .ToListAsync(ct);
+
+        return assignments
+            .GroupBy(a => a.UserId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(a => a.AssignedAt).First().RoleName);
+    }
+
     public Task AddAsync(PlatformUser user, CancellationToken ct = default) =>
         _db.PlatformUsers.AddAsync(user, ct).AsTask();
 

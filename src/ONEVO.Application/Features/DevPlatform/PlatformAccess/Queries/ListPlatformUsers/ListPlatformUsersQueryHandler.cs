@@ -17,6 +17,14 @@ public class ListPlatformUsersQueryHandler : IRequestHandler<ListPlatformUsersQu
     public async Task<IReadOnlyList<PlatformUserResponse>> Handle(ListPlatformUsersQuery request, CancellationToken cancellationToken)
     {
         var users = await _userRepository.ListUsersAsync(cancellationToken);
-        return users.Select(PlatformAccessMapper.Map).ToList();
+        if (users.Count == 0)
+            return Array.Empty<PlatformUserResponse>();
+
+        var roleNames = await _userRepository.GetFirstRoleNamesByUserIdsAsync(
+            users.Select(u => u.Id), cancellationToken);
+
+        return users
+            .Select(u => PlatformAccessMapper.Map(u, roleNames.TryGetValue(u.Id, out var role) ? role : string.Empty))
+            .ToList();
     }
 }
