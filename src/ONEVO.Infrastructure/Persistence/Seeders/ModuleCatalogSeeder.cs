@@ -117,7 +117,7 @@ public class ModuleCatalogSeeder : IHostedService
             new { Key = "roles.permission_management", Module = "roles", Name = "Permission Management", Included = true },
             new { Key = "notifications.email_delivery", Module = "notifications", Name = "Email Delivery", Included = true },
             new { Key = "notifications.in_app_delivery", Module = "notifications", Name = "In-App Delivery", Included = true },
-            new { Key = "org.structure_management", Module = "org", Name = "Structure Management", Included = true },
+            new { Key = "org.structure_management", Module = "org_structure", Name = "Structure Management", Included = true },
             
             // Core HR
             new { Key = "core_hr.employee_profiles", Module = "core_hr", Name = "Employee Profiles", Included = true },
@@ -238,9 +238,9 @@ public class ModuleCatalogSeeder : IHostedService
             new { Module = "notifications", Perm = "notifications:manage" },
             new { Module = "notifications", Perm = "settings:notifications" },
 
-            // org
-            new { Module = "org", Perm = "org:read" },
-            new { Module = "org", Perm = "org:manage" },
+            // org_structure
+            new { Module = "org_structure", Perm = "org:read" },
+            new { Module = "org_structure", Perm = "org:manage" },
 
             // core_hr
             new { Module = "core_hr", Perm = "employees:read" },

@@ -7,7 +7,7 @@ description: |-
 
   It covers:
 
-  - Tenant login from base domain or tenant host
+  - Tenant login from the base domain
       
   - Workspace selection
       
@@ -19,7 +19,7 @@ description: |-
       
   - Invitation acceptance
       
-  - Tenant-owned business APIs
+  - Tenant-owned business APIs, including Company, Department, and Position setup
       
 
   Authentication:
@@ -35,9 +35,9 @@ description: |-
 
   Base URLs:
 
-  - Base-domain login: `{{base_url}}`
+  - Base-domain login and tenant APIs: `{{base_url}}`
       
-  - Tenant-host login: `http://{{tenant_slug}}.localhost:5139`
+  - Tenant session exchange redirects the browser to the tenant frontend host.
       
 
   Important:
@@ -47,3 +47,13 @@ description: |-
   - Tenant context is resolved by host or by secure login challenge.
       
   - Organization APIs are tenant-isolated by backend RLS.
+
+  Manual organization setup order:
+
+  1. List or create a Company and store `legal_entity_id`.
+
+  2. Create a Department and store `department_id`.
+
+  3. Create a Position under that Department and store `position_id`.
+
+  4. Use Update Department to assign or clear `headPositionId`.

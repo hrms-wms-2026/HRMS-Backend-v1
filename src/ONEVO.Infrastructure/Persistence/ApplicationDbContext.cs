@@ -107,6 +107,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<TenantAuthPolicy> TenantAuthPolicies => Set<TenantAuthPolicy>();
     public DbSet<InvitationToken> InvitationTokens => Set<InvitationToken>();
     public DbSet<Position> Positions => Set<Position>();
+    public DbSet<PositionReportingHistory> PositionReportingHistories => Set<PositionReportingHistory>();
+    public DbSet<ManagementCoverageRecord> ManagementCoverageRecords => Set<ManagementCoverageRecord>();
 
     // Developer Platform (canonical Phase 1 inventory tables)
     public DbSet<PlatformUser> PlatformUsers => Set<PlatformUser>();
@@ -171,6 +173,7 @@ public class ApplicationDbContext : DbContext
 
     // OrgStructure
     public DbSet<LegalEntity> LegalEntities => Set<LegalEntity>();
+    public DbSet<Department> Departments => Set<Department>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

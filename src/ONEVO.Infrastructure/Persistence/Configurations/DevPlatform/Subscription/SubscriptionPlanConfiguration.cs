@@ -32,7 +32,7 @@ public class SubscriptionPlanConfiguration : IEntityTypeConfiguration<Subscripti
                 Code = "starter_51_200",
                 Tier = "starter",
                 CompanySizeRange = "51-200",
-                IncludedModulesJson = """["auth","configuration","roles","notifications","org","workflow_engine","core_hr","leave","calendar","monitoring","workforce","verification","exceptions","analytics","work_management","chat","chat_ai","integrations"]""",
+                IncludedModulesJson = """["org_structure","core_hr","leave","calendar","time_attendance","activity_monitoring","discrepancy_engine","identity_verification","exception_engine","productivity_analytics","desktop_agent_gateway","worksync_foundation","projects","objectives_milestones","tasks","boards","planning_sprints"]""",
                 CalculatedMonthlyPrice = 7.50m,
                 CalculatedAnnualPrice = 75.00m,
                 Currency = "USD",

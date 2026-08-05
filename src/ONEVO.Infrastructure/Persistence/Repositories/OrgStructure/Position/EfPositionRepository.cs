@@ -1,17 +1,333 @@
 using Microsoft.EntityFrameworkCore;
-using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.OrgStructure.Entities;
-using ONEVO.Infrastructure.Persistence;
-using ONEVO.Infrastructure.Persistence.Repositories;
 
+// Namespace deliberately stops at the feature segment: a ".Position" segment would
+// collide with the Position entity type and force using-aliases everywhere (same
+// convention as EfDepartmentRepository/EfLegalEntityRepository).
 namespace ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 
-public sealed class EfPositionRepository : BaseRepository<Position>, IPositionRepository
+public class EfPositionRepository : IPositionRepository
 {
-    public EfPositionRepository(ApplicationDbContext db, ITenantContext tenantContext)
-        : base(db, tenantContext) { }
+    private readonly ApplicationDbContext _db;
+
+    public EfPositionRepository(ApplicationDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task AddAsync(Position position, CancellationToken ct = default)
+    {
+        await _db.Positions.AddAsync(position, ct);
+    }
+
+    public void Update(Position position)
+    {
+        _db.Positions.Update(position);
+    }
 
     public async Task<Position?> GetByIdAsync(Guid id, CancellationToken ct = default)
-        => await Query().FirstOrDefaultAsync(p => p.Id == id, ct);
+    {
+        var result = await _db.Positions
+            .AsNoTracking()
+            .Where(position => position.Id == id)
+            .FirstOrDefaultAsync(ct);
+
+        return result;
+    }
+
+    public async Task<Position?> GetByIdAsync(Guid tenantId, Guid positionId, CancellationToken ct = default)
+    {
+        var result = await _db.Positions
+            .AsNoTracking()
+            .Where(position => position.TenantId == tenantId && position.Id == positionId)
+            .FirstOrDefaultAsync(ct);
+
+        return result;
+    }
+
+    public async Task<Position?> GetByIdForLegalEntityAsync(
+        Guid tenantId, Guid legalEntityId, Guid positionId, CancellationToken ct = default)
+    {
+        var result = await _db.Positions
+            .AsNoTracking()
+            .Where(position =>
+                position.TenantId == tenantId
+                && position.LegalEntityId == legalEntityId
+                && position.Id == positionId)
+            .FirstOrDefaultAsync(ct);
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<Position>> ListByLegalEntityAsync(
+        Guid tenantId, Guid legalEntityId, bool includeInactive = false, Guid? departmentId = null, CancellationToken ct = default)
+    {
+        var query = _db.Positions
+            .AsNoTracking()
+            .Where(position => position.TenantId == tenantId && position.LegalEntityId == legalEntityId);
+
+        if (!includeInactive)
+        {
+            query = query.Where(position => position.IsActive);
+        }
+
+        if (departmentId is not null)
+        {
+            query = query.Where(position => position.DepartmentId == departmentId.Value);
+        }
+
+        query = query.OrderBy(position => position.Name).ThenBy(position => position.Id);
+
+        var results = await query.ToListAsync(ct);
+        return results;
+    }
+
+    public async Task<bool> ExistsByCodeAsync(
+        Guid tenantId, Guid legalEntityId, string code, Guid? excludingPositionId = null, CancellationToken ct = default)
+    {
+        var normalizedCode = code.ToLower();
+
+        var query = _db.Positions
+            .AsNoTracking()
+            .Where(position =>
+                position.TenantId == tenantId
+                && position.LegalEntityId == legalEntityId
+                && position.Code != null
+                && position.Code.ToLower() == normalizedCode);
+
+        if (excludingPositionId is not null)
+        {
+            query = query.Where(position => position.Id != excludingPositionId.Value);
+        }
+
+        var exists = await query.AnyAsync(ct);
+        return exists;
+    }
+
+    public async Task<bool> ExistsByNameAsync(
+        Guid tenantId, Guid legalEntityId, string name, Guid? excludingPositionId = null, CancellationToken ct = default)
+    {
+        var query = _db.Positions
+            .AsNoTracking()
+            .Where(position =>
+                position.TenantId == tenantId
+                && position.LegalEntityId == legalEntityId
+                && position.Name == name);
+
+        if (excludingPositionId is not null)
+        {
+            query = query.Where(position => position.Id != excludingPositionId.Value);
+        }
+
+        var exists = await query.AnyAsync(ct);
+        return exists;
+    }
+
+    public async Task<bool> ExistsInDepartmentAsync(
+        Guid tenantId, Guid legalEntityId, Guid departmentId, Guid positionId, CancellationToken ct = default)
+    {
+        var exists = await _db.Positions
+            .AsNoTracking()
+            .Where(position =>
+                position.TenantId == tenantId
+                && position.LegalEntityId == legalEntityId
+                && position.DepartmentId == departmentId
+                && position.Id == positionId)
+            .AnyAsync(ct);
+
+        return exists;
+    }
+
+    public async Task<bool> IsDescendantAsync(
+        Guid tenantId, Guid legalEntityId, Guid positionId, Guid possibleDescendantId, CancellationToken ct = default)
+    {
+        var descendantIds = _db.Database.SqlQuery<Guid>($@"
+            WITH RECURSIVE descendants AS (
+                SELECT id FROM positions
+                WHERE tenant_id = {tenantId} AND legal_entity_id = {legalEntityId}
+                    AND reports_to_position_id = {positionId}
+                UNION ALL
+                SELECT p.id FROM positions p
+                INNER JOIN descendants ON p.reports_to_position_id = descendants.id
+                WHERE p.tenant_id = {tenantId} AND p.legal_entity_id = {legalEntityId}
+            )
+            SELECT id AS ""Value"" FROM descendants
+        ");
+
+        var isDescendant = await descendantIds.AnyAsync(id => id == possibleDescendantId, ct);
+        return isDescendant;
+    }
+
+    public async Task<int> CountActiveByDepartmentAsync(
+        Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default)
+    {
+        var count = await _db.Positions
+            .AsNoTracking()
+            .Where(position =>
+                position.TenantId == tenantId
+                && position.LegalEntityId == legalEntityId
+                && position.DepartmentId == departmentId
+                && position.IsActive)
+            .CountAsync(ct);
+
+        return count;
+    }
+
+    public async Task<int> CountActiveReportsToPositionAsync(
+        Guid tenantId, Guid legalEntityId, Guid positionId, CancellationToken ct = default)
+    {
+        var count = await _db.Positions
+            .AsNoTracking()
+            .Where(position =>
+                position.TenantId == tenantId
+                && position.LegalEntityId == legalEntityId
+                && position.ReportsToPositionId == positionId
+                && position.IsActive)
+            .CountAsync(ct);
+
+        return count;
+    }
+
+    public async Task<PositionPage> ListPageAsync(
+        Guid tenantId,
+        Guid legalEntityId,
+        Guid? departmentId,
+        string? search,
+        bool includeInactive,
+        string sortBy,
+        string sortDirection,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        var query = _db.Positions
+            .AsNoTracking()
+            .Where(position => position.TenantId == tenantId && position.LegalEntityId == legalEntityId);
+
+        if (!includeInactive)
+        {
+            query = query.Where(position => position.IsActive);
+        }
+
+        if (departmentId is not null)
+        {
+            query = query.Where(position => position.DepartmentId == departmentId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var normalizedSearch = search.Trim().ToLower();
+            query = query.Where(position =>
+                position.Name.ToLower().Contains(normalizedSearch)
+                || (position.Code != null && position.Code.ToLower().Contains(normalizedSearch)));
+        }
+
+        query = ApplySort(query, sortBy, sortDirection);
+
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+        var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
+
+        return new PositionPage(items, totalCount, page, pageSize, totalPages);
+    }
+
+    private static IQueryable<Position> ApplySort(IQueryable<Position> query, string sortBy, string sortDirection)
+    {
+        var ascending = sortDirection == "asc";
+
+        return sortBy switch
+        {
+            "code" => ascending
+                ? query.OrderBy(position => position.Code).ThenBy(position => position.Id)
+                : query.OrderByDescending(position => position.Code).ThenBy(position => position.Id),
+            "department" => ascending
+                ? query.OrderBy(position => position.DepartmentId).ThenBy(position => position.Id)
+                : query.OrderByDescending(position => position.DepartmentId).ThenBy(position => position.Id),
+            "reportsto" => ascending
+                ? query.OrderBy(position => position.ReportsToPositionId).ThenBy(position => position.Id)
+                : query.OrderByDescending(position => position.ReportsToPositionId).ThenBy(position => position.Id),
+            "type" => ascending
+                ? query.OrderBy(position => position.PositionType).ThenBy(position => position.Id)
+                : query.OrderByDescending(position => position.PositionType).ThenBy(position => position.Id),
+            "capacity" => ascending
+                ? query.OrderBy(position => position.MaxOccupancy).ThenBy(position => position.Id)
+                : query.OrderByDescending(position => position.MaxOccupancy).ThenBy(position => position.Id),
+            "status" => ascending
+                ? query.OrderBy(position => position.IsActive).ThenBy(position => position.Id)
+                : query.OrderByDescending(position => position.IsActive).ThenBy(position => position.Id),
+            "createdat" => ascending
+                ? query.OrderBy(position => position.CreatedAt).ThenBy(position => position.Id)
+                : query.OrderByDescending(position => position.CreatedAt).ThenBy(position => position.Id),
+            "updatedat" => ascending
+                ? query.OrderBy(position => position.UpdatedAt).ThenBy(position => position.Id)
+                : query.OrderByDescending(position => position.UpdatedAt).ThenBy(position => position.Id),
+            _ => ascending
+                ? query.OrderBy(position => position.Name).ThenBy(position => position.Id)
+                : query.OrderByDescending(position => position.Name).ThenBy(position => position.Id),
+        };
+    }
+
+    public async Task<int> CountHeadDepartmentReferencesAsync(
+        Guid tenantId, Guid legalEntityId, Guid positionId, CancellationToken ct = default)
+    {
+        var count = await _db.Departments
+            .AsNoTracking()
+            .Where(department =>
+                department.TenantId == tenantId
+                && department.LegalEntityId == legalEntityId
+                && department.HeadPositionId == positionId)
+            .CountAsync(ct);
+
+        return count;
+    }
+
+    public async Task AddReportingHistoryAsync(PositionReportingHistory history, CancellationToken ct = default)
+    {
+        await _db.PositionReportingHistories.AddAsync(history, ct);
+    }
+
+    public async Task AddManagementCoverageRecordAsync(ManagementCoverageRecord record, CancellationToken ct = default)
+    {
+        await _db.ManagementCoverageRecords.AddAsync(record, ct);
+    }
+
+    public async Task<PositionReportingHistory?> GetCurrentReportingHistoryAsync(
+        Guid tenantId, Guid positionId, CancellationToken ct = default)
+    {
+        var result = await _db.PositionReportingHistories
+            .AsNoTracking()
+            .Where(h => h.TenantId == tenantId && h.PositionId == positionId && h.EffectiveTo == null)
+            .OrderByDescending(h => h.EffectiveFrom)
+            .FirstOrDefaultAsync(ct);
+
+        return result;
+    }
+
+    public async Task<ManagementCoverageRecord?> GetLockedReportingStructureCoverageAsync(
+        Guid tenantId, Guid ownerPositionId, Guid coveredPositionId, CancellationToken ct = default)
+    {
+        var result = await _db.ManagementCoverageRecords
+            .AsNoTracking()
+            .Where(m =>
+                m.TenantId == tenantId
+                && m.OwnerPositionId == ownerPositionId
+                && m.CoveredTargetType == ManagementCoverageRecord.TargetPosition
+                && m.CoveredPositionId == coveredPositionId
+                && m.Source == ManagementCoverageRecord.SourceReportingStructure
+                && m.IsLocked
+                && m.Status == ManagementCoverageRecord.StatusActive)
+            .FirstOrDefaultAsync(ct);
+
+        return result;
+    }
+
+    public async Task<int> SaveChangesAsync(CancellationToken ct = default)
+    {
+        var affectedRows = await _db.SaveChangesAsync(ct);
+        return affectedRows;
+    }
 }

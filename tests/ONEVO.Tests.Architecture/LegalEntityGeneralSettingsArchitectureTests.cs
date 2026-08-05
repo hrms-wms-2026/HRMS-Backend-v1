@@ -181,6 +181,25 @@ public class LegalEntityGeneralSettingsArchitectureTests
         Assert.Contains("ix_legal_entities_tenant_id_registration_number", indexNames);
     }
 
+    /// <summary>
+    /// The canonical docs (database/schemas/org-structure.md) name this column
+    /// week_start_day. The CLR property stays FirstDayOfWeek, so this guards the
+    /// explicit HasColumnName mapping in LegalEntityConfiguration against
+    /// regressing back to the snake_case-convention default of
+    /// first_day_of_week.
+    /// </summary>
+    [Fact]
+    public void Model_LegalEntities_FirstDayOfWeek_MapsToWeekStartDayColumn()
+    {
+        using var context = CreateModelInspectionContext();
+
+        var entityType = context.Model.GetEntityTypes().Single(e => e.ClrType == typeof(LegalEntity));
+        var property = entityType.FindProperty(nameof(LegalEntity.FirstDayOfWeek));
+
+        Assert.NotNull(property);
+        Assert.Equal("week_start_day", property!.GetColumnName());
+    }
+
     private static string ReadExpandMigrationSource()
     {
         var migrationsDir = FindMigrationsDirectory();
