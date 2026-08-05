@@ -18,7 +18,9 @@ using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
+using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
@@ -73,6 +75,16 @@ public class ApplicationDbContext : DbContext
     // Monitoring - Employee Check-In
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
     public DbSet<MonitoringFaceScan> MonitoringFaceScans => Set<MonitoringFaceScan>();
+
+    // Monitoring - Activity (keyboard/mouse counts)
+    public DbSet<ActivitySnapshot> ActivitySnapshots => Set<ActivitySnapshot>();
+    public DbSet<ActivityRawBuffer> ActivityRawBuffers => Set<ActivityRawBuffer>();
+    public DbSet<ActivityDailySummary> ActivityDailySummaries => Set<ActivityDailySummary>();
+
+    // Monitoring - Feature toggles & overrides
+    public DbSet<MonitoringFeatureToggles> MonitoringFeatureToggles => Set<MonitoringFeatureToggles>();
+    public DbSet<EmployeeMonitoringOverride> EmployeeMonitoringOverrides => Set<EmployeeMonitoringOverride>();
+    public DbSet<MonitoringPolicyOverride> MonitoringPolicyOverrides => Set<MonitoringPolicyOverride>();
 
     // Infrastructure
     public DbSet<User> Users => Set<User>();
