@@ -10,6 +10,18 @@ public interface IProjectRepository
 
     Task<Project?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Same lookup as <see cref="GetByIdForTenantAsync"/>, but returns the entity tracked by the
+    /// DbContext's change tracker instead of AsNoTracking. Use this only on write paths that
+    /// mutate a subset of the entity's fields and then rely on EF's automatic change detection
+    /// (SaveChanges) to produce a partial UPDATE covering just the changed columns - do NOT call
+    /// <see cref="Update"/> on an entity fetched this way, since Update() unconditionally marks
+    /// every property Modified regardless of tracking state, which defeats the point. Read-only
+    /// callers (e.g. GetProjectByIdQueryHandler) should keep using the no-tracking
+    /// GetByIdForTenantAsync for performance.
+    /// </summary>
+    Task<Project?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
     void Update(Project project);
 
     /// <summary>

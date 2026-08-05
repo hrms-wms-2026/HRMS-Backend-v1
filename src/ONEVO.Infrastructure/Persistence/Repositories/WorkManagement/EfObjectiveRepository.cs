@@ -22,6 +22,14 @@ public class EfObjectiveRepository : IObjectiveRepository
             .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.ProjectId == projectId && o.IsDefault, ct);
     }
 
+    public async Task<Objective?> GetTrackedDefaultByProjectIdAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
+    {
+        // Deliberately no AsNoTracking - see interface doc. Callers must mutate and then call
+        // SaveChanges without an explicit Update(), so only actually-changed columns are written.
+        return await _db.Objectives
+            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.ProjectId == projectId && o.IsDefault, ct);
+    }
+
     public void Update(Objective objective)
     {
         _db.Objectives.Update(objective);

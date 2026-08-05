@@ -41,8 +41,11 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
         if (tenantId == Guid.Empty)
             return Result<ProjectDetailResponse>.Forbidden("Tenant context missing.");
 
-        var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
-        if (project is null)
+        // Tracked fetch (not AsNoTracking) - this handler only mutates a subset of the entity's
+        // fields, and relies on EF's automatic change detection at SaveChanges to produce a
+        // partial UPDATE covering just those fields. See IProjectRepository.GetTrackedByIdForTenantAsync.
+        var project = await _projects.GetTrackedByIdForTenantAsync(tenantId, request.ProjectId, ct);
+        if (project is null || !project.IsActive)
             return Result<ProjectDetailResponse>.NotFound("Project not found.");
 
         // Project is the tree's root node (milestone-hierarchy design §4) - only its own
@@ -66,7 +69,8 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
         if (category is null || !category.IsActive)
             return Result<ProjectDetailResponse>.NotFound("Project category not found.");
 
-        var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
+        // Same tracked-fetch reasoning as the project lookup above - see IObjectiveRepository.GetTrackedDefaultByProjectIdAsync.
+        var defaultObjective = await _objectives.GetTrackedDefaultByProjectIdAsync(tenantId, project.Id, ct);
         if (defaultObjective is null)
             return Result<ProjectDetailResponse>.NotFound("Default objective not found for this project.");
 
@@ -90,8 +94,14 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
         defaultObjective.EndDate = project.TargetDate;
         defaultObjective.UpdatedAt = now;
 
-        _projects.Update(project);
-        _objectives.Update(defaultObjective);
+        // No explicit _projects.Update()/_objectives.Update() here - both entities came from a
+        // tracked fetch above, so SaveChanges' automatic change detection marks only the fields
+        // actually mutated in this handler as Modified. Calling Update() on an already-tracked
+        // entity unconditionally marks every property Modified (verified empirically against this
+        // EF Core version), which would silently overwrite fields this handler never touched
+        // (AllocatedHours, CompletedHours, OwningLegalEntityId, NextTaskNumber, etc.) with the
+        // stale values read at the start of this request - the exact bug this tracked-fetch
+        // change fixes.
         await _unitOfWork.SaveChangesAsync(ct);
 
         // Always true here - the lead-only check above already rejected any non-lead caller.

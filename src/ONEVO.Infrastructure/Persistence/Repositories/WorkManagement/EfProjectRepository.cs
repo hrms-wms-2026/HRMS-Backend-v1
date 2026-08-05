@@ -29,6 +29,14 @@ public class EfProjectRepository : IProjectRepository
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == id, ct);
     }
 
+    public async Task<Project?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        // Deliberately no AsNoTracking - see interface doc. Callers must mutate and then call
+        // SaveChanges without an explicit Update(), so only actually-changed columns are written.
+        return await _db.Projects
+            .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == id, ct);
+    }
+
     public void Update(Project project)
     {
         _db.Projects.Update(project);

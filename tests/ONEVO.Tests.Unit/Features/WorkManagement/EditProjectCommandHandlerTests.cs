@@ -47,10 +47,10 @@ public class EditProjectCommandHandlerTests
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
         var projects = new Mock<IProjectRepository>();
-        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
+        projects.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
 
         var objectives = new Mock<IObjectiveRepository>();
-        objectives.Setup(x => x.GetDefaultByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(defaultObjective);
+        objectives.Setup(x => x.GetTrackedDefaultByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(defaultObjective);
 
         var categories = new Mock<IProjectCategoryRepository>();
         categories.Setup(x => x.GetByIdForTenantAsync(TenantId, CategoryId, It.IsAny<CancellationToken>()))
@@ -66,20 +66,47 @@ public class EditProjectCommandHandlerTests
     [Fact]
     public async Task Handle_ValidRequest_UpdatesProjectAndCascadesDefaultObjective()
     {
-        var (handler, projects, objectives) = BuildHandler(ExistingProject(), ExistingDefaultObjective());
+        var project = ExistingProject();
+        var defaultObjective = ExistingDefaultObjective();
+        var (handler, projects, objectives) = BuildHandler(project, defaultObjective);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Website Revamp v2", result.Value!.Name);
-        projects.Verify(x => x.Update(It.Is<Project>(p => p.Name == "Website Revamp v2" && p.TargetDate == new DateOnly(2026, 7, 1))), Times.Once);
-        objectives.Verify(x => x.Update(It.Is<Objective>(o => o.Title == "Website Revamp v2" && o.EndDate == new DateOnly(2026, 7, 1))), Times.Once);
+
+        // The handler fetches via the tracked-fetch methods and relies on EF's automatic change
+        // detection (SaveChanges) to persist only the mutated fields - it must NOT call
+        // Update() on either repository, since Update() unconditionally marks every property
+        // Modified regardless of tracking state, which would silently overwrite fields this
+        // handler never touched (see IProjectRepository.GetTrackedByIdForTenantAsync doc).
+        projects.Verify(x => x.Update(It.IsAny<Project>()), Times.Never);
+        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
+
+        // The same tracked instances returned by the mocked fetch were mutated in place.
+        Assert.Equal("Website Revamp v2", project.Name);
+        Assert.Equal(new DateOnly(2026, 7, 1), project.TargetDate);
+        Assert.Equal("Website Revamp v2", defaultObjective.Title);
+        Assert.Equal(new DateOnly(2026, 7, 1), defaultObjective.EndDate);
     }
 
     [Fact]
     public async Task Handle_ProjectNotFound_ReturnsNotFound()
     {
         var (handler, _, _) = BuildHandler(null, null);
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_InactiveProject_ReturnsNotFound()
+    {
+        var inactiveProject = ExistingProject();
+        inactiveProject.IsActive = false;
+        var (handler, _, _) = BuildHandler(inactiveProject, ExistingDefaultObjective());
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
