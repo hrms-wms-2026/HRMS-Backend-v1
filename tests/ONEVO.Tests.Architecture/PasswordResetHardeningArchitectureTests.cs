@@ -112,7 +112,9 @@ public sealed class PasswordResetHardeningArchitectureTests
         {
             "/api/v1/auth/forgot-password",
             "/api/v1/auth/reset-password",
-            "/api/v1/auth/force-change-password"
+            "/api/v1/auth/force-change-password",
+            "admin/v1/auth/forgot-password",
+            "admin/v1/auth/reset-password"
         })
         {
             source.Should().Contain(path,
