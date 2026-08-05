@@ -3,7 +3,7 @@
 **POST** `/api/v1/work/projects`
 
 **Auth:** Tenant session cookie (`onevo_session`) + CSRF header. Policy: `TenantPolicy`.
-**Permission:** `projects:create`
+**Permission:** `projects:access`
 **Idempotent:** Yes — send an `Idempotency-Key` header; retrying the same key returns the original result.
 
 ## Description

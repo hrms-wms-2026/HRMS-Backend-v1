@@ -25,7 +25,7 @@ public class ProjectsController : ControllerBase
 
     /// <summary>Creates a Project with its Default Objective, creator membership, Default Version, release reminder, optional labels, and optional logo — all in one atomic transaction.</summary>
     [HttpPost]
-    [RequirePermission("projects:create")]
+    [RequirePermission("projects:access")]
     [Idempotent]
     public async Task<IActionResult> Create([FromForm] CreateProjectFormRequest request, CancellationToken ct)
     {
