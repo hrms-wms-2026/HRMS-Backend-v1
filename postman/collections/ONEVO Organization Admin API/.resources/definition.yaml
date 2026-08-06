@@ -1,0 +1,59 @@
+$kind: collection
+name: ONEVO Organization Admin API
+description: |-
+  # ONEVO Organization Admin API
+
+  This collection contains tenant/customer-facing APIs used by organization owners, admins, and users.
+
+  It covers:
+
+  - Tenant login from the base domain
+      
+  - Workspace selection
+      
+  - Legal acceptance before session creation
+      
+  - MFA setup and verification
+      
+  - Password reset
+      
+  - Invitation acceptance
+      
+  - Tenant-owned business APIs, including Company, Department, and Position setup
+      
+
+  Authentication:
+
+  - Tenant login issues a `onevo_session` cookie.
+      
+  - Mutating tenant requests require the `onevo_csrf` cookie value to be sent as `X-CSRF-Token`.
+      
+  - Pending legal acceptance uses `onevo_legal_pending` and `onevo_legal_csrf`.
+      
+  - Legal CSRF must be sent in the `X-CSRF-Token` header, not in the body.
+      
+
+  Base URLs:
+
+  - Base-domain login and tenant APIs: `{{base_url}}`
+      
+  - Tenant session exchange redirects the browser to the tenant frontend host.
+      
+
+  Important:
+
+  - Tenant ID must never be sent from the browser body/header.
+      
+  - Tenant context is resolved by host or by secure login challenge.
+      
+  - Organization APIs are tenant-isolated by backend RLS.
+
+  Manual organization setup order:
+
+  1. List or create a Company and store `legal_entity_id`.
+
+  2. Create a Department and store `department_id`.
+
+  3. Create a Position under that Department and store `position_id`.
+
+  4. Use Update Department to assign or clear `headPositionId`.

@@ -1,0 +1,4265 @@
+{
+  "info": {
+    "name": "ONEVO HRMS API",
+    "_postman_id": "onevo-hrms-api-v1-collection",
+    "description": "ONEVO HRMS Backend API Collection\n\n**Base URL:** http://localhost:5139\n\n**Authentication:**\n- Admin routes (/admin/v1/...): Cookie auth via `admin_session` + `admin_csrf` cookies\n- Tenant routes (/api/v1/...): Cookie auth via `onevo_session` + `onevo_csrf` cookies\n- Enable Postman cookie jar (Cookies > Manage Cookies) for automatic cookie handling\n- After each login, copy the csrf cookie value into the matching collection variable:\n  - Admin login → copy `admin_csrf` cookie → set `adminCsrfToken`\n  - Tenant login → copy `onevo_csrf` cookie → set `tenantCsrfToken`\n\n**CSRF:** All POST/PUT/PATCH/DELETE on authenticated routes require `X-CSRF-Token` header.\nThe collection pre-request script auto-extracts these from the Postman cookie jar.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const jar = pm.cookies.jar();",
+          "jar.getAll('localhost', (err, cookies) => {",
+          "  if (!err && cookies) {",
+          "    const adminCsrf = cookies.find(c => c.name === 'admin_csrf');",
+          "    const tenantCsrf = cookies.find(c => c.name === 'onevo_csrf');",
+          "    if (adminCsrf) pm.collectionVariables.set('adminCsrfToken', adminCsrf.value);",
+          "    if (tenantCsrf) pm.collectionVariables.set('tenantCsrfToken', tenantCsrf.value);",
+          "  }",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5139",
+      "type": "string"
+    },
+    {
+      "key": "adminCsrfToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tenantCsrfToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tenantId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "roleId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "templateId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "trayAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "checkInId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Admin API",
+      "item": [
+        {
+          "name": "Auth",
+          "item": [
+            {
+              "name": "Get Google Config",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/auth/google-config",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "auth",
+                    "google-config"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Google Callback",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"google_id_token\": \"<google-id-token>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/auth/google-callback",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "auth",
+                    "google-callback"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Login",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const jar = pm.cookies.jar();",
+                      "jar.getAll('localhost', (err, cookies) => {",
+                      "  if (!err && cookies) {",
+                      "    const csrf = cookies.find(c => c.name === 'admin_csrf');",
+                      "    if (csrf) pm.collectionVariables.set('adminCsrfToken', csrf.value);",
+                      "  }",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"dev@onevo.io\",\n  \"password\": \"DevAdmin@123456\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/auth/login",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "auth",
+                    "login"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Enable MFA",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/auth/mfa/enable",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "auth",
+                    "mfa",
+                    "enable"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Confirm MFA Setup",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"123456\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/auth/mfa/confirm-setup",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "auth",
+                    "mfa",
+                    "confirm-setup"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Verify MFA",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"123456\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/auth/mfa/verify",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "auth",
+                    "mfa",
+                    "verify"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Me",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/auth/me",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "auth",
+                    "me"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Logout",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/auth/logout",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "auth",
+                    "logout"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tenants",
+          "item": [
+            {
+              "name": "List Tenants",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/tenants?page=1&page_size=20",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "tenants"
+                  ],
+                  "query": [
+                    {
+                      "key": "search",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "plan_code",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "page_size",
+                      "value": "20"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Validate Tenant",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/tenants/validate?slug=mycompany&country=LK",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "tenants",
+                    "validate"
+                  ],
+                  "query": [
+                    {
+                      "key": "slug",
+                      "value": "mycompany"
+                    },
+                    {
+                      "key": "company_name",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "email_domain",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "registration_number",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "country",
+                      "value": "LK"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create Tenant",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"company_name\": \"Acme Corp\",\n  \"slug\": \"acme\",\n  \"industry_profile\": \"technology\",\n  \"company_size_range\": \"50-200\",\n  \"legal_entity_name\": \"Acme Corporation (Pvt) Ltd\",\n  \"registration_number\": \"PV12345\",\n  \"country\": \"LK\",\n  \"timezone\": \"Asia/Colombo\",\n  \"currency\": \"LKR\",\n  \"subscription\": {\n    \"plan_id\": \"{{planId}}\",\n    \"billing_cycle\": \"monthly\",\n    \"commercial_model\": \"trial\",\n    \"trial_period_days\": 14\n  },\n  \"owner_invite\": {\n    \"email\": \"owner@acme.com\",\n    \"first_name\": \"John\",\n    \"last_name\": \"Doe\",\n    \"completion_methods\": [\"password\"]\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/tenants",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "tenants"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Tenant By Id",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "tenants",
+                    "{{tenantId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update Tenant",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"company_name\": \"Acme Corp Updated\",\n  \"slug\": \"acme-updated\",\n  \"industry_profile\": \"fintech\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "tenants",
+                    "{{tenantId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Change Tenant Status",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"action\": \"suspend\",\n  \"reason\": \"Non-payment\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}/status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "tenants",
+                    "{{tenantId}}",
+                    "status"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Invite Tenant Admin",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"admin@acme.com\",\n  \"first_name\": \"Jane\",\n  \"last_name\": \"Smith\",\n  \"role_id\": \"{{roleId}}\",\n  \"completion_methods\": [\"password\"]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}/invite-admin",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "tenants",
+                    "{{tenantId}}",
+                    "invite-admin"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Provisioning Summary",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}/provisioning-summary",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "tenants",
+                    "{{tenantId}}",
+                    "provisioning-summary"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Confirm Provisioning",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"confirm\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}/provision/confirm",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "tenants",
+                    "{{tenantId}}",
+                    "provision",
+                    "confirm"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Tenant — Roles",
+              "item": [
+                {
+                  "name": "List Tenant Roles",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}/roles",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "tenants",
+                        "{{tenantId}}",
+                        "roles"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Create Tenant Role",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"HR Manager\",\n  \"description\": \"Manages HR operations\",\n  \"permission_ids\": []\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}/roles",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "tenants",
+                        "{{tenantId}}",
+                        "roles"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Assign Tenant Role Permissions",
+                  "request": {
+                    "method": "PUT",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"permission_ids\": []\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}/roles/{{roleId}}/permissions",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "tenants",
+                        "{{tenantId}}",
+                        "roles",
+                        "{{roleId}}",
+                        "permissions"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Tenant — Permissions",
+              "item": [
+                {
+                  "name": "Get Permission Catalog",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}/permissions/catalog",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "tenants",
+                        "{{tenantId}}",
+                        "permissions",
+                        "catalog"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Tenant — Role Templates",
+              "item": [
+                {
+                  "name": "Apply Role Template",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"override_existing\": false\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}/role-templates/{{templateId}}/apply",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "tenants",
+                        "{{tenantId}}",
+                        "role-templates",
+                        "{{templateId}}",
+                        "apply"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Tenant — Config Templates",
+              "item": [
+                {
+                  "name": "Apply Config Template",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"override_existing\": false\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}/configuration-templates/{{templateId}}/apply",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "tenants",
+                        "{{tenantId}}",
+                        "configuration-templates",
+                        "{{templateId}}",
+                        "apply"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "List Template Applications",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/tenants/{{tenantId}}/configuration-template-applications?page=1&page_size=20",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "tenants",
+                        "{{tenantId}}",
+                        "configuration-template-applications"
+                      ],
+                      "query": [
+                        {
+                          "key": "page",
+                          "value": "1"
+                        },
+                        {
+                          "key": "page_size",
+                          "value": "20"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Configuration Templates",
+          "item": [
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/configuration-templates?page=1&page_size=20",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "configuration-templates"
+                  ],
+                  "query": [
+                    {
+                      "key": "type",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "active_only",
+                      "value": "true",
+                      "disabled": true
+                    },
+                    {
+                      "key": "industry_tag",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "page_size",
+                      "value": "20"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get By Id",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/configuration-templates/{{templateId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "configuration-templates",
+                    "{{templateId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Default HR Setup\",\n  \"type\": \"onboarding\",\n  \"industry_tags\": [\"technology\"],\n  \"is_active\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/configuration-templates",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "configuration-templates"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Default HR Setup v2\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/configuration-templates/{{templateId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "configuration-templates",
+                    "{{templateId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Deactivate",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/configuration-templates/{{templateId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "configuration-templates",
+                    "{{templateId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Clone",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/configuration-templates/{{templateId}}/clone",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "configuration-templates",
+                    "{{templateId}}",
+                    "clone"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Legal Document Versions",
+          "item": [
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/legal-document-versions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "legal-document-versions"
+                  ],
+                  "query": [
+                    {
+                      "key": "document_type",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get By Id",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/legal-document-versions/{{id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "legal-document-versions",
+                    "{{id}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"document_type\": \"terms_of_service\",\n  \"version\": \"1.0.0\",\n  \"content\": \"<html>Terms content here...</html>\",\n  \"locale\": \"en\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/legal-document-versions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "legal-document-versions"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"content\": \"<html>Updated terms content...</html>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/legal-document-versions/{{id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "legal-document-versions",
+                    "{{id}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Publish",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"effective_from\": \"2025-01-01T00:00:00Z\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/legal-document-versions/{{id}}/publish",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "legal-document-versions",
+                    "{{id}}",
+                    "publish"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Archive",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/legal-document-versions/{{id}}/archive",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "legal-document-versions",
+                    "{{id}}",
+                    "archive"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Module Catalog",
+          "item": [
+            {
+              "name": "List Modules",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/modules/catalog",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "modules",
+                    "catalog"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Module Detail",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/modules/catalog/{{moduleKey}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "modules",
+                    "catalog",
+                    "{{moduleKey}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Module Features",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/modules/catalog/{{moduleKey}}/features",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "modules",
+                    "catalog",
+                    "{{moduleKey}}",
+                    "features"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Module Permissions",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/modules/catalog/{{moduleKey}}/permissions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "modules",
+                    "catalog",
+                    "{{moduleKey}}",
+                    "permissions"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Platform Access",
+          "item": [
+            {
+              "name": "List Users",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/platform-access/users",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "platform-access",
+                    "users"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get User Detail",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/platform-access/users/{{platformUserId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "platform-access",
+                    "users",
+                    "{{platformUserId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "List Roles",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/platform-access/roles",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "platform-access",
+                    "roles"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Role Detail",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/platform-access/roles/{{roleId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "platform-access",
+                    "roles",
+                    "{{roleId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "List Permissions",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/platform-access/permissions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "platform-access",
+                    "permissions"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update Role Permissions",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"permission_ids\": []\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/platform-access/roles/{{roleId}}/permissions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "platform-access",
+                    "roles",
+                    "{{roleId}}",
+                    "permissions"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update User Roles",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"role_ids\": []\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/platform-access/users/{{platformUserId}}/roles",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "platform-access",
+                    "users",
+                    "{{platformUserId}}",
+                    "roles"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "List User Sessions",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/platform-access/users/{{platformUserId}}/sessions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "platform-access",
+                    "users",
+                    "{{platformUserId}}",
+                    "sessions"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Revoke User Session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/platform-access/users/{{platformUserId}}/sessions/{{sessionId}}/revoke",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "platform-access",
+                    "users",
+                    "{{platformUserId}}",
+                    "sessions",
+                    "{{sessionId}}",
+                    "revoke"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Revoke All User Sessions",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/platform-access/users/{{platformUserId}}/sessions/revoke-all",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "platform-access",
+                    "users",
+                    "{{platformUserId}}",
+                    "sessions",
+                    "revoke-all"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "List Auth Events",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/platform-access/auth-events",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "platform-access",
+                    "auth-events"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Role Templates",
+          "item": [
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/role-templates",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "role-templates"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Standard HR Role Template\",\n  \"description\": \"Default roles for HR module\",\n  \"permission_keys\": [\"employees:read\", \"time_off:read\"]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/role-templates",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "role-templates"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Role Template\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/role-templates/{{templateId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "role-templates",
+                    "{{templateId}}"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Subscription Plans (Admin)",
+          "item": [
+            {
+              "name": "Create Plan",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Starter\",\n  \"code\": \"starter\",\n  \"description\": \"For small teams\",\n  \"max_users\": 25,\n  \"features\": []\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/subscription-plans",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "subscription-plans"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update Plan",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Starter Plus\",\n  \"max_users\": 50\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/subscription-plans/{{id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "subscription-plans",
+                    "{{id}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Archive Plan",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{adminCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/subscription-plans/{{id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "subscription-plans",
+                    "{{id}}"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "System Config",
+          "item": [
+            {
+              "name": "Integration Catalog",
+              "item": [
+                {
+                  "name": "List",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/integrations",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "integrations"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Get",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/integrations/{{integrationKey}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "integrations",
+                        "{{integrationKey}}"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Create",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"key\": \"github\",\n  \"name\": \"GitHub\",\n  \"description\": \"GitHub integration\",\n  \"oauth_provider\": \"github\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/integrations",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "integrations"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Update",
+                  "request": {
+                    "method": "PUT",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"GitHub (Updated)\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/integrations/{{integrationKey}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "integrations",
+                        "{{integrationKey}}"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Activate",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/integrations/{{integrationKey}}/activate",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "integrations",
+                        "{{integrationKey}}",
+                        "activate"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Deactivate",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/integrations/{{integrationKey}}/deactivate",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "integrations",
+                        "{{integrationKey}}",
+                        "deactivate"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Link to Module",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/integrations/{{integrationKey}}/modules/{{moduleKey}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "integrations",
+                        "{{integrationKey}}",
+                        "modules",
+                        "{{moduleKey}}"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Unlink from Module",
+                  "request": {
+                    "method": "DELETE",
+                    "header": [
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/integrations/{{integrationKey}}/modules/{{moduleKey}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "integrations",
+                        "{{integrationKey}}",
+                        "modules",
+                        "{{moduleKey}}"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "OAuth Apps",
+              "item": [
+                {
+                  "name": "List OAuth Apps",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/oauth-apps",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "oauth-apps"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Get OAuth App",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/oauth-apps/{{provider}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "oauth-apps",
+                        "{{provider}}"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Configure OAuth App",
+                  "request": {
+                    "method": "PUT",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"client_id\": \"<client-id>\",\n  \"client_secret\": \"<client-secret>\",\n  \"redirect_uri\": \"http://localhost:5139/callback\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/oauth-apps/{{provider}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "oauth-apps",
+                        "{{provider}}"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Rotate OAuth App Secret",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"new_client_secret\": \"<new-secret>\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/oauth-apps/{{provider}}/rotate-secret",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "oauth-apps",
+                        "{{provider}}",
+                        "rotate-secret"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Activate OAuth App",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/oauth-apps/{{provider}}/activate",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "oauth-apps",
+                        "{{provider}}",
+                        "activate"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Deactivate OAuth App",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/oauth-apps/{{provider}}/deactivate",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "oauth-apps",
+                        "{{provider}}",
+                        "deactivate"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Validate OAuth App Config",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/oauth-apps/{{provider}}/validate-config",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "oauth-apps",
+                        "{{provider}}",
+                        "validate-config"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Service Keys",
+              "item": [
+                {
+                  "name": "List",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/service-keys",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "service-keys"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Get",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/service-keys/{{serviceKey}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "service-keys",
+                        "{{serviceKey}}"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Create",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"provider\": \"resend\",\n  \"key_name\": \"resend_main\",\n  \"api_key\": \"<api-key>\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/service-keys",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "service-keys"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Update",
+                  "request": {
+                    "method": "PUT",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"api_key\": \"<new-api-key>\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/service-keys/{{serviceKey}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "service-keys",
+                        "{{serviceKey}}"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Rotate Key",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"new_api_key\": \"<new-api-key>\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/service-keys/{{serviceKey}}/rotate-key",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "service-keys",
+                        "{{serviceKey}}",
+                        "rotate-key"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Verify",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/service-keys/{{serviceKey}}/verify",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "service-keys",
+                        "{{serviceKey}}",
+                        "verify"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Activate",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/service-keys/{{serviceKey}}/activate",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "service-keys",
+                        "{{serviceKey}}",
+                        "activate"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Deactivate",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/service-keys/{{serviceKey}}/deactivate",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "service-keys",
+                        "{{serviceKey}}",
+                        "deactivate"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Payment Gateways",
+              "item": [
+                {
+                  "name": "List Gateways",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/payment-gateways",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "payment-gateways"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Create Gateway",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"provider\": \"stripe\",\n  \"country\": \"LK\",\n  \"environment\": \"test\",\n  \"secret_key\": \"sk_test_xxx\",\n  \"publishable_key\": \"pk_test_xxx\",\n  \"webhook_secret\": \"whsec_xxx\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/payment-gateways",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "payment-gateways"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Verify Credentials",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"provider\": \"stripe\",\n  \"secret_key\": \"sk_test_xxx\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/payment-gateways/verify",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "payment-gateways",
+                        "verify"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Rotate Credential",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      },
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"secret_key\": \"sk_test_new_xxx\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/payment-gateways/{{id}}/credentials/rotate",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "payment-gateways",
+                        "{{id}}",
+                        "credentials",
+                        "rotate"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Resolve For Country",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/payment-gateways/resolve?country=LK&environment=test",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "payment-gateways",
+                        "resolve"
+                      ],
+                      "query": [
+                        {
+                          "key": "country",
+                          "value": "LK"
+                        },
+                        {
+                          "key": "environment",
+                          "value": "test"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Provider Options",
+              "item": [
+                {
+                  "name": "List Service Key Providers",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/service-key-providers",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "service-key-providers"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "List OAuth Providers",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/oauth-providers",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "oauth-providers"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "List Payment Gateway Providers",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/payment-gateway-providers",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "payment-gateway-providers"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "List Providers",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/providers",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "providers"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Tenant Integrations",
+              "item": [
+                {
+                  "name": "List",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/tenant-integrations?tenantId={{tenantId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "tenant-integrations"
+                      ],
+                      "query": [
+                        {
+                          "key": "tenantId",
+                          "value": "{{tenantId}}"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Get",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/tenant-integrations/{{id}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "tenant-integrations",
+                        "{{id}}"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "Disconnect",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "X-CSRF-Token",
+                        "value": "{{adminCsrfToken}}"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/admin/v1/system-config/tenant-integrations/{{id}}/disconnect",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "admin",
+                        "v1",
+                        "system-config",
+                        "tenant-integrations",
+                        "{{id}}",
+                        "disconnect"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Reference",
+          "item": [
+            {
+              "name": "Get Country Defaults",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/v1/reference/countries/LK/defaults",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "v1",
+                    "reference",
+                    "countries",
+                    "LK",
+                    "defaults"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🏢 Tenant API",
+      "item": [
+        {
+          "name": "Auth — Login",
+          "item": [
+            {
+              "name": "Login (Password)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const jar = pm.cookies.jar();",
+                      "jar.getAll('localhost', (err, cookies) => {",
+                      "  if (!err && cookies) {",
+                      "    const csrf = cookies.find(c => c.name === 'onevo_csrf');",
+                      "    if (csrf) pm.collectionVariables.set('tenantCsrfToken', csrf.value);",
+                      "  }",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"user@company.com\",\n  \"password\": \"Password@123\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/login",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "login"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Select Workspace",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"login_challenge\": \"<challenge-token>\",\n  \"workspace\": \"acme\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/login/select-workspace",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "login",
+                    "select-workspace"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Login with Google",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"google_id_token\": \"<google-id-token>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/login/google",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "login",
+                    "google"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auth — Session",
+          "item": [
+            {
+              "name": "Session Exchange",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"<exchange-code>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/session-exchange",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "session-exchange"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Me",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/me",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "me"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Logout",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/logout",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "logout"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auth — MFA",
+          "item": [
+            {
+              "name": "Enable MFA",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/mfa/enable",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "mfa",
+                    "enable"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Verify MFA",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"123456\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/mfa/verify",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "mfa",
+                    "verify"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Confirm MFA Setup",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"123456\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/mfa/confirm-setup",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "mfa",
+                    "confirm-setup"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auth — Password",
+          "item": [
+            {
+              "name": "Forgot Password",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"user@company.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/forgot-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "forgot-password"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Reset Password",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"token\": \"<reset-token>\",\n  \"new_password\": \"NewPassword@123\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/reset-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "reset-password"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Force Change Password",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"user@company.com\",\n  \"current_password\": \"TempPassword@123\",\n  \"new_password\": \"NewPassword@456\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/force-change-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "force-change-password"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auth — Invitation",
+          "item": [
+            {
+              "name": "Get Invitation",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/invitations/{{token}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "invitations",
+                    "{{token}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Accept Invitation (Password)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"password\": \"Password@123\",\n  \"confirm_password\": \"Password@123\",\n  \"acceptances\": [\n    {\n      \"document_type\": \"terms_of_service\",\n      \"version\": \"1.0.0\",\n      \"decision\": \"accepted\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/invitations/{{token}}/accept-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "invitations",
+                    "{{token}}",
+                    "accept-password"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Accept Invitation (Google)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"google_id_token\": \"<google-id-token>\",\n  \"acceptances\": [\n    {\n      \"document_type\": \"terms_of_service\",\n      \"version\": \"1.0.0\",\n      \"decision\": \"accepted\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/invitations/{{token}}/accept-google",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "invitations",
+                    "{{token}}",
+                    "accept-google"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Legal",
+          "item": [
+            {
+              "name": "Get Current Legal Documents",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/legal/documents/current",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "legal",
+                    "documents",
+                    "current"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Legal Document By Version",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/legal/documents/terms_of_service/1.0.0",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "legal",
+                    "documents",
+                    "terms_of_service",
+                    "1.0.0"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Pending Legal Documents",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/legal/pending",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "legal",
+                    "pending"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Submit Acceptances",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"acceptances\": [\n    {\n      \"document_type\": \"terms_of_service\",\n      \"version\": \"1.0.0\",\n      \"decision\": \"accepted\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/legal/acceptances",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "legal",
+                    "acceptances"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Accept Pending Legal (Complete Login)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"acceptances\": [\n    {\n      \"document_type\": \"terms_of_service\",\n      \"version\": \"1.0.0\",\n      \"decision\": \"accepted\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/legal/acceptances/complete-login",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "legal",
+                    "acceptances",
+                    "complete-login"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Roles",
+          "item": [
+            {
+              "name": "List Roles",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/roles",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "roles"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Role",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/roles/{{roleId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "roles",
+                    "{{roleId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create Role",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"HR Manager\",\n  \"description\": \"Human Resources Manager\",\n  \"permission_ids\": []\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/roles",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "roles"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Update Role",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Senior HR Manager\",\n  \"description\": \"Updated description\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/roles/{{roleId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "roles",
+                    "{{roleId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Archive Role",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/roles/{{roleId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "roles",
+                    "{{roleId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Assign Role Permissions",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"permission_ids\": []\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/roles/{{roleId}}/permissions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "roles",
+                    "{{roleId}}",
+                    "permissions"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Permissions",
+          "item": [
+            {
+              "name": "List Permission Catalog",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/permissions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "permissions"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Billing",
+          "item": [
+            {
+              "name": "List Subscription Plans",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/subscription-plans",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "subscription-plans"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Subscription Plan",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/subscription-plans/{{id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "subscription-plans",
+                    "{{id}}"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Integrations — GitHub",
+          "item": [
+            {
+              "name": "Start OAuth",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"redirect_uri\": \"http://localhost:5173/integrations/github/callback\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/integrations/github/connect/start",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "integrations",
+                    "github",
+                    "connect",
+                    "start"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "OAuth Callback",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/integrations/github/connect/callback?code=<code>&state=<state>",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "integrations",
+                    "github",
+                    "connect",
+                    "callback"
+                  ],
+                  "query": [
+                    {
+                      "key": "code",
+                      "value": "<code>"
+                    },
+                    {
+                      "key": "state",
+                      "value": "<state>"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Status",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/integrations/github/status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "integrations",
+                    "github",
+                    "status"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Disconnect",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/integrations/github/disconnect",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "integrations",
+                    "github",
+                    "disconnect"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Refresh",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/integrations/github/refresh",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "integrations",
+                    "github",
+                    "refresh"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Tenant Status",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/integrations/github/tenant/status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "integrations",
+                    "github",
+                    "tenant",
+                    "status"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Enable Tenant Integration",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/integrations/github/tenant/enable",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "integrations",
+                    "github",
+                    "tenant",
+                    "enable"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Disable Tenant Integration",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/integrations/github/tenant/disable",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "integrations",
+                    "github",
+                    "tenant",
+                    "disable"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Monitoring — Tray Activation",
+          "item": [
+            {
+              "name": "Generate Activation Code",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{tenantCsrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/monitoring/activation/generate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "monitoring",
+                    "activation",
+                    "generate"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Exchange Activation Code",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"code\": \"<activation-code>\",\n  \"device_name\": \"My Workstation\",\n  \"device_os\": \"Windows\",\n  \"device_fingerprint\": \"<unique-device-id>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/monitoring/activation/exchange",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "monitoring",
+                    "activation",
+                    "exchange"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "if (body.access_token) pm.collectionVariables.set('trayAccessToken', body.access_token);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Refresh Tray Token",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"refresh_token\": \"<refresh-token>\",\n  \"device_fingerprint\": \"<unique-device-id>\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/monitoring/activation/refresh",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "monitoring",
+                    "activation",
+                    "refresh"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Submit Check-In",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "if (body.check_in_id) pm.collectionVariables.set('checkInId', body.check_in_id);"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{trayAccessToken}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"latitude\": 6.9271,\n  \"longitude\": 79.8612,\n  \"location_accuracy\": 15.0,\n  \"location_address\": \"Colombo, Sri Lanka\",\n  \"device_serial_number\": \"SN-001\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/monitoring/check-in",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "monitoring",
+                    "check-in"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Upload Face Scan",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{trayAccessToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "face_scan",
+                      "type": "file",
+                      "src": ""
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/monitoring/check-in/{{checkInId}}/face-scan",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "monitoring",
+                    "check-in",
+                    "{{checkInId}}",
+                    "face-scan"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🔔 Webhooks",
+      "item": [
+        {
+          "name": "Stripe — Handle by Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Stripe-Signature",
+                "value": "<stripe-webhook-signature>"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"evt_xxx\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payment-gateways/stripe/{{gatewayKey}}/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payment-gateways",
+                "stripe",
+                "{{gatewayKey}}",
+                "webhook"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Stripe — Handle by Config Id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Stripe-Signature",
+                "value": "<stripe-webhook-signature>"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"evt_xxx\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payment-gateways/stripe/{{gatewayConfigId}}/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payment-gateways",
+                "stripe",
+                "{{gatewayConfigId}}",
+                "webhook"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🩺 Health",
+      "item": [
+        {
+          "name": "Liveness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Readiness (DB check)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health",
+                "ready"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

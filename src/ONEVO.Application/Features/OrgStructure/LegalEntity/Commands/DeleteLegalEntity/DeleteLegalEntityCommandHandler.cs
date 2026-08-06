@@ -9,11 +9,14 @@ public class DeleteLegalEntityCommandHandler : IRequestHandler<DeleteLegalEntity
 {
     private readonly ILegalEntityRepository _legalEntities;
     private readonly ICurrentUser _currentUser;
+    private readonly IDateTimeProvider _dateTimeProvider;
 
-    public DeleteLegalEntityCommandHandler(ILegalEntityRepository legalEntities, ICurrentUser currentUser)
+    public DeleteLegalEntityCommandHandler(
+        ILegalEntityRepository legalEntities, ICurrentUser currentUser, IDateTimeProvider dateTimeProvider)
     {
         _legalEntities = legalEntities;
         _currentUser = currentUser;
+        _dateTimeProvider = dateTimeProvider;
     }
 
     public async Task<Result> Handle(DeleteLegalEntityCommand request, CancellationToken ct)
@@ -39,7 +42,7 @@ public class DeleteLegalEntityCommandHandler : IRequestHandler<DeleteLegalEntity
         // Soft delete only - IsActive = false, row preserved for audit/history.
         // Never physically remove the row (no Remove/RemoveRange call here).
         entity.IsActive = false;
-        entity.UpdatedAt = DateTimeOffset.UtcNow;
+        entity.UpdatedAt = _dateTimeProvider.UtcNow;
 
         _legalEntities.Update(entity);
         await _legalEntities.SaveChangesAsync(ct);

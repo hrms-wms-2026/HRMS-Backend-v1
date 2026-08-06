@@ -12,12 +12,14 @@ public class UpdateLegalEntityGeneralSettingsCommandHandler
 {
     private readonly ILegalEntityRepository _legalEntities;
     private readonly ICurrentUser _currentUser;
+    private readonly IDateTimeProvider _dateTimeProvider;
 
     public UpdateLegalEntityGeneralSettingsCommandHandler(
-        ILegalEntityRepository legalEntities, ICurrentUser currentUser)
+        ILegalEntityRepository legalEntities, ICurrentUser currentUser, IDateTimeProvider dateTimeProvider)
     {
         _legalEntities = legalEntities;
         _currentUser = currentUser;
+        _dateTimeProvider = dateTimeProvider;
     }
 
     public async Task<Result<LegalEntityGeneralSettingsResponse>> Handle(
@@ -80,7 +82,7 @@ public class UpdateLegalEntityGeneralSettingsCommandHandler
         entity.TimeFormat = request.TimeFormat.Trim();
         entity.IsActive = newIsActive;
         entity.AddressJson = LegalEntityMapper.SerializeAddress(request.RegisteredBusinessAddress);
-        entity.UpdatedAt = DateTimeOffset.UtcNow;
+        entity.UpdatedAt = _dateTimeProvider.UtcNow;
 
         // LogoFileId, ParentLegalEntityId, IsPrimary, CreatedAt, Id and
         // TenantId are intentionally left untouched above - they are not

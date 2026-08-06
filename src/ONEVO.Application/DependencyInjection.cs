@@ -30,6 +30,8 @@ public static class DependencyInjection
         // Outbox message consumers (dispatched by the Infrastructure outbox worker).
         services.AddScoped<IOutboxMessageHandler, TenantOwnerInviteEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, PasswordResetEmailOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, AdminPasswordResetEmailOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, AdminPasswordChangedEmailOutboxHandler>();
         services.AddScoped<GitHubUserIntegrationAvailability>();
 
         return services;

@@ -72,7 +72,19 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Re
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.SystemConfig;
 using ONEVO.Infrastructure.Persistence.Repositories.SharedPlatform;
+using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.TrayActivation;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.CheckIn;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.ActivityMonitoring;
 using ONEVO.Infrastructure.Services.Auth.Login;
+using ONEVO.Infrastructure.Services.Monitoring.TrayActivation;
+using ONEVO.Infrastructure.Services.Monitoring.CheckIn;
+using ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
 using ONEVO.Infrastructure.Services.SharedPlatform;
 using ONEVO.Infrastructure.Services.SystemConfig;
 
@@ -125,6 +137,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantStatusHistoryRepository, EfTenantStatusHistoryRepository>();
         services.AddScoped<EfLegalEntityRepository>();
         services.AddScoped<ILegalEntityRepository>(sp => sp.GetRequiredService<EfLegalEntityRepository>());
+        services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
         services.AddScoped<EfSubscriptionRepository>();
         services.AddScoped<ISubscriptionPlanRepository>(sp => sp.GetRequiredService<EfSubscriptionRepository>());
         services.AddScoped<ITenantSubscriptionRepository>(sp => sp.GetRequiredService<EfSubscriptionRepository>());
@@ -253,6 +266,21 @@ public static class DependencyInjection
         services.AddScoped<ICurrentPlatformUserContext, CurrentPlatformUserContext>();
         services.AddSingleton<ICacheService, MemoryCacheService>();
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
+
+        // Monitoring - Tray App Activation
+        services.AddScoped<ITrayActivationRepository, EfTrayActivationRepository>();
+        services.AddSingleton<ITrayTokenService, TrayTokenService>();
+
+        // Monitoring - Check-In
+        services.AddScoped<ICheckInRepository, EfCheckInRepository>();
+        services.AddScoped<ITrayCurrentDevice, TrayCurrentDeviceService>();
+
+        // Monitoring - Activity (keyboard/mouse tracking)
+        services.AddScoped<IActivitySnapshotRepository, EfActivitySnapshotRepository>();
+        services.AddScoped<IActivityRawBufferRepository, EfActivityRawBufferRepository>();
+        services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
+        services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
+        services.AddHostedService<ActivityDailySummaryJob>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();

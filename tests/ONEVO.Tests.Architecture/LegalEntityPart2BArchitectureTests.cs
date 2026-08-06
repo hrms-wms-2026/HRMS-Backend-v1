@@ -82,6 +82,21 @@ public class LegalEntityPart2BArchitectureTests
         Assert.Contains("IsActive = false", source);
     }
 
+    /// <summary>
+    /// updated_at must flow through IDateTimeProvider (testable, consistent
+    /// with the interceptor pipeline) rather than a direct system-clock call
+    /// baked into the handler.
+    /// </summary>
+    [Theory]
+    [InlineData("UpdateLegalEntityGeneralSettings", "UpdateLegalEntityGeneralSettingsCommandHandler.cs")]
+    [InlineData("DeleteLegalEntity", "DeleteLegalEntityCommandHandler.cs")]
+    public void LegalEntityHandlers_DoNotCallDateTimeOffsetUtcNowDirectly(string subfolder, string fileName)
+    {
+        var source = ReadSource(subfolder, fileName);
+
+        Assert.DoesNotContain("DateTimeOffset.UtcNow", source);
+    }
+
     [Fact]
     public void UpdateLegalEntityHandler_FetchesExistingEntityBeforeMutatingOrSaving()
     {
