@@ -67,6 +67,20 @@ public sealed class EmailTemplateRendererTests
     }
 
     [Fact]
+    public void RenderPasswordReset_WithBase64TokenContainingUrlUnsafeCharacters_EscapesToken()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AppBaseUrl = "http://localhost:5173"
+        }));
+
+        var rendered = renderer.Render("password_reset", new { reset_token = "ab+c/d==" });
+
+        rendered.TextBody.Should().Contain("token=ab%2Bc%2Fd%3D%3D");
+        rendered.TextBody.Should().NotContain("token=ab+c/d==");
+    }
+
+    [Fact]
     public void RenderAdminPasswordReset_UsesAdminConsoleBaseUrl()
     {
         var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
@@ -95,6 +109,20 @@ public sealed class EmailTemplateRendererTests
     }
 
     [Fact]
+    public void RenderAdminPasswordReset_WithBase64TokenContainingUrlUnsafeCharacters_EscapesToken()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AdminConsoleBaseUrl = "http://localhost:5174"
+        }));
+
+        var rendered = renderer.Render("admin_password_reset", new { reset_token = "ab+c/d==" });
+
+        rendered.TextBody.Should().Contain("token=ab%2Bc%2Fd%3D%3D");
+        rendered.TextBody.Should().NotContain("token=ab+c/d==");
+    }
+
+    [Fact]
     public void RenderPlatformManagerInvite_UsesAdminConsoleBaseUrl()
     {
         var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
@@ -110,6 +138,24 @@ public sealed class EmailTemplateRendererTests
 
         rendered.HtmlBody.Should().Contain("https://admin.localhost:4200/auth/accept-invite?token=tok-xyz");
         rendered.TextBody.Should().Contain("https://admin.localhost:4200/auth/accept-invite?token=tok-xyz");
+    }
+
+    [Fact]
+    public void RenderPlatformManagerInvite_WithBase64TokenContainingUrlUnsafeCharacters_EscapesToken()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AdminConsoleBaseUrl = "https://admin.localhost:4200"
+        }));
+
+        var rendered = renderer.Render("platform_manager_invite", new
+        {
+            full_name = "New Manager",
+            invite_token = "ab+c/d=="
+        });
+
+        rendered.TextBody.Should().Contain("token=ab%2Bc%2Fd%3D%3D");
+        rendered.TextBody.Should().NotContain("token=ab+c/d==");
     }
 
     [Fact]

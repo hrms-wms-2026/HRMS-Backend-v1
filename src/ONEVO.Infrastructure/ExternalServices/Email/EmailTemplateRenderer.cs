@@ -48,7 +48,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             : _options.AppBaseUrl;
         var inviteUrl = string.IsNullOrWhiteSpace(appBaseUrl)
             ? $"[invite_url placeholder - set Email:AppBaseUrl] token={token}"
-            : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{token}";
+            : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}";
 
         var subject = $"You're invited to manage {company} on ONEVO";
 
@@ -93,7 +93,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
         var resetUrl = string.IsNullOrWhiteSpace(appBaseUrl)
             ? $"[reset_url placeholder - set Email:AppBaseUrl] token={token}"
-            : $"{appBaseUrl.TrimEnd('/')}/auth/reset-password?token={token}";
+            : $"{appBaseUrl.TrimEnd('/')}/auth/reset-password?token={Uri.EscapeDataString(token)}";
 
         var subject = "Reset your ONEVO password";
         var html = $"""
@@ -112,7 +112,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var token = Get(f, "reset_token");
         var resetUrl = string.IsNullOrWhiteSpace(_options.AdminConsoleBaseUrl)
             ? $"[reset_url placeholder - set Email:AdminConsoleBaseUrl] token={token}"
-            : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/auth/reset-password?token={token}";
+            : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/auth/reset-password?token={Uri.EscapeDataString(token)}";
 
         var subject = "Reset your ONEXSO Platform Administration password";
         var html = $"""
@@ -146,7 +146,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var token = Get(f, "invite_token");
         var inviteUrl = string.IsNullOrWhiteSpace(_options.AdminConsoleBaseUrl)
             ? $"[invite_url placeholder - set Email:AdminConsoleBaseUrl] token={token}"
-            : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/auth/accept-invite?token={token}";
+            : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/auth/accept-invite?token={Uri.EscapeDataString(token)}";
 
         var subject = "You've been invited to ONEXSO Platform Administration";
         var html = $"""
