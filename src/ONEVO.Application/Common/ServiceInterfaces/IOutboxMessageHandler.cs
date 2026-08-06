@@ -20,4 +20,5 @@ public static class OutboxMessageTypes
     public const string PasswordResetEmail = "password_reset_email";
     public const string AdminPasswordResetEmail = "admin_password_reset_email";
     public const string AdminPasswordChangedEmail = "admin_password_changed_email";
+    public const string PlatformManagerInviteEmail = "platform_manager_invite_email";
 }
