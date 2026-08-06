@@ -2,7 +2,7 @@
 
 **GET** `/api/v1/work/projects/{projectId}/objectives`
 
-**Auth:** Tenant session cookie + CSRF header. Policy: `TenantPolicy`. **Permission:** `projects:access` + caller must have an active `project_members` row somewhere in this project.
+**Auth:** Tenant session cookie + CSRF header. Policy: `TenantPolicy`. **Permission:** none — caller must have an active `project_members` row somewhere in this project (membership fallback, no `[RequirePermission]` attribute).
 
 ## Description
 

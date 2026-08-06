@@ -12,6 +12,12 @@ The caller's approval queue — every `pending` change request where the caller 
 
 `200 OK` — a JSON array of `ObjectiveChangeRequest` objects (same shape as Edit's pending response).
 
+## Errors
+
+| Status | Cause |
+|---|---|
+| `403` | Caller lacks `projects:access` |
+
 ## Source
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`ListMyChangeRequests`)
