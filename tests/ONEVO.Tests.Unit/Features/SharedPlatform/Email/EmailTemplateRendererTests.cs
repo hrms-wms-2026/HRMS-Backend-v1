@@ -65,4 +65,43 @@ public sealed class EmailTemplateRendererTests
         rendered.TextBody.Should().Contain("token=tok-123");
         rendered.TextBody.Should().Contain("placeholder");
     }
+
+    [Fact]
+    public void RenderAdminPasswordReset_UsesAdminConsoleBaseUrl()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AdminConsoleBaseUrl = "http://localhost:5174"
+        }));
+
+        var rendered = renderer.Render("admin_password_reset", new { reset_token = "tok-abc" });
+
+        rendered.HtmlBody.Should().Contain("http://localhost:5174/reset-password?token=tok-abc");
+        rendered.TextBody.Should().Contain("http://localhost:5174/reset-password?token=tok-abc");
+    }
+
+    [Fact]
+    public void RenderAdminPasswordReset_WithEmptyAdminConsoleBaseUrl_FallsBackToPlaceholder()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AdminConsoleBaseUrl = string.Empty
+        }));
+
+        var rendered = renderer.Render("admin_password_reset", new { reset_token = "tok-abc" });
+
+        rendered.TextBody.Should().Contain("token=tok-abc");
+        rendered.TextBody.Should().Contain("placeholder");
+    }
+
+    [Fact]
+    public void RenderAdminPasswordChanged_ProducesSecurityNoticeCopy()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("admin_password_changed", new { });
+
+        rendered.HtmlBody.Should().Contain("password was changed");
+        rendered.TextBody.Should().Contain("If this wasn't you", "must tell the recipient how to react if this wasn't them");
+    }
 }

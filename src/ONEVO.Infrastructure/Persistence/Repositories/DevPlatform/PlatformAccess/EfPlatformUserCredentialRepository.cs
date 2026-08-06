@@ -34,4 +34,26 @@ public sealed class EfPlatformUserCredentialRepository : IPlatformUserCredential
     {
         _db.PlatformUserCredentials.Update(credential);
     }
+
+    public async Task<Guid?> TryConsumeResetTokenAsync(
+        string tokenHash, DateTimeOffset now, CancellationToken ct = default)
+    {
+        var rowsAffected = await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE platform_user_credentials
+            SET reset_token_expires_at = NULL,
+                updated_at = {now}
+            WHERE reset_token_hash = {tokenHash}
+              AND reset_token_expires_at > {now}
+            """, ct);
+
+        if (rowsAffected != 1)
+            return null;
+
+        var consumed = await _db.PlatformUserCredentials
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.ResetTokenHash == tokenHash, ct);
+
+        return consumed?.PlatformUserId;
+    }
 }

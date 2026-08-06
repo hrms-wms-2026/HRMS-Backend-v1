@@ -11,6 +11,8 @@ using ONEVO.Application.Features.Auth.Login.Commands.AdminLogin;
 using ONEVO.Application.Features.Auth.Login.Commands.AdminMfaConfirmSetup;
 using ONEVO.Application.Features.Auth.Login.Commands.AdminMfaEnable;
 using ONEVO.Application.Features.Auth.Login.Commands.AdminMfaVerify;
+using ONEVO.Application.Features.Auth.Login.Commands.RequestAdminPasswordReset;
+using ONEVO.Application.Features.Auth.Login.Commands.ResetAdminPassword;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Application.Features.Auth.Login.Queries.GetAdminSessionContext;
 using ONEVO.Application.Features.Auth.Login.Queries.GetAdminGoogleSsoConfig;
@@ -87,6 +89,34 @@ public sealed class AdminAuthController : ControllerBase
 
         await SignInAsync(dto);
         return Ok(dto.ToSessionResponse());
+    }
+
+    /// <summary>Requests a password reset link for a Platform Admin account. Always returns a
+    /// generic success response - enumeration-safe.</summary>
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ForgotPassword(
+        [FromBody] AdminForgotPasswordRequest request, CancellationToken ct)
+    {
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var ua = Request.Headers.UserAgent.ToString();
+
+        await _mediator.Send(new RequestAdminPasswordResetCommand(request.Email, ip, ua), ct);
+        return Ok(new { message = "If an eligible account exists, password reset instructions have been sent." });
+    }
+
+    /// <summary>Completes a Platform Admin password reset. Never returns a message that
+    /// distinguishes an invalid token from an expired or already-used one.</summary>
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResetPassword(
+        [FromBody] AdminResetPasswordRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(
+            new ResetAdminPasswordCommand(request.Token, request.NewPassword), ct);
+        return result.IsSuccess
+            ? Ok(new { message = "Password updated." })
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
     /// <summary>Begin MFA setup for the calling admin - returns TOTP secret + QR code URI.</summary>
