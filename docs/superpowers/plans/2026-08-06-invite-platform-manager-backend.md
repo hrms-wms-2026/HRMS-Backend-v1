@@ -94,7 +94,11 @@ git commit -m "feat: add PlatformUserId to PlatformUserInvite"
 **Interfaces:**
 - Consumes: `PlatformUserInvite` (Task 1).
 - Produces: `IPlatformUserInviteRepository` with `AddAsync`, `GetByTokenHashAsync`,
-  `GetByIdAsync`, `Update` — consumed by Tasks 3 and 6.
+  `GetByPlatformUserIdAsync`, `Update` — consumed by Tasks 3, 5, and 6.
+  `GetByPlatformUserIdAsync` (not `GetByIdAsync`) is deliberate: the frontend's users
+  list only ever has `PlatformUser.Id` for a pending row (the list endpoint, Task 7,
+  never exposes `PlatformUserInvite.Id` at all), so revoke must be keyed the same way
+  everything else in this list already is — by the user's own ID, not the invite's.
 
 - [ ] **Step 1: Write the interface**
 
@@ -108,7 +112,7 @@ public interface IPlatformUserInviteRepository
 {
     Task AddAsync(PlatformUserInvite invite, CancellationToken ct = default);
     Task<PlatformUserInvite?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default);
-    Task<PlatformUserInvite?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<PlatformUserInvite?> GetByPlatformUserIdAsync(Guid platformUserId, CancellationToken ct = default);
     void Update(PlatformUserInvite invite);
 }
 ```
@@ -128,8 +132,8 @@ before the closing brace:
     public Task<PlatformUserInvite?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
         _db.PlatformUserInvites.FirstOrDefaultAsync(i => i.InviteTokenHash == tokenHash, ct);
 
-    public Task<PlatformUserInvite?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
-        _db.PlatformUserInvites.FirstOrDefaultAsync(i => i.Id == id, ct);
+    public Task<PlatformUserInvite?> GetByPlatformUserIdAsync(Guid platformUserId, CancellationToken ct = default) =>
+        _db.PlatformUserInvites.FirstOrDefaultAsync(i => i.PlatformUserId == platformUserId, ct);
 
     public void Update(PlatformUserInvite invite) =>
         _db.PlatformUserInvites.Update(invite);
@@ -655,7 +659,7 @@ git commit -m "feat: add platform manager invite email"
 - Consumes: `InvitePlatformManagerCommand` (Task 3, with the `InvitedById` correction
   applied), `IPlatformUserInviteRepository`/`IPlatformUserRepository` (Task 2/existing).
 - Produces: `POST /admin/v1/platform-access/users/invite`,
-  `POST /admin/v1/platform-access/invites/{inviteId}/revoke` — consumed by the
+  `POST /admin/v1/platform-access/users/{platformUserId}/revoke-invite` — consumed by the
   frontend plan, no backend task depends on these.
 
 - [ ] **Step 1: Write the failing revoke-command test**
@@ -686,32 +690,31 @@ public class RevokePlatformUserInviteCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_UnknownInvite_ReturnsNotFound()
+    public async Task Handle_UnknownUser_ReturnsNotFound()
     {
-        var inviteId = Guid.NewGuid();
-        _invites.Setup(i => i.GetByIdAsync(inviteId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((PlatformUserInvite?)null);
+        var userId = Guid.NewGuid();
+        _users.Setup(u => u.GetByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PlatformUser?)null);
 
         var handler = CreateHandler();
-        var result = await handler.Handle(new RevokePlatformUserInviteCommand(inviteId), CancellationToken.None);
+        var result = await handler.Handle(new RevokePlatformUserInviteCommand(userId), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(404);
     }
 
     [Fact]
-    public async Task Handle_ValidInvite_RevokesInviteAndDeactivatesUser()
+    public async Task Handle_ValidUser_RevokesInviteAndDeactivatesUser()
     {
-        var inviteId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var invite = new PlatformUserInvite { Id = inviteId, PlatformUserId = userId };
+        var invite = new PlatformUserInvite { Id = Guid.NewGuid(), PlatformUserId = userId };
         var user = new PlatformUser { Id = userId, Status = PlatformUser.StatusPending, InviteStatus = PlatformUser.InvitePending };
 
-        _invites.Setup(i => i.GetByIdAsync(inviteId, It.IsAny<CancellationToken>())).ReturnsAsync(invite);
         _users.Setup(u => u.GetByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _invites.Setup(i => i.GetByPlatformUserIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(invite);
 
         var handler = CreateHandler();
-        var result = await handler.Handle(new RevokePlatformUserInviteCommand(inviteId), CancellationToken.None);
+        var result = await handler.Handle(new RevokePlatformUserInviteCommand(userId), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         invite.RevokedAt.Should().NotBeNull();
@@ -736,7 +739,7 @@ using ONEVO.Application.Common.Models;
 
 namespace ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.RevokePlatformUserInvite;
 
-public record RevokePlatformUserInviteCommand(Guid InviteId) : IRequest<Result>;
+public record RevokePlatformUserInviteCommand(Guid PlatformUserId) : IRequest<Result>;
 ```
 
 ```csharp
@@ -771,24 +774,21 @@ public sealed class RevokePlatformUserInviteCommandHandler : IRequestHandler<Rev
 
     public async Task<Result> Handle(RevokePlatformUserInviteCommand request, CancellationToken ct)
     {
-        var invite = await _invites.GetByIdAsync(request.InviteId, ct);
+        var user = await _users.GetByIdAsync(request.PlatformUserId, ct);
+        if (user is null)
+            return Result.NotFound($"Platform user '{request.PlatformUserId}' not found.");
+
+        var invite = await _invites.GetByPlatformUserIdAsync(request.PlatformUserId, ct);
         if (invite is null)
-            return Result.NotFound($"Invite '{request.InviteId}' not found.");
+            return Result.NotFound($"No invite found for platform user '{request.PlatformUserId}'.");
 
         var now = _clock.UtcNow;
         invite.RevokedAt = now;
         _invites.Update(invite);
 
-        if (invite.PlatformUserId is { } userId)
-        {
-            var user = await _users.GetByIdAsync(userId, ct);
-            if (user is not null)
-            {
-                user.Status = PlatformUser.StatusInactive;
-                user.InviteStatus = PlatformUser.InviteRevoked;
-                _users.UpdateUser(user);
-            }
-        }
+        user.Status = PlatformUser.StatusInactive;
+        user.InviteStatus = PlatformUser.InviteRevoked;
+        _users.UpdateUser(user);
 
         await _uow.SaveChangesAsync(ct);
         return Result.Success();
@@ -826,11 +826,11 @@ In `PlatformAccessController.cs`, add the necessary `using` for
         return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    [HttpPost("invites/{inviteId}/revoke")]
+    [HttpPost("users/{platformUserId}/revoke-invite")]
     [RequirePlatformPermission(PlatformPermissionCatalog.AccountsManage)]
-    public async Task<IActionResult> RevokeInvite(Guid inviteId, CancellationToken ct)
+    public async Task<IActionResult> RevokeInvite(Guid platformUserId, CancellationToken ct)
     {
-        var result = await _mediator.Send(new RevokePlatformUserInviteCommand(inviteId), ct);
+        var result = await _mediator.Send(new RevokePlatformUserInviteCommand(platformUserId), ct);
         return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 ```
