@@ -727,7 +727,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 CurrentPeriodEnd = DateOnly.FromDateTime(now.UtcDateTime.Date.AddDays(30)),
                 ContractStartDate = DateOnly.FromDateTime(now.UtcDateTime.Date),
                 CompanySizeRange = "51-200",
-                SelectedModulesJson = """["integrations","work_management"]""",
+                SelectedModulesJson = plan.IncludedModulesJson ?? "[]",
                 CalculatedMonthlyPrice = 0m,
                 CalculatedAnnualPrice = 0m,
                 BillingCurrency = "USD",
@@ -739,7 +739,11 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         }
 
         subscription.Status = "trialing";
-        subscription.SelectedModulesJson = """["integrations","work_management"]""";
+        // Always re-derive from the plan's current canonical module list rather than a
+        // point-in-time literal, so a stale value already persisted in a dev database
+        // (e.g. from before the plan's module list was corrected) self-heals on the next
+        // backend startup instead of being permanently stuck.
+        subscription.SelectedModulesJson = plan.IncludedModulesJson ?? "[]";
         subscription.UpdatedAt = now;
     }
 

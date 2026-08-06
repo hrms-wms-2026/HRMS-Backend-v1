@@ -5,6 +5,10 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.E2E;
@@ -43,10 +47,16 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
     private string _adminCookie = null!;
     private string _adminCsrfToken = null!;
 
+    private const string FixtureUserPassword = "Password123!";
+
     private TenantSession _tenantA = null!;
     private TenantSession _tenantB = null!;
+    private TenantSession _tenantAManager = null!;
+    private TenantSession _tenantARegularEmployee = null!;
+    private Guid _tenantAId;
     private Guid _tenantAPrimaryLegalEntityId;
     private Guid _tenantBPrimaryLegalEntityId;
+    private Guid _tenantASecondLegalEntityId;
 
     public async Task InitializeAsync()
     {
@@ -86,6 +96,20 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
 
         _tenantAPrimaryLegalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantA);
         _tenantBPrimaryLegalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantB);
+
+        _tenantAId = await GetTenantIdAsync(_tenantA.Host);
+        var secondCompany = await CreateCompanyAsync(_tenantA, "Fixture Second Co", "FIXSEC1", "REG-FIXSEC1");
+        _tenantASecondLegalEntityId = secondCompany.Id;
+
+        _tenantAManager = await SeedAndLoginEmployeeFixtureUserAsync(
+            _tenantAId, _tenantA.Host, "manager@legal-ent-a.test",
+            permissionCodes: ["org:read", "org:manage", "legal_entity:update", "legal_entity:delete"],
+            roleName: "Legal Entity Manager", legalEntityId: _tenantAPrimaryLegalEntityId, employeeNumber: "FIX-MGR-001");
+
+        _tenantARegularEmployee = await SeedAndLoginEmployeeFixtureUserAsync(
+            _tenantAId, _tenantA.Host, "regular@legal-ent-a.test",
+            permissionCodes: ["org:read", "org:manage"],
+            roleName: "Regular Employee", legalEntityId: _tenantASecondLegalEntityId, employeeNumber: "FIX-REG-001");
     }
 
     public async Task DisposeAsync()
@@ -403,6 +427,89 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
         response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed);
     }
 
+    // ── 8. Accessible-company filtering ─────────────────────────────────────
+
+    [Fact]
+    public async Task List_Owner_SeesAllActiveCompaniesInTenant()
+    {
+        var list = await GetJsonAsync(_tenantA, "/api/v1/org/legal-entities");
+        var ids = list.EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToList();
+
+        ids.Should().Contain(_tenantAPrimaryLegalEntityId);
+        ids.Should().Contain(_tenantASecondLegalEntityId);
+    }
+
+    [Fact]
+    public async Task List_ManagerWithLegalEntityUpdate_SeesAllActiveCompaniesInTenant()
+    {
+        var response = await SendAsync(HttpMethod.Get, _tenantA.Host, "/api/v1/org/legal-entities",
+            body: null, cookie: _tenantAManager.SessionCookie);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        var ids = json.EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToList();
+
+        ids.Should().Contain(_tenantAPrimaryLegalEntityId);
+        ids.Should().Contain(_tenantASecondLegalEntityId);
+    }
+
+    [Fact]
+    public async Task List_RegularEmployee_SeesOnlyOwnLegalEntity()
+    {
+        var response = await SendAsync(HttpMethod.Get, _tenantA.Host, "/api/v1/org/legal-entities",
+            body: null, cookie: _tenantARegularEmployee.SessionCookie);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        var ids = json.EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToList();
+
+        ids.Should().ContainSingle().Which.Should().Be(_tenantASecondLegalEntityId);
+    }
+
+    [Fact]
+    public async Task List_RegularEmployee_IncludeInactiveTrue_StillOnlyOwnActiveCompany()
+    {
+        var response = await SendAsync(HttpMethod.Get, _tenantA.Host, "/api/v1/org/legal-entities?includeInactive=true",
+            body: null, cookie: _tenantARegularEmployee.SessionCookie);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        var ids = json.EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToList();
+
+        ids.Should().ContainSingle().Which.Should().Be(_tenantASecondLegalEntityId);
+    }
+
+    [Fact]
+    public async Task RegularEmployee_CannotUpdateOrDeleteLegalEntity_WithoutPermission()
+    {
+        var updateResponse = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{_tenantASecondLegalEntityId}/general-settings",
+            UpdateBody("Should Not Apply", "FIXSEC1", "REG-FIXSEC1", [1, 2, 3, 4, 5]),
+            cookie: _tenantARegularEmployee.SessionCookie, csrfToken: _tenantARegularEmployee.CsrfHeader);
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var deleteResponse = await SendAsync(HttpMethod.Delete, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{_tenantASecondLegalEntityId}",
+            new { confirmName = "Fixture Second Co" },
+            cookie: _tenantARegularEmployee.SessionCookie, csrfToken: _tenantARegularEmployee.CsrfHeader);
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task ManagerWithLegalEntityUpdate_CanUpdate_ButCreateStillRequiresLegalEntityCreate()
+    {
+        // _tenantAManager was seeded with legal_entity:update and legal_entity:delete but
+        // deliberately not legal_entity:create, so this also proves Create is gated
+        // independently from Update/Delete.
+        var createResponse = await SendAsync(HttpMethod.Post, _tenantA.Host, "/api/v1/org/legal-entities",
+            CreateCompanyBody("Manager Create Attempt Co", "MGRCA1", "REG-MGRCA1"),
+            cookie: _tenantAManager.SessionCookie, csrfToken: _tenantAManager.CsrfHeader);
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var updateResponse = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{_tenantASecondLegalEntityId}/general-settings",
+            UpdateBody("Fixture Second Co Renamed", "FIXSEC1", "REG-FIXSEC1", [1, 2, 3, 4, 5]),
+            cookie: _tenantAManager.SessionCookie, csrfToken: _tenantAManager.CsrfHeader);
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
     // ── Provisioning helper (trimmed from TenantProvisioningE2ETests) ───────────
 
     private sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
@@ -491,6 +598,114 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
         var list = await GetJsonAsync(session, "/api/v1/org/legal-entities");
         var primary = list.EnumerateArray().Single(i => i.GetProperty("isPrimary").GetBoolean());
         return primary.GetProperty("id").GetGuid();
+    }
+
+    private async Task<Guid> GetTenantIdAsync(string host)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var slug = host.Split('.')[0];
+        var tenant = await db.Set<Tenant>().SingleAsync(t => t.Slug == slug);
+        return tenant.Id;
+    }
+
+    private async Task<TenantSession> SeedAndLoginEmployeeFixtureUserAsync(
+        Guid tenantId, string host, string email, IReadOnlyList<string> permissionCodes,
+        string roleName, Guid legalEntityId, string employeeNumber)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+        var now = DateTimeOffset.UtcNow;
+
+        var userId = Guid.NewGuid();
+        db.Add(new User
+        {
+            Id = userId,
+            TenantId = tenantId,
+            Email = email,
+            FirstName = "Fixture",
+            LastName = roleName,
+            PasswordHash = hasher.Hash(FixtureUserPassword),
+            IsActive = true,
+            EmailVerified = true,
+            MustChangePassword = false,
+            PasswordSetByAdmin = false,
+            CreatedAt = now,
+            CreatedById = userId
+        });
+
+        var roleId = Guid.NewGuid();
+        db.Add(new Role
+        {
+            Id = roleId,
+            TenantId = tenantId,
+            Name = roleName,
+            Description = $"Legal entity fixture role: {roleName}",
+            IsSystem = false,
+            CreatedAt = now,
+            CreatedById = userId
+        });
+
+        foreach (var code in permissionCodes)
+        {
+            var permission = await db.Permissions.SingleAsync(p => p.Code == code);
+            db.Add(new RolePermission { TenantId = tenantId, RoleId = roleId, PermissionId = permission.Id });
+        }
+
+        db.Add(new UserRole { TenantId = tenantId, UserId = userId, RoleId = roleId, AssignedAt = now, AssignedBy = userId });
+
+        db.Add(new Employee
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            UserId = userId,
+            EmployeeNumber = employeeNumber,
+            FirstName = "Fixture",
+            LastName = roleName,
+            Email = email,
+            LegalEntityId = legalEntityId,
+            EmploymentTypeId = 1,
+            EmploymentStatusId = 1,
+            WorkModeId = 1,
+            HireDate = new DateOnly(2025, 1, 1),
+            CreatedAt = now,
+            CreatedById = userId
+        });
+
+        db.Add(new LegalAcceptanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, UserId = userId,
+            DocumentType = "terms", DocumentVersion = "1.0", Decision = "accepted",
+            Required = true, DecidedAt = now, Source = "test-seed"
+        });
+        db.Add(new LegalAcceptanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, UserId = userId,
+            DocumentType = "privacy_notice", DocumentVersion = "1.0", Decision = "acknowledged",
+            Required = true, DecidedAt = now, Source = "test-seed"
+        });
+
+        await db.SaveChangesAsync();
+
+        const string baseHost = "localhost";
+        var loginResponse = await SendAsync(HttpMethod.Post, baseHost, "/api/v1/auth/login",
+            new { email, password = FixtureUserPassword });
+        var loginJson = await ReadJsonAsync(loginResponse);
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, loginJson.ToString());
+        var continueUrl = new Uri(loginJson.GetProperty("continue_url").GetString()!, UriKind.Absolute);
+        var exchangeCode = Microsoft.AspNetCore.WebUtilities.QueryHelpers
+            .ParseQuery(continueUrl.Query)["code"].ToString();
+
+        var exchangeResponse = await SendAsync(HttpMethod.Post, host, "/api/v1/auth/session-exchange",
+            new { code = exchangeCode });
+        var exchangeJson = await ReadJsonAsync(exchangeResponse);
+        exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK, exchangeJson.ToString());
+        var cookies = ParseSetCookies(exchangeResponse);
+
+        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+        return new TenantSession(host, sessionCookie, csrfHeader);
     }
 
     private async Task<(Guid Id, JsonElement Body)> CreateCompanyAsync(

@@ -1,4 +1,5 @@
 using System.Reflection;
+using FluentAssertions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Controllers.Tenant.OrgStructure;
@@ -61,18 +62,77 @@ public class LegalEntitiesControllerArchitectureTests
         Assert.Equal("org:read", permission);
     }
 
-    [Theory]
-    [InlineData(nameof(LegalEntitiesController.GetGeneralSettings))]
-    [InlineData(nameof(LegalEntitiesController.Create))]
-    [InlineData(nameof(LegalEntitiesController.UpdateGeneralSettings))]
-    [InlineData(nameof(LegalEntitiesController.Delete))]
-    [InlineData(nameof(LegalEntitiesController.RemoveLogo))]
-    public void MutatingAndDetailActions_UseOrgManage(string methodName)
+    [Fact]
+    public void GetGeneralSettingsAction_UsesLegalEntityUpdate()
     {
-        var method = ControllerType.GetMethod(methodName);
-        var permission = GetPermission(method!);
+        var method = ControllerType.GetMethod(nameof(LegalEntitiesController.GetGeneralSettings));
+        GetPermission(method!).Should().Be("legal_entity:update");
+    }
 
-        Assert.Equal("org:manage", permission);
+    [Fact]
+    public void CreateAction_UsesLegalEntityCreate()
+    {
+        var method = ControllerType.GetMethod(nameof(LegalEntitiesController.Create));
+        GetPermission(method!).Should().Be("legal_entity:create");
+    }
+
+    [Fact]
+    public void UpdateGeneralSettingsAction_UsesLegalEntityUpdate()
+    {
+        var method = ControllerType.GetMethod(nameof(LegalEntitiesController.UpdateGeneralSettings));
+        GetPermission(method!).Should().Be("legal_entity:update");
+    }
+
+    [Fact]
+    public void DeleteAction_UsesLegalEntityDelete()
+    {
+        var method = ControllerType.GetMethod(nameof(LegalEntitiesController.Delete));
+        GetPermission(method!).Should().Be("legal_entity:delete");
+    }
+
+    [Fact]
+    public void RemoveLogoAction_UsesLegalEntityUpdate()
+    {
+        var method = ControllerType.GetMethod(nameof(LegalEntitiesController.RemoveLogo));
+        GetPermission(method!).Should().Be("legal_entity:update");
+    }
+
+    [Fact]
+    public void NoAction_UsesOrgManage()
+    {
+        var offenders = ActionMethods()
+            .Select(GetPermission)
+            .Where(p => p == "org:manage")
+            .ToList();
+
+        Assert.Empty(offenders);
+    }
+
+    [Fact]
+    public void NoAction_AcceptsUserIdParameter()
+    {
+        var offenders = ActionMethods()
+            .SelectMany(m => m.GetParameters())
+            .Where(p => string.Equals(p.Name, "userId", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        Assert.Empty(offenders);
+    }
+
+    [Theory]
+    [InlineData(typeof(ONEVO.Api.Contracts.OrgStructure.LegalEntities.CreateLegalEntityRequest))]
+    [InlineData(typeof(ONEVO.Api.Contracts.OrgStructure.LegalEntities.UpdateLegalEntityGeneralSettingsRequest))]
+    [InlineData(typeof(ONEVO.Api.Contracts.OrgStructure.LegalEntities.DeleteLegalEntityRequest))]
+    public void RequestContracts_DoNotAcceptTenantIdOrUserId(Type requestType)
+    {
+        var offenders = requestType.GetProperties()
+            .Where(p =>
+                string.Equals(p.Name, "tenantId", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(p.Name, "userId", StringComparison.OrdinalIgnoreCase))
+            .Select(p => p.Name)
+            .ToList();
+
+        Assert.Empty(offenders);
     }
 
     [Fact]

@@ -54,6 +54,9 @@ public sealed class DefaultRoleSeederTests
         db.Permissions.AddRange(
             new Permission { Id = Guid.NewGuid(), Code = "org:read", Module = "org_structure" },
             new Permission { Id = Guid.NewGuid(), Code = "org:manage", Module = "org_structure" },
+            new Permission { Id = Guid.NewGuid(), Code = "legal_entity:create", Module = "org_structure" },
+            new Permission { Id = Guid.NewGuid(), Code = "legal_entity:update", Module = "org_structure" },
+            new Permission { Id = Guid.NewGuid(), Code = "legal_entity:delete", Module = "org_structure" },
             new Permission { Id = Guid.NewGuid(), Code = "roles:read", Module = "roles" },
             new Permission { Id = Guid.NewGuid(), Code = "roles:manage", Module = "roles" },
             new Permission { Id = Guid.NewGuid(), Code = "settings:read", Module = "configuration" },
@@ -81,6 +84,25 @@ public sealed class DefaultRoleSeederTests
             .ToListAsync();
 
         grantedPermissionIds.Should().Contain(orgPermissionIds);
+    }
+
+    [Fact]
+    public async Task SeedDefaultRolesAsync_GrantsLegalEntityPermissionsToOwner_WhenOrgStructureModuleIncluded()
+    {
+        using var db = BuildInMemoryDb();
+        await SeedOrgPermissionsAsync(db);
+        var seeder = new DefaultRoleSeeder(db, new ModuleEntitlementService(db));
+        var tenantId = Guid.NewGuid();
+
+        var owner = await seeder.SeedOwnerRoleAsync(tenantId, ["core_hr", "worksync_foundation", "org_structure"], CancellationToken.None);
+
+        var grantedPermissionIds = owner.RolePermissions.Select(rp => rp.PermissionId).ToHashSet();
+        var legalEntityPermissionIds = await db.Permissions
+            .Where(p => p.Code == "legal_entity:create" || p.Code == "legal_entity:update" || p.Code == "legal_entity:delete")
+            .Select(p => p.Id)
+            .ToListAsync();
+
+        grantedPermissionIds.Should().Contain(legalEntityPermissionIds);
     }
 
     [Fact]

@@ -7,7 +7,15 @@ namespace ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 
 public interface ILegalEntityRepository
 {
-    Task<IReadOnlyList<LegalEntity>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default);
+    /// <summary>
+    /// Returns the legal entities the given user may see: every (optionally including
+    /// inactive) tenant legal entity when <paramref name="hasManagementAccess"/> is true,
+    /// otherwise at most the single legal entity linked to the user's own active
+    /// employees row. includeInactive is only honored on the management-access branch -
+    /// a regular user's own company is only ever returned when it is active.
+    /// </summary>
+    Task<IReadOnlyList<LegalEntity>> ListAccessibleAsync(
+        Guid tenantId, Guid userId, bool hasManagementAccess, bool includeInactive, CancellationToken ct = default);
 
     Task<LegalEntity?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
