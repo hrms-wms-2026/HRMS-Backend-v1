@@ -76,4 +76,44 @@ public class OrgPermissionSeedTests
         ownerships.Should().Contain(o => o.ModuleKey == "org_structure" && o.PermissionCode == "org:read");
         ownerships.Should().Contain(o => o.ModuleKey == "org_structure" && o.PermissionCode == "org:manage");
     }
+
+    [Fact]
+    public async Task PermissionSeeder_SeedsLegalEntityPermissions_OwnedByOrgModule()
+    {
+        using var db = BuildInMemoryDb();
+        var services = new ServiceCollection();
+        services.AddScoped(_ => db);
+        var sp = services.BuildServiceProvider();
+        var seeder = new PermissionSeeder(sp, NullLogger<PermissionSeeder>.Instance);
+        var method = typeof(PermissionSeeder).GetMethod(
+            "SeedPermissionsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        await (Task)method.Invoke(seeder, [db, CancellationToken.None])!;
+
+        var create = await db.Permissions.SingleAsync(p => p.Code == "legal_entity:create");
+        var update = await db.Permissions.SingleAsync(p => p.Code == "legal_entity:update");
+        var delete = await db.Permissions.SingleAsync(p => p.Code == "legal_entity:delete");
+
+        create.Module.Should().Be("org_structure");
+        update.Module.Should().Be("org_structure");
+        delete.Module.Should().Be("org_structure");
+    }
+
+    [Fact]
+    public async Task ModuleCatalogSeeder_OwnsLegalEntityPermissions_UnderOrgStructureModule()
+    {
+        using var db = BuildInMemoryDb();
+        db.Permissions.AddRange(
+            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "legal_entity:create", Module = "org_structure" },
+            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "legal_entity:update", Module = "org_structure" },
+            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "legal_entity:delete", Module = "org_structure" });
+        await db.SaveChangesAsync();
+
+        await ModuleCatalogSeeder.SeedAsync(db, CancellationToken.None);
+
+        var ownerships = await db.ModulePermissionOwnerships.ToListAsync();
+
+        ownerships.Should().Contain(o => o.ModuleKey == "org_structure" && o.PermissionCode == "legal_entity:create");
+        ownerships.Should().Contain(o => o.ModuleKey == "org_structure" && o.PermissionCode == "legal_entity:update");
+        ownerships.Should().Contain(o => o.ModuleKey == "org_structure" && o.PermissionCode == "legal_entity:delete");
+    }
 }

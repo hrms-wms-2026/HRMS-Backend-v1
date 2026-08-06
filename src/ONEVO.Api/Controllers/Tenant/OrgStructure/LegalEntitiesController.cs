@@ -38,7 +38,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>General Settings for one company. 404 if missing or belongs to another tenant.</summary>
     [HttpGet("{id:guid}/general-settings")]
-    [RequirePermission("org:manage")]
+    [RequirePermission("legal_entity:update")]
     public async Task<IActionResult> GetGeneralSettings(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetLegalEntityGeneralSettingsQuery(id), ct);
@@ -49,7 +49,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>Create a company/legal entity inside the current tenant.</summary>
     [HttpPost]
-    [RequirePermission("org:manage")]
+    [RequirePermission("legal_entity:create")]
     public async Task<IActionResult> Create([FromBody] CreateLegalEntityRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(
@@ -71,7 +71,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>Update General Settings for one company. The route id is authoritative.</summary>
     [HttpPut("{id:guid}/general-settings")]
-    [RequirePermission("org:manage")]
+    [RequirePermission("legal_entity:update")]
     public async Task<IActionResult> UpdateGeneralSettings(
         Guid id,
         [FromBody] UpdateLegalEntityGeneralSettingsRequest request,
@@ -108,7 +108,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>Soft-deactivates a company. Requires exact confirmName match; never physically deletes the row.</summary>
     [HttpDelete("{id:guid}")]
-    [RequirePermission("org:manage")]
+    [RequirePermission("legal_entity:delete")]
     public async Task<IActionResult> Delete(Guid id, [FromBody] DeleteLegalEntityRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new DeleteLegalEntityCommand(id, request.ConfirmName), ct);
@@ -119,7 +119,7 @@ public class LegalEntitiesController : ControllerBase
 
     /// <summary>Clears the company's logo reference. Never touches the underlying file_records row.</summary>
     [HttpDelete("{id:guid}/logo")]
-    [RequirePermission("org:manage")]
+    [RequirePermission("legal_entity:update")]
     public async Task<IActionResult> RemoveLogo(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new RemoveLegalEntityLogoCommand(id), ct);

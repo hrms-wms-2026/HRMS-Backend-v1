@@ -29,13 +29,18 @@ public class ListLegalEntitiesQueryHandler
         if (tenantId == Guid.Empty)
             return Result<IReadOnlyList<LegalEntityListItemResponse>>.Forbidden("Tenant context missing.");
 
-        var entities = await _legalEntities.ListByTenantAsync(tenantId, ct);
+        // "Management access" deliberately checks legal_entity:update/delete, not
+        // org:manage - org:manage still gates Department/Position management and
+        // general org navigation, but must not by itself unlock every company in the
+        // tenant for the selector (see the permission-model rework this handler is
+        // part of).
+        var hasManagementAccess =
+            _currentUser.HasPermission("legal_entity:update") || _currentUser.HasPermission("legal_entity:delete");
 
-        var filtered = request.IncludeInactive
-            ? entities
-            : entities.Where(e => e.IsActive).ToList();
+        var entities = await _legalEntities.ListAccessibleAsync(
+            tenantId, _currentUser.UserId, hasManagementAccess, request.IncludeInactive, ct);
 
-        var items = filtered.Select(LegalEntityMapper.ToListItemResponse).ToList();
+        var items = entities.Select(LegalEntityMapper.ToListItemResponse).ToList();
 
         return Result<IReadOnlyList<LegalEntityListItemResponse>>.Success(items);
     }

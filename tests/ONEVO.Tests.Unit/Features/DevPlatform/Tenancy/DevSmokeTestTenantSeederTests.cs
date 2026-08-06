@@ -8,6 +8,7 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
@@ -32,6 +33,17 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
     private const string AcmeHrManagerEmail = "paramanathanmuthaiya@gmail.com";
     private const string AcmeWorkManagerEmail = "mrt15473@gmail.com";
     private const string DapiOwnerEmail = "dapiyshanth1908@gmail.com";
+
+    // Mirrors the canonical Phase 1 product module list seeded onto the "starter_51_200"
+    // plan by migration 20260804024502_UpdateStarterPlanToCanonicalPhase1Modules.
+    private static readonly string[] CanonicalPhase1Modules =
+    [
+        "org_structure", "core_hr", "leave", "calendar", "time_attendance",
+        "activity_monitoring", "discrepancy_engine", "identity_verification",
+        "exception_engine", "productivity_analytics", "desktop_agent_gateway",
+        "worksync_foundation", "projects", "objectives_milestones", "tasks",
+        "boards", "planning_sprints"
+    ];
 
     private readonly string _connectionString;
     private readonly SqliteConnection _masterConnection;
@@ -116,10 +128,30 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
         await db.SaveChangesAsync();
     }
 
+    private static async Task SeedSubscriptionPlanAsync(ApplicationDbContext db)
+    {
+        if (await db.SubscriptionPlans.AnyAsync(p => p.Code == "starter_51_200"))
+        {
+            return;
+        }
+
+        db.SubscriptionPlans.Add(new SubscriptionPlan
+        {
+            Id = Guid.NewGuid(),
+            Name = "Starter",
+            Code = "starter_51_200",
+            Tier = "starter",
+            CompanySizeRange = "51-200",
+            IncludedModulesJson = System.Text.Json.JsonSerializer.Serialize(CanonicalPhase1Modules)
+        });
+        await db.SaveChangesAsync();
+    }
+
     private static async Task RunSeederAsync(ApplicationDbContext db)
     {
         await SeedPermissionsAsync(db);
         await SeedLookupDataAsync(db);
+        await SeedSubscriptionPlanAsync(db);
         var tenantContext = new TenantContextAccessor();
         await DevSmokeTestTenantSeeder.SeedAsync(
             db,
@@ -629,6 +661,101 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
         acmeRows.Should().NotContain("retired@acme.test");
         acmeRows.Should().BeEquivalentTo([AcmeOwnerEmail, AcmeHrManagerEmail, AcmeWorkManagerEmail]);
         otherRows.Should().BeEquivalentTo(["unrelated@other.test"]);
+    }
+
+    [Fact]
+    public async Task SeedAsync_AcmeAndDapiSubscriptionsMatchTheCanonicalPhase1ModuleList()
+    {
+        using var db = CreateContext();
+        await RunSeederAsync(db);
+
+        using var verify = CreateContext();
+        var acmeTenant = await verify.Tenants.SingleAsync(t => t.Slug == "acme");
+        var dapiTenant = await verify.Tenants.SingleAsync(t => t.Slug == "dapi");
+        var acmeSubscription = await verify.TenantSubscriptions.SingleAsync(s => s.TenantId == acmeTenant.Id);
+        var dapiSubscription = await verify.TenantSubscriptions.SingleAsync(s => s.TenantId == dapiTenant.Id);
+
+        var acmeModules = System.Text.Json.JsonSerializer.Deserialize<List<string>>(acmeSubscription.SelectedModulesJson);
+        var dapiModules = System.Text.Json.JsonSerializer.Deserialize<List<string>>(dapiSubscription.SelectedModulesJson);
+
+        acmeModules.Should().BeEquivalentTo(CanonicalPhase1Modules);
+        dapiModules.Should().BeEquivalentTo(CanonicalPhase1Modules);
+        acmeModules.Should().Contain("org_structure");
+        dapiModules.Should().Contain("org_structure");
+
+        // Platform baseline capabilities must never appear as subscribed product modules.
+        acmeModules.Should().NotContain(["auth", "configuration", "roles", "notifications"]);
+        dapiModules.Should().NotContain(["auth", "configuration", "roles", "notifications"]);
+    }
+
+    [Fact]
+    public async Task SeedAsync_CorrectsAStaleSelectedModulesJsonAlreadyPersistedInTheDevDatabase()
+    {
+        using (var first = CreateContext())
+        {
+            await RunSeederAsync(first);
+        }
+
+        Guid acmeTenantId;
+        using (var stale = CreateContext())
+        {
+            acmeTenantId = (await stale.Tenants.SingleAsync(t => t.Slug == "acme")).Id;
+            var subscription = await stale.TenantSubscriptions.SingleAsync(s => s.TenantId == acmeTenantId);
+
+            // Simulates a dev database that still holds the pre-fix stale module list, e.g.
+            // written by an old seeder build or a manual DB edit that did not persist.
+            subscription.SelectedModulesJson = """["integrations","work_management"]""";
+            await stale.SaveChangesAsync();
+        }
+
+        using (var second = CreateContext())
+        {
+            await RunSeederAsync(second);
+        }
+
+        using var verify = CreateContext();
+        var subscriptionAfter = await verify.TenantSubscriptions.SingleAsync(s => s.TenantId == acmeTenantId);
+        var modulesAfter = System.Text.Json.JsonSerializer.Deserialize<List<string>>(subscriptionAfter.SelectedModulesJson);
+
+        modulesAfter.Should().BeEquivalentTo(CanonicalPhase1Modules);
+        modulesAfter.Should().Contain("org_structure");
+        modulesAfter.Should().NotContain("integrations");
+        modulesAfter.Should().NotContain("work_management");
+    }
+
+    [Fact]
+    public async Task SeedAsync_AcmeOwnerHasOrgReadAndOrgManagePermissionCodes()
+    {
+        using var db = CreateContext();
+        await RunSeederAsync(db);
+
+        using var verify = CreateContext();
+        var acmeTenant = await verify.Tenants.SingleAsync(t => t.Slug == "acme");
+        var owner = await verify.Users.SingleAsync(u => u.Email == AcmeOwnerEmail);
+        var ownerCodes = await RolePermissionCodesForAsync(verify, acmeTenant.Id, owner.Id);
+
+        ownerCodes.Should().Contain("org:read");
+        ownerCodes.Should().Contain("org:manage");
+    }
+
+    [Fact]
+    public async Task SeedAsync_DoesNotDuplicateTenantSubscriptionsAcrossRepeatedRuns()
+    {
+        using (var first = CreateContext())
+        {
+            await RunSeederAsync(first);
+        }
+        using (var second = CreateContext())
+        {
+            await RunSeederAsync(second);
+        }
+
+        using var verify = CreateContext();
+        var acmeTenant = await verify.Tenants.SingleAsync(t => t.Slug == "acme");
+        var dapiTenant = await verify.Tenants.SingleAsync(t => t.Slug == "dapi");
+
+        (await verify.TenantSubscriptions.CountAsync(s => s.TenantId == acmeTenant.Id)).Should().Be(1);
+        (await verify.TenantSubscriptions.CountAsync(s => s.TenantId == dapiTenant.Id)).Should().Be(1);
     }
 
     // Requirement #14 ("no test depends on tenant-host password login"): every test above
