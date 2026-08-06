@@ -319,18 +319,7 @@ public class ModuleCatalogSeeder : IHostedService
 
             if (existingByCode.TryGetValue(def.Perm, out var ownership))
             {
-                if (!string.Equals(ownership.ModuleKey, def.Module, StringComparison.Ordinal))
-                {
-                    // ModuleKey is part of the composite primary key, so re-owning a permission
-                    // to a different module can't be done as an in-place update.
-                    db.ModulePermissionOwnerships.Remove(ownership);
-                    db.ModulePermissionOwnerships.Add(new ModulePermissionOwnership
-                    {
-                        ModuleKey = def.Module,
-                        PermissionCode = def.Perm,
-                        IsDefaultPermission = true
-                    });
-                }
+                ownership.ModuleKey = def.Module;
             }
             else
             {
