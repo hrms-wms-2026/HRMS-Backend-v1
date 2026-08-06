@@ -18,6 +18,11 @@ using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
+using ONEVO.Domain.Features.Monitoring.Settings.Entities;
+using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
+using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
@@ -30,10 +35,6 @@ using ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Versions.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence.Interceptors;
-using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
-using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
-using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
-using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 
 namespace ONEVO.Infrastructure.Persistence;
 
@@ -193,6 +194,22 @@ public class ApplicationDbContext : DbContext
 
     // OrgStructure
     public DbSet<LegalEntity> LegalEntities => Set<LegalEntity>();
+    public DbSet<Department> Departments => Set<Department>();
+
+    // Storage - EntityAssets (Phase 1 entity_assets, scoped to owner_type "project" for now)
+    public DbSet<EntityAsset> EntityAssets => Set<EntityAsset>();
+
+    // Work Management - Foundation slice
+    public DbSet<ProjectCategory> ProjectCategories => Set<ProjectCategory>();
+    public DbSet<Project> Projects => Set<Project>();
+    public DbSet<Objective> Objectives => Set<Objective>();
+    public DbSet<ObjectiveChangeRequest> ObjectiveChangeRequests => Set<ObjectiveChangeRequest>();
+    public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
+    public DbSet<ProjectMemberInvitation> ProjectMemberInvitations => Set<ProjectMemberInvitation>();
+    public DbSet<VersionStatus> VersionStatuses => Set<VersionStatus>();
+    public DbSet<ProjectVersion> ProjectVersions => Set<ProjectVersion>();
+    public DbSet<ReleaseCalendarEntry> ReleaseCalendarEntries => Set<ReleaseCalendarEntry>();
+    public DbSet<Label> Labels => Set<Label>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
