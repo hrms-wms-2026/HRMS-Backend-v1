@@ -272,6 +272,132 @@ public class CreateProjectEndpointTests : IAsyncLifetime
             "a user with two active memberships in the same project (via two Objectives) must see that project exactly once");
     }
 
+    [Fact]
+    public async Task CreateObjective_ByDefaultObjectiveHead_CreatesSubMilestone()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Milestone Tree Target", "MTT1");
+        var createdJson = await ReadJsonAsync(created);
+        var projectId = createdJson.GetProperty("project").GetProperty("id").GetGuid();
+        var defaultObjectiveId = createdJson.GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        var response = await SendCreateObjectiveAsync(_tenantA, defaultObjectiveId, "Design Phase", new DateOnly(2026, 1, 15), new DateOnly(2026, 3, 1), 20m);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("parentObjectiveId").GetGuid().Should().Be(defaultObjectiveId);
+        json.GetProperty("isDefault").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CreateObjective_NestedUnderOwnSubMilestone_Succeeds()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Nested Milestone Target", "NST1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        var first = await SendCreateObjectiveAsync(_tenantA, defaultObjectiveId, "Phase 1", new DateOnly(2026, 1, 1), new DateOnly(2026, 4, 1), 30m);
+        var firstId = (await ReadJsonAsync(first)).GetProperty("id").GetGuid();
+
+        var nested = await SendCreateObjectiveAsync(_tenantA, firstId, "Phase 1a", new DateOnly(2026, 1, 5), new DateOnly(2026, 2, 1), 10m);
+
+        nested.StatusCode.Should().Be(HttpStatusCode.Created, await nested.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task CreateObjective_DatesOutsideParentRange_Returns400()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Conflict Target", "CFT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        // Default Objective mirrors the Project's own start/target dates (2026-01-01 to 2026-06-01
+        // for a project created via SendCreateProjectAsync) - this end date is well past that.
+        var response = await SendCreateObjectiveAsync(_tenantA, defaultObjectiveId, "Out Of Range", new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 1), 5m);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task EditObjective_ByCreatorHead_AppliesImmediately()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Edit Milestone Target", "EMT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        var sub = await SendCreateObjectiveAsync(_tenantA, defaultObjectiveId, "Editable Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 15m);
+        var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
+
+        var editResponse = await SendEditObjectiveAsync(_tenantA, subId, "Editable Phase Renamed", new DateOnly(2026, 1, 10), new DateOnly(2026, 3, 15), 18m);
+
+        editResponse.StatusCode.Should().Be(HttpStatusCode.OK, await editResponse.Content.ReadAsStringAsync());
+        (await ReadJsonAsync(editResponse)).GetProperty("title").GetString().Should().Be("Editable Phase Renamed");
+    }
+
+    [Fact]
+    public async Task EditObjective_ConflictingButByCreator_StillAppliesImmediately()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Creator Conflict Target", "CCT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        var sub = await SendCreateObjectiveAsync(_tenantA, defaultObjectiveId, "Creator Conflict Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 15m);
+        var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
+
+        // Exceeds the Default Objective's own allocated hours (mirrors the Project's
+        // defaultObjectiveAllocatedHours=40 from SendCreateProjectAsync) - a real conflict, but
+        // the caller is this sub-objective's own creator, so it must still apply immediately.
+        var editResponse = await SendEditObjectiveAsync(_tenantA, subId, "Creator Conflict Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 999m);
+
+        editResponse.StatusCode.Should().Be(HttpStatusCode.OK, await editResponse.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task DeleteObjective_ByCreatorHead_SoftDeletesImmediately()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Delete Milestone Target", "DMT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        var sub = await SendCreateObjectiveAsync(_tenantA, defaultObjectiveId, "Deletable Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 10m);
+        var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
+
+        var deleteResponse = await SendDeleteObjectiveAsync(_tenantA, subId);
+
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task EditDeleteTransfer_OnDefaultObjective_Return400()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Default Carveout Target", "DCT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        (await SendEditObjectiveAsync(_tenantA, defaultObjectiveId, "Should Not Apply", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 5m))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await SendDeleteObjectiveAsync(_tenantA, defaultObjectiveId))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task CreateObjective_CrossTenantParentId_Returns404()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Cross Tenant Milestone Target", "CTM1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        var response = await SendCreateObjectiveAsync(_tenantB, defaultObjectiveId, "Should Not Apply", new DateOnly(2026, 1, 1), new DateOnly(2026, 2, 1), 5m);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound,
+            "tenant B must not be able to see or create under tenant A's Default Objective - RLS + EF global filter scoping");
+    }
+
+    [Fact]
+    public async Task GetObjectiveTree_ActiveMember_ReturnsFullTree()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Tree View Target", "TVT1");
+        var createdJson = await ReadJsonAsync(created);
+        var projectId = createdJson.GetProperty("project").GetProperty("id").GetGuid();
+        var defaultObjectiveId = createdJson.GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        await SendCreateObjectiveAsync(_tenantA, defaultObjectiveId, "Tree Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 10m);
+
+        var response = await _client.SendAsync(BuildGetRequest(_tenantA, $"/api/v1/work/projects/{projectId}/objectives"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.EnumerateArray().Should().HaveCountGreaterThanOrEqualTo(2, "the Default Objective plus the one sub-milestone just created");
+    }
+
     // ── Project creation helper (multipart/form-data) ───────────────────────
 
     private async Task<HttpResponseMessage> SendCreateProjectAsync(
@@ -329,6 +455,33 @@ public class CreateProjectEndpointTests : IAsyncLifetime
 
     private async Task<HttpResponseMessage> SendGetProjectAsync(TenantSession session, Guid projectId)
         => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/projects/{projectId}"));
+
+    // ── Objective (milestone) helpers ────────────────────────────────────────
+
+    private async Task<HttpResponseMessage> SendCreateObjectiveAsync(
+        TenantSession session, Guid parentObjectiveId, string title, DateOnly startDate, DateOnly endDate, decimal allocatedHours)
+    {
+        var body = new { parentObjectiveId, title, description = "test description", startDate, endDate, allocatedHours, headUserId = (Guid?)null };
+        return await SendJsonAsync(HttpMethod.Post, session.Host, "/api/v1/work/objectives", body,
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+    }
+
+    private async Task<HttpResponseMessage> SendEditObjectiveAsync(
+        TenantSession session, Guid objectiveId, string title, DateOnly startDate, DateOnly endDate, decimal allocatedHours)
+    {
+        var body = new { title, description = "edited description", startDate, endDate, allocatedHours };
+        return await SendJsonAsync(HttpMethod.Put, session.Host, $"/api/v1/work/objectives/{objectiveId}", body,
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+    }
+
+    private async Task<HttpResponseMessage> SendDeleteObjectiveAsync(TenantSession session, Guid objectiveId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/work/objectives/{objectiveId}");
+        request.Headers.Host = session.Host;
+        request.Headers.Add("Cookie", session.SessionCookie);
+        request.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        return await _client.SendAsync(request);
+    }
 
     private HttpRequestMessage BuildGetRequest(TenantSession session, string path)
     {
