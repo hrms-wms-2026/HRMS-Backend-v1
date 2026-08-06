@@ -4235,3 +4235,364 @@ git commit -m "test(work-management): add HTTP integration tests for membership,
 ```
 
 ---
+
+### Task 17: `docs/postman-request/` docs for the 8 new endpoints + accuracy updates to 3 existing ones
+
+**Files:**
+- Create: `docs/postman-request/Work Management/Add Objective Member.md`
+- Create: `docs/postman-request/Work Management/Remove Objective Member.md`
+- Create: `docs/postman-request/Work Management/Achieve Objective.md`
+- Create: `docs/postman-request/Work Management/Unachieve Objective.md`
+- Create: `docs/postman-request/Work Management/Get Objective.md`
+- Create: `docs/postman-request/Work Management/My Objective History.md`
+- Create: `docs/postman-request/Work Management/Achieve Project.md`
+- Create: `docs/postman-request/Work Management/Unachieve Project.md`
+- Modify: `docs/postman-request/Work Management/Create Objective.md` — add a note that Create now also syncs project membership and auto-grants `projects:access` for the resolved Head.
+- Modify: `docs/postman-request/Work Management/Edit Objective.md` — add `400` "milestone is achieved" to the Errors table.
+- Modify: `docs/postman-request/Work Management/Transfer Objective Head.md` — add a note that applying a Transfer now also syncs membership and cascades `ReportingManagerId` to direct children, plus the `400` achieved-freeze error.
+
+**Interfaces:**
+- Consumes: nothing code-facing — required by `docs/superpowers/rules/PROCESS_RULES.md` rule 6, same format as every existing file in this folder (method+route, auth/permission/idempotency line, description, request/response examples, error table, Source section).
+
+- [ ] **Step 1: `Add Objective Member.md`**
+
+```markdown
+# Add Objective Member
+
+**POST** `/api/v1/work/objectives/{id}/members`
+
+**Auth:** Tenant session cookie (`onevo_session`) + CSRF header. Policy: `TenantPolicy`.
+**Permission:** `projects:access` + caller must be this milestone's current Head.
+**Idempotent:** Yes in effect — adding an already-active member is a no-op (204).
+
+## Description
+
+Adds a user to this milestone's project membership (`project_members`, scoped to this Objective's id). The user must be an active employee in this tenant. Does NOT grant `projects:access` — only assigning someone as Head does that (see Create/Transfer Objective Head).
+
+## Request
+
+```json
+{ "userId": "guid" }
+```
+
+## Response
+
+`204 No Content`
+
+## Errors
+
+| Status | Cause |
+|---|---|
+| `400` | Milestone is achieved (frozen), or the user isn't an active employee in this tenant |
+| `403` | Caller lacks `projects:access`, or is not this milestone's Head |
+| `404` | Milestone doesn't exist in tenant, or is inactive |
+
+## Source
+
+Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`AddMember`)
+Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/AddObjectiveMember/AddObjectiveMemberCommandHandler.cs`
+Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+```
+
+- [ ] **Step 2: `Remove Objective Member.md`**
+
+```markdown
+# Remove Objective Member
+
+**DELETE** `/api/v1/work/objectives/{id}/members/{userId}`
+
+**Auth:** Tenant session cookie (`onevo_session`) + CSRF header. Policy: `TenantPolicy`.
+**Permission:** `projects:access` + caller must be this milestone's current Head.
+
+## Description
+
+Deactivates a user's membership on this milestone. Removing the milestone's current Head is rejected — use Transfer Objective Head instead, which handles the membership handoff correctly.
+
+## Request
+
+No body.
+
+## Response
+
+`204 No Content`
+
+## Errors
+
+| Status | Cause |
+|---|---|
+| `400` | Milestone is achieved (frozen), or `userId` is this milestone's current head |
+| `403` | Caller lacks `projects:access`, or is not this milestone's Head |
+| `404` | Milestone doesn't exist in tenant, or is inactive |
+
+## Source
+
+Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`RemoveMember`)
+Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/RemoveObjectiveMember/RemoveObjectiveMemberCommandHandler.cs`
+Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+```
+
+- [ ] **Step 3: `Achieve Objective.md`**
+
+```markdown
+# Achieve Objective
+
+**POST** `/api/v1/work/objectives/{id}/achieve`
+
+**Auth:** Tenant session cookie (`onevo_session`) + CSRF header. Policy: `TenantPolicy`.
+**Permission:** `projects:access` + caller must be this milestone's current Head.
+**Idempotent:** No — a second call on an already-achieved milestone returns `409`.
+
+## Description
+
+Marks a milestone Achieved (completion state, independent of soft-delete). Every direct sub-milestone must already be Achieved first. Same immediate-vs-pending split as Delete: applies immediately if the caller created this milestone, otherwise creates a pending `achieve` change request routed to the Reporting Manager. Once applied, the milestone is frozen (Edit/Transfer/member-management all return `400`) and the Head's active project participation is dropped unless they have another reason to stay (another milestone, or a direct membership) - see `GET /objectives/mine/history` for what happens to their access.
+
+## Request
+
+No body.
+
+## Response
+
+`204 No Content` (applied immediately) or `202 Accepted` with the created change request (pending approval).
+
+## Errors
+
+| Status | Cause |
+|---|---|
+| `400` | Target is the Default Objective (use the Project achieve endpoint), or a direct sub-milestone isn't yet Achieved |
+| `403` | Caller lacks `projects:access`, or is not this milestone's Head |
+| `404` | Milestone doesn't exist in tenant, or is inactive |
+| `409` | Already achieved, or a change request is already pending for this milestone |
+
+## Source
+
+Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`Achieve`)
+Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/AchieveObjective/AchieveObjectiveCommandHandler.cs`
+Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+```
+
+- [ ] **Step 4: `Unachieve Objective.md`**
+
+```markdown
+# Unachieve Objective
+
+**POST** `/api/v1/work/objectives/{id}/unachieve`
+
+**Auth:** Tenant session cookie (`onevo_session`) + CSRF header. Policy: `TenantPolicy`.
+**Permission:** `projects:access` + caller must be this milestone's current Head.
+
+## Description
+
+Reverts an Achieved milestone back to active, unfreezing it. No precondition (always reversible). Same immediate-vs-pending split as Achieve. On applying, restores the Head's active project membership.
+
+## Request
+
+No body.
+
+## Response
+
+`204 No Content` (applied immediately) or `202 Accepted` with the created change request (pending approval).
+
+## Errors
+
+| Status | Cause |
+|---|---|
+| `400` | Target is the Default Objective, or the current head is no longer an active employee in this tenant |
+| `403` | Caller lacks `projects:access`, or is not this milestone's Head |
+| `404` | Milestone doesn't exist in tenant, or is inactive |
+| `409` | Milestone is not achieved, or a change request is already pending |
+
+## Source
+
+Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`Unachieve`)
+Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/UnachieveObjective/UnachieveObjectiveCommandHandler.cs`
+Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+```
+
+- [ ] **Step 5: `Get Objective.md`**
+
+```markdown
+# Get Objective
+
+**GET** `/api/v1/work/objectives/{id}`
+
+**Auth:** Tenant session cookie (`onevo_session`) + CSRF header. Policy: `TenantPolicy`.
+**Permission:** `projects:read`/`*` OR an active membership on this milestone or any of its ancestors — checked in-handler, not via `[RequirePermission]` (same pattern as Get Project and Get Objective Tree).
+
+## Description
+
+Gets a single milestone by id.
+
+## Response
+
+`200 OK`
+
+```json
+{
+  "id": "guid", "projectId": "guid", "parentObjectiveId": "guid|null", "isDefault": false,
+  "title": "string", "description": "string|null", "ownerId": "guid", "reportingManagerId": "guid|null",
+  "createdById": "guid", "startDate": "date", "endDate": "date", "progress": 0, "actualHours": "decimal|null",
+  "allocatedHours": "decimal", "completedHours": "decimal", "isActive": true, "isAchieved": false,
+  "achievedAt": "datetime|null", "createdAt": "datetime", "updatedAt": "datetime|null"
+}
+```
+
+## Errors
+
+| Status | Cause |
+|---|---|
+| `403` | Caller has neither `projects:read`/`*` nor an active membership on this milestone or an ancestor of it |
+| `404` | Milestone doesn't exist in tenant, or is inactive |
+
+## Source
+
+Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`GetById`)
+Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Queries/GetObjectiveById/GetObjectiveByIdQueryHandler.cs`
+Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+```
+
+- [ ] **Step 6: `My Objective History.md`**
+
+```markdown
+# My Objective History
+
+**GET** `/api/v1/work/objectives/mine/history`
+
+**Auth:** Tenant session cookie (`onevo_session`) + CSRF header. Policy: `TenantPolicy`.
+**Permission:** `projects:access`.
+
+## Description
+
+Milestones the caller used to have active access to (as Head or member) but no longer does - because they were Transferred away, removed as a member, or the milestone was Achieved and they had no other reason to stay in the project. Read-only; no write actions are available from this view.
+
+## Response
+
+`200 OK`
+
+```json
+[
+  { "objectiveId": "guid", "title": "string", "projectId": "guid", "isAchieved": true, "removedAt": "datetime" }
+]
+```
+
+## Errors
+
+| Status | Cause |
+|---|---|
+| `403` | Caller lacks `projects:access` |
+
+## Source
+
+Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`MyHistory`)
+Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Queries/GetMyObjectiveHistory/GetMyObjectiveHistoryQueryHandler.cs`
+Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+```
+
+- [ ] **Step 7: `Achieve Project.md`**
+
+```markdown
+# Achieve Project
+
+**POST** `/api/v1/work/projects/{id}/achieve`
+
+**Auth:** Tenant session cookie (`onevo_session`) + CSRF header. Policy: `TenantPolicy`.
+**Permission:** `projects:access` + caller must be the Project's Lead.
+**Idempotent:** No - a second call on an already-achieved project returns `409`.
+
+## Description
+
+Marks a Project Achieved. Every top-level milestone (direct child of the Default Objective) must already be Achieved first. Lead-only, always immediate - the Project is the tree's root, so there's no Reporting Manager to route an approval request to (same root exception as Edit/Delete Project).
+
+## Request
+
+No body.
+
+## Response
+
+`204 No Content`
+
+## Errors
+
+| Status | Cause |
+|---|---|
+| `400` | A top-level milestone isn't yet Achieved |
+| `403` | Caller lacks `projects:access`, or is not the project lead |
+| `404` | Project doesn't exist in tenant |
+| `409` | Project is already achieved |
+
+## Source
+
+Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`Achieve`)
+Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Commands/AchieveProject/AchieveProjectCommandHandler.cs`
+Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+```
+
+- [ ] **Step 8: `Unachieve Project.md`**
+
+```markdown
+# Unachieve Project
+
+**POST** `/api/v1/work/projects/{id}/unachieve`
+
+**Auth:** Tenant session cookie (`onevo_session`) + CSRF header. Policy: `TenantPolicy`.
+**Permission:** `projects:access` + caller must be the Project's Lead.
+
+## Description
+
+Reverts an Achieved project back to active. Lead-only, always immediate.
+
+## Request
+
+No body.
+
+## Response
+
+`204 No Content`
+
+## Errors
+
+| Status | Cause |
+|---|---|
+| `403` | Caller lacks `projects:access`, or is not the project lead |
+| `404` | Project doesn't exist in tenant |
+| `409` | Project is not achieved |
+
+## Source
+
+Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ProjectsController.cs` (`Unachieve`)
+Handler: `src/ONEVO.Application/Features/WorkManagement/Projects/Commands/UnachieveProject/UnachieveProjectCommandHandler.cs`
+Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+```
+
+- [ ] **Step 9: Update the 3 existing docs for accuracy**
+
+In `Create Objective.md`, add to the Description section: *"Also syncs project membership for the resolved Head (creates or reactivates a `project_members` row scoped to the new milestone) and auto-grants `projects:access` if they don't already have it (takes effect on their next login - see design doc §7)."* Add `400` "assigned head must be an active employee in this tenant" to its Errors table.
+
+In `Edit Objective.md`, add `400` "milestone is achieved" to its Errors table.
+
+In `Transfer Objective Head.md`, add to the Description: *"Applying a transfer (immediately or via approval) also syncs project membership for both heads, cascades `ReportingManagerId` to the milestone's direct children, and drops the old head's project participation if they have no other active access."* Add `400` "milestone is achieved, or the new head isn't an active employee in this tenant" to its Errors table.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add "docs/postman-request/Work Management/Add Objective Member.md" "docs/postman-request/Work Management/Remove Objective Member.md" "docs/postman-request/Work Management/Achieve Objective.md" "docs/postman-request/Work Management/Unachieve Objective.md" "docs/postman-request/Work Management/Get Objective.md" "docs/postman-request/Work Management/My Objective History.md" "docs/postman-request/Work Management/Achieve Project.md" "docs/postman-request/Work Management/Unachieve Project.md" "docs/postman-request/Work Management/Create Objective.md" "docs/postman-request/Work Management/Edit Objective.md" "docs/postman-request/Work Management/Transfer Objective Head.md"
+git commit -m "docs(work-management): add postman-request docs for membership/member-management/Achieve endpoints"
+```
+
+---
+
+## Self-review
+
+**Spec coverage** (against `docs/superpowers/specs/2026-08-06-work-management-milestone-membership-and-achieve-design.md`):
+- §2 Schema additions (IsAchieved/AchievedAt, achieve/unachieve request types) → Task 1.
+- §3 Membership model (validation, Create/Transfer/member-add/remove sync, transactional) → Tasks 4, 6, 7, 8.
+- §4 Dynamic Reporting Manager (cascade to direct children on Transfer, both immediate and approved paths) → Tasks 7, 11.
+- §5 Scoped visibility (GetObjectiveTree subtree-scoping, new GetObjectiveById, new history endpoint) → Tasks 12, 13, 14.
+- §6 Achieve (Objective + Project, precondition, frozen, revertible, membership cleanup) → Tasks 9, 10, 11.
+- §7 Auto-grant projects:access + documented session-refresh limitation → Task 4, consumed by Tasks 6, 7.
+- §8 Endpoint summary table (11 new/changed routes) → Task 15.
+
+**Placeholder scan:** no "TBD"/"similar to Task N"/unshown code — every step has runnable code or an exact `dotnet`/`git` command.
+
+**Type consistency:** `IMilestoneMembershipCoordinator`/`IPermissionAutoGrantService` signatures match exactly between Task 4's definition and every consuming handler in Tasks 6–14; `ObjectiveChangeOutcomeResponse` (defined by the original milestone-hierarchy plan, reused here) is constructed identically in Tasks 9, 10, 11; `EmploymentStatusIds.Active` and `ObjectiveChangeRequestTypes.Achieve`/`.Unachieve` (Task 1) are referenced with matching names throughout.
+
+**Known, accepted deviation from strict minimalism:** `IUnitOfWork.ExecuteInTransactionAsync` wraps several handlers (Tasks 6, 7, 9, 11) even though a single `SaveChangesAsync` call against one `DbContext` is already atomic for everything staged in this plan — no raw SQL or multiple separate `SaveChangesAsync` calls occur in any of them, which is the actual scenario that helper exists for. This is redundant, not incorrect, and is called out here explicitly rather than silently shipped as if it were necessary - worth a simplification pass during implementation review if a reviewer flags it, but not blocking.
