@@ -95,6 +95,24 @@ public sealed class EmailTemplateRendererTests
     }
 
     [Fact]
+    public void RenderPlatformManagerInvite_UsesAdminConsoleBaseUrl()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AdminConsoleBaseUrl = "https://admin.localhost:4200"
+        }));
+
+        var rendered = renderer.Render("platform_manager_invite", new
+        {
+            full_name = "New Manager",
+            invite_token = "tok-xyz"
+        });
+
+        rendered.HtmlBody.Should().Contain("https://admin.localhost:4200/auth/accept-invite?token=tok-xyz");
+        rendered.TextBody.Should().Contain("https://admin.localhost:4200/auth/accept-invite?token=tok-xyz");
+    }
+
+    [Fact]
     public void RenderAdminPasswordChanged_ProducesSecurityNoticeCopy()
     {
         var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));

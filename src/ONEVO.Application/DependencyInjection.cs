@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Common.Behaviors;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.OutboxHandlers;
+using ONEVO.Application.Features.DevPlatform.PlatformAccess.OutboxHandlers;
 using ONEVO.Application.Features.DevPlatform.Provisioning.OutboxHandlers;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Helpers;
 
@@ -32,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler, PasswordResetEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, AdminPasswordResetEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, AdminPasswordChangedEmailOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, PlatformManagerInviteEmailOutboxHandler>();
         services.AddScoped<GitHubUserIntegrationAvailability>();
 
         return services;
