@@ -113,12 +113,16 @@ public sealed class PasswordResetHardeningArchitectureTests
             "/api/v1/auth/forgot-password",
             "/api/v1/auth/reset-password",
             "/api/v1/auth/force-change-password",
-            "admin/v1/auth/forgot-password",
-            "admin/v1/auth/reset-password"
+            "/admin/v1/auth/login",
+            "/admin/v1/auth/mfa/verify",
+            "/admin/v1/auth/forgot-password",
+            "/admin/v1/auth/reset-password"
         })
         {
-            source.Should().Contain(path,
-                $"the process-local rate limiter must still have a rule for {path}");
+            source.Should().Contain($"\"{path}\"",
+                $"the process-local rate limiter must still have a rule for {path}, " +
+                "with a leading slash matching how ASP.NET Core reports the real request path " +
+                "(a rule string without one silently never matches any real request)");
         }
     }
 
