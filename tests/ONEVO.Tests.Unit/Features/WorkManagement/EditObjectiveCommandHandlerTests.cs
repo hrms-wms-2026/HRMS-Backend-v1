@@ -29,10 +29,10 @@ public class EditObjectiveCommandHandlerTests
         AllocatedHours = 40m, CreatedAt = DateTimeOffset.UtcNow
     };
 
-    private static Objective SubObjective(Guid createdById, bool isDefault = false) => new()
+    private static Objective SubObjective(Guid createdById, bool isDefault = false, bool isActive = true) => new()
     {
         Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, ParentObjectiveId = ParentId, IsDefault = isDefault,
-        Title = "Sub", OwnerId = HeadId, ReportingManagerId = createdById, CreatedById = createdById, IsActive = true,
+        Title = "Sub", OwnerId = HeadId, ReportingManagerId = createdById, CreatedById = createdById, IsActive = isActive,
         StartDate = new DateOnly(2026, 1, 15), EndDate = new DateOnly(2026, 5, 1), AllocatedHours = 20m,
         CreatedAt = DateTimeOffset.UtcNow
     };
@@ -146,5 +146,29 @@ public class EditObjectiveCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_ObjectiveInactive_ReturnsNotFound()
+    {
+        var (handler, _, _) = BuildHandler(SubObjective(createdById: OtherUserId, isActive: false), ParentObjective());
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_NonConflictingEditWithAlreadyPendingRequest_ReturnsConflict()
+    {
+        var (handler, objectives, requests) = BuildHandler(SubObjective(createdById: OtherUserId), ParentObjective(), hasPending: true);
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
+        requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

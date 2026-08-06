@@ -47,6 +47,9 @@ public class DeleteObjectiveCommandHandler : IRequestHandler<DeleteObjectiveComm
         if (objective.OwnerId != userId)
             return Result<ObjectiveChangeOutcomeResponse>.Forbidden("Only this milestone's head can delete it.");
 
+        if (!objective.IsActive)
+            return Result<ObjectiveChangeOutcomeResponse>.Conflict("Objective already deleted.");
+
         if (objective.CreatedById == userId)
         {
             objective.IsActive = false;

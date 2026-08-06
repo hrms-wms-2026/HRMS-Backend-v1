@@ -106,6 +106,19 @@ public class DeleteObjectiveCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_AlreadyDeleted_ReturnsConflict()
+    {
+        var (handler, objectives, requests) = BuildHandler(SubObjective(createdById: HeadId, isActive: false));
+
+        var result = await handler.Handle(new DeleteObjectiveCommand(ObjectiveId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
+        requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Handle_NotFound_ReturnsNotFound()
     {
         var (handler, _, _) = BuildHandler(null);

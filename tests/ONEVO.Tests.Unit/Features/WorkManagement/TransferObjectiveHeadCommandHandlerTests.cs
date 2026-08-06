@@ -20,10 +20,10 @@ public class TransferObjectiveHeadCommandHandlerTests
 
     private static TransferObjectiveHeadCommand ValidCommand() => new(ObjectiveId, NewHeadId);
 
-    private static Objective SubObjective(Guid createdById, bool isDefault = false) => new()
+    private static Objective SubObjective(Guid createdById, bool isDefault = false, bool isActive = true) => new()
     {
         Id = ObjectiveId, TenantId = TenantId, IsDefault = isDefault, Title = "Sub",
-        OwnerId = HeadId, ReportingManagerId = createdById, CreatedById = createdById, IsActive = true,
+        OwnerId = HeadId, ReportingManagerId = createdById, CreatedById = createdById, IsActive = isActive,
         StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), CreatedAt = DateTimeOffset.UtcNow
     };
 
@@ -106,5 +106,16 @@ public class TransferObjectiveHeadCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_ObjectiveInactive_ReturnsNotFound()
+    {
+        var (handler, _, _) = BuildHandler(SubObjective(createdById: HeadId, isActive: false));
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
     }
 }

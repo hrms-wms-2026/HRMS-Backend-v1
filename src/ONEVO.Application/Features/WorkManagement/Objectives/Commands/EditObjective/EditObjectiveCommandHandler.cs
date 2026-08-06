@@ -41,7 +41,7 @@ public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand,
             return Result<ObjectiveEditOutcomeResponse>.Forbidden("Tenant context missing.");
 
         var objective = await _objectives.GetByIdForTenantAsync(tenantId, request.ObjectiveId, ct);
-        if (objective is null)
+        if (objective is null || !objective.IsActive)
             return Result<ObjectiveEditOutcomeResponse>.NotFound("Objective not found.");
 
         // Default-Objective carve-out (design §5) - edited only via PUT /projects/{id}.
@@ -56,6 +56,13 @@ public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand,
         var parent = await _objectives.GetByIdForTenantAsync(tenantId, objective.ParentObjectiveId!.Value, ct);
         if (parent is null)
             return Result<ObjectiveEditOutcomeResponse>.NotFound("Parent objective not found.");
+
+        // At most one pending change request per Objective (design intent) - this gates every
+        // edit attempt uniformly, not just the ones that would themselves create a new pending
+        // request. Otherwise an immediate edit could apply on top of - and later be silently
+        // overwritten by - a stale pending request's eventual approval.
+        if (await _changeRequests.HasPendingForObjectiveAsync(tenantId, objective.Id, ct))
+            return Result<ObjectiveEditOutcomeResponse>.Conflict("A change request is already pending for this objective.");
 
         var conflicts = ObjectiveParentConstraintChecker.Conflicts(parent, request.StartDate, request.EndDate, request.AllocatedHours);
         var isCreator = objective.CreatedById == userId;
@@ -79,9 +86,6 @@ public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand,
             return Result<ObjectiveEditOutcomeResponse>.Success(
                 new ObjectiveEditOutcomeResponse(Applied: true, ObjectiveMapper.ToDetail(objective), PendingRequest: null));
         }
-
-        if (await _changeRequests.HasPendingForObjectiveAsync(tenantId, objective.Id, ct))
-            return Result<ObjectiveEditOutcomeResponse>.Conflict("A change request is already pending for this objective.");
 
         var payload = new EditObjectiveRequestPayload(request.Title.Trim(), request.Description?.Trim(), request.StartDate, request.EndDate, request.AllocatedHours);
 

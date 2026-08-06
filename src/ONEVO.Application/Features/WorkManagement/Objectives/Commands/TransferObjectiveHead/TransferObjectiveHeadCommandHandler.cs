@@ -40,7 +40,7 @@ public class TransferObjectiveHeadCommandHandler : IRequestHandler<TransferObjec
             return Result<ObjectiveChangeOutcomeResponse>.Forbidden("Tenant context missing.");
 
         var objective = await _objectives.GetByIdForTenantAsync(tenantId, request.ObjectiveId, ct);
-        if (objective is null)
+        if (objective is null || !objective.IsActive)
             return Result<ObjectiveChangeOutcomeResponse>.NotFound("Objective not found.");
 
         if (objective.IsDefault)
