@@ -36,6 +36,9 @@ public sealed class CapturingEmailService : IEmailService
     public Task SendAdminPasswordChangedAsync(string to, CancellationToken ct = default)
         => Task.CompletedTask;
 
+    public Task SendPlatformManagerInviteAsync(string to, string fullName, string inviteToken, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     public string? LastInviteToken()
     {
         SentTemplate? last = null;

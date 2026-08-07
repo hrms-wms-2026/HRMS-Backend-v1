@@ -290,6 +290,7 @@ public static class DependencyInjection
         services.AddScoped<IPlatformUserSessionRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
         services.AddScoped<IPlatformAccessReadRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
         services.AddScoped<IPlatformAuthEventRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
+        services.AddScoped<IPlatformUserInviteRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
         services.AddScoped<IPlatformPermissionResolver, PlatformPermissionResolver>();
         services.AddScoped<IPlatformAccessManagementService, PlatformAccessManagementService>();
         services.AddScoped<IUserExternalIdentityRepository, EfUserExternalIdentityRepository>();

@@ -122,3 +122,61 @@ Per the spec's screen-messages table:
 - **Frontend**: component test for `PlatformUsersList` (mirrors `login.spec.ts` conventions) —
   search filtering, role/status filtering, pagination math, permission-gated "Invite Manager"
   button, "Coming soon" stub behavior, empty-state messages.
+
+## 9. Scope Amendment (2026-08-06) — sub-project 2 delivery order
+
+**Status:** Approved. Does not change anything in §1–§8 above; PA-USER-01 is unaffected
+and already shipped. This amendment only revises how sub-project 2 ("Invite Manager
+flow", §7 item 1) gets delivered.
+
+**Decision:** The original seven-screen journey
+(`PA-USER-02 → PA-ROLE-01 → PA-ROLE-02 → PA-PERM-01 → PA-PERM-02 → PA-USER-03 → PA-USER-04`)
+remains the target-state UX and is **not discarded**. It is deferred to a future
+enhancement. Initial delivery implements invitation using **existing platform roles
+only** — no inline role creation, no inline permission configuration. Role creation
+and permission configuration are delivered separately, as their own
+platform-access-management capabilities (a later "Platform Roles & Permissions"
+project), independent of the invite flow.
+
+**Why:** the seven-screen journey bundles three separate domain concerns into one UI
+flow — inviting a person (identity lifecycle), creating a role (authorization
+structure), and configuring permissions (access policy). None of role-creation's or
+permission-configuration's backend commands exist yet (`CreatePlatformRoleCommand`
+does not exist; only `UpdatePlatformRolePermissionsCommand`, which edits an *existing*
+role, is built). Requiring all three to land in one sub-project inflates it into a
+much larger, harder-to-review deliverable and blocks the invite flow on unrelated
+role-management work. Splitting them keeps each capability independently testable,
+reviewable, and reusable — including by the eventual seven-screen wizard, which (once
+built) will orchestrate these same APIs rather than invent new ones.
+
+**Data model:** `platform_user_invites` does **not** get a single `RoleId` column
+(reversing this spec's §7 item 1 parenthetical, which was a preliminary note, not a
+locked decision — the table was confirmed still fully unused with no role linkage of
+any kind at the time of this amendment). Platform users already support multiple
+simultaneous roles (`platform_user_roles`, composite PK `user_id`+`role_id`;
+`UpdatePlatformUserRolesCommand` takes a role-ID list). Invitations follow the same
+multi-role shape via a new join table, `platform_user_invite_roles`
+(`invite_id`+`role_id` composite PK), copied into `platform_user_roles` at acceptance
+time.
+
+**Release rule:** sending invitations must not ship before invitation *acceptance*
+does. An invite email with no way to accept it is a dead-end. The "Invite Manager"
+button stays disabled/"coming soon" (its current state) until both the invite-sending
+and invite-acceptance paths are live in the same release.
+
+**Revised delivery breakdown for sub-project 2:**
+1. Invitation domain + database: `platform_user_invite_roles` migration,
+   `CreatePlatformUserInviteCommand` (validation, token generation/hashing, outbox
+   email), unit + integration tests.
+2. Admin invite modal: replaces the "coming soon" toast with a real form (email, full
+   name, multi-select from *existing* roles only).
+3. Invitation acceptance: `AcceptPlatformUserInvitationCommand` (token validation,
+   password setup, role copy from the invite's roles into `platform_user_roles`,
+   expired/revoked/already-accepted handling) + two minimal screens (set password,
+   access activated).
+
+Steps 2 and 3 ship in the same release (or step 2 stays behind a flag until step 3 is
+ready) — see the release rule above.
+
+Full design detail for this revised scope: `2026-08-06-invite-platform-manager-design.md`
+(this repo) and the companion frontend spec of the same name in `platform-administration`.
