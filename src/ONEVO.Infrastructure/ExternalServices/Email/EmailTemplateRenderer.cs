@@ -111,7 +111,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var token = Get(f, "reset_token");
         var resetUrl = string.IsNullOrWhiteSpace(_options.AdminConsoleBaseUrl)
             ? $"[reset_url placeholder - set Email:AdminConsoleBaseUrl] token={token}"
-            : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/reset-password?token={token}";
+            : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/auth/reset-password?token={token}";
 
         var subject = "Reset your ONEXSO Platform Administration password";
         var html = $"""

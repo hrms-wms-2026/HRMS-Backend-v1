@@ -76,8 +76,8 @@ public sealed class EmailTemplateRendererTests
 
         var rendered = renderer.Render("admin_password_reset", new { reset_token = "tok-abc" });
 
-        rendered.HtmlBody.Should().Contain("http://localhost:5174/reset-password?token=tok-abc");
-        rendered.TextBody.Should().Contain("http://localhost:5174/reset-password?token=tok-abc");
+        rendered.HtmlBody.Should().Contain("http://localhost:5174/auth/reset-password?token=tok-abc");
+        rendered.TextBody.Should().Contain("http://localhost:5174/auth/reset-password?token=tok-abc");
     }
 
     [Fact]

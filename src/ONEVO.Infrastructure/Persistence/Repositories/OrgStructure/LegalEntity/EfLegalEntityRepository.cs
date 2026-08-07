@@ -16,15 +16,42 @@ public class EfLegalEntityRepository : ILegalEntityRepository
         _db = db;
     }
 
-    public async Task<IReadOnlyList<LegalEntity>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<LegalEntity>> ListAccessibleAsync(
+        Guid tenantId, Guid userId, bool hasManagementAccess, bool includeInactive, CancellationToken ct = default)
     {
-        var query = _db.LegalEntities
-            .AsNoTracking()
-            .Where(entity => entity.TenantId == tenantId)
-            .OrderBy(entity => entity.Name);
+        if (hasManagementAccess)
+        {
+            var query = _db.LegalEntities
+                .AsNoTracking()
+                .Where(entity => entity.TenantId == tenantId);
 
-        var results = await query.ToListAsync(ct);
-        return results;
+            if (!includeInactive)
+                query = query.Where(entity => entity.IsActive);
+
+            return await query.OrderBy(entity => entity.Name).ToListAsync(ct);
+        }
+
+        // Regular user: at most the one legal entity their own active employee row
+        // points at. includeInactive is deliberately ignored here - a non-admin user
+        // must never discover an archived company by flipping a query flag, and their
+        // own company is only surfaced while it is active.
+        var employeeLegalEntityId = await (
+            from employee in _db.Employees.AsNoTracking()
+            join status in _db.EmploymentStatuses.AsNoTracking()
+                on employee.EmploymentStatusId equals status.Id
+            where employee.TenantId == tenantId && employee.UserId == userId && status.Code == "active"
+            select (Guid?)employee.LegalEntityId)
+            .FirstOrDefaultAsync(ct);
+
+        if (employeeLegalEntityId is null)
+            return [];
+
+        var own = await _db.LegalEntities
+            .AsNoTracking()
+            .Where(entity => entity.TenantId == tenantId && entity.Id == employeeLegalEntityId.Value && entity.IsActive)
+            .FirstOrDefaultAsync(ct);
+
+        return own is null ? [] : [own];
     }
 
     public async Task<LegalEntity?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)

@@ -12,6 +12,7 @@ namespace ONEVO.Api.Middleware;
 public sealed class AuthRateLimitingMiddleware
 {
     private const string MfaCookieName = "onevo_mfa";
+    private const string AdminMfaCookieName = "admin_mfa";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -41,11 +42,17 @@ public sealed class AuthRateLimitingMiddleware
         new("/api/v1/auth/force-change-password", "ip", null, 10, TimeSpan.FromMinutes(15)),
         new("/api/v1/auth/force-change-password", "email", "email", 5, TimeSpan.FromMinutes(15)),
 
-        new("admin/v1/auth/forgot-password", "ip", null, 10, TimeSpan.FromMinutes(15)),
-        new("admin/v1/auth/forgot-password", "email", "email", 3, TimeSpan.FromMinutes(15)),
+        new("/admin/v1/auth/login", "ip", null, 20, TimeSpan.FromSeconds(300)),
+        new("/admin/v1/auth/login", "email", "email", 5, TimeSpan.FromSeconds(300)),
 
-        new("admin/v1/auth/reset-password", "ip", null, 10, TimeSpan.FromMinutes(15)),
-        new("admin/v1/auth/reset-password", "token", "token", 5, TimeSpan.FromMinutes(15)),
+        new("/admin/v1/auth/mfa/verify", "ip", null, 20, TimeSpan.FromMinutes(5)),
+        new("/admin/v1/auth/mfa/verify", "mfa", null, 5, TimeSpan.FromMinutes(10), CookieName: AdminMfaCookieName),
+
+        new("/admin/v1/auth/forgot-password", "ip", null, 10, TimeSpan.FromMinutes(15)),
+        new("/admin/v1/auth/forgot-password", "email", "email", 3, TimeSpan.FromMinutes(15)),
+
+        new("/admin/v1/auth/reset-password", "ip", null, 10, TimeSpan.FromMinutes(15)),
+        new("/admin/v1/auth/reset-password", "token", "token", 5, TimeSpan.FromMinutes(15)),
 
         new("/api/v1/auth/invitations", "ip", null, 20, TimeSpan.FromMinutes(15), PrefixMatch: true),
         new("/api/v1/auth/invitations", "path", null, 5, TimeSpan.FromMinutes(15), PrefixMatch: true),
@@ -196,7 +203,8 @@ public sealed class AuthRateLimitingMiddleware
 
         if (rule.Scope == "mfa")
         {
-            if (context.Request.Cookies.TryGetValue(MfaCookieName, out var mfaCookie)
+            var cookieName = rule.CookieName ?? MfaCookieName;
+            if (context.Request.Cookies.TryGetValue(cookieName, out var mfaCookie)
                 && !string.IsNullOrWhiteSpace(mfaCookie))
             {
                 return mfaCookie;
@@ -230,7 +238,8 @@ public sealed class AuthRateLimitingMiddleware
         string? BodyField,
         int MaxRequests,
         TimeSpan Window,
-        bool PrefixMatch = false)
+        bool PrefixMatch = false,
+        string? CookieName = null)
     {
         public bool Matches(string path) =>
             PrefixMatch

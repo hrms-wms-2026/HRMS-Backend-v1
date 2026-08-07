@@ -46,7 +46,11 @@ public class ModuleCatalogSeederTests
             new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "monitoring:configure", Module = "monitoring" },
             new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "integrations:read", Module = "integrations" },
             new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "integrations:manage", Module = "integrations" },
-            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "leave:read", Module = "leave" }
+            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "leave:read", Module = "leave" },
+            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "notifications:manage", Module = "notifications" },
+            // Still present as a leftover row in some pre-migration databases; the ownership map
+            // no longer references it, so it must not get re-granted a module ownership row.
+            new ONEVO.Domain.Features.Auth.Entities.Permission { Id = Guid.NewGuid(), Code = "settings:notifications", Module = "configuration" }
         );
         await db.SaveChangesAsync();
 
@@ -71,5 +75,12 @@ public class ModuleCatalogSeederTests
         ownerships.Should().Contain(o =>
             o.ModuleKey == "integrations" &&
             o.PermissionCode == "integrations:manage");
+
+        // settings:notifications is retired: notifications:manage is the sole canonical
+        // notification-management permission owned by the notifications module.
+        ownerships.Should().NotContain(o => o.PermissionCode == "settings:notifications");
+        ownerships.Should().Contain(o =>
+            o.ModuleKey == "notifications" &&
+            o.PermissionCode == "notifications:manage");
     }
 }

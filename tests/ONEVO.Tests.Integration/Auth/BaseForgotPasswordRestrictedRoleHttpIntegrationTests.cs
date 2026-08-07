@@ -30,6 +30,7 @@ namespace ONEVO.Tests.Integration.Auth;
 /// it directly; this class proves the same thing end-to-end through routing, host tenant
 /// resolution, and the real HTTP pipeline via AuthPasswordController. Requires Docker.
 /// </summary>
+[Collection(WebApplicationFactoryCollection.Name)]
 public sealed class BaseForgotPasswordRestrictedRoleHttpIntegrationTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
