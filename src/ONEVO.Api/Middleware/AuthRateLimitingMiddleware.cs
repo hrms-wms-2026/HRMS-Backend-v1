@@ -48,7 +48,13 @@ public sealed class AuthRateLimitingMiddleware
         new("admin/v1/auth/reset-password", "token", "token", 5, TimeSpan.FromMinutes(15)),
 
         new("/api/v1/auth/invitations", "ip", null, 20, TimeSpan.FromMinutes(15), PrefixMatch: true),
-        new("/api/v1/auth/invitations", "path", null, 5, TimeSpan.FromMinutes(15), PrefixMatch: true)
+        new("/api/v1/auth/invitations", "path", null, 5, TimeSpan.FromMinutes(15), PrefixMatch: true),
+
+        // Screenshot command creation: tighter limit — HR-triggered, not bulk
+        new("/api/v1/monitoring/screenshots/request", "ip", null, 10, TimeSpan.FromMinutes(1)),
+
+        // Screenshot file upload from tray: bounded by upload size limit, but rate-cap too
+        new("/api/v1/monitoring/tray/upload", "ip", null, 5, TimeSpan.FromMinutes(1))
     ];
 
     private readonly RequestDelegate _next;

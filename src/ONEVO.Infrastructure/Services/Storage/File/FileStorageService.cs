@@ -275,6 +275,20 @@ public sealed class FileStorageService : IFileStorageService
         return Result.Success();
     }
 
+    public async Task<Result<string>> GetSignedUrlAsync(
+        Guid tenantId,
+        Guid fileRecordId,
+        TimeSpan expiry,
+        CancellationToken ct = default)
+    {
+        var fileRecord = await _fileRecords.GetByIdAsync(tenantId, fileRecordId, ct);
+        if (fileRecord is null)
+            return Result<string>.Failure("file_record_not_found", 404);
+
+        var url = await _objectStorage.GetSignedUrlAsync(fileRecord.StorageKey, expiry, ct);
+        return Result<string>.Success(url);
+    }
+
     public async Task<Result<FileRecordDto>> UploadAsync(
         Guid tenantId,
         Guid userId,

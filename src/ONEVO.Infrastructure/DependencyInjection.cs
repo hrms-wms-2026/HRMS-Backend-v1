@@ -251,6 +251,15 @@ public static class DependencyInjection
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();
 
+        // Monitoring - Screenshots
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IEvidenceAssetRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfEvidenceAssetRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IAgentCommandRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfAgentCommandRepository>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
+
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<ISecureTokenGenerator, SecureTokenGenerator>();
