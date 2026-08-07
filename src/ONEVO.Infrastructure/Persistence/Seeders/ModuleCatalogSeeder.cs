@@ -236,11 +236,13 @@ public class ModuleCatalogSeeder : IHostedService
 
             // notifications
             new { Module = "notifications", Perm = "notifications:manage" },
-            new { Module = "notifications", Perm = "settings:notifications" },
 
             // org_structure
             new { Module = "org_structure", Perm = "org:read" },
             new { Module = "org_structure", Perm = "org:manage" },
+            new { Module = "org_structure", Perm = "legal_entity:create" },
+            new { Module = "org_structure", Perm = "legal_entity:update" },
+            new { Module = "org_structure", Perm = "legal_entity:delete" },
 
             // core_hr
             new { Module = "core_hr", Perm = "employees:read" },

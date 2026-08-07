@@ -36,6 +36,8 @@ public class CsrfProtectionMiddleware
         "/api/v1/legal/acceptances/complete-login",
         "/admin/v1/auth/login",
         "/admin/v1/auth/google-callback",
+        "/admin/v1/auth/forgot-password",
+        "/admin/v1/auth/reset-password",
     };
 
     private readonly RequestDelegate _next;

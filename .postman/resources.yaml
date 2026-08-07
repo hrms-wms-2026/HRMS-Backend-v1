@@ -12,4 +12,6 @@ cloudResources:
 
 localResources:
   collections:
+    - ../postman/collections/ONEVO Developer Platform API
+    - ../postman/collections/ONEVO Organization Admin API
     - ../ONEVO-HRMS.postman_collection.json

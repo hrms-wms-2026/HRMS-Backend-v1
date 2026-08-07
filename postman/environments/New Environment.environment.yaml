@@ -5,11 +5,15 @@ values:
   - key: admin_base_url
     value: 'https://admin.localhost:7229'
   - key: tenant_base_url
-    value: 'https://localhost:7229'
+    value: 'https://acme.localhost:7229'
   - key: tenant_slug
     value: acme
   - key: tenant_host
     value: 'https://acme.localhost:7229'
+  - key: exchange_code
+    value: ''
+  - key: google_id_token
+    value: ''
   - key: admin_email
     value: dev@onevo.io
   - key: admin_password

@@ -91,6 +91,9 @@ public class PermissionSeeder : IHostedService
         // Organization
         Perm("org:read", "View org structure, departments, hierarchy.", "org_structure"),
         Perm("org:manage", "Create and edit org structure, departments.", "org_structure"),
+        Perm("legal_entity:create", "Create a legal entity (company) inside the tenant.", "org_structure"),
+        Perm("legal_entity:update", "Edit a legal entity's general settings.", "org_structure"),
+        Perm("legal_entity:delete", "Deactivate (soft-delete) a legal entity.", "org_structure"),
 
         // Leave (Legacy compatibility alias - to be migrated to time_off. Not used for Module Catalog ownership)
         Perm("leave:read", "View leave records for all employees in scope.", "leave"),
@@ -155,7 +158,6 @@ public class PermissionSeeder : IHostedService
         Perm("settings:billing", "Manage subscription, plan, and payment methods.", "configuration"),
         Perm("settings:branding", "Manage company logo, colors, and custom domain.", "configuration"),
         Perm("settings:integrations", "Connect or disconnect tenant-wide app integrations.", "configuration"),
-        Perm("settings:notifications", "Manage notification templates and delivery channels.", "configuration"),
         Perm("settings:alerts", "Configure alert thresholds and escalation rules.", "configuration"),
         Perm("settings:system", "Manage system-level settings â€” audit config, data retention policies.", "configuration"),
         Perm("settings:device", "View biometric device connection status.", "configuration"),

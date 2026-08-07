@@ -1,25 +1,61 @@
 # plans/ — Summary
 
-**Purpose:** Dated implementation plans, one per feature/fix, following the header format in the `writing-plans` skill (Goal / Architecture / Tech Stack / Global Constraints / numbered tasks with checkboxes).
+**Purpose:** Dated implementation plans, one per feature/fix, following the header format in the `writing-plans` skill (Goal / Architecture / Tech Stack / Global Constraints / numbered tasks with checkboxes). Restructured on 2026-08-06 into `finished/` and `next/` — see `docs/superpowers/rules/FILE_CREATION_RULES.md` for the full file-creation/organization rule this follows.
 
 **Last updated:** 2026-08-06
 
-## Files (chronological)
+## Layout
 
-- `2026-07-27-forgot-password-restricted-role-http-rls-proof.md` — proves `POST /api/v1/auth/forgot-password` enforces PostgreSQL RLS end-to-end over real HTTP under the restricted `onevo_app` runtime role, closing a gap where existing HTTP tests ran against a Testcontainers superuser connection that never surfaced RLS violations.
-- `2026-07-28-legal-document-rich-content.md` — stores Terms/Privacy legal document content directly in `legal_document_versions`, adds Developer Platform admin CRUD+publish/archive endpoints and public read endpoints, and wires content into the pending-legal-acceptance flow.
-- `2026-07-28-tenant-host-password-login-retirement.md` — removes the dead tenant-host email/password login path (`LoginCommand`/`LoginCommandHandler`/`LoginCommandValidator`), leaving base-domain credential-first login as the only password login entry point.
-- `2026-08-02-dev-smoke-multi-tenant-seed-expansion.md` — expands `DevSmokeTestTenantSeeder` (Development/Test only) to two tenants, multiple users/roles, and multiple legal entities, all idempotent.
-- `2026-08-03-doc-audit-and-process-setup.md` — Sets up `rules/` + per-folder `SUMMARY.md` files, reconciles the Architecture doc's Authentication section against `workflow/authentication.md`, and queues the remaining architecture/tables audit as Phase 2/3.
-- `2026-08-03-work-management-foundation.md` — Work Management Slice 1: schema, Domain entities, repositories, and the `POST /api/v1/work/projects` creation transaction (Project + Default Objective + creator membership + Default Version + release reminder + optional labels/logo, atomic).
-- `2026-08-04-test-suite-audit-and-invite-coverage.md` — full pass/fail baseline across both repos' test suites (backend unit/architecture/integration, frontend Vitest/Playwright), a verified backend test-coverage gap inventory, fixes for a stale `.env` key and a stale Playwright assertion (both live failures, not code regressions), and new unit tests closing the Invitation-flow coverage gap.
-- `2026-08-04-work-management-projects-edit-delete-view.md` — Work Management Slice 2: `PUT`/`DELETE`/`GET`-by-id (replaces the `501` placeholder)/`GET mine`/`GET ?userId=` on `ProjectsController`, built from the approved `specs/2026-08-04-work-management-projects-edit-delete-view-design.md`. **Executed 2026-08-05**: all 9 tasks + final whole-branch review + one fix wave (a migration self-containment bug, `ModuleCatalogSeeder`/`role_templates`/`user_permission_overrides` gaps in the permission-retirement migration, a missing `IsActive` check on Edit, and a partial-update tracking bug — all fixed and re-reviewed clean).
-- `2026-08-04-work-management-milestone-hierarchy.md` — Work Management's Milestone/Objective hierarchy: `PermissionSeeder.cs` retrofit, `Objective.ReportingManagerId` + `objective_change_requests` schema, the fully recursive hardcoded tree-authorization rule, and 8 endpoints (create/edit/delete/transfer a sub-milestone, approve/reject/list change requests, get the full Objective tree). Built from the approved `specs/2026-08-04-work-management-milestone-hierarchy-design.md`. **Executed 2026-08-05/06**: all 14 tasks + final whole-branch review + one fix wave (missing `IsActive` checks on Edit/Delete/Transfer, and the immediate-edit path bypassing the pending-request gate — both fixed and re-reviewed clean). Three Important findings were parked, not fixed, as real product/design gaps needing a decision rather than a quick patch — see `2026-08-06-work-management-milestone-membership-and-achieve-design.md` below, which resolves all three.
-- `2026-08-06-work-management-milestone-membership-and-achieve.md` — **this plan.** Closes the three gaps parked at the end of the milestone-hierarchy plan's final review (a Head assigned via `headUserId`/Transfer never became a project member; `GetObjectiveTree` returned the whole project to any member instead of the caller's own reachable subtree; `ReportingManagerId` was frozen at creation instead of tracking the parent's current Head) and adds a new Achieve completion workflow for both Projects and Objectives (gated on "all direct children already Achieved," frozen-but-revertible, with its own membership cleanup). Built from `specs/2026-08-06-work-management-milestone-membership-and-achieve-design.md`, brainstormed live against the user's own end-to-end flow walkthrough of the whole module — 17 tasks. Not yet executed (all task checkboxes unchecked).
+`plans/` has exactly two status folders, per user request:
+
+- `finished/` — completed plans and point-in-time audit/fix reports (42 files), further split into one `YYYY-MM-DD/` subfolder per completion date. See `finished/SUMMARY.md`.
+- `next/` — plans not yet finished (status `pending`) plus raw not-yet-brainstormed future-feature context. Stays flat, no date subfolders (the date-split is `finished/`-only, per user request). See `next/SUMMARY.md`.
+
+`plans/kajaa/` (a personal plan folder for one team member) existed briefly during the 2026-08-06 restructure but was dissolved the same day — its 3 finished plans were folded into `finished/` so that `finished/`/`next/` are the only two categories.
+
+## Total plan list + status
+
+| Plan | Location | Status |
+|---|---|---|
+| `2026-07-27-forgot-password-restricted-role-http-rls-proof.md` | `finished/2026-07-27/` | finished |
+| `2026-07-28-legal-document-rich-content.md` | `finished/2026-07-28/` | finished |
+| `2026-07-28-tenant-host-password-login-retirement.md` | `finished/2026-07-28/` | finished |
+| `2026-08-02-dev-smoke-multi-tenant-seed-expansion.md` | `finished/2026-08-02/` | finished |
+| `2026-08-03-doc-audit-and-process-setup.md` | `finished/2026-08-03/` | finished |
+| `2026-08-03-view-model-retrofit-phase1.md` | `finished/2026-08-03/` | finished |
+| `2026-08-03-work-management-foundation.md` | `finished/2026-08-03/` | finished |
+| `2026-08-04-department-hardening-part1.md` | `finished/2026-08-04/` | finished |
+| `2026-08-04-department-hardening-part2.md` | `finished/2026-08-04/` | finished |
+| `2026-08-04-department-hardening-part3.md` | `finished/2026-08-04/` | finished |
+| `2026-08-04-position-foundation-part2b.md` | `finished/2026-08-04/` | finished |
+| `2026-08-04-test-suite-audit-and-invite-coverage.md` | `finished/2026-08-04/` | finished |
+| `2026-08-04-tray-employee-check-in.md` | `finished/2026-08-04/` | finished |
+| `2026-08-04-work-management-milestone-hierarchy.md` | `finished/2026-08-04/` | finished |
+| `2026-08-04-work-management-projects-edit-delete-view.md` | `finished/2026-08-04/` | finished |
+| `2026-08-05-activity-monitoring-keyboard-mouse-tracking.md` | `finished/2026-08-05/` | finished |
+| `2026-08-05-dev-smoke-employee-seeding.md` | `finished/2026-08-05/` | finished |
+| `2026-08-05-remove-legacy-employee-job-title-manager-fields.md` | `finished/2026-08-05/` | finished |
+| `2026-08-06-legal-entity-permission-access-filter.md` | `finished/2026-08-06/` | finished |
+| `2026-08-06-work-management-milestone-membership-and-achieve.md` | `next/` | **pending** (0/17 tasks) |
+| 26 `*_REPORT.md` / `*_AUDIT_PLAN.md` files (Department, Position, Legal Entity, Dev Smoke, Tenant Provisioning, etc.) | `finished/2026-08-03/` through `finished/2026-08-06/` | finished |
+| `Project Management.md` (raw future-feature context, 1 of 2 items still open) | `next/` | pending (not brainstormed) |
+
+See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all 42 files in that folder (kept short here to avoid duplicating the same list twice).
+
+## Notable finished plans (kept from the pre-restructure summary)
+
+- `finished/2026-08-03/2026-08-03-work-management-foundation.md` — Work Management Slice 1: schema, Domain entities, repositories, and the `POST /api/v1/work/projects` creation transaction (Project + Default Objective + creator membership + Default Version + release reminder + optional labels/logo, atomic).
+- `finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md` — Work Management Slice 2: `PUT`/`DELETE`/`GET`-by-id/`GET mine`/`GET ?userId=` on `ProjectsController`. **Executed 2026-08-05**: all 9 tasks + final review + one fix wave, re-reviewed clean.
+- `finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md` — Work Management's Milestone/Objective hierarchy: `PermissionSeeder.cs` retrofit, `Objective.ReportingManagerId` + `objective_change_requests` schema, recursive tree-authorization, 8 endpoints. **Executed 2026-08-05/06**: all 14 tasks + final review + one fix wave, re-reviewed clean. Three Important findings were parked as real product/design gaps — resolved by the plan below.
+
+## Next up
+
+- `next/2026-08-06-work-management-milestone-membership-and-achieve.md` — closes the three gaps parked at the end of the milestone-hierarchy plan's final review (Head assignment not becoming project membership, `GetObjectiveTree` scope leak, `ReportingManagerId` not tracking the parent's current Head) and adds a new Achieve completion workflow for Projects/Objectives. Built from `specs/2026-08-06-work-management-milestone-membership-and-achieve-design.md`. 17 tasks, not yet started.
 
 ## Open items
 
-- Phase 2 (remaining `ONEVO_Backend_Architecture_Document.md` sections: tenant isolation, caching, file handling, performance, testing, deployment) and Phase 3 (structural table-existence check of `phase1-table-inventory.md`) are queued in `2026-08-03-doc-audit-and-process-setup.md` Tasks 6-7 but not yet executed.
-- Confirmed but explicitly deferred test-coverage gaps (user chose Invitation flow only for this pass): `PermissionsController` (zero coverage), Stripe webhook event processing (`ProcessStripeEventCommandHandler`), and a ~50-handler long tail in the DevPlatform admin backoffice. See `2026-08-04-test-suite-audit-and-invite-coverage.md` for the full inventory.
-- Execution order for Work Management: Foundation (done) → Slice 2 (done) → Milestone Hierarchy (done) → `2026-08-06-work-management-milestone-membership-and-achieve.md` (not started — next up).
-- The broader project lifecycle/approval/progress-tracking feature set (workflow status, approval pipeline, archive/restore, progress calculation) remains raw context, not yet brainstormed, in `docs/superpowers/next-plan/Project Management.md` — separate from and not to be silently merged with the milestone-hierarchy plan's `objective_change_requests` table (see that file's cross-reference note). The new Achieve workflow in this session's plan is a narrow, single-flag addition and deliberately does not attempt to unify with that broader, still-unbrainstormed feature set.
+- Phase 2 (remaining `ONEVO_Backend_Architecture_Document.md` sections: tenant isolation, caching, file handling, performance, testing, deployment) and Phase 3 (structural table-existence check of `phase1-table-inventory.md`) are queued in `finished/2026-08-03/2026-08-03-doc-audit-and-process-setup.md` Tasks 6-7 but not yet executed.
+- Confirmed but explicitly deferred test-coverage gaps (user chose Invitation flow only for this pass): `PermissionsController` (zero coverage), Stripe webhook event processing (`ProcessStripeEventCommandHandler`), and a ~50-handler long tail in the DevPlatform admin backoffice. See `finished/2026-08-04/2026-08-04-test-suite-audit-and-invite-coverage.md` for the full inventory.
+- Execution order for Work Management: Foundation (done) → Slice 2 (done) → Milestone Hierarchy (done) → `next/2026-08-06-work-management-milestone-membership-and-achieve.md` (not started — next up).
+- The broader project lifecycle/approval/progress-tracking feature set (workflow status, approval pipeline, archive/restore, progress calculation) remains raw context, not yet brainstormed, in `next/Project Management.md` — separate from and not to be silently merged with the milestone-hierarchy plan's `objective_change_requests` table. The new Achieve workflow is a narrow, single-flag addition and deliberately does not attempt to unify with that broader, still-unbrainstormed feature set.
+- The 42 files in `finished/` were classified by filename convention (and, for the date-folder split, by explicit `**Date:**` headers or content inference) during the 2026-08-06 move, not individually re-verified — see `finished/SUMMARY.md`'s status note and "Layout: date subfolders" section for which dates were inferred.

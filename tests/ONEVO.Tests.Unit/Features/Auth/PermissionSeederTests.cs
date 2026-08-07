@@ -64,5 +64,10 @@ public class PermissionSeederTests
         codes.Should().NotContain("monitoring:view-settings");
         codes.Should().NotContain("integrations:read");
         codes.Should().Contain("integrations:manage");
+
+        // settings:notifications was a duplicate of notifications:manage and is retired;
+        // notifications:manage is the single canonical Phase 1 notification-management permission.
+        codes.Should().NotContain("settings:notifications");
+        codes.Should().Contain("notifications:manage");
     }
 }
