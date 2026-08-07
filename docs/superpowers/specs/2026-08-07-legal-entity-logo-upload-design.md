@@ -45,19 +45,26 @@ ownership, so this half requires no change to `IFileStorageService` or its archi
 
 The *display* side does need one small, deliberate addition to `IFileStorageService`, because no
 public/presigned URL mechanism exists anywhere in the codebase (see Problem, gap 3): a read-only
-`OpenReadAsync(tenantId, storageKey, ct)` that streams bytes for a storage key the caller already
+`OpenReadAsync(tenantId, fileId, ct)` that streams bytes for a file id the caller already
 legitimately owns. This is a fundamentally different, smaller trust decision than the one Part 2C
 deferred — that was "validate an *untrusted, client-supplied* file id belongs to this tenant
-before acting on it"; this is "stream back bytes for a key this feature generated and stored
-itself." No ownership-validation logic is needed because there is no untrusted input to validate.
+before acting on it"; this is "stream back bytes for a file id this feature already validated and
+stored itself." No new ownership-validation logic is needed because there is no untrusted input to
+validate — the tenant filter is simply re-applied on read, same as every other tenant-scoped
+lookup in this codebase.
 
 The now-dead `IStorageService` interface (gap 3) is deleted as part of this change — it has no
 implementation, no consumers, and no DI registration, and leaving it in place after specifically
 finding it here would be misleading dead code in the area this feature touches.
 
-Store the resulting `StorageKey` on `LegalEntity` at upload time (the handler already has it in
-hand from `UploadAsync`'s result), so the display endpoint never needs a `FileId → StorageKey`
-lookup either — the entity carries what it needs directly.
+No new column is needed on `LegalEntity` either. `FileStorageService` already has
+`IFileRecordRepository` injected (constructor field `_fileRecords`, currently unused in any
+method) — a tenant-scoped `GetByIdAsync(tenantId, id, ct)`. `OpenReadAsync` looks up the
+`FileRecord` by the `LogoFileId` the entity already stores, reading both `StorageKey` and
+`ContentType` off it in one call. This is safe specifically because `LogoFileId` is never
+client-supplied at read time — it was set by *our own* upload handler after tenant-scoped
+validation, and the lookup re-applies the tenant filter again. That is what makes it a
+fundamentally different trust decision from the one Part 2C deferred (see above).
 
 Storage quota accounting needs no new work: `IFileStorageService.UploadAsync` — which the new
 handler calls — already reserves bytes against `IStorageQuotaService`/`tenant_storage_stats`
@@ -69,18 +76,16 @@ there.
 
 ## Backend design
 
-**Data model:** add nullable `LogoStorageKey` (string) to `LegalEntity`, alongside the existing
-`LogoFileId`. New migration.
+**No new column on `LegalEntity`.** The existing `LogoFileId` is enough (see Decision).
 
 **`IFileStorageService` addition** (`Features/Storage/File/ServiceInterfaces/IFileStorageService.cs`):
-- New method: `Task<Result<FileStreamDto>> OpenReadAsync(Guid tenantId, string storageKey,
+- New method: `Task<Result<FileStreamDto>> OpenReadAsync(Guid tenantId, Guid fileId,
   CancellationToken ct = default)`, where `FileStreamDto` is a new small record
   `(Stream Content, string ContentType)`.
-- Implemented in `FileStorageService` by delegating to `_objectStorage.GetObjectAsync(storageKey,
-  ct)`, wrapped in the same `try/catch (ObjectStorageException) → 502` pattern `UploadAsync`
-  already uses. Tenant-scoped: the parameter exists so callers are forced to think about tenant
-  context, even though the storage key itself is already tenant-namespaced by
-  `IUploadPurposePolicy.GenerateStorageKey`.
+- Implemented in `FileStorageService`: `_fileRecords.GetByIdAsync(tenantId, fileId, ct)` → 404 if
+  null; then `_objectStorage.GetObjectAsync(record.StorageKey, ct)`, wrapped in the same
+  `try/catch (ObjectStorageException) → 502` pattern `UploadAsync` already uses; return
+  `FileStreamDto(stream, record.ContentType)`.
 - This is the one interface addition this feature makes to Storage.File — deliberately minimal
   and read-only (see Decision).
 
@@ -96,8 +101,7 @@ unexposed:
 - Handler calls `IFileStorageService.UploadAsync(tenantId, userId, fileName, contentType,
   UploadPurposeCatalog.CompanyLogo, stream, ct)`. `UploadAsync` enforces the 5 MB / PNG-JPEG-WebP
   rule server-side, and reserves tenant storage quota as a side effect (see Decision).
-- On success: sets `entity.LogoFileId` and `entity.LogoStorageKey` from the returned
-  `FileRecordDto`, saves.
+- On success: sets `entity.LogoFileId` from the returned `FileRecordDto.Id`, saves.
 - Returns `LegalEntityLogoResponse` unchanged in shape (`LegalEntityId`, `LogoFileId`) — no new
   response field needed (see Display below).
 - Remove the now-stale "PUT /{id}/logo is deliberately not exposed" comment block
@@ -105,15 +109,16 @@ unexposed:
   `SetLegalEntityLogoCommandHandler.cs:9-16`.
 
 **Display** — new `GET /api/v1/org/legal-entities/{id}/logo`, `legal_entity:update`:
-- Loads the entity for the current tenant, 404s if missing or if `LogoStorageKey` is null.
-- Calls `IFileStorageService.OpenReadAsync(tenantId, entity.LogoStorageKey, ct)` and returns
+- Loads the entity for the current tenant, 404s if missing or if `LogoFileId` is null.
+- Calls `IFileStorageService.OpenReadAsync(tenantId, entity.LogoFileId.Value, ct)` and returns
   `File(stream, contentType)`.
 - This is the route the frontend derives client-side (see below). Browser `<img>`
   requests to it carry the existing `onevo_session` cookie automatically (HttpOnly,
   `SameSite=Strict`, no `Domain` restriction — same-site subresource requests are unaffected by
   `SameSite=Strict`), so no token/header plumbing is needed on the frontend.
 
-**Remove** — `DELETE /{id}/logo`, already working: also clears `LogoStorageKey`.
+**Remove** — `DELETE /{id}/logo`, already working, needs no change: it already clears
+`LogoFileId`, which is now the only field the display path depends on.
 
 **No new response fields needed for display.** The frontend already receives both `id` and
 `logoFileId` from every relevant response (`LegalEntityGeneralSettingsResponse`,
@@ -130,10 +135,6 @@ data the frontend already has.
   (lines 11-16) which currently states the deferral as intentional.
 - `LegalEntitiesIntegrationTests.SetLogo_RouteDoesNotExist_ByDesign` → replace with a real
   happy-path multipart upload test.
-- `LegalEntityGeneralSettingsArchitectureTests.LegalEntity_HasExactlyTheInventoryColumns` enumerates
-  an exact, alphabetically-sorted property list for `LegalEntity` — add `"LogoStorageKey"` to it
-  (sorts between `"LogoFileId"` and `"Name"`), or this test fails the moment the new column is
-  added.
 
 ## Frontend design
 
@@ -167,12 +168,13 @@ data the frontend already has.
 
 **Backend:**
 - Extend `LegalEntityLogoCommandHandlerTests`: upload success/failure via mocked
-  `IFileStorageService`; remove clears both `LogoFileId` and `LogoStorageKey`.
-- Unit test for `FileStorageService.OpenReadAsync`: success delegates to
-  `IObjectStorageAdapter.GetObjectAsync`; `ObjectStorageException` maps to a 502 `Result`.
+  `IFileStorageService`.
+- Unit test for `FileStorageService.OpenReadAsync`: not-found `FileRecord` → 404; success
+  delegates to `IObjectStorageAdapter.GetObjectAsync` using the record's `StorageKey`, returns its
+  `ContentType`; `ObjectStorageException` maps to a 502 `Result`.
 - Extend `LegalEntitiesIntegrationTests`: multipart `PUT /logo` happy path, oversized/wrong-type
   rejection (via the existing `UploadPurposeCatalog.CompanyLogo` rule), `GET /logo` returns the
-  bytes/content-type, `GET /logo` 404s with no logo set, `DELETE` clears `LogoFileId`/`LogoStorageKey`
+  bytes/content-type after upload, `GET /logo` 404s with no logo set, `DELETE` clears `LogoFileId`
   (and `GET /logo` 404s afterward).
 - Flip `LegalEntitiesControllerArchitectureTests.NoPutLogoRoute_Exists` and
   `LegalEntitiesIntegrationTests.SetLogo_RouteDoesNotExist_ByDesign` (see Backend design).
