@@ -64,6 +64,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.Rep
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.RepositoryInterfaces;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.ServiceInterfaces;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Services;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
@@ -168,6 +169,10 @@ public static class DependencyInjection
         services.AddScoped<IEntityAssetRepository>(sp => sp.GetRequiredService<EfEntityAssetRepository>());
         services.AddScoped<EfEmployeeRepository>();
         services.AddScoped<IEmployeeRepository>(sp => sp.GetRequiredService<EfEmployeeRepository>());
+
+        // Work Management - Milestone & Achievement services
+        services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();
+        services.AddScoped<IPermissionAutoGrantService, PermissionAutoGrantService>();
 
         // Auth: global email directory
         services.AddScoped<IGlobalEmailDirectoryRepository, EfGlobalEmailDirectoryRepository>();
