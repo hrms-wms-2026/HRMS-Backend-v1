@@ -17,6 +17,15 @@ A second, previously unflagged gap: even the working `DELETE` path has no way to
 `LegalEntityGeneralSettingsResponse` only exposes `LogoFileId` (a raw GUID); there is no
 public-URL field or file-serving endpoint anywhere in the codebase.
 
+A third gap, found while designing the display path: `IStorageService`
+(`Common/ServiceInterfaces/IStorageService.cs`), which exposes a `GetPublicUrl(filePath)` method,
+has **zero implementations and zero consumers** anywhere in the codebase — dead code, not wired to
+R2. The real, live pipeline (`IObjectStorageAdapter` → `CloudflareR2ObjectStorageAdapter`) only
+supports `PutObject`/`GetObject(Stream)`/`Delete`/`Exists` against a private bucket with
+credentials resolved at runtime via `IPlatformServiceKeyResolver` — no public URL, no presigned
+URL, no CDN domain exists anywhere. There is no way to hand the browser a direct link to a stored
+file today.
+
 ## Precedent
 
 `UploadFaceScanCommandHandler` (`Features/Monitoring/CheckIn/Commands/UploadFaceScan/`) already
@@ -30,19 +39,54 @@ by construction. No lookup of a pre-existing file ever happens.
 ## Decision
 
 Follow the `UploadFaceScanCommandHandler` pattern: make `PUT /{id}/logo` a direct multipart upload,
-not a two-step "upload elsewhere, then reference by FileId" flow. This sidesteps the original
+not a two-step "upload elsewhere, then reference by FileId" flow. This sidesteps the *upload-side*
 blocker entirely — nothing ever needs to validate an arbitrary client-supplied `FileId`'s
-ownership, so `IFileStorageService` and its architecture tests are untouched.
+ownership, so this half requires no change to `IFileStorageService` or its architecture tests.
 
-To solve the display gap without adding a lookup method either, store the resulting
-`StorageKey` on `LegalEntity` at upload time (the handler already has it in hand from
-`UploadAsync`'s result), and compute a public URL from it locally wherever the logo needs to be
-shown.
+The *display* side does need one small, deliberate addition to `IFileStorageService`, because no
+public/presigned URL mechanism exists anywhere in the codebase (see Problem, gap 3): a read-only
+`OpenReadAsync(tenantId, storageKey, ct)` that streams bytes for a storage key the caller already
+legitimately owns. This is a fundamentally different, smaller trust decision than the one Part 2C
+deferred — that was "validate an *untrusted, client-supplied* file id belongs to this tenant
+before acting on it"; this is "stream back bytes for a key this feature generated and stored
+itself." No ownership-validation logic is needed because there is no untrusted input to validate.
+
+The now-dead `IStorageService` interface (gap 3) is deleted as part of this change — it has no
+implementation, no consumers, and no DI registration, and leaving it in place after specifically
+finding it here would be misleading dead code in the area this feature touches.
+
+Store the resulting `StorageKey` on `LegalEntity` at upload time (the handler already has it in
+hand from `UploadAsync`'s result), so the display endpoint never needs a `FileId → StorageKey`
+lookup either — the entity carries what it needs directly.
+
+Storage quota accounting needs no new work: `IFileStorageService.UploadAsync` — which the new
+handler calls — already reserves bytes against `IStorageQuotaService`/`tenant_storage_stats`
+before writing anything (`FileStorageService.cs:67`, inside `BeginReservationAsync`). Logo uploads
+are quota-tracked automatically by reusing this pipeline. Likewise, Cloudflare R2 credentials are
+already resolved via the existing encrypted `platform_service_keys` system
+(`IPlatformServiceKeyResolver` / `PlatformServiceKeyCatalog.CloudflareR2`) — nothing new needed
+there.
 
 ## Backend design
 
 **Data model:** add nullable `LogoStorageKey` (string) to `LegalEntity`, alongside the existing
 `LogoFileId`. New migration.
+
+**`IFileStorageService` addition** (`Features/Storage/File/ServiceInterfaces/IFileStorageService.cs`):
+- New method: `Task<Result<FileStreamDto>> OpenReadAsync(Guid tenantId, string storageKey,
+  CancellationToken ct = default)`, where `FileStreamDto` is a new small record
+  `(Stream Content, string ContentType)`.
+- Implemented in `FileStorageService` by delegating to `_objectStorage.GetObjectAsync(storageKey,
+  ct)`, wrapped in the same `try/catch (ObjectStorageException) → 502` pattern `UploadAsync`
+  already uses. Tenant-scoped: the parameter exists so callers are forced to think about tenant
+  context, even though the storage key itself is already tenant-namespaced by
+  `IUploadPurposePolicy.GenerateStorageKey`.
+- This is the one interface addition this feature makes to Storage.File — deliberately minimal
+  and read-only (see Decision).
+
+**Remove dead code:** delete `IStorageService.cs`
+(`Common/ServiceInterfaces/IStorageService.cs`) — zero implementations, zero consumers, not wired
+to anything (see Problem, gap 3).
 
 **Upload** — `PUT /api/v1/org/legal-entities/{id}/logo`, `legal_entity:update`, currently
 unexposed:
@@ -51,21 +95,38 @@ unexposed:
   `(LegalEntityId, Stream, ContentType, FileName)`.
 - Handler calls `IFileStorageService.UploadAsync(tenantId, userId, fileName, contentType,
   UploadPurposeCatalog.CompanyLogo, stream, ct)`. `UploadAsync` enforces the 5 MB / PNG-JPEG-WebP
-  rule server-side.
+  rule server-side, and reserves tenant storage quota as a side effect (see Decision).
 - On success: sets `entity.LogoFileId` and `entity.LogoStorageKey` from the returned
   `FileRecordDto`, saves.
-- Returns `LegalEntityLogoResponse`, extended with a new `LogoUrl` field:
-  `IStorageService.GetPublicUrl(entity.LogoStorageKey)`.
+- Returns `LegalEntityLogoResponse`, extended with a new `LogoUrl` field: the *route* to the new
+  display endpoint below (`/api/v1/org/legal-entities/{id}/logo`), not a storage URL — doubles as
+  a simple "has a logo" signal for the frontend.
 - Remove the now-stale "PUT /{id}/logo is deliberately not exposed" comment block
   (`LegalEntitiesController.cs:15-18`) and the matching comment in
   `SetLegalEntityLogoCommandHandler.cs:9-16`.
 
-**Remove** — `DELETE /{id}/logo`, already working: also clears `LogoStorageKey`, so `LogoUrl` goes
-back to `null` in the response.
+**Display** — new `GET /api/v1/org/legal-entities/{id}/logo`, `legal_entity:update`:
+- Loads the entity for the current tenant, 404s if missing or if `LogoStorageKey` is null.
+- Calls `IFileStorageService.OpenReadAsync(tenantId, entity.LogoStorageKey, ct)` and returns
+  `File(stream, contentType)`.
+- Same route as the `LogoUrl` field returned by the upload/settings responses. Browser `<img>`
+  requests to it carry the existing `onevo_session` cookie automatically (HttpOnly,
+  `SameSite=Strict`, no `Domain` restriction — same-site subresource requests are unaffected by
+  `SameSite=Strict`), so no token/header plumbing is needed on the frontend.
 
-**Display** — `LegalEntityGeneralSettingsResponse` (the GET that populates the whole settings
-page) gains the same `LogoUrl` field, computed the same way, so the page shows the current logo on
-load, not only right after an upload. `LegalEntityMapper` updated accordingly.
+**Remove** — `DELETE /{id}/logo`, already working: also clears `LogoStorageKey`.
+
+**Settings display** — `LegalEntityGeneralSettingsResponse` (the GET that populates the whole
+settings page) gains the same `LogoUrl` field (route string, `null` when no logo is set), so the
+page shows the current logo on load, not only right after an upload. `LegalEntityMapper` updated
+accordingly.
+
+**Existing test guards to flip, not delete** (both currently assert this feature doesn't exist):
+- `LegalEntitiesControllerArchitectureTests.NoPutLogoRoute_Exists` → replace with an assertion
+  that `PUT /logo` exists and uses `legal_entity:update`. Update the class doc comment
+  (lines 11-16) which currently states the deferral as intentional.
+- `LegalEntitiesIntegrationTests.SetLogo_RouteDoesNotExist_ByDesign` → replace with a real
+  happy-path multipart upload test.
 
 ## Frontend design
 
@@ -96,10 +157,13 @@ load, not only right after an upload. `LegalEntityMapper` updated accordingly.
 **Backend:**
 - Extend `LegalEntityLogoCommandHandlerTests`: upload success/failure via mocked
   `IFileStorageService`; remove clears both `LogoFileId` and `LogoStorageKey`.
+- Unit test for `FileStorageService.OpenReadAsync`: success delegates to
+  `IObjectStorageAdapter.GetObjectAsync`; `ObjectStorageException` maps to a 502 `Result`.
 - Extend `LegalEntitiesIntegrationTests`: multipart `PUT /logo` happy path, oversized/wrong-type
-  rejection (via the existing `UploadPurposeCatalog.CompanyLogo` rule), `DELETE` clears `LogoUrl`.
-- Check `LegalEntitiesControllerArchitectureTests` / `LegalEntityGeneralSettingsArchitectureTests`
-  don't assert the `PUT /logo` route is absent; update if so.
+  rejection (via the existing `UploadPurposeCatalog.CompanyLogo` rule), `GET /logo` returns the
+  bytes/content-type, `GET /logo` 404s with no logo set, `DELETE` clears `LogoUrl`.
+- Flip `LegalEntitiesControllerArchitectureTests.NoPutLogoRoute_Exists` and
+  `LegalEntitiesIntegrationTests.SetLogo_RouteDoesNotExist_ByDesign` (see Backend design).
 
 **Frontend:**
 - Service spec: `FormData`/URL construction for both calls.
@@ -109,7 +173,9 @@ load, not only right after an upload. `LegalEntityMapper` updated accordingly.
 
 ## Out of scope
 
-- Presigned direct-to-R2 client upload (unnecessary complexity for a ≤5 MB image).
-- Any change to `IFileStorageService`'s public interface or its architecture tests.
+- Presigned direct-to-R2 client upload or a public/CDN bucket domain (unnecessary infrastructure
+  work for a ≤5 MB proxied image).
+- Any change to `IFileStorageService`'s upload/reservation methods or the ownership-validation
+  lookup Part 2C deferred — only the new read-only `OpenReadAsync` is added.
 - Logo display anywhere outside the General Settings page (e.g., sidebar branding) — not
   requested.
