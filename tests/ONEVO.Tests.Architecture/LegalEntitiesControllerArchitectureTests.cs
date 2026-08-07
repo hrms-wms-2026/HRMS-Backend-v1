@@ -98,6 +98,13 @@ public class LegalEntitiesControllerArchitectureTests
     }
 
     [Fact]
+    public void GetLogoAction_UsesLegalEntityUpdate()
+    {
+        var method = ControllerType.GetMethod(nameof(LegalEntitiesController.GetLogo));
+        GetPermission(method!).Should().Be("legal_entity:update");
+    }
+
+    [Fact]
     public void NoAction_UsesOrgManage()
     {
         var offenders = ActionMethods()

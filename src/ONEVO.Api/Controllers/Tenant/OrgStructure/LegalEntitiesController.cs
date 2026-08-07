@@ -8,6 +8,7 @@ using ONEVO.Application.Features.OrgStructure.Commands.DeleteLegalEntity;
 using ONEVO.Application.Features.OrgStructure.Commands.RemoveLegalEntityLogo;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
 using ONEVO.Application.Features.OrgStructure.Queries.GetLegalEntityGeneralSettings;
+using ONEVO.Application.Features.OrgStructure.Queries.GetLegalEntityLogo;
 using ONEVO.Application.Features.OrgStructure.Queries.ListLegalEntities;
 
 namespace ONEVO.Api.Controllers.Tenant.OrgStructure;
@@ -126,5 +127,17 @@ public class LegalEntitiesController : ControllerBase
         return result.IsSuccess
             ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Streams the company's logo image. 404 if no logo is set.</summary>
+    [HttpGet("{id:guid}/logo")]
+    [RequirePermission("legal_entity:update")]
+    public async Task<IActionResult> GetLogo(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetLegalEntityLogoQuery(id), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return File(result.Value!.Content, result.Value!.ContentType);
     }
 }
