@@ -10,6 +10,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Commands.CreateObject
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.DeleteObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.TransferObjectiveHead;
+using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveSubtree;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveTree;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
@@ -87,6 +88,18 @@ public class ObjectivesController : ControllerBase
         return result.Value!.Applied
             ? NoContent()
             : Accepted(result.Value.PendingRequest!.ToViewModel());
+    }
+
+    /// <summary>An Objective's parent detail plus its full nested descendant subtree. Caller must be {id}'s current Head.</summary>
+    [HttpGet("{id:guid}/tree")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> GetSubtree(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetObjectiveSubtreeQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
     /// <summary>Approves a pending change request. Caller must be the request's Reporting Manager.</summary>
