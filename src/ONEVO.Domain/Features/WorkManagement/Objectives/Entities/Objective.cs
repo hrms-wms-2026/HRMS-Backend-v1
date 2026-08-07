@@ -18,4 +18,6 @@ public class Objective : BaseEntity
     public decimal? ActualHours { get; set; }
     public decimal AllocatedHours { get; set; }
     public decimal CompletedHours { get; set; }
+    public bool IsAchieved { get; set; }
+    public DateTimeOffset? AchievedAt { get; set; }
 }

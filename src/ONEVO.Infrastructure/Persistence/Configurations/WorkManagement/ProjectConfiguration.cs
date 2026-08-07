@@ -26,6 +26,8 @@ public class ProjectConfiguration : IEntityTypeConfiguration<Project>
             .HasDatabaseName("ix_projects_tenant_id_owning_legal_entity_id_updated_at");
         builder.HasIndex(p => new { p.TenantId, p.CategoryId, p.IsActive })
             .HasDatabaseName("ix_projects_tenant_id_category_id_is_active");
+        builder.HasIndex(p => new { p.TenantId, p.IsAchieved })
+            .HasDatabaseName("ix_projects_tenant_id_is_achieved");
 
         builder.HasOne<LegalEntity>()
             .WithMany()

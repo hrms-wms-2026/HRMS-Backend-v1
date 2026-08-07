@@ -7,6 +7,8 @@ public static class ObjectiveChangeRequestTypes
     public const string Delete = "delete";
     public const string Edit = "edit";
     public const string Transfer = "transfer";
+    public const string Achieve = "achieve";
+    public const string Unachieve = "unachieve";
 }
 
 public static class ObjectiveChangeRequestStatuses
