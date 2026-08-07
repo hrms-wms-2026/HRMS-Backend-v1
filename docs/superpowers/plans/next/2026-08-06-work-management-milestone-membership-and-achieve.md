@@ -4580,6 +4580,85 @@ git commit -m "docs(work-management): add postman-request docs for membership/me
 
 ---
 
+### Task 18: `CreateProjectCommandHandler` — active-employee check for the project creator (Addendum 2026-08-07)
+
+**Files:**
+- Modify: `src/ONEVO.Application/Features/WorkManagement/Projects/Commands/CreateProject/CreateProjectCommandHandler.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/WorkManagement/CreateProjectCommandHandlerTests.cs` (extend the existing file)
+
+**Interfaces:**
+- Consumes: `EmploymentStatusIds.Active` (Task 1).
+- Produces: no new interface — this task only tightens an existing check inside `CreateProjectCommandHandler.Handle`.
+
+Per the design doc's §11 addendum: the Default Objective's creator-becomes-head step currently only checks that an `Employee` record exists, not that it's active — the one rule §3 imposes on every other Head/member assignment in this feature. No membership-coordinator or auto-grant reuse is needed here (see §11 for why); this is a single added condition plus its test.
+
+- [ ] **Step 1: Add the failing test**
+
+Add to `tests/ONEVO.Tests.Unit/Features/WorkManagement/CreateProjectCommandHandlerTests.cs`. The existing `BuildHandler`'s default employee mock must also gain `EmploymentStatusId = EmploymentStatusIds.Active` (it currently sets no value, i.e. `0`, which the new check would otherwise reject — every existing passing test in this file relies on `BuildHandler`'s default and must keep passing unmodified):
+
+```csharp
+// In BuildHandler, change the employees.Setup(...) ReturnsAsync(...) to include:
+//     EmploymentStatusId = EmploymentStatusIds.Active
+// alongside the existing Id/TenantId/UserId/EmployeeNumber/HireDate fields.
+
+    [Fact]
+    public async Task Handle_CallerEmployeeNotActive_ReturnsForbidden()
+    {
+        var (handler, _) = BuildHandler(employmentStatusId: 4); // 4 = terminated, per EmploymentStatusIds precedent
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+    }
+```
+
+(`BuildHandler` needs a new optional parameter, `int employmentStatusId = EmploymentStatusIds.Active`, threaded into the `Employee` mock's `EmploymentStatusId`, so this one test can override it without touching every other call site.)
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~CreateProjectCommandHandlerTests.Handle_CallerEmployeeNotActive_ReturnsForbidden"`
+Expected: FAIL (handler doesn't check employment status yet, so it currently returns success).
+
+- [ ] **Step 3: Add the check**
+
+In `CreateProjectCommandHandler.Handle`, in `src/ONEVO.Application/Features/WorkManagement/Projects/Commands/CreateProject/CreateProjectCommandHandler.cs`, change:
+
+```csharp
+        var employee = await _employees.GetByUserIdAsync(tenantId, userId, ct);
+        if (employee is null)
+            return Result<ProjectCreationResponse>.Forbidden("No employee record for the current user.");
+```
+
+to:
+
+```csharp
+        var employee = await _employees.GetByUserIdAsync(tenantId, userId, ct);
+        if (employee is null || employee.EmploymentStatusId != EmploymentStatusIds.Active)
+            return Result<ProjectCreationResponse>.Forbidden("No employee record for the current user.");
+```
+
+Add `using ONEVO.Domain.Lookups;` to this file's usings if not already present (it isn't — verify against the current using list before adding, to avoid a duplicate).
+
+- [ ] **Step 4: Run tests to verify the whole file passes**
+
+Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~CreateProjectCommandHandlerTests"`
+Expected: PASS, all tests including the new one.
+
+- [ ] **Step 5: Verify build**
+
+Run: `dotnet build src/ONEVO.Application/ONEVO.Application.csproj`
+Expected: 0 errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/ONEVO.Application/Features/WorkManagement/Projects/Commands/CreateProject/CreateProjectCommandHandler.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/CreateProjectCommandHandlerTests.cs
+git commit -m "fix(work-management): require an active employee record to create a project"
+```
+
+---
+
 ## Self-review
 
 **Spec coverage** (against `docs/superpowers/specs/2026-08-06-work-management-milestone-membership-and-achieve-design.md`):
@@ -4590,6 +4669,7 @@ git commit -m "docs(work-management): add postman-request docs for membership/me
 - §6 Achieve (Objective + Project, precondition, frozen, revertible, membership cleanup) → Tasks 9, 10, 11.
 - §7 Auto-grant projects:access + documented session-refresh limitation → Task 4, consumed by Tasks 6, 7.
 - §8 Endpoint summary table (11 new/changed routes) → Task 15.
+- §11 Addendum (2026-08-07) — active-employee check on the project creator, unifying the Default-Objective-creation path with §3's rule for every other Head/member assignment → Task 18.
 
 **Placeholder scan:** no "TBD"/"similar to Task N"/unshown code — every step has runnable code or an exact `dotnet`/`git` command.
 
