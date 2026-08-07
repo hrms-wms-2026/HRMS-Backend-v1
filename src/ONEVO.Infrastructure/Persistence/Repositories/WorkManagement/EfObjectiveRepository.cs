@@ -45,6 +45,14 @@ public class EfObjectiveRepository : IObjectiveRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Objective>> GetAllByProjectIdAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
+    {
+        return await _db.Objectives
+            .AsNoTracking()
+            .Where(o => o.TenantId == tenantId && o.ProjectId == projectId)
+            .ToListAsync(ct);
+    }
+
     public void Update(Objective objective)
     {
         _db.Objectives.Update(objective);

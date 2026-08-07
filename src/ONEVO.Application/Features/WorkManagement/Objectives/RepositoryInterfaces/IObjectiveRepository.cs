@@ -22,5 +22,9 @@ public interface IObjectiveRepository
     /// <summary>Every Objective for a Project, unordered - the caller builds the tree from ParentObjectiveId.</summary>
     Task<IReadOnlyList<Objective>> GetTreeByProjectIdAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 
+    /// <summary>Every Objective for a Project regardless of IsActive, unordered - used to build a
+    /// Head-scoped subtree in memory. Unlike GetTreeByProjectIdAsync, does not filter to active-only.</summary>
+    Task<IReadOnlyList<Objective>> GetAllByProjectIdAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
+
     void Update(Objective objective);
 }
