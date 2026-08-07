@@ -6,6 +6,7 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.OrgStructure.Commands.CreateLegalEntity;
 using ONEVO.Application.Features.OrgStructure.Commands.DeleteLegalEntity;
 using ONEVO.Application.Features.OrgStructure.Commands.RemoveLegalEntityLogo;
+using ONEVO.Application.Features.OrgStructure.Commands.SetLegalEntityLogo;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
 using ONEVO.Application.Features.OrgStructure.Queries.GetLegalEntityGeneralSettings;
 using ONEVO.Application.Features.OrgStructure.Queries.GetLegalEntityLogo;
@@ -13,10 +14,6 @@ using ONEVO.Application.Features.OrgStructure.Queries.ListLegalEntities;
 
 namespace ONEVO.Api.Controllers.Tenant.OrgStructure;
 
-// PUT /{id}/logo is deliberately not exposed here: SetLegalEntityLogoCommandHandler
-// (Part 2B) sets LogoFileId with no tenant-ownership/purpose validation, and
-// IFileStorageService has no lookup method that could provide it without becoming
-// a Storage-feature change outside this task's scope. See Part 2C report §5.
 [ApiController]
 [Route("api/v1/org/legal-entities")]
 [Authorize(Policy = "TenantPolicy")]
@@ -139,5 +136,23 @@ public class LegalEntitiesController : ControllerBase
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
         return File(result.Value!.Content, result.Value!.ContentType);
+    }
+
+    /// <summary>Uploads/replaces the company's logo. Accepts multipart/form-data with a "logo" file field.</summary>
+    [HttpPut("{id:guid}/logo")]
+    [RequestSizeLimit(6 * 1024 * 1024)] // 6 MB limit (5 MB image + overhead)
+    [RequirePermission("legal_entity:update")]
+    public async Task<IActionResult> SetLogo(Guid id, IFormFile logo, CancellationToken ct)
+    {
+        if (logo is null || logo.Length == 0)
+            return Problem("logo file is required.", statusCode: 400);
+
+        await using var stream = logo.OpenReadStream();
+        var result = await _mediator.Send(
+            new SetLegalEntityLogoCommand(id, stream, logo.ContentType, logo.FileName), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }
