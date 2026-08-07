@@ -340,4 +340,27 @@ public sealed class FileStorageService : IFileStorageService
         return await CompleteUploadAsync(
             tenantId, reservation.Id, purpose, originalFileName, contentType, checksum, ct);
     }
+
+    public async Task<Result<FileStreamDto>> OpenReadAsync(
+        Guid tenantId,
+        Guid fileId,
+        CancellationToken ct = default)
+    {
+        var record = await _fileRecords.GetByIdAsync(tenantId, fileId, ct);
+        if (record is null)
+        {
+            return Result<FileStreamDto>.NotFound("File not found.");
+        }
+
+        try
+        {
+            var stream = await _objectStorage.GetObjectAsync(record.StorageKey, ct);
+            return Result<FileStreamDto>.Success(new FileStreamDto(stream, record.ContentType));
+        }
+        catch (ObjectStorageException ex)
+        {
+            _logger.LogError(ex, "R2 read failed for tenant {TenantId}, file {FileId}.", tenantId, fileId);
+            return Result<FileStreamDto>.Failure("file_read_failed", 502);
+        }
+    }
 }
