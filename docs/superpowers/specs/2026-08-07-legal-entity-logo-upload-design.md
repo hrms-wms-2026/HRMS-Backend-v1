@@ -98,9 +98,8 @@ unexposed:
   rule server-side, and reserves tenant storage quota as a side effect (see Decision).
 - On success: sets `entity.LogoFileId` and `entity.LogoStorageKey` from the returned
   `FileRecordDto`, saves.
-- Returns `LegalEntityLogoResponse`, extended with a new `LogoUrl` field: the *route* to the new
-  display endpoint below (`/api/v1/org/legal-entities/{id}/logo`), not a storage URL — doubles as
-  a simple "has a logo" signal for the frontend.
+- Returns `LegalEntityLogoResponse` unchanged in shape (`LegalEntityId`, `LogoFileId`) — no new
+  response field needed (see Display below).
 - Remove the now-stale "PUT /{id}/logo is deliberately not exposed" comment block
   (`LegalEntitiesController.cs:15-18`) and the matching comment in
   `SetLegalEntityLogoCommandHandler.cs:9-16`.
@@ -109,17 +108,21 @@ unexposed:
 - Loads the entity for the current tenant, 404s if missing or if `LogoStorageKey` is null.
 - Calls `IFileStorageService.OpenReadAsync(tenantId, entity.LogoStorageKey, ct)` and returns
   `File(stream, contentType)`.
-- Same route as the `LogoUrl` field returned by the upload/settings responses. Browser `<img>`
+- This is the route the frontend derives client-side (see below). Browser `<img>`
   requests to it carry the existing `onevo_session` cookie automatically (HttpOnly,
   `SameSite=Strict`, no `Domain` restriction — same-site subresource requests are unaffected by
   `SameSite=Strict`), so no token/header plumbing is needed on the frontend.
 
 **Remove** — `DELETE /{id}/logo`, already working: also clears `LogoStorageKey`.
 
-**Settings display** — `LegalEntityGeneralSettingsResponse` (the GET that populates the whole
-settings page) gains the same `LogoUrl` field (route string, `null` when no logo is set), so the
-page shows the current logo on load, not only right after an upload. `LegalEntityMapper` updated
-accordingly.
+**No new response fields needed for display.** The frontend already receives both `id` and
+`logoFileId` from every relevant response (`LegalEntityGeneralSettingsResponse`,
+`LegalEntityLogoResponse`). It builds the image URL itself —
+`{apiUrl}/org/legal-entities/{id}/logo?v={logoFileId}` — and shows it whenever `logoFileId` is
+non-null. The `?v={logoFileId}` query param is a cache-buster: without it, the browser would keep
+showing a stale cached image after a re-upload, since the URL is otherwise stable per entity; a
+fresh `logoFileId` GUID is minted on every upload, so appending it naturally busts the cache using
+data the frontend already has.
 
 **Existing test guards to flip, not delete** (both currently assert this feature doesn't exist):
 - `LegalEntitiesControllerArchitectureTests.NoPutLogoRoute_Exists` → replace with an assertion
@@ -127,19 +130,26 @@ accordingly.
   (lines 11-16) which currently states the deferral as intentional.
 - `LegalEntitiesIntegrationTests.SetLogo_RouteDoesNotExist_ByDesign` → replace with a real
   happy-path multipart upload test.
+- `LegalEntityGeneralSettingsArchitectureTests.LegalEntity_HasExactlyTheInventoryColumns` enumerates
+  an exact, alphabetically-sorted property list for `LegalEntity` — add `"LogoStorageKey"` to it
+  (sorts between `"LogoFileId"` and `"Name"`), or this test fails the moment the new column is
+  added.
 
 ## Frontend design
 
 **Models & API service** (`legal-entity.model.ts`, `legal-entity-api.service.ts`):
-- `LegalEntityGeneralSettings` gains `logoUrl: string | null`.
+- `LegalEntityGeneralSettings` is unchanged — `logoFileId` already exists and is the only signal
+  needed.
 - `LegalEntityApiService` gains `uploadLogo(legalEntityId, file: File)` (builds `FormData`, `PUT`s
-  multipart) and `removeLogo(legalEntityId)` (`DELETE`). Both return `{ logoFileId, logoUrl }`.
+  multipart, returns `{ legalEntityId, logoFileId }`), `removeLogo(legalEntityId)` (`DELETE`), and
+  a pure helper `getLogoUrl(legalEntityId, logoFileId)` returning
+  `` `${environment.apiUrl}/org/legal-entities/${legalEntityId}/logo?v=${logoFileId}` ``.
 
 **Store** (`general-settings.store.ts`):
 - New `uploadingLogo` / `removingLogo` flags.
-- `uploadLogo()` / `removeLogo()` call the service, then patch just `logoFileId`/`logoUrl` onto the
-  existing `settings` object, guarded by the same `legalEntityId()` race check `load()`/`save()`
-  already use.
+- `uploadLogo()` / `removeLogo()` call the service, then patch just `logoFileId` onto the existing
+  `settings` object, guarded by the same `legalEntityId()` race check `load()`/`save()` already
+  use.
 - Errors go through the existing `extractErrorMessage` helper.
 
 **Component** (`general-settings.component.ts` / `.html`):
@@ -147,8 +157,9 @@ accordingly.
   `<input type="file" accept="image/png,image/jpeg,image/webp">`.
 - Client-side pre-check (type + 5 MB) before calling `uploadLogo()`, surfaced via
   `notificationService.error(...)` on rejection. Server remains authoritative regardless.
-- When `settingsStore.settings()?.logoUrl` is set, render an `<img>` preview in place of the
-  placeholder icon, with a **Remove** button next to it calling `removeLogo()`.
+- When `settingsStore.settings()?.logoFileId` is set, render an `<img>` preview (src from
+  `getLogoUrl()`) in place of the placeholder icon, with a **Remove** button next to it calling
+  `removeLogo()`.
 - Update hint text from "Max 2 MB" to "Max 5 MB".
 - Disable both buttons while `uploadingLogo()` / `removingLogo()` is true.
 
@@ -161,7 +172,8 @@ accordingly.
   `IObjectStorageAdapter.GetObjectAsync`; `ObjectStorageException` maps to a 502 `Result`.
 - Extend `LegalEntitiesIntegrationTests`: multipart `PUT /logo` happy path, oversized/wrong-type
   rejection (via the existing `UploadPurposeCatalog.CompanyLogo` rule), `GET /logo` returns the
-  bytes/content-type, `GET /logo` 404s with no logo set, `DELETE` clears `LogoUrl`.
+  bytes/content-type, `GET /logo` 404s with no logo set, `DELETE` clears `LogoFileId`/`LogoStorageKey`
+  (and `GET /logo` 404s afterward).
 - Flip `LegalEntitiesControllerArchitectureTests.NoPutLogoRoute_Exists` and
   `LegalEntitiesIntegrationTests.SetLogo_RouteDoesNotExist_ByDesign` (see Backend design).
 
