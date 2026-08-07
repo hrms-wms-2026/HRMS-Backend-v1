@@ -21,4 +21,23 @@ public class EfProjectMemberRepository : IProjectMemberRepository
             .AsNoTracking()
             .AnyAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.UserId == userId && m.IsActive, ct);
     }
+
+    public async Task<ProjectMember?> GetTrackedForObjectiveAsync(Guid tenantId, Guid projectId, Guid objectiveId, Guid userId, CancellationToken ct = default)
+    {
+        return await _db.ProjectMembers
+            .FirstOrDefaultAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.ObjectiveId == objectiveId && m.UserId == userId, ct);
+    }
+
+    public async Task<bool> HasActiveMembershipExcludingObjectiveAsync(Guid tenantId, Guid projectId, Guid userId, Guid excludingObjectiveId, CancellationToken ct = default)
+    {
+        return await _db.ProjectMembers
+            .AsNoTracking()
+            .AnyAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.UserId == userId
+                        && m.ObjectiveId != excludingObjectiveId && m.IsActive, ct);
+    }
+
+    public void Update(ProjectMember member)
+    {
+        _db.ProjectMembers.Update(member);
+    }
 }

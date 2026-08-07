@@ -53,6 +53,13 @@ public class EfObjectiveRepository : IObjectiveRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Objective>> GetTrackedActiveDirectChildrenAsync(Guid tenantId, Guid parentObjectiveId, CancellationToken ct = default)
+    {
+        return await _db.Objectives
+            .Where(o => o.TenantId == tenantId && o.ParentObjectiveId == parentObjectiveId && o.IsActive)
+            .ToListAsync(ct);
+    }
+
     public void Update(Objective objective)
     {
         _db.Objectives.Update(objective);

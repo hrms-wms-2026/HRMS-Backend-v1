@@ -26,5 +26,14 @@ public interface IObjectiveRepository
     /// Head-scoped subtree in memory. Unlike GetTreeByProjectIdAsync, does not filter to active-only.</summary>
     Task<IReadOnlyList<Objective>> GetAllByProjectIdAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Every active Objective whose ParentObjectiveId is exactly this one (one level, not
+    /// recursive) — tracked, for the Reporting Manager cascade on Transfer (design §4): the
+    /// caller sets ReportingManagerId on each and relies on SaveChanges's automatic partial
+    /// UPDATE, never calling Update() (same AsNoTracking-vs-tracked distinction as
+    /// GetTrackedByIdForTenantAsync).
+    /// </summary>
+    Task<IReadOnlyList<Objective>> GetTrackedActiveDirectChildrenAsync(Guid tenantId, Guid parentObjectiveId, CancellationToken ct = default);
+
     void Update(Objective objective);
 }
