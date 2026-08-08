@@ -28,4 +28,5 @@ public static class OutboxMessageTypes
     public const string PositionUpdated = "position_updated";
     public const string PositionArchived = "position_archived";
     public const string PositionRestored = "position_restored";
+    public const string PlatformManagerInviteEmail = "platform_manager_invite_email";
 }

@@ -182,6 +182,22 @@ public class CsrfProtectionMiddlewareTests
     }
 
     [Fact]
+    public async Task AdminUnsafeMethod_ExemptAcceptInvitePath_IsNotBlockedEvenWithStaleAdminSessionCookie()
+    {
+        // The invited person has never logged in, but a stale admin_session cookie from an
+        // unrelated earlier session in the same browser must not cause this to be treated as
+        // an authenticated request requiring CSRF validation - same bug class as the
+        // forgot-password/reset-password gap fixed on 2026-08-06.
+        var ctx = MakeContext("POST", "/admin/v1/auth/accept-invite");
+        ctx.Request.Headers["Cookie"] = "admin_session=stale-unrelated-session";
+
+        var sut = CreateSut();
+        await sut.InvokeAsync(ctx, _tokenService);
+
+        Assert.True(_nextCalled);
+    }
+
+    [Fact]
     public async Task AdminUnsafeMethod_HeaderHashMatchesAdminSession_Allows()
     {
         var ctx = MakeContext("POST", "/admin/v1/tenants");

@@ -13,6 +13,7 @@ using ONEVO.Application.Features.Auth.Login.Commands.AdminMfaEnable;
 using ONEVO.Application.Features.Auth.Login.Commands.AdminMfaVerify;
 using ONEVO.Application.Features.Auth.Login.Commands.RequestAdminPasswordReset;
 using ONEVO.Application.Features.Auth.Login.Commands.ResetAdminPassword;
+using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.AcceptPlatformManagerInvite;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Application.Features.Auth.Login.Queries.GetAdminSessionContext;
 using ONEVO.Application.Features.Auth.Login.Queries.GetAdminGoogleSsoConfig;
@@ -116,6 +117,23 @@ public sealed class AdminAuthController : ControllerBase
             new ResetAdminPasswordCommand(request.Token, request.NewPassword), ct);
         return result.IsSuccess
             ? Ok(new { message = "Password updated." })
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Accepts a platform-manager invite: sets the account's password and
+    /// activates it. Never returns which specific token state failed beyond the
+    /// four distinct messages the command already returns (not found / accepted /
+    /// revoked / expired) - those are safe to show, they don't leak account
+    /// existence the way a password-reset error would.</summary>
+    [HttpPost("accept-invite")]
+    [AllowAnonymous]
+    public async Task<IActionResult> AcceptInvite(
+        [FromBody] AcceptPlatformManagerInviteRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(
+            new AcceptPlatformManagerInviteCommand(request.Token, request.Password), ct);
+        return result.IsSuccess
+            ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
