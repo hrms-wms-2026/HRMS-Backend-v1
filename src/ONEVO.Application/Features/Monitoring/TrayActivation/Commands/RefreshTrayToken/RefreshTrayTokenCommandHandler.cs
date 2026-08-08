@@ -89,24 +89,8 @@ public class RefreshTrayTokenCommandHandler
         var accessToken = _tokenService.GenerateAccessToken(
             device.Id, existingToken.UserId, existingToken.TenantId);
 
-        var profile = await _repository.FindEmployeeProfileAsync(
+        var (employeeName, employeeEmail, employeeNumber) = await ResolveEmployeeIdentityAsync(
             existingToken.UserId, existingToken.TenantId, cancellationToken);
-        string? employeeName = null, employeeEmail = null, employeeNumber = null;
-        if (profile is not null)
-        {
-            employeeName = FullNameOrNull(profile.FirstName, profile.LastName);
-            employeeEmail = profile.Email;
-            employeeNumber = profile.EmployeeNumber;
-        }
-        else
-        {
-            var user = await _userRepository.GetByIdAsync(existingToken.UserId, cancellationToken);
-            if (user is not null)
-            {
-                employeeName = FullNameOrNull(user.FirstName, user.LastName);
-                employeeEmail = user.Email;
-            }
-        }
 
         return Result<TrayAuthResponseDto>.Success(new TrayAuthResponseDto(
             accessToken,
@@ -116,6 +100,25 @@ public class RefreshTrayTokenCommandHandler
             employeeName,
             employeeEmail,
             employeeNumber));
+    }
+
+    /// <summary>
+    /// Display-only identity for the tray UI. Prefers the HR Employee profile (name, email,
+    /// employee number); falls back to the auth User's name/email if no Employee row is linked
+    /// yet, so a token refresh never fails just because HR onboarding hasn't finished.
+    /// </summary>
+    private async Task<(string? Name, string? Email, string? Number)> ResolveEmployeeIdentityAsync(
+        Guid userId, Guid tenantId, CancellationToken ct)
+    {
+        var profile = await _repository.FindEmployeeProfileAsync(userId, tenantId, ct);
+        if (profile is not null)
+            return (FullNameOrNull(profile.FirstName, profile.LastName), profile.Email, profile.EmployeeNumber);
+
+        var user = await _userRepository.GetByIdAsync(userId, ct);
+        if (user is not null)
+            return (FullNameOrNull(user.FirstName, user.LastName), user.Email, null);
+
+        return (null, null, null);
     }
 
     private static string? FullNameOrNull(string first, string last)

@@ -230,6 +230,8 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         newRefreshToken.Should().NotBe(firstRefreshToken, "refresh token must be rotated on each use");
         doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Test User");
         doc.RootElement.GetProperty("employee_email").GetString().Should().Be("refresh-valid@test.dev");
+        doc.RootElement.TryGetProperty("employee_number", out var numberProp).Should().BeTrue();
+        numberProp.ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]
