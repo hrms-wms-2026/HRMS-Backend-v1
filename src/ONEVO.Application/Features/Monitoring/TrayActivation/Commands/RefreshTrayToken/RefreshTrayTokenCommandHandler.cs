@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
@@ -17,17 +18,20 @@ public class RefreshTrayTokenCommandHandler
     private const int RefreshTokenExpiresInSeconds = 7_776_000;
 
     private readonly ITrayActivationRepository _repository;
+    private readonly IUserRepository _userRepository;
     private readonly ITrayTokenService _tokenService;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
 
     public RefreshTrayTokenCommandHandler(
         ITrayActivationRepository repository,
+        IUserRepository userRepository,
         ITrayTokenService tokenService,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork)
     {
         _repository = repository;
+        _userRepository = userRepository;
         _tokenService = tokenService;
         _clock = clock;
         _unitOfWork = unitOfWork;
@@ -85,10 +89,38 @@ public class RefreshTrayTokenCommandHandler
         var accessToken = _tokenService.GenerateAccessToken(
             device.Id, existingToken.UserId, existingToken.TenantId);
 
+        var profile = await _repository.FindEmployeeProfileAsync(
+            existingToken.UserId, existingToken.TenantId, cancellationToken);
+        string? employeeName = null, employeeEmail = null, employeeNumber = null;
+        if (profile is not null)
+        {
+            employeeName = FullNameOrNull(profile.FirstName, profile.LastName);
+            employeeEmail = profile.Email;
+            employeeNumber = profile.EmployeeNumber;
+        }
+        else
+        {
+            var user = await _userRepository.GetByIdAsync(existingToken.UserId, cancellationToken);
+            if (user is not null)
+            {
+                employeeName = FullNameOrNull(user.FirstName, user.LastName);
+                employeeEmail = user.Email;
+            }
+        }
+
         return Result<TrayAuthResponseDto>.Success(new TrayAuthResponseDto(
             accessToken,
             AccessTokenExpiresInSeconds,
             newRawToken,
-            RefreshTokenExpiresInSeconds));
+            RefreshTokenExpiresInSeconds,
+            employeeName,
+            employeeEmail,
+            employeeNumber));
+    }
+
+    private static string? FullNameOrNull(string first, string last)
+    {
+        var name = $"{first} {last}".Trim();
+        return string.IsNullOrEmpty(name) ? null : name;
     }
 }

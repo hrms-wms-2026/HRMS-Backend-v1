@@ -228,6 +228,8 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         var newRefreshToken = doc.RootElement.GetProperty("refresh_token").GetString()!;
         newRefreshToken.Should().NotBeNullOrEmpty();
         newRefreshToken.Should().NotBe(firstRefreshToken, "refresh token must be rotated on each use");
+        doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Test User");
+        doc.RootElement.GetProperty("employee_email").GetString().Should().Be("refresh-valid@test.dev");
     }
 
     [Fact]
