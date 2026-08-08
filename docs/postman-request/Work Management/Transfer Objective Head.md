@@ -6,7 +6,9 @@
 
 ## Description
 
-Reassigns a milestone's Head. Same immediate-vs-pending split as Delete: applies immediately if the caller created the Objective, otherwise routes to the Reporting Manager for approval. `ReportingManagerId` is never changed by a transfer, regardless of how many times headship moves (design §6). `400` if `{id}` is the Default Objective — its head is permanently the Project Lead.
+Reassigns a milestone's Head. Same immediate-vs-pending split as Delete: applies immediately if the caller created the Objective, otherwise routes to the Reporting Manager for approval. `400` if `{id}` is the Default Objective — its head is permanently the Project Lead.
+
+Applying a transfer (immediately or via approval) also syncs project membership for both heads, cascades `ReportingManagerId` to the milestone's direct children, and drops the old head's project participation if they have no other active access.
 
 ## Request
 
@@ -22,7 +24,7 @@ Reassigns a milestone's Head. Same immediate-vs-pending split as Delete: applies
 
 | Status | Cause |
 |---|---|
-| `400` | Missing `newHeadUserId`, or `{id}` is the Default Objective |
+| `400` | Missing `newHeadUserId`, `{id}` is the Default Objective, the milestone is achieved, or the new head isn't an active employee in this tenant |
 | `403` | Caller is not `{id}`'s current Head |
 | `404` | Objective doesn't exist in tenant |
 | `409` | A change request is already pending for this objective |

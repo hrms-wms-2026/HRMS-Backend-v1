@@ -8,6 +8,8 @@
 
 Creates a sub-milestone under an existing Objective. `headUserId` (optional) assigns a different Head than the creator; omit it to default to the creator (design §5). Rejected with `400` if the new milestone's date range or allocated hours would fall outside the parent's.
 
+Also syncs project membership for the resolved Head (creates or reactivates a `project_members` row scoped to the new milestone) and auto-grants `projects:access` if they don't already have it (takes effect on their next login - see design doc §7).
+
 ## Request
 
 ```json
@@ -26,7 +28,7 @@ Creates a sub-milestone under an existing Objective. `headUserId` (optional) ass
 
 | Status | Cause |
 |---|---|
-| `400` | Validation failure, or date range/hours would exceed the parent's |
+| `400` | Validation failure, date range/hours would exceed the parent's, or the assigned head must be an active employee in this tenant |
 | `403` | Caller is not the parent Objective's current Head |
 | `404` | Parent Objective doesn't exist in tenant, or is inactive |
 
