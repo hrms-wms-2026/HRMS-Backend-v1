@@ -6,5 +6,5 @@ Maintenance rule: `docs/superpowers/rules/PROCESS_RULES.md` rule 7.
 
 ## Modules
 
-- `Work Management/` — `Create Project.md` (`POST /api/v1/work/projects`)
+- `Work Management/` — 22 endpoint docs (Projects: Create/Edit/Delete/Get/List/Achieve/Unachieve; Objectives: Create/Edit/Delete/Get/Get Tree/Get Subtree/Transfer Head/Add Member/Remove Member/Achieve/Unachieve/My History; Change Requests: Approve/Reject/List Mine). Last extended 2026-08-08 (member management, Achieve/Unachieve, Get Objective, My Objective History — see `docs/superpowers/plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`). This list was stale (showed only `Create Project.md`) until 2026-08-08's rule-compliance check caught it — kept current going forward per `docs/superpowers/rules/PROCESS_RULES.md` rule 6.
 - `Tenant Authentication/` — login, workspace selection, Google login, session exchange, session bootstrap (`/me`), logout, MFA (enable/confirm/verify), forgot/reset/force-change password, invitation preview + accept (password/Google), and legal acceptance (mid-login gate + post-login) — 17 endpoints total, backfilled 2026-08-03 from `docs/superpowers/workflow/authentication.md` + direct controller/DTO reads. `_Shared - Session Result Response.md` documents the common response shape most of these endpoints return.

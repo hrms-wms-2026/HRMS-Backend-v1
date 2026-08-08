@@ -2,7 +2,7 @@
 
 **Purpose:** Completed plans and point-in-time audit/fix reports. Everything here was moved from the flat `plans/` folder on 2026-08-06 as part of the `finished/` + `next/` restructure (see `docs/superpowers/rules/FILE_CREATION_RULES.md`). Files were **not** re-split or content-edited during the move — only relocated, per the migration rule (existing files get moved + status-tagged, not retroactively restructured into parts). The `plans/kajaa/` personal folder was also dissolved into this structure the same day — its 3 finished plans now live here too (see "From `kajaa/`" below).
 
-**Last updated:** 2026-08-06
+**Last updated:** 2026-08-08
 
 ## Layout: date subfolders
 
@@ -12,7 +12,7 @@ For the 16 files with no date in their filename (the `*_REPORT.md`/`*_AUDIT_PLAN
 
 ## Status note
 
-All 42 files below are treated as `finished` by default (dated plans with no open-task markers, and `*_REPORT.md`/`*_AUDIT_PLAN.md` files, which are inherently point-in-time and already acted on). This is a filename/convention-based classification done during the move, not a per-file content re-verification — if any of these turns out to actually be incomplete, flag it and it should move to `plans/next/` with status `pending` and a note explaining what's left.
+All 42 files from the 2026-08-06 batch move are treated as `finished` by default (dated plans with no open-task markers, and `*_REPORT.md`/`*_AUDIT_PLAN.md` files, which are inherently point-in-time and already acted on). This is a filename/convention-based classification done during the move, not a per-file content re-verification — if any of these turns out to actually be incomplete, flag it and it should move to `plans/next/` with status `pending` and a note explaining what's left. The 43rd file (`2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`) is different: it was individually verified task-by-task (build + unit tests + inline diff review) rather than batch-classified, per its own entry above.
 
 ## Files by date
 
@@ -50,7 +50,7 @@ Each entry's **Related:** line is a wiki-link (`[[bare-filename]]`, no extension
 - `2026-08-04-position-foundation-part2b.md`
 - `2026-08-04-test-suite-audit-and-invite-coverage.md`
 - `2026-08-04-tray-employee-check-in.md`
-- `2026-08-04-work-management-milestone-hierarchy.md` (from `kajaa/`) — Related: [[2026-08-04-work-management-milestone-hierarchy-design]] (its spec), [[2026-08-06-work-management-milestone-membership-and-achieve]] (the follow-up plan that closes gaps parked at this plan's final review, in `next/`)
+- `2026-08-04-work-management-milestone-hierarchy.md` (from `kajaa/`) — Related: [[2026-08-04-work-management-milestone-hierarchy-design]] (its spec), [[2026-08-06-work-management-milestone-membership-and-achieve]] (the follow-up plan that closes gaps parked at this plan's final review, in `finished/2026-08-08/`)
 - `2026-08-04-work-management-projects-edit-delete-view.md` (from `kajaa/`) — Related: [[2026-08-04-work-management-projects-edit-delete-view-design]] (its spec)
 - `DEPARTMENT_HARDENING_PART1_CODE_HIERARCHY_ARCHIVE_REPORT.md` (explicit `**Date:**`) — Related: [[2026-08-04-department-hardening-part1]] (its plan), [[DEPARTMENT_HARDENING_PART2_ARCHIVE_RESTORE_REPORT]]
 - `DEPARTMENT_HARDENING_PART2_ARCHIVE_RESTORE_REPORT.md` (explicit `**Date:**`) — Related: [[2026-08-04-department-hardening-part2]] (its plan), [[DEPARTMENT_HARDENING_PART1_CODE_HIERARCHY_ARCHIVE_REPORT]], [[DEPARTMENT_HARDENING_PART3_LIST_SEARCH_PAGINATION_REPORT]]
@@ -73,6 +73,9 @@ Each entry's **Related:** line is a wiki-link (`[[bare-filename]]`, no extension
 - `2026-08-06-legal-entity-permission-access-filter.md` — Related: [[LEGAL_ENTITY_PERMISSION_AND_ACCESS_FILTER_REPORT]] (its report)
 - `DEV_SMOKE_ORG_MODULE_PERMISSION_SEED_FIX_REPORT.md` (mid-merge, today's work)
 - `LEGAL_ENTITY_PERMISSION_AND_ACCESS_FILTER_REPORT.md` (explicit, matches its plan, mid-merge today) — Related: [[2026-08-06-legal-entity-permission-access-filter]]
+
+**`2026-08-08/`** (1)
+- `2026-08-06-work-management-milestone-membership-and-achieve.md` — Related: [[2026-08-06-work-management-milestone-membership-and-achieve-design]] (its spec, in `specs/finished/2026-08-08/`), [[2026-08-04-work-management-milestone-hierarchy]] (the plan whose final-review gaps this one closes). All 18 tasks executed 2026-08-08, one commit per task, full unit suite green after each (1621/1621 final). Integration test coverage (Task 16) added but not verified green in this environment — traced to a pre-existing `403` on project creation that reproduces identically at the pre-Task-10 commit, confirmed not a regression from this plan.
 
 ## Notable plans (kept from earlier summary revisions)
 
