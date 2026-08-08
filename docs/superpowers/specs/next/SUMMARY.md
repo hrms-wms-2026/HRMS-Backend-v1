@@ -8,6 +8,7 @@
 
 - `2026-08-03-platform-users-list-design.md` — status: pending, **no plan written yet**. Approved 2026-08-03, sat unplanned since — flag with the user whether it's still wanted.
 - `2026-08-07-work-management-objective-subtree-design.md` — physically here but was never listed in this file even before today; its plan (`plans/next/2026-08-07-work-management-objective-subtree.md`) already shipped (git commits `2a77bbc`..`b900ec5`, 2026-08-07). Not moved to `finished/` during the 2026-08-08 pass — out of that session's scope, flagged for a future sync instead.
+- `2026-08-08-work-management-my-project-milestones-design.md` — status: pending, no plan written yet (about to be written). One new read endpoint, `GET /api/v1/work/projects/{projectId}/objectives/mine` — every milestone the caller has ever had a `project_members` row for in a given project (any status, frontend filters), with owner/reporting-manager names resolved server-side. Builds on `specs/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve-design.md`.
 
 ## Open items
 

@@ -22,6 +22,7 @@ Every file here says `**Status:** Approved...` at the top — that field is the 
 | `finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve-design.md` | finished | `plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md` (18/18 tasks, executed 2026-08-08) |
 | `next/2026-08-03-platform-users-list-design.md` | pending | none written yet — design-approved 2026-08-03, no plan file exists in `plans/` under either `finished/` or `next/` |
 | `next/2026-08-07-work-management-objective-subtree-design.md` | **drift** | its plan, `plans/next/2026-08-07-work-management-objective-subtree.md`, already shipped (git commits `2a77bbc`..`b900ec5`, 2026-08-07) but neither the plan nor this design were ever moved to `finished/` — flagged, not fixed, during the 2026-08-08 pass (out of that session's scope) |
+| `next/2026-08-08-work-management-my-project-milestones-design.md` | pending | plan not yet written (about to be written) — `GET /api/v1/work/projects/{projectId}/objectives/mine` |
 
 ## Open items
 
