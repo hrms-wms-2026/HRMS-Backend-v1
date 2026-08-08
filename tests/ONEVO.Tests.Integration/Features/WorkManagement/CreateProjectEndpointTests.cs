@@ -10,6 +10,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
@@ -398,6 +399,92 @@ public class CreateProjectEndpointTests : IAsyncLifetime
         json.EnumerateArray().Should().HaveCountGreaterThanOrEqualTo(2, "the Default Objective plus the one sub-milestone just created");
     }
 
+    [Fact]
+    public async Task CreateObjective_ByCallerDefaultingToHead_CreatesProjectMembership()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Membership Sync Target", "MST1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        var response = await SendCreateObjectiveAsync(_tenantA, defaultObjectiveId, "Membership Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 10m);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
+        var objectiveId = (await ReadJsonAsync(response)).GetProperty("id").GetGuid();
+
+        var getResponse = await _client.SendAsync(BuildGetRequest(_tenantA, $"/api/v1/work/objectives/{objectiveId}"));
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK, "the caller (default Head) must already have membership-based access to what they just created");
+    }
+
+    [Fact]
+    public async Task AddThenRemoveObjectiveMember_HeadManagesMembership()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Member Mgmt Target", "MMT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        var sub = await SendCreateObjectiveAsync(_tenantA, defaultObjectiveId, "Member Mgmt Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 10m);
+        var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
+        var ownerUserId = (await ReadJsonAsync(created)).GetProperty("creatorMembership").GetProperty("userId").GetGuid();
+
+        var addResponse = await SendAddObjectiveMemberAsync(_tenantA, subId, ownerUserId);
+        addResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, await addResponse.Content.ReadAsStringAsync());
+
+        var removeHeadResponse = await SendRemoveObjectiveMemberAsync(_tenantA, subId, ownerUserId);
+        removeHeadResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest, "cannot remove the current head as a member - use Transfer instead");
+    }
+
+    [Fact]
+    public async Task AchieveObjective_ByCreatorHead_AppliesAndFreezesEdit()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Achieve Milestone Target", "AMT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        var sub = await SendCreateObjectiveAsync(_tenantA, defaultObjectiveId, "Achievable Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 10m);
+        var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
+
+        var achieveResponse = await SendAchieveObjectiveAsync(_tenantA, subId);
+        achieveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, await achieveResponse.Content.ReadAsStringAsync());
+
+        var editAfterAchieve = await SendEditObjectiveAsync(_tenantA, subId, "Should Not Apply", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 5m);
+        editAfterAchieve.StatusCode.Should().Be(HttpStatusCode.BadRequest, "an achieved milestone must be frozen for edits");
+
+        var unachieveResponse = await SendUnachieveObjectiveAsync(_tenantA, subId);
+        unachieveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task AchieveObjective_WithUnachievedChild_Returns400()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Achieve Blocked Target", "ABT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        var parent = await SendCreateObjectiveAsync(_tenantA, defaultObjectiveId, "Parent Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 4, 1), 30m);
+        var parentId = (await ReadJsonAsync(parent)).GetProperty("id").GetGuid();
+        await SendCreateObjectiveAsync(_tenantA, parentId, "Unachieved Child", new DateOnly(2026, 1, 5), new DateOnly(2026, 2, 1), 5m);
+
+        var achieveResponse = await SendAchieveObjectiveAsync(_tenantA, parentId);
+
+        achieveResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest, "the child must be achieved before the parent can be");
+    }
+
+    [Fact]
+    public async Task AchieveThenUnachieveProject_LeadManagesTopLevelState()
+    {
+        var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "Achieve Project Target", "APT1");
+        var projectId = (await ReadJsonAsync(created)).GetProperty("project").GetProperty("id").GetGuid();
+
+        var achieveResponse = await SendAchieveProjectAsync(_tenantA, projectId);
+        achieveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, await achieveResponse.Content.ReadAsStringAsync());
+
+        var unachieveResponse = await SendUnachieveProjectAsync(_tenantA, projectId);
+        unachieveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task GetMyObjectiveHistory_NoInactiveMemberships_ReturnsEmptyArray()
+    {
+        var response = await _client.SendAsync(BuildGetRequest(_tenantA, "/api/v1/work/objectives/mine/history"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetArrayLength().Should().Be(0);
+    }
+
     // ── Project creation helper (multipart/form-data) ───────────────────────
 
     private async Task<HttpResponseMessage> SendCreateProjectAsync(
@@ -483,6 +570,43 @@ public class CreateProjectEndpointTests : IAsyncLifetime
         return await _client.SendAsync(request);
     }
 
+    private async Task<HttpResponseMessage> SendAddObjectiveMemberAsync(TenantSession session, Guid objectiveId, Guid userId)
+    {
+        var body = new { userId };
+        return await SendJsonAsync(HttpMethod.Post, session.Host, $"/api/v1/work/objectives/{objectiveId}/members", body,
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+    }
+
+    private async Task<HttpResponseMessage> SendRemoveObjectiveMemberAsync(TenantSession session, Guid objectiveId, Guid userId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/work/objectives/{objectiveId}/members/{userId}");
+        request.Headers.Host = session.Host;
+        request.Headers.Add("Cookie", session.SessionCookie);
+        request.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        return await _client.SendAsync(request);
+    }
+
+    private async Task<HttpResponseMessage> SendAchieveObjectiveAsync(TenantSession session, Guid objectiveId)
+        => await SendPostNoBodyAsync(session, $"/api/v1/work/objectives/{objectiveId}/achieve");
+
+    private async Task<HttpResponseMessage> SendUnachieveObjectiveAsync(TenantSession session, Guid objectiveId)
+        => await SendPostNoBodyAsync(session, $"/api/v1/work/objectives/{objectiveId}/unachieve");
+
+    private async Task<HttpResponseMessage> SendAchieveProjectAsync(TenantSession session, Guid projectId)
+        => await SendPostNoBodyAsync(session, $"/api/v1/work/projects/{projectId}/achieve");
+
+    private async Task<HttpResponseMessage> SendUnachieveProjectAsync(TenantSession session, Guid projectId)
+        => await SendPostNoBodyAsync(session, $"/api/v1/work/projects/{projectId}/unachieve");
+
+    private async Task<HttpResponseMessage> SendPostNoBodyAsync(TenantSession session, string path)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, path);
+        request.Headers.Host = session.Host;
+        request.Headers.Add("Cookie", session.SessionCookie);
+        request.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        return await _client.SendAsync(request);
+    }
+
     private HttpRequestMessage BuildGetRequest(TenantSession session, string path)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, path);
@@ -561,6 +685,7 @@ public class CreateProjectEndpointTests : IAsyncLifetime
             LastName = "Owner",
             Email = ownerEmail,
             HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            EmploymentStatusId = EmploymentStatusIds.Active,
             CreatedById = user.Id,
             CreatedAt = DateTimeOffset.UtcNow
         });
