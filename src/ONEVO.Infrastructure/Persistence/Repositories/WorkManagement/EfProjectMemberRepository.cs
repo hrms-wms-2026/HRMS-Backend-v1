@@ -36,6 +36,14 @@ public class EfProjectMemberRepository : IProjectMemberRepository
                         && m.ObjectiveId != excludingObjectiveId && m.IsActive, ct);
     }
 
+    public async Task<bool> HasActiveMembershipForAnyObjectiveAsync(Guid tenantId, Guid projectId, Guid userId, IReadOnlyList<Guid> objectiveIds, CancellationToken ct = default)
+    {
+        return await _db.ProjectMembers
+            .AsNoTracking()
+            .AnyAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.UserId == userId
+                        && m.IsActive && objectiveIds.Contains(m.ObjectiveId), ct);
+    }
+
     public void Update(ProjectMember member)
     {
         _db.ProjectMembers.Update(member);

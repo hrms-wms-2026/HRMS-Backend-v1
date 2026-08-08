@@ -24,5 +24,12 @@ public interface IProjectMemberRepository
     /// </summary>
     Task<bool> HasActiveMembershipExcludingObjectiveAsync(Guid tenantId, Guid projectId, Guid userId, Guid excludingObjectiveId, CancellationToken ct = default);
 
+    /// <summary>
+    /// True if the user has an active membership row scoped to any of the given ObjectiveIds -
+    /// used for the "self or any ancestor" visibility check (design §5). Callers pass the target
+    /// Objective's own Id plus its full ancestor chain.
+    /// </summary>
+    Task<bool> HasActiveMembershipForAnyObjectiveAsync(Guid tenantId, Guid projectId, Guid userId, IReadOnlyList<Guid> objectiveIds, CancellationToken ct = default);
+
     void Update(ProjectMember member);
 }
