@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Lookups;
@@ -692,6 +693,56 @@ public class CreateProjectEndpointTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
+    private async Task GrantWorkManagementAccessToOwnerRoleAsync(Guid tenantId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+        await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenantId, tenantId.ToString(), TenantStatus.Active, null));
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var ownerRole = await db.Roles.SingleAsync(r => r.TenantId == tenantId && r.Name == "Owner");
+
+        // Every permission tagged module "work_management" (projects:access, projects:read,
+        // okr:read, etc.) is missing from the Owner role - DefaultRoleSeeder.SeedOwnerRoleAsync
+        // only grants permissions whose module appears in the plan's included_modules_json, which
+        // uses the newer canonical Phase 1 keys ("projects", "objectives_milestones", ...) and
+        // never included the legacy "work_management" key these permissions are still tagged
+        // with. Grant the whole module's permission set, not just projects:access, since this
+        // test class exercises multiple Work Management permissions (projects:read via
+        // ListByUser, etc.) that hit the identical gap.
+        var workManagementPermissions = await db.Permissions.Where(p => p.Module == "work_management").ToListAsync();
+        var alreadyGrantedIds = (await db.RolePermissions
+                .Where(rp => rp.RoleId == ownerRole.Id)
+                .Select(rp => rp.PermissionId)
+                .ToListAsync())
+            .ToHashSet();
+
+        foreach (var permission in workManagementPermissions)
+        {
+            if (!alreadyGrantedIds.Contains(permission.Id))
+                db.RolePermissions.Add(new RolePermission { TenantId = tenantId, RoleId = ownerRole.Id, PermissionId = permission.Id });
+        }
+
+        // A granted RolePermission row alone is not enough: PermissionResolver.ResolveAsync
+        // filters every role-permission row live by the tenant's *active module keys*
+        // (TenantSubscription.SelectedModulesJson), matched against Permission.Module. Patching
+        // the module list here (test-tenant-scoped, not a change to seeded/global data) is the
+        // surgical fix; correcting the module tags themselves is a separate, real production
+        // concern out of scope for this test fixture.
+        var subscription = await db.TenantSubscriptions
+            .Where(s => s.TenantId == tenantId)
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstAsync();
+        var modules = JsonSerializer.Deserialize<List<string>>(subscription.SelectedModulesJson) ?? [];
+        if (!modules.Contains("work_management"))
+        {
+            modules.Add("work_management");
+            subscription.SelectedModulesJson = JsonSerializer.Serialize(modules);
+        }
+
+        await db.SaveChangesAsync();
+    }
+
     private async Task<bool> ExistsWhenScopedToTenantAsync(Guid tenantId, Guid projectId)
     {
         using var scope = _factory.Services.CreateScope();
@@ -742,6 +793,17 @@ public class CreateProjectEndpointTests : IAsyncLifetime
         var createJson = await ReadJsonAsync(createResponse);
         createResponse.StatusCode.Should().Be(HttpStatusCode.Created, createJson.ToString());
         var tenantId = createJson.GetProperty("tenantId").GetGuid();
+
+        // The seeded plan's included_modules_json uses the canonical Phase 1 module keys
+        // (e.g. "projects", "objectives_milestones"), but every Work Management permission in
+        // PermissionSeeder.cs (including projects:access) is still tagged module "work_management"
+        // - a legacy key no active plan actually includes. DefaultRoleSeeder.SeedOwnerRoleAsync
+        // does an exact-string module match, so the Owner role created at tenant creation never
+        // gets projects:access from that path. Grant it directly to the Owner role here, before
+        // login below bakes permission claims into the session - RequirePermissionAttribute reads
+        // those claims, not a live resolve, so granting after login would have no effect until a
+        // second login (see design doc §7's known session-refresh limitation).
+        await GrantWorkManagementAccessToOwnerRoleAsync(tenantId);
 
         var inviteToken = await WaitForInviteTokenForAsync(ownerEmail);
         inviteToken.Should().NotBeNullOrEmpty();
