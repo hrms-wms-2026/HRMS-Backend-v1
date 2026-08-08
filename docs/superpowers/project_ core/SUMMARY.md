@@ -2,14 +2,14 @@
 
 **Purpose:** The living architecture and data-model documents for ONEVO. Unlike `workflow/` (dated point-in-time reports), these describe current/target design and must be kept in sync per [[PROCESS_RULES]] rule 2.
 
-**Last updated:** 2026-08-03
+**Last updated:** 2026-08-08
 
 ## Files
 
 - `ONEVO_Backend_Architecture_Document.md` — backend architecture: layering (Api/Application/Domain/Infrastructure), tenant isolation, authentication/authorization, database, caching, file handling, performance, logging, testing, deployment. Reconciled against `workflow/authentication.md` for the Authentication section on 2026-08-03 (Phase 1); remaining sections are queued for Phase 2 (see `plans/2026-08-03-doc-audit-and-process-setup.md`).
 - `ONEVO_HRMS_Frontend_Architecture (1).md` — frontend (Angular) architecture. **Cannot be code-verified from this repo** — no frontend source is present in `HRMS-Backend-v1`. Treat as documentation-only until checked against the actual frontend repo.
 - `SKILL.md` — the full-stack engineering agent skill/rulebook (backend + frontend engineering rules, review checklist, forbidden patterns). This is prescriptive convention, not a description of current implementation state.
-- `phase1-table-inventory.md` — full column-level definitions for all **249 Phase 1 tables** (242 core + 7 Developer Platform Extensions). See breakdown below. Structural verification against actual EF configurations/migrations is queued as Phase 3.
+- `phase1-table-inventory.md` — full column-level definitions for all **250 Phase 1 tables** (243 core + 7 Developer Platform Extensions). See breakdown below. Structural verification against actual EF configurations/migrations is queued as Phase 3.
 
 ## Dev context: `phase1-table-inventory.md` table breakdown
 
@@ -17,7 +17,7 @@
 |:---|:---|---:|
 | Pillar 1 — HR Management | Infrastructure (13), Auth & Security (20), Org Structure (8), Core HR (14), Time Off (7), Calendar (5), Configuration (11) | 78 |
 | Pillar 2 — Monitoring | Activity Monitoring (8), Discrepancy Engine (3), Time & Attendance (18), Identity Verification (8), Productivity Analytics (5) | 42 |
-| Pillar 3 — Work Management | Foundation + Projects + Objectives (14), Task Management + Worklogs (15), Sprint Planning (5), Collaboration (5), GitHub Repository Integration (6) | 45 |
+| Pillar 3 — Work Management | Foundation + Projects + Objectives (15), Task Management + Worklogs (15), Sprint Planning (5), Collaboration (5), GitHub Repository Integration (6) | 46 |
 | Shared Foundation | Shared Platform (54), Agent Gateway (6), Reporting Engine (3) | 63 |
 | Developer Platform | Platform users/credentials/sessions/RBAC/auth events (9), System Config provider catalog/service keys (2), OAuth app registration/secret rotation (2), Platform alerts (1) | 14 |
 | Developer Platform Extensions | Demo Profile/Request approval flow (4), Subscription plan modules/add-ons/pricing (3) | 7 |
@@ -31,3 +31,4 @@
 - `phase1-table-inventory.md` has not yet had a structural check against actual EF Core configurations/migrations (table existence, not full column diff) — queued as Phase 3 in the same plan.
 - Frontend architecture doc is unverifiable from this repo (see Files section above).
 - **2026-08-03 — Work Management (Projects) backend build started.** `phase1-table-inventory.md`'s Foundation + Projects + Objectives section was reworked (17→14 tables) to match locked business decisions from the Work Management spec: removed `workspaces`/`workspace_roles`/`workspace_members` (out of scope) and `objective_participants` (superseded by Objective-scoped `project_members`); added `version_statuses`; reworked `projects`/`project_members`/`project_member_invitations`/`versions`/`release_calendar`/`labels`/`project_categories` columns. `entity_assets` is documented but was confirmed **not yet built in code** — first implementation is happening now, scoped to `owner_type = 'project'` only. `objective_categories`/`key_results`/`okr_check_ins` remain documented but deferred (not part of the current Objectives build). See `plans/` for the Work Management foundation-slice plan once written.
+- **2026-08-08 — Milestone Membership/Achieve plan closed a two-plan-old documentation gap.** `phase1-table-inventory.md`'s `objective_change_requests` table (shipped 2026-08-04/05 with the milestone-hierarchy plan) had never been added to this inventory; `objectives.reporting_manager_id` was similarly undocumented since the same date. Both were added now, alongside this session's own schema additions (`projects.is_achieved`/`achieved_at`, `objectives.is_achieved`/`achieved_at`). Foundation + Projects + Objectives moves 14→15 tables; Phase 1 total moves 249→250. Rule 2 was followed for this session's own change; the two-plan-old gap was fixed opportunistically while touching the same section, not as a separate audit.

@@ -2,15 +2,17 @@
 
 Every **Phase 1** table documented in this vault, with its full column list. Compiled from the canonical files in `database/schemas/` and `developer-platform/database/schema.md` (Phase 2 tables excluded per each file's `**Phase:**` markers; retained Phase 2 catalog references are not table-creation permission).
 
-**Phase 1 total: 249 tables** (242 core + 7 Developer Platform Extensions - see below)
+**Phase 1 total: 250 tables** (243 core + 7 Developer Platform Extensions - see below)
 
 > **2026-08-03 revision:** Foundation + Projects + Objectives dropped from 17 to 14 tables — `workspaces`/`workspace_roles`/`workspace_members` removed (Workspace functionality is out of scope; see the Work Management implementation decisions) and `objective_participants` removed (Objective participation is represented only through `project_members`); `version_statuses` added (new global lookup, seeded `planned`/`released`/`archived`). Net -3 vs. the prior count. See the Foundation + Projects + Objectives section for the full column-level rework of `projects`, `project_members`, `project_member_invitations`, `versions`, `release_calendar`, `labels`, and `project_categories`.
+>
+> **2026-08-08 revision:** Foundation + Projects + Objectives moves from 14 to 15 tables — `objective_change_requests` (shipped 2026-08-04/05 with the milestone-hierarchy plan, extended 2026-08-08 with `achieve`/`unachieve` request types) had never been added to this inventory; documented now alongside `projects.is_achieved`/`achieved_at`, `objectives.is_achieved`/`achieved_at`, and `objectives.reporting_manager_id` (also undocumented since 2026-08-04/05 — see the Achieve workflow design, `specs/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve-design.md`).
 
 | Group | Modules (tables) | Total |
 |:---|:---|---:|
 | Pillar 1 - HR Management | Infrastructure (13), Auth & Security (20), Org Structure (8), Core HR (14), Time Off (7), Calendar (5), Configuration (11) | 78 |
 | Pillar 2 - Monitoring | Activity Monitoring (8), Discrepancy Engine (3), Time & Attendance (18), Identity Verification (8), Productivity Analytics (5) | 42 |
-| Pillar 3 - Work Management | Foundation + Projects + Objectives (14), Task Management + Worklogs (15), Sprint Planning (5), Collaboration (5), GitHub Repository Integration (6) | 45 |
+| Pillar 3 - Work Management | Foundation + Projects + Objectives (15), Task Management + Worklogs (15), Sprint Planning (5), Collaboration (5), GitHub Repository Integration (6) | 46 |
 | Shared Foundation | Shared Platform (54), Agent Gateway (6), Reporting Engine (3) | 63 |
 | Developer Platform | Platform users/credentials/sessions/RBAC/auth events (9), System Config provider catalog/service keys (2), Platform OAuth app registration and secret rotation (2), Platform alerts (1) | 14 |
 | Developer Platform Extensions | Demo Profile/Request approval flow (4), Subscription plan modules/add-ons/pricing (3) | 7 |
@@ -2435,7 +2437,7 @@ Work Management-derived task productivity metrics per employee per period.
 
 > Excluded as Phase 2 per schema files: `workspace_teams_links`, `teams_member_sync_status`, `project_workspaces` (reference only), all of wms-chat, and only `task_automation_rules` from wms-integrations. Customize Dashboard is Phase 2 but has no committed tables. The five sprint-planning tables and six GitHub repository-integration tables are Phase 1.
 
-## Foundation + Projects + Objectives (14 tables)
+## Foundation + Projects + Objectives (15 tables)
 
 > **Scope note (2026-08-03):** Workspaces are not part of Work Management Phase 1 — `workspaces`, `workspace_roles`, and `workspace_members` are removed below (previously documented here, never implemented in code). Project/Objective visibility, membership, and invitations are Objective-scoped, not workspace-scoped. `objective_participants` is also removed — Objective participation is represented only through `project_members`. `objective_categories`, `key_results`, and `okr_check_ins` remain documented below unchanged, but are **deferred**: not part of the current Objectives implementation (the `objectives` table below has no `category_id` for now). Project logo/cover attachment goes through the existing generic `entity_assets` table (see Infrastructure section above), not a `projects.logo_file_id` column.
 >
@@ -2481,6 +2483,8 @@ Work containers holding Objectives and tasks. No workspace dependency in Phase 1
 | `allocated_hours` | `numeric(18,2)` | default 0; hours reserved by child Objectives and tasks |
 | `completed_hours` | `numeric(18,2)` | default 0; credited Task time rolled up from Project Tasks |
 | `is_active` | `boolean` | default true |
+| `is_achieved` | `boolean` | default false; added 2026-08-08 (Achieve workflow). Lead-only, always-immediate completion state, independent of `is_active`. Requires every top-level milestone (direct child of the Default Objective) to already be Achieved |
+| `achieved_at` | `timestamptz` | nullable; set when `is_achieved` flips true, cleared on Unachieve |
 | `created_by_id` | `uuid` | FK -> users |
 | `created_at` | `timestamptz` | |
 | `updated_at` | `timestamptz` | nullable |
@@ -2673,7 +2677,8 @@ Objectives and child Objectives (frontend may label these "Milestones"; the data
 | `is_default` | `boolean` | default false; at most one `true` row per `project_id` (partial unique index) |
 | `title` | `varchar(255)` | for the Default Objective, mirrors `projects.name` and stays in sync on Project edit |
 | `description` | `text` | nullable; for the Default Objective, mirrors `projects.description` |
-| `owner_id` | `uuid` | FK -> users; the Default Objective's owner is the Project creator at creation time |
+| `owner_id` | `uuid` | FK -> users; the Objective's current Head. For a non-default Objective this is reassigned by Transfer; for the Default Objective it equals the Project's `lead_id` and is never transferred |
+| `reporting_manager_id` | `uuid` | nullable; FK -> users; null only for the Default Objective. Documented as "frozen at creation" by the 2026-08-04 milestone-hierarchy plan, but the 2026-08-06 membership/Achieve plan made it dynamic — it tracks the *parent* Objective's *current* Head, cascaded to direct children only (one level) whenever a Transfer applies. Pending Delete/Edit/Transfer/Achieve/Unachieve requests on this Objective route to whoever holds this column at request-creation time |
 | `is_active` | `boolean` | default true; the Default Objective cannot be deactivated while the Project remains active |
 | `start_date` | `date` | for the Default Objective, mirrors `projects.start_date` |
 | `end_date` | `date` | must not be earlier than start_date; for the Default Objective, mirrors `projects.target_date` |
@@ -2681,14 +2686,37 @@ Objectives and child Objectives (frontend may label these "Milestones"; the data
 | `actual_hours` | `numeric(18,2)` | nullable; non-negative; for the Default Objective, mirrors `projects.actual_hours` |
 | `allocated_hours` | `numeric(18,2)` | default 0; non-negative; Objective-specific, not mirrored from Project |
 | `completed_hours` | `numeric(18,2)` | default 0; non-negative; Objective-specific, not mirrored from Project |
+| `is_achieved` | `boolean` | default false; added 2026-08-08 (Achieve workflow). Requires every *direct* child Objective to already be Achieved (shallow check; transitively enforced bottom-up). Default Objective can never be Achieved directly — use the Project-level Achieve endpoint instead. Frozen for Edit/Transfer/member-add-remove while true (mirrors the existing `!is_active` freeze), but Delete is unaffected |
+| `achieved_at` | `timestamptz` | nullable; set when `is_achieved` flips true, cleared on Unachieve |
 | `created_at` | `timestamptz` | |
 | `updated_at` | `timestamptz` | nullable |
 
 Optimistic concurrency via PostgreSQL `xmin`. Hour indicators are the same warning-only formulas as `projects` and never block creation or edits. **Deferred (not part of the current implementation):** `category_id` / `objective_categories` linkage, `quarter`. **Forbidden:** `workspace_id`.
 
-**Indexes:** `(tenant_id, project_id, parent_objective_id)`, `(tenant_id, owner_id, is_active)`, partial unique one `is_default = true` row per `project_id`.
+**Indexes:** `(tenant_id, project_id, parent_objective_id)`, `(tenant_id, owner_id, is_active)`, `(tenant_id, project_id, is_achieved)`, partial unique one `is_default = true` row per `project_id`.
 
 **Removed (2026-08-03):** `objective_participants` — Objective participation is represented only through `project_members` (every membership row is Objective-specific); this table previously described a separate, now-unused participation model.
+
+### `objective_change_requests`
+
+Added 2026-08-04/05 (milestone-hierarchy plan), extended 2026-08-08 (membership/Achieve plan) — undocumented here until the 2026-08-08 pass. One pending/decided Delete, conflicting-Edit, Transfer, Achieve, or Unachieve request on an Objective a non-creator Head cannot apply unilaterally. The Objective's own creator never needs approval for their own creation (design rule, unchanged since 2026-08-04) — these rows exist only for the non-creator path. Project-level actions (Edit/Delete/Achieve/Unachieve on `projects` itself) never create a row here — the Project is the tree's root with no Reporting Manager to route to.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `tenant_id` | `uuid` | FK -> tenants |
+| `objective_id` | `uuid` | FK -> objectives; `ON DELETE RESTRICT` |
+| `request_type` | `varchar(20)` | `delete` / `edit` / `transfer` / `achieve` / `unachieve` (the last two added 2026-08-08) |
+| `requested_by_id` | `uuid` | FK -> users |
+| `reporting_manager_id` | `uuid` | FK -> users; snapshotted from `objectives.reporting_manager_id` at request-creation time — approving/rejecting never re-reads a possibly-since-changed live value |
+| `status` | `varchar(20)` | `pending` / `approved` / `rejected` |
+| `payload_json` | `jsonb` | nullable; proposed new field values for `edit`/`transfer`; null for `delete`/`achieve`/`unachieve` (state transitions carry no proposed values) |
+| `decided_at` | `timestamptz` | nullable |
+| `decided_by_id` | `uuid` | nullable; FK -> users |
+| `created_at` | `timestamptz` | |
+| `updated_at` | `timestamptz` | nullable |
+
+**Indexes:** `(tenant_id, objective_id, status)`, `(tenant_id, reporting_manager_id, status)`. **Unique:** partial unique on `(tenant_id, objective_id) WHERE status = 'pending'` — at most one pending request per Objective, enforced at the DB level, not just in the handler.
 
 ### `key_results`
 
