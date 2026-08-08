@@ -6,6 +6,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.Helpers;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.CreateObjective;
@@ -15,12 +16,18 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
     private readonly ICurrentUser _currentUser;
     private readonly IObjectiveRepository _objectives;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly IPermissionAutoGrantService _autoGrant;
 
-    public CreateObjectiveCommandHandler(ICurrentUser currentUser, IObjectiveRepository objectives, IUnitOfWork unitOfWork)
+    public CreateObjectiveCommandHandler(
+        ICurrentUser currentUser, IObjectiveRepository objectives, IUnitOfWork unitOfWork,
+        IMilestoneMembershipCoordinator membership, IPermissionAutoGrantService autoGrant)
     {
         _currentUser = currentUser;
         _objectives = objectives;
         _unitOfWork = unitOfWork;
+        _membership = membership;
+        _autoGrant = autoGrant;
     }
 
     public async Task<Result<ObjectiveDetailResponse>> Handle(CreateObjectiveCommand request, CancellationToken ct)
@@ -45,35 +52,50 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
             return Result<ObjectiveDetailResponse>.Failure(
                 "The new milestone's date range or allocated hours would exceed the parent milestone's.");
 
-        var now = DateTimeOffset.UtcNow;
+        var resolvedHeadUserId = request.HeadUserId ?? userId;
+        var assignee = await _membership.GetActiveAssigneeAsync(tenantId, resolvedHeadUserId, ct);
+        if (assignee is null)
+            return Result<ObjectiveDetailResponse>.Failure("The assigned head must be an active employee in this tenant.");
 
-        var objective = new Objective
+        return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            ProjectId = parent.ProjectId,
-            ParentObjectiveId = parent.Id,
-            IsDefault = false,
-            Title = request.Title.Trim(),
-            Description = request.Description?.Trim(),
-            // Head defaults to the creator if not explicitly assigned (design §5).
-            OwnerId = request.HeadUserId ?? userId,
-            // Always the creator, regardless of who is assigned Head - a one-time fact set at
-            // creation and never touched again, including by Transfer (Task 8).
-            ReportingManagerId = userId,
-            IsActive = true,
-            StartDate = request.StartDate,
-            EndDate = request.EndDate,
-            Progress = 0m,
-            AllocatedHours = request.AllocatedHours,
-            CompletedHours = 0m,
-            CreatedById = userId,
-            CreatedAt = now
-        };
+            var now = DateTimeOffset.UtcNow;
 
-        await _objectives.AddAsync(objective, ct);
-        await _unitOfWork.SaveChangesAsync(ct);
+            var objective = new Objective
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                ProjectId = parent.ProjectId,
+                ParentObjectiveId = parent.Id,
+                IsDefault = false,
+                Title = request.Title.Trim(),
+                Description = request.Description?.Trim(),
+                // Head defaults to the creator if not explicitly assigned (design §5).
+                OwnerId = resolvedHeadUserId,
+                // Always the creator, regardless of who is assigned Head - a one-time fact set at
+                // creation, later kept in sync with the PARENT's current head by Transfer's
+                // cascade (design §4), not by anything in this handler.
+                ReportingManagerId = userId,
+                IsActive = true,
+                StartDate = request.StartDate,
+                EndDate = request.EndDate,
+                Progress = 0m,
+                AllocatedHours = request.AllocatedHours,
+                CompletedHours = 0m,
+                CreatedById = userId,
+                CreatedAt = now
+            };
 
-        return Result<ObjectiveDetailResponse>.Success(ObjectiveMapper.ToDetail(objective));
+            await _objectives.AddAsync(objective, innerCt);
+
+            // Membership sync + auto-grant (design §3/§7) - happens for every Create, whether the
+            // Head is the caller (default) or an explicitly assigned headUserId.
+            await _membership.UpsertMembershipAsync(tenantId, objective.ProjectId, objective.Id, resolvedHeadUserId, assignee.Id, innerCt);
+            await _autoGrant.EnsureGrantedAsync(tenantId, resolvedHeadUserId, userId, "projects:access", innerCt);
+
+            await _unitOfWork.SaveChangesAsync(innerCt);
+
+            return Result<ObjectiveDetailResponse>.Success(ObjectiveMapper.ToDetail(objective));
+        }, ct);
     }
 }
