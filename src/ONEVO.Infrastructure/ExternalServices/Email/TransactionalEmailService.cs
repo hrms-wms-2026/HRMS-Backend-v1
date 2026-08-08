@@ -46,6 +46,9 @@ public class TransactionalEmailService : IEmailService
     public Task SendAdminPasswordChangedAsync(string to, CancellationToken ct = default)
         => SendTemplateAsync(to, "admin_password_changed", new { }, ct);
 
+    public Task SendPlatformManagerInviteAsync(string to, string fullName, string inviteToken, CancellationToken ct = default)
+        => SendTemplateAsync(to, "platform_manager_invite", new { full_name = fullName, invite_token = inviteToken }, ct);
+
     private async Task SendInternalAsync(
         string to,
         string subject,

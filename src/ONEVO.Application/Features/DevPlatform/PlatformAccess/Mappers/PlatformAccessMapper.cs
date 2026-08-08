@@ -13,7 +13,7 @@ public static class PlatformAccessMapper
             user.Email,
             user.FullName,
             role,
-            user.Status == PlatformUser.StatusActive,
+            user.Status,
             user.CreatedAt,
             user.LastLoginAt);
     }

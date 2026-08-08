@@ -13,6 +13,8 @@ public class PlatformAuthEvent
     public const string LogoutSucceeded = "logout_succeeded";
     public const string AdminPasswordResetRequested = "admin_password_reset_requested";
     public const string AdminPasswordResetCompleted = "admin_password_reset_completed";
+    public const string PlatformManagerInvited = "platform_manager_invited";
+    public const string PlatformManagerInviteAccepted = "platform_manager_invite_accepted";
 
     public Guid Id { get; set; }
     public Guid? UserId { get; set; }

@@ -31,6 +31,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             "password_reset" => RenderPasswordReset(fields),
             "admin_password_reset" => RenderAdminPasswordReset(fields),
             "admin_password_changed" => RenderAdminPasswordChanged(),
+            "platform_manager_invite" => RenderPlatformManagerInvite(fields),
             _ => throw new InvalidOperationException(
                 $"Unknown email template '{templateId}'. Add a case in EmailTemplateRenderer.")
         };
@@ -47,7 +48,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             : _options.AppBaseUrl;
         var inviteUrl = string.IsNullOrWhiteSpace(appBaseUrl)
             ? $"[invite_url placeholder - set Email:AppBaseUrl] token={token}"
-            : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{token}";
+            : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}";
 
         var subject = $"You're invited to manage {company} on ONEVO";
 
@@ -92,7 +93,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
         var resetUrl = string.IsNullOrWhiteSpace(appBaseUrl)
             ? $"[reset_url placeholder - set Email:AppBaseUrl] token={token}"
-            : $"{appBaseUrl.TrimEnd('/')}/auth/reset-password?token={token}";
+            : $"{appBaseUrl.TrimEnd('/')}/auth/reset-password?token={Uri.EscapeDataString(token)}";
 
         var subject = "Reset your ONEVO password";
         var html = $"""
@@ -111,7 +112,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var token = Get(f, "reset_token");
         var resetUrl = string.IsNullOrWhiteSpace(_options.AdminConsoleBaseUrl)
             ? $"[reset_url placeholder - set Email:AdminConsoleBaseUrl] token={token}"
-            : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/reset-password?token={token}";
+            : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/auth/reset-password?token={Uri.EscapeDataString(token)}";
 
         var subject = "Reset your ONEXSO Platform Administration password";
         var html = $"""
@@ -136,6 +137,27 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             </body></html>
             """;
         const string text = "Your Platform Administration password was changed. All existing sessions have been signed out. If this wasn't you, contact platform support immediately.";
+        return new RenderedEmail(subject, html, text);
+    }
+
+    private RenderedEmail RenderPlatformManagerInvite(IReadOnlyDictionary<string, object?> f)
+    {
+        var fullName = Get(f, "full_name");
+        var token = Get(f, "invite_token");
+        var inviteUrl = string.IsNullOrWhiteSpace(_options.AdminConsoleBaseUrl)
+            ? $"[invite_url placeholder - set Email:AdminConsoleBaseUrl] token={token}"
+            : $"{_options.AdminConsoleBaseUrl.TrimEnd('/')}/auth/accept-invite?token={Uri.EscapeDataString(token)}";
+
+        var subject = "You've been invited to ONEXSO Platform Administration";
+        var html = $"""
+            <!doctype html><html><body>
+              <p>Hi {Escape(fullName)},</p>
+              <p>You've been invited to join ONEXSO Platform Administration.</p>
+              <p><a href="{Escape(inviteUrl)}">Accept invitation</a></p>
+              <p>This link expires in 72 hours.</p>
+            </body></html>
+            """;
+        var text = $"Hi {fullName},\n\nYou've been invited to join ONEXSO Platform Administration.\nAccept: {inviteUrl}\nThis link expires in 72 hours.";
         return new RenderedEmail(subject, html, text);
     }
 
