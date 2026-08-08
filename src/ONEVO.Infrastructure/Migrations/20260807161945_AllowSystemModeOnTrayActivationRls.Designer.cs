@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ONEVO.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260807161945_AllowSystemModeOnTrayActivationRls")]
+    partial class AllowSystemModeOnTrayActivationRls
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3706,66 +3709,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_tray_device_registrations_tenant_id_user_id_is_active");
 
                     b.ToTable("tray_device_registrations", (string)null);
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.WorkSessions.Entities.EmployeeWorkSession", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<int>("AccumulatedBreakSeconds")
-                        .HasColumnType("integer")
-                        .HasColumnName("accumulated_break_seconds");
-
-                    b.Property<int>("AccumulatedWorkSeconds")
-                        .HasColumnType("integer")
-                        .HasColumnName("accumulated_work_seconds");
-
-                    b.Property<int>("BreakSessionCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("break_session_count");
-
-                    b.Property<DateTimeOffset>("ClockInAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("clock_in_at");
-
-                    b.Property<DateTimeOffset>("ClockOutAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("clock_out_at");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("DeviceRegistrationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("device_registration_id");
-
-                    b.Property<string>("ScheduleDisplay")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("schedule_display");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_employee_work_sessions");
-
-                    b.HasIndex("TenantId", "DeviceRegistrationId")
-                        .HasDatabaseName("ix_employee_work_sessions_tenant_id_device_registration_id");
-
-                    b.HasIndex("TenantId", "UserId", "ClockInAt")
-                        .HasDatabaseName("ix_employee_work_sessions_tenant_id_user_id_clock_in_at");
-
-                    b.ToTable("employee_work_sessions", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.Department", b =>

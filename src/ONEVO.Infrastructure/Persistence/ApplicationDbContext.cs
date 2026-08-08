@@ -23,6 +23,7 @@ using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
+using ONEVO.Domain.Features.Monitoring.WorkSessions.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
 using ONEVO.Domain.Lookups;
@@ -76,6 +77,9 @@ public class ApplicationDbContext : DbContext
     // Monitoring - Employee Check-In
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
     public DbSet<MonitoringFaceScan> MonitoringFaceScans => Set<MonitoringFaceScan>();
+
+    // Monitoring - Work Sessions (clock-in/break/clock-out)
+    public DbSet<EmployeeWorkSession> EmployeeWorkSessions => Set<EmployeeWorkSession>();
 
     // Monitoring - Activity (keyboard/mouse counts)
     public DbSet<ActivitySnapshot> ActivitySnapshots => Set<ActivitySnapshot>();

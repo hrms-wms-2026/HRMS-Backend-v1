@@ -247,6 +247,57 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
             "after a fingerprint mismatch all device tokens must be revoked");
     }
 
+    // ── Revoke endpoint ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Revoke_ValidToken_Returns204_AndDeactivatesDevice()
+    {
+        var user = await SeedActiveUserAsync("revoke-valid-test", "revoke-valid@test.dev", "RevPass1!");
+        var session = await LoginAndGetSessionAsync(user);
+        var code = await GenerateCodeAsync(session);
+        const string fingerprint = "fp-revoke-valid-001";
+        var (accessToken, _) = await ExchangeCodeAsync(code, fingerprint);
+
+        var response = await PostRevokeAsync(accessToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var device = await db.TrayDeviceRegistrations
+            .SingleAsync(d => d.UserId == user.UserId && d.DeviceFingerprint == fingerprint);
+        device.IsActive.Should().BeFalse("revoke must deactivate the device registration");
+        device.DeactivatedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Revoke_ThenRefresh_Returns401()
+    {
+        var user = await SeedActiveUserAsync("revoke-refresh-test", "revoke-refresh@test.dev", "RevRefPass1!");
+        var session = await LoginAndGetSessionAsync(user);
+        var code = await GenerateCodeAsync(session);
+        const string fingerprint = "fp-revoke-refresh-001";
+        var (accessToken, refreshToken) = await ExchangeCodeAsync(code, fingerprint);
+
+        var revoke = await PostRevokeAsync(accessToken);
+        revoke.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var refresh = await PostRefreshAsync(refreshToken, fingerprint);
+
+        refresh.StatusCode.Should().Be(
+            HttpStatusCode.Unauthorized, "a revoked device's refresh token must no longer be usable");
+    }
+
+    [Fact]
+    public async Task Revoke_NoToken_Returns401()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/revoke");
+        request.Headers.Host = "localhost";
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private async Task<SeedResult> SeedActiveUserAsync(string tenantSlug, string email, string password)
@@ -375,6 +426,15 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
             refreshToken,
             deviceFingerprint
         });
+        return await _client.SendAsync(request);
+    }
+
+    private async Task<HttpResponseMessage> PostRevokeAsync(string accessToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/revoke");
+        request.Headers.Host = "localhost";
+        request.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
         return await _client.SendAsync(request);
     }
 

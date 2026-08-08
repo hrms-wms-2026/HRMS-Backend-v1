@@ -99,4 +99,14 @@ public class EfTrayActivationRepository : ITrayActivationRepository
             .Where(d => d.Id == deviceRegistrationId)
             .ExecuteUpdateAsync(s => s.SetProperty(d => d.LastSeenAt, lastSeenAt), ct);
     }
+
+    public async Task DeactivateDeviceAsync(
+        Guid deviceRegistrationId, DateTimeOffset deactivatedAt, CancellationToken ct)
+    {
+        await _db.TrayDeviceRegistrations
+            .Where(d => d.Id == deviceRegistrationId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.IsActive, false)
+                .SetProperty(d => d.DeactivatedAt, deactivatedAt), ct);
+    }
 }

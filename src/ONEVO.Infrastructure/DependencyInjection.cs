@@ -67,10 +67,12 @@ using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.WorkSessions.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.TrayActivation;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.CheckIn;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.WorkSessions;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.ActivityMonitoring;
 using ONEVO.Infrastructure.Services.Auth.Login;
 using ONEVO.Infrastructure.Services.Monitoring.TrayActivation;
@@ -243,6 +245,9 @@ public static class DependencyInjection
         // Monitoring - Check-In
         services.AddScoped<ICheckInRepository, EfCheckInRepository>();
         services.AddScoped<ITrayCurrentDevice, TrayCurrentDeviceService>();
+
+        // Monitoring - Work Sessions (clock-in/break/clock-out)
+        services.AddScoped<IWorkSessionRepository, EfWorkSessionRepository>();
 
         // Monitoring - Activity (keyboard/mouse tracking)
         services.AddScoped<IActivitySnapshotRepository, EfActivitySnapshotRepository>();
