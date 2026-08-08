@@ -37,11 +37,11 @@
 | `2026-08-05-remove-legacy-employee-job-title-manager-fields.md` | `finished/2026-08-05/` | finished |
 | `2026-08-06-legal-entity-permission-access-filter.md` | `finished/2026-08-06/` | finished |
 | `2026-08-06-work-management-milestone-membership-and-achieve.md` | `finished/2026-08-08/` | finished (18/18 tasks) |
-| `2026-08-08-work-management-my-project-milestones.md` | `next/` | **pending** (0/5 tasks) |
+| `2026-08-08-work-management-my-project-milestones.md` | `finished/2026-08-08/` | finished (5/5 tasks) |
 | 26 `*_REPORT.md` / `*_AUDIT_PLAN.md` files (Department, Position, Legal Entity, Dev Smoke, Tenant Provisioning, etc.) | `finished/2026-08-03/` through `finished/2026-08-06/` | finished |
 | `Project Management.md` (raw future-feature context, 1 of 2 items still open) | `next/` | pending (not brainstormed) |
 
-See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all 43 files in that folder (kept short here to avoid duplicating the same list twice).
+See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all 44 files in that folder (kept short here to avoid duplicating the same list twice).
 
 ## Notable finished plans (kept from the pre-restructure summary)
 
@@ -49,10 +49,11 @@ See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder
 - `finished/2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md` — Work Management Slice 2: `PUT`/`DELETE`/`GET`-by-id/`GET mine`/`GET ?userId=` on `ProjectsController`. **Executed 2026-08-05**: all 9 tasks + final review + one fix wave, re-reviewed clean.
 - `finished/2026-08-04/2026-08-04-work-management-milestone-hierarchy.md` — Work Management's Milestone/Objective hierarchy: `PermissionSeeder.cs` retrofit, `Objective.ReportingManagerId` + `objective_change_requests` schema, recursive tree-authorization, 8 endpoints. **Executed 2026-08-05/06**: all 14 tasks + final review + one fix wave, re-reviewed clean. Three Important findings were parked as real product/design gaps — resolved by the plan below.
 - `finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md` — closes the three gaps parked at the end of the milestone-hierarchy plan's final review (Head assignment not syncing project membership, `GetObjectiveTree` scope leak, `ReportingManagerId` frozen instead of tracking the parent's current Head) and adds a new Achieve/Unachieve completion workflow for both Projects and Objectives. Built from `specs/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve-design.md`. **Executed 2026-08-08**: all 18 tasks, full unit suite green (1621/1621) after every task, one commit per task. Integration test coverage (Task 16) was added but could not be verified green in this environment — every test in `CreateProjectEndpointTests` fails on `POST /api/v1/work/projects` returning `403`, reproduced identically at the pre-Task-10 commit (`1b8adaa`) in an isolated worktree, confirming this is a pre-existing environment/seeding issue, not a regression from this plan's code.
+- `finished/2026-08-08/2026-08-08-work-management-my-project-milestones.md` — new read endpoint, `GET /api/v1/work/projects/{projectId}/objectives/mine` — every milestone the caller has ever had a `project_members` row for in a given project (any status, frontend filters), with owner/reporting-manager names resolved server-side. Brainstormed and planned 2026-08-08 immediately after the membership/Achieve plan finished; built from `specs/finished/2026-08-08/2026-08-08-work-management-my-project-milestones-design.md`. **Executed 2026-08-08**: all 5 tasks, full unit suite green (1629/1629) after every task, one commit per task.
 
 ## Next up
 
-- `next/2026-08-08-work-management-my-project-milestones.md` — new read endpoint, `GET /api/v1/work/projects/{projectId}/objectives/mine`, brainstormed and planned 2026-08-08 immediately after the membership/Achieve plan finished. Built from `specs/next/2026-08-08-work-management-my-project-milestones-design.md`. 5 tasks, not yet started.
+- Nothing currently in flight for Work Management. The only remaining `next/` items are the two raw, not-yet-brainstormed `Project Management.md` entries (see `next/SUMMARY.md`), plus the still-unsynced `2026-08-07-work-management-objective-subtree.md` drift noted below.
 - A separate, smaller plan — `docs/superpowers/plans/next/2026-08-07-work-management-objective-subtree.md` (`GET /api/v1/work/objectives/{id}/tree`) — is not reflected in this SUMMARY's status table at all, though its git commits (`2a77bbc`..`b900ec5`, 2026-08-07) show it already shipped. This predates the current session and wasn't touched during this pass; worth a status-sync check next time `plans/` is audited.
 
 ## Open items

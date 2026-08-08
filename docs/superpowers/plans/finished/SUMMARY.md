@@ -12,7 +12,7 @@ For the 16 files with no date in their filename (the `*_REPORT.md`/`*_AUDIT_PLAN
 
 ## Status note
 
-All 42 files from the 2026-08-06 batch move are treated as `finished` by default (dated plans with no open-task markers, and `*_REPORT.md`/`*_AUDIT_PLAN.md` files, which are inherently point-in-time and already acted on). This is a filename/convention-based classification done during the move, not a per-file content re-verification — if any of these turns out to actually be incomplete, flag it and it should move to `plans/next/` with status `pending` and a note explaining what's left. The 43rd file (`2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`) is different: it was individually verified task-by-task (build + unit tests + inline diff review) rather than batch-classified, per its own entry above.
+All 42 files from the 2026-08-06 batch move are treated as `finished` by default (dated plans with no open-task markers, and `*_REPORT.md`/`*_AUDIT_PLAN.md` files, which are inherently point-in-time and already acted on). This is a filename/convention-based classification done during the move, not a per-file content re-verification — if any of these turns out to actually be incomplete, flag it and it should move to `plans/next/` with status `pending` and a note explaining what's left. The 43rd and 44th files (both in `2026-08-08/`) are different: each was individually verified task-by-task (build + unit tests + inline diff review) rather than batch-classified, per their own entries below.
 
 ## Files by date
 
@@ -74,8 +74,9 @@ Each entry's **Related:** line is a wiki-link (`[[bare-filename]]`, no extension
 - `DEV_SMOKE_ORG_MODULE_PERMISSION_SEED_FIX_REPORT.md` (mid-merge, today's work)
 - `LEGAL_ENTITY_PERMISSION_AND_ACCESS_FILTER_REPORT.md` (explicit, matches its plan, mid-merge today) — Related: [[2026-08-06-legal-entity-permission-access-filter]]
 
-**`2026-08-08/`** (1)
-- `2026-08-06-work-management-milestone-membership-and-achieve.md` — Related: [[2026-08-06-work-management-milestone-membership-and-achieve-design]] (its spec, in `specs/finished/2026-08-08/`), [[2026-08-04-work-management-milestone-hierarchy]] (the plan whose final-review gaps this one closes). All 18 tasks executed 2026-08-08, one commit per task, full unit suite green after each (1621/1621 final). Integration test coverage (Task 16) added but not verified green in this environment — traced to a pre-existing `403` on project creation that reproduces identically at the pre-Task-10 commit, confirmed not a regression from this plan.
+**`2026-08-08/`** (2)
+- `2026-08-06-work-management-milestone-membership-and-achieve.md` — Related: [[2026-08-06-work-management-milestone-membership-and-achieve-design]] (its spec, in `specs/finished/2026-08-08/`), [[2026-08-04-work-management-milestone-hierarchy]] (the plan whose final-review gaps this one closes), [[2026-08-08-work-management-my-project-milestones]] (the follow-up read endpoint built on top of this plan's membership model, same day). All 18 tasks executed 2026-08-08, one commit per task, full unit suite green after each (1621/1621 final). Integration test coverage (Task 16) added but not verified green in this environment — traced to a pre-existing `403` on project creation that reproduces identically at the pre-Task-10 commit, confirmed not a regression from this plan.
+- `2026-08-08-work-management-my-project-milestones.md` — Related: [[2026-08-08-work-management-my-project-milestones-design]] (its spec, in `specs/finished/2026-08-08/`), [[2026-08-06-work-management-milestone-membership-and-achieve]] (the plan whose repository methods this one reuses). New read endpoint, `GET /api/v1/work/projects/{projectId}/objectives/mine`. All 5 tasks executed 2026-08-08, one commit per task, full unit suite green after each (1629/1629 final).
 
 ## Notable plans (kept from earlier summary revisions)
 

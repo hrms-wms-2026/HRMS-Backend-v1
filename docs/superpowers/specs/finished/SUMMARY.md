@@ -14,8 +14,9 @@
 - `2026-08-04-work-management-projects-edit-delete-view-design.md`
 - `2026-08-04-work-management-milestone-hierarchy-design.md`
 
-**`2026-08-08/`** (1)
+**`2026-08-08/`** (2)
 - `2026-08-06-work-management-milestone-membership-and-achieve-design.md` — its plan, `plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`, finished all 18 tasks 2026-08-08.
+- `2026-08-08-work-management-my-project-milestones-design.md` — its plan, `plans/finished/2026-08-08/2026-08-08-work-management-my-project-milestones.md`, finished all 5 tasks 2026-08-08 (same day, both design and plan dated 2026-08-08 — no completion-date/filename-date mismatch for this one).
 
 ## Open items
 
