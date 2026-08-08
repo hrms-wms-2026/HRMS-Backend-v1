@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Application.Features.Monitoring.Screenshots.Commands.CompleteAgentCommand;
+using ONEVO.Application.Features.Monitoring.Screenshots.Commands.SubmitPeriodicScreenshot;
 using ONEVO.Application.Features.Monitoring.Screenshots.DTOs.Requests;
 using ONEVO.Application.Features.Monitoring.Screenshots.Queries.GetPendingCommands;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
@@ -112,5 +113,33 @@ public class TrayScreenshotController : ControllerBase
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
         return Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Records one screenshot captured autonomously by the tray's periodic collector
+    /// (no admin-issued command behind it — distinct from the poll/complete flow above).
+    /// Maximum file size: 10 MB. Allowed types: PNG, JPEG, WebP.
+    /// </summary>
+    /// <response code="200">Screenshot stored and recorded.</response>
+    [HttpPost("screenshots")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> SubmitPeriodicScreenshot(
+        IFormFile file,
+        [FromForm] DateTimeOffset capturedAt,
+        CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return Problem("File is required.", statusCode: 400);
+
+        var result = await _mediator.Send(
+            new SubmitPeriodicScreenshotCommand(
+                file.FileName, file.ContentType, file.OpenReadStream(), capturedAt),
+            ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(new { id = result.Value });
     }
 }
