@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.OrgStructure.OutboxPayloads;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.Services;
 
@@ -14,19 +15,22 @@ public class ArchivePositionCommandHandler
     private readonly ILegalEntityRepository _legalEntities;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTimeProvider;
+    private readonly IOutboxWriter _outboxWriter;
 
     public ArchivePositionCommandHandler(
         IPositionRepository positions,
         IDepartmentRepository departments,
         ILegalEntityRepository legalEntities,
         ICurrentUser currentUser,
-        IDateTimeProvider dateTimeProvider)
+        IDateTimeProvider dateTimeProvider,
+        IOutboxWriter outboxWriter)
     {
         _positions = positions;
         _departments = departments;
         _legalEntities = legalEntities;
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;
+        _outboxWriter = outboxWriter;
     }
 
     public async Task<Result<bool>> Handle(ArchivePositionCommand request, CancellationToken ct)
@@ -60,6 +64,13 @@ public class ArchivePositionCommandHandler
         existing.UpdatedAt = _dateTimeProvider.UtcNow;
 
         _positions.Update(existing);
+
+        await _outboxWriter.EnqueueAsync(
+            OutboxMessageTypes.PositionArchived,
+            new PositionOutboxPayload(existing.Id, existing.LegalEntityId!.Value, tenantId),
+            tenantId,
+            ct);
+
         await _positions.SaveChangesAsync(ct);
 
         return Result<bool>.Success(true);

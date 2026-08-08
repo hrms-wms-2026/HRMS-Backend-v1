@@ -1,5 +1,3 @@
-using ONEVO.Application.Features.OrgStructure.DTOs;
-
 namespace ONEVO.Api.Contracts.OrgStructure.LegalEntities;
 
 // Deliberately excludes tenantId, logoFileId, isPrimary, createdAt, updatedAt,
@@ -12,5 +10,4 @@ public record CreateLegalEntityRequest(
     string CountryCode,
     string CurrencyCode,
     string? TaxRegistrationNumber,
-    LegalEntityAddressDto? RegisteredBusinessAddress,
     Guid? ParentLegalEntityId);

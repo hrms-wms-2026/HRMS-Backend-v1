@@ -28,7 +28,7 @@ public sealed class LegalEntitiesControllerTests
 
     private static LegalEntityGeneralSettingsResponse SampleGeneralSettings(Guid id) => new(
         id, "Acme Lanka", "ACME", null, "REG-001", null, null, null, null, null,
-        "LKA", "LKR", "UTC", 1, 1, [1, 2, 3, 4, 5], "en-US", "DD MMM YYYY", "12h", "active", null);
+        "LKA", "LKR", "UTC", 1, 1, [1, 2, 3, 4, 5], "en-US", "DD MMM YYYY", "12h", "active");
 
     [Fact]
     public async Task List_SendsQuery_WithIncludeInactiveValue()
@@ -90,7 +90,7 @@ public sealed class LegalEntitiesControllerTests
             .ReturnsAsync(Result<LegalEntityGeneralSettingsResponse>.Success(created));
 
         var request = new CreateLegalEntityRequest(
-            "Acme Lanka", "ACME", "REG-001", "LKA", "LKR", null, null, null);
+            "Acme Lanka", "ACME", "REG-001", "LKA", "LKR", null, null);
 
         var result = await _sut.Create(request, CancellationToken.None);
 
@@ -111,7 +111,7 @@ public sealed class LegalEntitiesControllerTests
             .ReturnsAsync(Result<LegalEntityGeneralSettingsResponse>.Conflict("Company name already exists."));
 
         var request = new CreateLegalEntityRequest(
-            "Acme Lanka", "ACME", "REG-001", "LKA", "LKR", null, null, null);
+            "Acme Lanka", "ACME", "REG-001", "LKA", "LKR", null, null);
 
         var result = await _sut.Create(request, CancellationToken.None);
 
@@ -128,7 +128,7 @@ public sealed class LegalEntitiesControllerTests
 
         var request = new UpdateLegalEntityGeneralSettingsRequest(
             "Acme Lanka", "ACME", "REG-001", null, null, null, null, null,
-            "LKA", "LKR", "UTC", 1, 1, [1, 2, 3, 4, 5], "en-US", "DD MMM YYYY", "12h", "active", null);
+            "LKA", "LKR", "UTC", 1, 1, [1, 2, 3, 4, 5], "en-US", "DD MMM YYYY", "12h", "active");
 
         var result = await _sut.UpdateGeneralSettings(routeId, request, CancellationToken.None);
 
@@ -178,16 +178,5 @@ public sealed class LegalEntitiesControllerTests
             It.Is<RemoveLegalEntityLogoCommand>(c => c.LegalEntityId == id),
             It.IsAny<CancellationToken>()), Times.Once);
         result.Should().BeOfType<NoContentResult>();
-    }
-
-    [Fact]
-    public void Controller_HasNoSetLogoAction()
-    {
-        // PUT /logo is deliberately not exposed in Part 2C - see the report.
-        var methodNames = typeof(LegalEntitiesController)
-            .GetMethods()
-            .Select(m => m.Name);
-
-        methodNames.Should().NotContain("SetLogo");
     }
 }

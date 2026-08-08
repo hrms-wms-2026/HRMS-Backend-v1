@@ -57,8 +57,7 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         "en-US",
         "DD MMM YYYY",
         "12h",
-        status,
-        null);
+        status);
 
     private void SetupNoDuplicates(Guid excludeId)
     {

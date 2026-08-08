@@ -58,7 +58,6 @@ public class LegalEntitiesController : ControllerBase
                 request.CountryCode,
                 request.CurrencyCode,
                 request.TaxRegistrationNumber,
-                request.RegisteredBusinessAddress,
                 request.ParentLegalEntityId),
             ct);
 
@@ -95,8 +94,7 @@ public class LegalEntitiesController : ControllerBase
                 request.DefaultLanguage,
                 request.DateFormat,
                 request.TimeFormat,
-                request.Status,
-                request.RegisteredBusinessAddress),
+                request.Status),
             ct);
 
         return result.IsSuccess

@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.OrgStructure.OutboxPayloads;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.OrgStructure.Commands.RestorePosition;
@@ -13,19 +14,22 @@ public class RestorePositionCommandHandler
     private readonly ILegalEntityRepository _legalEntities;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTimeProvider;
+    private readonly IOutboxWriter _outboxWriter;
 
     public RestorePositionCommandHandler(
         IPositionRepository positions,
         IDepartmentRepository departments,
         ILegalEntityRepository legalEntities,
         ICurrentUser currentUser,
-        IDateTimeProvider dateTimeProvider)
+        IDateTimeProvider dateTimeProvider,
+        IOutboxWriter outboxWriter)
     {
         _positions = positions;
         _departments = departments;
         _legalEntities = legalEntities;
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;
+        _outboxWriter = outboxWriter;
     }
 
     public async Task<Result<bool>> Handle(RestorePositionCommand request, CancellationToken ct)
@@ -41,7 +45,7 @@ public class RestorePositionCommandHandler
         if (legalEntity == null)
             return Result<bool>.NotFound("Legal entity not found.");
         if (!legalEntity.IsActive)
-            return Result<bool>.Conflict("Cannot restore: the legal entity is inactive.");
+            return Result<bool>.UnprocessableEntity("Cannot restore: the legal entity is inactive.");
 
         // GetByIdForLegalEntityAsync has no IsActive filter, so this also finds
         // already-archived rows - required for restore to work at all.
@@ -61,7 +65,7 @@ public class RestorePositionCommandHandler
             var department = await _departments.GetByIdForLegalEntityAsync(tenantId, request.LegalEntityId, departmentId, ct);
             if (department is null || !department.IsActive)
             {
-                return Result<bool>.Conflict(
+                return Result<bool>.UnprocessableEntity(
                     "Cannot restore: the department is missing or inactive. Restore or reassign the department first.");
             }
         }
@@ -71,7 +75,7 @@ public class RestorePositionCommandHandler
             var reportsTo = await _positions.GetByIdForLegalEntityAsync(tenantId, request.LegalEntityId, reportsToId, ct);
             if (reportsTo is null || !reportsTo.IsActive)
             {
-                return Result<bool>.Conflict(
+                return Result<bool>.UnprocessableEntity(
                     "Cannot restore: the reports-to position is missing or inactive. Restore or reassign it first.");
             }
         }
@@ -81,6 +85,13 @@ public class RestorePositionCommandHandler
         existing.UpdatedAt = _dateTimeProvider.UtcNow;
 
         _positions.Update(existing);
+
+        await _outboxWriter.EnqueueAsync(
+            OutboxMessageTypes.PositionRestored,
+            new PositionOutboxPayload(existing.Id, existing.LegalEntityId!.Value, tenantId),
+            tenantId,
+            ct);
+
         await _positions.SaveChangesAsync(ct);
 
         return Result<bool>.Success(true);

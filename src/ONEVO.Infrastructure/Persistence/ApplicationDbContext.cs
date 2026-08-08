@@ -121,6 +121,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Position> Positions => Set<Position>();
     public DbSet<PositionReportingHistory> PositionReportingHistories => Set<PositionReportingHistory>();
     public DbSet<ManagementCoverageRecord> ManagementCoverageRecords => Set<ManagementCoverageRecord>();
+    public DbSet<PositionAccessTemplate> PositionAccessTemplates => Set<PositionAccessTemplate>();
 
     // Developer Platform (canonical Phase 1 inventory tables)
     public DbSet<PlatformUser> PlatformUsers => Set<PlatformUser>();

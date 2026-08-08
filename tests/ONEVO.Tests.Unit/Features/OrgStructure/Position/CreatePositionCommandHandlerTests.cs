@@ -1,12 +1,15 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.Commands.CreatePosition;
+using ONEVO.Application.Features.OrgStructure.OutboxPayloads;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using Xunit;
 
 using DepartmentEntity = ONEVO.Domain.Features.OrgStructure.Entities.Department;
 using LegalEntityEntity = ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity;
 using PositionEntity = ONEVO.Domain.Features.OrgStructure.Entities.Position;
+using ReportingHistoryEntity = ONEVO.Domain.Features.OrgStructure.Entities.PositionReportingHistory;
+using CoverageRecordEntity = ONEVO.Domain.Features.OrgStructure.Entities.ManagementCoverageRecord;
 
 namespace ONEVO.Tests.Unit.Features.OrgStructure.Position;
 
@@ -17,6 +20,7 @@ public sealed class CreatePositionCommandHandlerTests
     private readonly Mock<ILegalEntityRepository> _legalEntitiesMock = new();
     private readonly Mock<ICurrentUser> _currentUserMock = new();
     private readonly Mock<IDateTimeProvider> _dateTimeProviderMock = new();
+    private readonly Mock<IOutboxWriter> _outboxWriterMock = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _legalEntityId = Guid.NewGuid();
     private readonly Guid _departmentId = Guid.NewGuid();
@@ -27,6 +31,7 @@ public sealed class CreatePositionCommandHandlerTests
         _currentUserMock.Setup(c => c.IsAuthenticated).Returns(true);
         _currentUserMock.Setup(c => c.TenantId).Returns(_tenantId);
         _dateTimeProviderMock.Setup(d => d.UtcNow).Returns(_now);
+        _dateTimeProviderMock.Setup(d => d.Today).Returns(DateOnly.FromDateTime(_now.UtcDateTime));
         _legalEntitiesMock
             .Setup(l => l.GetByIdForTenantAsync(_tenantId, _legalEntityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegalEntityEntity { Id = _legalEntityId, TenantId = _tenantId, IsActive = true });
@@ -42,7 +47,7 @@ public sealed class CreatePositionCommandHandlerTests
     }
 
     private CreatePositionCommandHandler CreateHandler()
-        => new(_positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+        => new(_positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
 
     private CreatePositionCommand ValidCommand(
         Guid? departmentId = null, string name = "Customer Support Manager", string code = "CS-MGR",
@@ -188,7 +193,7 @@ public sealed class CreatePositionCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ReturnsConflict_WhenLegalEntityIsInactive()
+    public async Task Handle_ReturnsUnprocessableEntity_WhenLegalEntityIsInactive()
     {
         _legalEntitiesMock
             .Setup(l => l.GetByIdForTenantAsync(_tenantId, _legalEntityId, It.IsAny<CancellationToken>()))
@@ -197,7 +202,7 @@ public sealed class CreatePositionCommandHandlerTests
         var result = await CreateHandler().Handle(ValidCommand(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(409, result.StatusCode);
+        Assert.Equal(422, result.StatusCode);
         _departmentsMock.Verify(
             d => d.GetByIdForLegalEntityAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -206,7 +211,7 @@ public sealed class CreatePositionCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ReturnsConflict_WhenReportsToPositionIsInactive()
+    public async Task Handle_ReturnsUnprocessableEntity_WhenReportsToPositionIsInactive()
     {
         var reportsToId = Guid.NewGuid();
         _positionsMock
@@ -219,6 +224,96 @@ public sealed class CreatePositionCommandHandlerTests
         var result = await CreateHandler().Handle(ValidCommand(reportsToPositionId: reportsToId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(409, result.StatusCode);
+        Assert.Equal(422, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_ReturnsUnprocessableEntity_WhenReportsToPositionIsPooled()
+    {
+        var reportsToId = Guid.NewGuid();
+        _positionsMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, reportsToId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionEntity
+            {
+                Id = reportsToId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Support Pool",
+                PositionType = PositionEntity.TypePooled, MaxOccupancy = 5, IsActive = true
+            });
+
+        var result = await CreateHandler().Handle(ValidCommand(reportsToPositionId: reportsToId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(422, result.StatusCode);
+        _positionsMock.Verify(p => p.AddAsync(It.IsAny<PositionEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_WritesOpenReportingHistoryRow_EvenWithoutReportsTo()
+    {
+        ReportingHistoryEntity? written = null;
+        _positionsMock
+            .Setup(p => p.AddReportingHistoryAsync(It.IsAny<ReportingHistoryEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<ReportingHistoryEntity, CancellationToken>((history, _) => written = history)
+            .Returns(Task.CompletedTask);
+
+        var result = await CreateHandler().Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(written);
+        Assert.Null(written!.ReportsToPositionId);
+        Assert.Null(written.EffectiveTo);
+        Assert.Equal(DateOnly.FromDateTime(_now.UtcDateTime), written.EffectiveFrom);
+    }
+
+    [Fact]
+    public async Task Handle_WritesLockedManagementCoverage_WhenReportsToIsSet()
+    {
+        var reportsToId = Guid.NewGuid();
+        _positionsMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, reportsToId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionEntity
+            {
+                Id = reportsToId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Manager", IsActive = true
+            });
+
+        CoverageRecordEntity? written = null;
+        _positionsMock
+            .Setup(p => p.AddManagementCoverageRecordAsync(It.IsAny<CoverageRecordEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<CoverageRecordEntity, CancellationToken>((record, _) => written = record)
+            .Returns(Task.CompletedTask);
+
+        var result = await CreateHandler().Handle(ValidCommand(reportsToPositionId: reportsToId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(written);
+        Assert.Equal(reportsToId, written!.OwnerPositionId);
+        Assert.True(written.IsLocked);
+        Assert.Equal(CoverageRecordEntity.SourceReportingStructure, written.Source);
+        Assert.Equal(CoverageRecordEntity.StatusActive, written.Status);
+    }
+
+    [Fact]
+    public async Task Handle_DoesNotWriteManagementCoverage_WhenNoReportsTo()
+    {
+        var result = await CreateHandler().Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _positionsMock.Verify(
+            p => p.AddManagementCoverageRecordAsync(It.IsAny<CoverageRecordEntity>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_EnqueuesPositionCreatedOutboxMessage()
+    {
+        var result = await CreateHandler().Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _outboxWriterMock.Verify(
+            o => o.EnqueueAsync(
+                OutboxMessageTypes.PositionCreated,
+                It.Is<PositionOutboxPayload>(p => p.LegalEntityId == _legalEntityId && p.TenantId == _tenantId),
+                _tenantId,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 }
