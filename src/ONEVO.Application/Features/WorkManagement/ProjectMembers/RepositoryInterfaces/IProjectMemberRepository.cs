@@ -37,5 +37,14 @@ public interface IProjectMemberRepository
     /// <summary>Every deactivated (IsActive = false, RemovedAt set) membership row for this user, across all projects in the tenant - the raw material for the "milestones I used to participate in" history view.</summary>
     Task<IReadOnlyList<ProjectMember>> ListInactiveMembershipsForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Every project_members row for this exact (project, user) pair, regardless of IsActive -
+    /// unlike GetActiveObjectiveIdsForUserInProjectAsync (active-only, Guid list) this returns the
+    /// full rows (including IsActive/RemovedAt) for every status, so a caller can show "all
+    /// milestones I've ever been connected to in this project" and let the frontend filter by
+    /// status instead of the API pre-filtering.
+    /// </summary>
+    Task<IReadOnlyList<ProjectMember>> ListForUserInProjectAsync(Guid tenantId, Guid projectId, Guid userId, CancellationToken ct = default);
+
     void Update(ProjectMember member);
 }

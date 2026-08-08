@@ -16,4 +16,12 @@ public class EfEmployeeRepository : IEmployeeRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.UserId == userId, ct);
     }
+
+    public async Task<IReadOnlyList<Employee>> GetByUserIdsAsync(Guid tenantId, IReadOnlyList<Guid> userIds, CancellationToken ct = default)
+    {
+        return await _db.Employees
+            .AsNoTracking()
+            .Where(e => e.TenantId == tenantId && userIds.Contains(e.UserId))
+            .ToListAsync(ct);
+    }
 }
