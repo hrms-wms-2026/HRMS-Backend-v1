@@ -11,11 +11,11 @@ public static class ObjectiveMapper
         objective.Id, objective.ProjectId, objective.ParentObjectiveId, objective.IsDefault, objective.Title, objective.Description,
         objective.OwnerId, objective.ReportingManagerId, objective.CreatedById, objective.StartDate, objective.EndDate,
         objective.Progress, objective.ActualHours, objective.AllocatedHours, objective.CompletedHours,
-        objective.IsActive, objective.CreatedAt, objective.UpdatedAt);
+        objective.IsActive, objective.IsAchieved, objective.AchievedAt, objective.CreatedAt, objective.UpdatedAt);
 
     public static ObjectiveTreeItemResponse ToTreeItem(Objective objective) => new(
         objective.Id, objective.ParentObjectiveId, objective.IsDefault, objective.Title, objective.OwnerId,
-        objective.StartDate, objective.EndDate, objective.AllocatedHours, objective.CompletedHours, objective.IsActive);
+        objective.StartDate, objective.EndDate, objective.AllocatedHours, objective.CompletedHours, objective.IsActive, objective.IsAchieved);
 
     public static ObjectiveSubtreeNodeResponse ToSubtreeNode(Objective objective, ILookup<Guid, Objective> childrenByParent) => new(
         objective.Id, objective.ProjectId, objective.ParentObjectiveId, objective.IsDefault, objective.Title, objective.Description,

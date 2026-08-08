@@ -44,7 +44,8 @@ public static class ProjectViewModelMapper
         dto.Id, dto.Name, dto.Identifier, dto.CategoryId, dto.Description,
         dto.LeadId, dto.StartDate, dto.TargetDate, dto.Color,
         dto.ActualHours, dto.AllocatedHours, dto.CompletedHours,
-        dto.IsActive, dto.CreatedAt, dto.UpdatedAt, dto.IsLead);
+        dto.IsActive, dto.IsAchieved, dto.AchievedAt,
+        dto.CreatedAt, dto.UpdatedAt, dto.IsLead);
 
     public static ProjectListItemViewModel ToViewModel(this ProjectListItemResponse dto) => new(
         dto.Id, dto.Name, dto.Identifier, dto.CategoryId, dto.LeadId,

@@ -35,7 +35,8 @@ public static class ProjectMapper
         project.Id, project.Name, project.Identifier, project.CategoryId, project.Description,
         project.LeadId, project.StartDate, project.TargetDate, project.Color,
         project.ActualHours, project.AllocatedHours, project.CompletedHours,
-        project.IsActive, project.CreatedAt, project.UpdatedAt, isLead);
+        project.IsActive, project.IsAchieved, project.AchievedAt,
+        project.CreatedAt, project.UpdatedAt, isLead);
 
     public static ProjectListItemResponse ToListItem(Project project, bool isLead) => new(
         project.Id, project.Name, project.Identifier, project.CategoryId, project.LeadId,
