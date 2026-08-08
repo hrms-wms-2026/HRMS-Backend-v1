@@ -10,6 +10,7 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 
 ## Files
 
+- `2026-08-08-work-management-my-project-milestones.md` — status: **pending** (0/5 tasks). New read endpoint, `GET /api/v1/work/projects/{projectId}/objectives/mine` — every milestone the caller has ever had a `project_members` row for in a given project (any status), with owner/reporting-manager names resolved server-side. Built from `specs/next/2026-08-08-work-management-my-project-milestones-design.md`.
 - `Project Management.md` — two future features, both raw context, not designs:
   1. Milestone (Objective) In-Charge Role & Permission System — **superseded**, see the file's own header: fully brainstormed and designed in `specs/2026-08-04-work-management-milestone-hierarchy-design.md`.
   2. Project Lifecycle Workflow, Approval Pipeline, Archive/Restore, and Progress Calculation — not started. Backend-relevant subset of a manager corrections doc on the Project Management user journey (2026-08-04). Blocked on Objective/Task CRUD existing first; conflicts with the schema's current "forbidden: free-form status" note on `projects`.

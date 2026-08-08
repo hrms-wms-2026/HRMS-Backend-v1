@@ -37,6 +37,7 @@
 | `2026-08-05-remove-legacy-employee-job-title-manager-fields.md` | `finished/2026-08-05/` | finished |
 | `2026-08-06-legal-entity-permission-access-filter.md` | `finished/2026-08-06/` | finished |
 | `2026-08-06-work-management-milestone-membership-and-achieve.md` | `finished/2026-08-08/` | finished (18/18 tasks) |
+| `2026-08-08-work-management-my-project-milestones.md` | `next/` | **pending** (0/5 tasks) |
 | 26 `*_REPORT.md` / `*_AUDIT_PLAN.md` files (Department, Position, Legal Entity, Dev Smoke, Tenant Provisioning, etc.) | `finished/2026-08-03/` through `finished/2026-08-06/` | finished |
 | `Project Management.md` (raw future-feature context, 1 of 2 items still open) | `next/` | pending (not brainstormed) |
 
@@ -51,7 +52,7 @@ See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder
 
 ## Next up
 
-- Nothing currently in flight for Work Management. `2026-08-06-work-management-milestone-membership-and-achieve.md` (the last item queued here) finished 2026-08-08 — see "Notable finished plans" above. The only remaining `next/` items are the two raw, not-yet-brainstormed `Project Management.md` entries (see `next/SUMMARY.md`).
+- `next/2026-08-08-work-management-my-project-milestones.md` — new read endpoint, `GET /api/v1/work/projects/{projectId}/objectives/mine`, brainstormed and planned 2026-08-08 immediately after the membership/Achieve plan finished. Built from `specs/next/2026-08-08-work-management-my-project-milestones-design.md`. 5 tasks, not yet started.
 - A separate, smaller plan — `docs/superpowers/plans/next/2026-08-07-work-management-objective-subtree.md` (`GET /api/v1/work/objectives/{id}/tree`) — is not reflected in this SUMMARY's status table at all, though its git commits (`2a77bbc`..`b900ec5`, 2026-08-07) show it already shipped. This predates the current session and wasn't touched during this pass; worth a status-sync check next time `plans/` is audited.
 
 ## Open items
