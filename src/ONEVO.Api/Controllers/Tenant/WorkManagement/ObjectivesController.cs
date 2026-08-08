@@ -6,10 +6,16 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.ApproveObjectiveChangeRequest;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RejectObjectiveChangeRequest;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Queries.ListMyObjectiveChangeRequests;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AddObjectiveMember;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.CreateObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.DeleteObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObjective;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.RemoveObjectiveMember;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.TransferObjectiveHead;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.UnachieveObjective;
+using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyObjectiveHistory;
+using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveById;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveSubtree;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveTree;
 
@@ -44,7 +50,18 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Edits a milestone. Non-conflicting edits apply immediately; edits that would conflict with the parent's date/hours constraints become a pending approval request unless the caller is the milestone's own creator.</summary>
+    /// <summary>Gets a single milestone by id. Permission-or-ancestor-membership, checked in-handler.</summary>
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetObjectiveByIdQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Edits a milestone. Non-conflicting edits apply immediately; edits that would conflict with the parent's date/hours constraints become a pending approval request unless the caller is the milestone's own creator. Frozen (400) once the milestone is Achieved.</summary>
     [HttpPut("{id:guid}")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditObjectiveRequest request, CancellationToken ct)
@@ -75,12 +92,66 @@ public class ObjectivesController : ControllerBase
             : Accepted(result.Value.PendingRequest!.ToViewModel());
     }
 
-    /// <summary>Reassigns a milestone's head. Same immediate-vs-pending split as Delete.</summary>
+    /// <summary>Reassigns a milestone's head. Same immediate-vs-pending split as Delete. On applying, also syncs project membership for both heads and cascades ReportingManagerId to direct children.</summary>
     [HttpPost("{id:guid}/transfer")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Transfer(Guid id, [FromBody] TransferObjectiveHeadRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new TransferObjectiveHeadCommand(id, request.NewHeadUserId), ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return result.Value!.Applied
+            ? NoContent()
+            : Accepted(result.Value.PendingRequest!.ToViewModel());
+    }
+
+    /// <summary>Adds a member to this milestone. Head-only; the member becomes a project_members row scoped to this Objective. Does not grant projects:access (only assigning someone as Head does that).</summary>
+    [HttpPost("{id:guid}/members")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> AddMember(Guid id, [FromBody] AddObjectiveMemberRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new AddObjectiveMemberCommand(id, request.UserId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Removes a member from this milestone. Head-only. Rejects removing the current head - use Transfer instead.</summary>
+    [HttpDelete("{id:guid}/members/{userId:guid}")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> RemoveMember(Guid id, Guid userId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new RemoveObjectiveMemberCommand(id, userId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Marks a milestone Achieved. Requires every direct sub-milestone to already be Achieved. Same immediate-vs-pending split as Delete.</summary>
+    [HttpPost("{id:guid}/achieve")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> Achieve(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new AchieveObjectiveCommand(id), ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return result.Value!.Applied
+            ? NoContent()
+            : Accepted(result.Value.PendingRequest!.ToViewModel());
+    }
+
+    /// <summary>Reverts an Achieved milestone back to active. Same immediate-vs-pending split as Delete.</summary>
+    [HttpPost("{id:guid}/unachieve")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> Unachieve(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new UnachieveObjectiveCommand(id), ct);
 
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
@@ -138,7 +209,19 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>The full Objective tree for a Project. Caller needs an active membership somewhere in the project. No [RequirePermission] here on purpose: the handler checks projects:access-equivalent membership fallback itself, matching GetProjectByIdQueryHandler's pattern.</summary>
+    /// <summary>Milestones the caller used to have active access to but no longer does (Transferred away, removed as a member, or Achieved with no other reason to stay in the project). Read-only.</summary>
+    [HttpGet("mine/history")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> MyHistory(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetMyObjectiveHistoryQuery(), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(h => h.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>The full Objective tree for a Project, scoped to what the caller can reach (design §5). No [RequirePermission] here on purpose: the handler checks membership fallback itself, matching GetProjectByIdQueryHandler's pattern.</summary>
     [HttpGet("~/api/v1/work/projects/{projectId:guid}/objectives")]
     public async Task<IActionResult> GetTree(Guid projectId, CancellationToken ct)
     {

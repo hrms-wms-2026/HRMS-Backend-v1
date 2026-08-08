@@ -5,9 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.WorkManagement.Projects;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.WorkManagement.Projects.Commands.AchieveProject;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.CreateProject;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.DeleteProject;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.EditProject;
+using ONEVO.Application.Features.WorkManagement.Projects.Commands.UnachieveProject;
 using ONEVO.Application.Features.WorkManagement.Projects.DTOs.Requests;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectById;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.ListProjects;
@@ -83,6 +85,30 @@ public class ProjectsController : ControllerBase
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new DeleteProjectCommand(id), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Marks a Project Achieved. Requires every top-level milestone (direct child of the Default Objective) to already be Achieved. Lead-only, always immediate - the Project is the tree's root, no approval routing.</summary>
+    [HttpPost("{id:guid}/achieve")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> Achieve(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new AchieveProjectCommand(id), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Reverts an Achieved Project back to active. Lead-only, always immediate.</summary>
+    [HttpPost("{id:guid}/unachieve")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> Unachieve(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new UnachieveProjectCommand(id), ct);
 
         return result.IsSuccess
             ? NoContent()
