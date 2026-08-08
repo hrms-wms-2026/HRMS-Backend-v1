@@ -113,12 +113,18 @@ public class ExchangeActivationCodeCommandHandler
     {
         var profile = await _repository.FindEmployeeProfileAsync(userId, tenantId, ct);
         if (profile is not null)
-            return ($"{profile.FirstName} {profile.LastName}".Trim(), profile.Email, profile.EmployeeNumber);
+            return (FullNameOrNull(profile.FirstName, profile.LastName), profile.Email, profile.EmployeeNumber);
 
         var user = await _userRepository.GetByIdAsync(userId, ct);
         if (user is not null)
-            return ($"{user.FirstName} {user.LastName}".Trim(), user.Email, null);
+            return (FullNameOrNull(user.FirstName, user.LastName), user.Email, null);
 
         return (null, null, null);
+    }
+
+    private static string? FullNameOrNull(string first, string last)
+    {
+        var name = $"{first} {last}".Trim();
+        return string.IsNullOrEmpty(name) ? null : name;
     }
 }

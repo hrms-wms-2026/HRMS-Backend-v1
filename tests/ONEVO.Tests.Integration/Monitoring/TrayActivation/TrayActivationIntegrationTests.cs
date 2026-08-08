@@ -143,7 +143,7 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         doc.RootElement.GetProperty("expires_in_seconds").GetInt32().Should().Be(3600);
         doc.RootElement.GetProperty("refresh_expires_in_seconds").GetInt32().Should().Be(7_776_000);
         doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Priya Employee");
-        doc.RootElement.GetProperty("employee_email").GetString().Should().Be("exchange-valid@test.dev");
+        doc.RootElement.GetProperty("employee_email").GetString().Should().Be("priya.employee@test.dev");
         doc.RootElement.GetProperty("employee_number").GetString().Should().Be("EMP-0001");
         body.Should().NotContain(user.UserId.ToString(), "response must never expose internal user ID");
         body.Should().NotContain(user.TenantId.ToString(), "response must never expose internal tenant ID");
@@ -370,7 +370,7 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
             EmployeeNumber = employeeNumber,
             FirstName = "Priya",
             LastName = "Employee",
-            Email = email,
+            Email = "priya.employee@test.dev",
             EmploymentTypeId = 1,
             EmploymentStatusId = 1,
             WorkModeId = 1,
