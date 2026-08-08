@@ -31,4 +31,11 @@ public static class ObjectiveViewModelMapper
 
     public static ObjectiveHistoryItemViewModel ToViewModel(this ObjectiveHistoryItemResponse dto) => new(
         dto.ObjectiveId, dto.Title, dto.ProjectId, dto.IsAchieved, dto.RemovedAt);
+
+    public static MyProjectMilestoneViewModel ToViewModel(this MyProjectMilestoneResponse dto) => new(
+        dto.ObjectiveId, dto.ProjectId, dto.ParentObjectiveId, dto.IsDefault, dto.Title,
+        dto.OwnerId, dto.OwnerName, dto.ReportingManagerId, dto.ReportingManagerName,
+        dto.StartDate, dto.EndDate, dto.AllocatedHours, dto.CompletedHours,
+        dto.ObjectiveIsActive, dto.IsAchieved, dto.AchievedAt,
+        dto.MembershipIsActive, dto.MembershipRemovedAt);
 }
