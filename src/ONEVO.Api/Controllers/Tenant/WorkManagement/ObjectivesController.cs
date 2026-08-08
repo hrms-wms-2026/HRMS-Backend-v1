@@ -15,6 +15,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Commands.RemoveObject
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.TransferObjectiveHead;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.UnachieveObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyObjectiveHistory;
+using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyProjectMilestones;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveById;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveSubtree;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveTree;
@@ -229,6 +230,18 @@ public class ObjectivesController : ControllerBase
 
         return result.IsSuccess
             ? Ok(result.Value!.Select(o => o.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Every milestone in this project the caller has ever had a project_members row for, any status - the frontend filters by objectiveIsActive/isAchieved/membershipIsActive as needed. Owner and Reporting Manager names are resolved server-side. No [RequirePermission] beyond the module base gate: this endpoint can only ever return the caller's own rows, so an unrelated projectId just yields an empty array, never 403/404.</summary>
+    [HttpGet("~/api/v1/work/projects/{projectId:guid}/objectives/mine")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> GetMine(Guid projectId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetMyProjectMilestonesQuery(projectId), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(m => m.ToViewModel()).ToList())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }
