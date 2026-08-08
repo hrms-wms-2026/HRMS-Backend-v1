@@ -16,4 +16,13 @@ public class EfProjectCategoryRepository : IProjectCategoryRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == id, ct);
     }
+
+    public async Task<IReadOnlyList<ProjectCategory>> GetAllForTenantAsync(Guid tenantId, bool includeInactive = false, CancellationToken ct = default)
+    {
+        var query = _db.ProjectCategories.AsNoTracking().Where(c => c.TenantId == tenantId);
+        if (!includeInactive)
+            query = query.Where(c => c.IsActive);
+
+        return await query.OrderBy(c => c.Name).ToListAsync(ct);
+    }
 }

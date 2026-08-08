@@ -2,7 +2,7 @@
 
 **Purpose:** Completed plans and point-in-time audit/fix reports. Everything here was moved from the flat `plans/` folder on 2026-08-06 as part of the `finished/` + `next/` restructure (see `docs/superpowers/rules/FILE_CREATION_RULES.md`). Files were **not** re-split or content-edited during the move — only relocated, per the migration rule (existing files get moved + status-tagged, not retroactively restructured into parts). The `plans/kajaa/` personal folder was also dissolved into this structure the same day — its 3 finished plans now live here too (see "From `kajaa/`" below).
 
-**Last updated:** 2026-08-08
+**Last updated:** 2026-08-09
 
 ## Layout: date subfolders
 
@@ -77,6 +77,9 @@ Each entry's **Related:** line is a wiki-link (`[[bare-filename]]`, no extension
 **`2026-08-08/`** (2)
 - `2026-08-06-work-management-milestone-membership-and-achieve.md` — Related: [[2026-08-06-work-management-milestone-membership-and-achieve-design]] (its spec, in `specs/finished/2026-08-08/`), [[2026-08-04-work-management-milestone-hierarchy]] (the plan whose final-review gaps this one closes), [[2026-08-08-work-management-my-project-milestones]] (the follow-up read endpoint built on top of this plan's membership model, same day). All 18 tasks executed 2026-08-08, one commit per task, full unit suite green after each (1621/1621 final). Integration test coverage (Task 16) initially failed on a pre-existing `403` on project creation (reproduced at the pre-Task-10 commit, confirmed not a regression) — root-caused same day to `DefaultRoleSeeder` never granting Work Management permissions because they're still tagged the legacy `work_management` module key, which no subscription plan includes since the 2026-08-04 module-taxonomy rename. Test fixture fixed (commit `5ec9a91`); all 27 integration tests now pass. The underlying module-tag mismatch is flagged as a likely real production issue, not fixed here.
 - `2026-08-08-work-management-my-project-milestones.md` — Related: [[2026-08-08-work-management-my-project-milestones-design]] (its spec, in `specs/finished/2026-08-08/`), [[2026-08-06-work-management-milestone-membership-and-achieve]] (the plan whose repository methods this one reuses). New read endpoint, `GET /api/v1/work/projects/{projectId}/objectives/mine`. All 5 tasks executed 2026-08-08, one commit per task, full unit suite green after each (1629/1629 final).
+
+**`2026-08-09/`** (1)
+- `2026-08-08-work-management-frontend-blocking-endpoints.md` — Related: the frontend repo's `Hrms--Web-application---front-end---v1/docs/superpowers/specs/next/2026-08-08-work-management-projects-milestones-design.md` (the consuming design, §6). Two same-module additions requested by the frontend and shipped same-session on direct user request (no separate brainstorm/spec, since both items were already fully specified in the request itself): (1) new `GET /api/v1/work/project-categories` endpoint (`ProjectCategoriesController` + `ListProjectCategoriesQuery`/Handler + `IProjectCategoryRepository.GetAllForTenantAsync`), (2) `isAchieved`/`achievedAt` added to `GET /work/projects/mine`'s response (`ProjectListItemResponse`/`ProjectListItemViewModel` + mappers). `dotnet build` clean (0 warnings/errors); `ListProjectCategoriesQueryHandlerTests.cs` added, 160/160 WorkManagement unit tests passing. Postman docs updated: new `List Project Categories.md`, `isAchieved`/`achievedAt` backfilled onto `List Projects.md` and `Get Project.md` (the latter was already stale before this change — its endpoint already returned these fields).
 
 ## Notable plans (kept from earlier summary revisions)
 

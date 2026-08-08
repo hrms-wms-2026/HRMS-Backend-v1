@@ -38,8 +38,11 @@ public static class ProjectMapper
         project.IsActive, project.IsAchieved, project.AchievedAt,
         project.CreatedAt, project.UpdatedAt, isLead);
 
+    public static ProjectCategoryListItemResponse ToListItem(ProjectCategory category) => new(category.Id, category.Name);
+
     public static ProjectListItemResponse ToListItem(Project project, bool isLead) => new(
         project.Id, project.Name, project.Identifier, project.CategoryId, project.LeadId,
         project.StartDate, project.TargetDate, project.Color, project.IsActive,
-        project.AllocatedHours, project.CompletedHours, isLead);
+        project.AllocatedHours, project.CompletedHours, isLead,
+        project.IsAchieved, project.AchievedAt);
 }

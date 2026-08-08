@@ -50,8 +50,11 @@ public static class ProjectViewModelMapper
     public static ProjectListItemViewModel ToViewModel(this ProjectListItemResponse dto) => new(
         dto.Id, dto.Name, dto.Identifier, dto.CategoryId, dto.LeadId,
         dto.StartDate, dto.TargetDate, dto.Color, dto.IsActive,
-        dto.AllocatedHours, dto.CompletedHours, dto.IsLead);
+        dto.AllocatedHours, dto.CompletedHours, dto.IsLead,
+        dto.IsAchieved, dto.AchievedAt);
 
     public static PagedResultViewModel<ProjectListItemViewModel> ToViewModel(this PagedResult<ProjectListItemResponse> page) => new(
         page.Items.Select(ToViewModel).ToList(), page.PageNumber, page.PageSize, page.TotalCount, page.TotalPages, page.HasNext, page.HasPrevious);
+
+    public static ProjectCategoryViewModel ToViewModel(this ProjectCategoryListItemResponse dto) => new(dto.Id, dto.Name);
 }

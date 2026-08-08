@@ -18,9 +18,12 @@ Gets a single Project. A soft-deleted project (`is_active = false`) is treated a
   "id": "guid", "name": "string", "identifier": "string", "categoryId": "guid", "description": "string|null",
   "leadId": "guid", "startDate": "date", "targetDate": "date", "color": "string|null",
   "actualHours": "decimal|null", "allocatedHours": "decimal", "completedHours": "decimal",
-  "isActive": true, "createdAt": "datetime", "updatedAt": "datetime|null", "isLead": true
+  "isActive": true, "isAchieved": false, "achievedAt": "datetime|null",
+  "createdAt": "datetime", "updatedAt": "datetime|null", "isLead": true
 }
 ```
+
+Doc corrected 2026-08-09: `isAchieved`/`achievedAt` were already returned by `ProjectDetailViewModel` but missing from this doc — see `docs/superpowers/plans/finished/2026-08-09/2026-08-08-work-management-frontend-blocking-endpoints.md`.
 
 ## Errors
 

@@ -20,11 +20,14 @@ If `userId` doesn't resolve to any user with active memberships in the tenant, t
   "items": [
     { "id": "guid", "name": "string", "identifier": "string", "categoryId": "guid", "leadId": "guid",
       "startDate": "date", "targetDate": "date", "color": "string|null", "isActive": true,
-      "allocatedHours": "decimal", "completedHours": "decimal", "isLead": true }
+      "allocatedHours": "decimal", "completedHours": "decimal", "isLead": true,
+      "isAchieved": false, "achievedAt": "datetime|null" }
   ],
   "pageNumber": 1, "pageSize": 20, "totalCount": 3, "totalPages": 1, "hasNext": false, "hasPrevious": false
 }
 ```
+
+`isAchieved`/`achievedAt` added 2026-08-09 (previously missing from this response despite `GET /work/projects/{id}` already returning them — see `docs/superpowers/plans/finished/2026-08-09/2026-08-08-work-management-frontend-blocking-endpoints.md`).
 
 ## Errors
 

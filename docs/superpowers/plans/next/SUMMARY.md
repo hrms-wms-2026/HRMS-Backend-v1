@@ -6,7 +6,7 @@
 
 This folder absorbed the former top-level `docs/superpowers/next-plan/` folder on 2026-08-06 as part of the `plans/` restructure into `finished/` and `next/` — see `FILE_CREATION_RULES.md` in `docs/superpowers/rules/`.
 
-**Last updated:** 2026-08-08
+**Last updated:** 2026-08-09
 
 ## Files
 
@@ -25,3 +25,4 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 - `2026-08-06-work-management-milestone-membership-and-achieve.md` moved to `plans/finished/2026-08-08/` on 2026-08-08 (all 18 tasks done) — see `plans/SUMMARY.md`.
 - `2026-08-08-work-management-my-project-milestones.md` also moved to `plans/finished/2026-08-08/` the same day (all 5 tasks done) — see `plans/SUMMARY.md`.
 - `2026-08-07-work-management-objective-subtree.md`'s finished/next status needs syncing (see "Known drift" above) — separate follow-up, not part of the 2026-08-08 work.
+- `2026-08-08-work-management-frontend-blocking-endpoints.md` moved to `plans/finished/2026-08-09/` on 2026-08-09 — both requested items (List Project Categories endpoint, `isAchieved`/`achievedAt` on List Projects) shipped same day. See `plans/SUMMARY.md`.
