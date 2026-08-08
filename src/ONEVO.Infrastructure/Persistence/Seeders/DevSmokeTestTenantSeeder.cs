@@ -13,6 +13,7 @@ using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.SharedPlatform.TenantIntegrations.Entities;
@@ -210,6 +211,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
             await SeedTenantAuthPolicyAsync(db, tenant.Id, now, ct);
             await SeedTenantSubscriptionAsync(db, tenant.Id, firstUser!.Id, tenantDefinition.SubscriptionId, now, ct);
+            await SeedMonitoringFeatureTogglesAsync(db, tenant.Id, now, ct);
             await db.SaveChangesAsync(ct);
 
             tenantContext.SetAdminMode();
@@ -472,6 +474,50 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         policy.PasswordCompletionAllowed = true;
         policy.MfaRequired = false;
         policy.UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// Dev/test-only convenience: without this row, MonitoringToggleResolverService's
+    /// tenant-toggle fallback is null and every capability resolves to its safe default
+    /// (false) — smoke tests and manual verification can never exercise the ingest
+    /// endpoints. Real tenants must go through an actual admin settings flow once one
+    /// exists; this seeder has no write path for that by design.
+    /// </summary>
+    private static async Task SeedMonitoringFeatureTogglesAsync(
+        ApplicationDbContext db,
+        Guid tenantId,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var toggles = await db.MonitoringFeatureToggles
+            .FirstOrDefaultAsync(t => t.TenantId == tenantId, ct);
+        if (toggles is null)
+        {
+            db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                ActivityMonitoring = true,
+                ApplicationTracking = true,
+                ScreenshotCapture = true,
+                AutoScreenshotCapture = true,
+                DeviceTracking = true,
+                WorkLocationVerification = true,
+                IdentityVerification = true,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+            return;
+        }
+
+        toggles.ActivityMonitoring = true;
+        toggles.ApplicationTracking = true;
+        toggles.ScreenshotCapture = true;
+        toggles.AutoScreenshotCapture = true;
+        toggles.DeviceTracking = true;
+        toggles.WorkLocationVerification = true;
+        toggles.IdentityVerification = true;
+        toggles.UpdatedAt = now;
     }
 
     private static async Task SeedTenantRoleAsync(
