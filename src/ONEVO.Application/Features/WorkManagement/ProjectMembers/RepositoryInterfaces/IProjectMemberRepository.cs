@@ -31,5 +31,8 @@ public interface IProjectMemberRepository
     /// </summary>
     Task<bool> HasActiveMembershipForAnyObjectiveAsync(Guid tenantId, Guid projectId, Guid userId, IReadOnlyList<Guid> objectiveIds, CancellationToken ct = default);
 
+    /// <summary>All ObjectiveIds this user has an active membership on, within this project.</summary>
+    Task<IReadOnlyList<Guid>> GetActiveObjectiveIdsForUserInProjectAsync(Guid tenantId, Guid projectId, Guid userId, CancellationToken ct = default);
+
     void Update(ProjectMember member);
 }

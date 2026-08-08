@@ -44,9 +44,55 @@ public class GetObjectiveTreeQueryHandler : IRequestHandler<GetObjectiveTreeQuer
         if (!isMember)
             return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Forbidden("You do not have access to this project's milestone tree.");
 
-        var tree = await _objectives.GetTreeByProjectIdAsync(tenantId, project.Id, ct);
-        var items = tree.Select(ObjectiveMapper.ToTreeItem).ToList();
+        var allObjectives = await _objectives.GetTreeByProjectIdAsync(tenantId, project.Id, ct);
 
-        return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Success(items);
+        var defaultObjective = allObjectives.FirstOrDefault(o => o.IsDefault);
+        var hasDirectMembership = defaultObjective is not null
+            && await _members.HasActiveMembershipForAnyObjectiveAsync(tenantId, project.Id, userId, new[] { defaultObjective.Id }, ct);
+
+        if (hasDirectMembership)
+            return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Success(allObjectives.Select(ObjectiveMapper.ToTreeItem).ToList());
+
+        var ownedObjectiveIds = await _members.GetActiveObjectiveIdsForUserInProjectAsync(tenantId, project.Id, userId, ct);
+
+        var byId = allObjectives.ToDictionary(o => o.Id);
+        var childrenByParent = allObjectives
+            .Where(o => o.ParentObjectiveId is not null)
+            .GroupBy(o => o.ParentObjectiveId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var reachable = new HashSet<Guid>();
+        foreach (var ownedId in ownedObjectiveIds)
+        {
+            if (!byId.TryGetValue(ownedId, out var owned))
+                continue;
+
+            reachable.Add(owned.Id);
+
+            var cursor = owned;
+            while (cursor.ParentObjectiveId is not null && byId.TryGetValue(cursor.ParentObjectiveId.Value, out var parent))
+            {
+                reachable.Add(parent.Id);
+                cursor = parent;
+            }
+
+            var queue = new Queue<Guid>();
+            queue.Enqueue(owned.Id);
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                if (!childrenByParent.TryGetValue(current, out var children))
+                    continue;
+
+                foreach (var child in children)
+                {
+                    if (reachable.Add(child.Id))
+                        queue.Enqueue(child.Id);
+                }
+            }
+        }
+
+        var scoped = allObjectives.Where(o => reachable.Contains(o.Id)).Select(ObjectiveMapper.ToTreeItem).ToList();
+        return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Success(scoped);
     }
 }

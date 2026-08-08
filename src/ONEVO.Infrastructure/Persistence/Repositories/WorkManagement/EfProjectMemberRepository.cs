@@ -44,6 +44,15 @@ public class EfProjectMemberRepository : IProjectMemberRepository
                         && m.IsActive && objectiveIds.Contains(m.ObjectiveId), ct);
     }
 
+    public async Task<IReadOnlyList<Guid>> GetActiveObjectiveIdsForUserInProjectAsync(Guid tenantId, Guid projectId, Guid userId, CancellationToken ct = default)
+    {
+        return await _db.ProjectMembers
+            .AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.ProjectId == projectId && m.UserId == userId && m.IsActive)
+            .Select(m => m.ObjectiveId)
+            .ToListAsync(ct);
+    }
+
     public void Update(ProjectMember member)
     {
         _db.ProjectMembers.Update(member);
