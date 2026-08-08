@@ -6,6 +6,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.ApproveObjectiveChangeRequest;
@@ -15,15 +16,17 @@ public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<Appro
     private readonly ICurrentUser _currentUser;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IObjectiveRepository _objectives;
+    private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IUnitOfWork _unitOfWork;
 
     public ApproveObjectiveChangeRequestCommandHandler(
         ICurrentUser currentUser, IObjectiveChangeRequestRepository changeRequests,
-        IObjectiveRepository objectives, IUnitOfWork unitOfWork)
+        IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _changeRequests = changeRequests;
         _objectives = objectives;
+        _membership = membership;
         _unitOfWork = unitOfWork;
     }
 
@@ -51,41 +54,79 @@ public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<Appro
         if (objective is null)
             return Result.NotFound("Objective not found.");
 
-        var now = DateTimeOffset.UtcNow;
-
-        switch (changeRequest.RequestType)
+        return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            case ObjectiveChangeRequestTypes.Delete:
-                objective.IsActive = false;
-                objective.UpdatedAt = now;
-                break;
+            var now = DateTimeOffset.UtcNow;
 
-            case ObjectiveChangeRequestTypes.Edit:
-                var editPayload = JsonSerializer.Deserialize<EditObjectiveRequestPayload>(changeRequest.PayloadJson!)!;
-                objective.Title = editPayload.Title;
-                objective.Description = editPayload.Description;
-                objective.StartDate = editPayload.StartDate;
-                objective.EndDate = editPayload.EndDate;
-                objective.AllocatedHours = editPayload.AllocatedHours;
-                objective.UpdatedAt = now;
-                break;
+            switch (changeRequest.RequestType)
+            {
+                case ObjectiveChangeRequestTypes.Delete:
+                    objective.IsActive = false;
+                    objective.UpdatedAt = now;
+                    break;
 
-            case ObjectiveChangeRequestTypes.Transfer:
-                var transferPayload = JsonSerializer.Deserialize<TransferObjectiveRequestPayload>(changeRequest.PayloadJson!)!;
-                objective.OwnerId = transferPayload.NewHeadUserId;
-                objective.UpdatedAt = now;
-                break;
-        }
+                case ObjectiveChangeRequestTypes.Edit:
+                    var editPayload = JsonSerializer.Deserialize<EditObjectiveRequestPayload>(changeRequest.PayloadJson!)!;
+                    objective.Title = editPayload.Title;
+                    objective.Description = editPayload.Description;
+                    objective.StartDate = editPayload.StartDate;
+                    objective.EndDate = editPayload.EndDate;
+                    objective.AllocatedHours = editPayload.AllocatedHours;
+                    objective.UpdatedAt = now;
+                    break;
 
-        _objectives.Update(objective);
+                case ObjectiveChangeRequestTypes.Transfer:
+                    var transferPayload = JsonSerializer.Deserialize<TransferObjectiveRequestPayload>(changeRequest.PayloadJson!)!;
+                    var oldHeadUserId = objective.OwnerId;
+                    var newHeadAssignee = await _membership.GetActiveAssigneeAsync(tenantId, transferPayload.NewHeadUserId, innerCt);
+                    if (newHeadAssignee is null)
+                        return Result.Failure("The new head must be an active employee in this tenant.");
 
-        changeRequest.Status = ObjectiveChangeRequestStatuses.Approved;
-        changeRequest.DecidedAt = now;
-        changeRequest.DecidedById = userId;
-        _changeRequests.Update(changeRequest);
+                    objective.OwnerId = transferPayload.NewHeadUserId;
+                    objective.UpdatedAt = now;
 
-        await _unitOfWork.SaveChangesAsync(ct);
+                    var directChildren = await _objectives.GetTrackedActiveDirectChildrenAsync(tenantId, objective.Id, innerCt);
+                    foreach (var child in directChildren)
+                    {
+                        child.ReportingManagerId = transferPayload.NewHeadUserId;
+                        child.UpdatedAt = now;
+                    }
 
-        return Result.Success();
+                    await _membership.UpsertMembershipAsync(tenantId, objective.ProjectId, objective.Id, transferPayload.NewHeadUserId, newHeadAssignee.Id, innerCt);
+                    await _membership.DeactivateMembershipAsync(tenantId, objective.ProjectId, objective.Id, oldHeadUserId, innerCt);
+                    await _membership.HasOtherActiveAccessAsync(tenantId, objective.ProjectId, oldHeadUserId, objective.Id, innerCt);
+                    break;
+
+                case ObjectiveChangeRequestTypes.Achieve:
+                    objective.IsAchieved = true;
+                    objective.AchievedAt = now;
+                    objective.UpdatedAt = now;
+                    await _membership.DeactivateMembershipAsync(tenantId, objective.ProjectId, objective.Id, objective.OwnerId, innerCt);
+                    await _membership.HasOtherActiveAccessAsync(tenantId, objective.ProjectId, objective.OwnerId, objective.Id, innerCt);
+                    break;
+
+                case ObjectiveChangeRequestTypes.Unachieve:
+                    var headAssignee = await _membership.GetActiveAssigneeAsync(tenantId, objective.OwnerId, innerCt);
+                    if (headAssignee is null)
+                        return Result.Failure("The current head must be an active employee in this tenant.");
+
+                    objective.IsAchieved = false;
+                    objective.AchievedAt = null;
+                    objective.UpdatedAt = now;
+                    await _membership.UpsertMembershipAsync(tenantId, objective.ProjectId, objective.Id, objective.OwnerId, headAssignee.Id, innerCt);
+                    break;
+            }
+
+            _objectives.Update(objective);
+
+            changeRequest.Status = ObjectiveChangeRequestStatuses.Approved;
+            changeRequest.DecidedAt = now;
+            changeRequest.DecidedById = userId;
+            _changeRequests.Update(changeRequest);
+
+            await _unitOfWork.SaveChangesAsync(innerCt);
+
+            return Result.Success();
+        }, ct);
     }
 }

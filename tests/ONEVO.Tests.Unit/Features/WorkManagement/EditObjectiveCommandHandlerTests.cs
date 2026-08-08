@@ -171,4 +171,17 @@ public class EditObjectiveCommandHandlerTests
         objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
         requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Fact]
+    public async Task Handle_ObjectiveAchieved_ReturnsBadRequest()
+    {
+        var achieved = SubObjective(createdById: OtherUserId);
+        achieved.IsAchieved = true;
+        var (handler, _, _) = BuildHandler(achieved, ParentObjective());
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+    }
 }

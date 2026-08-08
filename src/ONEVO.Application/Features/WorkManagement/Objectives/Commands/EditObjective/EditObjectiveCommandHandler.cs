@@ -48,6 +48,9 @@ public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand,
         if (objective.IsDefault)
             return Result<ObjectiveEditOutcomeResponse>.Failure("Use the Project edit endpoint for the Default Objective.");
 
+        if (objective.IsAchieved)
+            return Result<ObjectiveEditOutcomeResponse>.Failure("An achieved milestone cannot be edited.");
+
         if (objective.OwnerId != userId)
             return Result<ObjectiveEditOutcomeResponse>.Forbidden("Only this milestone's head can edit it.");
 
