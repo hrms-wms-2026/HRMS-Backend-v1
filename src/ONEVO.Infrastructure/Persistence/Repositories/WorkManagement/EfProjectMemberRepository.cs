@@ -53,6 +53,15 @@ public class EfProjectMemberRepository : IProjectMemberRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<ProjectMember>> ListInactiveMembershipsForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
+    {
+        return await _db.ProjectMembers
+            .AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.UserId == userId && !m.IsActive && m.RemovedAt != null)
+            .OrderByDescending(m => m.RemovedAt)
+            .ToListAsync(ct);
+    }
+
     public void Update(ProjectMember member)
     {
         _db.ProjectMembers.Update(member);

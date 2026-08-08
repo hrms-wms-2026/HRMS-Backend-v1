@@ -28,4 +28,7 @@ public static class ObjectiveViewModelMapper
         dto.Progress, dto.ActualHours, dto.AllocatedHours, dto.CompletedHours,
         dto.IsActive, dto.CreatedAt, dto.UpdatedAt,
         dto.Children.Select(c => c.ToViewModel()).ToList());
+
+    public static ObjectiveHistoryItemViewModel ToViewModel(this ObjectiveHistoryItemResponse dto) => new(
+        dto.ObjectiveId, dto.Title, dto.ProjectId, dto.IsAchieved, dto.RemovedAt);
 }

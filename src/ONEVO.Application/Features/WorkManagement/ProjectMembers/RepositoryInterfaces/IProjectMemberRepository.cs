@@ -34,5 +34,8 @@ public interface IProjectMemberRepository
     /// <summary>All ObjectiveIds this user has an active membership on, within this project.</summary>
     Task<IReadOnlyList<Guid>> GetActiveObjectiveIdsForUserInProjectAsync(Guid tenantId, Guid projectId, Guid userId, CancellationToken ct = default);
 
+    /// <summary>Every deactivated (IsActive = false, RemovedAt set) membership row for this user, across all projects in the tenant - the raw material for the "milestones I used to participate in" history view.</summary>
+    Task<IReadOnlyList<ProjectMember>> ListInactiveMembershipsForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
+
     void Update(ProjectMember member);
 }
