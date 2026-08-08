@@ -25,6 +25,7 @@ using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Versions.Entities;
+using ONEVO.Domain.Lookups;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.CreateProject;
 
@@ -91,7 +92,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
             return Result<ProjectCreationResponse>.Forbidden("Tenant context missing.");
 
         var employee = await _employees.GetByUserIdAsync(tenantId, userId, ct);
-        if (employee is null)
+        if (employee is null || employee.EmploymentStatusId != EmploymentStatusIds.Active)
             return Result<ProjectCreationResponse>.Forbidden("No employee record for the current user.");
 
         var legalEntity = await _legalEntities.GetPrimaryByTenantIdAsync(tenantId, ct);

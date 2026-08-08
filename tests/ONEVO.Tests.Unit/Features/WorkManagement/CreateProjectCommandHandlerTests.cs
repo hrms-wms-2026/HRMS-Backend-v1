@@ -15,6 +15,7 @@ using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Lookups;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement;
@@ -33,7 +34,7 @@ public class CreateProjectCommandHandlerTests
         "#2563EB", 10m, 40m, labels ?? [], null, null, null);
 
     private (CreateProjectCommandHandler Handler, Mock<IProjectRepository> Projects) BuildHandler(
-        bool categoryExists = true, bool identifierExists = false)
+        bool categoryExists = true, bool identifierExists = false, int employmentStatusId = EmploymentStatusIds.Active)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -56,7 +57,7 @@ public class CreateProjectCommandHandlerTests
         var entityAssets = new Mock<IEntityAssetRepository>();
         var employees = new Mock<IEmployeeRepository>();
         employees.Setup(x => x.GetByUserIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Employee { Id = EmployeeId, TenantId = TenantId, UserId = UserId, EmployeeNumber = "E1", HireDate = new DateOnly(2020, 1, 1) });
+            .ReturnsAsync(new Employee { Id = EmployeeId, TenantId = TenantId, UserId = UserId, EmployeeNumber = "E1", HireDate = new DateOnly(2020, 1, 1), EmploymentStatusId = employmentStatusId });
 
         var legalEntities = new Mock<ILegalEntityRepository>();
         legalEntities.Setup(x => x.GetPrimaryByTenantIdAsync(TenantId, It.IsAny<CancellationToken>()))
@@ -136,5 +137,16 @@ public class CreateProjectCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_CallerEmployeeNotActive_ReturnsForbidden()
+    {
+        var (handler, _) = BuildHandler(employmentStatusId: 4); // 4 = terminated, per EmploymentStatusIds precedent
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
     }
 }
