@@ -68,6 +68,12 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
 
             foreach (var tenant in tenants)
             {
+                // RLS is enforced per-DB-session against whichever tenant is currently Resolve()d,
+                // so every tenant's staged inserts must be flushed with SaveChangesAsync before the
+                // loop moves on and re-resolves to the next tenant - a single SaveChangesAsync after
+                // the whole loop (saving all tenants' rows under only the last-resolved tenant) gets
+                // rejected by Postgres for every other tenant's rows. Matches
+                // DevSmokeTestTenantSeeder's per-tenant SetAdminMode+Resolve+SaveChanges pattern.
                 tenantContext.SetAdminMode();
                 tenantContext.Resolve(new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null));
 
@@ -77,6 +83,7 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
                     .FirstOrDefaultAsync(l => l.TenantId == tenant.Id && l.IsPrimary, cancellationToken);
                 if (legalEntity is null)
                 {
+                    await db.SaveChangesAsync(cancellationToken);
                     _logger.LogInformation(
                         "WorkManagementSampleDataSeeder: tenant {Slug} has no primary legal entity yet - skipping sample projects.",
                         tenant.Slug);
@@ -98,9 +105,9 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
 
                     await EnsureUserSampleProjectsAsync(db, tenant.Id, user, employee, legalEntity.Id, categories, cancellationToken);
                 }
-            }
 
-            await db.SaveChangesAsync(cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+            }
         }
         catch (Exception ex)
         {
