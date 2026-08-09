@@ -86,6 +86,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ActivityRawBuffer> ActivityRawBuffers => Set<ActivityRawBuffer>();
     public DbSet<ActivityDailySummary> ActivityDailySummaries => Set<ActivityDailySummary>();
     public DbSet<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot> AppUsageSnapshots => Set<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot> DeviceStateSnapshots => Set<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot>();
 
     // Monitoring - Feature toggles & overrides
     public DbSet<MonitoringFeatureToggles> MonitoringFeatureToggles => Set<MonitoringFeatureToggles>();
