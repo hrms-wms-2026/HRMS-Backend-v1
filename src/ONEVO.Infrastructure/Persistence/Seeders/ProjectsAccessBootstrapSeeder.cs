@@ -1,26 +1,43 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Subscription.Helpers;
 using ONEVO.Domain.Features.Auth.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Seeders;
 
 /// <summary>
-/// Development-only, targeted permission grant for a single named test account. Deliberately
-/// bypasses the module-driven entitlement system (PermissionSeeder's per-permission module tags,
-/// DefaultRoleSeeder/ModuleEntitlementService's active_modules matching) rather than changing it -
-/// active_modules and the shared permission catalog stay exactly as-is, per 2026-08-09 direction.
-/// Grants projects:access directly to whatever role(s) this one user is already assigned, so no
-/// other tenant or user is affected. No-op if the user doesn't exist yet (e.g. before they sign
-/// up) - safe to leave running; a later signup under this email picks up the grant on the next
-/// backend restart, since role_permissions rows are seeded once, not recomputed live.
+/// Development-only, tenant-scoped Work Management unlock for the "dapi" tenant (identified via
+/// dapiyshanth1908@gmail.com, since a tenant slug isn't known until the tenant/user exist).
+///
+/// Two things are required together — a role_permissions row alone is NOT enough, confirmed by
+/// reading PermissionResolver.ResolveAsync: every role-granted permission is re-filtered by
+/// `activeModules.Contains(row.Module)` on every single request (Step 2), not just at seed time.
+/// projects:access's Module column is "work_management" (PermissionSeeder's existing tag, left
+/// untouched per 2026-08-09 direction — the shared catalog is not touched here), which never
+/// appears in any tenant's active_modules (subscription SelectedModulesJson uses canonical Phase 1
+/// keys like "projects"), so a role_permissions row for it is silently filtered out of every
+/// /auth/me response regardless of whether the row exists. So:
+///
+/// 1. Add "work_management" to ONLY this one tenant's active subscription's SelectedModulesJson -
+///    other tenants' subscriptions are untouched, so no other tenant's users are affected.
+/// 2. Grant projects:access to every Role in that tenant (not just the one user's role), per
+///    2026-08-09 direction to cover "the dapi tenant's roles", not just one account.
+///
+/// No-op if the user doesn't exist yet; safe to leave running - a later signup under this email
+/// picks up the grant on the next backend restart, since none of this is recomputed live.
 /// </summary>
 public sealed class ProjectsAccessBootstrapSeeder : IHostedService
 {
     private const string TargetEmail = "dapiyshanth1908@gmail.com";
     private const string TargetPermissionCode = "projects:access";
+    private const string TargetModuleKey = "work_management";
+
+    private static readonly HashSet<string> ActiveSubscriptionStatuses =
+        new(SubscriptionStatusRules.ActiveStatuses, StringComparer.OrdinalIgnoreCase);
 
     private readonly IServiceProvider _services;
     private readonly IHostEnvironment _environment;
@@ -70,16 +87,18 @@ public sealed class ProjectsAccessBootstrapSeeder : IHostedService
                 return;
             }
 
-            var roleIds = await db.UserRoles
-                .Where(ur => ur.TenantId == user.TenantId && ur.UserId == user.Id)
-                .Select(ur => ur.RoleId)
+            var moduleUnlocked = await EnsureTenantModuleUnlockedAsync(db, user.TenantId, cancellationToken);
+
+            var roleIds = await db.Roles
+                .Where(r => r.TenantId == user.TenantId)
+                .Select(r => r.Id)
                 .ToListAsync(cancellationToken);
 
             if (roleIds.Count == 0)
             {
                 _logger.LogWarning(
-                    "ProjectsAccessBootstrapSeeder: {Email} has no assigned roles yet - nothing to grant.",
-                    TargetEmail);
+                    "ProjectsAccessBootstrapSeeder: tenant {TenantId} has no roles yet - nothing to grant.",
+                    user.TenantId);
                 return;
             }
 
@@ -103,14 +122,15 @@ public sealed class ProjectsAccessBootstrapSeeder : IHostedService
                 grantedCount++;
             }
 
-            if (grantedCount > 0)
+            if (grantedCount > 0 || moduleUnlocked)
             {
                 await db.SaveChangesAsync(cancellationToken);
             }
 
             _logger.LogInformation(
-                "ProjectsAccessBootstrapSeeder: {Code} granted to {GrantedCount} of {RoleCount} role(s) for {Email} ({AlreadyHadIt} already had it).",
-                TargetPermissionCode, grantedCount, roleIds.Count, TargetEmail, roleIds.Count - grantedCount);
+                "ProjectsAccessBootstrapSeeder: tenant {TenantId} - module unlock {ModuleUnlocked}, {Code} granted to {GrantedCount} of {RoleCount} role(s) ({AlreadyHadIt} already had it).",
+                user.TenantId, moduleUnlocked ? "applied" : "already present", TargetPermissionCode,
+                grantedCount, roleIds.Count, roleIds.Count - grantedCount);
         }
         catch (Exception ex)
         {
@@ -120,4 +140,41 @@ public sealed class ProjectsAccessBootstrapSeeder : IHostedService
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <returns>true if SelectedModulesJson was changed (module was missing and got added).</returns>
+    private static async Task<bool> EnsureTenantModuleUnlockedAsync(
+        ApplicationDbContext db,
+        Guid tenantId,
+        CancellationToken ct)
+    {
+        var subscription = await db.TenantSubscriptions
+            .Where(s => s.TenantId == tenantId && ActiveSubscriptionStatuses.Contains(s.Status))
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+
+        if (subscription is null)
+        {
+            return false;
+        }
+
+        List<string> modules;
+        try
+        {
+            modules = JsonSerializer.Deserialize<List<string>>(subscription.SelectedModulesJson) ?? [];
+        }
+        catch (JsonException)
+        {
+            modules = [];
+        }
+
+        if (modules.Contains(TargetModuleKey, StringComparer.Ordinal))
+        {
+            return false;
+        }
+
+        modules.Add(TargetModuleKey);
+        subscription.SelectedModulesJson = JsonSerializer.Serialize(modules);
+        subscription.UpdatedAt = DateTimeOffset.UtcNow;
+        return true;
+    }
 }
