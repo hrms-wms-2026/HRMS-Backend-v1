@@ -20,7 +20,7 @@ public static class DeviceStateSnapshotMapper
             AgentDeviceId = agentDeviceId,
             CapturedAt = item.CapturedAt,
             IdleSeconds = item.IdleSeconds,
-            IsIdle = item.IsIdle,
+            IsIdle = item.IsIdle, // Trusted verbatim from the agent for Phase 1 — server does not recompute from IdleSeconds
             CreatedAt = createdAt
         };
     }

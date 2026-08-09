@@ -61,11 +61,11 @@ public class IngestDeviceStateSnapshotsCommandHandlerTests
         _uow,
         NullLogger<IngestDeviceStateSnapshotsCommandHandler>.Instance);
 
-    private static DeviceStateSnapshotItem Item(DateTimeOffset capturedAt) => new()
+    private static DeviceStateSnapshotItem Item(DateTimeOffset capturedAt, bool isIdle = false) => new()
     {
         CapturedAt = capturedAt,
         IdleSeconds = 15,
-        IsIdle = false
+        IsIdle = isIdle
     };
 
     [Fact]
@@ -76,7 +76,7 @@ public class IngestDeviceStateSnapshotsCommandHandlerTests
             .Callback<IEnumerable<DeviceStateSnapshot>, CancellationToken>((list, _) => saved = list.ToList())
             .Returns(Task.CompletedTask);
 
-        var cmd = new IngestDeviceStateSnapshotsCommand { Snapshots = [Item(_clock.UtcNow.AddMinutes(-1))] };
+        var cmd = new IngestDeviceStateSnapshotsCommand { Snapshots = [Item(_clock.UtcNow.AddMinutes(-1), isIdle: true)] };
         var result = await CreateSut().Handle(cmd, CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -86,6 +86,7 @@ public class IngestDeviceStateSnapshotsCommandHandlerTests
         saved.First().TenantId.Should().Be(_tenantId);
         saved.First().AgentDeviceId.Should().Be(_deviceId);
         saved.First().IdleSeconds.Should().Be(15);
+        saved.First().IsIdle.Should().BeTrue();
     }
 
     [Fact]

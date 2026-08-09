@@ -43,4 +43,12 @@ public class IngestDeviceStateSnapshotsCommandValidatorTests
         var result = _sut.Validate(new IngestDeviceStateSnapshotsCommand { Snapshots = [item] });
         result.IsValid.Should().BeFalse();
     }
+
+    [Fact]
+    public void Batch_over_200_fails()
+    {
+        var items = Enumerable.Range(0, 201).Select(_ => Item()).ToList();
+        var result = _sut.Validate(new IngestDeviceStateSnapshotsCommand { Snapshots = items });
+        result.IsValid.Should().BeFalse();
+    }
 }
