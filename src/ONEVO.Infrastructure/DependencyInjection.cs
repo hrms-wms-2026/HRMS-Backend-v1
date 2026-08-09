@@ -70,10 +70,12 @@ using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.WorkSessions.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.AppUsage.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.TrayActivation;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.CheckIn;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.WorkSessions;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.ActivityMonitoring;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.AppUsage;
 using ONEVO.Infrastructure.Services.Auth.Login;
 using ONEVO.Infrastructure.Services.Monitoring.TrayActivation;
 using ONEVO.Infrastructure.Services.Monitoring.CheckIn;
@@ -252,6 +254,7 @@ public static class DependencyInjection
         // Monitoring - Activity (keyboard/mouse tracking)
         services.AddScoped<IActivitySnapshotRepository, EfActivitySnapshotRepository>();
         services.AddScoped<IActivityRawBufferRepository, EfActivityRawBufferRepository>();
+        services.AddScoped<IAppUsageSnapshotRepository, EfAppUsageSnapshotRepository>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();
