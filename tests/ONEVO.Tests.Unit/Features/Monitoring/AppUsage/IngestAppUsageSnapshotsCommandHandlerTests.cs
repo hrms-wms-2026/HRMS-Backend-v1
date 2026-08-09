@@ -84,6 +84,8 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
         saved.Should().NotBeNull().And.HaveCount(1);
         saved!.First().EmployeeId.Should().Be(_userId);
         saved.First().ProcessName.Should().Be("code.exe");
+        saved.First().TenantId.Should().Be(_tenantId);
+        saved.First().AgentDeviceId.Should().Be(_deviceId);
     }
 
     [Fact]
@@ -100,6 +102,36 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
         result.StatusCode.Should().Be(403);
         result.Error.Should().Be(MonitoringErrors.AppTrackingDisabled);
         _uow.SaveCallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Future_timestamp_returns_400()
+    {
+        var cmd = new IngestAppUsageSnapshotsCommand
+        {
+            Snapshots = [Item(_clock.UtcNow.AddHours(1))]
+        };
+
+        var result = await CreateSut().Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        result.Error.Should().Be(MonitoringErrors.SnapshotFutureTime);
+    }
+
+    [Fact]
+    public async Task Snapshot_older_than_24h_returns_400()
+    {
+        var cmd = new IngestAppUsageSnapshotsCommand
+        {
+            Snapshots = [Item(_clock.UtcNow.AddHours(-25))]
+        };
+
+        var result = await CreateSut().Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        result.Error.Should().Be(MonitoringErrors.SnapshotTooOld);
     }
 
     [Fact]

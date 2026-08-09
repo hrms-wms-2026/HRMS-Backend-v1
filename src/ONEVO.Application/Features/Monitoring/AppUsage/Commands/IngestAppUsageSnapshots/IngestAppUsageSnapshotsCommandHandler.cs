@@ -60,11 +60,15 @@ public class IngestAppUsageSnapshotsCommandHandler
         if (tenant is null)
             return Result.Failure("Tenant not found.", 401);
 
+        // Tray requests may hit the base host (system mode). Switch into the JWT
+        // tenant so EF query filters + PostgreSQL RLS accept the write.
         await _tenantSwitcher.SwitchToTenantAsync(
             new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null),
             cancellationToken);
 
         var tenantId = _device.TenantId;
+        // Phase 1: tray JWT binds to UserId; EmployeeId column stores that identity
+        // until CoreHR employee master is always present for activated devices.
         var employeeId = _device.UserId;
         var agentDeviceId = _device.DeviceRegistrationId;
         var now = _clock.UtcNow;
