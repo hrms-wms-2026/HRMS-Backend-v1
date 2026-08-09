@@ -26,6 +26,14 @@ public static class MonitoringErrors
     public const string ScreenshotCapabilityDisabled =
         "Screenshot capture is not enabled for this employee.";
 
+    public const string AppTrackingDisabledCode = "monitoring.app_tracking_disabled";
+    public const string AppTrackingDisabled =
+        "Application tracking is not enabled for this employee.";
+
+    public const string DeviceTrackingDisabledCode = "monitoring.device_tracking_disabled";
+    public const string DeviceTrackingDisabled =
+        "Device state tracking is not enabled for this employee.";
+
     public const string AgentDeviceNotFound =
         "Agent device not found.";
 
