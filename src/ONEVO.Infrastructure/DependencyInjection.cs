@@ -362,6 +362,7 @@ public static class DependencyInjection
         services.AddHostedService<ModuleCatalogSeeder>();
         services.AddHostedService<DevSmokeTestTenantSeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
+        services.AddHostedService<ProjectsAccessBootstrapSeeder>();
 
         // Boot-time configuration audit (warns about missing keys; never fatal).
         services.AddHostedService<ConfigurationStartupValidator>();
