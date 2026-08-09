@@ -11,11 +11,6 @@ public class LegalEntity : ITenantOwnedEntity
     public string CountryCode { get; set; } = string.Empty;
     public string CurrencyCode { get; set; } = string.Empty;
 
-    // Registered business address payload (JSON). This is the same field the
-    // General Settings screen calls "registered business address" - kept
-    // under its original name rather than renamed, per Part 2A scope.
-    public string? AddressJson { get; set; }
-
     public bool IsActive { get; set; } = true;
     public bool IsPrimary { get; set; } = true;
 

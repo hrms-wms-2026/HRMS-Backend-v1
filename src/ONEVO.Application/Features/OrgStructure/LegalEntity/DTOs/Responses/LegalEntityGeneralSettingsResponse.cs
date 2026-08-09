@@ -23,5 +23,4 @@ public record LegalEntityGeneralSettingsResponse(
     string DefaultLanguage,
     string DateFormat,
     string TimeFormat,
-    string Status,
-    LegalEntityAddressDto? RegisteredBusinessAddress);
+    string Status);

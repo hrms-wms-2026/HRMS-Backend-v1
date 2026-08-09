@@ -23,8 +23,7 @@ public class UpdateLegalEntityGeneralSettingsCommandValidatorTests
         "en-US",
         "DD MMM YYYY",
         "12h",
-        "active",
-        null);
+        "active");
 
     [Fact]
     public void Valid_Command_HasNoErrors()

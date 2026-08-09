@@ -81,7 +81,6 @@ public class UpdateLegalEntityGeneralSettingsCommandHandler
         entity.DateFormat = request.DateFormat.Trim();
         entity.TimeFormat = request.TimeFormat.Trim();
         entity.IsActive = newIsActive;
-        entity.AddressJson = LegalEntityMapper.SerializeAddress(request.RegisteredBusinessAddress);
         entity.UpdatedAt = _dateTimeProvider.UtcNow;
 
         // LogoFileId, ParentLegalEntityId, IsPrimary, CreatedAt, Id and

@@ -35,7 +35,6 @@ public class CreateLegalEntityCommandHandlerTests
         "LKA",
         "LKR",
         null,
-        null,
         parentId);
 
     [Fact]

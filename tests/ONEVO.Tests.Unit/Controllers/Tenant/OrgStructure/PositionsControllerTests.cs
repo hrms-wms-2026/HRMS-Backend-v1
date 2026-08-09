@@ -33,7 +33,7 @@ public sealed class PositionsControllerTests
 
     private static PositionResponse SamplePositionResponse(Guid legalEntityId, Guid id, Guid departmentId, string name) => new(
         id, legalEntityId, departmentId, name, "POS-01", "unique", 1, null, true,
-        DateTimeOffset.UtcNow, null, "Engineering", null, 0);
+        DateTimeOffset.UtcNow, null, "Engineering", null, 0, null, false);
 
     [Fact]
     public async Task List_UsesDefaultQueryValues_WhenNoneProvided()

@@ -6,7 +6,7 @@ public class SetLegalEntityLogoCommandValidator : AbstractValidator<SetLegalEnti
 {
     public SetLegalEntityLogoCommandValidator()
     {
-        RuleFor(x => x.FileId)
-            .NotEqual(Guid.Empty).WithMessage("File id is required.");
+        RuleFor(x => x.FileName).NotEmpty().WithMessage("File name is required.");
+        RuleFor(x => x.ContentType).NotEmpty().WithMessage("Content type is required.");
     }
 }

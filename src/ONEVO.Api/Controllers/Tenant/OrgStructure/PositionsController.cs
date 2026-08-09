@@ -170,4 +170,126 @@ public class PositionsController : ControllerBase
             ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
+
+    /// <summary>Gets the System Access Role template for a position.</summary>
+    [HttpGet("{positionId:guid}/access")]
+    [RequirePermission("org:read")]
+    public async Task<IActionResult> GetAccess(
+        Guid legalEntityId,
+        Guid positionId,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new ONEVO.Application.Features.OrgStructure.Queries.GetPositionAccess.GetPositionAccessQuery(legalEntityId, positionId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Sets or updates the System Access Role template for a position.</summary>
+    [HttpPut("{positionId:guid}/access")]
+    [RequirePermission("org:manage")]
+    public async Task<IActionResult> SetAccess(
+        Guid legalEntityId,
+        Guid positionId,
+        [FromBody] ONEVO.Api.Contracts.OrgStructure.Positions.SetPositionAccessRequest request,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new ONEVO.Application.Features.OrgStructure.Commands.SetPositionAccess.SetPositionAccessCommand(
+                legalEntityId,
+                positionId,
+                request.RoleId,
+                request.RequiresApproval),
+            ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Gets management coverage records where this position is the owner/manager.</summary>
+    [HttpGet("{positionId:guid}/coverage")]
+    [RequirePermission("org:read")]
+    public async Task<IActionResult> GetCoverage(
+        Guid legalEntityId,
+        Guid positionId,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new ONEVO.Application.Features.OrgStructure.Queries.GetPositionCoverage.GetPositionCoverageQuery(legalEntityId, positionId),
+            ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Adds a manual management coverage rule for this position.</summary>
+    [HttpPost("{positionId:guid}/coverage")]
+    [RequirePermission("org:manage")]
+    public async Task<IActionResult> AddCoverage(
+        Guid legalEntityId,
+        Guid positionId,
+        [FromBody] AddCoverageRecordRequest request,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new ONEVO.Application.Features.OrgStructure.Commands.AddManualCoverageRecord.AddManualCoverageRecordCommand(
+                legalEntityId,
+                positionId,
+                request.CoveredTargetType,
+                request.CoveredPositionId,
+                request.CoveredDepartmentId,
+                request.OwnerOrder),
+            ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Updates the responsibility level (ownerOrder) of a manual management coverage rule.</summary>
+    [HttpPut("{positionId:guid}/coverage/{coverageId:guid}")]
+    [RequirePermission("org:manage")]
+    public async Task<IActionResult> UpdateCoverage(
+        Guid legalEntityId,
+        Guid positionId,
+        Guid coverageId,
+        [FromBody] ONEVO.Api.Contracts.OrgStructure.Positions.UpdateCoverageRecordRequest request,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new ONEVO.Application.Features.OrgStructure.Commands.UpdateManualCoverageRecord.UpdateManualCoverageRecordCommand(
+                legalEntityId,
+                positionId,
+                coverageId,
+                request.OwnerOrder),
+            ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Removes a management coverage rule for this position.</summary>
+    [HttpPost("{positionId:guid}/coverage/{coverageId:guid}/remove")]
+    [RequirePermission("org:manage")]
+    public async Task<IActionResult> RemoveCoverage(
+        Guid legalEntityId,
+        Guid positionId,
+        Guid coverageId,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new ONEVO.Application.Features.OrgStructure.Commands.RemoveManualCoverageRecord.RemoveManualCoverageRecordCommand(
+                legalEntityId,
+                positionId,
+                coverageId),
+            ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
 }
+

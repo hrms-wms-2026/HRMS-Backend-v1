@@ -11,8 +11,7 @@ namespace ONEVO.Tests.Architecture;
 /// <summary>
 /// Guards the Part 2C controller wiring for Legal Entity / Company General
 /// Settings: correct folder ownership, correct permission on every action,
-/// no TenantId anywhere in the HTTP surface, and no PUT /logo route (Part 2C
-/// deliberately deferred it - see the Part 2C report §5).
+/// no TenantId anywhere in the HTTP surface.
 /// </summary>
 public class LegalEntitiesControllerArchitectureTests
 {
@@ -98,6 +97,13 @@ public class LegalEntitiesControllerArchitectureTests
     }
 
     [Fact]
+    public void GetLogoAction_UsesLegalEntityUpdate()
+    {
+        var method = ControllerType.GetMethod(nameof(LegalEntitiesController.GetLogo));
+        GetPermission(method!).Should().Be("legal_entity:update");
+    }
+
+    [Fact]
     public void NoAction_UsesOrgManage()
     {
         var offenders = ActionMethods()
@@ -158,14 +164,20 @@ public class LegalEntitiesControllerArchitectureTests
     }
 
     [Fact]
-    public void NoPutLogoRoute_Exists()
+    public void PutLogoRoute_Exists_AndUsesPutVerb()
     {
-        var offenders = ActionMethods()
-            .Select(m => m.GetCustomAttribute<HttpPutAttribute>())
-            .Where(a => a?.Template?.Contains("logo", StringComparison.OrdinalIgnoreCase) == true)
-            .ToList();
+        var setLogo = ControllerType.GetMethod(nameof(LegalEntitiesController.SetLogo));
+        var httpPut = setLogo!.GetCustomAttribute<HttpPutAttribute>();
 
-        Assert.Empty(offenders);
+        Assert.NotNull(httpPut);
+        Assert.Contains("logo", httpPut!.Template ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SetLogoAction_UsesLegalEntityUpdate()
+    {
+        var method = ControllerType.GetMethod(nameof(LegalEntitiesController.SetLogo));
+        GetPermission(method!).Should().Be("legal_entity:update");
     }
 
     [Fact]
@@ -182,8 +194,9 @@ public class LegalEntitiesControllerArchitectureTests
     public void Controller_DoesNotReferenceFileRecordRepositoryDirectly()
     {
         // Redundant with the pre-existing FileStorageArchitectureTests guard,
-        // but pins the specific expectation for this controller: it must never
-        // gain a direct file-repository dependency now that PUT /logo is deferred.
+        // but pins the specific expectation for this controller: uploads and
+        // reads must always go through IFileStorageService, never a direct
+        // file-repository dependency.
         var fields = ControllerType.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
         var offenders = fields
             .Where(f => f.FieldType.FullName?.Contains("FileRecordRepository") == true)
