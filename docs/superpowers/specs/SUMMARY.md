@@ -23,8 +23,10 @@ Every file here says `**Status:** Approved...` at the top — that field is the 
 | `next/2026-08-03-platform-users-list-design.md` | pending | none written yet — design-approved 2026-08-03, no plan file exists in `plans/` under either `finished/` or `next/` |
 | `next/2026-08-07-work-management-objective-subtree-design.md` | **drift** | its plan, `plans/next/2026-08-07-work-management-objective-subtree.md`, already shipped (git commits `2a77bbc`..`b900ec5`, 2026-08-07) but neither the plan nor this design were ever moved to `finished/` — flagged, not fixed, during the 2026-08-08 pass (out of that session's scope) |
 | `finished/2026-08-08/2026-08-08-work-management-my-project-milestones-design.md` | finished | `plans/finished/2026-08-08/2026-08-08-work-management-my-project-milestones.md` (5/5 tasks, executed 2026-08-08) |
+| `next/2026-08-10-milestone-ownership-and-subtree-access-design.md` | pending | none written yet — design-approved 2026-08-10, cross-repo (frontend half in `Hrms--Web-application---front-end---v1`), blocks the frontend's Milestone Cards feature |
 
 ## Open items
 
 - `platform-users-list-design.md` has been sitting approved-but-unplanned since 2026-08-03 with no corresponding plan file anywhere in `plans/` — worth checking with the user whether it's still wanted, or was superseded/abandoned silently.
 - `2026-08-07-work-management-objective-subtree-design.md`/its plan need a finished/next status sync — see the "drift" row above.
+- Two loose design files sit directly in `specs/` root, not yet filed into `next/`/`finished/` per the folder/status split this table otherwise follows: `2026-08-06-invite-platform-manager-design.md` and `2026-08-07-legal-entity-logo-upload-design.md`. Checked 2026-08-10: both designs are fully implemented in code already (their plans just have unticked checkboxes) — this is a bookkeeping-only gap, not in-flight work. Not fixed here, out of this session's scope; flagged so it isn't lost again.
