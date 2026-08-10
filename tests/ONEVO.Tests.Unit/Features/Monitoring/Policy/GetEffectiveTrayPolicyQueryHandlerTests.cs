@@ -135,11 +135,22 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
     [Fact]
     public async Task Tenant_context_is_switched_before_resolving_toggles()
     {
+        // The switcher callback flips the fake resolver's flag; the resolver
+        // records whether that flag was already true on its first call. This
+        // proves ordering (switch happens before the first toggle resolve),
+        // not just that both calls occurred somewhere during the handler run.
+        _switcher.Setup(s => s.SwitchToTenantAsync(
+                It.Is<TenantRegistryEntry>(e => e.TenantId == _tenantId),
+                It.IsAny<CancellationToken>()))
+            .Callback(() => _toggles.IsSwitched = true)
+            .Returns(Task.CompletedTask);
+
         await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
 
         _switcher.Verify(s => s.SwitchToTenantAsync(
                 It.Is<TenantRegistryEntry>(e => e.TenantId == _tenantId),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+        _toggles.WasSwitchedBeforeFirstResolve.Should().BeTrue();
     }
 }
