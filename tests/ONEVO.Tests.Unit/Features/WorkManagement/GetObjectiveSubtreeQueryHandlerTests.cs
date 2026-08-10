@@ -1,7 +1,9 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveSubtree;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using Xunit;
 
@@ -26,7 +28,8 @@ public class GetObjectiveSubtreeQueryHandlerTests
     };
 
     private (GetObjectiveSubtreeQueryHandler Handler, Mock<IObjectiveRepository> Objectives) BuildHandler(
-        Objective? objective, IReadOnlyList<Objective>? all = null, Guid? callerId = null)
+        Objective? objective, IReadOnlyList<Objective>? all = null, Guid? callerId = null,
+        bool hasReadPermission = true, bool hasMembershipOnAncestor = true)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -36,8 +39,23 @@ public class GetObjectiveSubtreeQueryHandlerTests
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
         objectives.Setup(x => x.GetAllByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(all ?? []);
+        if (objective is not null)
+        {
+            objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, objective.Id, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
+            foreach (var node in all ?? [])
+                objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, node.Id, It.IsAny<CancellationToken>())).ReturnsAsync(node);
+        }
 
-        var handler = new GetObjectiveSubtreeQueryHandler(currentUser.Object, objectives.Object);
+        var members = new Mock<IProjectMemberRepository>();
+        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(
+                TenantId, ProjectId, It.IsAny<Guid>(), It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(hasMembershipOnAncestor);
+
+        var permissionResolver = new Mock<IPermissionResolver>();
+        permissionResolver.Setup(x => x.ResolveAsync(It.IsAny<Guid>(), TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
+
+        var handler = new GetObjectiveSubtreeQueryHandler(currentUser.Object, objectives.Object, members.Object, permissionResolver.Object);
         return (handler, objectives);
     }
 
@@ -56,7 +74,38 @@ public class GetObjectiveSubtreeQueryHandlerTests
     public async Task Handle_CallerNotHead_ReturnsForbidden()
     {
         var objective = Node(ObjectiveId, parentId: null, ownerId: HeadId, isDefault: true);
-        var (handler, _) = BuildHandler(objective, all: [objective], callerId: OtherUserId);
+        var (handler, _) = BuildHandler(objective, all: [objective], callerId: OtherUserId, hasReadPermission: false, hasMembershipOnAncestor: false);
+
+        var result = await handler.Handle(new GetObjectiveSubtreeQuery(ObjectiveId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_NonHeadWithActiveMembershipOnAncestor_ReturnsSuccess()
+    {
+        var parent = Node(ParentId, parentId: null, ownerId: HeadId, isDefault: true);
+        var objective = Node(ObjectiveId, parentId: ParentId, ownerId: HeadId);
+
+        var (handler, _) = BuildHandler(
+            objective, all: [parent, objective], callerId: OtherUserId,
+            hasReadPermission: false, hasMembershipOnAncestor: true);
+
+        var result = await handler.Handle(new GetObjectiveSubtreeQuery(ObjectiveId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ObjectiveId, result.Value!.Objective.Id);
+    }
+
+    [Fact]
+    public async Task Handle_NonHeadWithNoMembershipAnywhereInChain_ReturnsForbidden()
+    {
+        var objective = Node(ObjectiveId, parentId: null, ownerId: HeadId, isDefault: true);
+
+        var (handler, _) = BuildHandler(
+            objective, all: [objective], callerId: OtherUserId,
+            hasReadPermission: false, hasMembershipOnAncestor: false);
 
         var result = await handler.Handle(new GetObjectiveSubtreeQuery(ObjectiveId), CancellationToken.None);
 

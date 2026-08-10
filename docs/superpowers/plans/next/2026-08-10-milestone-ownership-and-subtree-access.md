@@ -306,12 +306,12 @@ public class GetObjectiveSubtreeQueryHandler : IRequestHandler<GetObjectiveSubtr
             var cursor = objective;
             while (cursor.ParentObjectiveId is not null)
             {
-                var parent = await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
-                if (parent is null)
+                var ancestor = await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
+                if (ancestor is null)
                     break;
 
-                selfAndAncestorIds.Add(parent.Id);
-                cursor = parent;
+                selfAndAncestorIds.Add(ancestor.Id);
+                cursor = ancestor;
             }
 
             var hasAccess = await _members.HasActiveMembershipForAnyObjectiveAsync(tenantId, objective.ProjectId, userId, selfAndAncestorIds, ct);

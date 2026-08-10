@@ -1,9 +1,11 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveSubtree;
 
@@ -11,11 +13,17 @@ public class GetObjectiveSubtreeQueryHandler : IRequestHandler<GetObjectiveSubtr
 {
     private readonly ICurrentUser _currentUser;
     private readonly IObjectiveRepository _objectives;
+    private readonly IProjectMemberRepository _members;
+    private readonly IPermissionResolver _permissionResolver;
 
-    public GetObjectiveSubtreeQueryHandler(ICurrentUser currentUser, IObjectiveRepository objectives)
+    public GetObjectiveSubtreeQueryHandler(
+        ICurrentUser currentUser, IObjectiveRepository objectives,
+        IProjectMemberRepository members, IPermissionResolver permissionResolver)
     {
         _currentUser = currentUser;
         _objectives = objectives;
+        _members = members;
+        _permissionResolver = permissionResolver;
     }
 
     public async Task<Result<ObjectiveSubtreeResponse>> Handle(GetObjectiveSubtreeQuery request, CancellationToken ct)
@@ -32,8 +40,27 @@ public class GetObjectiveSubtreeQueryHandler : IRequestHandler<GetObjectiveSubtr
         if (objective is null)
             return Result<ObjectiveSubtreeResponse>.NotFound("Objective not found.");
 
-        if (objective.OwnerId != userId)
-            return Result<ObjectiveSubtreeResponse>.Forbidden("Only this milestone's head can view its subtree.");
+        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, ct);
+        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+
+        if (!hasReadPermission)
+        {
+            var selfAndAncestorIds = new List<Guid> { objective.Id };
+            var cursor = objective;
+            while (cursor.ParentObjectiveId is not null)
+            {
+                var ancestor = await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
+                if (ancestor is null)
+                    break;
+
+                selfAndAncestorIds.Add(ancestor.Id);
+                cursor = ancestor;
+            }
+
+            var hasAccess = await _members.HasActiveMembershipForAnyObjectiveAsync(tenantId, objective.ProjectId, userId, selfAndAncestorIds, ct);
+            if (!hasAccess)
+                return Result<ObjectiveSubtreeResponse>.Forbidden("You do not have access to this milestone.");
+        }
 
         var all = await _objectives.GetAllByProjectIdAsync(tenantId, objective.ProjectId, ct);
 

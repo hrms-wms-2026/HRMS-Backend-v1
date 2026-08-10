@@ -2,11 +2,11 @@
 
 **GET** `/api/v1/work/objectives/{id}/tree`
 
-**Auth:** Tenant session cookie + CSRF header. Policy: `TenantPolicy`. **Permission:** `projects:access` + caller must be `{id}`'s current Head.
+**Auth:** Tenant session cookie + CSRF header. Policy: `TenantPolicy`. **Permission:** `projects:access` + (`projects:read`/`*` OR an active membership on this milestone or any of its ancestors — checked in-handler, not via `[RequirePermission]`, same pattern as Get Objective).
 
 ## Description
 
-Returns `{id}`'s parent Objective detail (if any) plus its full nested descendant subtree (children, grandchildren, ...), each carrying the full detail field set. Independent of `GET /api/v1/work/projects/{projectId}/objectives` — this is a Head-only, single-milestone read, not a project-wide one. Inactive (soft-deleted) descendants are included; the client filters on `isActive` if it only wants live nodes.
+Returns `{id}`'s parent Objective detail (if any) plus its full nested descendant subtree (children, grandchildren, ...), each carrying the full detail field set. Independent of `GET /api/v1/work/projects/{projectId}/objectives` — this is a single-milestone read, not a project-wide one. No longer Head-only as of 2026-08-10 — any project member with access to this milestone (or an ancestor of it) can read its subtree; only Edit/Achieve/Unachieve stay Head-restricted. Inactive (soft-deleted) descendants are included; the client filters on `isActive` if it only wants live nodes.
 
 ## Response
 
@@ -31,7 +31,7 @@ Returns `{id}`'s parent Objective detail (if any) plus its full nested descendan
 
 | Status | Cause |
 |---|---|
-| `403` | Caller is not `{id}`'s current Head, or lacks `projects:access` |
+| `403` | Caller lacks `projects:access`, or has neither `projects:read`/`*` nor an active membership on this milestone or an ancestor of it |
 | `404` | Objective doesn't exist in tenant |
 
 ## Source
