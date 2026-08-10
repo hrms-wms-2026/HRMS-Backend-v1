@@ -383,6 +383,11 @@ public sealed class EfAuthRepository :
         return grants;
     }
 
+    public async Task AddAsync(UserPermissionOverride grant, CancellationToken ct = default)
+    {
+        await _db.UserPermissionOverrides.AddAsync(grant, ct);
+    }
+
     public async Task<IReadOnlyList<UserRole>> ListActiveByUserIdAsync(
         Guid userId,
         DateTimeOffset now,

@@ -5378,6 +5378,87 @@ namespace ONEVO.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Storage.EntityAssets.Entities.EntityAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AssetPurpose")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("asset_purpose");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<string>("CreatedByType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("created_by_type");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid>("FileRecordId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("file_record_id");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_primary");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("metadata_json");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("OwnerType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("owner_type");
+
+                    b.Property<int?>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_entity_assets");
+
+                    b.HasIndex("FileRecordId")
+                        .HasDatabaseName("ix_entity_assets_file_record_id");
+
+                    b.HasIndex("OwnerType", "OwnerId")
+                        .HasDatabaseName("ix_entity_assets_owner_type_owner_id");
+
+                    b.ToTable("entity_assets", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5564,6 +5645,806 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasName("pk_tenant_storage_stats");
 
                     b.ToTable("tenant_storage_stats", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Labels.Entities.Label", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("color");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_labels");
+
+                    b.HasIndex("ProjectId")
+                        .HasDatabaseName("ix_labels_project_id");
+
+                    b.HasIndex("TenantId", "ProjectId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_labels_tenant_id_project_id_name");
+
+                    b.ToTable("labels", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid?>("DecidedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("ObjectiveId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("objective_id");
+
+                    b.Property<string>("PayloadJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload_json");
+
+                    b.Property<Guid>("ReportingManagerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reporting_manager_id");
+
+                    b.Property<string>("RequestType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("request_type");
+
+                    b.Property<Guid>("RequestedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_objective_change_requests");
+
+                    b.HasIndex("ObjectiveId")
+                        .HasDatabaseName("ix_objective_change_requests_objective_id");
+
+                    b.HasIndex("TenantId", "ObjectiveId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_objective_change_requests_one_pending_per_objective")
+                        .HasFilter("status = 'pending'");
+
+                    b.HasIndex("TenantId", "ObjectiveId", "Status")
+                        .HasDatabaseName("ix_objective_change_requests_tenant_id_objective_id_status");
+
+                    b.HasIndex("TenantId", "ReportingManagerId", "Status")
+                        .HasDatabaseName("ix_objective_change_requests_tenant_id_reporting_manager_id_status");
+
+                    b.ToTable("objective_change_requests", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AchievedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("achieved_at");
+
+                    b.Property<decimal?>("ActualHours")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("actual_hours");
+
+                    b.Property<decimal>("AllocatedHours")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("allocated_hours");
+
+                    b.Property<decimal>("CompletedHours")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("completed_hours");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("end_date");
+
+                    b.Property<bool>("IsAchieved")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_achieved");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<Guid?>("ParentObjectiveId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_objective_id");
+
+                    b.Property<decimal>("Progress")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(5,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("progress");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<Guid?>("ReportingManagerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reporting_manager_id");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_objectives");
+
+                    b.HasIndex("ParentObjectiveId")
+                        .HasDatabaseName("ix_objectives_parent_objective_id");
+
+                    b.HasIndex("ProjectId")
+                        .HasDatabaseName("ix_objectives_project_id");
+
+                    b.HasIndex("TenantId", "ProjectId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_objectives_one_default_per_project")
+                        .HasFilter("is_default = true");
+
+                    b.HasIndex("TenantId", "ReportingManagerId")
+                        .HasDatabaseName("ix_objectives_tenant_id_reporting_manager_id");
+
+                    b.HasIndex("TenantId", "OwnerId", "IsActive")
+                        .HasDatabaseName("ix_objectives_tenant_id_owner_id_is_active");
+
+                    b.HasIndex("TenantId", "ProjectId", "IsAchieved")
+                        .HasDatabaseName("ix_objectives_tenant_id_project_id_is_achieved");
+
+                    b.HasIndex("TenantId", "ProjectId", "ParentObjectiveId")
+                        .HasDatabaseName("ix_objectives_tenant_id_project_id_parent_objective_id");
+
+                    b.ToTable("objectives", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities.ProjectMemberInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("InvitedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invited_by_id");
+
+                    b.Property<Guid>("InvitedEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invited_employee_id");
+
+                    b.Property<Guid>("InvitedUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invited_user_id");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("ObjectiveId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("objective_id");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_project_member_invitations");
+
+                    b.HasIndex("ObjectiveId")
+                        .HasDatabaseName("ix_project_member_invitations_objective_id");
+
+                    b.HasIndex("ProjectId")
+                        .HasDatabaseName("ix_project_member_invitations_project_id");
+
+                    b.HasIndex("TenantId", "InvitedUserId", "Status")
+                        .HasDatabaseName("ix_project_member_invitations_tenant_invited_user_status");
+
+                    b.HasIndex("TenantId", "ProjectId", "ObjectiveId", "InvitedUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_project_member_invitations_one_pending")
+                        .HasFilter("status = 'pending'");
+
+                    b.ToTable("project_member_invitations", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities.ProjectMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<DateTimeOffset>("JoinedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("joined_at");
+
+                    b.Property<string>("MembershipSource")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("membership_source");
+
+                    b.Property<Guid>("ObjectiveId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("objective_id");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<DateTimeOffset?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("removed_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_project_members");
+
+                    b.HasIndex("ObjectiveId")
+                        .HasDatabaseName("ix_project_members_objective_id");
+
+                    b.HasIndex("ProjectId")
+                        .HasDatabaseName("ix_project_members_project_id");
+
+                    b.HasIndex("TenantId", "ProjectId", "ObjectiveId", "IsActive")
+                        .HasDatabaseName("ix_project_members_tenant_project_objective_active");
+
+                    b.HasIndex("TenantId", "ProjectId", "ObjectiveId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_project_members_tenant_project_objective_user");
+
+                    b.HasIndex("TenantId", "UserId", "IsActive", "ProjectId")
+                        .HasDatabaseName("ix_project_members_tenant_user_active_project");
+
+                    b.ToTable("project_members", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AchievedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("achieved_at");
+
+                    b.Property<decimal?>("ActualHours")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("actual_hours");
+
+                    b.Property<decimal>("AllocatedHours")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("allocated_hours");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id");
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("color");
+
+                    b.Property<decimal>("CompletedHours")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("completed_hours");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Identifier")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("identifier");
+
+                    b.Property<bool>("IsAchieved")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_achieved");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("LeadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lead_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<long>("NextTaskNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L)
+                        .HasColumnName("next_task_number");
+
+                    b.Property<Guid>("OwningLegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owning_legal_entity_id");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
+
+                    b.Property<DateOnly>("TargetDate")
+                        .HasColumnType("date")
+                        .HasColumnName("target_date");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_projects");
+
+                    b.HasIndex("OwningLegalEntityId")
+                        .HasDatabaseName("ix_projects_owning_legal_entity_id");
+
+                    b.HasIndex("TenantId", "Identifier")
+                        .IsUnique()
+                        .HasDatabaseName("ix_projects_tenant_id_identifier");
+
+                    b.HasIndex("TenantId", "IsAchieved")
+                        .HasDatabaseName("ix_projects_tenant_id_is_achieved");
+
+                    b.HasIndex("TenantId", "CategoryId", "IsActive")
+                        .HasDatabaseName("ix_projects_tenant_id_category_id_is_active");
+
+                    b.HasIndex("TenantId", "OwningLegalEntityId", "UpdatedAt")
+                        .HasDatabaseName("ix_projects_tenant_id_owning_legal_entity_id_updated_at");
+
+                    b.ToTable("projects", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Projects.Entities.ProjectCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_project_categories");
+
+                    b.HasIndex("TenantId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_project_categories_tenant_id_name");
+
+                    b.ToTable("project_categories", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities.ReleaseCalendarEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recipient_user_id");
+
+                    b.Property<string>("ReminderType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("reminder_type");
+
+                    b.Property<DateOnly>("ScheduledDate")
+                        .HasColumnType("date")
+                        .HasColumnName("scheduled_date");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("VersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("version_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_release_calendar");
+
+                    b.HasIndex("ProjectId")
+                        .HasDatabaseName("ix_release_calendar_project_id");
+
+                    b.HasIndex("VersionId", "RecipientUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_release_calendar_one_active_project_release")
+                        .HasFilter("is_active = true AND reminder_type = 'project_release'");
+
+                    b.HasIndex("TenantId", "RecipientUserId", "ScheduledDate", "IsActive")
+                        .HasDatabaseName("ix_release_calendar_tenant_recipient_scheduled_active");
+
+                    b.ToTable("release_calendar", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Versions.Entities.ProjectVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<int>("StatusId")
+                        .HasColumnType("integer")
+                        .HasColumnName("status_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_versions");
+
+                    b.HasIndex("ProjectId")
+                        .HasDatabaseName("ix_versions_project_id");
+
+                    b.HasIndex("StatusId")
+                        .HasDatabaseName("ix_versions_status_id");
+
+                    b.HasIndex("TenantId", "ProjectId", "StatusId")
+                        .HasDatabaseName("ix_versions_tenant_id_project_id_status_id");
+
+                    b.ToTable("versions", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Versions.Entities.VersionStatus", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("label");
+
+                    b.HasKey("Id")
+                        .HasName("pk_version_statuses");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_version_statuses_code");
+
+                    b.ToTable("version_statuses", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Lookups.ApprovalStatus", b =>
@@ -6345,6 +7226,16 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_user_integration_connections_users_user_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Storage.EntityAssets.Entities.EntityAsset", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", null)
+                        .WithMany()
+                        .HasForeignKey("FileRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_entity_assets_file_records_file_record_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", null)
@@ -6393,6 +7284,120 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_tenant_storage_stats_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Labels.Entities.Label", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_labels_projects_project_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", null)
+                        .WithMany()
+                        .HasForeignKey("ObjectiveId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_objective_change_requests_objectives_objective_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", null)
+                        .WithMany()
+                        .HasForeignKey("ParentObjectiveId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_objectives_objectives_parent_objective_id");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_objectives_projects_project_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities.ProjectMemberInvitation", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", null)
+                        .WithMany()
+                        .HasForeignKey("ObjectiveId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_project_member_invitations_objectives_objective_id");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_project_member_invitations_projects_project_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities.ProjectMember", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective", null)
+                        .WithMany()
+                        .HasForeignKey("ObjectiveId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_project_members_objectives_objective_id");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_project_members_projects_project_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("OwningLegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_projects_legal_entities_owning_legal_entity_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities.ReleaseCalendarEntry", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_release_calendar_projects_project_id");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Versions.Entities.ProjectVersion", null)
+                        .WithMany()
+                        .HasForeignKey("VersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_release_calendar_versions_version_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Versions.Entities.ProjectVersion", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_versions_projects_project_id");
+
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Versions.Entities.VersionStatus", null)
+                        .WithMany()
+                        .HasForeignKey("StatusId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_versions_version_statuses_status_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.Permission", b =>

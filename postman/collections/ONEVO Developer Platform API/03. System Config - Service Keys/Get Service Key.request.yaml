@@ -1,5 +1,0 @@
-$kind: http-request
-name: Get Service Key
-method: GET
-url: '{{admin_base_url}}/admin/v1/system-config/service-keys/{{service_key}}'
-order: 2000

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ONEVO.Domain.Features.WorkManagement.Versions.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence;
 
@@ -45,7 +46,15 @@ public class LookupDataSeeder : IHostedService
         await SeedAsync(db, db.WorkModes, WorkModes(), "work modes", ct);
         await SeedAsync(db, db.ApprovalStatuses, ApprovalStatuses(), "approval statuses", ct);
         await SeedAsync(db, db.Severities, Severities(), "severities", ct);
+        await SeedAsync(db, db.VersionStatuses, VersionStatuses(), "version statuses", ct);
     }
+
+    private static VersionStatus[] VersionStatuses() =>
+    [
+        new() { Id = VersionStatusIds.Planned,  Code = "planned",  Label = "Planned"  },
+        new() { Id = VersionStatusIds.Released, Code = "released", Label = "Released" },
+        new() { Id = VersionStatusIds.Archived, Code = "archived", Label = "Archived" },
+    ];
 
     private async Task SeedAsync<T>(ApplicationDbContext db, DbSet<T> dbSet, T[] rows, string label, CancellationToken ct)
         where T : class

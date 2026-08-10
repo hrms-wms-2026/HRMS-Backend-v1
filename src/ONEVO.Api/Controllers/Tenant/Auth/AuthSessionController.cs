@@ -61,7 +61,7 @@ public class AuthSessionController : ControllerBase
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 401);
 
-        return Ok(result.Value);
+        return Ok(result.Value!.ToViewModel());
     }
 
     /// <summary>Logout - revokes the server-side session.</summary>

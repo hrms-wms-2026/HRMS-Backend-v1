@@ -88,7 +88,7 @@ public sealed class TenantSessionExchangeEndpointTests
         var result = await controller.SessionExchange(new TenantSessionExchangeRequest("good-code"), CancellationToken.None);
 
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
-        var body = ok.Value.Should().BeOfType<AuthSessionResponseDto>().Subject;
+        var body = ok.Value.Should().BeOfType<AuthSessionViewModel>().Subject;
         body.Authenticated.Should().BeTrue();
         body.Workspace.Should().NotBeNull();
         body.Workspace!.Slug.Should().Be("acme");
