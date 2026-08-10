@@ -42,8 +42,9 @@
 | 26 `*_REPORT.md` / `*_AUDIT_PLAN.md` files (Department, Position, Legal Entity, Dev Smoke, Tenant Provisioning, etc.) | `finished/2026-08-03/` through `finished/2026-08-06/` | finished |
 | `Project Management.md` (raw future-feature context, 1 of 2 items still open) | `next/` | pending (not brainstormed) |
 | `2026-08-10-milestone-ownership-and-subtree-access.md` | `finished/2026-08-10/` | finished (2/2 tasks) |
+| `2026-08-10-project-detail-milestone-tree-view-backend.md` | `finished/2026-08-10/` | finished (3/3 tasks) |
 
-See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all 44 files in that folder (kept short here to avoid duplicating the same list twice).
+See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all 45 files in that folder (kept short here to avoid duplicating the same list twice).
 
 ## Notable finished plans (kept from the pre-restructure summary)
 
