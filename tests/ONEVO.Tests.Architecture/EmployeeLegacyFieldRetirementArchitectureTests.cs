@@ -59,6 +59,14 @@ public sealed class EmployeeLegacyFieldRetirementArchitectureTests
             string.Join(", ", offenders));
     }
 
+    // Matches the retired identifiers as whole words only (not as a substring of a longer,
+    // legitimate identifier). Word-boundary regex rather than Contains(), added when
+    // EmployeeListItemResponse.ReportingManagerId - a real, spec-required field resolved from
+    // position reporting structure via employee_hierarchy_closure, not the retired self-FK -
+    // started false-positiving against the old plain Contains("ManagerId") check.
+    private static readonly System.Text.RegularExpressions.Regex RetiredIdentifierPattern =
+        new(@"(?<![A-Za-z])(ManagerId|JobTitleId)(?![A-Za-z])", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     [Fact]
     public void NoApplicationOrInfrastructureCode_ReferencesEmployeeManagerIdOrJobTitleId()
     {
@@ -69,12 +77,7 @@ public sealed class EmployeeLegacyFieldRetirementArchitectureTests
             .SelectMany(project => Directory.GetFiles(
                 FindRepositoryPath("src", project), "*.cs", SearchOption.AllDirectories))
             .Where(path => !path.Replace('\\', '/').Contains("/Migrations/", StringComparison.Ordinal))
-            .Where(path =>
-            {
-                var text = File.ReadAllText(path);
-                return text.Contains("ManagerId", StringComparison.Ordinal) ||
-                       text.Contains("JobTitleId", StringComparison.Ordinal);
-            })
+            .Where(path => RetiredIdentifierPattern.IsMatch(File.ReadAllText(path)))
             .ToList();
 
         Assert.True(offenders.Count == 0,
