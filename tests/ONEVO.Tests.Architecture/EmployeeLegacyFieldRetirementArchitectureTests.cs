@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace ONEVO.Tests.Architecture;
@@ -59,6 +60,13 @@ public sealed class EmployeeLegacyFieldRetirementArchitectureTests
             string.Join(", ", offenders));
     }
 
+    // Word-boundary match: catches the retired Employee.ManagerId/JobTitleId
+    // identifiers on their own (e.g. "employee.ManagerId") without also
+    // matching them as a substring of an unrelated, legitimately named
+    // identifier such as Objective.ReportingManagerId.
+    private static readonly Regex LegacyFieldReference =
+        new(@"\b(ManagerId|JobTitleId)\b", RegexOptions.Compiled);
+
     [Fact]
     public void NoApplicationOrInfrastructureCode_ReferencesEmployeeManagerIdOrJobTitleId()
     {
@@ -69,12 +77,7 @@ public sealed class EmployeeLegacyFieldRetirementArchitectureTests
             .SelectMany(project => Directory.GetFiles(
                 FindRepositoryPath("src", project), "*.cs", SearchOption.AllDirectories))
             .Where(path => !path.Replace('\\', '/').Contains("/Migrations/", StringComparison.Ordinal))
-            .Where(path =>
-            {
-                var text = File.ReadAllText(path);
-                return text.Contains("ManagerId", StringComparison.Ordinal) ||
-                       text.Contains("JobTitleId", StringComparison.Ordinal);
-            })
+            .Where(path => LegacyFieldReference.IsMatch(File.ReadAllText(path)))
             .ToList();
 
         Assert.True(offenders.Count == 0,
