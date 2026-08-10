@@ -595,6 +595,46 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetGeneralSettings_RegularEmployeeAnotherCompany_Returns403_ViaPermissionGate()
+    {
+        // The RequirePermission("legal_entity:update") attribute on this route rejects a
+        // caller without that permission before GetAccessibleByIdAsync's own
+        // accessible-company filter is ever reached - under the current flat RBAC model,
+        // holding legal_entity:update already implies management access
+        // (LegalEntityAccessPolicy.HasManagementAccess), so no HTTP-reachable caller can
+        // exercise the filter's non-management branch. This test documents that the
+        // required "regular user cannot GET another company" behavior still holds today;
+        // GetLegalEntityGeneralSettingsQueryHandlerTests covers the filter itself in
+        // isolation. See LEGAL_ENTITY_CREATE_ACCESS_REPORT.md.
+        var response = await SendAsync(HttpMethod.Get, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{_tenantAPrimaryLegalEntityId}/general-settings",
+            body: null, cookie: _tenantARegularEmployee.SessionCookie);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task UpdateGeneralSettings_RegularEmployeeAnotherCompany_Returns403_ViaPermissionGate()
+    {
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{_tenantAPrimaryLegalEntityId}/general-settings",
+            UpdateBody("Should Not Apply", "XXX", "REG-XXX", [1, 2, 3, 4, 5]),
+            cookie: _tenantARegularEmployee.SessionCookie, csrfToken: _tenantARegularEmployee.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task GetGeneralSettings_ManagerWithLegalEntityUpdate_AnotherCompanyInTenant_Returns200()
+    {
+        var response = await SendAsync(HttpMethod.Get, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{_tenantASecondLegalEntityId}/general-settings",
+            body: null, cookie: _tenantAManager.SessionCookie);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task ManagerWithLegalEntityUpdate_CanUpdate_ButCreateStillRequiresLegalEntityCreate()
     {
         // _tenantAManager was seeded with legal_entity:update and legal_entity:delete but
