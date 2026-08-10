@@ -75,6 +75,9 @@ public interface IFileStorageService
         Guid tenantId,
         Guid fileRecordId,
         TimeSpan expiry,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Opens a readable stream for a file this tenant already legitimately
     /// owns (e.g. one referenced by a domain entity's own FileId column).
     /// This is not a lookup for validating untrusted, client-supplied file
