@@ -178,6 +178,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<PositionAssignment> PositionAssignments => Set<PositionAssignment>();
     public DbSet<EmployeeHierarchyClosure> EmployeeHierarchyClosures => Set<EmployeeHierarchyClosure>();
+    public DbSet<OnboardingDraft> OnboardingDrafts => Set<OnboardingDraft>();
 
     // Lookups
     public DbSet<EmploymentType> EmploymentTypes => Set<EmploymentType>();
