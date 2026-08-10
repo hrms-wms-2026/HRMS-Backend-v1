@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
@@ -79,6 +81,45 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 d.LastSavedStep,
                 d.StartedById,
                 EF.Property<uint>(d, "xmin").ToString()))
+            .ToListAsync(ct);
+
+        return (items, totalCount);
+    }
+
+    public async Task<(IReadOnlyList<DraftListItemResponse> Items, int TotalCount)> ListWithNamesAsync(
+        Guid tenantId, Guid? startedById, int page, int pageSize, CancellationToken ct = default)
+    {
+        var joined =
+            from d in _db.OnboardingDrafts.AsNoTracking()
+            where d.TenantId == tenantId
+            join position in _db.Positions.AsNoTracking() on d.PositionId equals position.Id into posJoin
+            from position in posJoin.DefaultIfEmpty()
+            join dept in _db.Departments.AsNoTracking() on d.DepartmentId equals dept.Id into deptJoin
+            from dept in deptJoin.DefaultIfEmpty()
+            join starter in _db.Users.AsNoTracking() on d.StartedById equals starter.Id into starterJoin
+            from starter in starterJoin.DefaultIfEmpty()
+            select new { d, position, dept, starter };
+
+        if (startedById is not null)
+        {
+            joined = joined.Where(row => row.d.StartedById == startedById.Value);
+        }
+
+        var totalCount = await joined.CountAsync(ct);
+
+        var items = await joined
+            .OrderByDescending(row => row.d.UpdatedAt ?? row.d.CreatedAt).ThenBy(row => row.d.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(row => new DraftListItemResponse(
+                row.d.Id,
+                row.d.EmployeeName,
+                row.position != null ? row.position.Name : null,
+                row.dept != null ? row.dept.Name : null,
+                row.d.Status,
+                row.d.DraftReason,
+                row.d.LastSavedStep,
+                row.starter != null ? row.starter.FirstName + " " + row.starter.LastName : "Unknown"))
             .ToListAsync(ct);
 
         return (items, totalCount);

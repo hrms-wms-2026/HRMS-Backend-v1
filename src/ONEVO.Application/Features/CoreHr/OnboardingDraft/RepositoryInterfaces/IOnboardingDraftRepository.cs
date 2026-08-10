@@ -13,6 +13,10 @@ public interface IOnboardingDraftRepository
     Task<(IReadOnlyList<OnboardingDraftResponse> Items, int TotalCount)> ListAsync(
         Guid tenantId, Guid? startedById, int page, int pageSize, CancellationToken ct = default);
 
+    /// <summary>List view with resolved position/department/started-by names for display.</summary>
+    Task<(IReadOnlyList<DraftListItemResponse> Items, int TotalCount)> ListWithNamesAsync(
+        Guid tenantId, Guid? startedById, int page, int pageSize, CancellationToken ct = default);
+
     Task AddAsync(ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft draft, CancellationToken ct = default);
 
     /// <summary>
