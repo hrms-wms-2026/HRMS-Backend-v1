@@ -20,6 +20,8 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 - `2026-08-07-work-management-objective-subtree.md` sits in this folder (flat, per rule) but its git commits (`2a77bbc`..`b900ec5`, 2026-08-07) show it already shipped — it was never moved to `finished/` or given a status row in `plans/SUMMARY.md`. Not touched during the 2026-08-08 pass since it's outside that session's scope; flagged here so it isn't lost again.
 - `2026-08-10-milestone-ownership-and-subtree-access.md` moved to `plans/finished/2026-08-10/` on 2026-08-10 (both tasks done) — see `plans/SUMMARY.md`.
 
+- `2026-08-10-project-detail-milestone-tree-view-backend.md` — status: pending, not started. Adds `OwnerName`/`ReportingManagerName`/`IsOwner` to `GetObjectiveById` and `GetObjectiveSubtree`, plus `IsAchieved`/`AchievedAt` to `GetObjectiveSubtree`'s node shape (already present on `GetObjectiveById`). Backend half of the frontend's Project Detail milestone tree view redesign — its design doc lives in the frontend repo (`Hrms--Web-application---front-end---v1/docs/superpowers/specs/next/2026-08-10-project-detail-milestone-tree-view-design.md`) since it's one full-stack spec covering both repos. Land this before the companion frontend plan.
+
 ## Open items
 
 - Neither remaining raw-context item above is brainstormed yet. See each one's "Suggested next step" section in `Project Management.md`.
