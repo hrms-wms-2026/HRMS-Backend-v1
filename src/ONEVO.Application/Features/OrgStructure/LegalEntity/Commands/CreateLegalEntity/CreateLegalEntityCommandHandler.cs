@@ -62,7 +62,6 @@ public class CreateLegalEntityCommandHandler
             CountryCode = request.CountryCode.Trim(),
             CurrencyCode = request.CurrencyCode.Trim(),
             TaxRegistrationNumber = request.TaxRegistrationNumber?.Trim(),
-            AddressJson = LegalEntityMapper.SerializeAddress(request.RegisteredBusinessAddress),
             ParentLegalEntityId = request.ParentLegalEntityId,
 
             // A company created through this org-structure flow is never the

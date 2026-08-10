@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 
@@ -9,6 +11,17 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 
 public class EfPositionRepository : IPositionRepository
 {
+    // Names of the partial unique indexes declared in ManagementCoverageRecordConfiguration that
+    // enforce "one active record per covered target per responsibility order". A violation of any
+    // of these under concurrent writes is translated into a CoverageOrderConflictException instead
+    // of surfacing the raw Postgres unique-violation as an unhandled 500.
+    private static readonly string[] CoverageOrderUniqueConstraintNames =
+    [
+        "ix_management_coverage_records_active_position_order",
+        "ix_management_coverage_records_active_department_order",
+        "ix_management_coverage_records_active_company_order"
+    ];
+
     private readonly ApplicationDbContext _db;
 
     public EfPositionRepository(ApplicationDbContext db)
@@ -307,6 +320,11 @@ public class EfPositionRepository : IPositionRepository
         return result;
     }
 
+    public void UpdateReportingHistory(PositionReportingHistory history)
+    {
+        _db.PositionReportingHistories.Update(history);
+    }
+
     public async Task<ManagementCoverageRecord?> GetLockedReportingStructureCoverageAsync(
         Guid tenantId, Guid ownerPositionId, Guid coveredPositionId, CancellationToken ct = default)
     {
@@ -325,9 +343,109 @@ public class EfPositionRepository : IPositionRepository
         return result;
     }
 
+    public async Task<IReadOnlyList<ManagementCoverageRecord>> ListCoverageByOwnerPositionAsync(
+        Guid tenantId, Guid legalEntityId, Guid ownerPositionId, CancellationToken ct = default)
+    {
+        var results = await _db.ManagementCoverageRecords
+            .AsNoTracking()
+            .Where(m =>
+                m.TenantId == tenantId
+                && m.LegalEntityId == legalEntityId
+                && m.OwnerPositionId == ownerPositionId)
+            .OrderBy(m => m.OwnerOrder)
+            .ThenBy(m => m.Id)
+            .ToListAsync(ct);
+
+        return results;
+    }
+
+    public async Task<ManagementCoverageRecord?> GetCoverageRecordByIdAsync(
+        Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        var result = await _db.ManagementCoverageRecords
+            .AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.Id == id)
+            .FirstOrDefaultAsync(ct);
+
+        return result;
+    }
+
+    public void RemoveCoverageRecord(ManagementCoverageRecord record)
+    {
+        _db.ManagementCoverageRecords.Remove(record);
+    }
+
+    public void UpdateCoverageRecord(ManagementCoverageRecord record)
+    {
+        _db.ManagementCoverageRecords.Update(record);
+    }
+
+    public async Task<bool> HasActiveCoverageConflictAsync(
+        Guid tenantId,
+        Guid legalEntityId,
+        string coveredTargetType,
+        Guid? coveredPositionId,
+        Guid? coveredDepartmentId,
+        int ownerOrder,
+        Guid? excludingRecordId = null,
+        CancellationToken ct = default)
+    {
+        var query = _db.ManagementCoverageRecords
+            .AsNoTracking()
+            .Where(m =>
+                m.TenantId == tenantId
+                && m.LegalEntityId == legalEntityId
+                && m.CoveredTargetType == coveredTargetType
+                && m.CoveredPositionId == coveredPositionId
+                && m.CoveredDepartmentId == coveredDepartmentId
+                && m.OwnerOrder == ownerOrder
+                && m.Status == ManagementCoverageRecord.StatusActive);
+
+        if (excludingRecordId is { } excludeId)
+        {
+            query = query.Where(m => m.Id != excludeId);
+        }
+
+        var exists = await query.AnyAsync(ct);
+        return exists;
+    }
+
+    public async Task<PositionAccessTemplate?> GetAccessTemplateByPositionAsync(
+        Guid tenantId, Guid positionId, CancellationToken ct = default)
+    {
+        var result = await _db.Set<PositionAccessTemplate>()
+            .AsNoTracking()
+            .Where(t => t.TenantId == tenantId && t.PositionId == positionId)
+            .FirstOrDefaultAsync(ct);
+
+        return result;
+    }
+
+    public async Task AddAccessTemplateAsync(PositionAccessTemplate template, CancellationToken ct = default)
+    {
+        await _db.Set<PositionAccessTemplate>().AddAsync(template, ct);
+    }
+
+    public void UpdateAccessTemplate(PositionAccessTemplate template)
+    {
+        _db.Set<PositionAccessTemplate>().Update(template);
+    }
+
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
-        var affectedRows = await _db.SaveChangesAsync(ct);
-        return affectedRows;
+        try
+        {
+            var affectedRows = await _db.SaveChangesAsync(ct);
+            return affectedRows;
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation
+        } pgEx && CoverageOrderUniqueConstraintNames.Contains(pgEx.ConstraintName))
+        {
+            throw new CoverageOrderConflictException(
+                "An active coverage record already exists for this covered target at this responsibility level.",
+                ex);
+        }
     }
 }

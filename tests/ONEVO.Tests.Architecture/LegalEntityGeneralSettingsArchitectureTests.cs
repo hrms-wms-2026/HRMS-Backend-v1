@@ -42,7 +42,6 @@ public class LegalEntityGeneralSettingsArchitectureTests
 
         var expected = new[]
         {
-            "AddressJson",
             "CompanyCode",
             "CountryCode",
             "CreatedAt",

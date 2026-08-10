@@ -3,6 +3,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.Commands.ArchivePosition;
 using ONEVO.Application.Features.OrgStructure.Commands.CheckPositionArchive;
 using ONEVO.Application.Features.OrgStructure.Commands.RestorePosition;
+using ONEVO.Application.Features.OrgStructure.OutboxPayloads;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using Xunit;
 
@@ -19,6 +20,7 @@ public sealed class ArchiveRestoreCheckPositionCommandHandlerTests
     private readonly Mock<ILegalEntityRepository> _legalEntitiesMock = new();
     private readonly Mock<ICurrentUser> _currentUserMock = new();
     private readonly Mock<IDateTimeProvider> _dateTimeProviderMock = new();
+    private readonly Mock<IOutboxWriter> _outboxWriterMock = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _legalEntityId = Guid.NewGuid();
     private readonly Guid _positionId = Guid.NewGuid();
@@ -57,7 +59,7 @@ public sealed class ArchiveRestoreCheckPositionCommandHandlerTests
             .ReturnsAsync(0);
 
         var handler = new ArchivePositionCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
 
         var result = await handler.Handle(new ArchivePositionCommand(_legalEntityId, _positionId), CancellationToken.None);
 
@@ -80,7 +82,7 @@ public sealed class ArchiveRestoreCheckPositionCommandHandlerTests
             .ReturnsAsync(1);
 
         var handler = new ArchivePositionCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
 
         var result = await handler.Handle(new ArchivePositionCommand(_legalEntityId, _positionId), CancellationToken.None);
 
@@ -102,7 +104,7 @@ public sealed class ArchiveRestoreCheckPositionCommandHandlerTests
             .ReturnsAsync(0);
 
         var handler = new ArchivePositionCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
 
         await handler.Handle(new ArchivePositionCommand(_legalEntityId, _positionId), CancellationToken.None);
 
@@ -126,13 +128,39 @@ public sealed class ArchiveRestoreCheckPositionCommandHandlerTests
             .ReturnsAsync(0);
 
         var handler = new ArchivePositionCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
 
         var result = await handler.Handle(new ArchivePositionCommand(_legalEntityId, _positionId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value);
         _positionsMock.Verify(p => p.Update(It.Is<PositionEntity>(pos => !pos.IsActive)), Times.Once);
+        _outboxWriterMock.Verify(
+            o => o.EnqueueAsync(OutboxMessageTypes.PositionArchived, It.IsAny<PositionOutboxPayload>(), _tenantId, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Archive_DoesNotEnqueueOutbox_WhenBlocked()
+    {
+        _positionsMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreatePositionEntity(isActive: true));
+        _positionsMock
+            .Setup(p => p.CountActiveReportsToPositionAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        _positionsMock
+            .Setup(p => p.CountHeadDepartmentReferencesAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        var handler = new ArchivePositionCommandHandler(
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
+
+        await handler.Handle(new ArchivePositionCommand(_legalEntityId, _positionId), CancellationToken.None);
+
+        _outboxWriterMock.Verify(
+            o => o.EnqueueAsync(It.IsAny<string>(), It.IsAny<PositionOutboxPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -147,12 +175,12 @@ public sealed class ArchiveRestoreCheckPositionCommandHandlerTests
             .ReturnsAsync(new DepartmentEntity { Id = departmentId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Ops", IsActive = false });
 
         var handler = new RestorePositionCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
 
         var result = await handler.Handle(new RestorePositionCommand(_legalEntityId, _positionId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(409, result.StatusCode);
+        Assert.Equal(422, result.StatusCode);
         _positionsMock.Verify(p => p.Update(It.IsAny<PositionEntity>()), Times.Never);
     }
 
@@ -168,12 +196,15 @@ public sealed class ArchiveRestoreCheckPositionCommandHandlerTests
             .ReturnsAsync(new DepartmentEntity { Id = departmentId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Ops", IsActive = true });
 
         var handler = new RestorePositionCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
 
         var result = await handler.Handle(new RestorePositionCommand(_legalEntityId, _positionId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         _positionsMock.Verify(p => p.Update(It.Is<PositionEntity>(pos => pos.IsActive)), Times.Once);
+        _outboxWriterMock.Verify(
+            o => o.EnqueueAsync(OutboxMessageTypes.PositionRestored, It.IsAny<PositionOutboxPayload>(), _tenantId, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -184,12 +215,15 @@ public sealed class ArchiveRestoreCheckPositionCommandHandlerTests
             .ReturnsAsync(CreatePositionEntity(isActive: true));
 
         var handler = new RestorePositionCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
 
         var result = await handler.Handle(new RestorePositionCommand(_legalEntityId, _positionId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         _positionsMock.Verify(p => p.Update(It.IsAny<PositionEntity>()), Times.Never);
+        _outboxWriterMock.Verify(
+            o => o.EnqueueAsync(It.IsAny<string>(), It.IsAny<PositionOutboxPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]

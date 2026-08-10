@@ -1965,6 +1965,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("invited_by_id");
 
+                    b.Property<Guid?>("PlatformUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("platform_user_id");
+
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("revoked_at");
@@ -1981,6 +1985,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("InvitedById")
                         .HasDatabaseName("ix_platform_user_invites_invited_by_id");
+
+                    b.HasIndex("PlatformUserId")
+                        .HasDatabaseName("ix_platform_user_invites_platform_user_id");
 
                     b.ToTable("platform_user_invites", (string)null);
                 });
@@ -3846,10 +3853,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("AddressJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("address_json");
-
                     b.Property<string>("CompanyCode")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
@@ -4100,8 +4103,23 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_management_coverage_records_tenant_id");
 
+                    b.HasIndex("TenantId", "LegalEntityId", "OwnerOrder")
+                        .IsUnique()
+                        .HasDatabaseName("ix_management_coverage_records_active_company_order")
+                        .HasFilter("covered_target_type = 'Company' AND status = 'active'");
+
                     b.HasIndex("TenantId", "LegalEntityId", "OwnerPositionId")
                         .HasDatabaseName("ix_management_coverage_records_tenant_legal_entity_owner");
+
+                    b.HasIndex("TenantId", "LegalEntityId", "CoveredDepartmentId", "OwnerOrder")
+                        .IsUnique()
+                        .HasDatabaseName("ix_management_coverage_records_active_department_order")
+                        .HasFilter("covered_target_type = 'Department' AND status = 'active'");
+
+                    b.HasIndex("TenantId", "LegalEntityId", "CoveredPositionId", "OwnerOrder")
+                        .IsUnique()
+                        .HasDatabaseName("ix_management_coverage_records_active_position_order")
+                        .HasFilter("covered_target_type = 'Position' AND status = 'active'");
 
                     b.ToTable("management_coverage_records", (string)null);
                 });
@@ -4216,6 +4234,64 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasFilter("legal_entity_id IS NOT NULL");
 
                     b.ToTable("positions", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.PositionAccessTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<Guid>("PositionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("position_id");
+
+                    b.Property<bool>("RequiresApproval")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("requires_approval");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("role_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_position_access_templates");
+
+                    b.HasIndex("PositionId")
+                        .HasDatabaseName("ix_position_access_templates_position_id");
+
+                    b.HasIndex("RoleId")
+                        .HasDatabaseName("ix_position_access_templates_role_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_position_access_templates_tenant_id");
+
+                    b.HasIndex("TenantId", "PositionId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_position_access_templates_tenant_id_position_id");
+
+                    b.ToTable("position_access_templates", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.PositionReportingHistory", b =>
@@ -6089,6 +6165,12 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_platform_user_invites_platform_users_invited_by_id");
+
+                    b.HasOne("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("PlatformUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_platform_user_invites_platform_users_platform_user_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities.PlatformUserRole", b =>
@@ -6375,6 +6457,23 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("ReportsToPositionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_positions_positions_reports_to_position_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.PositionAccessTemplate", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.Position", null)
+                        .WithMany()
+                        .HasForeignKey("PositionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_position_access_templates_positions_position_id");
+
+                    b.HasOne("ONEVO.Domain.Features.Auth.Entities.Role", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_position_access_templates_roles_role_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.PositionReportingHistory", b =>

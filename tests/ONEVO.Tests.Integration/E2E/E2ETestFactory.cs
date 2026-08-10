@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Tenancy;
 
@@ -13,8 +14,10 @@ namespace ONEVO.Tests.Integration.E2E;
 /// <summary>
 /// WebApplicationFactory for the full tenant-provisioning journey. Mirrors
 /// AdminTestFactory (test database) and additionally:
-/// - sets Tenancy:RootDomain so host-based tenant resolution works in tests, and
-/// - swaps IEmailService for a capturing fake so the invite token can be read.
+/// - sets Tenancy:RootDomain so host-based tenant resolution works in tests,
+/// - swaps IEmailService for a capturing fake so the invite token can be read, and
+/// - swaps IObjectStorageAdapter for an in-memory fake, since no real
+///   Cloudflare R2 credentials are available in this test environment.
 /// </summary>
 public class E2ETestFactory : WebApplicationFactory<Program>
 {
@@ -74,6 +77,9 @@ public class E2ETestFactory : WebApplicationFactory<Program>
 
             services.RemoveAll(typeof(IEmailService));
             services.AddSingleton<IEmailService>(_email);
+
+            services.RemoveAll(typeof(IObjectStorageAdapter));
+            services.AddSingleton<IObjectStorageAdapter, InMemoryObjectStorageAdapter>();
         });
     }
 }

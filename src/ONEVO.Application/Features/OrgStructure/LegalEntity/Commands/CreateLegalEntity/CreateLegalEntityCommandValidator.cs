@@ -33,15 +33,5 @@ public class CreateLegalEntityCommandValidator : AbstractValidator<CreateLegalEn
         RuleFor(x => x.ParentLegalEntityId)
             .NotEqual(Guid.Empty).WithMessage("Parent company id must not be empty.")
             .When(x => x.ParentLegalEntityId is not null);
-
-        When(x => x.RegisteredBusinessAddress is not null, () =>
-        {
-            RuleFor(x => x.RegisteredBusinessAddress!.Line1).MaximumLength(255);
-            RuleFor(x => x.RegisteredBusinessAddress!.Line2).MaximumLength(255);
-            RuleFor(x => x.RegisteredBusinessAddress!.City).MaximumLength(100);
-            RuleFor(x => x.RegisteredBusinessAddress!.State).MaximumLength(100);
-            RuleFor(x => x.RegisteredBusinessAddress!.PostalCode).MaximumLength(20);
-            RuleFor(x => x.RegisteredBusinessAddress!.Country).MaximumLength(100);
-        });
     }
 }

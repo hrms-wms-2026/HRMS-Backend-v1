@@ -1,5 +1,3 @@
-using ONEVO.Application.Features.OrgStructure.DTOs;
-
 namespace ONEVO.Api.Contracts.OrgStructure.LegalEntities;
 
 // Full-field PUT payload for the General Settings screen. Deliberately
@@ -24,5 +22,4 @@ public record UpdateLegalEntityGeneralSettingsRequest(
     string DefaultLanguage,
     string DateFormat,
     string TimeFormat,
-    string Status,
-    LegalEntityAddressDto? RegisteredBusinessAddress);
+    string Status);
