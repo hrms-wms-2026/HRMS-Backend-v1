@@ -219,6 +219,130 @@ public sealed class EfLegalEntityRepositoryTests
     }
 
     [Fact]
+    public async Task GetAccessibleByIdAsync_ManagementAccess_ReturnsEntity_EvenWhenInactive()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var entity = CreateLegalEntity(tenantId, "Inactive Co");
+        entity.IsActive = false;
+        db.LegalEntities.Add(entity);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalEntityRepository(db);
+
+        var result = await repository.GetAccessibleByIdAsync(
+            tenantId, entity.Id, Guid.NewGuid(), hasManagementAccess: true, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(entity.Id, result.Id);
+    }
+
+    [Fact]
+    public async Task GetAccessibleByIdAsync_ManagementAccess_ReturnsNull_WhenIdBelongsToAnotherTenant()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var entity = CreateLegalEntity(otherTenantId, "Other Tenant Co");
+        db.LegalEntities.Add(entity);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalEntityRepository(db);
+
+        var result = await repository.GetAccessibleByIdAsync(
+            tenantId, entity.Id, Guid.NewGuid(), hasManagementAccess: true, CancellationToken.None);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetAccessibleByIdAsync_RegularUser_ReturnsOwnActiveEntity()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var own = CreateLegalEntity(tenantId, "Own Co");
+        db.LegalEntities.Add(own);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.Employees.Add(CreateActiveEmployee(tenantId, userId, own.Id));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalEntityRepository(db);
+
+        var result = await repository.GetAccessibleByIdAsync(
+            tenantId, own.Id, userId, hasManagementAccess: false, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(own.Id, result.Id);
+    }
+
+    [Fact]
+    public async Task GetAccessibleByIdAsync_RegularUser_ReturnsNull_WhenRequestingAnotherCompany()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var own = CreateLegalEntity(tenantId, "Own Co");
+        var other = CreateLegalEntity(tenantId, "Other Co");
+        db.LegalEntities.AddRange(own, other);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.Employees.Add(CreateActiveEmployee(tenantId, userId, own.Id));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalEntityRepository(db);
+
+        var result = await repository.GetAccessibleByIdAsync(
+            tenantId, other.Id, userId, hasManagementAccess: false, CancellationToken.None);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetAccessibleByIdAsync_RegularUser_ReturnsNull_WhenOwnEntityIsInactive()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var own = CreateLegalEntity(tenantId, "Own Co");
+        own.IsActive = false;
+        db.LegalEntities.Add(own);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.Employees.Add(CreateActiveEmployee(tenantId, userId, own.Id));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalEntityRepository(db);
+
+        var result = await repository.GetAccessibleByIdAsync(
+            tenantId, own.Id, userId, hasManagementAccess: false, CancellationToken.None);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetAccessibleByIdAsync_RegularUser_NoEmployeeRow_ReturnsNull()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var entity = CreateLegalEntity(tenantId, "Some Co");
+        db.LegalEntities.Add(entity);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalEntityRepository(db);
+
+        var result = await repository.GetAccessibleByIdAsync(
+            tenantId, entity.Id, Guid.NewGuid(), hasManagementAccess: false, CancellationToken.None);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public async Task Update_PersistsChangesToExistingRow()
     {
         await using var db = BuildInMemoryDb();
