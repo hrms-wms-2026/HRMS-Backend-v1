@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 using ONEVO.Application.Features.OrgStructure.Mappers;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure;
 
 namespace ONEVO.Application.Features.OrgStructure.Queries.GetLegalEntityGeneralSettings;
 
@@ -29,7 +30,9 @@ public class GetLegalEntityGeneralSettingsQueryHandler
         if (tenantId == Guid.Empty)
             return Result<LegalEntityGeneralSettingsResponse>.Forbidden("Tenant context missing.");
 
-        var entity = await _legalEntities.GetByIdForTenantAsync(tenantId, request.LegalEntityId, ct);
+        var hasManagementAccess = LegalEntityAccessPolicy.HasManagementAccess(_currentUser);
+        var entity = await _legalEntities.GetAccessibleByIdAsync(
+            tenantId, request.LegalEntityId, _currentUser.UserId, hasManagementAccess, ct);
         if (entity is null)
             return Result<LegalEntityGeneralSettingsResponse>.NotFound("Company not found.");
 
