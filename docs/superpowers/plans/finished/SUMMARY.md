@@ -2,7 +2,7 @@
 
 **Purpose:** Completed plans and point-in-time audit/fix reports. Everything here was moved from the flat `plans/` folder on 2026-08-06 as part of the `finished/` + `next/` restructure (see `docs/superpowers/rules/FILE_CREATION_RULES.md`). Files were **not** re-split or content-edited during the move — only relocated, per the migration rule (existing files get moved + status-tagged, not retroactively restructured into parts). The `plans/kajaa/` personal folder was also dissolved into this structure the same day — its 3 finished plans now live here too (see "From `kajaa/`" below).
 
-**Last updated:** 2026-08-09
+**Last updated:** 2026-08-10
 
 ## Layout: date subfolders
 
@@ -80,6 +80,9 @@ Each entry's **Related:** line is a wiki-link (`[[bare-filename]]`, no extension
 
 **`2026-08-09/`** (1)
 - `2026-08-08-work-management-frontend-blocking-endpoints.md` — Related: the frontend repo's `Hrms--Web-application---front-end---v1/docs/superpowers/specs/next/2026-08-08-work-management-projects-milestones-design.md` (the consuming design, §6). Two same-module additions requested by the frontend and shipped same-session on direct user request (no separate brainstorm/spec, since both items were already fully specified in the request itself): (1) new `GET /api/v1/work/project-categories` endpoint (`ProjectCategoriesController` + `ListProjectCategoriesQuery`/Handler + `IProjectCategoryRepository.GetAllForTenantAsync`), (2) `isAchieved`/`achievedAt` added to `GET /work/projects/mine`'s response (`ProjectListItemResponse`/`ProjectListItemViewModel` + mappers). `dotnet build` clean (0 warnings/errors); `ListProjectCategoriesQueryHandlerTests.cs` added, 160/160 WorkManagement unit tests passing. Postman docs updated: new `List Project Categories.md`, `isAchieved`/`achievedAt` backfilled onto `List Projects.md` and `Get Project.md` (the latter was already stale before this change — its endpoint already returned these fields).
+
+**`2026-08-10/`** (1)
+- `2026-08-10-milestone-ownership-and-subtree-access.md` — Related: [[2026-08-10-milestone-ownership-and-subtree-access-design]] (its spec, in `specs/finished/2026-08-10/`); the frontend repo's `Hrms--Web-application---front-end---v1/docs/superpowers/plans/finished/2026-08-10/2026-08-10-milestone-cards-and-tree-view/` (the consuming feature this unblocks). Backend half of a cross-repo feature: (1) `IsOwner` added to `GetMyProjectMilestones`'s response, computed server-side the same way `Project.IsLead` is; (2) `GetObjectiveSubtree` loosened from Head-only to the membership-fallback pattern `GetObjectiveById` already uses. Both tasks executed 2026-08-10, one commit per task, full unit suite green after each (1694/1694 final). Self-review during plan-writing caught a variable-name collision (`parent` reused in two scopes) in the drafted `GetObjectiveSubtreeQueryHandler` code before it was ever run — fixed in the plan doc itself, so the executed code never hit it.
 
 ## Notable plans (kept from earlier summary revisions)
 
