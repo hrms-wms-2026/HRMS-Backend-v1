@@ -23,3 +23,20 @@ When a `workflow/` report explicitly states it is code-verified (for example `au
 Only `project_ core/` documents (the architecture docs, the tables file) get content edits during doc-sync work. Other folders (`plans/`, `workflow/`) only receive **new** files (new plans, new workflow reports) — an existing file there is only changed if the user explicitly asks for that specific file to change.
 
 **Origin:** established 2026-08-03, see `docs/superpowers/specs/2026-08-03-doc-audit-and-process-setup-design.md`.
+
+## 6. Every finished API endpoint gets a plain-Markdown doc under `docs/postman-request/`
+
+Do **not** maintain `postman/collections/**/*.request.yaml` files for new work — that was tried for one endpoint (`Work Management/Create Project`) and dropped the same day in favor of this single lighter-weight format. `docs/postman-request/` is the one place API request/response shape is documented going forward.
+
+- Location: `docs/postman-request/<Module>/<Endpoint Name>.md` — one `.md` file per endpoint. `<Module>` matches the module/feature name (e.g. `Work Management`, `Password`, `Invitations`).
+- Required sections in every file, in this order: method + route, auth/permission/idempotency line, description, request body (as a JSON-shaped example even when the real transport is form-data — annotate the content type), response body example, an error-status table, and a "Source" section linking the controller/handler files and the originating plan.
+- This is committed to git normally.
+- Started 2026-08-03 with one example (`Work Management/Create Project.md`) rather than backfilled for every pre-existing endpoint — grows forward from here; backfilling old endpoints is a separate, explicitly-requested task, not implied by this rule.
+
+**Origin:** established 2026-08-03, per user request. Superseded an earlier same-day rule requiring a `postman/collections/` `.request.yaml` per endpoint — the user decided the yaml/Postman-app format was unnecessary overhead and this Markdown-only format is now the single source.
+
+## 7. `docs/superpowers/plans/` and `docs/superpowers/specs/` follow `FILE_CREATION_RULES.md`
+
+Both folders are organized into `finished/` (completed) and `next/` (pending + raw future-feature context) — no author-based subfolder (an earlier `plans/kajaa/` personal folder was dissolved into `finished/`). Every plan/design has a `pending`/`finished` status tracked in its folder's `SUMMARY.md`. New files that don't fit in one (~300-line target, but the real trigger is whether one task fits in one file) are split by independent sub-task into `<folder>/next/<date>-<topic>/part-1.md`, `part-2.md`, etc. — each part must be fully self-contained. This splitting rule is for new file creation only; existing files are migrated by moving + status-tagging, never retroactively split. Full detail in `FILE_CREATION_RULES.md`.
+
+**Origin:** established 2026-08-06, per user request; extended from `plans/` to also cover `specs/` the same day.

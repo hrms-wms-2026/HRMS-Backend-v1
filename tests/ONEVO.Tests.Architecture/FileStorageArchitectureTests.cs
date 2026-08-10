@@ -80,7 +80,11 @@ public class FileStorageArchitectureTests
         {
             nameof(IObjectStorageAdapter),
             "CloudflareR2ObjectStorageAdapter",
-            "FileStorageService"
+            // Fully qualified: a bare "FileStorageService" fragment also matches the
+            // sanctioned IFileStorageService interface name (every legitimate upload
+            // feature handler references it), which would make this check reject the
+            // very pattern it is meant to encourage.
+            "ONEVO.Infrastructure.Services.Storage.File.FileStorageService"
         };
 
         var offenders = candidateTypes

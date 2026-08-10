@@ -17,6 +17,17 @@ public interface ILegalEntityRepository
     Task<IReadOnlyList<LegalEntity>> ListAccessibleAsync(
         Guid tenantId, Guid userId, bool hasManagementAccess, bool includeInactive, CancellationToken ct = default);
 
+    /// <summary>
+    /// Returns the single legal entity identified by <paramref name="id"/> if the caller
+    /// may access it: any tenant entity (active or not) when
+    /// <paramref name="hasManagementAccess"/> is true, otherwise only the caller's own
+    /// active employee's legal entity, and only when that entity is itself active and
+    /// equal to <paramref name="id"/>. Null in every other case (unknown id, wrong
+    /// tenant, or not the caller's own company).
+    /// </summary>
+    Task<LegalEntity?> GetAccessibleByIdAsync(
+        Guid tenantId, Guid id, Guid userId, bool hasManagementAccess, CancellationToken ct = default);
+
     Task<LegalEntity?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     Task<LegalEntity?> GetPrimaryByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
