@@ -11,6 +11,16 @@ public class OnboardingDraftConfiguration : IEntityTypeConfiguration<OnboardingD
         builder.ToTable("onboarding_drafts");
         builder.HasKey(d => d.Id);
 
+        // Concurrency token mapped to the PostgreSQL system column xmin, which already exists
+        // on every table - not a real column to add. The migration this produces is hand-edited
+        // to a no-op (see AddOnboardingDraftXminConcurrencyToken); the provider version pinned
+        // here does not expose the UseXminAsConcurrencyToken() convenience method.
+        builder.Property<uint>("xmin")
+            .HasColumnName("xmin")
+            .HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
+
         builder.Property(d => d.EmployeeName).HasMaxLength(200).IsRequired();
         builder.Property(d => d.WorkEmail).HasMaxLength(320).IsRequired();
         builder.Property(d => d.EmploymentType).HasMaxLength(30).IsRequired();
