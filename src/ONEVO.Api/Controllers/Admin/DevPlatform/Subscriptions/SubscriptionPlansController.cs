@@ -7,6 +7,7 @@ using ONEVO.Application.Features.DevPlatform.Subscription.Commands.ArchiveSubscr
 using ONEVO.Application.Features.DevPlatform.Subscription.Commands.CreateSubscriptionPlan;
 using ONEVO.Application.Features.DevPlatform.Subscription.Commands.UpdateSubscriptionPlan;
 using ONEVO.Application.Features.DevPlatform.Subscription.DTOs.Requests;
+using ONEVO.Application.Features.DevPlatform.Subscription.Queries.GetSubscriptionPlan;
 using ONEVO.Application.Features.DevPlatform.Subscription.Queries.ListSubscriptionPlans;
 
 namespace ONEVO.Api.Controllers.Admin.DevPlatform.Subscriptions;
@@ -25,6 +26,17 @@ public sealed class SubscriptionPlansController : ControllerBase
     public async Task<IActionResult> List(CancellationToken ct)
     {
         var result = await _mediator.Send(new ListSubscriptionPlansQuery(), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("{id:guid}")]
+    [Authorize(Policy = "AdminPolicy")]
+    [RequirePlatformPermission(PlatformPermissionCatalog.SubscriptionsRead)]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetSubscriptionPlanQuery(id), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

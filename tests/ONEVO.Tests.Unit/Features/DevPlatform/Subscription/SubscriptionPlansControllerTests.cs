@@ -22,6 +22,7 @@ public class SubscriptionPlansControllerTests
 
     [Theory]
     [InlineData(nameof(SubscriptionPlansController.List), PlatformPermissionCatalog.SubscriptionsRead)]
+    [InlineData(nameof(SubscriptionPlansController.GetById), PlatformPermissionCatalog.SubscriptionsRead)]
     [InlineData(nameof(SubscriptionPlansController.Create), PlatformPermissionCatalog.SubscriptionsManage)]
     [InlineData(nameof(SubscriptionPlansController.Update), PlatformPermissionCatalog.SubscriptionsManage)]
     [InlineData(nameof(SubscriptionPlansController.Archive), PlatformPermissionCatalog.SubscriptionsManage)]
@@ -48,5 +49,16 @@ public class SubscriptionPlansControllerTests
         var httpGet = method!.GetCustomAttribute<HttpGetAttribute>();
         Assert.NotNull(httpGet);
         Assert.Null(httpGet!.Template);
+    }
+
+    [Fact]
+    public void GetById_HasHttpGetAttribute_WithIdTemplate()
+    {
+        var method = typeof(SubscriptionPlansController).GetMethod(nameof(SubscriptionPlansController.GetById));
+        Assert.NotNull(method);
+
+        var httpGet = method!.GetCustomAttribute<HttpGetAttribute>();
+        Assert.NotNull(httpGet);
+        Assert.Equal("{id:guid}", httpGet!.Template);
     }
 }
