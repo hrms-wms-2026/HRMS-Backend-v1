@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Commands.ExchangeActivationCode;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Commands.GenerateActivationCode;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Commands.RefreshTrayToken;
+using ONEVO.Application.Features.Monitoring.TrayActivation.Commands.RevokeDevice;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.TrayActivation;
 
@@ -70,6 +71,23 @@ public class MonitoringActivationController : ControllerBase
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
         return Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Revoke the calling device's session and deactivate it. The device id is
+    /// read from the authenticated bearer token, never from the request body.
+    /// Called by the tray app on sign-out.
+    /// </summary>
+    [HttpPost("revoke")]
+    [Authorize(Policy = "TrayDevicePolicy")]
+    public async Task<IActionResult> Revoke(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new RevokeDeviceCommand(), ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return NoContent();
     }
 
     public record ExchangeRequest(

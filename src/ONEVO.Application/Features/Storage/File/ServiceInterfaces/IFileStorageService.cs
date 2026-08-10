@@ -67,6 +67,17 @@ public interface IFileStorageService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Returns a time-limited pre-signed URL granting read access to the stored file.
+    /// Feature handlers must call this instead of using IObjectStorageAdapter directly.
+    /// Returns 404 when the file record does not exist within the tenant.
+    /// </summary>
+    Task<Result<string>> GetSignedUrlAsync(
+        Guid tenantId,
+        Guid fileRecordId,
+        TimeSpan expiry,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Opens a readable stream for a file this tenant already legitimately
     /// owns (e.g. one referenced by a domain entity's own FileId column).
     /// This is not a lookup for validating untrusted, client-supplied file

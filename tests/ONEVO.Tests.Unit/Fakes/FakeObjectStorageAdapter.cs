@@ -42,4 +42,9 @@ public sealed class FakeObjectStorageAdapter : IObjectStorageAdapter
     {
         return Task.FromResult(ObjectExistsResult);
     }
+
+    public Task<string> GetSignedUrlAsync(string objectKey, TimeSpan expiry, CancellationToken ct = default)
+    {
+        return Task.FromResult($"https://fake-r2.example.com/{objectKey}?expires={expiry.TotalSeconds}");
+    }
 }

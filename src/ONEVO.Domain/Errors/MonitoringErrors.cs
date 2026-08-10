@@ -22,4 +22,36 @@ public static class MonitoringErrors
 
     public const string SnapshotFutureTime =
         "Snapshot captured_at cannot be in the future.";
+
+    public const string ScreenshotCapabilityDisabled =
+        "Screenshot capture is not enabled for this employee.";
+
+    public const string AppTrackingDisabledCode = "monitoring.app_tracking_disabled";
+    public const string AppTrackingDisabled =
+        "Application tracking is not enabled for this employee.";
+
+    public const string DeviceTrackingDisabledCode = "monitoring.device_tracking_disabled";
+    public const string DeviceTrackingDisabled =
+        "Device state tracking is not enabled for this employee.";
+
+    public const string AgentDeviceNotFound =
+        "Agent device not found.";
+
+    public const string AgentDeviceNotActive =
+        "Agent device is not currently active.";
+
+    public const string AgentCommandNotFound =
+        "Agent command not found.";
+
+    public const string AgentCommandDeviceMismatch =
+        "Command does not belong to this device.";
+
+    public const string AgentCommandAlreadySettled =
+        "Command is no longer in a pending state.";
+
+    public const string AgentCommandExpired =
+        "Command has expired.";
+
+    public const string EvidenceAssetNotFound =
+        "Evidence asset not found.";
 }

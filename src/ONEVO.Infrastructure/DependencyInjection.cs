@@ -77,11 +77,17 @@ using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.WorkSessions.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.AppUsage.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.DeviceState.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.TrayActivation;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.CheckIn;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.WorkSessions;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.ActivityMonitoring;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.AppUsage;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.DeviceState;
 using ONEVO.Infrastructure.Services.Auth.Login;
 using ONEVO.Infrastructure.Services.Monitoring.TrayActivation;
 using ONEVO.Infrastructure.Services.Monitoring.CheckIn;
@@ -280,12 +286,26 @@ public static class DependencyInjection
         services.AddScoped<ICheckInRepository, EfCheckInRepository>();
         services.AddScoped<ITrayCurrentDevice, TrayCurrentDeviceService>();
 
+        // Monitoring - Work Sessions (clock-in/break/clock-out)
+        services.AddScoped<IWorkSessionRepository, EfWorkSessionRepository>();
+
         // Monitoring - Activity (keyboard/mouse tracking)
         services.AddScoped<IActivitySnapshotRepository, EfActivitySnapshotRepository>();
         services.AddScoped<IActivityRawBufferRepository, EfActivityRawBufferRepository>();
+        services.AddScoped<IAppUsageSnapshotRepository, EfAppUsageSnapshotRepository>();
+        services.AddScoped<IDeviceStateSnapshotRepository, EfDeviceStateSnapshotRepository>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();
+
+        // Monitoring - Screenshots
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IEvidenceAssetRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfEvidenceAssetRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IAgentCommandRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfAgentCommandRepository>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();

@@ -185,6 +185,12 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
                     DateTimeOffset.UtcNow)));
         }
 
+        public Task<Result<string>> GetSignedUrlAsync(
+            Guid tenantId,
+            Guid fileRecordId,
+            TimeSpan expiry,
+            CancellationToken ct = default)
+            => Task.FromResult(Result<string>.Success($"https://fake-r2.example.com/{fileRecordId}"));
         public Task<Result<FileStreamDto>> OpenReadAsync(
             Guid tenantId,
             Guid fileId,
