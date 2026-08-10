@@ -21,6 +21,7 @@ public class SubscriptionPlansControllerTests
     }
 
     [Theory]
+    [InlineData(nameof(SubscriptionPlansController.List), PlatformPermissionCatalog.SubscriptionsRead)]
     [InlineData(nameof(SubscriptionPlansController.GetById), PlatformPermissionCatalog.SubscriptionsRead)]
     [InlineData(nameof(SubscriptionPlansController.Create), PlatformPermissionCatalog.SubscriptionsManage)]
     [InlineData(nameof(SubscriptionPlansController.Update), PlatformPermissionCatalog.SubscriptionsManage)]
@@ -37,6 +38,17 @@ public class SubscriptionPlansControllerTests
         var attr = method.GetCustomAttribute<RequirePlatformPermissionAttribute>();
         Assert.NotNull(attr);
         Assert.Equal(expectedPermission, attr!.Permission);
+    }
+
+    [Fact]
+    public void List_HasHttpGetAttribute_WithNoTemplate()
+    {
+        var method = typeof(SubscriptionPlansController).GetMethod(nameof(SubscriptionPlansController.List));
+        Assert.NotNull(method);
+
+        var httpGet = method!.GetCustomAttribute<HttpGetAttribute>();
+        Assert.NotNull(httpGet);
+        Assert.Null(httpGet!.Template);
     }
 
     [Fact]
