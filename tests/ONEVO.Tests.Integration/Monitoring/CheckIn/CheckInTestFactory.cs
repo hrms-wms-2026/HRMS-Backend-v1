@@ -184,5 +184,11 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
                     "available",
                     DateTimeOffset.UtcNow)));
         }
+
+        public Task<Result<FileStreamDto>> OpenReadAsync(
+            Guid tenantId,
+            Guid fileId,
+            CancellationToken ct = default)
+            => Task.FromResult(Result<FileStreamDto>.NotFound("File not found."));
     }
 }

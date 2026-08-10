@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using ONEVO.Application.Common.Models;
+using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Infrastructure.Configuration;
 using ONEVO.Infrastructure.Services.Storage.File;
 using ONEVO.Tests.Unit.Fakes;
@@ -246,5 +248,81 @@ public class FileStorageServiceTests
 
         Assert.DoesNotContain("secretAccessKey", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("accessKeyId", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task OpenReadAsync_FileNotFound_ReturnsNotFound()
+    {
+        var reservations = new FakeFileUploadReservationRepository();
+        var quota = new FakeStorageQuotaService();
+        var service = CreateService(
+            reservations, new FakeFileRecordRepository(), quota, new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var result = await service.OpenReadAsync(Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task OpenReadAsync_Success_ReturnsStreamAndContentType()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileRecords = new FakeFileRecordRepository();
+        var record = new FileRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            StorageKey = "tenants/logo/photo.png",
+            OriginalFileName = "photo.png",
+            SafeFileName = "photo.png",
+            ContentType = "image/png",
+            FileSizeBytes = 1024,
+            ChecksumSha256 = new string('a', 64),
+            UploadedByUserId = Guid.NewGuid(),
+            Status = FileRecordStatus.PendingScan,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        await fileRecords.AddAsync(record, CancellationToken.None);
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), fileRecords, new FakeStorageQuotaService(),
+            new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var result = await service.OpenReadAsync(tenantId, record.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("image/png", result.Value!.ContentType);
+        Assert.NotNull(result.Value!.Content);
+    }
+
+    [Fact]
+    public async Task OpenReadAsync_ObjectStorageFailure_Returns502()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileRecords = new FakeFileRecordRepository();
+        var record = new FileRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            StorageKey = "tenants/logo/photo.png",
+            OriginalFileName = "photo.png",
+            SafeFileName = "photo.png",
+            ContentType = "image/png",
+            FileSizeBytes = 1024,
+            ChecksumSha256 = new string('a', 64),
+            UploadedByUserId = Guid.NewGuid(),
+            Status = FileRecordStatus.PendingScan,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        await fileRecords.AddAsync(record, CancellationToken.None);
+        var objectStorage = new FakeObjectStorageAdapter { ShouldFailGet = true };
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), fileRecords, new FakeStorageQuotaService(),
+            objectStorage, new FakeUnitOfWork());
+
+        var result = await service.OpenReadAsync(tenantId, record.Id, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(502, result.StatusCode);
     }
 }

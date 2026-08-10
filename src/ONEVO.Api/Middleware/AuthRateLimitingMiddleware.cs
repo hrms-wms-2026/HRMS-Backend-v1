@@ -54,6 +54,9 @@ public sealed class AuthRateLimitingMiddleware
         new("/admin/v1/auth/reset-password", "ip", null, 10, TimeSpan.FromMinutes(15)),
         new("/admin/v1/auth/reset-password", "token", "token", 5, TimeSpan.FromMinutes(15)),
 
+        new("/admin/v1/auth/accept-invite", "ip", null, 10, TimeSpan.FromMinutes(15)),
+        new("/admin/v1/auth/accept-invite", "token", "token", 5, TimeSpan.FromMinutes(15)),
+
         new("/api/v1/auth/invitations", "ip", null, 20, TimeSpan.FromMinutes(15), PrefixMatch: true),
         new("/api/v1/auth/invitations", "path", null, 5, TimeSpan.FromMinutes(15), PrefixMatch: true)
     ];

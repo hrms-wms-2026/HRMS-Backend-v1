@@ -28,6 +28,9 @@ public class Result<T>
 
     public static Result<T> Conflict(string error)
         => new(false, default, error, 409);
+
+    public static Result<T> UnprocessableEntity(string error)
+        => new(false, default, error, 422);
 }
 
 public class Result
@@ -56,4 +59,7 @@ public class Result
 
     public static Result Conflict(string error)
         => new(false, error, 409);
+
+    public static Result UnprocessableEntity(string error)
+        => new(false, error, 422);
 }

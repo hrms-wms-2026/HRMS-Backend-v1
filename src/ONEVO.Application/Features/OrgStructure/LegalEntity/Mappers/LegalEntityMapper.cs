@@ -1,5 +1,4 @@
 using System.Text.Json;
-using ONEVO.Application.Features.OrgStructure.DTOs;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 
@@ -43,8 +42,7 @@ public static class LegalEntityMapper
             entity.DefaultLanguage,
             entity.DateFormat,
             entity.TimeFormat,
-            entity.IsActive ? "active" : "inactive",
-            ParseAddress(entity.AddressJson));
+            entity.IsActive ? "active" : "inactive");
     }
 
     public static IReadOnlyList<int> ParseStandardWorkingDays(string standardWorkingDaysJson)
@@ -55,17 +53,5 @@ public static class LegalEntityMapper
     public static string SerializeStandardWorkingDays(IEnumerable<int> days)
     {
         return JsonSerializer.Serialize(days.Distinct().OrderBy(d => d).ToList());
-    }
-
-    public static LegalEntityAddressDto? ParseAddress(string? addressJson)
-    {
-        return string.IsNullOrWhiteSpace(addressJson)
-            ? null
-            : JsonSerializer.Deserialize<LegalEntityAddressDto>(addressJson);
-    }
-
-    public static string? SerializeAddress(LegalEntityAddressDto? address)
-    {
-        return address is null ? null : JsonSerializer.Serialize(address);
     }
 }

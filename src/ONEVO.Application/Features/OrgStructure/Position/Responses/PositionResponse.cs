@@ -14,4 +14,6 @@ public record PositionResponse(
     DateTimeOffset? UpdatedAt,
     string? DepartmentName,
     string? ReportsToPositionName,
-    int ChildCount);
+    int ChildCount,
+    int? CurrentOccupancy,
+    bool CurrentOccupancyCheckSupported);

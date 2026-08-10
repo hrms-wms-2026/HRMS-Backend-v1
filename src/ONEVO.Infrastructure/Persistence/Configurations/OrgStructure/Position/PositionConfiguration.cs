@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using DomainPosition = ONEVO.Domain.Features.OrgStructure.Entities.Position;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.OrgStructure;
 
-public class PositionConfiguration : IEntityTypeConfiguration<Position>
+public class PositionConfiguration : IEntityTypeConfiguration<DomainPosition>
 {
-    public void Configure(EntityTypeBuilder<Position> builder)
+    public void Configure(EntityTypeBuilder<DomainPosition> builder)
     {
         builder.ToTable("positions");
         builder.HasKey(p => p.Id);
