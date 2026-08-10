@@ -14,18 +14,19 @@ Returns `{id}`'s parent Objective detail (if any) plus its full nested descendan
 
 ```json
 {
-  "parentObjective": { "id": "guid", "projectId": "guid", "parentObjectiveId": "guid|null", "isDefault": false, "title": "string", "description": "string|null", "ownerId": "guid", "reportingManagerId": "guid|null", "createdById": "guid", "startDate": "date", "endDate": "date", "progress": 0, "actualHours": null, "allocatedHours": 40, "completedHours": 0, "isActive": true, "createdAt": "datetime", "updatedAt": "datetime|null" } | null,
+  "parentObjective": { "id": "guid", "projectId": "guid", "parentObjectiveId": "guid|null", "isDefault": false, "title": "string", "description": "string|null", "ownerId": "guid", "reportingManagerId": "guid|null", "createdById": "guid", "startDate": "date", "endDate": "date", "progress": 0, "actualHours": null, "allocatedHours": 40, "completedHours": 0, "isActive": true, "isAchieved": false, "achievedAt": "datetime|null", "createdAt": "datetime", "updatedAt": "datetime|null", "ownerName": "string|null", "reportingManagerName": "string|null", "isOwner": false } | null,
   "objective": {
     "id": "guid", "projectId": "guid", "parentObjectiveId": "guid|null", "isDefault": false, "title": "string", "description": "string|null",
     "ownerId": "guid", "reportingManagerId": "guid|null", "createdById": "guid", "startDate": "date", "endDate": "date",
     "progress": 0, "actualHours": null, "allocatedHours": 40, "completedHours": 0, "isActive": true,
     "createdAt": "datetime", "updatedAt": "datetime|null",
+    "ownerName": "string|null", "reportingManagerName": "string|null", "isOwner": false, "isAchieved": false, "achievedAt": "datetime|null",
     "children": []
   }
 }
 ```
 
-`parentObjective` is `null` when `{id}` has no parent (i.e., it's the Project's Default Objective). Each entry in `children` has the same shape as `objective`, recursively.
+`parentObjective` is `null` when `{id}` has no parent (i.e., it's the Project's Default Objective). Each entry in `children` has the same shape as `objective`, recursively. Added 2026-08-10: `ownerName`/`reportingManagerName` (resolved once across every node in the project, `null` if not found), `isOwner` (per-node, true only when the caller is that specific node's owner — not inherited from an ancestor), and `isAchieved`/`achievedAt` (previously only returned by the single Get Objective endpoint, now also on every subtree node) — added for the Project Detail milestone tree view.
 
 ## Errors
 
