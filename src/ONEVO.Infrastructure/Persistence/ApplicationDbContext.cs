@@ -176,6 +176,8 @@ public class ApplicationDbContext : DbContext
 
     // CoreHR
     public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<PositionAssignment> PositionAssignments => Set<PositionAssignment>();
+    public DbSet<EmployeeHierarchyClosure> EmployeeHierarchyClosures => Set<EmployeeHierarchyClosure>();
 
     // Lookups
     public DbSet<EmploymentType> EmploymentTypes => Set<EmploymentType>();
