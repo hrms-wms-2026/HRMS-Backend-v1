@@ -37,5 +37,5 @@ public static class ObjectiveViewModelMapper
         dto.OwnerId, dto.OwnerName, dto.ReportingManagerId, dto.ReportingManagerName,
         dto.StartDate, dto.EndDate, dto.AllocatedHours, dto.CompletedHours,
         dto.ObjectiveIsActive, dto.IsAchieved, dto.AchievedAt,
-        dto.MembershipIsActive, dto.MembershipRemovedAt);
+        dto.MembershipIsActive, dto.MembershipRemovedAt, dto.IsOwner);
 }
