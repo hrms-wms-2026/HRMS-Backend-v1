@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
@@ -10,6 +11,7 @@ using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
@@ -84,6 +86,7 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
         });
 
         await WaitForSeedersAsync();
+        await GrantCoreHrStorageAllowanceAsync();
 
         var loginResponse = await SendAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
             new { email = "test_admin@onevo.dev", password = "test_password_123" });
@@ -416,15 +419,114 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SetLogo_RouteDoesNotExist_ByDesign()
+    public async Task SetLogo_ValidImage_UploadsAndReturnsFileId()
     {
-        // Part 2C deliberately does not expose PUT /logo - see the report §5.
-        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
-            $"/api/v1/org/legal-entities/{_tenantAPrimaryLegalEntityId}/logo",
-            new { fileId = Guid.NewGuid() },
+        var company = await CreateCompanyAsync(_tenantA, "Logo Upload Co", "LOGOU1", "REG-LOGOU1");
+
+        using var content = new MultipartFormDataContent();
+        var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }; // PNG magic bytes + padding
+        var fileContent = new ByteArrayContent(bytes);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "logo", "logo.png");
+
+        var response = await SendMultipartAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/logo", content,
             cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
 
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("logoFileId").ValueKind.Should().NotBe(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task SetLogo_OversizedFile_IsRejected()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Logo Oversize Co", "LOGOU2", "REG-LOGOU2");
+
+        using var content = new MultipartFormDataContent();
+        var bytes = new byte[6 * 1024 * 1024]; // over the 5 MB company_logo purpose limit
+        var fileContent = new ByteArrayContent(bytes);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "logo", "big.png");
+
+        var response = await SendMultipartAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/logo", content,
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().NotBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task SetLogo_WrongContentType_IsRejected()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Logo WrongType Co", "LOGOU3", "REG-LOGOU3");
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes("not an image"));
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
+        content.Add(fileContent, "logo", "notes.txt");
+
+        var response = await SendMultipartAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/logo", content,
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task GetLogo_NoLogoSet_Returns404()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Logo NoneSet Co", "LOGOU4", "REG-LOGOU4");
+
+        var response = await SendAsync(HttpMethod.Get, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/logo", body: null, cookie: _tenantA.SessionCookie);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GetLogo_AfterUpload_ReturnsImageBytes()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Logo RoundTrip Co", "LOGOU5", "REG-LOGOU5");
+
+        using var uploadContent = new MultipartFormDataContent();
+        var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        var fileContent = new ByteArrayContent(bytes);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        uploadContent.Add(fileContent, "logo", "logo.png");
+        var uploadResponse = await SendMultipartAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/logo", uploadContent,
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+        uploadResponse.StatusCode.Should().Be(HttpStatusCode.OK, await uploadResponse.Content.ReadAsStringAsync());
+
+        var getResponse = await SendAsync(HttpMethod.Get, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/logo", body: null, cookie: _tenantA.SessionCookie);
+
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        getResponse.Content.Headers.ContentType!.MediaType.Should().Be("image/png");
+        var returnedBytes = await getResponse.Content.ReadAsByteArrayAsync();
+        returnedBytes.Should().BeEquivalentTo(bytes);
+    }
+
+    [Fact]
+    public async Task RemoveLogo_ThenGetLogo_Returns404Again()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Logo RemoveThenGet Co", "LOGOU6", "REG-LOGOU6");
+
+        using var uploadContent = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        uploadContent.Add(fileContent, "logo", "logo.png");
+        await SendMultipartAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/logo", uploadContent,
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        await SendAsync(HttpMethod.Delete, _tenantA.Host, $"/api/v1/org/legal-entities/{company.Id}/logo",
+            body: null, cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        var getResponse = await SendAsync(HttpMethod.Get, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/logo", body: null, cookie: _tenantA.SessionCookie);
+        getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     // ── 8. Accessible-company filtering ─────────────────────────────────────
@@ -768,6 +870,27 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
         return null;
     }
 
+    /// <summary>
+    /// No module_catalog row carries a real storage_reference in the production
+    /// seed data yet (ModuleCatalogSeeder leaves every module at "[]"), and no
+    /// platform default is configured - so any tenant is "storage_not_entitled"
+    /// by default. This mirrors StorageQuotaIntegrationTests' own workaround:
+    /// grant the "core_hr" module (present on every tenant's subscription here)
+    /// a real allowance for the "11-50" company size range used when
+    /// provisioning tenants in this test file, purely so the logo upload tests
+    /// below can exercise the real quota path. Test-only; no production code
+    /// or seed data is touched.
+    /// </summary>
+    private async Task GrantCoreHrStorageAllowanceAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var coreHr = await db.Set<ModuleCatalogItem>().SingleAsync(m => m.ModuleKey == "core_hr");
+        coreHr.IsStorageConsuming = true;
+        coreHr.StorageReference = """[{"min_employees":1,"max_employees":100,"storage_gb":50}]""";
+        await db.SaveChangesAsync();
+    }
+
     private async Task WaitForSeedersAsync()
     {
         await using (var migrateScope = _factory.Services.CreateAsyncScope())
@@ -815,6 +938,20 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
             request.Headers.Add("Idempotency-Key", idempotencyKey);
         if (body is not null)
             request.Content = JsonContent.Create(body);
+
+        return await _client.SendAsync(request);
+    }
+
+    private async Task<HttpResponseMessage> SendMultipartAsync(
+        HttpMethod method, string host, string path, HttpContent content,
+        string? cookie = null, string? csrfToken = null)
+    {
+        using var request = new HttpRequestMessage(method, path) { Content = content };
+        request.Headers.Host = host;
+        if (cookie is not null)
+            request.Headers.Add("Cookie", cookie);
+        if (csrfToken is not null)
+            request.Headers.Add("X-CSRF-Token", csrfToken);
 
         return await _client.SendAsync(request);
     }

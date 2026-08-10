@@ -15,7 +15,8 @@ public sealed class EfPlatformAccessRepository :
     IPlatformUserSessionRepository,
     IPlatformAccessReadRepository,
     IPlatformAuthEventRepository,
-    IPlatformRoleRepository
+    IPlatformRoleRepository,
+    IPlatformUserInviteRepository
 {
     private readonly ApplicationDbContext _db;
     private readonly IDateTimeProvider _clock;
@@ -149,4 +150,18 @@ public sealed class EfPlatformAccessRepository :
 
     public Task AddAsync(PlatformAuthEvent authEvent, CancellationToken ct = default) =>
         _db.PlatformAuthEvents.AddAsync(authEvent, ct).AsTask();
+
+    // IPlatformUserInviteRepository
+
+    public Task AddAsync(PlatformUserInvite invite, CancellationToken ct = default) =>
+        _db.PlatformUserInvites.AddAsync(invite, ct).AsTask();
+
+    Task<PlatformUserInvite?> IPlatformUserInviteRepository.GetByTokenHashAsync(string tokenHash, CancellationToken ct) =>
+        _db.PlatformUserInvites.FirstOrDefaultAsync(i => i.InviteTokenHash == tokenHash, ct);
+
+    public Task<PlatformUserInvite?> GetByPlatformUserIdAsync(Guid platformUserId, CancellationToken ct = default) =>
+        _db.PlatformUserInvites.FirstOrDefaultAsync(i => i.PlatformUserId == platformUserId, ct);
+
+    public void Update(PlatformUserInvite invite) =>
+        _db.PlatformUserInvites.Update(invite);
 }

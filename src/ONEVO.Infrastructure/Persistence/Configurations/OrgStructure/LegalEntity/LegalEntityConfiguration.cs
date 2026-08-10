@@ -30,14 +30,6 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
         builder.Property(l => l.CountryCode).HasMaxLength(3).IsRequired();
         builder.Property(l => l.CurrencyCode).HasMaxLength(3).IsRequired();
 
-        // Registered business address payload. This was already the existing
-        // "address_json" column before Part 2A; the finalized screen design
-        // calls this field "registered business address" but there is no
-        // audit/doc evidence that renaming the column is required or safe, so
-        // it is preserved under its existing name (Part 1 audit + Part 2A
-        // scope instruction: keep and document rather than rename on doubt).
-        builder.Property(l => l.AddressJson).HasColumnType("jsonb");
-
         builder.Property(l => l.CompanyCode).HasMaxLength(20);
         builder.Property(l => l.TaxRegistrationNumber).HasMaxLength(80);
         builder.Property(l => l.VatGstNumber).HasMaxLength(50);
@@ -57,10 +49,10 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
             .IsRequired()
             .HasDefaultValue(1);
 
-        // JSON array of weekday numbers using the 1=Monday..7=Sunday convention
-        // (matches AddressJson's existing raw-JSON-string pattern rather than a
-        // typed List<int> + value comparer, to keep the entity consistent with
-        // how the codebase already stores flexible JSON settings).
+        // JSON array of weekday numbers using the 1=Monday..7=Sunday convention,
+        // stored as a raw JSON string rather than a typed List<int> + value
+        // comparer, to keep the entity consistent with how the codebase
+        // already stores flexible JSON settings.
         builder.Property(l => l.StandardWorkingDays)
             .HasColumnType("jsonb")
             .IsRequired()

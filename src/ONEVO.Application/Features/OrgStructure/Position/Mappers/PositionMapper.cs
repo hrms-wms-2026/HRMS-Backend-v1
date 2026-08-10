@@ -5,6 +5,12 @@ namespace ONEVO.Application.Features.OrgStructure.Mappers;
 
 public static class PositionMapper
 {
+    // No position_assignments table exists anywhere in this codebase (confirmed by a repo-wide
+    // search), so current occupancy is genuinely unmeasurable today, not zero - mirrors
+    // PositionArchiveBlockers.ActiveOccupants/ActiveOccupantsCheckSupported.
+    private static readonly int? UnsupportedCurrentOccupancy = null;
+    private const bool CurrentOccupancyCheckSupported = false;
+
     public static PositionResponse ToResponse(
         Position entity, string? departmentName, string? reportsToPositionName, int childCount)
     {
@@ -22,7 +28,9 @@ public static class PositionMapper
             entity.UpdatedAt,
             departmentName,
             reportsToPositionName,
-            childCount);
+            childCount,
+            UnsupportedCurrentOccupancy,
+            CurrentOccupancyCheckSupported);
     }
 
     public static PositionListItemResponse ToListItemResponse(Position entity)
@@ -38,6 +46,8 @@ public static class PositionMapper
             entity.ReportsToPositionId,
             entity.IsActive,
             entity.CreatedAt,
-            entity.UpdatedAt);
+            entity.UpdatedAt,
+            UnsupportedCurrentOccupancy,
+            CurrentOccupancyCheckSupported);
     }
 }

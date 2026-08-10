@@ -116,7 +116,8 @@ public sealed class PasswordResetHardeningArchitectureTests
             "/admin/v1/auth/login",
             "/admin/v1/auth/mfa/verify",
             "/admin/v1/auth/forgot-password",
-            "/admin/v1/auth/reset-password"
+            "/admin/v1/auth/reset-password",
+            "/admin/v1/auth/accept-invite"
         })
         {
             source.Should().Contain($"\"{path}\"",

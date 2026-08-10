@@ -76,4 +76,17 @@ public interface IFileStorageService
         Guid fileRecordId,
         TimeSpan expiry,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Opens a readable stream for a file this tenant already legitimately
+    /// owns (e.g. one referenced by a domain entity's own FileId column).
+    /// This is not a lookup for validating untrusted, client-supplied file
+    /// ids - callers must already know the id is legitimately theirs before
+    /// calling it. The tenant filter here is a second, defensive check, not
+    /// the primary trust boundary.
+    /// </summary>
+    Task<Result<FileStreamDto>> OpenReadAsync(
+        Guid tenantId,
+        Guid fileId,
+        CancellationToken ct = default);
 }

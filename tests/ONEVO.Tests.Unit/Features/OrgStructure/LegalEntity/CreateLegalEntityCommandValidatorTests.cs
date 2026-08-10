@@ -9,7 +9,7 @@ public class CreateLegalEntityCommandValidatorTests
     private readonly CreateLegalEntityCommandValidator _validator = new();
 
     private static CreateLegalEntityCommand ValidCommand() => new(
-        "Acme Lanka", "ACME", "REG-001", "LKA", "LKR", null, null, null);
+        "Acme Lanka", "ACME", "REG-001", "LKA", "LKR", null, null);
 
     [Fact]
     public void Valid_Command_HasNoErrors()

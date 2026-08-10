@@ -25,7 +25,7 @@ public sealed class PlatformAccessMapperTests
         result.Email.Should().Be("manager@onevo.io");
         result.FullName.Should().Be("Arun Selvan");
         result.Role.Should().Be("Platform Manager");
-        result.IsActive.Should().BeTrue();
+        result.Status.Should().Be(PlatformUser.StatusActive);
         result.CreatedAt.Should().Be(user.CreatedAt);
     }
 
@@ -46,7 +46,7 @@ public sealed class PlatformAccessMapperTests
     }
 
     [Fact]
-    public void Map_InactiveUser_ReturnsIsActiveFalse()
+    public void Map_InactiveUser_ReturnsInactiveStatus()
     {
         var user = new PlatformUser
         {
@@ -58,6 +58,22 @@ public sealed class PlatformAccessMapperTests
 
         var result = PlatformAccessMapper.Map(user, "Support Manager");
 
-        result.IsActive.Should().BeFalse();
+        result.Status.Should().Be(PlatformUser.StatusInactive);
+    }
+
+    [Fact]
+    public void Map_PendingUser_ReturnsPendingStatus()
+    {
+        var user = new PlatformUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "pending@onevo.io",
+            FullName = "Pending User",
+            Status = PlatformUser.StatusPending,
+        };
+
+        var result = PlatformAccessMapper.Map(user, "Support Manager");
+
+        result.Status.Should().Be(PlatformUser.StatusPending);
     }
 }

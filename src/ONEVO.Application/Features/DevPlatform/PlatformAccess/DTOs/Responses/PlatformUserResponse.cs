@@ -5,6 +5,6 @@ public record PlatformUserResponse(
     string Email,
     string FullName,
     string Role,
-    bool IsActive,
+    string Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastLoginAt);

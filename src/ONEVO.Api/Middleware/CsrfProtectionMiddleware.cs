@@ -38,6 +38,7 @@ public class CsrfProtectionMiddleware
         "/admin/v1/auth/google-callback",
         "/admin/v1/auth/forgot-password",
         "/admin/v1/auth/reset-password",
+        "/admin/v1/auth/accept-invite",
     };
 
     private readonly RequestDelegate _next;

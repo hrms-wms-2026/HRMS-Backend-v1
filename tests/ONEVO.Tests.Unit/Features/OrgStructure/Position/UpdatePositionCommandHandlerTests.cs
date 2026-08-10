@@ -1,12 +1,15 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdatePosition;
+using ONEVO.Application.Features.OrgStructure.OutboxPayloads;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using Xunit;
 
 using DepartmentEntity = ONEVO.Domain.Features.OrgStructure.Entities.Department;
 using LegalEntityEntity = ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity;
 using PositionEntity = ONEVO.Domain.Features.OrgStructure.Entities.Position;
+using ReportingHistoryEntity = ONEVO.Domain.Features.OrgStructure.Entities.PositionReportingHistory;
+using CoverageRecordEntity = ONEVO.Domain.Features.OrgStructure.Entities.ManagementCoverageRecord;
 
 namespace ONEVO.Tests.Unit.Features.OrgStructure.Position;
 
@@ -17,6 +20,7 @@ public sealed class UpdatePositionCommandHandlerTests
     private readonly Mock<ILegalEntityRepository> _legalEntitiesMock = new();
     private readonly Mock<ICurrentUser> _currentUserMock = new();
     private readonly Mock<IDateTimeProvider> _dateTimeProviderMock = new();
+    private readonly Mock<IOutboxWriter> _outboxWriterMock = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _legalEntityId = Guid.NewGuid();
     private readonly Guid _departmentId = Guid.NewGuid();
@@ -28,6 +32,7 @@ public sealed class UpdatePositionCommandHandlerTests
         _currentUserMock.Setup(c => c.IsAuthenticated).Returns(true);
         _currentUserMock.Setup(c => c.TenantId).Returns(_tenantId);
         _dateTimeProviderMock.Setup(d => d.UtcNow).Returns(_now);
+        _dateTimeProviderMock.Setup(d => d.Today).Returns(DateOnly.FromDateTime(_now.UtcDateTime));
         _legalEntitiesMock
             .Setup(l => l.GetByIdForTenantAsync(_tenantId, _legalEntityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegalEntityEntity { Id = _legalEntityId, TenantId = _tenantId, IsActive = true });
@@ -50,7 +55,7 @@ public sealed class UpdatePositionCommandHandlerTests
     }
 
     private UpdatePositionCommandHandler CreateHandler()
-        => new(_positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+        => new(_positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
 
     private UpdatePositionCommand ValidCommand(
         Guid? departmentId = null, string name = "New Name", string code = "NEW-CODE",
@@ -78,7 +83,7 @@ public sealed class UpdatePositionCommandHandlerTests
             ValidCommand(reportsToPositionId: _positionId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(409, result.StatusCode);
+        Assert.Equal(422, result.StatusCode);
     }
 
     [Fact]
@@ -99,7 +104,7 @@ public sealed class UpdatePositionCommandHandlerTests
             ValidCommand(reportsToPositionId: descendantId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(409, result.StatusCode);
+        Assert.Equal(422, result.StatusCode);
     }
 
     [Fact]
@@ -128,7 +133,27 @@ public sealed class UpdatePositionCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ReturnsConflict_WhenLegalEntityIsInactive()
+    public async Task Handle_ReturnsUnprocessableEntity_WhenReportsToPositionIsPooled()
+    {
+        var reportsToId = Guid.NewGuid();
+        _positionsMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, reportsToId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionEntity
+            {
+                Id = reportsToId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Support Pool",
+                PositionType = PositionEntity.TypePooled, MaxOccupancy = 5, IsActive = true
+            });
+
+        var result = await CreateHandler().Handle(
+            ValidCommand(reportsToPositionId: reportsToId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(422, result.StatusCode);
+        _positionsMock.Verify(p => p.Update(It.IsAny<PositionEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_ReturnsUnprocessableEntity_WhenLegalEntityIsInactive()
     {
         _legalEntitiesMock
             .Setup(l => l.GetByIdForTenantAsync(_tenantId, _legalEntityId, It.IsAny<CancellationToken>()))
@@ -137,7 +162,7 @@ public sealed class UpdatePositionCommandHandlerTests
         var result = await CreateHandler().Handle(ValidCommand(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(409, result.StatusCode);
+        Assert.Equal(422, result.StatusCode);
         _positionsMock.Verify(
             p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()),
             Times.Never);
@@ -174,5 +199,146 @@ public sealed class UpdatePositionCommandHandlerTests
 
         Assert.False(emptyResult.IsValid);
         Assert.False(whitespaceResult.IsValid);
+    }
+
+    [Fact]
+    public async Task Handle_ReplacesLockedCoverageAndClosesHistory_WhenReportsToChangesAcrossDays()
+    {
+        var oldReportsToId = Guid.NewGuid();
+        var newReportsToId = Guid.NewGuid();
+        _positionsMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionEntity
+            {
+                Id = _positionId, TenantId = _tenantId, LegalEntityId = _legalEntityId, DepartmentId = _departmentId,
+                Name = "Old Name", Code = "OLD-CODE", PositionType = "unique", MaxOccupancy = 1, IsActive = true,
+                ReportsToPositionId = oldReportsToId
+            });
+        _positionsMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, newReportsToId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionEntity { Id = newReportsToId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "New Manager", IsActive = true });
+        _positionsMock
+            .Setup(p => p.IsDescendantAsync(_tenantId, _legalEntityId, _positionId, newReportsToId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _positionsMock
+            .Setup(p => p.CountActiveReportsToPositionAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        var openHistory = new ReportingHistoryEntity
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, PositionId = _positionId, ReportsToPositionId = oldReportsToId,
+            EffectiveFrom = DateOnly.FromDateTime(_now.UtcDateTime).AddDays(-5), EffectiveTo = null
+        };
+        _positionsMock
+            .Setup(p => p.GetCurrentReportingHistoryAsync(_tenantId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(openHistory);
+
+        var oldCoverage = new CoverageRecordEntity
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, LegalEntityId = _legalEntityId, OwnerPositionId = oldReportsToId,
+            CoveredPositionId = _positionId, IsLocked = true, Source = CoverageRecordEntity.SourceReportingStructure
+        };
+        _positionsMock
+            .Setup(p => p.GetLockedReportingStructureCoverageAsync(_tenantId, oldReportsToId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(oldCoverage);
+
+        var result = await CreateHandler().Handle(ValidCommand(reportsToPositionId: newReportsToId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+
+        _positionsMock.Verify(p => p.UpdateReportingHistory(
+            It.Is<ReportingHistoryEntity>(h => h.Id == openHistory.Id && h.EffectiveTo == openHistory.EffectiveFrom.AddDays(4))), Times.Once);
+        _positionsMock.Verify(p => p.AddReportingHistoryAsync(
+            It.Is<ReportingHistoryEntity>(h => h.ReportsToPositionId == newReportsToId && h.EffectiveTo == null), It.IsAny<CancellationToken>()), Times.Once);
+        _positionsMock.Verify(p => p.RemoveCoverageRecord(oldCoverage), Times.Once);
+        _positionsMock.Verify(p => p.AddManagementCoverageRecordAsync(
+            It.Is<CoverageRecordEntity>(c => c.OwnerPositionId == newReportsToId && c.CoveredPositionId == _positionId && c.IsLocked), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SkipsReportingStructureCoverageSync_WhenManualPrimaryAlreadyClaimsCoveredPosition()
+    {
+        // A manual coverage rule already claims order 1 (Primary Manager) for this covered
+        // position from a different owner. The reporting-structure sync must not attempt a second
+        // active order-1 row on top of it - that would violate the covered-target uniqueness
+        // constraint - but the position's own reports-to update must still succeed.
+        var newReportsToId = Guid.NewGuid();
+        _positionsMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, newReportsToId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionEntity { Id = newReportsToId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "New Manager", IsActive = true });
+        _positionsMock
+            .Setup(p => p.IsDescendantAsync(_tenantId, _legalEntityId, _positionId, newReportsToId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _positionsMock
+            .Setup(p => p.CountActiveReportsToPositionAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+        _positionsMock
+            .Setup(p => p.HasActiveCoverageConflictAsync(
+                _tenantId, _legalEntityId, CoverageRecordEntity.TargetPosition, _positionId, null, 1,
+                It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await CreateHandler().Handle(ValidCommand(reportsToPositionId: newReportsToId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _positionsMock.Verify(p => p.AddManagementCoverageRecordAsync(It.IsAny<CoverageRecordEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_MutatesOpenHistoryInPlace_WhenReportsToChangesOnSameDay()
+    {
+        var newReportsToId = Guid.NewGuid();
+        _positionsMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, newReportsToId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionEntity { Id = newReportsToId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "New Manager", IsActive = true });
+        _positionsMock
+            .Setup(p => p.IsDescendantAsync(_tenantId, _legalEntityId, _positionId, newReportsToId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _positionsMock
+            .Setup(p => p.CountActiveReportsToPositionAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        var openHistory = new ReportingHistoryEntity
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, PositionId = _positionId, ReportsToPositionId = null,
+            EffectiveFrom = DateOnly.FromDateTime(_now.UtcDateTime), EffectiveTo = null
+        };
+        _positionsMock
+            .Setup(p => p.GetCurrentReportingHistoryAsync(_tenantId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(openHistory);
+
+        var result = await CreateHandler().Handle(ValidCommand(reportsToPositionId: newReportsToId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _positionsMock.Verify(p => p.UpdateReportingHistory(
+            It.Is<ReportingHistoryEntity>(h => h.Id == openHistory.Id && h.ReportsToPositionId == newReportsToId && h.EffectiveTo == null)), Times.Once);
+        _positionsMock.Verify(p => p.AddReportingHistoryAsync(It.IsAny<ReportingHistoryEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_DoesNotTouchHistoryOrCoverage_WhenReportsToUnchanged()
+    {
+        var result = await CreateHandler().Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _positionsMock.Verify(p => p.GetCurrentReportingHistoryAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _positionsMock.Verify(p => p.AddReportingHistoryAsync(It.IsAny<ReportingHistoryEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+        _positionsMock.Verify(p => p.AddManagementCoverageRecordAsync(It.IsAny<CoverageRecordEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+        _positionsMock.Verify(p => p.RemoveCoverageRecord(It.IsAny<CoverageRecordEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_EnqueuesPositionUpdatedOutboxMessage()
+    {
+        var result = await CreateHandler().Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _outboxWriterMock.Verify(
+            o => o.EnqueueAsync(
+                OutboxMessageTypes.PositionUpdated,
+                It.Is<PositionOutboxPayload>(p => p.PositionId == _positionId && p.TenantId == _tenantId),
+                _tenantId,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 }

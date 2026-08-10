@@ -191,5 +191,10 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
             TimeSpan expiry,
             CancellationToken ct = default)
             => Task.FromResult(Result<string>.Success($"https://fake-r2.example.com/{fileRecordId}"));
+        public Task<Result<FileStreamDto>> OpenReadAsync(
+            Guid tenantId,
+            Guid fileId,
+            CancellationToken ct = default)
+            => Task.FromResult(Result<FileStreamDto>.NotFound("File not found."));
     }
 }
