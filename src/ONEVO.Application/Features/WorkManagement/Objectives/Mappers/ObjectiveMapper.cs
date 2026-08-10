@@ -23,12 +23,17 @@ public static class ObjectiveMapper
         objective.Id, objective.ParentObjectiveId, objective.IsDefault, objective.Title, objective.OwnerId,
         objective.StartDate, objective.EndDate, objective.AllocatedHours, objective.CompletedHours, objective.IsActive, objective.IsAchieved);
 
-    public static ObjectiveSubtreeNodeResponse ToSubtreeNode(Objective objective, ILookup<Guid, Objective> childrenByParent) => new(
+    public static ObjectiveSubtreeNodeResponse ToSubtreeNode(
+        Objective objective, ILookup<Guid, Objective> childrenByParent,
+        IReadOnlyDictionary<Guid, string>? namesByUserId = null, Guid? currentUserId = null) => new(
         objective.Id, objective.ProjectId, objective.ParentObjectiveId, objective.IsDefault, objective.Title, objective.Description,
         objective.OwnerId, objective.ReportingManagerId, objective.CreatedById, objective.StartDate, objective.EndDate,
         objective.Progress, objective.ActualHours, objective.AllocatedHours, objective.CompletedHours,
         objective.IsActive, objective.CreatedAt, objective.UpdatedAt,
-        childrenByParent[objective.Id].Select(c => ToSubtreeNode(c, childrenByParent)).ToList());
+        ResolveName(objective.OwnerId, namesByUserId), ResolveName(objective.ReportingManagerId, namesByUserId),
+        currentUserId.HasValue && objective.OwnerId == currentUserId.Value,
+        objective.IsAchieved, objective.AchievedAt,
+        childrenByParent[objective.Id].Select(c => ToSubtreeNode(c, childrenByParent, namesByUserId, currentUserId)).ToList());
 
     public static ObjectiveChangeRequestResponse ToResponse(ObjectiveChangeRequest request) => new(
         request.Id, request.ObjectiveId, request.RequestType, request.RequestedById, request.ReportingManagerId,

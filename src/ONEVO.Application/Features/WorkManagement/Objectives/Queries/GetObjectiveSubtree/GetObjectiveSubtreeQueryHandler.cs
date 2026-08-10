@@ -1,5 +1,6 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
@@ -15,15 +16,18 @@ public class GetObjectiveSubtreeQueryHandler : IRequestHandler<GetObjectiveSubtr
     private readonly IObjectiveRepository _objectives;
     private readonly IProjectMemberRepository _members;
     private readonly IPermissionResolver _permissionResolver;
+    private readonly IEmployeeRepository _employees;
 
     public GetObjectiveSubtreeQueryHandler(
         ICurrentUser currentUser, IObjectiveRepository objectives,
-        IProjectMemberRepository members, IPermissionResolver permissionResolver)
+        IProjectMemberRepository members, IPermissionResolver permissionResolver,
+        IEmployeeRepository employees)
     {
         _currentUser = currentUser;
         _objectives = objectives;
         _members = members;
         _permissionResolver = permissionResolver;
+        _employees = employees;
     }
 
     public async Task<Result<ObjectiveSubtreeResponse>> Handle(GetObjectiveSubtreeQuery request, CancellationToken ct)
@@ -64,6 +68,15 @@ public class GetObjectiveSubtreeQueryHandler : IRequestHandler<GetObjectiveSubtr
 
         var all = await _objectives.GetAllByProjectIdAsync(tenantId, objective.ProjectId, ct);
 
+        var nameLookupIds = all
+            .SelectMany(o => new[] { (Guid?)o.OwnerId, o.ReportingManagerId })
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        var employees = await _employees.GetByUserIdsAsync(tenantId, nameLookupIds, ct);
+        var namesByUserId = employees.ToDictionary(e => e.UserId, e => $"{e.FirstName} {e.LastName}");
+
         var parent = objective.ParentObjectiveId is Guid parentId
             ? all.FirstOrDefault(o => o.Id == parentId)
             : null;
@@ -73,8 +86,8 @@ public class GetObjectiveSubtreeQueryHandler : IRequestHandler<GetObjectiveSubtr
             .ToLookup(o => o.ParentObjectiveId!.Value);
 
         var response = new ObjectiveSubtreeResponse(
-            parent is null ? null : ObjectiveMapper.ToDetail(parent),
-            ObjectiveMapper.ToSubtreeNode(objective, childrenByParent));
+            parent is null ? null : ObjectiveMapper.ToDetail(parent, namesByUserId, userId),
+            ObjectiveMapper.ToSubtreeNode(objective, childrenByParent, namesByUserId, userId));
 
         return Result<ObjectiveSubtreeResponse>.Success(response);
     }
