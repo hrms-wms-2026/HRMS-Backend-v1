@@ -15,6 +15,8 @@ public class TenantSubscriptionConfiguration : IEntityTypeConfiguration<TenantSu
         builder.Property(t => t.PlanId).HasColumnName("plan_id").IsRequired();
         builder.Property(t => t.BillingCycle).HasColumnName("billing_cycle").HasMaxLength(20).IsRequired();
         builder.Property(t => t.Status).HasMaxLength(20).IsRequired();
+        builder.Property(t => t.IncludedSeats).HasColumnName("included_seats");
+        builder.Property(t => t.OverageAllowed).HasColumnName("overage_allowed");
         builder.Property(t => t.CurrentPeriodStart).HasColumnName("current_period_start").IsRequired();
         builder.Property(t => t.CurrentPeriodEnd).HasColumnName("current_period_end").IsRequired();
         builder.Property(t => t.PaymentProviderRef).HasColumnName("payment_provider_ref").HasMaxLength(200);
