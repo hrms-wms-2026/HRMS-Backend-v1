@@ -3,7 +3,10 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
@@ -56,6 +59,227 @@ public sealed class OnboardingPersistenceRepositoryTests
         (await repository.AnyPendingByDraftAsync(tenant, draftId)).Should().BeTrue();
         (await repository.AnyPendingByDraftAsync(Guid.NewGuid(), draftId)).Should().BeFalse();
     }
+
+    [Fact]
+    public async Task ListOnboardingRequests_DefaultsToPendingOnboardingActionTypeAndIsTenantScoped()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var other = Guid.NewGuid();
+
+        var pending = await SeedFullRequestAsync(db, tenant, approvalStatus: "Pending", actionType: AccessGrantActionType.EmployeeOnboarding);
+        await SeedFullRequestAsync(db, tenant, approvalStatus: "Approved", actionType: AccessGrantActionType.EmployeeOnboarding);
+        await SeedFullRequestAsync(db, tenant, approvalStatus: "Rejected", actionType: AccessGrantActionType.EmployeeOnboarding);
+        await SeedFullRequestAsync(db, tenant, approvalStatus: "Pending", actionType: "some_other_action_type");
+        await SeedFullRequestAsync(db, other, approvalStatus: "Pending", actionType: AccessGrantActionType.EmployeeOnboarding);
+
+        var repository = new EfAccessGrantRequestRepository(db);
+        var (items, total) = await repository.ListOnboardingRequestsAsync(
+            tenant, "Pending", AccessGrantActionType.EmployeeOnboarding, null, null, null, 1, 25);
+
+        total.Should().Be(1);
+        items.Should().ContainSingle(x => x.AccessGrantRequestId == pending.RequestId);
+    }
+
+    [Fact]
+    public async Task ListOnboardingRequests_ExcludesRequestsWithoutOnboardingDraftId()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var orphan = new AccessGrantRequest
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, EmployeeId = null, UserId = null, OnboardingDraftId = null,
+            ActionType = AccessGrantActionType.EmployeeOnboarding, TargetPositionId = Guid.NewGuid(), TargetDepartmentId = Guid.NewGuid(),
+            PositionAccessTemplateId = Guid.NewGuid(), RequestedRoleId = Guid.NewGuid(), ApprovalStatus = "Pending",
+            RequestedByUserId = Guid.NewGuid(), RequestedAt = DateTimeOffset.UtcNow, EffectiveFrom = DateTimeOffset.UtcNow,
+        };
+        db.AccessGrantRequests.Add(orphan);
+        await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+
+        var repository = new EfAccessGrantRequestRepository(db);
+        var (items, total) = await repository.ListOnboardingRequestsAsync(
+            tenant, "Pending", AccessGrantActionType.EmployeeOnboarding, null, null, null, 1, 25);
+
+        total.Should().Be(0);
+        items.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("Pending")]
+    [InlineData("Approved")]
+    [InlineData("Rejected")]
+    public async Task ListOnboardingRequests_StatusFilterMatchesOnlyThatStatus(string status)
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var pending = await SeedFullRequestAsync(db, tenant, approvalStatus: "Pending", actionType: AccessGrantActionType.EmployeeOnboarding);
+        var approved = await SeedFullRequestAsync(db, tenant, approvalStatus: "Approved", actionType: AccessGrantActionType.EmployeeOnboarding);
+        var rejected = await SeedFullRequestAsync(db, tenant, approvalStatus: "Rejected", actionType: AccessGrantActionType.EmployeeOnboarding);
+        var expected = status switch { "Pending" => pending, "Approved" => approved, _ => rejected };
+
+        var repository = new EfAccessGrantRequestRepository(db);
+        var (items, total) = await repository.ListOnboardingRequestsAsync(
+            tenant, status, AccessGrantActionType.EmployeeOnboarding, null, null, null, 1, 25);
+
+        total.Should().Be(1);
+        items.Should().ContainSingle(x => x.AccessGrantRequestId == expected.RequestId);
+    }
+
+    [Fact]
+    public async Task ListOnboardingRequests_PaginatesInRequestedAtDescendingOrder()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        var first = await SeedFullRequestAsync(db, tenant, requestedAt: now.AddMinutes(-30));
+        var second = await SeedFullRequestAsync(db, tenant, requestedAt: now.AddMinutes(-20));
+        var third = await SeedFullRequestAsync(db, tenant, requestedAt: now.AddMinutes(-10));
+
+        var repository = new EfAccessGrantRequestRepository(db);
+        var (page1, total1) = await repository.ListOnboardingRequestsAsync(
+            tenant, "Pending", AccessGrantActionType.EmployeeOnboarding, null, null, null, 1, 2);
+        var (page2, total2) = await repository.ListOnboardingRequestsAsync(
+            tenant, "Pending", AccessGrantActionType.EmployeeOnboarding, null, null, null, 2, 2);
+
+        total1.Should().Be(3); total2.Should().Be(3);
+        page1.Should().HaveCount(2);
+        page1.Select(x => x.AccessGrantRequestId).Should().Equal(third.RequestId, second.RequestId);
+        page2.Should().ContainSingle(x => x.AccessGrantRequestId == first.RequestId);
+    }
+
+    [Fact]
+    public async Task ListOnboardingRequests_LegalEntityAndRoleFiltersNarrowResults()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var match = await SeedFullRequestAsync(db, tenant);
+        var otherLegalEntity = await SeedFullRequestAsync(db, tenant);
+
+        var repository = new EfAccessGrantRequestRepository(db);
+        var (byLegalEntity, _) = await repository.ListOnboardingRequestsAsync(
+            tenant, "Pending", AccessGrantActionType.EmployeeOnboarding, match.LegalEntityId, null, null, 1, 25);
+        byLegalEntity.Should().ContainSingle(x => x.AccessGrantRequestId == match.RequestId);
+
+        var (byRole, _) = await repository.ListOnboardingRequestsAsync(
+            tenant, "Pending", AccessGrantActionType.EmployeeOnboarding, null, match.RequestedRoleId, null, 1, 25);
+        byRole.Should().ContainSingle(x => x.AccessGrantRequestId == match.RequestId);
+
+        var _ = otherLegalEntity;
+    }
+
+    [Theory]
+    [InlineData("jane")]
+    [InlineData("work.email")]
+    [InlineData("engineer")]
+    [InlineData("hr manager")]
+    public async Task ListOnboardingRequests_SearchMatchesDisplayNameEmailPositionOrRole(string term)
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var match = await SeedFullRequestAsync(
+            db, tenant, firstName: "Jane", lastName: "Doe", workEmail: "jane.doe.work.email@example.com",
+            positionName: "Software Engineer", roleName: "HR Manager");
+        await SeedFullRequestAsync(
+            db, tenant, firstName: "Alex", lastName: "Smith", workEmail: "alex.smith@example.com",
+            positionName: "Recruiter", roleName: "Payroll Admin");
+
+        var repository = new EfAccessGrantRequestRepository(db);
+        var (items, total) = await repository.ListOnboardingRequestsAsync(
+            tenant, "Pending", AccessGrantActionType.EmployeeOnboarding, null, null, term, 1, 25);
+
+        total.Should().Be(1);
+        items.Should().ContainSingle(x => x.AccessGrantRequestId == match.RequestId);
+    }
+
+    [Fact]
+    public async Task ListOnboardingRequests_PopulatesDisplayFieldsFromJoinedEntities()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var seeded = await SeedFullRequestAsync(
+            db, tenant, firstName: "Jane", lastName: "Doe", workEmail: "jane.doe@example.com",
+            positionName: "Software Engineer", roleName: "HR Manager", legalEntityName: "Acme Corp", departmentName: "Engineering",
+            requesterFirstName: "Riya", requesterLastName: "Starter");
+
+        var repository = new EfAccessGrantRequestRepository(db);
+        var (items, _) = await repository.ListOnboardingRequestsAsync(
+            tenant, "Pending", AccessGrantActionType.EmployeeOnboarding, null, null, null, 1, 25);
+
+        var item = items.Should().ContainSingle().Subject;
+        item.OnboardingDraftId.Should().Be(seeded.DraftId);
+        item.DisplayName.Should().Be("Jane Doe");
+        item.WorkEmail.Should().Be("jane.doe@example.com");
+        item.TargetPositionName.Should().Be("Software Engineer");
+        item.RequestedRoleName.Should().Be("HR Manager");
+        item.LegalEntityName.Should().Be("Acme Corp");
+        item.DepartmentName.Should().Be("Engineering");
+        item.RequestedByName.Should().Be("Riya Starter");
+        item.DecidedByName.Should().BeNull();
+        item.DecidedAt.Should().BeNull();
+        item.DraftStatus.Should().Be(OnboardingDraftStatus.WaitingForPositionApproval);
+    }
+
+    private static async Task<SeededRequest> SeedFullRequestAsync(
+        ApplicationDbContext db, Guid tenantId, string approvalStatus = "Pending",
+        string actionType = "", string? firstName = null, string? lastName = null, string? workEmail = null,
+        string? positionName = null, string? roleName = null, string? legalEntityName = null, string? departmentName = null,
+        string? requesterFirstName = null, string? requesterLastName = null, DateTimeOffset? requestedAt = null)
+    {
+        if (string.IsNullOrEmpty(actionType))
+        {
+            actionType = AccessGrantActionType.EmployeeOnboarding;
+        }
+
+        var legalEntity = new LegalEntity
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, Name = legalEntityName ?? "Legal Entity " + Guid.NewGuid(),
+            CountryCode = "US", CurrencyCode = "USD",
+        };
+        var department = new Department
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, LegalEntityId = legalEntity.Id, Name = departmentName ?? "Department " + Guid.NewGuid(),
+        };
+        var position = new Position
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, LegalEntityId = legalEntity.Id, DepartmentId = department.Id,
+            Name = positionName ?? "Position " + Guid.NewGuid(),
+        };
+        var role = new Role { Id = Guid.NewGuid(), TenantId = tenantId, Name = roleName ?? "Role " + Guid.NewGuid() };
+        var requester = new User
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, FirstName = requesterFirstName ?? "Requester", LastName = requesterLastName ?? "User",
+            Email = $"requester-{Guid.NewGuid()}@example.com",
+        };
+        var draft = new OnboardingDraft
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, FirstName = firstName ?? "Firstname", LastName = lastName ?? "Lastname",
+            WorkEmail = workEmail ?? $"work-{Guid.NewGuid()}@example.com", LegalEntityId = legalEntity.Id, DepartmentId = department.Id,
+            PositionId = position.Id, EmploymentType = "full_time", StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            Status = OnboardingDraftStatus.WaitingForPositionApproval, DraftReason = OnboardingDraftReason.WaitingForPositionApproval,
+            StartedById = requester.Id,
+        };
+        var request = new AccessGrantRequest
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = null, UserId = null, OnboardingDraftId = draft.Id,
+            ActionType = actionType, TargetPositionId = position.Id, TargetDepartmentId = department.Id,
+            PositionAccessTemplateId = Guid.NewGuid(), RequestedRoleId = role.Id, ApprovalStatus = approvalStatus,
+            RequestedByUserId = requester.Id, RequestedAt = requestedAt ?? DateTimeOffset.UtcNow, EffectiveFrom = DateTimeOffset.UtcNow,
+        };
+
+        db.LegalEntities.Add(legalEntity);
+        db.Departments.Add(department);
+        db.Positions.Add(position);
+        db.Roles.Add(role);
+        db.Users.Add(requester);
+        db.OnboardingDrafts.Add(draft);
+        db.AccessGrantRequests.Add(request);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        return new SeededRequest(request.Id, draft.Id, legalEntity.Id, role.Id);
+    }
+
+    private sealed record SeededRequest(Guid RequestId, Guid DraftId, Guid LegalEntityId, Guid RequestedRoleId);
 
     [Fact]
     public async Task ChecklistTemplate_OnlyLoadsActiveTenantScopedOnboardingScopeMatch()
