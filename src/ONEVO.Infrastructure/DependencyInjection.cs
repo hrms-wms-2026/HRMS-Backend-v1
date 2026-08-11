@@ -155,7 +155,9 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
-        services.AddScoped<IEmployeeRepository, EfEmployeeRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository>();
         services.AddScoped<IEmployeeVisibilityScopeResolver, EmployeeVisibilityScopeResolver>();
         services.AddScoped<ISeatEntitlementService, SeatEntitlementService>();
         services.AddScoped<IOnboardingDraftRepository, EfOnboardingDraftRepository>();
@@ -192,8 +194,9 @@ public static class DependencyInjection
         services.AddScoped<ILabelRepository>(sp => sp.GetRequiredService<EfLabelRepository>());
         services.AddScoped<EfEntityAssetRepository>();
         services.AddScoped<IEntityAssetRepository>(sp => sp.GetRequiredService<EfEntityAssetRepository>());
-        services.AddScoped<EfEmployeeRepository>();
-        services.AddScoped<IEmployeeRepository>(sp => sp.GetRequiredService<EfEmployeeRepository>());
+        services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>();
+        services.AddScoped<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>());
 
         // Work Management - Milestone & Achievement services
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();

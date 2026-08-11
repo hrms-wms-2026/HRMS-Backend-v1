@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Domain.Features.CoreHr.Entities;
 
 namespace ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
@@ -21,6 +22,16 @@ public interface IAccessGrantRequestRepository
     /// WaitingForPositionApproval because it hasn't been re-saved since a rejection" (allow
     /// re-finalize to re-evaluate and submit a fresh request).</summary>
     Task<bool> AnyPendingByDraftAsync(Guid tenantId, Guid onboardingDraftId, CancellationToken ct = default);
+
+    /// <summary>Tenant-scoped, paged list for the position-approval queue (Position Approver
+    /// Inbox). Only requests correlated to an onboarding draft (<see cref="AccessGrantRequest.OnboardingDraftId"/>
+    /// not null) and matching <paramref name="actionType"/> are returned - the draft join is
+    /// inner for exactly this reason. <paramref name="approvalStatus"/> and
+    /// <paramref name="actionType"/> are the literal stored values (e.g. "Pending",
+    /// "onboarding_position_access"), already normalized by the caller.</summary>
+    Task<(IReadOnlyList<OnboardingAccessGrantRequestListItemResponse> Items, int TotalCount)> ListOnboardingRequestsAsync(
+        Guid tenantId, string approvalStatus, string actionType, Guid? legalEntityId, Guid? requestedRoleId,
+        string? search, int page, int pageSize, CancellationToken ct = default);
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
