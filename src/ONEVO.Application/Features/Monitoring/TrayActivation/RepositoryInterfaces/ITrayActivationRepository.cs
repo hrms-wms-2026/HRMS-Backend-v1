@@ -20,4 +20,10 @@ public interface ITrayActivationRepository
 
     Task<TrayDeviceRegistration?> FindActiveDeviceAsync(Guid deviceRegistrationId, Guid tenantId, CancellationToken ct);
     Task UpdateDeviceLastSeenAsync(Guid deviceRegistrationId, DateTimeOffset lastSeenAt, CancellationToken ct);
+    Task DeactivateDeviceAsync(Guid deviceRegistrationId, DateTimeOffset deactivatedAt, CancellationToken ct);
+
+    /// <summary>HR profile for display purposes only — returns null if the user has no linked Employee row yet.</summary>
+    Task<TrayEmployeeProfile?> FindEmployeeProfileAsync(Guid userId, Guid tenantId, CancellationToken ct);
 }
+
+public sealed record TrayEmployeeProfile(string FirstName, string LastName, string Email, string EmployeeNumber);

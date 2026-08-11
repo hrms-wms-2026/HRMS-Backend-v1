@@ -94,6 +94,28 @@ public sealed class CloudflareR2ObjectStorageAdapter : IObjectStorageAdapter
         }
     }
 
+    public async Task<string> GetSignedUrlAsync(string objectKey, TimeSpan expiry, CancellationToken ct = default)
+    {
+        var (client, bucketName) = await GetClientAsync(ct);
+
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = bucketName,
+            Key = objectKey,
+            Expires = DateTime.UtcNow.Add(expiry),
+            Verb = HttpVerb.GET
+        };
+
+        try
+        {
+            return client.GetPreSignedURL(request);
+        }
+        catch (AmazonS3Exception)
+        {
+            throw new ObjectStorageException("Failed to generate signed URL for Cloudflare R2 object.");
+        }
+    }
+
     private async Task<(AmazonS3Client Client, string BucketName)> GetClientAsync(CancellationToken ct)
     {
         if (_client is not null && _bucketName is not null)

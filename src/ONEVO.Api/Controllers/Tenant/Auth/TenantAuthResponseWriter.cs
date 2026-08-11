@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using ONEVO.Api.Contracts.Auth;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Infrastructure.Identity.Sessions;
@@ -23,27 +24,27 @@ internal static class TenantAuthResponseWriter
         var dto = result.Value!;
 
         if (dto.RequiresPasswordChange)
-            return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()));
+            return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()).ToViewModel());
 
         if (dto.RequiresMfa)
         {
             controller.SetMfaChallengeCookie(dto.MfaChallenge, env);
-            return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()));
+            return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()).ToViewModel());
         }
 
         if (dto.RequiresLegalAcceptance)
         {
             controller.SetLegalPendingCookies(dto.LegalChallenge, dto.LegalCsrfToken, env);
-            return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()));
+            return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()).ToViewModel());
         }
 
         // Every gate cleared on the base host: hand off to the tenant host instead of signing in
         // here. No onevo_session/onevo_csrf are ever set on the base host.
         if (dto.RequiresTenantSessionExchange)
-            return controller.StatusCode(202, dto.ToTenantSessionExchangeResponse());
+            return controller.StatusCode(202, dto.ToTenantSessionExchangeResponse().ToViewModel());
 
         await controller.SignInAsync(dto, env);
-        return controller.Ok(dto.ToSessionResponse());
+        return controller.Ok(dto.ToSessionResponse().ToViewModel());
     }
 
     public static async Task SignInAsync(

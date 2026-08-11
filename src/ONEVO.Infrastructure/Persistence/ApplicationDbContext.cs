@@ -20,10 +20,21 @@ using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
+using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
+using ONEVO.Domain.Features.Monitoring.WorkSessions.Entities;
+using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
+using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
+using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities;
+using ONEVO.Domain.Features.WorkManagement.Versions.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 
@@ -76,15 +87,24 @@ public class ApplicationDbContext : DbContext
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
     public DbSet<MonitoringFaceScan> MonitoringFaceScans => Set<MonitoringFaceScan>();
 
+    // Monitoring - Work Sessions (clock-in/break/clock-out)
+    public DbSet<EmployeeWorkSession> EmployeeWorkSessions => Set<EmployeeWorkSession>();
+
     // Monitoring - Activity (keyboard/mouse counts)
     public DbSet<ActivitySnapshot> ActivitySnapshots => Set<ActivitySnapshot>();
     public DbSet<ActivityRawBuffer> ActivityRawBuffers => Set<ActivityRawBuffer>();
     public DbSet<ActivityDailySummary> ActivityDailySummaries => Set<ActivityDailySummary>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot> AppUsageSnapshots => Set<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot> DeviceStateSnapshots => Set<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot>();
 
     // Monitoring - Feature toggles & overrides
     public DbSet<MonitoringFeatureToggles> MonitoringFeatureToggles => Set<MonitoringFeatureToggles>();
     public DbSet<EmployeeMonitoringOverride> EmployeeMonitoringOverrides => Set<EmployeeMonitoringOverride>();
     public DbSet<MonitoringPolicyOverride> MonitoringPolicyOverrides => Set<MonitoringPolicyOverride>();
+
+    // Monitoring - Screenshots & agent commands
+    public DbSet<MonitoringEvidenceAsset> MonitoringEvidenceAssets => Set<MonitoringEvidenceAsset>();
+    public DbSet<AgentCommand> AgentCommands => Set<AgentCommand>();
 
     // Infrastructure
     public DbSet<User> Users => Set<User>();
@@ -193,6 +213,21 @@ public class ApplicationDbContext : DbContext
     // OrgStructure
     public DbSet<LegalEntity> LegalEntities => Set<LegalEntity>();
     public DbSet<Department> Departments => Set<Department>();
+
+    // Storage - EntityAssets (Phase 1 entity_assets, scoped to owner_type "project" for now)
+    public DbSet<EntityAsset> EntityAssets => Set<EntityAsset>();
+
+    // Work Management - Foundation slice
+    public DbSet<ProjectCategory> ProjectCategories => Set<ProjectCategory>();
+    public DbSet<Project> Projects => Set<Project>();
+    public DbSet<Objective> Objectives => Set<Objective>();
+    public DbSet<ObjectiveChangeRequest> ObjectiveChangeRequests => Set<ObjectiveChangeRequest>();
+    public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
+    public DbSet<ProjectMemberInvitation> ProjectMemberInvitations => Set<ProjectMemberInvitation>();
+    public DbSet<VersionStatus> VersionStatuses => Set<VersionStatus>();
+    public DbSet<ProjectVersion> ProjectVersions => Set<ProjectVersion>();
+    public DbSet<ReleaseCalendarEntry> ReleaseCalendarEntries => Set<ReleaseCalendarEntry>();
+    public DbSet<Label> Labels => Set<Label>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

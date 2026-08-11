@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 using ONEVO.Infrastructure.Persistence;
 
@@ -98,5 +99,23 @@ public class EfTrayActivationRepository : ITrayActivationRepository
         await _db.TrayDeviceRegistrations
             .Where(d => d.Id == deviceRegistrationId)
             .ExecuteUpdateAsync(s => s.SetProperty(d => d.LastSeenAt, lastSeenAt), ct);
+    }
+
+    public async Task DeactivateDeviceAsync(
+        Guid deviceRegistrationId, DateTimeOffset deactivatedAt, CancellationToken ct)
+    {
+        await _db.TrayDeviceRegistrations
+            .Where(d => d.Id == deviceRegistrationId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.IsActive, false)
+                .SetProperty(d => d.DeactivatedAt, deactivatedAt), ct);
+    }
+
+    public async Task<TrayEmployeeProfile?> FindEmployeeProfileAsync(Guid userId, Guid tenantId, CancellationToken ct)
+    {
+        return await _db.Employees
+            .Where(e => e.UserId == userId && e.TenantId == tenantId)
+            .Select(e => new TrayEmployeeProfile(e.FirstName, e.LastName, e.Email, e.EmployeeNumber))
+            .FirstOrDefaultAsync(ct);
     }
 }

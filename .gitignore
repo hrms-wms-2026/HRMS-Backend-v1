@@ -27,3 +27,4 @@ postman/
 
 # mkcert local dev certificates
 .certs/
+.worktrees/
