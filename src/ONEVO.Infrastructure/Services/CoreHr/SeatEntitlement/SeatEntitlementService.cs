@@ -7,14 +7,10 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 
 /// <summary>
-/// Reports whether a seat is available for a new employee. There is no numeric
-/// purchased-seat field anywhere in TenantSubscription or SubscriptionPlan today -
-/// CompanySizeRange is a string bracket ("51-200") consumed only by the storage-quota
-/// calculator, and FeatureLimitsJson exists but is never populated by any seeder or handler
-/// (verified by inspection before writing this service). This service therefore always
-/// returns Undetermined rather than inferring a number from either field. See
-/// EMPLOYEE_MANAGEMENT_IMPLEMENTATION_REPORT.md for the missing product/backend decision
-/// this blocks on.
+/// Reports whether a tenant-wide employee seat is available from the authoritative
+/// subscription policy. It intentionally never infers capacity from company size or
+/// organisational data. Waiting drafts are not reservations: a blocked draft has not
+/// acquired a billable seat, and there is no reservation lifecycle in the model.
 /// </summary>
 public class SeatEntitlementService : ISeatEntitlementService
 {
@@ -33,8 +29,7 @@ public class SeatEntitlementService : ISeatEntitlementService
 
         var activeEmployeeCount = await _db.Employees.AsNoTracking().CountAsync(e => e.TenantId == tenantId, ct);
 
-        var pendingReservedSeats = await _db.OnboardingDrafts.AsNoTracking()
-            .CountAsync(d => d.TenantId == tenantId && d.Status == OnboardingDraftStatus.WaitingForSeat, ct);
+        const int pendingReservedSeats = 0;
 
         if (subscription is null)
         {
@@ -49,16 +44,30 @@ public class SeatEntitlementService : ISeatEntitlementService
                 Reason: "No tenant subscription record found; seat entitlement cannot be evaluated.");
         }
 
-        return new SeatDecision(
+        if (subscription.IncludedSeats is null || subscription.IncludedSeats < 0 || subscription.OverageAllowed is null)
+        {
+            return new SeatDecision(
             SeatDecisionStatus.Undetermined,
-            PurchasedSeats: null,
+            PurchasedSeats: subscription.IncludedSeats,
             activeEmployeeCount,
             pendingReservedSeats,
             AvailableSeats: null,
-            OverageAllowed: false,
+            OverageAllowed: subscription.OverageAllowed ?? false,
             RequestSeatIncreaseAvailable: true,
-            Reason: "No purchased-seat count is configured on this tenant's subscription. A product " +
-                "decision is required before seat availability can be computed - see " +
-                "EMPLOYEE_MANAGEMENT_IMPLEMENTATION_REPORT.md.");
+            Reason: "Tenant subscription seat policy is missing or invalid.");
+        }
+
+        var availableSeats = subscription.IncludedSeats.Value - activeEmployeeCount;
+        if (availableSeats > 0 || subscription.OverageAllowed.Value)
+        {
+            return new SeatDecision(SeatDecisionStatus.Approved, subscription.IncludedSeats,
+                activeEmployeeCount, pendingReservedSeats, Math.Max(availableSeats, 0),
+                subscription.OverageAllowed.Value, false,
+                availableSeats > 0 ? "Included seat capacity is available." : "Overage is allowed by this tenant's subscription.");
+        }
+
+        return new SeatDecision(SeatDecisionStatus.Blocked, subscription.IncludedSeats,
+            activeEmployeeCount, pendingReservedSeats, 0, false, true,
+            "All included seats are in use and overage is disabled.");
     }
 }

@@ -16,7 +16,10 @@ public class SaveOnboardingDraftCommandHandler : IRequestHandler<SaveOnboardingD
     private readonly IOnboardingDraftRepository _draftRepository;
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IPositionRepository _positionRepository;
+    private readonly ILegalEntityRepository _legalEntityRepository;
+    private readonly IDepartmentRepository _departmentRepository;
     private readonly ISeatEntitlementService _seatEntitlementService;
+    private readonly IWorkModeRepository _workModeRepository;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
 
@@ -24,20 +27,49 @@ public class SaveOnboardingDraftCommandHandler : IRequestHandler<SaveOnboardingD
         IOnboardingDraftRepository draftRepository,
         IEmployeeRepository employeeRepository,
         IPositionRepository positionRepository,
+        ILegalEntityRepository legalEntityRepository,
+        IDepartmentRepository departmentRepository,
         ISeatEntitlementService seatEntitlementService,
+        IWorkModeRepository workModeRepository,
         ICurrentUser currentUser,
         IDateTimeProvider clock)
     {
         _draftRepository = draftRepository;
         _employeeRepository = employeeRepository;
         _positionRepository = positionRepository;
+        _legalEntityRepository = legalEntityRepository;
+        _departmentRepository = departmentRepository;
         _seatEntitlementService = seatEntitlementService;
+        _workModeRepository = workModeRepository;
         _currentUser = currentUser;
         _clock = clock;
     }
 
     public async Task<Result<OnboardingDraftResponse>> Handle(SaveOnboardingDraftCommand request, CancellationToken ct)
     {
+        if (!await _workModeRepository.ExistsActiveAsync(request.WorkModeId, ct))
+        {
+            return Result<OnboardingDraftResponse>.Failure("The selected work mode does not exist or is inactive.");
+        }
+
+        var legalEntity = await _legalEntityRepository.GetByIdForTenantAsync(_currentUser.TenantId, request.LegalEntityId, ct);
+        if (legalEntity is null || !legalEntity.IsActive)
+            return Result<OnboardingDraftResponse>.Failure("The selected legal entity does not exist or is inactive.");
+
+        if (request.DepartmentId is not null)
+        {
+            var department = await _departmentRepository.GetByIdForLegalEntityAsync(_currentUser.TenantId, request.LegalEntityId, request.DepartmentId.Value, ct);
+            if (department is null || !department.IsActive)
+                return Result<OnboardingDraftResponse>.Failure("The selected department does not exist, is inactive, or does not belong to the selected legal entity.");
+        }
+
+        if (request.PositionId is not null)
+        {
+            var position = await _positionRepository.GetByIdForLegalEntityAsync(_currentUser.TenantId, request.LegalEntityId, request.PositionId.Value, ct);
+            if (position is null || !position.IsActive || (request.DepartmentId is not null && position.DepartmentId != request.DepartmentId))
+                return Result<OnboardingDraftResponse>.Failure("The selected position does not exist, is inactive, or does not match the selected legal entity and department.");
+        }
+
         if (await _employeeRepository.EmailExistsAsync(_currentUser.TenantId, request.WorkEmail, excludeId: null, ct))
         {
             return Result<OnboardingDraftResponse>.Conflict("This work email is already in use.");
@@ -105,7 +137,13 @@ public class SaveOnboardingDraftCommandHandler : IRequestHandler<SaveOnboardingD
         else
         {
             var seatDecision = await _seatEntitlementService.EvaluateAsync(_currentUser.TenantId, ct);
-            if (seatDecision.Status != SeatDecisionStatus.Approved)
+            if (seatDecision.Status == SeatDecisionStatus.Undetermined)
+            {
+                status = OnboardingDraftStatus.Draft;
+                reason = OnboardingDraftReason.SeatConfigurationRequired;
+            }
+
+            else if (seatDecision.Status == SeatDecisionStatus.Blocked)
             {
                 status = OnboardingDraftStatus.WaitingForSeat;
                 reason = OnboardingDraftReason.WaitingForSeat;
@@ -117,15 +155,16 @@ public class SaveOnboardingDraftCommandHandler : IRequestHandler<SaveOnboardingD
             }
         }
 
-        draft.EmployeeName = request.EmployeeName;
-        draft.WorkEmail = request.WorkEmail;
+        draft.FirstName = request.FirstName.Trim();
+        draft.LastName = request.LastName.Trim();
+        draft.WorkEmail = request.WorkEmail.Trim();
         draft.LegalEntityId = request.LegalEntityId;
         draft.DepartmentId = request.DepartmentId;
         draft.PositionId = request.PositionId;
         draft.EmploymentType = request.EmploymentType;
         draft.StartDate = request.StartDate;
         draft.EmployeeNumber = request.EmployeeNumber;
-        draft.ScheduleId = request.ScheduleId;
+        draft.WorkModeId = request.WorkModeId;
         draft.SelectedTemplateId = request.SelectedTemplateId;
         draft.EditedTasksJson = request.EditedTasksJson;
         draft.LastSavedStep = request.LastSavedStep;

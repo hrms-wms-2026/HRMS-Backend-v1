@@ -6,7 +6,8 @@ namespace ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboar
 
 public record SaveOnboardingDraftCommand(
     Guid? DraftId,
-    string EmployeeName,
+    string FirstName,
+    string LastName,
     string WorkEmail,
     Guid LegalEntityId,
     Guid? DepartmentId,
@@ -14,7 +15,7 @@ public record SaveOnboardingDraftCommand(
     string EmploymentType,
     DateOnly StartDate,
     string? EmployeeNumber,
-    Guid? ScheduleId,
+    int WorkModeId,
     Guid? SelectedTemplateId,
     string? EditedTasksJson,
     string LastSavedStep,

@@ -21,7 +21,10 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
     private readonly Mock<IOnboardingDraftRepository> _draftRepository = new();
     private readonly Mock<IEmployeeRepository> _employeeRepository = new();
     private readonly Mock<IPositionRepository> _positionRepository = new();
+    private readonly Mock<ILegalEntityRepository> _legalEntityRepository = new();
+    private readonly Mock<IDepartmentRepository> _departmentRepository = new();
     private readonly Mock<ISeatEntitlementService> _seatEntitlementService = new();
+    private readonly Mock<IWorkModeRepository> _workModeRepository = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -41,22 +44,25 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
         _seatEntitlementService
             .Setup(s => s.EvaluateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SeatDecision(SeatDecisionStatus.Undetermined, null, 0, 0, null, false, true, "no source"));
+        _workModeRepository.Setup(r => r.ExistsActiveAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _legalEntityRepository.Setup(r => r.GetByIdForTenantAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(new LegalEntity { IsActive = true });
+        _positionRepository.Setup(r => r.GetByIdForLegalEntityAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(new Position { IsActive = true });
         _draftRepository
             .Setup(r => r.GetResponseByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid tenantId, Guid id, CancellationToken _) =>
-                new OnboardingDraftResponse(id, "Ada Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
-                    "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, null, null, null,
+                new OnboardingDraftResponse(id, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
+                    "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
                     OnboardingDraftStatus.WaitingForSeat, OnboardingDraftReason.WaitingForSeat,
                     OnboardingWizardStep.EmployeeDetails, _userId, "1"));
     }
 
     private SaveOnboardingDraftCommandHandler CreateHandler() => new(
-        _draftRepository.Object, _employeeRepository.Object, _positionRepository.Object,
-        _seatEntitlementService.Object, _currentUser.Object, _clock.Object);
+        _draftRepository.Object, _employeeRepository.Object, _positionRepository.Object, _legalEntityRepository.Object, _departmentRepository.Object,
+        _seatEntitlementService.Object, _workModeRepository.Object, _currentUser.Object, _clock.Object);
 
     private SaveOnboardingDraftCommand ValidCommand(Guid? draftId = null, Guid? positionId = null, string? ifMatch = null) => new(
-        draftId, "Ada Lovelace", "ada@test.dev", Guid.NewGuid(), null, positionId,
-        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, null, null, null,
+        draftId, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, positionId,
+        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
         OnboardingWizardStep.EmployeeDetails, ifMatch);
 
     [Fact]
@@ -81,7 +87,7 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_SetsWaitingForSeat_WhenNoApprovalRequiredAndSeatDecisionIsUndetermined()
+    public async Task Handle_SavesDraftWithSeatConfigurationRequired_WhenSeatDecisionIsUndetermined()
     {
         OnboardingDraftEntity? added = null;
         _draftRepository.Setup(r => r.AddAsync(It.IsAny<OnboardingDraftEntity>(), It.IsAny<CancellationToken>()))
@@ -91,8 +97,8 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
         await CreateHandler().Handle(ValidCommand(), CancellationToken.None);
 
         Assert.NotNull(added);
-        Assert.Equal(OnboardingDraftStatus.WaitingForSeat, added!.Status);
-        Assert.Equal(OnboardingDraftReason.WaitingForSeat, added.DraftReason);
+        Assert.Equal(OnboardingDraftStatus.Draft, added!.Status);
+        Assert.Equal(OnboardingDraftReason.SeatConfigurationRequired, added.DraftReason);
     }
 
     [Fact]
@@ -147,8 +153,8 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
     public async Task Handle_ReturnsConflict_WhenEmployeeNumberAlreadyInUse()
     {
         var command = new SaveOnboardingDraftCommand(
-            null, "Ada Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
-            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "E-001", null, null, null,
+            null, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
+            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "E-001", 1, null, null,
             OnboardingWizardStep.EmployeeDetails, null);
         _employeeRepository
             .Setup(r => r.EmployeeNumberExistsAsync(_tenantId, "E-001", null, It.IsAny<CancellationToken>()))
@@ -210,6 +216,9 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
     [Fact]
     public async Task Handle_ReturnsConflict_WhenSaveChangesThrowsConcurrencyConflictException()
     {
+        _seatEntitlementService
+            .Setup(s => s.EvaluateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeatDecision(SeatDecisionStatus.Approved, 10, 3, 0, 7, false, false, "ok"));
         _draftRepository
             .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ThrowsAsync(new ConcurrencyConflictException());

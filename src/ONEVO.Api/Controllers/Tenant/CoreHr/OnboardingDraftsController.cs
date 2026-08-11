@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.OnboardingDrafts;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.GetOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.ListOnboardingDrafts;
@@ -54,9 +55,9 @@ public class OnboardingDraftsController : ControllerBase
     public async Task<IActionResult> Create([FromBody] SaveOnboardingDraftRequest request, CancellationToken ct = default)
     {
         var command = new SaveOnboardingDraftCommand(
-            null, request.EmployeeName, request.WorkEmail, request.LegalEntityId, request.DepartmentId,
+            null, request.FirstName, request.LastName, request.WorkEmail, request.LegalEntityId, request.DepartmentId,
             request.PositionId, request.EmploymentType, request.StartDate, request.EmployeeNumber,
-            request.ScheduleId, request.SelectedTemplateId, request.EditedTasksJson, request.LastSavedStep,
+            request.WorkModeId, request.SelectedTemplateId, request.EditedTasksJson, request.LastSavedStep,
             IfMatchVersion: null);
 
         var result = await _mediator.Send(command, ct);
@@ -74,12 +75,25 @@ public class OnboardingDraftsController : ControllerBase
         var ifMatch = Request.Headers.IfMatch.FirstOrDefault()?.Trim('"');
 
         var command = new SaveOnboardingDraftCommand(
-            id, request.EmployeeName, request.WorkEmail, request.LegalEntityId, request.DepartmentId,
+            id, request.FirstName, request.LastName, request.WorkEmail, request.LegalEntityId, request.DepartmentId,
             request.PositionId, request.EmploymentType, request.StartDate, request.EmployeeNumber,
-            request.ScheduleId, request.SelectedTemplateId, request.EditedTasksJson, request.LastSavedStep,
+            request.WorkModeId, request.SelectedTemplateId, request.EditedTasksJson, request.LastSavedStep,
             ifMatch);
 
         var result = await _mediator.Send(command, ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Converts a valid draft into a pending employee onboarding package: creates the
+    /// pending user, employee, position assignment, checklist tasks, and invitation (queued via
+    /// outbox) in one transaction, or - when the selected position requires approval - submits
+    /// an access grant request and leaves the draft waiting for that approval. TenantId is
+    /// always server-derived; the request carries no body.</summary>
+    [HttpPost("{id:guid}/finalize")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> Finalize(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new FinalizeOnboardingDraftCommand(id), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }

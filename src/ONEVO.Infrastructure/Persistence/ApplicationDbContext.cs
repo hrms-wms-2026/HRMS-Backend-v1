@@ -179,6 +179,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<PositionAssignment> PositionAssignments => Set<PositionAssignment>();
     public DbSet<EmployeeHierarchyClosure> EmployeeHierarchyClosures => Set<EmployeeHierarchyClosure>();
     public DbSet<OnboardingDraft> OnboardingDrafts => Set<OnboardingDraft>();
+    public DbSet<ChecklistTemplate> ChecklistTemplates => Set<ChecklistTemplate>();
+    public DbSet<EmployeeChecklistTask> EmployeeChecklistTasks => Set<EmployeeChecklistTask>();
+    public DbSet<AccessGrantRequest> AccessGrantRequests => Set<AccessGrantRequest>();
 
     // Lookups
     public DbSet<EmploymentType> EmploymentTypes => Set<EmploymentType>();

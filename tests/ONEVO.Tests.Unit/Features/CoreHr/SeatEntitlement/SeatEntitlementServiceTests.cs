@@ -28,7 +28,7 @@ public sealed class SeatEntitlementServiceTests
     }
 
     [Fact]
-    public async Task EvaluateAsync_ReturnsUndetermined_WhenSubscriptionExistsButHasNoNumericSeatSource()
+    public async Task EvaluateAsync_ReturnsUndetermined_WhenSubscriptionPolicyIsIncomplete()
     {
         await using var db = BuildInMemoryDb();
         var tenantId = Guid.NewGuid();
@@ -45,21 +45,18 @@ public sealed class SeatEntitlementServiceTests
     }
 
     [Fact]
-    public async Task EvaluateAsync_NeverReturnsApprovedOrBlocked()
+    public async Task EvaluateAsync_ReturnsApproved_WhenIncludedCapacityExists()
     {
-        // A real seat decision is a product/backend decision this codebase has not made yet -
-        // this test exists to fail loudly if a future edit starts synthesizing Approved/Blocked
-        // from CompanySizeRange or any other proxy instead of an authoritative seat count.
         await using var db = BuildInMemoryDb();
         var tenantId = Guid.NewGuid();
-        db.Set<TenantSubscription>().Add(NewSubscription(tenantId));
+        db.Set<TenantSubscription>().Add(NewSubscription(tenantId, includedSeats: 2, overageAllowed: false));
+        db.Employees.Add(NewEmployee(tenantId));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
         var decision = await new SeatEntitlementService(db).EvaluateAsync(tenantId, CancellationToken.None);
 
-        Assert.NotEqual(SeatDecisionStatus.Approved, decision.Status);
-        Assert.NotEqual(SeatDecisionStatus.Blocked, decision.Status);
+        Assert.Equal(SeatDecisionStatus.Approved, decision.Status);
     }
 
     [Fact]
@@ -79,25 +76,37 @@ public sealed class SeatEntitlementServiceTests
     }
 
     [Fact]
-    public async Task EvaluateAsync_CountsWaitingForSeatDraftsAsPendingReservedSeats_ButNotOtherDraftStatuses()
+    public async Task EvaluateAsync_ReturnsBlocked_WhenCapacityIsExhaustedAndOverageIsDisabled()
     {
         await using var db = BuildInMemoryDb();
         var tenantId = Guid.NewGuid();
-        db.OnboardingDrafts.AddRange(
-            NewDraft(tenantId, OnboardingDraftStatus.WaitingForSeat),
-            NewDraft(tenantId, OnboardingDraftStatus.WaitingForSeat),
-            NewDraft(tenantId, OnboardingDraftStatus.Draft),
-            NewDraft(tenantId, OnboardingDraftStatus.WaitingForPositionApproval));
-        db.Set<TenantSubscription>().Add(NewSubscription(tenantId));
+        db.Employees.Add(NewEmployee(tenantId));
+        db.Set<TenantSubscription>().Add(NewSubscription(tenantId, includedSeats: 1, overageAllowed: false));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
         var decision = await new SeatEntitlementService(db).EvaluateAsync(tenantId, CancellationToken.None);
 
-        Assert.Equal(2, decision.PendingReservedSeats);
+        Assert.Equal(SeatDecisionStatus.Blocked, decision.Status);
+        Assert.Equal(0, decision.PendingReservedSeats);
     }
 
-    private static TenantSubscription NewSubscription(Guid tenantId) => new()
+    [Fact]
+    public async Task EvaluateAsync_ReturnsApproved_WhenCapacityIsExhaustedAndOverageIsAllowed()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        db.Employees.Add(NewEmployee(tenantId));
+        db.Set<TenantSubscription>().Add(NewSubscription(tenantId, includedSeats: 1, overageAllowed: true));
+        await db.SaveChangesAsync();
+
+        var decision = await new SeatEntitlementService(db).EvaluateAsync(tenantId, CancellationToken.None);
+
+        Assert.Equal(SeatDecisionStatus.Approved, decision.Status);
+        Assert.True(decision.OverageAllowed);
+    }
+
+    private static TenantSubscription NewSubscription(Guid tenantId, int? includedSeats = null, bool? overageAllowed = null) => new()
     {
         Id = Guid.NewGuid(),
         TenantId = tenantId,
@@ -106,6 +115,8 @@ public sealed class SeatEntitlementServiceTests
         CurrentPeriodEnd = DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(1)),
         ContractStartDate = DateOnly.FromDateTime(DateTime.UtcNow),
         CompanySizeRange = "51-200",
+        IncludedSeats = includedSeats,
+        OverageAllowed = overageAllowed,
     };
 
     private static EmployeeEntity NewEmployee(Guid tenantId) => new()
@@ -124,10 +135,12 @@ public sealed class SeatEntitlementServiceTests
     {
         Id = Guid.NewGuid(),
         TenantId = tenantId,
-        EmployeeName = "Pending Hire",
+        FirstName = "Pending",
+        LastName = "Hire",
         WorkEmail = $"{Guid.NewGuid():N}@test.dev",
         LegalEntityId = Guid.NewGuid(),
         EmploymentType = "full_time",
+        WorkModeId = 1,
         StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
         Status = status,
         StartedById = Guid.NewGuid(),

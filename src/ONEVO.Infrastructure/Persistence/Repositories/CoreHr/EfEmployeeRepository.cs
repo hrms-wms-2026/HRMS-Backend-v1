@@ -225,4 +225,9 @@ public class EfEmployeeRepository : IEmployeeRepository
 
     public async Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default)
         => await _db.Employees.AsNoTracking().CountAsync(e => e.TenantId == tenantId, ct);
+
+    public async Task AddAsync(EmployeeEntity employee, CancellationToken ct = default)
+        => await _db.Employees.AddAsync(employee, ct);
+
+    public Task<int> SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
 }

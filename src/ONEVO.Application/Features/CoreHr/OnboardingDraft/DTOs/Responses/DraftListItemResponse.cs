@@ -2,7 +2,7 @@ namespace ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 
 public record DraftListItemResponse(
     Guid Id,
-    string EmployeeName,
+    string DisplayName,
     string? PositionName,
     string? DepartmentName,
     string Status,

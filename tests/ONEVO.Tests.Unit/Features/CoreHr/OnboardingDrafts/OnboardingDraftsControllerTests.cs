@@ -5,6 +5,7 @@ using Moq;
 using ONEVO.Api.Contracts.CoreHr.OnboardingDrafts;
 using ONEVO.Api.Controllers.Tenant.CoreHr;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Queries.GetOnboardingDraft;
@@ -25,12 +26,12 @@ public sealed class OnboardingDraftsControllerTests
     }
 
     private static SaveOnboardingDraftRequest SampleRequest() => new(
-        "Ada Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
-        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, null, null, null, "employee_details");
+        "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
+        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null, "employee_details");
 
     private static OnboardingDraftResponse SampleResponse(Guid id) => new(
-        id, "Ada Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
-        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, null, null, null,
+        id, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
+        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
         "waiting_for_seat", "waiting_for_seat", "employee_details", Guid.NewGuid(), "1");
 
     [Fact]
@@ -113,6 +114,65 @@ public sealed class OnboardingDraftsControllerTests
             .ReturnsAsync(Result<OnboardingDraftResponse>.NotFound("missing"));
 
         var result = await _sut.GetById(Guid.NewGuid(), CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
+        Assert.Equal(404, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task Finalize_SendsCommandWithRouteDraftId()
+    {
+        var draftId = Guid.NewGuid();
+        var response = new FinalizeOnboardingDraftResponse(
+            draftId, Guid.NewGuid(), "finalized", "invitation_sent", true, false, false, "onboarding.finalize.invitation_sent");
+        _mediator
+            .Setup(m => m.Send(It.IsAny<FinalizeOnboardingDraftCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FinalizeOnboardingDraftResponse>.Success(response));
+
+        await _sut.Finalize(draftId, CancellationToken.None);
+
+        _mediator.Verify(m => m.Send(
+            It.Is<FinalizeOnboardingDraftCommand>(c => c.DraftId == draftId),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Finalize_Returns200_OnSuccess()
+    {
+        var draftId = Guid.NewGuid();
+        var response = new FinalizeOnboardingDraftResponse(
+            draftId, Guid.NewGuid(), "finalized", "invitation_sent", true, false, false, "onboarding.finalize.invitation_sent");
+        _mediator
+            .Setup(m => m.Send(It.IsAny<FinalizeOnboardingDraftCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FinalizeOnboardingDraftResponse>.Success(response));
+
+        var result = await _sut.Finalize(draftId, CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Same(response, okResult.Value);
+    }
+
+    [Fact]
+    public async Task Finalize_MapsFailureToProblem_WithHandlerStatusCode()
+    {
+        _mediator
+            .Setup(m => m.Send(It.IsAny<FinalizeOnboardingDraftCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FinalizeOnboardingDraftResponse>.Conflict("This draft has already been finalized."));
+
+        var result = await _sut.Finalize(Guid.NewGuid(), CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
+        Assert.Equal(409, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task Finalize_Returns404_WhenDraftMissing()
+    {
+        _mediator
+            .Setup(m => m.Send(It.IsAny<FinalizeOnboardingDraftCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FinalizeOnboardingDraftResponse>.NotFound("missing"));
+
+        var result = await _sut.Finalize(Guid.NewGuid(), CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(404, objectResult.StatusCode);

@@ -29,4 +29,8 @@ public interface IEmployeeRepository
     Task<bool> EmployeeNumberExistsAsync(Guid tenantId, string employeeNumber, Guid? excludeId, CancellationToken ct = default);
 
     Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default);
+
+    Task AddAsync(ONEVO.Domain.Features.CoreHr.Entities.Employee employee, CancellationToken ct = default);
+
+    Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

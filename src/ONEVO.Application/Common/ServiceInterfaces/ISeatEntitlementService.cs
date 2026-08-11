@@ -11,7 +11,8 @@ public enum SeatDecisionStatus
 
     /// <summary>No authoritative purchased-seat source exists on this tenant's subscription,
     /// so seat availability cannot be computed. Never inferred from CompanySizeRange or any
-    /// other proxy. Always routes onboarding to Draft.</summary>
+    /// other proxy. The draft-save handler persists Draft with SeatConfigurationRequired;
+    /// finalization remains blocked until billing provides an authoritative policy.</summary>
     Undetermined,
 }
 

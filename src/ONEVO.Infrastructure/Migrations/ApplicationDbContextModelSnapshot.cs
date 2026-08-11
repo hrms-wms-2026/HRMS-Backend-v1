@@ -171,6 +171,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by_id");
 
+                    b.Property<Guid?>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
@@ -187,9 +191,23 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("invited_full_name");
 
+                    b.Property<Guid?>("LegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_entity_id");
+
+                    b.Property<Guid?>("OnboardingDraftId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("onboarding_draft_id");
+
                     b.Property<Guid?>("PositionId")
                         .HasColumnType("uuid")
                         .HasColumnName("position_id");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("purpose");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1189,6 +1207,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
+                    b.Property<Guid?>("SourcePositionAccessTemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_position_access_template_id");
+
+                    b.Property<Guid?>("SourcePositionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_position_id");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -1199,10 +1225,184 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("RoleId")
                         .HasDatabaseName("ix_user_roles_role_id");
 
+                    b.HasIndex("SourcePositionAccessTemplateId")
+                        .HasDatabaseName("ix_user_roles_source_position_access_template_id");
+
                     b.HasIndex("UserId")
                         .HasDatabaseName("ix_user_roles_user_id");
 
                     b.ToTable("user_roles", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.AccessGrantRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ActionType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("action_type");
+
+                    b.Property<string>("ApprovalStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("approval_status");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid?>("DecidedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by_user_id");
+
+                    b.Property<string>("DecisionNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("decision_note");
+
+                    b.Property<DateTimeOffset>("EffectiveFrom")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateTimeOffset?>("EffectiveTo")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("effective_to");
+
+                    b.Property<Guid?>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<Guid?>("OnboardingDraftId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("onboarding_draft_id");
+
+                    b.Property<Guid>("PositionAccessTemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("position_access_template_id");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by_user_id");
+
+                    b.Property<Guid>("RequestedRoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_role_id");
+
+                    b.Property<Guid>("TargetDepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_department_id");
+
+                    b.Property<Guid>("TargetPositionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_position_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_access_grant_requests");
+
+                    b.HasIndex("DecidedByUserId")
+                        .HasDatabaseName("ix_access_grant_requests_decided_by_user_id");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_access_grant_requests_employee_id");
+
+                    b.HasIndex("OnboardingDraftId")
+                        .HasDatabaseName("ix_access_grant_requests_onboarding_draft_id");
+
+                    b.HasIndex("PositionAccessTemplateId")
+                        .HasDatabaseName("ix_access_grant_requests_position_access_template_id");
+
+                    b.HasIndex("RequestedByUserId")
+                        .HasDatabaseName("ix_access_grant_requests_requested_by_user_id");
+
+                    b.HasIndex("RequestedRoleId")
+                        .HasDatabaseName("ix_access_grant_requests_requested_role_id");
+
+                    b.HasIndex("TargetDepartmentId")
+                        .HasDatabaseName("ix_access_grant_requests_target_department_id");
+
+                    b.HasIndex("TargetPositionId")
+                        .HasDatabaseName("ix_access_grant_requests_target_position_id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_access_grant_requests_user_id");
+
+                    b.HasIndex("TenantId", "OnboardingDraftId", "TargetPositionId", "PositionAccessTemplateId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_access_grant_requests_tenant_id_onboarding_draft_id_target_")
+                        .HasFilter("approval_status = 'Pending'");
+
+                    b.ToTable("access_grant_requests", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.ChecklistTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("department_id");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("TasksJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("tasks_json");
+
+                    b.Property<string>("TemplateType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("template_type");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_checklist_templates");
+
+                    b.HasIndex("DepartmentId")
+                        .HasDatabaseName("ix_checklist_templates_department_id");
+
+                    b.HasIndex("TenantId", "DepartmentId")
+                        .HasDatabaseName("ix_checklist_templates_tenant_id_department_id");
+
+                    b.HasIndex("TenantId", "TemplateType", "IsActive")
+                        .HasDatabaseName("ix_checklist_templates_tenant_id_template_type_is_active");
+
+                    b.ToTable("checklist_templates", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.Employee", b =>
@@ -1332,6 +1532,83 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("employees", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeChecklistTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AssignedToId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assigned_to_id");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("due_date");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<string>("LifecycleType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("lifecycle_type");
+
+                    b.Property<string>("OwnerType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("owner_type");
+
+                    b.Property<int?>("Sequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TaskTitle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("task_title");
+
+                    b.Property<Guid?>("TemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("template_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_employee_checklist_tasks");
+
+                    b.HasIndex("AssignedToId")
+                        .HasDatabaseName("ix_employee_checklist_tasks_assigned_to_id");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_employee_checklist_tasks_employee_id");
+
+                    b.HasIndex("TemplateId")
+                        .HasDatabaseName("ix_employee_checklist_tasks_template_id");
+
+                    b.HasIndex("TenantId", "EmployeeId", "LifecycleType", "Sequence")
+                        .HasDatabaseName("ix_employee_checklist_tasks_tenant_id_employee_id_lifecycle_ty");
+
+                    b.ToTable("employee_checklist_tasks", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeHierarchyClosure", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -1402,12 +1679,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("edited_tasks_json");
 
-                    b.Property<string>("EmployeeName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("employee_name");
-
                     b.Property<string>("EmployeeNumber")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
@@ -1423,9 +1694,21 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("finalized_at");
 
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("first_name");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("last_name");
 
                     b.Property<string>("LastSavedStep")
                         .IsRequired()
@@ -1440,10 +1723,6 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid?>("PositionId")
                         .HasColumnType("uuid")
                         .HasColumnName("position_id");
-
-                    b.Property<Guid?>("ScheduleId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("schedule_id");
 
                     b.Property<Guid?>("SelectedTemplateId")
                         .HasColumnType("uuid")
@@ -1477,6 +1756,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(320)")
                         .HasColumnName("work_email");
 
+                    b.Property<int>("WorkModeId")
+                        .HasColumnType("integer")
+                        .HasColumnName("work_mode_id");
+
                     b.Property<uint>("xmin")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -1494,6 +1777,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("PositionId")
                         .HasDatabaseName("ix_onboarding_drafts_position_id");
+
+                    b.HasIndex("WorkModeId")
+                        .HasDatabaseName("ix_onboarding_drafts_work_mode_id");
 
                     b.HasIndex("TenantId", "StartedById")
                         .HasDatabaseName("ix_onboarding_drafts_tenant_id_started_by_id");
@@ -5120,6 +5406,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("gateway_subscription_ref");
 
+                    b.Property<int?>("IncludedSeats")
+                        .HasColumnType("integer")
+                        .HasColumnName("included_seats");
+
                     b.Property<DateOnly?>("LicensePaidAt")
                         .HasColumnType("date")
                         .HasColumnName("license_paid_at");
@@ -5164,6 +5454,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("maintenance_status");
+
+                    b.Property<bool?>("OverageAllowed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("overage_allowed");
 
                     b.Property<decimal?>("OverrideAnnualPrice")
                         .HasColumnType("decimal(10,2)")
@@ -5941,6 +6235,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("code");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
                     b.Property<string>("Label")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -6077,6 +6375,100 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.AccessGrantRequest", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("DecidedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_access_grant_requests_users_decided_by_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_access_grant_requests_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft", null)
+                        .WithMany()
+                        .HasForeignKey("OnboardingDraftId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_access_grant_requests_onboarding_drafts_onboarding_draft_id");
+
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.PositionAccessTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("PositionAccessTemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_access_grant_requests_position_access_templates_position_ac");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_access_grant_requests_users_requested_by_user_id");
+
+                    b.HasOne("ONEVO.Domain.Features.Auth.Entities.Role", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedRoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_access_grant_requests_roles_requested_role_id");
+
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.Department", null)
+                        .WithMany()
+                        .HasForeignKey("TargetDepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_access_grant_requests_departments_target_department_id");
+
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.Position", null)
+                        .WithMany()
+                        .HasForeignKey("TargetPositionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_access_grant_requests_positions_target_position_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_access_grant_requests_users_user_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.ChecklistTemplate", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_checklist_templates_departments_department_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeChecklistTask", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedToId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_checklist_tasks_users_assigned_to_id");
+
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_employee_checklist_tasks_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.ChecklistTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_employee_checklist_tasks_checklist_templates_template_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.Department", null)
@@ -6097,6 +6489,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("PositionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_onboarding_drafts_positions_position_id");
+
+                    b.HasOne("ONEVO.Domain.Lookups.WorkMode", null)
+                        .WithMany()
+                        .HasForeignKey("WorkModeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_onboarding_drafts_work_modes_work_mode_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment", b =>

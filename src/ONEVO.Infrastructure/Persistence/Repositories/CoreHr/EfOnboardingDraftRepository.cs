@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
@@ -29,7 +30,8 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
             .Where(d => d.TenantId == tenantId && d.Id == id)
             .Select(d => new OnboardingDraftResponse(
                 d.Id,
-                d.EmployeeName,
+                d.FirstName,
+                d.LastName,
                 d.WorkEmail,
                 d.LegalEntityId,
                 d.DepartmentId,
@@ -37,7 +39,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 d.EmploymentType,
                 d.StartDate,
                 d.EmployeeNumber,
-                d.ScheduleId,
+                d.WorkModeId,
                 d.SelectedTemplateId,
                 d.EditedTasksJson,
                 d.Status,
@@ -65,7 +67,8 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
             .Take(pageSize)
             .Select(d => new OnboardingDraftResponse(
                 d.Id,
-                d.EmployeeName,
+                d.FirstName,
+                d.LastName,
                 d.WorkEmail,
                 d.LegalEntityId,
                 d.DepartmentId,
@@ -73,7 +76,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 d.EmploymentType,
                 d.StartDate,
                 d.EmployeeNumber,
-                d.ScheduleId,
+                d.WorkModeId,
                 d.SelectedTemplateId,
                 d.EditedTasksJson,
                 d.Status,
@@ -113,7 +116,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
             .Take(pageSize)
             .Select(row => new DraftListItemResponse(
                 row.d.Id,
-                row.d.EmployeeName,
+                row.d.FirstName + " " + row.d.LastName,
                 row.position != null ? row.position.Name : null,
                 row.dept != null ? row.dept.Name : null,
                 row.d.Status,
@@ -147,6 +150,16 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
         catch (DbUpdateConcurrencyException ex)
         {
             throw new ConcurrencyConflictException(ex);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // Finalize stages every write (employee, user, position assignment, user role,
+            // invitation token, access grant request, checklist tasks) on this same DbContext
+            // and commits them all in this one call, so a concurrent finalize/save racing on
+            // any of those tables' unique constraints (e.g. work email, employee number,
+            // pending access-grant request) surfaces here rather than at the offending
+            // repository's own AddAsync.
+            throw new UniqueConstraintConflictException(ex);
         }
     }
 }
