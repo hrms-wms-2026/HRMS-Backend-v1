@@ -102,7 +102,13 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
         var result = await handler.Handle(NewCommand(), CancellationToken.None);
 
         result.Value!.Status.Should().NotBe("finalized");
-        result.Value.Status.Should().Be("waiting_for_seat", "the seat service always returns Undetermined today");
+        // No TenantSubscription row exists for this test's tenant, so SeatEntitlementService
+        // returns Undetermined - which SaveOnboardingDraftCommandHandler maps to Draft/
+        // SeatConfigurationRequired, not WaitingForSeat (that status is reserved for a Blocked
+        // decision). Matches the intentional, passing unit test
+        // Handle_SavesDraftWithSeatConfigurationRequired_WhenSeatDecisionIsUndetermined.
+        result.Value.Status.Should().Be("draft", "the seat service always returns Undetermined today, which maps to Draft, not WaitingForSeat");
+        result.Value.DraftReason.Should().Be("seat_configuration_required");
     }
 
     [Fact]
