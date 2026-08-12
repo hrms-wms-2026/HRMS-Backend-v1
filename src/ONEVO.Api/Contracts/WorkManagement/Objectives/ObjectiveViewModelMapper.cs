@@ -9,7 +9,8 @@ public static class ObjectiveViewModelMapper
         dto.Id, dto.ProjectId, dto.ParentObjectiveId, dto.IsDefault, dto.Title, dto.Description,
         dto.OwnerId, dto.ReportingManagerId, dto.CreatedById, dto.StartDate, dto.EndDate,
         dto.Progress, dto.ActualHours, dto.AllocatedHours, dto.CompletedHours,
-        dto.IsActive, dto.IsAchieved, dto.AchievedAt, dto.CreatedAt, dto.UpdatedAt);
+        dto.IsActive, dto.IsAchieved, dto.AchievedAt, dto.CreatedAt, dto.UpdatedAt,
+        dto.OwnerName, dto.ReportingManagerName, dto.IsOwner);
 
     public static ObjectiveTreeItemViewModel ToViewModel(this ObjectiveTreeItemResponse dto) => new(
         dto.Id, dto.ParentObjectiveId, dto.IsDefault, dto.Title, dto.OwnerId,
@@ -27,6 +28,7 @@ public static class ObjectiveViewModelMapper
         dto.OwnerId, dto.ReportingManagerId, dto.CreatedById, dto.StartDate, dto.EndDate,
         dto.Progress, dto.ActualHours, dto.AllocatedHours, dto.CompletedHours,
         dto.IsActive, dto.CreatedAt, dto.UpdatedAt,
+        dto.OwnerName, dto.ReportingManagerName, dto.IsOwner, dto.IsAchieved, dto.AchievedAt,
         dto.Children.Select(c => c.ToViewModel()).ToList());
 
     public static ObjectiveHistoryItemViewModel ToViewModel(this ObjectiveHistoryItemResponse dto) => new(
