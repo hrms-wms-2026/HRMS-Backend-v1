@@ -37,6 +37,12 @@ public class LegalEntity : ITenantOwnedEntity
     // Fixed values only: "12h" or "24h".
     public string TimeFormat { get; set; } = "12h";
 
+    // Default company working hours (Phase 1 stand-in ahead of the deferred
+    // Time & Attendance work_schedules/work_schedule_days feature). Same-day
+    // only - both null or both set with WorkStartTime < WorkEndTime.
+    public TimeOnly? WorkStartTime { get; set; }
+    public TimeOnly? WorkEndTime { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
 }

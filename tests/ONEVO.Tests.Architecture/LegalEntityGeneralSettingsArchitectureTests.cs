@@ -66,7 +66,9 @@ public class LegalEntityGeneralSettingsArchitectureTests
             "Timezone",
             "UpdatedAt",
             "VatGstNumber",
-            "Website"
+            "Website",
+            "WorkEndTime",
+            "WorkStartTime"
         };
 
         Assert.Equal(expected, properties);
@@ -197,6 +199,34 @@ public class LegalEntityGeneralSettingsArchitectureTests
 
         Assert.NotNull(property);
         Assert.Equal("week_start_day", property!.GetColumnName());
+    }
+
+    /// <summary>
+    /// work_start_time/work_end_time are default company working-time fields
+    /// added directly to legal_entities (Time & Attendance's
+    /// work_schedules/work_schedule_days tables are the deferred canonical
+    /// home for shift-level scheduling; this is a company-wide default that
+    /// exists ahead of that feature). Guards the Postgres "time without time
+    /// zone" mapping and nullability.
+    /// </summary>
+    [Fact]
+    public void Model_LegalEntities_WorkStartAndEndTime_MapToNullableTimeColumns()
+    {
+        using var context = CreateModelInspectionContext();
+
+        var entityType = context.Model.GetEntityTypes().Single(e => e.ClrType == typeof(LegalEntity));
+
+        var start = entityType.FindProperty(nameof(LegalEntity.WorkStartTime));
+        var end = entityType.FindProperty(nameof(LegalEntity.WorkEndTime));
+
+        Assert.NotNull(start);
+        Assert.NotNull(end);
+        Assert.Equal("work_start_time", start!.GetColumnName());
+        Assert.Equal("work_end_time", end!.GetColumnName());
+        Assert.True(start.IsNullable);
+        Assert.True(end.IsNullable);
+        Assert.Equal(typeof(TimeOnly?), start.ClrType);
+        Assert.Equal(typeof(TimeOnly?), end.ClrType);
     }
 
     private static string ReadExpandMigrationSource()

@@ -1,3 +1,4 @@
+using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using ONEVO.Application.Features.OrgStructure.Mappers;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using Xunit;
@@ -24,6 +25,45 @@ public sealed class PositionTreeMapperTests
         Assert.Single(tree[0].Children[0].Children);
         Assert.Equal("Sales Manager", tree[0].Children[0].Children[0].Name);
         Assert.Empty(tree[0].Children[0].Children[0].Children);
+    }
+
+    [Fact]
+    public void BuildTree_WithoutOccupancyArgument_DefaultsEveryNodeToZeroAssignedAndEmptyPreview()
+    {
+        var legalEntityId = Guid.NewGuid();
+        var root = CreatePosition(legalEntityId, "CEO", reportsToPositionId: null);
+
+        var tree = PositionTreeMapper.BuildTree([root]);
+
+        Assert.Equal(0, tree[0].AssignedCount);
+        Assert.Equal(0, tree[0].RemainingAssignedCount);
+        Assert.Empty(tree[0].OccupantPreview);
+    }
+
+    [Fact]
+    public void BuildTree_PropagatesOccupancyPreview_ToTheMatchingNodeOnly()
+    {
+        var legalEntityId = Guid.NewGuid();
+        var root = CreatePosition(legalEntityId, "CEO", reportsToPositionId: null);
+        var child = CreatePosition(legalEntityId, "VP Sales", reportsToPositionId: root.Id);
+        var employeeId = Guid.NewGuid();
+        var occupancy = new Dictionary<Guid, PositionOccupancyPreview>
+        {
+            [child.Id] = new PositionOccupancyPreview(
+                2, [new PositionOccupantPreviewItem(employeeId, "Grace", "Hopper", null)])
+        };
+
+        var tree = PositionTreeMapper.BuildTree([root, child], occupancy);
+
+        Assert.Equal(0, tree[0].AssignedCount);
+        Assert.Empty(tree[0].OccupantPreview);
+
+        var childNode = Assert.Single(tree[0].Children);
+        Assert.Equal(2, childNode.AssignedCount);
+        Assert.Equal(1, childNode.RemainingAssignedCount);
+        var occupant = Assert.Single(childNode.OccupantPreview);
+        Assert.Equal("Grace Hopper", occupant.DisplayName);
+        Assert.Equal("GH", occupant.Initials);
     }
 
     [Fact]

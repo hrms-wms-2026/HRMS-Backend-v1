@@ -35,9 +35,12 @@ namespace ONEVO.Tests.Integration.OrgStructure.Position;
 /// itself requires the head position to already belong to the target department) is unnecessary
 /// setup for scenarios that only care about the archive blocker. Create/UpdatePositionRequest -
 /// the *Position* request contracts - never expose headPositionId, by design (verified by
-/// PositionsControllerArchitectureTests). position_assignments does not exist in this schema, so
-/// occupant-count scenarios are not testable here; ArchiveCheck_* tests instead assert the
-/// documented unsupported/null shape.
+/// PositionsControllerArchitectureTests). position_assignments now exists (added in Part 2E),
+/// but ArchiveCheck_* still assert the documented unsupported/null CurrentOccupancy shape -
+/// that pair was deliberately left unpopulated (see PositionListItemResponse for why); occupant-
+/// preview coverage for List/Tree (assignedCount/occupantPreview/remainingAssignedCount) lives in
+/// ONEVO.Tests.Unit (ListPositionsQueryHandlerTests, GetPositionTreeQueryHandlerTests,
+/// PositionMapperTests, EfPositionAssignmentRepositoryTests) rather than here.
 /// </summary>
 [Collection(WebApplicationFactoryCollection.Name)]
 public class PositionsIntegrationTests : IAsyncLifetime
@@ -160,7 +163,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     {
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Blocked Position", code = "PERM-BLOCK", positionType = "unique", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            new { departmentId = _tenantADepartmentId, name = "Blocked Position", code = "PERMB", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
             cookie: _tenantAOrgReadOnly.SessionCookie, csrfToken: _tenantAOrgReadOnly.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -170,7 +173,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     {
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Full Access Create Position", code = "PERM-OK", positionType = "unique", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            new { departmentId = _tenantADepartmentId, name = "Full Access Create Position", code = "PERMO", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.Created);
     }
@@ -178,12 +181,12 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Update_WithOrgReadOnly_NoOrgManage_Returns403()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Perm Position", "UPD-PERM");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Perm Position", "UPDPM");
         var id = position.GetProperty("id").GetGuid();
 
         var response = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            new { departmentId = _tenantADepartmentId, name = "Renamed", code = "UPD-PERM", positionType = "unique", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            new { departmentId = _tenantADepartmentId, name = "Renamed", code = "UPDPM", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
             cookie: _tenantAOrgReadOnly.SessionCookie, csrfToken: _tenantAOrgReadOnly.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -191,7 +194,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Archive_WithOrgReadOnly_NoOrgManage_Returns403()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Perm Position", "ARCH-PERM");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Perm Position", "ARCHP");
         var id = position.GetProperty("id").GetGuid();
 
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
@@ -203,7 +206,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Restore_WithOrgReadOnly_NoOrgManage_Returns403()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Perm Position", "REST-PERM");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Perm Position", "RESTP");
         var id = position.GetProperty("id").GetGuid();
         await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/archive",
@@ -218,7 +221,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task ArchiveCheck_Unauthenticated_Returns401()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Unauth Position", "ACHK-UNAUTH");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Unauth Position", "ACHKU");
         var id = position.GetProperty("id").GetGuid();
 
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
@@ -229,7 +232,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Restore_Unauthenticated_Returns401()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Unauth Position", "REST-UNAUTH");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Unauth Position", "RESTU");
         var id = position.GetProperty("id").GetGuid();
 
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
@@ -244,7 +247,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     {
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Shape Position", code = "SHAPE-1", positionType = "unique", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            new { departmentId = _tenantADepartmentId, name = "Shape Position", code = "SHAPE", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.Created);
 
@@ -255,7 +258,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
         json.GetProperty("legalEntityId").GetGuid().Should().Be(_tenantALegalEntityId);
         json.GetProperty("departmentId").GetGuid().Should().Be(_tenantADepartmentId);
         json.GetProperty("name").GetString().Should().Be("Shape Position");
-        json.GetProperty("code").GetString().Should().Be("SHAPE-1");
+        json.GetProperty("code").GetString().Should().Be("SHAPE");
         json.GetProperty("positionType").GetString().Should().Be("unique");
         json.GetProperty("maxOccupancy").GetInt32().Should().Be(1);
         json.GetProperty("reportsToPositionId").ValueKind.Should().Be(JsonValueKind.Null);
@@ -272,7 +275,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
         // silently drops unknown JSON members, so this can never be used to bypass RLS.
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Tenant Id Ignored Position", code = "TID-IGN", positionType = "unique", maxOccupancy = 1, reportsToPositionId = (Guid?)null, tenantId = Guid.NewGuid() },
+            new { departmentId = _tenantADepartmentId, name = "Tenant Id Ignored Position", code = "TIDIG", maxOccupancy = 1, reportsToPositionId = (Guid?)null, tenantId = Guid.NewGuid() },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var json = await ReadJsonAsync(response);
@@ -282,11 +285,11 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Create_DuplicateCodeCaseInsensitiveInSameLegalEntity_Returns409()
     {
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Original Code Position", "DUPCODE");
+        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Original Code Position", "DUPCD");
 
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Different Name Position", code = "dupcode", positionType = "unique", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            new { departmentId = _tenantADepartmentId, name = "Different Name Position", code = "dupcd", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -294,11 +297,11 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Create_SameCodeInDifferentLegalEntity_IsAllowed()
     {
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Shared Code Position A", "SHARED-POS");
+        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Shared Code Position A", "SHRDP");
 
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantASecondLegalEntityId}/positions",
-            new { departmentId = _tenantASecondLegalEntityDepartmentId, name = "Shared Code Position B", code = "SHARED-POS", positionType = "unique", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            new { departmentId = _tenantASecondLegalEntityDepartmentId, name = "Shared Code Position B", code = "SHRDP", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.Created);
     }
@@ -308,7 +311,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     {
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantASecondLegalEntityDepartmentId, name = "Wrong LE Dept Position", code = "WRONG-LE", positionType = "unique", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            new { departmentId = _tenantASecondLegalEntityDepartmentId, name = "Wrong LE Dept Position", code = "WRNGL", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -318,37 +321,27 @@ public class PositionsIntegrationTests : IAsyncLifetime
     {
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantBDepartmentId, name = "Cross Tenant Dept Position", code = "XT-DEPT", positionType = "unique", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            new { departmentId = _tenantBDepartmentId, name = "Cross Tenant Dept Position", code = "XTDPT", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
-    public async Task Create_InvalidPositionType_Returns400()
+    public async Task Create_MaxOccupancyZero_Returns400()
     {
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Invalid Type Position", code = "BAD-TYPE", positionType = "Individual Contributor", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            new { departmentId = _tenantADepartmentId, name = "Invalid Capacity Position", code = "BADCP", maxOccupancy = 0, reportsToPositionId = (Guid?)null },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
-    public async Task Create_UniqueTypeWithMaxOccupancyNotOne_Returns400()
+    public async Task Create_CodeLongerThanFiveCharacters_Returns400()
     {
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Invalid Capacity Position", code = "BAD-CAP", positionType = "unique", maxOccupancy = 2, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    [Fact]
-    public async Task Create_PooledTypeWithMaxOccupancyLessThanOne_Returns400()
-    {
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Invalid Pooled Capacity Position", code = "BAD-POOL", positionType = "pooled", maxOccupancy = 0, reportsToPositionId = (Guid?)null },
+            new { departmentId = _tenantADepartmentId, name = "Invalid Code Length Position", code = "TOOLONG", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -371,8 +364,8 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task List_ReturnsOnlyPositionsForSelectedLegalEntity()
     {
-        var posInFirstLe = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "List Isolation LE1 Position", "ISO-LE1");
-        var posInSecondLe = await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "List Isolation LE2 Position", "ISO-LE2");
+        var posInFirstLe = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "List Isolation LE1 Position", "ISOL1");
+        var posInSecondLe = await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "List Isolation LE2 Position", "ISOL2");
 
         var firstLeList = await GetJsonAsync(_tenantAOwner,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions");
@@ -403,8 +396,8 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task List_Search_FindsByName()
     {
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Search Match Marketing Lead", "SRCH-NAME-1");
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Search NoMatch Finance Lead", "SRCH-NAME-2");
+        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Search Match Marketing Lead", "SRCN1");
+        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Search NoMatch Finance Lead", "SRCN2");
 
         var response = await GetJsonAsync(_tenantAOwner,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions?search=marketing");
@@ -417,21 +410,21 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task List_Search_FindsByCode()
     {
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Search Code Match Position", "SRCH-UNIQ-CODE");
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Search Code NoMatch Position", "OTHER-CODE");
+        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Search Code Match Position", "SRCHM");
+        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Search Code NoMatch Position", "OTHRC");
 
         var response = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions?search=SRCH-UNIQ");
+            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions?search=SRCH");
 
         var codes = response.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("code").GetString()).ToList();
-        codes.Should().Contain("SRCH-UNIQ-CODE");
-        codes.Should().NotContain("OTHER-CODE");
+        codes.Should().Contain("SRCHM");
+        codes.Should().NotContain("OTHRC");
     }
 
     [Fact]
     public async Task List_IncludeInactiveFalse_ExcludesArchived_IncludeInactiveTrue_IncludesArchived()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archived List Position", "ARCH-LIST");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archived List Position", "ARCHL");
         var id = position.GetProperty("id").GetGuid();
         await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/archive",
@@ -449,8 +442,8 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task List_SortByName_Ascending_OrdersAlphabetically()
     {
-        await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "Zebra Sort Position", "SORT-Z");
-        await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "Alpha Sort Position", "SORT-A");
+        await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "Zebra Sort Position", "SORTZ");
+        await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "Alpha Sort Position", "SORTA");
 
         var response = await GetJsonAsync(_tenantAOwner,
             $"/api/v1/org/legal-entities/{_tenantASecondLegalEntityId}/positions?sortBy=name&sortDirection=asc");
@@ -464,15 +457,15 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task List_SortByCode_Descending_Orders()
     {
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Sort Code Low Position", "AAA-CODE");
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Sort Code High Position", "ZZZ-CODE");
+        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Sort Code Low Position", "AAAAA");
+        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Sort Code High Position", "ZZZZZ");
 
         var response = await GetJsonAsync(_tenantAOwner,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions?sortBy=code&sortDirection=desc&pageSize=100");
 
         var codes = response.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("code").GetString()!).ToList();
-        var lowIndex = codes.IndexOf("AAA-CODE");
-        var highIndex = codes.IndexOf("ZZZ-CODE");
+        var lowIndex = codes.IndexOf("AAAAA");
+        var highIndex = codes.IndexOf("ZZZZZ");
         highIndex.Should().BeLessThan(lowIndex);
     }
 
@@ -496,7 +489,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Get_CrossLegalEntity_WithinSameTenant_Returns404()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "LE Scoped Position", "LE-SCOPED");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "LE Scoped Position", "LESCP");
 
         var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantASecondLegalEntityId}/positions/{position.GetProperty("id").GetGuid()}",
@@ -509,10 +502,10 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Tree_ReturnsRootAndChild_ReportsToHierarchy()
     {
-        var root = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Tree Root Position", "TREE-ROOT");
+        var root = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Tree Root Position", "TREER");
         var rootId = root.GetProperty("id").GetGuid();
-        var child = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Tree Child Position", "TREE-CHILD",
-            positionType: "pooled", maxOccupancy: 3, reportsToPositionId: rootId);
+        var child = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Tree Child Position", "TREEC",
+            maxOccupancy: 3, reportsToPositionId: rootId);
         var childId = child.GetProperty("id").GetGuid();
 
         var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
@@ -530,8 +523,8 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Tree_ExcludesCrossLegalEntityPositions()
     {
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Tree LE1 Root Position", "TREE-LE1");
-        await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "Tree LE2 Root Position", "TREE-LE2");
+        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Tree LE1 Root Position", "TREL1");
+        await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "Tree LE2 Root Position", "TREL2");
 
         var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/tree",
@@ -547,19 +540,19 @@ public class PositionsIntegrationTests : IAsyncLifetime
     public async Task Update_ChangesFields()
     {
         var otherDept = await CreateDepartmentAsync(_tenantAOwner, _tenantALegalEntityId, "Update Target Dept");
-        var manager = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Manager Position", "UPD-MGR");
+        var manager = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Manager Position", "UPDMG");
         var managerId = manager.GetProperty("id").GetGuid();
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Lifecycle Position", "UPD-LC");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Lifecycle Position", "UPDLC");
         var id = position.GetProperty("id").GetGuid();
 
         var response = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            new { departmentId = otherDept, name = "Update Lifecycle Position Renamed", code = "UPD-LC2", positionType = "pooled", maxOccupancy = 4, reportsToPositionId = managerId },
+            new { departmentId = otherDept, name = "Update Lifecycle Position Renamed", code = "UPDL2", maxOccupancy = 4, reportsToPositionId = managerId },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var json = await ReadJsonAsync(response);
         json.GetProperty("name").GetString().Should().Be("Update Lifecycle Position Renamed");
-        json.GetProperty("code").GetString().Should().Be("UPD-LC2");
+        json.GetProperty("code").GetString().Should().Be("UPDL2");
         json.GetProperty("positionType").GetString().Should().Be("pooled");
         json.GetProperty("maxOccupancy").GetInt32().Should().Be(4);
         json.GetProperty("departmentId").GetGuid().Should().Be(otherDept);
@@ -569,12 +562,12 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Update_SelfReporting_Returns400()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Self Report Position", "SELF-RPT");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Self Report Position", "SELFR");
         var id = position.GetProperty("id").GetGuid();
 
         var response = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            new { departmentId = _tenantADepartmentId, name = "Self Report Position", code = "SELF-RPT", positionType = "unique", maxOccupancy = 1, reportsToPositionId = id },
+            new { departmentId = _tenantADepartmentId, name = "Self Report Position", code = "SELFR", maxOccupancy = 1, reportsToPositionId = id },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -582,15 +575,15 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Update_ReportingCycle_Returns422()
     {
-        var parent = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Cycle Parent Position", "CYC-PARENT");
+        var parent = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Cycle Parent Position", "CYCPR");
         var parentId = parent.GetProperty("id").GetGuid();
-        var child = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Cycle Child Position", "CYC-CHILD",
+        var child = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Cycle Child Position", "CYCCH",
             reportsToPositionId: parentId);
         var childId = child.GetProperty("id").GetGuid();
 
         var response = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{parentId}",
-            new { departmentId = _tenantADepartmentId, name = "Cycle Parent Position", code = "CYC-PARENT", positionType = "unique", maxOccupancy = 1, reportsToPositionId = childId },
+            new { departmentId = _tenantADepartmentId, name = "Cycle Parent Position", code = "CYCPR", maxOccupancy = 1, reportsToPositionId = childId },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
     }
@@ -598,12 +591,12 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Update_DepartmentFromAnotherLegalEntity_Returns404()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Wrong LE Dept Position", "UPD-WLD");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Wrong LE Dept Position", "UPDWD");
         var id = position.GetProperty("id").GetGuid();
 
         var response = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            new { departmentId = _tenantASecondLegalEntityDepartmentId, name = "Update Wrong LE Dept Position", code = "UPD-WLD", positionType = "unique", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            new { departmentId = _tenantASecondLegalEntityDepartmentId, name = "Update Wrong LE Dept Position", code = "UPDWD", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -611,14 +604,14 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Update_ReportsToFromAnotherLegalEntity_Returns404()
     {
-        var otherLePosition = await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "Other LE Reports To Position", "OTH-LE-RPT");
+        var otherLePosition = await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "Other LE Reports To Position", "OTHLR");
         var otherLePositionId = otherLePosition.GetProperty("id").GetGuid();
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Wrong LE ReportsTo Position", "UPD-WLR");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Wrong LE ReportsTo Position", "UPDWR");
         var id = position.GetProperty("id").GetGuid();
 
         var response = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            new { departmentId = _tenantADepartmentId, name = "Update Wrong LE ReportsTo Position", code = "UPD-WLR", positionType = "unique", maxOccupancy = 1, reportsToPositionId = otherLePositionId },
+            new { departmentId = _tenantADepartmentId, name = "Update Wrong LE ReportsTo Position", code = "UPDWR", maxOccupancy = 1, reportsToPositionId = otherLePositionId },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -628,7 +621,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task ArchiveCheck_Eligible_ReturnsCanArchiveTrue_AndUnsupportedOccupantCount()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Eligible Position", "ACHK-OK");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Eligible Position", "ACHKO");
         var id = position.GetProperty("id").GetGuid();
 
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
@@ -647,7 +640,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task ArchiveCheck_WithOrgRead_Returns200()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Perm Position", "ACHK-PERM");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Perm Position", "ACHKP");
         var id = position.GetProperty("id").GetGuid();
 
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
@@ -659,9 +652,9 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task ArchiveCheck_ActiveChildExists_ReturnsAccurateCount_CanArchiveFalse()
     {
-        var parent = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Parent Position", "ACHK-PARENT");
+        var parent = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Parent Position", "ACHPR");
         var parentId = parent.GetProperty("id").GetGuid();
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Child Position", "ACHK-CHILD",
+        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Child Position", "ACHKC",
             reportsToPositionId: parentId);
 
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
@@ -677,7 +670,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task ArchiveCheck_UsedAsDepartmentHead_ReturnsHeadOfDepartmentsGreaterThanZero()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Department Head Candidate Position", "ACHK-HEAD");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Department Head Candidate Position", "ACHKH");
         var positionId = position.GetProperty("id").GetGuid();
         var headedDeptId = await CreateDepartmentAsync(_tenantAOwner, _tenantALegalEntityId, "Headed By Position Dept");
         await SetDepartmentHeadPositionAsync(headedDeptId, positionId);
@@ -697,7 +690,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Archive_NoBlockers_Returns204_SetsIsActiveFalse_AndAffectsListVisibility()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Lifecycle Position", "ARCH-LC");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Lifecycle Position", "ARCLC");
         var id = position.GetProperty("id").GetGuid();
 
         var archive = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
@@ -719,9 +712,9 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Archive_BlockedByActiveChild_Returns409_DoesNotDeactivate_ChildNotReparented()
     {
-        var parent = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Blocked Parent Position", "ARCH-BLK-P");
+        var parent = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Blocked Parent Position", "ARBLP");
         var parentId = parent.GetProperty("id").GetGuid();
-        var child = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Blocked Child Position", "ARCH-BLK-C",
+        var child = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Blocked Child Position", "ARBLC",
             reportsToPositionId: parentId);
         var childId = child.GetProperty("id").GetGuid();
 
@@ -744,7 +737,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Archive_BlockedByDepartmentHead_Returns409()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Blocked Head Position", "ARCH-BLK-H");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Blocked Head Position", "ARBLH");
         var positionId = position.GetProperty("id").GetGuid();
         var headedDeptId = await CreateDepartmentAsync(_tenantAOwner, _tenantALegalEntityId, "Archive Blocked Headed Dept");
         await SetDepartmentHeadPositionAsync(headedDeptId, positionId);
@@ -760,7 +753,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Restore_Archived_Returns204_SetsIsActiveTrue()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Lifecycle Position", "REST-LC");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Lifecycle Position", "RESLC");
         var id = position.GetProperty("id").GetGuid();
         await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/archive",
@@ -780,7 +773,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Restore_AlreadyActive_IsIdempotent_Returns204()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Idempotent Position", "REST-IDEM");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Idempotent Position", "RESID");
         var id = position.GetProperty("id").GetGuid();
 
         var restore = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
@@ -793,7 +786,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     public async Task Restore_BlockedWhenDepartmentInactive_Returns422()
     {
         var deptId = await CreateDepartmentAsync(_tenantAOwner, _tenantALegalEntityId, "Restore Blocked Dept");
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, deptId, "Restore Blocked Dept Position", "REST-BLK-D");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, deptId, "Restore Blocked Dept Position", "RESBD");
         var positionId = position.GetProperty("id").GetGuid();
 
         await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
@@ -812,9 +805,9 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Restore_BlockedWhenReportsToPositionInactive_Returns422()
     {
-        var manager = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Blocked Manager Position", "REST-BLK-MGR");
+        var manager = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Blocked Manager Position", "RESBM");
         var managerId = manager.GetProperty("id").GetGuid();
-        var report = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Blocked Report Position", "REST-BLK-RPT",
+        var report = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Blocked Report Position", "RESBR",
             reportsToPositionId: managerId);
         var reportId = report.GetProperty("id").GetGuid();
 
@@ -839,7 +832,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Get_CrossTenant_Returns404()
     {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Cross Tenant Position", "XT-GET");
+        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Cross Tenant Position", "XTGET");
 
         var response = await SendAsync(HttpMethod.Get, _tenantBOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{position.GetProperty("id").GetGuid()}",
@@ -861,7 +854,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     {
         var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantBDepartmentId, name = "RLS Bypass Attempt Position", code = "RLS-BYPASS", positionType = "unique", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            new { departmentId = _tenantBDepartmentId, name = "RLS Bypass Attempt Position", code = "RLSBY", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
             cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -871,7 +864,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetCoverage_Unauthenticated_Returns401()
     {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Auth Owner", "COV-AUTH");
+        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Auth Owner", "COVAU");
 
         var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{owner.GetProperty("id").GetGuid()}/coverage",
@@ -882,7 +875,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetCoverage_NoRecords_Returns200EmptyArray()
     {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Empty Owner", "COV-EMPTY");
+        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Empty Owner", "COVEM");
 
         var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{owner.GetProperty("id").GetGuid()}/coverage",
@@ -896,9 +889,9 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task AddCoverage_Primary_Succeeds_AndAppearsInGet()
     {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Manual Owner", "COV-MGR");
+        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Manual Owner", "COVMG");
         var ownerId = owner.GetProperty("id").GetGuid();
-        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Manual Target", "COV-TGT");
+        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Manual Target", "COVTG");
         var coveredId = covered.GetProperty("id").GetGuid();
 
         var addResponse = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
@@ -920,9 +913,9 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task AddCoverage_DuplicatePrimaryForSameCoveredTarget_Returns409()
     {
-        var ownerOne = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Dup Owner One", "COV-DUP1");
-        var ownerTwo = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Dup Owner Two", "COV-DUP2");
-        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Dup Target", "COV-DUP-TGT");
+        var ownerOne = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Dup Owner One", "CVDP1");
+        var ownerTwo = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Dup Owner Two", "CVDP2");
+        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Dup Target", "CVDPT");
         var coveredId = covered.GetProperty("id").GetGuid();
 
         var firstAdd = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
@@ -943,8 +936,8 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task AddCoverage_BackupOrderBeyondThree_Succeeds()
     {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Deep Owner", "COV-DEEP");
-        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Deep Target", "COV-DEEP-TGT");
+        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Deep Owner", "COVDP");
+        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Deep Target", "CVDPG");
 
         // ownerOrder 4 (Backup Manager 3) must be accepted - responsibility levels are not capped
         // at the historical Primary/Backup 1/Backup 2 trio.
@@ -960,8 +953,8 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task AddCoverage_InactiveCoveredPosition_Returns422()
     {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Inactive Owner", "COV-INACT-O");
-        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Inactive Target", "COV-INACT-T");
+        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Inactive Owner", "COVIO");
+        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Inactive Target", "COVIT");
         var coveredId = covered.GetProperty("id").GetGuid();
 
         var archiveResponse = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
@@ -979,9 +972,9 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task RemoveCoverage_ManualRecord_Succeeds()
     {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Remove Owner", "COV-RM-O");
+        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Remove Owner", "COVRO");
         var ownerId = owner.GetProperty("id").GetGuid();
-        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Remove Target", "COV-RM-T");
+        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Remove Target", "COVRT");
 
         var addResponse = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{ownerId}/coverage",
@@ -1003,11 +996,11 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task RemoveCoverage_LockedReportingStructureRecord_Returns409_AndIsNotRemoved()
     {
-        var manager = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Locked Manager", "COV-LOCK-MGR");
+        var manager = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Locked Manager", "COVLM");
         var managerId = manager.GetProperty("id").GetGuid();
         // Creating a position with reportsToPositionId set is what auto-generates the locked,
         // ReportingStructure-sourced coverage record under test here.
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Locked Report", "COV-LOCK-RPT",
+        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Locked Report", "COVLR",
             reportsToPositionId: managerId);
 
         var listJson = await GetJsonAsync(_tenantAOwner,
@@ -1031,9 +1024,9 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task UpdateCoverage_ChangesOwnerOrder_AndPersists()
     {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Update Owner", "COV-UPD-O");
+        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Update Owner", "COVUO");
         var ownerId = owner.GetProperty("id").GetGuid();
-        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Update Target", "COV-UPD-T");
+        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Update Target", "COVUT");
 
         var addResponse = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
             $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{ownerId}/coverage",
@@ -1061,9 +1054,9 @@ public class PositionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task UpdateCoverage_LockedReportingStructureRecord_Returns409_AndIsNotChanged()
     {
-        var manager = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Update Locked Manager", "COV-UPD-LOCK-MGR");
+        var manager = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Update Locked Manager", "CVULM");
         var managerId = manager.GetProperty("id").GetGuid();
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Update Locked Report", "COV-UPD-LOCK-RPT",
+        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Update Locked Report", "CVULR",
             reportsToPositionId: managerId);
 
         var listJson = await GetJsonAsync(_tenantAOwner,
@@ -1286,11 +1279,11 @@ public class PositionsIntegrationTests : IAsyncLifetime
 
     private async Task<JsonElement> CreatePositionAsync(
         TenantSession session, Guid legalEntityId, Guid departmentId, string name, string code,
-        string positionType = "unique", int maxOccupancy = 1, Guid? reportsToPositionId = null)
+        int maxOccupancy = 1, Guid? reportsToPositionId = null)
     {
         var response = await SendAsync(HttpMethod.Post, session.Host,
             $"/api/v1/org/legal-entities/{legalEntityId}/positions",
-            new { departmentId, name, code, positionType, maxOccupancy, reportsToPositionId },
+            new { departmentId, name, code, maxOccupancy, reportsToPositionId },
             cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         return await ReadJsonAsync(response);

@@ -83,9 +83,8 @@ public class UpdatePositionCommandHandler
                 return Result<PositionResponse>.NotFound("Reports-to position not found in this legal entity.");
             if (!reportsTo.IsActive)
                 return Result<PositionResponse>.UnprocessableEntity("Reports-to position is inactive.");
-            if (reportsTo.PositionType != PositionEntity.TypeUnique)
-                return Result<PositionResponse>.UnprocessableEntity(
-                    "Reports-to position must be a unique (single-occupancy) position; pooled positions cannot be selected as reporting targets.");
+            // Reporting targets may be unique or pooled positions - capacity does not disqualify
+            // a position from being a valid reporting target.
 
             var reportsToIsDescendant = await _positions.IsDescendantAsync(
                 tenantId, request.LegalEntityId, existing.Id, reportsToId, ct);
@@ -100,7 +99,7 @@ public class UpdatePositionCommandHandler
         existing.DepartmentId = request.DepartmentId;
         existing.Name = name;
         existing.Code = code;
-        existing.PositionType = request.PositionType;
+        existing.PositionType = request.MaxOccupancy == 1 ? PositionEntity.TypeUnique : PositionEntity.TypePooled;
         existing.MaxOccupancy = request.MaxOccupancy;
         existing.ReportsToPositionId = request.ReportsToPositionId;
         existing.UpdatedAt = _dateTimeProvider.UtcNow;

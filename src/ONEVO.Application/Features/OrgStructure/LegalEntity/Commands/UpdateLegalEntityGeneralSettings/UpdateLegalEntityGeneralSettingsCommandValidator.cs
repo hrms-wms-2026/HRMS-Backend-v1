@@ -87,5 +87,21 @@ public class UpdateLegalEntityGeneralSettingsCommandValidator
             .Must(url => Uri.TryCreate(url, UriKind.Absolute, out _))
             .WithMessage("Website URL is invalid.")
             .When(x => !string.IsNullOrWhiteSpace(x.Website));
+
+        // Same-day schedule only: both start and end must be provided together,
+        // and start must be strictly before end. Overnight shifts are not
+        // supported in this task.
+        RuleFor(x => x.WorkEndTime)
+            .NotNull().WithMessage("Work end time is required when work start time is provided.")
+            .When(x => x.WorkStartTime is not null);
+
+        RuleFor(x => x.WorkStartTime)
+            .NotNull().WithMessage("Work start time is required when work end time is provided.")
+            .When(x => x.WorkEndTime is not null);
+
+        RuleFor(x => x.WorkStartTime)
+            .Must((command, start) => start < command.WorkEndTime)
+            .WithMessage("Work start time must be before work end time.")
+            .When(x => x.WorkStartTime is not null && x.WorkEndTime is not null);
     }
 }

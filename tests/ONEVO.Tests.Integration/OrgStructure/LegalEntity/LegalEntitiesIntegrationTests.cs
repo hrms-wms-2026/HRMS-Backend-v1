@@ -349,6 +349,80 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    [Fact]
+    public async Task GetGeneralSettings_ReturnsWorkStartAndEndTime_AsHhMmStrings()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Work Time Get Co", "WTGET1", "REG-WTGET1");
+        await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Work Time Get Co", "WTGET1", "REG-WTGET1", [1, 2, 3, 4, 5], "09:00", "17:30"),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        var response = await SendAsync(HttpMethod.Get, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            body: null, cookie: _tenantA.SessionCookie);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("workStartTime").GetString().Should().Be("09:00");
+        json.GetProperty("workEndTime").GetString().Should().Be("17:30");
+    }
+
+    [Fact]
+    public async Task Update_ValidWorkStartAndEndTime_Returns200_AndPersists()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Work Time Put Co", "WTPUT1", "REG-WTPUT1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Work Time Put Co", "WTPUT1", "REG-WTPUT1", [1, 2, 3, 4, 5], "09:00", "17:30"),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("workStartTime").GetString().Should().Be("09:00");
+        json.GetProperty("workEndTime").GetString().Should().Be("17:30");
+    }
+
+    [Fact]
+    public async Task Update_OnlyWorkStartTimeProvided_Returns400()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Work Time Only Start Co", "WTOS1", "REG-WTOS1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Work Time Only Start Co", "WTOS1", "REG-WTOS1", [1, 2, 3, 4, 5], "09:00", null),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Update_OnlyWorkEndTimeProvided_Returns400()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Work Time Only End Co", "WTOE1", "REG-WTOE1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Work Time Only End Co", "WTOE1", "REG-WTOE1", [1, 2, 3, 4, 5], null, "17:30"),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Update_WorkStartTimeNotBeforeEndTime_Returns400()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Work Time Bad Order Co", "WTBO1", "REG-WTBO1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Work Time Bad Order Co", "WTBO1", "REG-WTBO1", [1, 2, 3, 4, 5], "18:00", "09:00"),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     // ── 6. Delete ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -874,7 +948,9 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
         currencyCode = "LKR"
     };
 
-    private static object UpdateBody(string name, string companyCode, string registrationNumber, IEnumerable<int> workingDays) => new
+    private static object UpdateBody(
+        string name, string companyCode, string registrationNumber, IEnumerable<int> workingDays,
+        string? workStartTime = null, string? workEndTime = null) => new
     {
         name,
         companyCode,
@@ -888,7 +964,9 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
         defaultLanguage = "en-US",
         dateFormat = "DD MMM YYYY",
         timeFormat = "12h",
-        status = "active"
+        status = "active",
+        workStartTime,
+        workEndTime
     };
 
     private async Task<string?> WaitForInviteTokenForAsync(string email)

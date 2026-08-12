@@ -23,7 +23,9 @@ public class UpdateLegalEntityGeneralSettingsCommandValidatorTests
         "en-US",
         "DD MMM YYYY",
         "12h",
-        "active");
+        "active",
+        null,
+        null);
 
     [Fact]
     public void Valid_Command_HasNoErrors()
@@ -118,5 +120,69 @@ public class UpdateLegalEntityGeneralSettingsCommandValidatorTests
     {
         var result = _validator.TestValidate(ValidCommand() with { Timezone = "" });
         result.ShouldHaveValidationErrorFor(x => x.Timezone);
+    }
+
+    [Fact]
+    public void BothWorkTimesNull_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { WorkStartTime = null, WorkEndTime = null });
+        result.ShouldNotHaveValidationErrorFor(x => x.WorkStartTime);
+        result.ShouldNotHaveValidationErrorFor(x => x.WorkEndTime);
+    }
+
+    [Fact]
+    public void ValidWorkStartAndEndTime_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            WorkStartTime = new TimeOnly(9, 0),
+            WorkEndTime = new TimeOnly(17, 30)
+        });
+        result.ShouldNotHaveValidationErrorFor(x => x.WorkStartTime);
+        result.ShouldNotHaveValidationErrorFor(x => x.WorkEndTime);
+    }
+
+    [Fact]
+    public void OnlyWorkStartTimeProvided_HasError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            WorkStartTime = new TimeOnly(9, 0),
+            WorkEndTime = null
+        });
+        result.ShouldHaveValidationErrorFor(x => x.WorkEndTime);
+    }
+
+    [Fact]
+    public void OnlyWorkEndTimeProvided_HasError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            WorkStartTime = null,
+            WorkEndTime = new TimeOnly(17, 30)
+        });
+        result.ShouldHaveValidationErrorFor(x => x.WorkStartTime);
+    }
+
+    [Fact]
+    public void WorkStartTime_EqualToEndTime_HasError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            WorkStartTime = new TimeOnly(9, 0),
+            WorkEndTime = new TimeOnly(9, 0)
+        });
+        result.ShouldHaveValidationErrorFor(x => x.WorkStartTime);
+    }
+
+    [Fact]
+    public void WorkStartTime_AfterEndTime_HasError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            WorkStartTime = new TimeOnly(18, 0),
+            WorkEndTime = new TimeOnly(9, 0)
+        });
+        result.ShouldHaveValidationErrorFor(x => x.WorkStartTime);
     }
 }

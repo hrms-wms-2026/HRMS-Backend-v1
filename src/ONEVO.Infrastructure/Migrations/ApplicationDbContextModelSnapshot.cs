@@ -4617,6 +4617,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("website");
 
+                    b.Property<TimeOnly?>("WorkEndTime")
+                        .HasColumnType("time")
+                        .HasColumnName("work_end_time");
+
+                    b.Property<TimeOnly?>("WorkStartTime")
+                        .HasColumnType("time")
+                        .HasColumnName("work_start_time");
+
                     b.HasKey("Id")
                         .HasName("pk_legal_entities");
 
@@ -4650,6 +4658,8 @@ namespace ONEVO.Infrastructure.Migrations
                             t.HasCheckConstraint("ck_legal_entities_time_format", "time_format IN ('12h', '24h')");
 
                             t.HasCheckConstraint("ck_legal_entities_week_start_day", "week_start_day BETWEEN 1 AND 7");
+
+                            t.HasCheckConstraint("ck_legal_entities_work_time_pair", "(work_start_time IS NULL AND work_end_time IS NULL) OR (work_start_time IS NOT NULL AND work_end_time IS NOT NULL AND work_start_time < work_end_time)");
                         });
                 });
 
@@ -4767,8 +4777,8 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("id");
 
                     b.Property<string>("Code")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)")
                         .HasColumnName("code");
 
                     b.Property<DateTimeOffset>("CreatedAt")
