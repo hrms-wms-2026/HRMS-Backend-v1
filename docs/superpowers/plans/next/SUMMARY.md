@@ -6,10 +6,11 @@
 
 This folder absorbed the former top-level `docs/superpowers/next-plan/` folder on 2026-08-06 as part of the `plans/` restructure into `finished/` and `next/` — see `FILE_CREATION_RULES.md` in `docs/superpowers/rules/`.
 
-**Last updated:** 2026-08-09
+**Last updated:** 2026-08-12
 
 ## Files
 
+- `2026-08-12-milestone-to-module-display-rename.md` — status: pending, not started. Single-task plan: one new EF migration renaming `module_catalog.name` for `module_key = 'objectives_milestones'` from "Objectives & Milestones" to "Objectives & Modules". Design: `specs/next/2026-08-12-milestone-to-module-display-rename-design.md`. Companion to the frontend repo's same-named plan.
 - `Project Management.md` — two future features, both raw context, not designs:
   1. Milestone (Objective) In-Charge Role & Permission System — **superseded**, see the file's own header: fully brainstormed and designed in `specs/2026-08-04-work-management-milestone-hierarchy-design.md`.
   2. Project Lifecycle Workflow, Approval Pipeline, Archive/Restore, and Progress Calculation — not started. Backend-relevant subset of a manager corrections doc on the Project Management user journey (2026-08-04). Blocked on Objective/Task CRUD existing first; conflicts with the schema's current "forbidden: free-form status" note on `projects`.

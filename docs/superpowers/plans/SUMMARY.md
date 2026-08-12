@@ -43,6 +43,7 @@
 | `Project Management.md` (raw future-feature context, 1 of 2 items still open) | `next/` | pending (not brainstormed) |
 | `2026-08-10-milestone-ownership-and-subtree-access.md` | `finished/2026-08-10/` | finished (2/2 tasks) |
 | `2026-08-10-project-detail-milestone-tree-view-backend.md` | `finished/2026-08-10/` | finished (3/3 tasks) |
+| `2026-08-12-milestone-to-module-display-rename.md` | `next/` | pending (not started) |
 
 See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all 45 files in that folder (kept short here to avoid duplicating the same list twice).
 
