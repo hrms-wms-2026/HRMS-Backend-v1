@@ -28,6 +28,7 @@ namespace ONEVO.Tests.Unit.Features.DevPlatform.Tenancy;
 public sealed class WorkManagementDapiDemoSeederTests : IDisposable
 {
     private static readonly Guid DapiTenantId = Guid.Parse("6b0874ab-71db-401f-859f-bdd50c1317fb");
+    private static readonly Guid DapiOwnerUserId = Guid.Parse("cd49a0c2-e978-4055-b8be-7d46a3727e94");
 
     private readonly string _connectionString;
     private readonly SqliteConnection _masterConnection;
@@ -227,6 +228,130 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
 
         secondUserCount.Should().Be(firstUserCount);
         secondRolePermissionCount.Should().Be(firstRolePermissionCount);
+    }
+
+    [Fact]
+    public async Task SeedAsync_Creates5ProjectsWithCorrectIdentifiersAndLead()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+
+        using var verify = CreateContext();
+        var projects = await verify.Projects
+            .Where(p => p.TenantId == DapiTenantId)
+            .ToListAsync();
+
+        projects.Should().HaveCount(5);
+        projects.Select(p => p.Identifier).Should().BeEquivalentTo(
+            ["EPOS", "EVTIX", "ONEXSO", "WCRAFT", "HWPORTAL"]);
+        projects.Should().OnlyContain(p => p.LeadId == DapiOwnerUserId);
+    }
+
+    [Fact]
+    public async Task SeedAsync_EposProjectTree_MatchesSpecifiedShapeAndOwners()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+
+        using var verify = CreateContext();
+        var project = await verify.Projects.SingleAsync(p => p.Identifier == "EPOS");
+        var objectives = await verify.Objectives.Where(o => o.ProjectId == project.Id).ToListAsync();
+
+        objectives.Should().HaveCount(15);
+
+        var root = objectives.Single(o => o.IsDefault);
+        root.Title.Should().Be("E-pos_System");
+        root.ParentObjectiveId.Should().BeNull();
+
+        var posSystem = objectives.Single(o => o.Title == "Pos System");
+        posSystem.ParentObjectiveId.Should().Be(root.Id);
+
+        var systemArchitecture = objectives.Single(o => o.Title == "System architecture");
+        systemArchitecture.ParentObjectiveId.Should().Be(posSystem.Id);
+
+        var backendArchitecture = objectives.Single(o => o.Title == "Backend architecture");
+        backendArchitecture.ParentObjectiveId.Should().Be(systemArchitecture.Id);
+
+        var databaseSchemaDesign = objectives.Single(o => o.Title == "Database schema design");
+        databaseSchemaDesign.ParentObjectiveId.Should().Be(backendArchitecture.Id);
+
+        var testingAndDeployment = objectives.Single(o => o.Title == "Testing and deployment");
+        var testingMembers = await verify.ProjectMembers
+            .Where(pm => pm.ObjectiveId == testingAndDeployment.Id)
+            .ToListAsync();
+        testingMembers.Should().HaveCount(2); // owner (nevi) + extra member (mathusanth)
+    }
+
+    [Fact]
+    public async Task SeedAsync_HardwareIntegrationBranch_ExistsInFourProjectsButNotHwPortalItself()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+
+        using var verify = CreateContext();
+        var projectsWithHardwareBranch = await verify.Objectives
+            .Where(o => o.TenantId == DapiTenantId && o.Title == "Hardware Integration")
+            .Join(verify.Projects, o => o.ProjectId, p => p.Id, (o, p) => p.Identifier)
+            .ToListAsync();
+
+        projectsWithHardwareBranch.Should().BeEquivalentTo(["EPOS", "EVTIX", "ONEXSO", "WCRAFT"]);
+    }
+
+    [Fact]
+    public async Task SeedAsync_MarketingBranch_ExistsInAllFiveProjects()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+
+        using var verify = CreateContext();
+        var projectsWithMarketingBranch = await verify.Objectives
+            .Where(o => o.TenantId == DapiTenantId && o.Title == "Marketing")
+            .Join(verify.Projects, o => o.ProjectId, p => p.Id, (o, p) => p.Identifier)
+            .ToListAsync();
+
+        projectsWithMarketingBranch.Should().BeEquivalentTo(["EPOS", "EVTIX", "ONEXSO", "WCRAFT", "HWPORTAL"]);
+    }
+
+    [Fact]
+    public async Task SeedAsync_EveryObjective_SatisfiesParentDateAndHoursContainment()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+
+        using var verify = CreateContext();
+        var allObjectives = await verify.Objectives
+            .Where(o => o.TenantId == DapiTenantId)
+            .ToListAsync();
+        var byId = allObjectives.ToDictionary(o => o.Id);
+
+        foreach (var objective in allObjectives.Where(o => o.ParentObjectiveId.HasValue))
+        {
+            var parent = byId[objective.ParentObjectiveId!.Value];
+            (objective.StartDate >= parent.StartDate).Should().BeTrue(
+                $"{objective.Title} starts before parent {parent.Title}");
+            (objective.EndDate <= parent.EndDate).Should().BeTrue(
+                $"{objective.Title} ends after parent {parent.Title}");
+            (objective.AllocatedHours <= parent.AllocatedHours).Should().BeTrue(
+                $"{objective.Title} ({objective.AllocatedHours}h) exceeds parent {parent.Title} ({parent.AllocatedHours}h)");
+        }
+    }
+
+    [Fact]
+    public async Task SeedAsync_TotalObjectiveCountAcrossAllFiveProjects_Is66()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+
+        using var verify = CreateContext();
+        var total = await verify.Objectives.CountAsync(o => o.TenantId == DapiTenantId);
+
+        total.Should().Be(66);
     }
 
     private sealed class TestClock : IDateTimeProvider
