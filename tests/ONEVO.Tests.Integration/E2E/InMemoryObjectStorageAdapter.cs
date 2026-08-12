@@ -43,4 +43,7 @@ public sealed class InMemoryObjectStorageAdapter : IObjectStorageAdapter
 
     public Task<bool> ObjectExistsAsync(string objectKey, CancellationToken ct = default)
         => Task.FromResult(_objects.ContainsKey(objectKey));
+
+    public Task<string> GetSignedUrlAsync(string objectKey, TimeSpan expiry, CancellationToken ct = default)
+        => Task.FromResult($"https://in-memory-storage.test/{objectKey}?expires={DateTimeOffset.UtcNow.Add(expiry).ToUnixTimeSeconds()}");
 }

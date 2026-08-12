@@ -102,11 +102,11 @@ public class LegalEntityPart2BArchitectureTests
     {
         var source = ReadSource("UpdateLegalEntityGeneralSettings", "UpdateLegalEntityGeneralSettingsCommandHandler.cs");
 
-        var fetchIndex = source.IndexOf("GetByIdForTenantAsync", StringComparison.Ordinal);
+        var fetchIndex = source.IndexOf("GetAccessibleByIdAsync", StringComparison.Ordinal);
         var updateIndex = source.IndexOf("_legalEntities.Update(", StringComparison.Ordinal);
         var saveIndex = source.IndexOf("SaveChangesAsync", StringComparison.Ordinal);
 
-        Assert.True(fetchIndex >= 0, "expected a GetByIdForTenantAsync fetch call");
+        Assert.True(fetchIndex >= 0, "expected a GetAccessibleByIdAsync fetch call");
         Assert.True(updateIndex > fetchIndex, "Update() must be called after the entity is fetched, not before");
         Assert.True(saveIndex > updateIndex, "SaveChangesAsync must follow Update(), not precede it");
 

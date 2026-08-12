@@ -5,6 +5,10 @@ on:
     branches: [main, testing, development]
   push:
     branches: [main, testing, development]
+  workflow_dispatch: {}
+  schedule:
+    # Nightly full integration run, 02:00 UTC. See the full-integration job below.
+    - cron: "0 2 * * *"
 
 jobs:
   build-and-test:
@@ -17,19 +21,102 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Restore
+        run: dotnet restore src/ONEVO.Api/ONEVO.Api.csproj
+
       - name: Build API (restores Domain/Application/Infrastructure via project refs)
-        run: dotnet build src/ONEVO.Api/ONEVO.Api.csproj --configuration Release
+        run: dotnet build src/ONEVO.Api/ONEVO.Api.csproj --configuration Release --no-restore
+
+      - name: Restore - Unit tests
+        run: dotnet restore tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj
 
       - name: Test - Unit
-        run: dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --configuration Release
+        run: dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --configuration Release --no-restore
+
+      - name: Restore - Architecture tests
+        run: dotnet restore tests/ONEVO.Tests.Architecture/ONEVO.Tests.Architecture.csproj
 
       - name: Test - Architecture
-        run: dotnet test tests/ONEVO.Tests.Architecture/ONEVO.Tests.Architecture.csproj --configuration Release
+        run: dotnet test tests/ONEVO.Tests.Architecture/ONEVO.Tests.Architecture.csproj --configuration Release --no-restore
 
-  # Known gap: the integration test suite has a pre-existing CSRF-handling issue
-  # (tracked separately, unrelated to CI setup). Non-blocking until that's fixed,
-  # so it isn't part of the required status check for branch protection.
-  integration-tests:
+  # Focused integration routing - pull requests only. Maps changed file paths to the smallest
+  # correct set of ONEVO.Tests.Integration tests instead of always running the full,
+  # Testcontainers-backed suite (real PostgreSQL, not faked/InMemory). See
+  # .github/scripts/select-integration-filter.ps1 for the routing rules and
+  # CI_FOCUSED_INTEGRATION_TEST_ROUTING_REPORT.md for the full design and examples.
+  #
+  # Known gap, carried over unchanged from before this routing was added: the integration test
+  # suite has a pre-existing CSRF-handling issue (tracked separately, unrelated to CI routing).
+  # Non-blocking until that's fixed, so it isn't part of the required status check for branch
+  # protection.
+  integration-routing:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history is required to resolve the PR's merge-base for an accurate diff.
+          fetch-depth: 0
+
+      - name: Determine changed files
+        id: changed-files
+        run: |
+          git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" > changed-files.txt
+          {
+            echo "### Changed files (${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }})"
+            echo '```'
+            cat changed-files.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Changed files:"
+          cat changed-files.txt
+
+      - name: Select integration filter
+        id: select-filter
+        shell: pwsh
+        run: ./.github/scripts/select-integration-filter.ps1 -ChangedFilesPath changed-files.txt
+
+      - name: Setup .NET
+        if: steps.select-filter.outputs.skip != 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore - Integration tests
+        if: steps.select-filter.outputs.skip != 'true'
+        run: dotnet restore tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj
+
+      - name: Test - Focused integration
+        if: steps.select-filter.outputs.skip != 'true' && steps.select-filter.outputs.full_integration != 'true'
+        run: >
+          dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj
+          --configuration Release --no-restore
+          --filter "${{ steps.select-filter.outputs.filter }}"
+          --logger trx --results-directory TestResults
+          --blame-hang --blame-hang-timeout 10m
+
+      - name: Test - Full integration (safe fallback)
+        if: steps.select-filter.outputs.skip != 'true' && steps.select-filter.outputs.full_integration == 'true'
+        run: >
+          dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj
+          --configuration Release --no-restore
+          --logger trx --results-directory TestResults
+          --blame-hang --blame-hang-timeout 10m
+
+      - name: Upload test results
+        if: always() && steps.select-filter.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results-pr-${{ github.event.pull_request.number }}
+          path: TestResults/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  # Full integration suite - nightly schedule, manual dispatch, or a direct push to a protected
+  # branch (typically a merge commit). Not run on every PR; see integration-routing above.
+  full-integration:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -40,5 +127,18 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Test - Integration
-        run: dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj --configuration Release
+      - name: Test - Full integration
+        run: >
+          dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj
+          --configuration Release
+          --logger trx --results-directory TestResults
+          --blame-hang --blame-hang-timeout 10m
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results-full-${{ github.run_id }}
+          path: TestResults/**
+          if-no-files-found: warn
+          retention-days: 14

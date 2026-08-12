@@ -60,12 +60,13 @@ public sealed class EmployeeLegacyFieldRetirementArchitectureTests
             string.Join(", ", offenders));
     }
 
-    // Word-boundary match: catches the retired Employee.ManagerId/JobTitleId
-    // identifiers on their own (e.g. "employee.ManagerId") without also
-    // matching them as a substring of an unrelated, legitimately named
-    // identifier such as Objective.ReportingManagerId.
-    private static readonly Regex LegacyFieldReference =
-        new(@"\b(ManagerId|JobTitleId)\b", RegexOptions.Compiled);
+    // Matches the retired identifiers as whole words only (not as a substring of a longer,
+    // legitimate identifier). Word-boundary regex rather than Contains(), added when
+    // EmployeeListItemResponse.ReportingManagerId - a real, spec-required field resolved from
+    // position reporting structure via employee_hierarchy_closure, not the retired self-FK -
+    // started false-positiving against the old plain Contains("ManagerId") check.
+    private static readonly System.Text.RegularExpressions.Regex RetiredIdentifierPattern =
+        new(@"(?<![A-Za-z])(ManagerId|JobTitleId)(?![A-Za-z])", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     [Fact]
     public void NoApplicationOrInfrastructureCode_ReferencesEmployeeManagerIdOrJobTitleId()
@@ -77,7 +78,7 @@ public sealed class EmployeeLegacyFieldRetirementArchitectureTests
             .SelectMany(project => Directory.GetFiles(
                 FindRepositoryPath("src", project), "*.cs", SearchOption.AllDirectories))
             .Where(path => !path.Replace('\\', '/').Contains("/Migrations/", StringComparison.Ordinal))
-            .Where(path => LegacyFieldReference.IsMatch(File.ReadAllText(path)))
+            .Where(path => RetiredIdentifierPattern.IsMatch(File.ReadAllText(path)))
             .ToList();
 
         Assert.True(offenders.Count == 0,

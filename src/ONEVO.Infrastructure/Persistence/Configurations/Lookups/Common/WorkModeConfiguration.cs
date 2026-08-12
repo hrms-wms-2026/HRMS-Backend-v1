@@ -13,6 +13,7 @@ public class WorkModeConfiguration : IEntityTypeConfiguration<WorkMode>
         builder.Property(e => e.Id).ValueGeneratedNever();
         builder.Property(e => e.Code).HasMaxLength(50).IsRequired();
         builder.Property(e => e.Label).HasMaxLength(100).IsRequired();
+        builder.Property(e => e.IsActive).IsRequired();
         builder.HasIndex(e => e.Code).IsUnique();
     }
 }

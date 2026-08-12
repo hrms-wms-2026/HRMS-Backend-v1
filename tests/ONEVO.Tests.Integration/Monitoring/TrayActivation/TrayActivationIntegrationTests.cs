@@ -5,6 +5,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
@@ -127,7 +128,8 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Exchange_ValidCode_Returns200WithAccessAndRefreshTokens()
     {
-        var user = await SeedActiveUserAsync("exchange-valid-test", "exchange-valid@test.dev", "ExchPass1!");
+        var user = await SeedActiveUserWithEmployeeAsync(
+            "exchange-valid-test", "exchange-valid@test.dev", "ExchPass1!", "EMP-0001");
         var session = await LoginAndGetSessionAsync(user);
         var code = await GenerateCodeAsync(session);
 
@@ -140,8 +142,30 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         doc.RootElement.GetProperty("refresh_token").GetString().Should().NotBeNullOrEmpty();
         doc.RootElement.GetProperty("expires_in_seconds").GetInt32().Should().Be(3600);
         doc.RootElement.GetProperty("refresh_expires_in_seconds").GetInt32().Should().Be(7_776_000);
+        doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Priya Employee");
+        doc.RootElement.GetProperty("employee_email").GetString().Should().Be("priya.employee@test.dev");
+        doc.RootElement.GetProperty("employee_number").GetString().Should().Be("EMP-0001");
         body.Should().NotContain(user.UserId.ToString(), "response must never expose internal user ID");
         body.Should().NotContain(user.TenantId.ToString(), "response must never expose internal tenant ID");
+    }
+
+    [Fact]
+    public async Task Exchange_UserWithoutEmployeeRecord_FallsBackToUserNameAndEmail()
+    {
+        var user = await SeedActiveUserAsync(
+            "exchange-noemp-test", "exchange-noemp@test.dev", "NoEmpPass1!");
+        var session = await LoginAndGetSessionAsync(user);
+        var code = await GenerateCodeAsync(session);
+
+        var response = await PostExchangeAsync(code, "My Laptop", "Windows 11", "fp-device-noemp");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Test User");
+        doc.RootElement.GetProperty("employee_email").GetString().Should().Be("exchange-noemp@test.dev");
+        doc.RootElement.TryGetProperty("employee_number", out var numberProp).Should().BeTrue();
+        numberProp.ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]
@@ -204,6 +228,10 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         var newRefreshToken = doc.RootElement.GetProperty("refresh_token").GetString()!;
         newRefreshToken.Should().NotBeNullOrEmpty();
         newRefreshToken.Should().NotBe(firstRefreshToken, "refresh token must be rotated on each use");
+        doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Test User");
+        doc.RootElement.GetProperty("employee_email").GetString().Should().Be("refresh-valid@test.dev");
+        doc.RootElement.TryGetProperty("employee_number", out var numberProp).Should().BeTrue();
+        numberProp.ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]
@@ -247,6 +275,57 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
             "after a fingerprint mismatch all device tokens must be revoked");
     }
 
+    // ── Revoke endpoint ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Revoke_ValidToken_Returns204_AndDeactivatesDevice()
+    {
+        var user = await SeedActiveUserAsync("revoke-valid-test", "revoke-valid@test.dev", "RevPass1!");
+        var session = await LoginAndGetSessionAsync(user);
+        var code = await GenerateCodeAsync(session);
+        const string fingerprint = "fp-revoke-valid-001";
+        var (accessToken, _) = await ExchangeCodeAsync(code, fingerprint);
+
+        var response = await PostRevokeAsync(accessToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var device = await db.TrayDeviceRegistrations
+            .SingleAsync(d => d.UserId == user.UserId && d.DeviceFingerprint == fingerprint);
+        device.IsActive.Should().BeFalse("revoke must deactivate the device registration");
+        device.DeactivatedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Revoke_ThenRefresh_Returns401()
+    {
+        var user = await SeedActiveUserAsync("revoke-refresh-test", "revoke-refresh@test.dev", "RevRefPass1!");
+        var session = await LoginAndGetSessionAsync(user);
+        var code = await GenerateCodeAsync(session);
+        const string fingerprint = "fp-revoke-refresh-001";
+        var (accessToken, refreshToken) = await ExchangeCodeAsync(code, fingerprint);
+
+        var revoke = await PostRevokeAsync(accessToken);
+        revoke.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var refresh = await PostRefreshAsync(refreshToken, fingerprint);
+
+        refresh.StatusCode.Should().Be(
+            HttpStatusCode.Unauthorized, "a revoked device's refresh token must no longer be usable");
+    }
+
+    [Fact]
+    public async Task Revoke_NoToken_Returns401()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/revoke");
+        request.Headers.Host = "localhost";
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private async Task<SeedResult> SeedActiveUserAsync(string tenantSlug, string email, string password)
@@ -278,6 +357,34 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         await db.SaveChangesAsync();
 
         return new SeedResult(tenant.Id, user.Id, email, password, tenantSlug);
+    }
+
+    private async Task<SeedResult> SeedActiveUserWithEmployeeAsync(
+        string tenantSlug, string email, string password, string employeeNumber)
+    {
+        var seed = await SeedActiveUserAsync(tenantSlug, email, password);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        db.Add(new Employee
+        {
+            Id = Guid.NewGuid(),
+            TenantId = seed.TenantId,
+            UserId = seed.UserId,
+            EmployeeNumber = employeeNumber,
+            FirstName = "Priya",
+            LastName = "Employee",
+            Email = "priya.employee@test.dev",
+            EmploymentTypeId = 1,
+            EmploymentStatusId = 1,
+            WorkModeId = 1,
+            HireDate = new DateOnly(2025, 1, 1),
+            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedById = seed.UserId
+        });
+        await db.SaveChangesAsync();
+
+        return seed;
     }
 
     /// <summary>
@@ -375,6 +482,15 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
             refreshToken,
             deviceFingerprint
         });
+        return await _client.SendAsync(request);
+    }
+
+    private async Task<HttpResponseMessage> PostRevokeAsync(string accessToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/revoke");
+        request.Headers.Host = "localhost";
+        request.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
         return await _client.SendAsync(request);
     }
 

@@ -5,7 +5,15 @@ using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
+using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -77,11 +85,17 @@ using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.WorkSessions.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.AppUsage.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.DeviceState.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.TrayActivation;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.CheckIn;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.WorkSessions;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.ActivityMonitoring;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.AppUsage;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.DeviceState;
 using ONEVO.Infrastructure.Services.Auth.Login;
 using ONEVO.Infrastructure.Services.Monitoring.TrayActivation;
 using ONEVO.Infrastructure.Services.Monitoring.CheckIn;
@@ -139,6 +153,19 @@ public static class DependencyInjection
         services.AddScoped<EfLegalEntityRepository>();
         services.AddScoped<ILegalEntityRepository>(sp => sp.GetRequiredService<EfLegalEntityRepository>());
         services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
+        services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
+        services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository>();
+        services.AddScoped<IEmployeeVisibilityScopeResolver, EmployeeVisibilityScopeResolver>();
+        services.AddScoped<ISeatEntitlementService, SeatEntitlementService>();
+        services.AddScoped<IOnboardingDraftRepository, EfOnboardingDraftRepository>();
+        services.AddScoped<IAccessGrantRequestRepository, EfAccessGrantRequestRepository>();
+        services.AddScoped<IChecklistTemplateRepository, EfChecklistTemplateRepository>();
+        services.AddScoped<IEmployeeChecklistTaskRepository, EfEmployeeChecklistTaskRepository>();
+        services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();
+        services.AddScoped<IEmploymentTypeRepository, EfEmploymentTypeRepository>();
         services.AddScoped<EfSubscriptionRepository>();
         services.AddScoped<ISubscriptionPlanRepository>(sp => sp.GetRequiredService<EfSubscriptionRepository>());
         services.AddScoped<ITenantSubscriptionRepository>(sp => sp.GetRequiredService<EfSubscriptionRepository>());
@@ -167,8 +194,9 @@ public static class DependencyInjection
         services.AddScoped<ILabelRepository>(sp => sp.GetRequiredService<EfLabelRepository>());
         services.AddScoped<EfEntityAssetRepository>();
         services.AddScoped<IEntityAssetRepository>(sp => sp.GetRequiredService<EfEntityAssetRepository>());
-        services.AddScoped<EfEmployeeRepository>();
-        services.AddScoped<IEmployeeRepository>(sp => sp.GetRequiredService<EfEmployeeRepository>());
+        services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>();
+        services.AddScoped<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>());
 
         // Work Management - Milestone & Achievement services
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();
@@ -280,12 +308,26 @@ public static class DependencyInjection
         services.AddScoped<ICheckInRepository, EfCheckInRepository>();
         services.AddScoped<ITrayCurrentDevice, TrayCurrentDeviceService>();
 
+        // Monitoring - Work Sessions (clock-in/break/clock-out)
+        services.AddScoped<IWorkSessionRepository, EfWorkSessionRepository>();
+
         // Monitoring - Activity (keyboard/mouse tracking)
         services.AddScoped<IActivitySnapshotRepository, EfActivitySnapshotRepository>();
         services.AddScoped<IActivityRawBufferRepository, EfActivityRawBufferRepository>();
+        services.AddScoped<IAppUsageSnapshotRepository, EfAppUsageSnapshotRepository>();
+        services.AddScoped<IDeviceStateSnapshotRepository, EfDeviceStateSnapshotRepository>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();
+
+        // Monitoring - Screenshots
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IEvidenceAssetRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfEvidenceAssetRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IAgentCommandRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfAgentCommandRepository>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();

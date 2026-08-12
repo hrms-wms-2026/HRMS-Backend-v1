@@ -49,6 +49,9 @@ public class TransactionalEmailService : IEmailService
     public Task SendPlatformManagerInviteAsync(string to, string fullName, string inviteToken, CancellationToken ct = default)
         => SendTemplateAsync(to, "platform_manager_invite", new { full_name = fullName, invite_token = inviteToken }, ct);
 
+    public Task SendEmployeeOnboardingInviteAsync(string to, string firstName, string lastName, string inviteToken, CancellationToken ct = default)
+        => SendTemplateAsync(to, "employee_onboarding_invite", new { first_name = firstName, last_name = lastName, invite_token = inviteToken }, ct);
+
     private async Task SendInternalAsync(
         string to,
         string subject,

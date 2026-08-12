@@ -139,17 +139,12 @@ public class PositionPart2AArchitectureTests
         Assert.Empty(nonRepoTypes);
     }
 
-    [Fact]
-    public void PositionPart2A_DoesNotInclude_DeferredTables_PositionAssignments_Or_EmployeeHierarchyClosure()
-    {
-        var domainTypes = DomainAssembly.GetTypes();
-
-        var assignmentEntity = domainTypes.FirstOrDefault(t => t.Name.Equals("PositionAssignment", StringComparison.OrdinalIgnoreCase));
-        Assert.Null(assignmentEntity);
-
-        var closureEntity = domainTypes.FirstOrDefault(t => t.Name.Equals("EmployeeHierarchyClosure", StringComparison.OrdinalIgnoreCase));
-        Assert.Null(closureEntity);
-    }
+    // PositionPart2A_DoesNotInclude_DeferredTables_PositionAssignments_Or_EmployeeHierarchyClosure
+    // removed: it was a deliberate scope fence for the Position Part 2A milestone, asserting
+    // these two tables were not yet built. The Employee Management Phase 1 foundation now
+    // builds both intentionally (see PositionAssignmentArchitectureTests and
+    // EMPLOYEE_MANAGEMENT_IMPLEMENTATION_REPORT.md) - the guard's premise is obsolete, not
+    // violated.
 
     [Fact]
     public void PositionPart2A_Entities_DoNotUseEnums_ForTypeOrStatus()

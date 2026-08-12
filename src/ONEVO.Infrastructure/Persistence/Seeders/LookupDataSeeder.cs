@@ -88,9 +88,9 @@ public class LookupDataSeeder : IHostedService
 
     private static WorkMode[] WorkModes() =>
     [
-        new() { Id = 1, Code = "on_site", Label = "On-Site" },
-        new() { Id = 2, Code = "remote",  Label = "Remote"  },
-        new() { Id = 3, Code = "hybrid",  Label = "Hybrid"  },
+        new() { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true },
+        new() { Id = 2, Code = "remote",  Label = "Remote",  IsActive = true },
+        new() { Id = 3, Code = "hybrid",  Label = "Hybrid",  IsActive = true },
     ];
 
     private static ApprovalStatus[] ApprovalStatuses() =>

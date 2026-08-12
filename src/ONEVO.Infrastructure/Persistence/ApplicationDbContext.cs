@@ -20,8 +20,10 @@ using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
+using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
+using ONEVO.Domain.Features.Monitoring.WorkSessions.Entities;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
@@ -85,15 +87,24 @@ public class ApplicationDbContext : DbContext
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
     public DbSet<MonitoringFaceScan> MonitoringFaceScans => Set<MonitoringFaceScan>();
 
+    // Monitoring - Work Sessions (clock-in/break/clock-out)
+    public DbSet<EmployeeWorkSession> EmployeeWorkSessions => Set<EmployeeWorkSession>();
+
     // Monitoring - Activity (keyboard/mouse counts)
     public DbSet<ActivitySnapshot> ActivitySnapshots => Set<ActivitySnapshot>();
     public DbSet<ActivityRawBuffer> ActivityRawBuffers => Set<ActivityRawBuffer>();
     public DbSet<ActivityDailySummary> ActivityDailySummaries => Set<ActivityDailySummary>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot> AppUsageSnapshots => Set<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot> DeviceStateSnapshots => Set<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot>();
 
     // Monitoring - Feature toggles & overrides
     public DbSet<MonitoringFeatureToggles> MonitoringFeatureToggles => Set<MonitoringFeatureToggles>();
     public DbSet<EmployeeMonitoringOverride> EmployeeMonitoringOverrides => Set<EmployeeMonitoringOverride>();
     public DbSet<MonitoringPolicyOverride> MonitoringPolicyOverrides => Set<MonitoringPolicyOverride>();
+
+    // Monitoring - Screenshots & agent commands
+    public DbSet<MonitoringEvidenceAsset> MonitoringEvidenceAssets => Set<MonitoringEvidenceAsset>();
+    public DbSet<AgentCommand> AgentCommands => Set<AgentCommand>();
 
     // Infrastructure
     public DbSet<User> Users => Set<User>();
@@ -185,6 +196,12 @@ public class ApplicationDbContext : DbContext
 
     // CoreHR
     public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<PositionAssignment> PositionAssignments => Set<PositionAssignment>();
+    public DbSet<EmployeeHierarchyClosure> EmployeeHierarchyClosures => Set<EmployeeHierarchyClosure>();
+    public DbSet<OnboardingDraft> OnboardingDrafts => Set<OnboardingDraft>();
+    public DbSet<ChecklistTemplate> ChecklistTemplates => Set<ChecklistTemplate>();
+    public DbSet<EmployeeChecklistTask> EmployeeChecklistTasks => Set<EmployeeChecklistTask>();
+    public DbSet<AccessGrantRequest> AccessGrantRequests => Set<AccessGrantRequest>();
 
     // Lookups
     public DbSet<EmploymentType> EmploymentTypes => Set<EmploymentType>();
