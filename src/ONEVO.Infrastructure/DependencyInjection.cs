@@ -312,6 +312,7 @@ public static class DependencyInjection
 
         // Monitoring - Biometrics
         services.AddScoped<IBiometricRepository, EfBiometricRepository>();
+        services.AddScoped<IEmployeeIdentityResolver, ONEVO.Infrastructure.Services.Common.EfEmployeeIdentityResolver>();
 
         // Monitoring - Work Sessions (clock-in/break/clock-out)
         services.AddScoped<IWorkSessionRepository, EfWorkSessionRepository>();
