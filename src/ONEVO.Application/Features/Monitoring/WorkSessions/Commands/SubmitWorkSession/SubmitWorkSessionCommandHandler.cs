@@ -5,6 +5,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.WorkSessions.DTOs.Responses;
+using ONEVO.Application.Features.Monitoring.WorkSessions.OutboxPayloads;
 using ONEVO.Application.Features.Monitoring.WorkSessions.RepositoryInterfaces;
 using ONEVO.Domain.Features.Monitoring.WorkSessions.Entities;
 
@@ -19,6 +20,7 @@ public class SubmitWorkSessionCommandHandler
     private readonly ITenantContextSwitcher _tenantSwitcher;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IOutboxWriter _outboxWriter;
 
     public SubmitWorkSessionCommandHandler(
         IWorkSessionRepository repository,
@@ -26,7 +28,8 @@ public class SubmitWorkSessionCommandHandler
         ITenantRepository tenants,
         ITenantContextSwitcher tenantSwitcher,
         IDateTimeProvider clock,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IOutboxWriter outboxWriter)
     {
         _repository = repository;
         _device = device;
@@ -34,6 +37,7 @@ public class SubmitWorkSessionCommandHandler
         _tenantSwitcher = tenantSwitcher;
         _clock = clock;
         _unitOfWork = unitOfWork;
+        _outboxWriter = outboxWriter;
     }
 
     public async Task<Result<WorkSessionResponseDto>> Handle(
@@ -80,6 +84,17 @@ public class SubmitWorkSessionCommandHandler
         };
 
         await _repository.AddAsync(session, cancellationToken);
+
+        await _outboxWriter.EnqueueAsync(
+            OutboxMessageTypes.MonitoringWorkSessionCompleted,
+            new MonitoringWorkSessionCompletedPayload(
+                session.Id,
+                _device.TenantId,
+                _device.UserId,
+                request.ClockOutAt),
+            _device.TenantId,
+            cancellationToken);
+
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return Result<WorkSessionResponseDto>.Success(new WorkSessionResponseDto(session.Id));

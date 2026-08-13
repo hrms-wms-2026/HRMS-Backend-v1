@@ -330,6 +330,8 @@ public static class DependencyInjection
         services.AddScoped<IAppUsageSnapshotRepository, EfAppUsageSnapshotRepository>();
         services.AddScoped<IDeviceStateSnapshotRepository, EfDeviceStateSnapshotRepository>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
+        services.AddScoped<IActivityDailySummaryRebuilder, ActivityDailySummaryRebuilder>();
+        services.AddScoped<IMonitoringReportTimeZoneResolver, MonitoringReportTimeZoneResolver>();
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();
 
@@ -340,6 +342,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IAgentCommandRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfAgentCommandRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IInactivityCaptureAttemptRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfInactivityCaptureAttemptRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
 
         // Auth services

@@ -16,4 +16,19 @@ public class EfWorkSessionRepository : IWorkSessionRepository
 
     public async Task AddAsync(EmployeeWorkSession session, CancellationToken ct)
         => await _db.EmployeeWorkSessions.AddAsync(session, ct);
+
+    public async Task<IReadOnlyList<EmployeeWorkSession>> GetByEmployeeRangeAsync(
+        Guid tenantId,
+        Guid employeeId,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken ct)
+        => await _db.EmployeeWorkSessions
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId
+                        && s.UserId == employeeId
+                        && s.ClockInAt >= fromUtc
+                        && s.ClockInAt < toUtc)
+            .OrderBy(s => s.ClockInAt)
+            .ToListAsync(ct);
 }

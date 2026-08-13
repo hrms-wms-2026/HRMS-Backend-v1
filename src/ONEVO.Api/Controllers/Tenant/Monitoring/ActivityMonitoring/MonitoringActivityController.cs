@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailyRange;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailySummary;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetEmployeeDailyMonitoringReport;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivitySnapshots;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.ActivityMonitoring;
@@ -85,6 +86,29 @@ public class MonitoringActivityController : ControllerBase
             EmployeeId = employeeId,
             From = from,
             To = to
+        }, ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Composite daily monitoring report: activity summary, work sessions, and inactivity capture attempts.
+    /// The date is interpreted in the employee legal entity's configured timezone.
+    /// </summary>
+    [HttpGet("daily-report")]
+    [RequirePermission("monitoring:read")]
+    public async Task<IActionResult> GetDailyReport(
+        [FromQuery] Guid employeeId,
+        [FromQuery] DateOnly date,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeDailyMonitoringReportQuery
+        {
+            EmployeeId = employeeId,
+            Date = date
         }, ct);
 
         if (!result.IsSuccess)

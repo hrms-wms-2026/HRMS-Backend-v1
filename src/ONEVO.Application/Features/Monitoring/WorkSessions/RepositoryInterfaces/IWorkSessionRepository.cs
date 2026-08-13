@@ -6,4 +6,10 @@ public interface IWorkSessionRepository
 {
     Task<EmployeeWorkSession?> FindByIdAsync(Guid id, Guid tenantId, CancellationToken ct);
     Task AddAsync(EmployeeWorkSession session, CancellationToken ct);
+    Task<IReadOnlyList<EmployeeWorkSession>> GetByEmployeeRangeAsync(
+        Guid tenantId,
+        Guid employeeId,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken ct);
 }

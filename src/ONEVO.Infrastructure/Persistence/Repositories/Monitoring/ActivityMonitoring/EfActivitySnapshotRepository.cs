@@ -69,6 +69,21 @@ public class EfActivitySnapshotRepository : IActivitySnapshotRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<ActivitySnapshot>> GetAllByEmployeeCapturedRangeAsync(
+        Guid tenantId,
+        Guid employeeId,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken ct)
+        => await _db.ActivitySnapshots
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId
+                        && s.EmployeeId == employeeId
+                        && s.CapturedAt >= fromUtc
+                        && s.CapturedAt < toUtc)
+            .OrderBy(s => s.CapturedAt)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<(Guid TenantId, Guid EmployeeId)>> GetEmployeeKeysForDateAsync(
         DateOnly date,
         CancellationToken ct)

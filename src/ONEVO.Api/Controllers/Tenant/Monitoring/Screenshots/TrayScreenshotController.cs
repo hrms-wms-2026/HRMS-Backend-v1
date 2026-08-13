@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Application.Features.Monitoring.Screenshots.Commands.CompleteAgentCommand;
+using ONEVO.Application.Features.Monitoring.Screenshots.Commands.SubmitInactivityCaptureAttempt;
 using ONEVO.Application.Features.Monitoring.Screenshots.Commands.SubmitPeriodicScreenshot;
 using ONEVO.Application.Features.Monitoring.Screenshots.DTOs.Requests;
 using ONEVO.Application.Features.Monitoring.Screenshots.Queries.GetPendingCommands;
@@ -141,5 +142,56 @@ public class TrayScreenshotController : ControllerBase
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
         return Ok(new { id = result.Value });
+    }
+
+    /// <summary>
+    /// Records one inactivity prompt/capture attempt (approved JPEG or metadata-only outcome).
+    /// Maximum file size: 10 MB. Captured outcomes require one JPEG file; all others forbid a file.
+    /// </summary>
+    /// <response code="200">Attempt stored or idempotent replay acknowledged.</response>
+    /// <response code="400">Validation failed.</response>
+    /// <response code="403">Screenshot capture policy disabled for captured outcomes.</response>
+    /// <response code="409">Attempt ID already recorded with conflicting metadata.</response>
+    [HttpPost("inactivity-attempts")]
+    [RequestSizeLimit(10 * 1024 * 1024 + 65_536)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> SubmitInactivityCaptureAttempt(
+        [FromForm] InactivityCaptureAttemptForm form,
+        CancellationToken ct)
+    {
+        Stream? content = null;
+        if (form.File is { Length: > 0 })
+            content = form.File.OpenReadStream();
+
+        var result = await _mediator.Send(
+            new SubmitInactivityCaptureAttemptCommand(
+                form.AttemptId,
+                form.PolicyVersion,
+                form.IdleStartedAt,
+                form.PromptedAt,
+                form.DecisionAt,
+                form.CapturedAt,
+                form.IdleDurationSeconds,
+                form.MonitorCount,
+                form.Outcome,
+                form.FailureCode,
+                form.ContentType ?? form.File?.ContentType,
+                form.Sha256,
+                form.VirtualBoundsX,
+                form.VirtualBoundsY,
+                form.VirtualBoundsWidth,
+                form.VirtualBoundsHeight,
+                form.File?.FileName,
+                form.File?.Length,
+                content),
+            ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
     }
 }

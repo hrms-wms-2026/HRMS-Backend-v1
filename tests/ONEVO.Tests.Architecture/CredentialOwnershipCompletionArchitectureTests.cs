@@ -168,6 +168,9 @@ public sealed class CredentialOwnershipCompletionArchitectureTests
 
         var migrationsDirectory = FindRepositoryPath(
             "src", "ONEVO.Infrastructure", "Migrations");
+        // Directory.GetFiles order is OS-dependent (Windows vs Linux CI).
+        // Compare a sorted list so the assertion is about the set of files,
+        // not filesystem enumeration order.
         var paymentGatewayMigrations = Directory
             .GetFiles(migrationsDirectory, "*.cs")
             .Where(path =>
@@ -179,6 +182,7 @@ public sealed class CredentialOwnershipCompletionArchitectureTests
                     "payment_gateway",
                     StringComparison.Ordinal))
             .Select(path => Path.GetFileName(path)!)
+            .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
         Assert.Equal(

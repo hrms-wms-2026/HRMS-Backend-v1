@@ -4139,6 +4139,129 @@
               }
             }
           ]
+        },
+        {
+          "name": "Monitoring — Inactivity & Daily Report",
+          "item": [
+            {
+              "name": "Get Tray Policy",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{trayAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/monitoring/tray/policy",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "monitoring", "tray", "policy"]
+                }
+              }
+            },
+            {
+              "name": "Submit Inactivity Attempt (Captured)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{trayAccessToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    { "key": "attempt_id", "value": "00000000-0000-4000-8000-000000000001", "type": "text" },
+                    { "key": "policy_version", "value": "2026-08-10", "type": "text" },
+                    { "key": "idle_started_at", "value": "2026-08-13T10:00:00Z", "type": "text" },
+                    { "key": "prompted_at", "value": "2026-08-13T10:05:00Z", "type": "text" },
+                    { "key": "decision_at", "value": "2026-08-13T10:05:12Z", "type": "text" },
+                    { "key": "captured_at", "value": "2026-08-13T10:05:15Z", "type": "text" },
+                    { "key": "idle_duration_seconds", "value": "300", "type": "text" },
+                    { "key": "monitor_count", "value": "2", "type": "text" },
+                    { "key": "outcome", "value": "captured", "type": "text" },
+                    { "key": "content_type", "value": "image/jpeg", "type": "text" },
+                    { "key": "file", "type": "file", "src": "" }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/monitoring/tray/inactivity-attempts",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "monitoring", "tray", "inactivity-attempts"]
+                }
+              }
+            },
+            {
+              "name": "Submit Inactivity Attempt (Declined)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{trayAccessToken}}"
+                  }
+                ],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    { "key": "attempt_id", "value": "00000000-0000-4000-8000-000000000002", "type": "text" },
+                    { "key": "policy_version", "value": "2026-08-10", "type": "text" },
+                    { "key": "idle_started_at", "value": "2026-08-13T11:00:00Z", "type": "text" },
+                    { "key": "prompted_at", "value": "2026-08-13T11:05:00Z", "type": "text" },
+                    { "key": "decision_at", "value": "2026-08-13T11:05:08Z", "type": "text" },
+                    { "key": "idle_duration_seconds", "value": "300", "type": "text" },
+                    { "key": "monitor_count", "value": "2", "type": "text" },
+                    { "key": "outcome", "value": "declined", "type": "text" }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/monitoring/tray/inactivity-attempts",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "monitoring", "tray", "inactivity-attempts"]
+                }
+              }
+            },
+            {
+              "name": "Get Daily Monitoring Report",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{tenantAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/monitoring/activity/daily-report?employeeId={{employeeId}}&date=2026-08-13",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "monitoring", "activity", "daily-report"],
+                  "query": [
+                    { "key": "employeeId", "value": "{{employeeId}}" },
+                    { "key": "date", "value": "2026-08-13" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Get Screenshot Signed URL",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{tenantAccessToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/monitoring/screenshots/{{evidenceAssetId}}/url",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "monitoring", "screenshots", "{{evidenceAssetId}}", "url"]
+                }
+              }
+            }
+          ]
         }
       ]
     },

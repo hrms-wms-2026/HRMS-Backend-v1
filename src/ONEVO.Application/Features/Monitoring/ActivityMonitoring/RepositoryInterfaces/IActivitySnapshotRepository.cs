@@ -30,6 +30,13 @@ public interface IActivitySnapshotRepository
         DateOnly date,
         CancellationToken ct);
 
+    Task<IReadOnlyList<ActivitySnapshot>> GetAllByEmployeeCapturedRangeAsync(
+        Guid tenantId,
+        Guid employeeId,
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken ct);
+
     /// <summary>
     /// Distinct (tenant_id, employee_id) pairs that have snapshots on the given UTC date.
     /// </summary>
