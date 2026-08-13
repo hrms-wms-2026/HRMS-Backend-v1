@@ -404,6 +404,7 @@ public static class DependencyInjection
         services.AddHostedService<PlatformAccessSeeder>();
         services.AddHostedService<ModuleCatalogSeeder>();
         services.AddHostedService<DevSmokeTestTenantSeeder>();
+        services.AddHostedService<WorkManagementDapiDemoSeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
         services.AddHostedService<ProjectsAccessBootstrapSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();
