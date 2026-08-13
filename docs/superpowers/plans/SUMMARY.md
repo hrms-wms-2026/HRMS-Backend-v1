@@ -2,7 +2,7 @@
 
 **Purpose:** Dated implementation plans, one per feature/fix, following the header format in the `writing-plans` skill (Goal / Architecture / Tech Stack / Global Constraints / numbered tasks with checkboxes). Restructured on 2026-08-06 into `finished/` and `next/` — see `docs/superpowers/rules/FILE_CREATION_RULES.md` for the full file-creation/organization rule this follows.
 
-**Last updated:** 2026-08-09
+**Last updated:** 2026-08-13
 
 ## Layout
 
@@ -17,6 +17,7 @@
 
 | Plan | Location | Status |
 |---|---|---|
+| `2026-08-13-tray-employee-identity-closure/` (3 parts) | `next/` | pending |
 | `2026-07-27-forgot-password-restricted-role-http-rls-proof.md` | `finished/2026-07-27/` | finished |
 | `2026-07-28-legal-document-rich-content.md` | `finished/2026-07-28/` | finished |
 | `2026-07-28-tenant-host-password-login-retirement.md` | `finished/2026-07-28/` | finished |
