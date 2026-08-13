@@ -19,6 +19,7 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Domain.Features.Monitoring.Biometrics.Entities;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
@@ -86,6 +87,8 @@ public class ApplicationDbContext : DbContext
     // Monitoring - Employee Check-In
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
     public DbSet<MonitoringFaceScan> MonitoringFaceScans => Set<MonitoringFaceScan>();
+    public DbSet<BiometricVerificationAttempt> BiometricVerificationAttempts => Set<BiometricVerificationAttempt>();
+    public DbSet<EmployeeBiometricProfile> EmployeeBiometricProfiles => Set<EmployeeBiometricProfile>();
 
     // Monitoring - Work Sessions (clock-in/break/clock-out)
     public DbSet<EmployeeWorkSession> EmployeeWorkSessions => Set<EmployeeWorkSession>();
