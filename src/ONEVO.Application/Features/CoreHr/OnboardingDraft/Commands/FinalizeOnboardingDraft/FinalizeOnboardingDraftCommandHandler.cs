@@ -1,0 +1,473 @@
+using MediatR;
+using ONEVO.Application.Common.Exceptions;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.Security;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
+using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
+using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
+using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
+using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
+using PositionAssignmentEntity = ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment;
+
+namespace ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboardingDraft;
+
+/// <summary>
+/// Converts a valid onboarding draft into a pending employee onboarding package.
+///
+/// The RequiresApproval branch follows the employee-onboarding userflow doc's "Sensitive
+/// Position Approval" section literally: while approval is pending, the employee remains in a
+/// Draft-family state and no user, employee, position assignment, checklist task, invitation
+/// token, or outbox record is created - only the access grant request is submitted. A separate,
+/// not-yet-built "Approve & Send Invite" flow performs the actual creation once approved. This
+/// diverges from a plain reading of this endpoint's own task instructions (which implied the
+/// employee/user lifecycle is created eagerly and only the role is deferred); the userflow doc
+/// was treated as authoritative per explicit product direction.
+/// </summary>
+public class FinalizeOnboardingDraftCommandHandler
+    : IRequestHandler<FinalizeOnboardingDraftCommand, Result<FinalizeOnboardingDraftResponse>>
+{
+    private const int InvitationValidityHours = 72;
+
+    private readonly IOnboardingDraftRepository _draftRepository;
+    private readonly IEmployeeRepository _employeeRepository;
+    private readonly IUserRepository _userRepository;
+    private readonly IUserRoleRepository _userRoleRepository;
+    private readonly IPositionRepository _positionRepository;
+    private readonly IPositionAssignmentRepository _positionAssignmentRepository;
+    private readonly ILegalEntityRepository _legalEntityRepository;
+    private readonly IDepartmentRepository _departmentRepository;
+    private readonly IEmploymentTypeRepository _employmentTypeRepository;
+    private readonly IWorkModeRepository _workModeRepository;
+    private readonly ISeatEntitlementService _seatEntitlementService;
+    private readonly IAccessGrantRequestRepository _accessGrantRequestRepository;
+    private readonly IChecklistTemplateRepository _checklistTemplateRepository;
+    private readonly IEmployeeChecklistTaskRepository _checklistTaskRepository;
+    private readonly IInvitationTokenRepository _invitationTokenRepository;
+    private readonly IOutboxWriter _outboxWriter;
+    private readonly ISecureTokenGenerator _tokenGenerator;
+    private readonly ICurrentUser _currentUser;
+    private readonly IDateTimeProvider _clock;
+
+    public FinalizeOnboardingDraftCommandHandler(
+        IOnboardingDraftRepository draftRepository,
+        IEmployeeRepository employeeRepository,
+        IUserRepository userRepository,
+        IUserRoleRepository userRoleRepository,
+        IPositionRepository positionRepository,
+        IPositionAssignmentRepository positionAssignmentRepository,
+        ILegalEntityRepository legalEntityRepository,
+        IDepartmentRepository departmentRepository,
+        IEmploymentTypeRepository employmentTypeRepository,
+        IWorkModeRepository workModeRepository,
+        ISeatEntitlementService seatEntitlementService,
+        IAccessGrantRequestRepository accessGrantRequestRepository,
+        IChecklistTemplateRepository checklistTemplateRepository,
+        IEmployeeChecklistTaskRepository checklistTaskRepository,
+        IInvitationTokenRepository invitationTokenRepository,
+        IOutboxWriter outboxWriter,
+        ISecureTokenGenerator tokenGenerator,
+        ICurrentUser currentUser,
+        IDateTimeProvider clock)
+    {
+        _draftRepository = draftRepository;
+        _employeeRepository = employeeRepository;
+        _userRepository = userRepository;
+        _userRoleRepository = userRoleRepository;
+        _positionRepository = positionRepository;
+        _positionAssignmentRepository = positionAssignmentRepository;
+        _legalEntityRepository = legalEntityRepository;
+        _departmentRepository = departmentRepository;
+        _employmentTypeRepository = employmentTypeRepository;
+        _workModeRepository = workModeRepository;
+        _seatEntitlementService = seatEntitlementService;
+        _accessGrantRequestRepository = accessGrantRequestRepository;
+        _checklistTemplateRepository = checklistTemplateRepository;
+        _checklistTaskRepository = checklistTaskRepository;
+        _invitationTokenRepository = invitationTokenRepository;
+        _outboxWriter = outboxWriter;
+        _tokenGenerator = tokenGenerator;
+        _currentUser = currentUser;
+        _clock = clock;
+    }
+
+    public async Task<Result<FinalizeOnboardingDraftResponse>> Handle(
+        FinalizeOnboardingDraftCommand request, CancellationToken ct)
+    {
+        var tenantId = _currentUser.TenantId;
+
+        var draft = await _draftRepository.GetTrackedAsync(tenantId, request.DraftId, ct);
+        if (draft is null)
+            return Result<FinalizeOnboardingDraftResponse>.NotFound("The draft could not be found.");
+
+        if (draft.Status == OnboardingDraftStatus.Cancelled)
+            return Result<FinalizeOnboardingDraftResponse>.Conflict("This draft has been cancelled and cannot be finalized.");
+
+        if (draft.Status == OnboardingDraftStatus.Finalized)
+            return Result<FinalizeOnboardingDraftResponse>.Conflict("This draft has already been finalized.");
+
+        if (draft.Status == OnboardingDraftStatus.WaitingForPositionApproval)
+        {
+            // Only block when a decision is genuinely still outstanding. A prior pending request
+            // that was since rejected does not keep the draft permanently stuck: RejectAccessGrantRequestCommandHandler
+            // moves the draft back to Draft/PositionApprovalRejected, but if HR re-saves the draft
+            // via PUT without changing the (still approval-requiring) position,
+            // SaveOnboardingDraftCommandHandler recomputes and re-stamps WaitingForPositionApproval
+            // even though nothing is actually pending. Checking for a live Pending row (rather than
+            // trusting this status flag alone) is what lets finalize re-evaluate and submit a fresh
+            // request in that case instead of 409ing forever.
+            var hasOutstandingRequest = await _accessGrantRequestRepository.AnyPendingByDraftAsync(tenantId, draft.Id, ct);
+            if (hasOutstandingRequest)
+                return Result<FinalizeOnboardingDraftResponse>.Conflict(
+                    "This draft is waiting for position access approval and cannot be finalized again until that is resolved.");
+        }
+
+        // ---- Field validation. SaveOnboardingDraftCommandValidator already enforces most of
+        // this at save time, but finalize must not trust persisted state blindly either. ----
+        if (string.IsNullOrWhiteSpace(draft.FirstName))
+            return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("First name is required.");
+        if (string.IsNullOrWhiteSpace(draft.LastName))
+            return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("Last name is required.");
+        if (string.IsNullOrWhiteSpace(draft.WorkEmail) || !IsValidEmail(draft.WorkEmail))
+            return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("A valid work email is required.");
+
+        var legalEntity = await _legalEntityRepository.GetByIdForTenantAsync(tenantId, draft.LegalEntityId, ct);
+        if (legalEntity is null || !legalEntity.IsActive)
+            return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("The selected legal entity does not exist or is inactive.");
+
+        if (draft.DepartmentId is not null)
+        {
+            var department = await _departmentRepository.GetByIdForLegalEntityAsync(tenantId, draft.LegalEntityId, draft.DepartmentId.Value, ct);
+            if (department is null || !department.IsActive)
+                return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
+                    "The selected department does not exist, is inactive, or does not belong to the selected legal entity.");
+        }
+
+        Position? position = null;
+        if (draft.PositionId is not null)
+        {
+            position = await _positionRepository.GetByIdForLegalEntityAsync(tenantId, draft.LegalEntityId, draft.PositionId.Value, ct);
+            if (position is null || !position.IsActive || (draft.DepartmentId is not null && position.DepartmentId != draft.DepartmentId))
+                return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
+                    "The selected position does not exist, is inactive, or does not match the selected legal entity and department.");
+
+            // TargetDepartmentId on the access grant request (and on the position assignment's
+            // department consistency) needs a real department; a position with no department is
+            // legacy/anomalous data this handler does not attempt to repair.
+            if (position.DepartmentId is null)
+                return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("The selected position has no department and cannot be used.");
+        }
+
+        if (!await _workModeRepository.ExistsActiveAsync(draft.WorkModeId, ct))
+            return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("The selected work mode does not exist or is inactive.");
+
+        var employmentTypeId = await _employmentTypeRepository.GetIdByCodeAsync(draft.EmploymentType, ct);
+        if (employmentTypeId is null)
+            return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("The selected employment type does not exist.");
+
+        if (await _employeeRepository.EmailExistsAsync(tenantId, draft.WorkEmail, excludeId: null, ct))
+            return Result<FinalizeOnboardingDraftResponse>.Conflict("An employee with this work email already exists.");
+
+        // EmployeeNumber is "conditional" per product docs (required when not auto-generated),
+        // but no auto-generation policy exists in this codebase, and Employee.EmployeeNumber is
+        // a non-nullable, tenant-unique column - so it is treated as required here.
+        if (string.IsNullOrWhiteSpace(draft.EmployeeNumber))
+            return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
+                "An employee number is required to finalize onboarding; no auto-generation policy exists yet.");
+
+        if (await _employeeRepository.EmployeeNumberExistsAsync(tenantId, draft.EmployeeNumber, excludeId: null, ct))
+            return Result<FinalizeOnboardingDraftResponse>.Conflict("This employee number already exists for this company.");
+
+        PositionAccessTemplate? accessTemplate = null;
+        if (draft.PositionId is not null)
+        {
+            accessTemplate = await _positionRepository.GetAccessTemplateByPositionAsync(tenantId, draft.PositionId.Value, ct);
+        }
+        var requiresApproval = accessTemplate is { IsActive: true, RequiresApproval: true };
+
+        // Position capacity is a pre-invite validation (per the userflow doc's error-scenario
+        // table), so it applies before either branch below, using PositionAssignment's active
+        // count against Position.MaxOccupancy - the only capacity signal this repository layer
+        // exposes.
+        if (position is not null)
+        {
+            var activeAssignmentCount = await _positionAssignmentRepository.CountActiveAsync(tenantId, position.Id, ct);
+            if (activeAssignmentCount >= position.MaxOccupancy)
+                return Result<FinalizeOnboardingDraftResponse>.Conflict("This position has reached its capacity.");
+        }
+
+        if (requiresApproval)
+        {
+            return await FinalizeWithPendingApprovalAsync(draft, accessTemplate!, position!, ct);
+        }
+
+        return await FinalizeImmediatelyAsync(draft, accessTemplate, position, employmentTypeId.Value, ct);
+    }
+
+    private async Task<Result<FinalizeOnboardingDraftResponse>> FinalizeWithPendingApprovalAsync(
+        OnboardingDraftEntity draft, PositionAccessTemplate accessTemplate, Position position, CancellationToken ct)
+    {
+        var existingPending = await _accessGrantRequestRepository.GetPendingByDraftAsync(
+            draft.TenantId, draft.Id, draft.PositionId!.Value, accessTemplate.Id, ct);
+
+        if (existingPending is null)
+        {
+            var grantRequest = new AccessGrantRequest
+            {
+                Id = Guid.NewGuid(),
+                TenantId = draft.TenantId,
+                EmployeeId = null,
+                UserId = null,
+                OnboardingDraftId = draft.Id,
+                ActionType = AccessGrantActionType.EmployeeOnboarding,
+                TargetPositionId = draft.PositionId.Value,
+                TargetDepartmentId = position.DepartmentId!.Value,
+                PositionAccessTemplateId = accessTemplate.Id,
+                RequestedRoleId = accessTemplate.RoleId,
+                ApprovalStatus = "Pending",
+                RequestedByUserId = _currentUser.UserId,
+                RequestedAt = _clock.UtcNow,
+                EffectiveFrom = ToUtcMidnight(draft.StartDate),
+                EffectiveTo = null,
+            };
+            await _accessGrantRequestRepository.AddAsync(grantRequest, ct);
+        }
+
+        draft.Status = OnboardingDraftStatus.WaitingForPositionApproval;
+        draft.DraftReason = OnboardingDraftReason.WaitingForPositionApproval;
+        draft.UpdatedAt = _clock.UtcNow;
+
+        var saveResult = await SaveAsync(ct);
+        if (saveResult is not null)
+            return saveResult;
+
+        return Result<FinalizeOnboardingDraftResponse>.Success(new FinalizeOnboardingDraftResponse(
+            draft.Id, null, draft.Status, draft.DraftReason,
+            InvitationQueued: false, PositionApprovalPending: true, ChecklistTasksCreated: false,
+            MessageKey: "onboarding.finalize.waiting_for_position_approval"));
+    }
+
+    private async Task<Result<FinalizeOnboardingDraftResponse>> FinalizeImmediatelyAsync(
+        OnboardingDraftEntity draft, PositionAccessTemplate? accessTemplate, Position? position, int employmentTypeId, CancellationToken ct)
+    {
+        var seatDecision = await _seatEntitlementService.EvaluateAsync(draft.TenantId, ct);
+        if (seatDecision.Status == SeatDecisionStatus.Blocked)
+        {
+            draft.Status = OnboardingDraftStatus.WaitingForSeat;
+            draft.DraftReason = OnboardingDraftReason.WaitingForSeat;
+            draft.UpdatedAt = _clock.UtcNow;
+
+            var saveResult = await SaveAsync(ct);
+            if (saveResult is not null)
+                return saveResult;
+
+            return Result<FinalizeOnboardingDraftResponse>.Conflict("No seat is available to finalize this onboarding.");
+        }
+
+        if (seatDecision.Status == SeatDecisionStatus.Undetermined)
+        {
+            return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
+                "Seat availability cannot be determined for this tenant; billing configuration is required before onboarding can be finalized.");
+        }
+
+        // Checklist template + task JSON are validated (and, via InstantiateAsync, staged)
+        // before anything else is created below - nothing is persisted until the single
+        // SaveChangesAsync at the end, so a JSON error here still fails clean.
+        ChecklistTemplate? template = null;
+        if (draft.SelectedTemplateId is not null)
+        {
+            template = await _checklistTemplateRepository.GetActiveOnboardingAsync(draft.TenantId, draft.SelectedTemplateId.Value, draft.DepartmentId, ct);
+            if (template is null)
+                return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
+                    "The selected onboarding checklist template does not exist, is inactive, or does not apply to this department.");
+        }
+
+        var employeeId = Guid.NewGuid();
+        var tasksCreated = 0;
+        if (template is not null)
+        {
+            try
+            {
+                var tasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, draft.EditedTasksJson, ct);
+                tasksCreated = tasks.Count;
+            }
+            catch (ArgumentException)
+            {
+                return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
+                    "Checklist task data is invalid: every task requires a title, owner type, assigned-to user, and due date.");
+            }
+        }
+
+        var normalizedEmail = draft.WorkEmail.Trim().ToLowerInvariant();
+        var user = await _userRepository.GetByTenantAndEmailAsync(draft.TenantId, normalizedEmail, ct);
+        if (user is null)
+        {
+            user = new User
+            {
+                Id = Guid.NewGuid(),
+                TenantId = draft.TenantId,
+                Email = draft.WorkEmail.Trim(),
+                FirstName = draft.FirstName.Trim(),
+                LastName = draft.LastName.Trim(),
+                PasswordHash = string.Empty,
+                IsActive = false,
+                EmailVerified = false,
+                MustChangePassword = true,
+                PasswordSetByAdmin = false,
+            };
+            await _userRepository.AddAsync(user, ct);
+        }
+
+        var employee = new EmployeeEntity
+        {
+            Id = employeeId,
+            TenantId = draft.TenantId,
+            UserId = user.Id,
+            EmployeeNumber = draft.EmployeeNumber!,
+            FirstName = draft.FirstName.Trim(),
+            LastName = draft.LastName.Trim(),
+            Email = draft.WorkEmail.Trim(),
+            DepartmentId = draft.DepartmentId,
+            LegalEntityId = draft.LegalEntityId,
+            // No "onboarding" row exists in the tenant-wide employment_statuses lookup (it is
+            // read app-wide, e.g. the employee list falls back to "active"), so pending-ness is
+            // carried by User.IsActive = false, InvitationToken.Status = "pending", and this
+            // draft's own Status/FinalizedAt instead of an employee-level status value.
+            EmploymentStatusId = 1,
+            EmploymentTypeId = employmentTypeId,
+            WorkModeId = draft.WorkModeId,
+            HireDate = draft.StartDate,
+            CreatedById = _currentUser.UserId,
+        };
+        await _employeeRepository.AddAsync(employee, ct);
+
+        if (position is not null)
+        {
+            var assignment = new PositionAssignmentEntity
+            {
+                Id = Guid.NewGuid(),
+                TenantId = draft.TenantId,
+                EmployeeId = employeeId,
+                PositionId = position.Id,
+                AssignmentKind = PositionAssignmentKind.PrimaryEmployment,
+                EffectiveFrom = draft.StartDate,
+                AssignmentStatus = PositionAssignmentStatus.Active,
+                CreatedById = _currentUser.UserId,
+            };
+            await _positionAssignmentRepository.AddAsync(assignment, ct);
+        }
+
+        // The only role ever assigned here is the position access template's own RoleId - never
+        // a hardcoded Owner/Admin default.
+        if (accessTemplate is { IsActive: true, RequiresApproval: false })
+        {
+            var userRole = new UserRole
+            {
+                TenantId = draft.TenantId,
+                UserId = user.Id,
+                RoleId = accessTemplate.RoleId,
+                AssignedAt = _clock.UtcNow,
+                AssignedBy = _currentUser.UserId,
+                SourcePositionId = draft.PositionId,
+                SourcePositionAccessTemplateId = accessTemplate.Id,
+            };
+            await _userRoleRepository.AddAsync(userRole, ct);
+        }
+
+        var rawToken = _tokenGenerator.GenerateOpaqueToken();
+        var tokenHash = InvitationTokenHasher.Hash(rawToken);
+        var expiresAt = _clock.UtcNow.AddHours(InvitationValidityHours);
+        var fullName = $"{draft.FirstName.Trim()} {draft.LastName.Trim()}".Trim();
+
+        var invitation = new InvitationToken
+        {
+            Id = Guid.NewGuid(),
+            TenantId = draft.TenantId,
+            UserId = user.Id,
+            RoleId = null,
+            PositionId = draft.PositionId,
+            Purpose = InvitationToken.EmployeeOnboardingPurpose,
+            LegalEntityId = draft.LegalEntityId,
+            EmployeeId = employeeId,
+            OnboardingDraftId = draft.Id,
+            InvitedEmail = draft.WorkEmail.Trim(),
+            InvitedFullName = fullName,
+            TokenHash = tokenHash,
+            ExpiresAt = expiresAt,
+            CreatedAt = _clock.UtcNow,
+            CreatedById = _currentUser.UserId,
+        };
+        await _invitationTokenRepository.AddAsync(invitation, ct);
+
+        await _outboxWriter.EnqueueAsync(
+            OutboxMessageTypes.EmployeeOnboardingInviteEmail,
+            new EmployeeOnboardingInviteEmailPayload(
+                draft.TenantId, draft.LegalEntityId, employeeId, invitation.Id,
+                draft.WorkEmail.Trim(), draft.FirstName.Trim(), draft.LastName.Trim(), rawToken, expiresAt),
+            draft.TenantId,
+            ct);
+
+        draft.Status = OnboardingDraftStatus.Finalized;
+        draft.DraftReason = OnboardingDraftReason.InvitationSent;
+        draft.FinalizedAt = _clock.UtcNow;
+        draft.UpdatedAt = _clock.UtcNow;
+
+        var finalSaveResult = await SaveAsync(ct);
+        if (finalSaveResult is not null)
+            return finalSaveResult;
+
+        return Result<FinalizeOnboardingDraftResponse>.Success(new FinalizeOnboardingDraftResponse(
+            draft.Id, employeeId, draft.Status, draft.DraftReason,
+            InvitationQueued: true, PositionApprovalPending: false, ChecklistTasksCreated: tasksCreated > 0,
+            MessageKey: "onboarding.finalize.invitation_sent"));
+    }
+
+    /// <summary>Saves all changes staged on the shared DbContext in one transaction. Returns
+    /// null on success, or a Result to return immediately on a concurrency/uniqueness
+    /// conflict.</summary>
+    private async Task<Result<FinalizeOnboardingDraftResponse>?> SaveAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _draftRepository.SaveChangesAsync(ct);
+            return null;
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return Result<FinalizeOnboardingDraftResponse>.Conflict(
+                "This draft was just updated by someone else. Please refresh and try again.");
+        }
+        catch (UniqueConstraintConflictException)
+        {
+            return Result<FinalizeOnboardingDraftResponse>.Conflict(
+                "This request conflicts with an existing record (e.g. a duplicate email, employee number, or a request already submitted). Please refresh and try again.");
+        }
+    }
+
+    private static DateTimeOffset ToUtcMidnight(DateOnly date) => new(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+    private static bool IsValidEmail(string email)
+    {
+        try
+        {
+            _ = new System.Net.Mail.MailAddress(email);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+}

@@ -15,12 +15,16 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
     private readonly Mock<IDateTimeProvider> _dateTimeProvider = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid UserId = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly DateTimeOffset FixedNow = new(2026, 8, 3, 12, 0, 0, TimeSpan.Zero);
 
-    private UpdateLegalEntityGeneralSettingsCommandHandler BuildSut()
+    private UpdateLegalEntityGeneralSettingsCommandHandler BuildSut(bool hasManagementAccess = true)
     {
         _currentUser.SetupGet(c => c.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(c => c.TenantId).Returns(TenantId);
+        _currentUser.SetupGet(c => c.UserId).Returns(UserId);
+        _currentUser.Setup(c => c.HasPermission("legal_entity:update")).Returns(hasManagementAccess);
+        _currentUser.Setup(c => c.HasPermission("legal_entity:delete")).Returns(false);
         _dateTimeProvider.SetupGet(d => d.UtcNow).Returns(FixedNow);
         return new UpdateLegalEntityGeneralSettingsCommandHandler(
             _legalEntities.Object, _currentUser.Object, _dateTimeProvider.Object);
@@ -73,7 +77,7 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
     public async Task Handle_ValidRequest_FetchesExisting_MutatesAndPersists()
     {
         var entity = ExistingEntity(Guid.NewGuid());
-        _legalEntities.Setup(r => r.GetByIdForTenantAsync(TenantId, entity.Id, It.IsAny<CancellationToken>()))
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entity);
         SetupNoDuplicates(entity.Id);
         var sut = BuildSut();
@@ -85,7 +89,7 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         result.Value.CompanyCode.Should().Be("NEW");
         result.Value.StandardWorkingDays.Should().BeEquivalentTo([1, 2, 3], o => o.WithStrictOrdering());
 
-        _legalEntities.Verify(r => r.GetByIdForTenantAsync(TenantId, entity.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _legalEntities.Verify(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()), Times.Once);
         _legalEntities.Verify(r => r.Update(entity), Times.Once);
         _legalEntities.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -94,7 +98,7 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
     public async Task Handle_ValidRequest_SetsUpdatedAt_FromDateTimeProvider_NotSystemClock()
     {
         var entity = ExistingEntity(Guid.NewGuid());
-        _legalEntities.Setup(r => r.GetByIdForTenantAsync(TenantId, entity.Id, It.IsAny<CancellationToken>()))
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entity);
         SetupNoDuplicates(entity.Id);
         var sut = BuildSut();
@@ -113,7 +117,7 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         var originalParentId = entity.ParentLegalEntityId;
         var originalCreatedAt = entity.CreatedAt;
         var originalIsPrimary = entity.IsPrimary;
-        _legalEntities.Setup(r => r.GetByIdForTenantAsync(TenantId, entity.Id, It.IsAny<CancellationToken>()))
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entity);
         SetupNoDuplicates(entity.Id);
         var sut = BuildSut();
@@ -131,7 +135,7 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
     public async Task Handle_EntityNotFound_ReturnsNotFound()
     {
         var id = Guid.NewGuid();
-        _legalEntities.Setup(r => r.GetByIdForTenantAsync(TenantId, id, It.IsAny<CancellationToken>()))
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, id, UserId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync((LegalEntityEntity?)null);
         var sut = BuildSut();
 
@@ -145,7 +149,7 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
     public async Task Handle_DuplicateNameExcludingSelf_ReturnsConflict()
     {
         var entity = ExistingEntity(Guid.NewGuid());
-        _legalEntities.Setup(r => r.GetByIdForTenantAsync(TenantId, entity.Id, It.IsAny<CancellationToken>()))
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entity);
         _legalEntities.Setup(r => r.NameExistsForTenantAsync(TenantId, "New Name", entity.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -162,7 +166,7 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
     public async Task Handle_DuplicateCompanyCodeExcludingSelf_ReturnsConflict()
     {
         var entity = ExistingEntity(Guid.NewGuid());
-        _legalEntities.Setup(r => r.GetByIdForTenantAsync(TenantId, entity.Id, It.IsAny<CancellationToken>()))
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entity);
         _legalEntities.Setup(r => r.NameExistsForTenantAsync(TenantId, It.IsAny<string>(), entity.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
@@ -180,7 +184,7 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
     public async Task Handle_DuplicateRegistrationNumberExcludingSelf_ReturnsConflict()
     {
         var entity = ExistingEntity(Guid.NewGuid());
-        _legalEntities.Setup(r => r.GetByIdForTenantAsync(TenantId, entity.Id, It.IsAny<CancellationToken>()))
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entity);
         _legalEntities.Setup(r => r.NameExistsForTenantAsync(TenantId, It.IsAny<string>(), entity.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
@@ -201,7 +205,7 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
     {
         var entity = ExistingEntity(Guid.NewGuid());
         entity.IsActive = true;
-        _legalEntities.Setup(r => r.GetByIdForTenantAsync(TenantId, entity.Id, It.IsAny<CancellationToken>()))
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entity);
         SetupNoDuplicates(entity.Id);
         _legalEntities.Setup(r => r.CountActiveByTenantAsync(TenantId, It.IsAny<CancellationToken>()))
@@ -220,7 +224,7 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
     {
         var entity = ExistingEntity(Guid.NewGuid());
         entity.IsActive = true;
-        _legalEntities.Setup(r => r.GetByIdForTenantAsync(TenantId, entity.Id, It.IsAny<CancellationToken>()))
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entity);
         SetupNoDuplicates(entity.Id);
         _legalEntities.Setup(r => r.CountActiveByTenantAsync(TenantId, It.IsAny<CancellationToken>()))
@@ -231,5 +235,38 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         entity.IsActive.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Handle_RegularUser_OwnAccessibleCompany_UpdatesSuccessfully()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut(hasManagementAccess: false);
+
+        var result = await sut.Handle(ValidCommand(entity.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Handle_RegularUser_AnotherCompanyInSameTenant_ReturnsNotFound_AndDoesNotUpdate()
+    {
+        // Same isolation caveat as the Get handler's equivalent test - this caller can
+        // never reach UpdateGeneralSettings over HTTP without legal_entity:update, which
+        // already implies management access under LegalEntityAccessPolicy. This proves
+        // the handler's own defense-in-depth filter, not an HTTP-reachable path.
+        var otherCompanyId = Guid.NewGuid();
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, otherCompanyId, UserId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((LegalEntityEntity?)null);
+        var sut = BuildSut(hasManagementAccess: false);
+
+        var result = await sut.Handle(ValidCommand(otherCompanyId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(404);
+        _legalEntities.Verify(r => r.Update(It.IsAny<LegalEntityEntity>()), Times.Never);
     }
 }

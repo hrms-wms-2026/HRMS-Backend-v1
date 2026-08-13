@@ -26,8 +26,7 @@ public static class PlatformAccessMapper
             user.Id,
             user.Email,
             user.FullName,
-            null,
-            user.Status == PlatformUser.StatusActive,
+            user.Status,
             user.CreatedAt,
             user.LastLoginAt,
             mappedRoles);

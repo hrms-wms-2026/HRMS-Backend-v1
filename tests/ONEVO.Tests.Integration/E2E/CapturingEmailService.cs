@@ -53,4 +53,7 @@ public sealed class CapturingEmailService : IEmailService
             ? token.GetString()
             : null;
     }
+
+    public Task SendEmployeeOnboardingInviteAsync(string to, string firstName, string lastName, string inviteToken, CancellationToken ct = default)
+        => SendTemplateAsync(to, "employee_onboarding_invite", new { firstName, lastName, inviteToken }, ct);
 }

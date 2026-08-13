@@ -94,6 +94,9 @@ ONEVO backend is organized into layers and feature/subfeature folders. New work 
 src/ONEVO.Api/
   Auth/
   Configuration/
+  Contracts/
+    {Feature}/
+      {SubFeature}/
   Controllers/
     Admin/
       {Feature}/
@@ -114,6 +117,7 @@ Folder purpose:
 |---|---|
 | `Auth/` | API authentication boundary helpers live here when the code is specific to HTTP authentication. |
 | `Configuration/` | API-specific configuration models and setup helpers live here. |
+| `Contracts/` | The API's own HTTP-boundary request and response models — see §2.1.1.1 View Model Convention below. |
 | `Controllers/Admin/` | Platform/admin endpoints live here. These endpoints use `/admin/v1/...` routes and admin policies. |
 | `Controllers/Customer/` | Tenant/customer endpoints should live here when the controller structure is migrated to customer/admin separation. These endpoints use `/api/v1/...` routes and tenant policies. |
 | `Extensions/` | Startup registrations are grouped here, such as authentication, authorization, CORS, and Swagger setup. This keeps `Program.cs` small. |
@@ -121,6 +125,16 @@ Folder purpose:
 | `Middleware/` | Request pipeline checks live here, such as exception handling, correlation ID, tenant resolution, CSRF, rate limiting, permission version checks, and tenant enforcement. |
 | `Properties/` | ASP.NET launch/runtime project properties live here. |
 | `Program.cs` | API host startup, middleware ordering, dependency registration, and endpoint mapping live here. |
+
+#### 2.1.1.1 View Model Convention
+
+`Contracts/` holds both request models (already established) and **response view models** (added 2026-08-03). A controller action must never serialize an Application-layer response DTO (anything from `ONEVO.Application.Features.*.DTOs.Responses`) directly to the client — it maps that DTO into a view model defined under `Contracts/{Feature}/{SubFeature}/` first.
+
+Rules:
+- View model type names end in `ViewModel` (e.g. `ProjectViewModel`, `AuthSessionViewModel`) — this is what disambiguates them from same-shaped Application DTOs that sometimes have a name ending in `Response`/`Dto` (e.g. `LegalEntityGeneralSettingsResponse`, `ProjectCreationResponse` are Application types despite the name, not Contracts types).
+- Mapping lives in a static `{Feature}ViewModelMapper` class under `Contracts/{Feature}/`, as extension methods named `ToViewModel()` — one overload per Application DTO being converted. Controllers call `result.Value.ToViewModel()`, never construct a view model inline.
+- **A retrofit must not change the JSON actually sent over the wire.** When adding a view model for an endpoint that previously serialized the Application DTO directly, the new view model must reproduce the exact same property names, `JsonPropertyName` values, casing, and nesting the endpoint already emits — this is a structural relocation (separating the API boundary's contract from the Application layer's internal shape), not a wire-format change. A deliberate wire-format change is a separate, explicitly-scoped decision.
+- This was retrofitted incrementally starting 2026-08-03 (Work Management's `ProjectsController` and the shared tenant Auth session-response path via `TenantAuthResponseWriter`) — most existing tenant controllers still return Application DTOs directly and are queued for the same treatment; see `docs/superpowers/plans/` for the tracking plan. Do not treat "some controllers already do this" as optional for new work — new controllers/actions always get a view model from the start.
 
 Current code note: the backend currently has `Controllers/Admin`, `Controllers/Auth`, `Controllers/DevPlatform`, and `Controllers/Webhooks`. Admin APIs are already separated under `Controllers/Admin`; tenant/customer APIs are still feature-grouped under folders such as `Auth` and `DevPlatform`.
 

@@ -12,6 +12,7 @@ public class UserRoleConfiguration : IEntityTypeConfiguration<UserRole>
         builder.HasKey(ur => new { ur.UserId, ur.RoleId });
 
         builder.HasIndex(ur => ur.UserId);
+        builder.HasIndex(ur => ur.SourcePositionAccessTemplateId);
 
         builder.HasQueryFilter(ur => !ur.Role.IsDeleted);
     }
