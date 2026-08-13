@@ -2,6 +2,7 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.CreatePaymentGateway;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.RotatePaymentGatewayCredential;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.UpdatePaymentGatewayMetadata;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.DTOs;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.RepositoryInterfaces;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
@@ -200,6 +201,166 @@ public sealed class PaymentGatewayBusinessRuleTests
     }
 
     [Fact]
+    public async Task Update_UpdatesMetadataAndReplacesCountryRoutesWithoutTouchingCredentials()
+    {
+        var gatewayId = Guid.NewGuid();
+        var existingRoute = new PaymentGatewayCountryRoute
+        {
+            Id = Guid.NewGuid(),
+            GatewayConfigId = gatewayId,
+            CountryCode = "LK",
+            Environment = "production",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var config = new PaymentGatewayConfig
+        {
+            Id = gatewayId,
+            GatewayKey = "stripe-prod",
+            Provider = "stripe",
+            Environment = "production",
+            DisplayName = "Stripe Production",
+            IsActive = true,
+            CountryRoutes = [existingRoute]
+        };
+        var addedRoutes = new List<PaymentGatewayCountryRoute>();
+        var repository = UpdateRepository(gatewayId, config, addedRoutes);
+        var handler = new UpdatePaymentGatewayMetadataCommandHandler(repository.Object);
+
+        var result = await handler.Handle(
+            new UpdatePaymentGatewayMetadataCommand(
+                gatewayId,
+                "Stripe Global Production",
+                "https://example.com/logo.png",
+                "pk_live_123",
+                "merchant-1",
+                "https://example.com/webhook",
+                false,
+                ["GB"],
+                ["United Kingdom"],
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Stripe Global Production", config.DisplayName);
+        Assert.Equal("https://example.com/logo.png", config.LogoUrl);
+        Assert.Equal("pk_live_123", config.PublicKey);
+        Assert.Equal("merchant-1", config.MerchantId);
+        Assert.Equal("https://example.com/webhook", config.WebhookUrl);
+        Assert.False(config.IsActive);
+        Assert.False(existingRoute.IsActive);
+        var newRoute = Assert.Single(addedRoutes);
+        Assert.Equal("GB", newRoute.CountryCode);
+        Assert.Equal("United Kingdom", newRoute.CountryNameSnapshot);
+        Assert.True(newRoute.IsActive);
+        repository.Verify(
+            repo => repo.AddCredentialAsync(
+                It.IsAny<PaymentGatewayCredential>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        repository.Verify(
+            repo => repo.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Update_ReactivatesExistingRouteWhenCountryIsReassigned()
+    {
+        var gatewayId = Guid.NewGuid();
+        var inactiveRoute = new PaymentGatewayCountryRoute
+        {
+            Id = Guid.NewGuid(),
+            GatewayConfigId = gatewayId,
+            CountryCode = "GB",
+            Environment = "sandbox",
+            IsActive = false,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var config = new PaymentGatewayConfig
+        {
+            Id = gatewayId,
+            GatewayKey = "stripe-sandbox",
+            Provider = "stripe",
+            Environment = "sandbox",
+            DisplayName = "Stripe Sandbox",
+            IsActive = true,
+            CountryRoutes = [inactiveRoute]
+        };
+        var repository = UpdateRepository(gatewayId, config, []);
+        var handler = new UpdatePaymentGatewayMetadataCommandHandler(repository.Object);
+
+        var result = await handler.Handle(
+            new UpdatePaymentGatewayMetadataCommand(
+                gatewayId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                ["GB"],
+                ["United Kingdom"],
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(inactiveRoute.IsActive);
+        Assert.Equal("United Kingdom", inactiveRoute.CountryNameSnapshot);
+        repository.Verify(
+            repo => repo.AddCountryRouteAsync(
+                It.IsAny<PaymentGatewayCountryRoute>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_CountryRouteConflict_Returns409()
+    {
+        var gatewayId = Guid.NewGuid();
+        var config = new PaymentGatewayConfig
+        {
+            Id = gatewayId,
+            GatewayKey = "stripe-prod",
+            Provider = "stripe",
+            Environment = "production",
+            DisplayName = "Stripe Production",
+            IsActive = true,
+            CountryRoutes = []
+        };
+        var repository = UpdateRepository(gatewayId, config, []);
+        repository
+            .Setup(repo => repo.HasConflictingCountryRouteAsync(
+                "US",
+                "production",
+                gatewayId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var handler = new UpdatePaymentGatewayMetadataCommandHandler(repository.Object);
+
+        var result = await handler.Handle(
+            new UpdatePaymentGatewayMetadataCommand(
+                gatewayId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                ["US"],
+                ["United States"],
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        repository.Verify(
+            repo => repo.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public void ResponseDtos_ExposeNoSecretOrEncryptedCredentialFields()
     {
         var responseTypes = new[]
@@ -291,6 +452,57 @@ public sealed class PaymentGatewayBusinessRuleTests
             .Callback<PaymentGatewayCredential, CancellationToken>(
                 (credential, _) => credentials.Add(credential))
             .Returns(Task.CompletedTask);
+        repository
+            .Setup(repo => repo.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        return repository;
+    }
+
+    private static Mock<IPaymentGatewayRepository> UpdateRepository(
+        Guid gatewayId,
+        PaymentGatewayConfig config,
+        List<PaymentGatewayCountryRoute> addedRoutes)
+    {
+        var repository = new Mock<IPaymentGatewayRepository>();
+        repository
+            .Setup(repo => repo.GetByIdAsync(
+                gatewayId,
+                false,
+                true,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(config);
+        repository
+            .Setup(repo => repo.HasConflictingCountryRouteAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                gatewayId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        repository
+            .Setup(repo => repo.AddCountryRouteAsync(
+                It.IsAny<PaymentGatewayCountryRoute>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<PaymentGatewayCountryRoute, CancellationToken>(
+                (route, _) => addedRoutes.Add(route))
+            .Returns(Task.CompletedTask);
+        repository
+            .Setup(repo => repo.GetActiveCredentialAsync(
+                gatewayId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PaymentGatewayCredential
+            {
+                PaymentGatewayConfigId = gatewayId,
+                CredentialVersion = 2,
+                IsActive = true
+            });
+        repository
+            .Setup(repo => repo.ListRoutesForConfigAsync(
+                gatewayId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+                (IReadOnlyList<PaymentGatewayCountryRoute>)config.CountryRoutes
+                    .Concat(addedRoutes)
+                    .ToList());
         repository
             .Setup(repo => repo.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
