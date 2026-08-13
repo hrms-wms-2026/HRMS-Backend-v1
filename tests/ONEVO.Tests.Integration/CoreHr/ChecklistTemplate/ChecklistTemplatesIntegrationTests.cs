@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.Models;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -193,8 +194,19 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
         persisted.DueDate.Should().Be(new DateOnly(2026, 5, 3));
         persisted.IsRequired.Should().BeTrue();
 
+        // TasksJson is stored as jsonb, so Postgres is free to reorder properties and change
+        // whitespace on round-trip. Compare semantically through the same strict contract
+        // parser the application uses, rather than asserting raw string equality.
         var reloadedTemplateAfter = await db.ChecklistTemplates.AsNoTracking().SingleAsync(t => t.Id == template.Id);
-        reloadedTemplateAfter.TasksJson.Should().Be(originalTasksJson);
+        var tasksAfter = ChecklistTaskJsonContract.Parse(reloadedTemplateAfter.TasksJson, ChecklistTaskDueRuleMode.OffsetDays);
+        tasksAfter.Should().ContainSingle();
+        var taskAfter = tasksAfter[0];
+        taskAfter.Title.Should().Be("Complete profile");
+        taskAfter.OwnerType.Should().Be(ChecklistTaskOwnerTypes.Employee);
+        taskAfter.AssignedToId.Should().BeNull();
+        taskAfter.DueOffsetDays.Should().Be(2);
+        taskAfter.IsRequired.Should().BeTrue();
+        taskAfter.DueDate.Should().BeNull();
     }
 
     private async Task CreateRestrictedRoleAsync()
