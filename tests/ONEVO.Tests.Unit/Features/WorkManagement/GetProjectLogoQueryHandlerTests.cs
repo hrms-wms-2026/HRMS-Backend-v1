@@ -1,0 +1,145 @@
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.DTOs.Responses;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectLogo;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.WorkManagement;
+
+public class GetProjectLogoQueryHandlerTests
+{
+    private readonly Mock<IProjectRepository> _projects = new();
+    private readonly Mock<IEntityAssetRepository> _entityAssets = new();
+    private readonly Mock<IProjectMemberRepository> _members = new();
+    private readonly Mock<IPermissionResolver> _permissionResolver = new();
+    private readonly Mock<ICurrentUser> _currentUser = new();
+    private readonly Mock<IFileStorageService> _fileStorage = new();
+
+    private static readonly Guid TenantId = Guid.NewGuid();
+    private static readonly Guid UserId = Guid.NewGuid();
+
+    private static Project MakeProject(Guid id) => new()
+    {
+        Id = id, TenantId = TenantId, LeadId = Guid.NewGuid(), IsActive = true,
+        Name = "P", Identifier = "P1", CreatedAt = DateTimeOffset.UtcNow
+    };
+
+    private void AuthenticateCurrentUser()
+    {
+        _currentUser.SetupGet(c => c.IsAuthenticated).Returns(true);
+        _currentUser.SetupGet(c => c.TenantId).Returns(TenantId);
+        _currentUser.SetupGet(c => c.UserId).Returns(UserId);
+    }
+
+    private GetProjectLogoQueryHandler BuildHandler() =>
+        new(_projects.Object, _entityAssets.Object, _members.Object, _permissionResolver.Object, _currentUser.Object, _fileStorage.Object);
+
+    [Fact]
+    public async Task Handle_ProjectNotFound_ReturnsNotFound()
+    {
+        AuthenticateCurrentUser();
+        var id = Guid.NewGuid();
+        _projects.Setup(r => r.GetByIdForTenantAsync(TenantId, id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Project?)null);
+
+        var result = await BuildHandler().Handle(new GetProjectLogoQuery(id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(404);
+        _fileStorage.Verify(f => f.OpenReadAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NoPermissionAndNotMember_ReturnsForbidden()
+    {
+        AuthenticateCurrentUser();
+        var project = MakeProject(Guid.NewGuid());
+        _projects.Setup(r => r.GetByIdForTenantAsync(TenantId, project.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(project);
+        _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string>());
+        _members.Setup(r => r.HasActiveMembershipAsync(TenantId, project.Id, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await BuildHandler().Handle(new GetProjectLogoQuery(project.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        _fileStorage.Verify(f => f.OpenReadAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NoLogoAsset_ReturnsNotFound()
+    {
+        AuthenticateCurrentUser();
+        var project = MakeProject(Guid.NewGuid());
+        _projects.Setup(r => r.GetByIdForTenantAsync(TenantId, project.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(project);
+        _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string> { "projects:read" });
+        _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
+                TenantId, "project", It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(project.Id)), "project_cover", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
+
+        var result = await BuildHandler().Handle(new GetProjectLogoQuery(project.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(404);
+    }
+
+    [Fact]
+    public async Task Handle_LogoAssetExists_DelegatesToFileStorageWithTheStoredFileId()
+    {
+        AuthenticateCurrentUser();
+        var project = MakeProject(Guid.NewGuid());
+        var fileId = Guid.NewGuid();
+        _projects.Setup(r => r.GetByIdForTenantAsync(TenantId, project.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(project);
+        _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string> { "projects:read" });
+        _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
+                TenantId, "project", It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(project.Id)), "project_cover", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid> { [project.Id] = fileId });
+        using var stream = new MemoryStream();
+        _fileStorage.Setup(f => f.OpenReadAsync(TenantId, fileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileStreamDto>.Success(new FileStreamDto(stream, "image/png")));
+
+        var result = await BuildHandler().Handle(new GetProjectLogoQuery(project.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ContentType.Should().Be("image/png");
+        _fileStorage.Verify(f => f.OpenReadAsync(TenantId, fileId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_NoPermissionButActiveMember_Succeeds()
+    {
+        AuthenticateCurrentUser();
+        var project = MakeProject(Guid.NewGuid());
+        var fileId = Guid.NewGuid();
+        _projects.Setup(r => r.GetByIdForTenantAsync(TenantId, project.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(project);
+        _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string>());
+        _members.Setup(r => r.HasActiveMembershipAsync(TenantId, project.Id, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
+                TenantId, "project", It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(project.Id)), "project_cover", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid> { [project.Id] = fileId });
+        using var stream = new MemoryStream();
+        _fileStorage.Setup(f => f.OpenReadAsync(TenantId, fileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileStreamDto>.Success(new FileStreamDto(stream, "image/png")));
+
+        var result = await BuildHandler().Handle(new GetProjectLogoQuery(project.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+    }
+}

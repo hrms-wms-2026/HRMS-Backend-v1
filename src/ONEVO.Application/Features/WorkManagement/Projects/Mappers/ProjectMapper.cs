@@ -31,18 +31,24 @@ public static class ProjectMapper
     public static ProjectMembershipSummaryDto ToSummary(ProjectMember member) => new(
         member.Id, member.ObjectiveId, member.UserId, member.MembershipSource);
 
-    public static ProjectDetailResponse ToDetail(Project project, bool isLead) => new(
+    public static ProjectDetailResponse ToDetail(
+        Project project, bool isLead, Guid? logoFileId = null, IReadOnlyList<Label>? labels = null,
+        IReadOnlyList<ProjectMemberAvatarDto>? members = null, int memberCount = 0) => new(
         project.Id, project.Name, project.Identifier, project.CategoryId, project.Description,
         project.LeadId, project.StartDate, project.TargetDate, project.Color,
         project.ActualHours, project.AllocatedHours, project.CompletedHours,
         project.IsActive, project.IsAchieved, project.AchievedAt,
-        project.CreatedAt, project.UpdatedAt, isLead);
+        project.CreatedAt, project.UpdatedAt, isLead, logoFileId,
+        (labels ?? []).Select(ToSummary).ToList(), members ?? [], memberCount);
 
     public static ProjectCategoryListItemResponse ToListItem(ProjectCategory category) => new(category.Id, category.Name);
 
-    public static ProjectListItemResponse ToListItem(Project project, bool isLead) => new(
-        project.Id, project.Name, project.Identifier, project.CategoryId, project.LeadId,
+    public static ProjectListItemResponse ToListItem(
+        Project project, bool isLead, Guid? logoFileId = null, IReadOnlyList<Label>? labels = null,
+        IReadOnlyList<ProjectMemberAvatarDto>? members = null, int memberCount = 0) => new(
+        project.Id, project.Name, project.Identifier, project.CategoryId, project.Description, project.LeadId,
         project.StartDate, project.TargetDate, project.Color, project.IsActive,
         project.AllocatedHours, project.CompletedHours, isLead,
-        project.IsAchieved, project.AchievedAt);
+        project.IsAchieved, project.AchievedAt, project.UpdatedAt, logoFileId,
+        (labels ?? []).Select(ToSummary).ToList(), members ?? [], memberCount);
 }

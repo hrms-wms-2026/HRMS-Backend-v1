@@ -47,4 +47,12 @@ public interface IProjectMemberRepository
     Task<IReadOnlyList<ProjectMember>> ListForUserInProjectAsync(Guid tenantId, Guid projectId, Guid userId, CancellationToken ct = default);
 
     void Update(ProjectMember member);
+
+    /// <summary>Batched, per-project, deduplicated-by-user list of active member user ids (a user with multiple objective memberships in the same project counts once), capped at takePerProject, earliest joiners first. For rendering a capped avatar stack on a project card. Projects with no active members are absent from the result.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListDistinctActiveMemberUserIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, int takePerProject, CancellationToken ct = default);
+
+    /// <summary>Batched, per-project count of distinct active member users (not membership rows) — the "+N" overflow number to pair with ListDistinctActiveMemberUserIdsAsync. Projects with no active members are absent from the result.</summary>
+    Task<IReadOnlyDictionary<Guid, int>> CountDistinctActiveMembersAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
 }
