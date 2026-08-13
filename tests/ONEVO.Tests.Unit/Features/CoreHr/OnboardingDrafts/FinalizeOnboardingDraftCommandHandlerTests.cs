@@ -497,7 +497,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         _outboxWriter.Verify(w => w.EnqueueAsync(
             It.IsAny<string>(), It.IsAny<EmployeeOnboardingInviteEmailPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
         _checklistTaskRepository.Verify(r => r.InstantiateAsync(
-            It.IsAny<ChecklistTemplate>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<ChecklistTemplate>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
         _seatEntitlementService.Verify(s => s.EvaluateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
 
         Assert.Equal(OnboardingDraftStatus.WaitingForPositionApproval, draft.Status);
@@ -538,10 +538,10 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         SetupDraft(draft);
         var template = new ChecklistTemplate { Id = templateId, TenantId = _tenantId, TemplateType = "onboarding", TasksJson = "[{\"template\":true}]", IsActive = true };
         _checklistTemplateRepository
-            .Setup(r => r.GetActiveOnboardingAsync(_tenantId, templateId, draft.DepartmentId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetActiveOnboardingAsync(_tenantId, templateId, draft.LegalEntityId, draft.DepartmentId, draft.PositionId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(template);
         _checklistTaskRepository
-            .Setup(r => r.InstantiateAsync(template, It.IsAny<Guid>(), draft.EditedTasksJson, It.IsAny<CancellationToken>()))
+            .Setup(r => r.InstantiateAsync(template, It.IsAny<Guid>(), It.IsAny<Guid>(), draft.EditedTasksJson, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<EmployeeChecklistTask> { new() { Id = Guid.NewGuid() }, new() { Id = Guid.NewGuid() } });
 
         var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
@@ -549,7 +549,48 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         Assert.True(result.IsSuccess);
         Assert.True(result.Value!.ChecklistTasksCreated);
         // Confirms the edited draft JSON (not the template's own TasksJson) is what gets passed through.
-        _checklistTaskRepository.Verify(r => r.InstantiateAsync(template, It.IsAny<Guid>(), "[{\"edited\":true}]", It.IsAny<CancellationToken>()), Times.Once);
+        _checklistTaskRepository.Verify(r => r.InstantiateAsync(template, It.IsAny<Guid>(), It.IsAny<Guid>(), "[{\"edited\":true}]", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SelectedTemplateNoLongerAppliesToDraftPosition_ReturnsUnprocessableEntity()
+    {
+        var draft = ValidDraft(selectedTemplateId: Guid.NewGuid());
+        SetupDraft(draft);
+        _checklistTemplateRepository
+            .Setup(r => r.GetActiveOnboardingAsync(_tenantId, draft.SelectedTemplateId!.Value, draft.LegalEntityId, draft.DepartmentId, draft.PositionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ChecklistTemplate?)null);
+
+        var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(422, result.StatusCode);
+        _checklistTaskRepository.Verify(r => r.InstantiateAsync(
+            It.IsAny<ChecklistTemplate>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_TemplateTaskOwnedByEmployee_ResolvesAssignedToIdToTheNewHiresOwnUserId()
+    {
+        var templateId = Guid.NewGuid();
+        var draft = ValidDraft(selectedTemplateId: templateId);
+        SetupDraft(draft);
+        var template = new ChecklistTemplate
+        {
+            Id = templateId, TenantId = _tenantId, TemplateType = "onboarding", IsActive = true, LegalEntityId = draft.LegalEntityId,
+            TasksJson = "[{\"title\":\"Complete profile\",\"ownerType\":\"employee\",\"dueOffsetDays\":1,\"isRequired\":true}]",
+        };
+        _checklistTemplateRepository
+            .Setup(r => r.GetActiveOnboardingAsync(_tenantId, templateId, draft.LegalEntityId, draft.DepartmentId, draft.PositionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(template);
+        _checklistTaskRepository
+            .Setup(r => r.InstantiateAsync(template, It.IsAny<Guid>(), It.IsAny<Guid>(), null, draft.StartDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EmployeeChecklistTask> { new() { Id = Guid.NewGuid(), AssignedToId = Guid.NewGuid() } });
+
+        var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _checklistTaskRepository.Verify(r => r.InstantiateAsync(template, It.IsAny<Guid>(), It.IsAny<Guid>(), null, draft.StartDate, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -560,17 +601,19 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         SetupDraft(draft);
         var template = new ChecklistTemplate { Id = templateId, TenantId = _tenantId, TemplateType = "onboarding", TasksJson = "[{\"title\":\"x\"}]", IsActive = true };
         _checklistTemplateRepository
-            .Setup(r => r.GetActiveOnboardingAsync(_tenantId, templateId, draft.DepartmentId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetActiveOnboardingAsync(_tenantId, templateId, draft.LegalEntityId, draft.DepartmentId, draft.PositionId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(template);
         _checklistTaskRepository
-            .Setup(r => r.InstantiateAsync(template, It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Setup(r => r.InstantiateAsync(template, It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new ArgumentException("Each checklist task requires title, ownerType, assignedToId, and dueDate."));
 
         var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(422, result.StatusCode);
-        _userRepository.Verify(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
+        // The new-hire user may be staged (AddAsync called) before checklist instantiation runs -
+        // see FinalizeOnboardingDraftCommandHandler's reorder comment - but nothing is ever
+        // persisted, which is what _draftRepository.SaveChangesAsync below actually guarantees.
         _employeeRepository.Verify(r => r.AddAsync(It.IsAny<EmployeeEntity>(), It.IsAny<CancellationToken>()), Times.Never);
         _invitationTokenRepository.Verify(r => r.AddAsync(It.IsAny<InvitationToken>(), It.IsAny<CancellationToken>()), Times.Never);
         _outboxWriter.Verify(w => w.EnqueueAsync(
