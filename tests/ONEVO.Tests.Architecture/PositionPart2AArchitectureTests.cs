@@ -117,19 +117,50 @@ public class PositionPart2AArchitectureTests
         // POSITION_FOUNDATION_PART2C_CONTROLLER_ENDPOINTS_REPORT.md. Split into its own
         // correctly-named fact so the assertion direction (exists, singular, expected namespace)
         // matches what the test name promises.
+        //
+        // Matches on the exact controller name rather than a "Name contains Position" scan:
+        // the later Position Template Packs feature legitimately adds a second, differently
+        // named OrgStructure controller (PositionTemplatePacksController) and must not trip
+        // this guard - see PositionTemplatePacksController_IsASeparateControllerFromPositionsController.
         var controllers = ApiAssembly.GetTypes()
-            .Where(t => t.Name.Contains("Position", StringComparison.OrdinalIgnoreCase) && t.Name.EndsWith("Controller", StringComparison.Ordinal))
+            .Where(t => t.Name.Equals("PositionsController", StringComparison.Ordinal))
             .ToList();
         Assert.Single(controllers);
         Assert.Equal("ONEVO.Api.Controllers.Tenant.OrgStructure.PositionsController", controllers[0].FullName);
     }
 
     [Fact]
+    public void PositionTemplatePacksController_IsASeparateControllerFromPositionsController()
+    {
+        // Position Template Packs is its own OrgStructure feature with its own controller. It
+        // is allowed to exist alongside PositionsController and must not replace or merge into
+        // it - see PositionPart2C_Introduces_ExactlyOnePositionsController_InExpectedNamespace.
+        var templatePacksController = ApiAssembly.GetTypes()
+            .SingleOrDefault(t => t.Name.Equals("PositionTemplatePacksController", StringComparison.Ordinal));
+
+        Assert.NotNull(templatePacksController);
+        Assert.Equal(
+            "ONEVO.Api.Controllers.Tenant.OrgStructure.PositionTemplatePacksController",
+            templatePacksController!.FullName);
+        Assert.NotEqual(typeof(ONEVO.Api.Controllers.Tenant.OrgStructure.PositionsController), templatePacksController);
+    }
+
+    [Fact]
     public void PositionPart2A_DoesNotExpose_Commands_Queries_Or_RequestContracts()
     {
         // No CQRS commands, queries, validators in Application assembly for Position
+        //
+        // PositionTemplatePacks is excluded: it is a separate, later OrgStructure feature
+        // (ONEVO.Application.Features.OrgStructure.PositionTemplatePacks.*) that legitimately
+        // has its own commands/queries. Without this exclusion it would be caught by the
+        // "OrgStructure.Position" substring check below, which has no word boundary and matches
+        // any namespace segment starting with "Position" (PositionTemplatePacks included), not
+        // just the original Part 2A "OrgStructure.Position" scope.
         var appTypes = ApplicationAssembly.GetTypes()
             .Where(t => t.Namespace?.Contains("OrgStructure.Position", StringComparison.Ordinal) == true)
+            .Where(t => t.Namespace?.StartsWith(
+                "ONEVO.Application.Features.OrgStructure.PositionTemplatePacks",
+                StringComparison.Ordinal) != true)
             .ToList();
 
         var nonRepoTypes = appTypes

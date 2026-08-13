@@ -92,6 +92,25 @@ public sealed class SeatEntitlementServiceTests
     }
 
     [Fact]
+    public async Task EvaluateAsync_ReturnsApproved_ForDevSmokeTenantSeatPolicy_WhenEmployeeCountIsBelowIncludedSeats()
+    {
+        // Mirrors the local-dev seat policy DevSmokeTestTenantSeeder now stamps onto the
+        // Acme/Dapi subscriptions (IncludedSeats: 25, OverageAllowed: false) with a handful of
+        // employees, well under capacity.
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        db.Employees.AddRange(NewEmployee(tenantId), NewEmployee(tenantId), NewEmployee(tenantId));
+        db.Set<TenantSubscription>().Add(NewSubscription(tenantId, includedSeats: 25, overageAllowed: false));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var decision = await new SeatEntitlementService(db).EvaluateAsync(tenantId, CancellationToken.None);
+
+        Assert.Equal(SeatDecisionStatus.Approved, decision.Status);
+        Assert.Equal(22, decision.AvailableSeats);
+    }
+
+    [Fact]
     public async Task EvaluateAsync_ReturnsApproved_WhenCapacityIsExhaustedAndOverageIsAllowed()
     {
         await using var db = BuildInMemoryDb();

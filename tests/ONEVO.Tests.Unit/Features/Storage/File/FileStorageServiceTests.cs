@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.Storage.Quota.Helpers;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Infrastructure.Configuration;
 using ONEVO.Infrastructure.Services.Storage.File;
@@ -43,6 +44,35 @@ public class FileStorageServiceTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(1, quota.ReserveCallCount);
+    }
+
+    /// <summary>
+    /// Proves the local/dev "logo upload blocked by storage_not_entitled" failure mode
+    /// propagates unmodified through FileStorageService: when IStorageQuotaService cannot
+    /// resolve a tenant storage allowance (403 storage_not_entitled), BeginReservationAsync
+    /// must surface that exact error code and status code, not a generic quota-exceeded
+    /// response.
+    /// </summary>
+    [Fact]
+    public async Task BeginReservationAsync_NotEntitled_PropagatesStorageNotEntitledWith403()
+    {
+        var reservations = new FakeFileUploadReservationRepository();
+        var quota = new FakeStorageQuotaService
+        {
+            ReserveShouldSucceed = false,
+            ReserveFailureError = StorageQuotaErrorCodes.NotEntitled,
+            ReserveFailureStatusCode = 403
+        };
+        var service = CreateService(
+            reservations, new FakeFileRecordRepository(), quota, new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var result = await service.BeginReservationAsync(
+            Guid.NewGuid(), Guid.NewGuid(), "logo.png", "image/png", 1024, "company_logo", CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal(StorageQuotaErrorCodes.NotEntitled, result.Error);
+        Assert.Equal(0, reservations.AtomicCompletionCount);
     }
 
     [Fact]
@@ -194,6 +224,14 @@ public class FileStorageServiceTests
         Assert.Equal(0, quota.ReleaseCallCount);
     }
 
+    /// <summary>
+    /// Reproduces the "logo upload now fails with 502 file_upload_failed after storage
+    /// quota entitlement was fixed" scenario: quota reservation succeeds, but
+    /// IObjectStorageAdapter.PutObjectAsync throws (e.g. Cloudflare R2 rejects the
+    /// upload). UploadAsync must surface exactly file_upload_failed/502 — not a generic
+    /// failure — and must cancel the reservation it already made so the bytes are not
+    /// left stranded as reserved-but-never-used.
+    /// </summary>
     [Fact]
     public async Task UploadAsync_ObjectStorageFailure_ReleasesReservationAndDoesNotComplete()
     {
@@ -208,11 +246,14 @@ public class FileStorageServiceTests
         using var content = new MemoryStream(bytes);
 
         var result = await service.UploadAsync(
-            tenantId, Guid.NewGuid(), "photo.png", "image/png", "employee_avatar", content, CancellationToken.None);
+            tenantId, Guid.NewGuid(), "logo.png", "image/png", "company_logo", content, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
+        Assert.Equal("file_upload_failed", result.Error);
+        Assert.Equal(502, result.StatusCode);
         Assert.Equal(1, quota.ReleaseCallCount);
         Assert.Equal(0, quota.CommitCallCount);
+        Assert.Equal(0, reservations.AtomicCompletionCount);
     }
 
     [Fact]

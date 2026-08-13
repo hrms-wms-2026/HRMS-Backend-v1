@@ -7,6 +7,8 @@ namespace ONEVO.Tests.Unit.Fakes;
 public sealed class FakeStorageQuotaService : IStorageQuotaService
 {
     public bool ReserveShouldSucceed { get; set; } = true;
+    public string ReserveFailureError { get; set; } = "storage_quota_exceeded";
+    public int ReserveFailureStatusCode { get; set; } = 409;
     public int ReserveCallCount { get; private set; }
     public int ReleaseCallCount { get; private set; }
     public int CommitCallCount { get; private set; }
@@ -39,7 +41,9 @@ public sealed class FakeStorageQuotaService : IStorageQuotaService
     {
         ReserveCallCount++;
         LastReservedBytes = bytes;
-        return Task.FromResult(ReserveShouldSucceed ? Result.Success() : Result.Conflict("storage_quota_exceeded"));
+        return Task.FromResult(ReserveShouldSucceed
+            ? Result.Success()
+            : Result.Failure(ReserveFailureError, ReserveFailureStatusCode));
     }
 
     public Task<Result> ReleaseReservedStorageAsync(Guid tenantId, long bytes, CancellationToken ct = default)
