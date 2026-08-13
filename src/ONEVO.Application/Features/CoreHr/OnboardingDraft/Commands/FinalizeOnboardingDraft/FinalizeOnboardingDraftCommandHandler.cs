@@ -282,34 +282,10 @@ public class FinalizeOnboardingDraftCommandHandler
                 "Seat availability cannot be determined for this tenant; billing configuration is required before onboarding can be finalized.");
         }
 
-        // Checklist template + task JSON are validated (and, via InstantiateAsync, staged)
-        // before anything else is created below - nothing is persisted until the single
-        // SaveChangesAsync at the end, so a JSON error here still fails clean.
-        ChecklistTemplate? template = null;
-        if (draft.SelectedTemplateId is not null)
-        {
-            template = await _checklistTemplateRepository.GetActiveOnboardingAsync(draft.TenantId, draft.SelectedTemplateId.Value, draft.DepartmentId, ct);
-            if (template is null)
-                return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
-                    "The selected onboarding checklist template does not exist, is inactive, or does not apply to this department.");
-        }
-
-        var employeeId = Guid.NewGuid();
-        var tasksCreated = 0;
-        if (template is not null)
-        {
-            try
-            {
-                var tasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, draft.EditedTasksJson, ct);
-                tasksCreated = tasks.Count;
-            }
-            catch (ArgumentException)
-            {
-                return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
-                    "Checklist task data is invalid: every task requires a title, owner type, assigned-to user, and due date.");
-            }
-        }
-
+        // User is resolved (found-or-built, not yet persisted) before checklist instantiation:
+        // InstantiateAsync needs a concrete new-hire user id to resolve any ownerType ==
+        // "employee" checklist task (see ChecklistTaskJsonContract). Nothing is persisted until
+        // the single SaveChangesAsync at the end, so this reorder changes nothing transactionally.
         var normalizedEmail = draft.WorkEmail.Trim().ToLowerInvariant();
         var user = await _userRepository.GetByTenantAndEmailAsync(draft.TenantId, normalizedEmail, ct);
         if (user is null)
@@ -328,6 +304,35 @@ public class FinalizeOnboardingDraftCommandHandler
                 PasswordSetByAdmin = false,
             };
             await _userRepository.AddAsync(user, ct);
+        }
+
+        // Checklist template + task JSON are validated (and, via InstantiateAsync, staged)
+        // before anything else is created below - nothing is persisted until the single
+        // SaveChangesAsync at the end, so a JSON error here still fails clean.
+        ChecklistTemplate? template = null;
+        if (draft.SelectedTemplateId is not null)
+        {
+            template = await _checklistTemplateRepository.GetActiveOnboardingAsync(
+                draft.TenantId, draft.SelectedTemplateId.Value, draft.LegalEntityId, draft.DepartmentId, draft.PositionId, ct);
+            if (template is null)
+                return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
+                    "The selected onboarding checklist template does not exist, is inactive, or no longer applies to this company/department/position.");
+        }
+
+        var employeeId = Guid.NewGuid();
+        var tasksCreated = 0;
+        if (template is not null)
+        {
+            try
+            {
+                var tasks = await _checklistTaskRepository.InstantiateAsync(template, employeeId, user.Id, draft.EditedTasksJson, draft.StartDate, ct);
+                tasksCreated = tasks.Count;
+            }
+            catch (ArgumentException)
+            {
+                return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
+                    "Checklist task data is invalid: every task requires a title, a known owner type, a resolvable assignee, a due rule, and an explicit required flag.");
+            }
         }
 
         var employee = new EmployeeEntity

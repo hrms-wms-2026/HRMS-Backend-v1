@@ -89,7 +89,7 @@ public class AddManualCoverageRecordCommandHandler
             ct: ct);
         if (hasConflict)
             return Result<ManagementCoverageRecordResponse>.Conflict(
-                "An active coverage record already exists for this covered target at this responsibility level.");
+                $"This target already has a {ManagementCoverageRecordMapper.ResponsibilityLevelLabel(request.OwnerOrder)}.");
 
         // Manual coverage is always unlocked and sourced as Manual - the caller never gets to
         // pick source/isLocked directly, only the reporting-structure sync (Create/UpdatePosition
@@ -116,11 +116,15 @@ public class AddManualCoverageRecordCommandHandler
         {
             await _positions.SaveChangesAsync(ct);
         }
-        catch (CoverageOrderConflictException ex)
+        catch (CoverageOrderConflictException)
         {
             // Belt-and-suspenders for the race where two concurrent requests both pass the
             // AnyAsync pre-check above; the DB partial unique index is the real source of truth.
-            return Result<ManagementCoverageRecordResponse>.Conflict(ex.Message);
+            // The exception itself only knows which constraint fired, not which responsibility
+            // level was requested, so the handler re-derives the same user-safe wording from
+            // request.OwnerOrder rather than surfacing the exception's generic message.
+            return Result<ManagementCoverageRecordResponse>.Conflict(
+                $"This target already has a {ManagementCoverageRecordMapper.ResponsibilityLevelLabel(request.OwnerOrder)}.");
         }
 
         return Result<ManagementCoverageRecordResponse>.Success(

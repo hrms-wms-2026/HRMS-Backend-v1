@@ -10,6 +10,5 @@ public record UpdatePositionCommand(
     Guid DepartmentId,
     string Name,
     string Code,
-    string PositionType,
     int MaxOccupancy,
     Guid? ReportsToPositionId) : IRequest<Result<PositionResponse>>;

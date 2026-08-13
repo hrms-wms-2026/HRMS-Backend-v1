@@ -164,6 +164,8 @@ public static class DependencyInjection
         services.AddScoped<IAccessGrantRequestRepository, EfAccessGrantRequestRepository>();
         services.AddScoped<IChecklistTemplateRepository, EfChecklistTemplateRepository>();
         services.AddScoped<IEmployeeChecklistTaskRepository, EfEmployeeChecklistTaskRepository>();
+        services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.ServiceInterfaces.IChecklistTemplateAssigneeResolver, ONEVO.Infrastructure.Services.CoreHr.Onboarding.ChecklistTemplateAssigneeResolver>();
+        services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.Services.ChecklistTemplateTaskInputResolver>();
         services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();
         services.AddScoped<IEmploymentTypeRepository, EfEmploymentTypeRepository>();
         services.AddScoped<EfSubscriptionRepository>();
@@ -402,6 +404,7 @@ public static class DependencyInjection
         services.AddHostedService<RoleTemplateSeeder>();
         services.AddHostedService<LookupDataSeeder>();
         services.AddHostedService<PlatformAccessSeeder>();
+        services.AddHostedService<PositionTemplatePackSeeder>();
         services.AddHostedService<ModuleCatalogSeeder>();
         services.AddHostedService<DevSmokeTestTenantSeeder>();
         services.AddHostedService<WorkManagementDapiDemoSeeder>();

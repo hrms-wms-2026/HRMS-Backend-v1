@@ -282,27 +282,88 @@ public sealed class OnboardingPersistenceRepositoryTests
     private sealed record SeededRequest(Guid RequestId, Guid DraftId, Guid LegalEntityId, Guid RequestedRoleId);
 
     [Fact]
-    public async Task ChecklistTemplate_OnlyLoadsActiveTenantScopedOnboardingScopeMatch()
+    public async Task GetActiveOnboardingAsync_MatchesByLegalEntityAndScopePriority()
     {
         await using var db = BuildDb();
-        var tenant = Guid.NewGuid(); var department = Guid.NewGuid(); var template = new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = tenant, Name = "Starter", TemplateType = "onboarding", DepartmentId = department, TasksJson = "[]", IsActive = true };
-        db.ChecklistTemplates.AddRange(template, new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = tenant, Name = "Inactive", TemplateType = "onboarding", TasksJson = "[]", IsActive = false }); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        var tenant = Guid.NewGuid(); var legalEntity = Guid.NewGuid(); var department = Guid.NewGuid(); var position = Guid.NewGuid();
+        var companyTemplate = new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = tenant, Name = "Company Default", TemplateType = "onboarding", LegalEntityId = legalEntity, TasksJson = "[]", IsActive = true };
+        var departmentTemplate = new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = tenant, Name = "Dept", TemplateType = "onboarding", LegalEntityId = legalEntity, DepartmentId = department, TasksJson = "[]", IsActive = true };
+        var positionTemplate = new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = tenant, Name = "Position", TemplateType = "onboarding", LegalEntityId = legalEntity, DepartmentId = department, PositionId = position, TasksJson = "[]", IsActive = true };
+        var wrongCompanyTemplate = new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = tenant, Name = "Other Co", TemplateType = "onboarding", LegalEntityId = Guid.NewGuid(), TasksJson = "[]", IsActive = true };
+        db.ChecklistTemplates.AddRange(companyTemplate, departmentTemplate, positionTemplate, wrongCompanyTemplate);
+        await db.SaveChangesAsync(); db.ChangeTracker.Clear();
         var repository = new EfChecklistTemplateRepository(db);
-        (await repository.GetActiveOnboardingAsync(tenant, template.Id, department)).Should().NotBeNull();
-        (await repository.GetActiveOnboardingAsync(tenant, template.Id, Guid.NewGuid())).Should().BeNull();
-        (await repository.GetActiveOnboardingAsync(Guid.NewGuid(), template.Id, department)).Should().BeNull();
+
+        (await repository.GetActiveOnboardingAsync(tenant, companyTemplate.Id, legalEntity, department, position)).Should().NotBeNull();
+        (await repository.GetActiveOnboardingAsync(tenant, departmentTemplate.Id, legalEntity, department, position)).Should().NotBeNull();
+        (await repository.GetActiveOnboardingAsync(tenant, positionTemplate.Id, legalEntity, department, position)).Should().NotBeNull();
+        (await repository.GetActiveOnboardingAsync(tenant, positionTemplate.Id, legalEntity, department, Guid.NewGuid())).Should().BeNull();
+        (await repository.GetActiveOnboardingAsync(tenant, wrongCompanyTemplate.Id, legalEntity, department, position)).Should().BeNull();
     }
 
     [Fact]
-    public async Task EmployeeTasks_InstantiateEditedJsonInSequenceAndRejectInvalidJson()
+    public async Task ListOnboardingMatchesAsync_OrdersPositionThenDepartmentThenCompany_AndExcludesOffboarding()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid(); var legalEntity = Guid.NewGuid(); var department = Guid.NewGuid(); var position = Guid.NewGuid();
+        var company = new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = tenant, Name = "Company", TemplateType = "onboarding", LegalEntityId = legalEntity, TasksJson = "[]", IsActive = true };
+        var dept = new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = tenant, Name = "Dept", TemplateType = "onboarding", LegalEntityId = legalEntity, DepartmentId = department, TasksJson = "[]", IsActive = true };
+        var pos = new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = tenant, Name = "Pos", TemplateType = "onboarding", LegalEntityId = legalEntity, DepartmentId = department, PositionId = position, TasksJson = "[]", IsActive = true };
+        var offboarding = new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = tenant, Name = "Off", TemplateType = "offboarding", LegalEntityId = legalEntity, TasksJson = "[]", IsActive = true };
+        db.ChecklistTemplates.AddRange(company, dept, pos, offboarding);
+        await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        var repository = new EfChecklistTemplateRepository(db);
+
+        var matches = await repository.ListOnboardingMatchesAsync(tenant, legalEntity, department, position);
+
+        matches.Select(m => m.Template.Id).Should().Equal(pos.Id, dept.Id, company.Id);
+        matches.Select(m => m.MatchLevel).Should().Equal("position", "department", "company");
+    }
+
+    [Fact]
+    public async Task InstantiateAsync_EditedJson_UsesAbsoluteDueDatesAndConcreteAssignedToId()
     {
         await using var db = BuildDb();
         var tenant = Guid.NewGuid(); var user = Guid.NewGuid(); var template = new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = tenant, Name = "Starter", TemplateType = "onboarding", TasksJson = "[]" };
-        var json = $"[{{\"title\":\"Second\",\"ownerType\":\"custom_user\",\"assignedToId\":\"{user}\",\"dueDate\":\"2026-09-01\",\"sequence\":2}},{{\"title\":\"First\",\"ownerType\":\"custom_user\",\"assignedToId\":\"{user}\",\"dueDate\":\"2026-08-01\",\"sequence\":1}}]";
+        var json = $"[{{\"title\":\"Second\",\"ownerType\":\"custom_user\",\"assignedToId\":\"{user}\",\"dueDate\":\"2026-09-01\",\"sequence\":2,\"isRequired\":true}},{{\"title\":\"First\",\"ownerType\":\"custom_user\",\"assignedToId\":\"{user}\",\"dueDate\":\"2026-08-01\",\"sequence\":1,\"isRequired\":false}}]";
         var repository = new EfEmployeeChecklistTaskRepository(db);
-        var tasks = await repository.InstantiateAsync(template, Guid.NewGuid(), json);
-        tasks.Select(x => x.Sequence).Should().Equal(2, 1); tasks.Should().OnlyContain(x => x.TenantId == tenant && x.TemplateId == template.Id && x.LifecycleType == "onboarding");
-        await Assert.ThrowsAsync<ArgumentException>(() => repository.InstantiateAsync(template, Guid.NewGuid(), "{}"));
+        var tasks = await repository.InstantiateAsync(template, Guid.NewGuid(), Guid.NewGuid(), json, new DateOnly(2026, 1, 1));
+        tasks.Select(x => x.Sequence).Should().Equal(2, 1);
+        tasks.Should().OnlyContain(x => x.TenantId == tenant && x.TemplateId == template.Id && x.LifecycleType == "onboarding");
+        await Assert.ThrowsAsync<ArgumentException>(() => repository.InstantiateAsync(template, Guid.NewGuid(), Guid.NewGuid(), "{}", new DateOnly(2026, 1, 1)));
+    }
+
+    [Fact]
+    public async Task InstantiateAsync_TemplateJsonWithoutEdits_ResolvesEmployeeOwnerAndOffsetsDueDates()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid(); var newHireUserId = Guid.NewGuid();
+        var template = new ChecklistTemplate
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, Name = "Starter", TemplateType = "onboarding", IsActive = true,
+            TasksJson = "[{\"title\":\"Complete profile\",\"ownerType\":\"employee\",\"dueOffsetDays\":2,\"isRequired\":true}]",
+        };
+        var repository = new EfEmployeeChecklistTaskRepository(db);
+
+        var tasks = await repository.InstantiateAsync(template, Guid.NewGuid(), newHireUserId, editedTasksJson: null, new DateOnly(2026, 5, 1));
+
+        tasks.Should().ContainSingle();
+        tasks[0].AssignedToId.Should().Be(newHireUserId);
+        tasks[0].DueDate.Should().Be(new DateOnly(2026, 5, 3));
+    }
+
+    [Fact]
+    public async Task InstantiateAsync_NeverMutatesTheSourceTemplatesTasksJson()
+    {
+        await using var db = BuildDb();
+        const string originalTasksJson = "[{\"title\":\"Complete profile\",\"ownerType\":\"employee\",\"dueOffsetDays\":2,\"isRequired\":true}]";
+        var template = new ChecklistTemplate { Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), Name = "Starter", TemplateType = "onboarding", TasksJson = originalTasksJson, IsActive = true };
+        var repository = new EfEmployeeChecklistTaskRepository(db);
+
+        await repository.InstantiateAsync(template, Guid.NewGuid(), Guid.NewGuid(), editedTasksJson: null, new DateOnly(2026, 1, 1));
+        await repository.InstantiateAsync(template, Guid.NewGuid(), Guid.NewGuid(), editedTasksJson: "[{\"title\":\"Different task for this hire\",\"ownerType\":\"custom_user\",\"assignedToId\":\"" + Guid.NewGuid() + "\",\"dueDate\":\"2026-02-01\",\"isRequired\":false}]", new DateOnly(2026, 1, 1));
+
+        template.TasksJson.Should().Be(originalTasksJson);
     }
 
     private static ApplicationDbContext BuildDb()

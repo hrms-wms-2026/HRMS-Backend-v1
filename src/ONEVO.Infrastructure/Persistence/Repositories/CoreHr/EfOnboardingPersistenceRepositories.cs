@@ -1,6 +1,6 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
+using ONEVO.Application.Features.CoreHr.Onboarding.Models;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 
@@ -123,10 +123,64 @@ public sealed class EfChecklistTemplateRepository(ApplicationDbContext db) : ICh
     public Task AddAsync(ChecklistTemplate template, CancellationToken ct = default)
         => db.ChecklistTemplates.AddAsync(template, ct).AsTask();
 
-    public Task<ChecklistTemplate?> GetActiveOnboardingAsync(Guid tenantId, Guid templateId, Guid? departmentId, CancellationToken ct = default)
-        => db.ChecklistTemplates.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == templateId
-            && x.IsActive && x.TemplateType == "onboarding"
-            && (x.DepartmentId == null || x.DepartmentId == departmentId), ct);
+    public Task<ChecklistTemplate?> GetActiveOnboardingAsync(
+        Guid tenantId, Guid templateId, Guid legalEntityId, Guid? departmentId, Guid? positionId, CancellationToken ct = default)
+        => db.ChecklistTemplates.AsNoTracking().FirstOrDefaultAsync(x =>
+            x.TenantId == tenantId && x.Id == templateId && x.IsActive && x.TemplateType == "onboarding"
+            && x.LegalEntityId == legalEntityId
+            && (
+                (x.PositionId != null && x.PositionId == positionId)
+                || (x.PositionId == null && x.DepartmentId != null && x.DepartmentId == departmentId)
+                || (x.PositionId == null && x.DepartmentId == null)
+            ), ct);
+
+    public Task<ChecklistTemplate?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+        => db.ChecklistTemplates.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+
+    public Task<ChecklistTemplate?> GetTrackedByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+        => db.ChecklistTemplates.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, ct);
+
+    public async Task<(IReadOnlyList<ChecklistTemplate> Items, int TotalCount)> ListAsync(
+        Guid tenantId, ChecklistTemplateListFilter filter, int page, int pageSize, CancellationToken ct = default)
+    {
+        var query = db.ChecklistTemplates.AsNoTracking().Where(x => x.TenantId == tenantId && x.LegalEntityId == filter.LegalEntityId);
+
+        if (!filter.IncludeInactive) query = query.Where(x => x.IsActive);
+        if (filter.TemplateType is not null) query = query.Where(x => x.TemplateType == filter.TemplateType);
+        if (filter.DepartmentId is not null) query = query.Where(x => x.DepartmentId == filter.DepartmentId);
+        if (filter.PositionId is not null) query = query.Where(x => x.PositionId == filter.PositionId);
+
+        var totalCount = await query.CountAsync(ct);
+        var items = await query.OrderBy(x => x.Name).ThenBy(x => x.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        return (items, totalCount);
+    }
+
+    public async Task<IReadOnlyList<ChecklistTemplateMatch>> ListOnboardingMatchesAsync(
+        Guid tenantId, Guid legalEntityId, Guid? departmentId, Guid? positionId, CancellationToken ct = default)
+    {
+        var candidates = await db.ChecklistTemplates.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.IsActive && x.TemplateType == "onboarding" && x.LegalEntityId == legalEntityId
+                && (
+                    (positionId != null && x.PositionId == positionId)
+                    || (departmentId != null && x.PositionId == null && x.DepartmentId == departmentId)
+                    || (x.PositionId == null && x.DepartmentId == null)
+                ))
+            .ToListAsync(ct);
+
+        return candidates
+            .Select(t => new ChecklistTemplateMatch(t, t.PositionId is not null
+                ? ChecklistTemplateMatchLevels.Position
+                : t.DepartmentId is not null ? ChecklistTemplateMatchLevels.Department : ChecklistTemplateMatchLevels.Company))
+            .OrderBy(m => m.MatchLevel switch
+            {
+                ChecklistTemplateMatchLevels.Position => 0,
+                ChecklistTemplateMatchLevels.Department => 1,
+                _ => 2,
+            })
+            .ThenBy(m => m.Template.Name)
+            .ToList();
+    }
 
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }
@@ -134,19 +188,16 @@ public sealed class EfChecklistTemplateRepository(ApplicationDbContext db) : ICh
 public sealed class EfEmployeeChecklistTaskRepository(ApplicationDbContext db) : IEmployeeChecklistTaskRepository
 {
     public async Task<IReadOnlyList<EmployeeChecklistTask>> InstantiateAsync(
-        ChecklistTemplate template, Guid employeeId, string? editedTasksJson, CancellationToken ct = default)
+        ChecklistTemplate template, Guid employeeId, Guid newHireUserId, string? editedTasksJson, DateOnly anchorDate, CancellationToken ct = default)
     {
         if (!template.IsActive || template.TemplateType != "onboarding")
             throw new ArgumentException("Only active onboarding templates can be instantiated.", nameof(template));
 
-        var definitions = ParseDefinitions(editedTasksJson ?? template.TasksJson);
-        var tasks = definitions.Select(definition => new EmployeeChecklistTask
-        {
-            Id = Guid.NewGuid(), TenantId = template.TenantId, EmployeeId = employeeId, TemplateId = template.Id,
-            LifecycleType = template.TemplateType, TaskTitle = definition.Title, OwnerType = definition.OwnerType,
-            AssignedToId = definition.AssignedToId, DueDate = definition.DueDate, Sequence = definition.Sequence,
-            Status = "pending"
-        }).ToList();
+        var mode = editedTasksJson is not null ? ChecklistTaskDueRuleMode.AbsoluteDate : ChecklistTaskDueRuleMode.OffsetDays;
+        var definitions = ChecklistTaskJsonContract.Parse(editedTasksJson ?? template.TasksJson, mode);
+        var tasks = ChecklistTaskJsonContract.ToEmployeeChecklistTasks(
+            definitions, template.TenantId, employeeId, template.Id, template.TemplateType, newHireUserId, anchorDate, mode);
+
         await db.EmployeeChecklistTasks.AddRangeAsync(tasks, ct);
         return tasks;
     }
@@ -156,41 +207,4 @@ public sealed class EfEmployeeChecklistTaskRepository(ApplicationDbContext db) :
             .OrderBy(x => x.Sequence).ThenBy(x => x.Id).ToListAsync(ct);
 
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
-
-    private static IReadOnlyList<TaskDefinition> ParseDefinitions(string tasksJson)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(tasksJson);
-            if (document.RootElement.ValueKind != JsonValueKind.Array)
-                throw new ArgumentException("Checklist task JSON must be an array.", nameof(tasksJson));
-
-            var definitions = new List<TaskDefinition>();
-            foreach (var item in document.RootElement.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.Object
-                    || !item.TryGetProperty("title", out var title) || string.IsNullOrWhiteSpace(title.GetString())
-                    || !item.TryGetProperty("ownerType", out var ownerType) || string.IsNullOrWhiteSpace(ownerType.GetString())
-                    || !item.TryGetProperty("assignedToId", out var assignedTo) || !Guid.TryParse(assignedTo.GetString(), out var assignedToId)
-                    || !item.TryGetProperty("dueDate", out var dueDate) || !DateOnly.TryParse(dueDate.GetString(), out var parsedDueDate))
-                    throw new ArgumentException("Each checklist task requires title, ownerType, assignedToId, and dueDate.", nameof(tasksJson));
-
-                int? sequence = null;
-                if (item.TryGetProperty("sequence", out var sequenceElement))
-                {
-                    if (!sequenceElement.TryGetInt32(out var parsedSequence))
-                        throw new ArgumentException("Checklist task sequence must be an integer.", nameof(tasksJson));
-                    sequence = parsedSequence;
-                }
-                definitions.Add(new TaskDefinition(title.GetString()!, ownerType.GetString()!, assignedToId, parsedDueDate, sequence));
-            }
-            return definitions;
-        }
-        catch (JsonException ex)
-        {
-            throw new ArgumentException("Checklist task JSON is invalid.", nameof(tasksJson), ex);
-        }
-    }
-
-    private sealed record TaskDefinition(string Title, string OwnerType, Guid AssignedToId, DateOnly DueDate, int? Sequence);
 }

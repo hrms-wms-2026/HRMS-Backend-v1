@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 using ONEVO.Application.Features.OrgStructure.Mappers;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -11,15 +12,18 @@ public class ListPositionsQueryHandler
     : IRequestHandler<ListPositionsQuery, Result<PositionPageResponse>>
 {
     private readonly IPositionRepository _positions;
+    private readonly IPositionAssignmentRepository _positionAssignments;
     private readonly ILegalEntityRepository _legalEntities;
     private readonly ICurrentUser _currentUser;
 
     public ListPositionsQueryHandler(
         IPositionRepository positions,
+        IPositionAssignmentRepository positionAssignments,
         ILegalEntityRepository legalEntities,
         ICurrentUser currentUser)
     {
         _positions = positions;
+        _positionAssignments = positionAssignments;
         _legalEntities = legalEntities;
         _currentUser = currentUser;
     }
@@ -54,7 +58,13 @@ public class ListPositionsQueryHandler
             request.PageSize,
             ct);
 
-        var items = page.Items.Select(PositionMapper.ToListItemResponse).ToList();
+        var positionIds = page.Items.Select(p => p.Id).ToList();
+        var occupancyByPositionId = await _positionAssignments.GetOccupancyPreviewsAsync(
+            tenantId, positionIds, PositionMapper.OccupantPreviewLimit, ct);
+
+        var items = page.Items
+            .Select(p => PositionMapper.ToListItemResponse(p, occupancyByPositionId))
+            .ToList();
         var response = new PositionPageResponse(items, page.Page, page.PageSize, page.TotalCount, page.TotalPages);
 
         return Result<PositionPageResponse>.Success(response);

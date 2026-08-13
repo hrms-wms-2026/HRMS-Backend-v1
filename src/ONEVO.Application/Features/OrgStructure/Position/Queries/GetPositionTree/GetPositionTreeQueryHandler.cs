@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 using ONEVO.Application.Features.OrgStructure.Mappers;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -11,15 +12,18 @@ public class GetPositionTreeQueryHandler
     : IRequestHandler<GetPositionTreeQuery, Result<IReadOnlyList<PositionTreeNodeResponse>>>
 {
     private readonly IPositionRepository _positions;
+    private readonly IPositionAssignmentRepository _positionAssignments;
     private readonly ILegalEntityRepository _legalEntities;
     private readonly ICurrentUser _currentUser;
 
     public GetPositionTreeQueryHandler(
         IPositionRepository positions,
+        IPositionAssignmentRepository positionAssignments,
         ILegalEntityRepository legalEntities,
         ICurrentUser currentUser)
     {
         _positions = positions;
+        _positionAssignments = positionAssignments;
         _legalEntities = legalEntities;
         _currentUser = currentUser;
     }
@@ -41,7 +45,11 @@ public class GetPositionTreeQueryHandler
         var positions = await _positions.ListByLegalEntityAsync(
             tenantId, request.LegalEntityId, request.IncludeInactive, departmentId: null, ct);
 
-        var tree = PositionTreeMapper.BuildTree(positions);
+        var positionIds = positions.Select(p => p.Id).ToList();
+        var occupancyByPositionId = await _positionAssignments.GetOccupancyPreviewsAsync(
+            tenantId, positionIds, PositionMapper.OccupantPreviewLimit, ct);
+
+        var tree = PositionTreeMapper.BuildTree(positions, occupancyByPositionId);
 
         return Result<IReadOnlyList<PositionTreeNodeResponse>>.Success(tree);
     }

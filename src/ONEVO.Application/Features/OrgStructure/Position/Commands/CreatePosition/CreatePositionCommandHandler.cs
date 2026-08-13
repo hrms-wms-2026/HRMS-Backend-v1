@@ -76,9 +76,8 @@ public class CreatePositionCommandHandler
                 return Result<PositionResponse>.NotFound("Reports-to position not found in this legal entity.");
             if (!reportsTo.IsActive)
                 return Result<PositionResponse>.UnprocessableEntity("Reports-to position is inactive.");
-            if (reportsTo.PositionType != PositionEntity.TypeUnique)
-                return Result<PositionResponse>.UnprocessableEntity(
-                    "Reports-to position must be a unique (single-occupancy) position; pooled positions cannot be selected as reporting targets.");
+            // Reporting targets may be unique or pooled positions - capacity does not disqualify
+            // a position from being a valid reporting target.
             // A new position has no Id yet, so self-reference and cycle checks are impossible
             // here - they only become reachable once the position already exists (see
             // UpdatePositionCommandHandler).
@@ -92,7 +91,7 @@ public class CreatePositionCommandHandler
             DepartmentId = request.DepartmentId,
             Name = name,
             Code = code,
-            PositionType = request.PositionType,
+            PositionType = request.MaxOccupancy == 1 ? PositionEntity.TypeUnique : PositionEntity.TypePooled,
             MaxOccupancy = request.MaxOccupancy,
             ReportsToPositionId = request.ReportsToPositionId,
             IsActive = true,
