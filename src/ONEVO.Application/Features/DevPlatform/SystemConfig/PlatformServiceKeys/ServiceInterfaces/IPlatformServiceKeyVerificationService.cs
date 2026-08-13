@@ -12,7 +12,8 @@ public sealed class PlatformServiceKeyVerificationResult
 
 /// <summary>
 /// Verifies a platform service API key for a given service slug.
-/// Phase 1 implementation is a safe format-check stub (no live provider calls).
+/// Transactional email providers use lightweight live checks; other supported
+/// services may remain local format-only until provider clients are wired.
 /// SECURITY: the plaintext key is used in memory only and is NEVER logged.
 /// </summary>
 public interface IPlatformServiceKeyVerificationService
