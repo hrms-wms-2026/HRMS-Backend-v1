@@ -313,6 +313,13 @@ public static class DependencyInjection
         // Monitoring - Biometrics
         services.AddScoped<IBiometricRepository, EfBiometricRepository>();
         services.AddScoped<IEmployeeIdentityResolver, ONEVO.Infrastructure.Services.Common.EfEmployeeIdentityResolver>();
+        services.AddSingleton<Amazon.Rekognition.IAmazonRekognition>(_ => new Amazon.Rekognition.AmazonRekognitionClient(
+            Amazon.RegionEndpoint.GetBySystemName(configuration["Biometrics:Region"] ?? "ap-south-1")));
+        services.AddSingleton<Amazon.SecurityToken.IAmazonSecurityTokenService>(
+            _ => new Amazon.SecurityToken.AmazonSecurityTokenServiceClient());
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Biometrics.ServiceInterfaces.IBiometricVerificationProvider,
+            ONEVO.Infrastructure.ExternalServices.Biometrics.AwsRekognitionBiometricVerificationProvider>();
 
         // Monitoring - Work Sessions (clock-in/break/clock-out)
         services.AddScoped<IWorkSessionRepository, EfWorkSessionRepository>();
