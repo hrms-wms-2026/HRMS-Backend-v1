@@ -2,14 +2,19 @@
 
 **Purpose:** Approved designs whose implementation isn't finished yet — either the plan is still `pending`, or no plan has been written. Stays flat, no date subfolders (the date-split is `finished/`-only).
 
-**Last updated:** 2026-08-08
+**Last updated:** 2026-08-13
 
 ## Files
+
+- `2026-08-13-tray-monitoring-completion-roadmap-design.md` - approved master dependency order for biometric check-in, TrayApp meeting detection and dashboards, deterministic exceptions, analytics, reports, wellness, and production rollout. Detailed planning proceeds one milestone at a time.
+- `2026-08-13-verified-employee-check-in-design.md` - approved; implementation is split across the four-part plan under `plans/next/2026-08-13-verified-employee-check-in/`. Part 1 software is present, but live AWS/hardware verification and Parts 2-4 remain pending.
 
 - `2026-08-03-platform-users-list-design.md` — status: pending, **no plan written yet**. Approved 2026-08-03, sat unplanned since — flag with the user whether it's still wanted.
 - `2026-08-07-work-management-objective-subtree-design.md` — physically here but was never listed in this file even before today; its plan (`plans/next/2026-08-07-work-management-objective-subtree.md`) already shipped (git commits `2a77bbc`..`b900ec5`, 2026-08-07). Not moved to `finished/` during the 2026-08-08 pass — out of that session's scope, flagged for a future sync instead.
 
 ## Open items
+
+- The Tray monitoring completion roadmap's immediate next action is Milestone 1, live AWS biometric enrollment E2E. After that gate, audit/close real employee identity before executing Verified Check-In Parts 2-4.
 
 - `2026-08-03-platform-users-list-design.md` has no plan anywhere in `plans/` — worth confirming with the user whether it should be planned next, or was silently superseded/abandoned.
 - `2026-08-06-work-management-milestone-membership-and-achieve-design.md` moved to `specs/finished/2026-08-08/` on 2026-08-08 (its plan finished all 18 tasks the same day) — see `specs/SUMMARY.md`.

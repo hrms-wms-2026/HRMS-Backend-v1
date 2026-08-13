@@ -2,7 +2,7 @@
 
 **Purpose:** Approved designs, produced by `superpowers:brainstorming`, that a `docs/superpowers/plans/` implementation plan is then built from. This folder had no `SUMMARY.md` until 2026-08-06, when it was also split into `finished/`/`next/` (mirroring the `plans/` restructure — see `docs/superpowers/rules/FILE_CREATION_RULES.md`).
 
-**Last updated:** 2026-08-08
+**Last updated:** 2026-08-13
 
 ## Layout
 
@@ -24,7 +24,13 @@ Every file here says `**Status:** Approved...` at the top — that field is the 
 | `next/2026-08-07-work-management-objective-subtree-design.md` | **drift** | its plan, `plans/next/2026-08-07-work-management-objective-subtree.md`, already shipped (git commits `2a77bbc`..`b900ec5`, 2026-08-07) but neither the plan nor this design were ever moved to `finished/` — flagged, not fixed, during the 2026-08-08 pass (out of that session's scope) |
 | `finished/2026-08-08/2026-08-08-work-management-my-project-milestones-design.md` | finished | `plans/finished/2026-08-08/2026-08-08-work-management-my-project-milestones.md` (5/5 tasks, executed 2026-08-08) |
 
+| `next/2026-08-13-verified-employee-check-in-design.md` | pending | four-part plan under `plans/next/2026-08-13-verified-employee-check-in/`; live AWS/hardware gate and Parts 2-4 remain |
+| `next/2026-08-13-tray-monitoring-completion-roadmap-design.md` | pending | approved master roadmap; detailed plans execute one milestone at a time |
+
 ## Open items
+
+- `next/2026-08-13-verified-employee-check-in-design.md` is pending; its live AWS/hardware gate and implementation Parts 2-4 remain.
+- `next/2026-08-13-tray-monitoring-completion-roadmap-design.md` is the approved master sequence. Detailed plans are created and executed one milestone at a time, beginning with live AWS biometric enrollment E2E.
 
 - `platform-users-list-design.md` has been sitting approved-but-unplanned since 2026-08-03 with no corresponding plan file anywhere in `plans/` — worth checking with the user whether it's still wanted, or was superseded/abandoned silently.
 - `2026-08-07-work-management-objective-subtree-design.md`/its plan need a finished/next status sync — see the "drift" row above.
