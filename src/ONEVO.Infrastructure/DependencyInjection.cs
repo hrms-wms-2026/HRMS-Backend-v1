@@ -83,6 +83,7 @@ using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.SystemConfig;
 using ONEVO.Infrastructure.Persistence.Repositories.SharedPlatform;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.WorkSessions.RepositoryInterfaces;
@@ -91,6 +92,7 @@ using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces
 using ONEVO.Application.Features.Monitoring.AppUsage.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.DeviceState.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.TrayActivation;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Biometrics;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.CheckIn;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.WorkSessions;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.ActivityMonitoring;
@@ -307,6 +309,9 @@ public static class DependencyInjection
         // Monitoring - Check-In
         services.AddScoped<ICheckInRepository, EfCheckInRepository>();
         services.AddScoped<ITrayCurrentDevice, TrayCurrentDeviceService>();
+
+        // Monitoring - Biometrics
+        services.AddScoped<IBiometricRepository, EfBiometricRepository>();
 
         // Monitoring - Work Sessions (clock-in/break/clock-out)
         services.AddScoped<IWorkSessionRepository, EfWorkSessionRepository>();
