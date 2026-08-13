@@ -43,21 +43,38 @@ public sealed class UpdatePaymentGatewayMetadataCommandHandler
         if (config is null)
             return Result<PaymentGatewayConfigDto>.NotFound("Payment gateway config not found.");
 
-        if (request.CountryCodes is not null && request.CountryCodes.Count == 0)
-        {
-            return Result<PaymentGatewayConfigDto>.Failure(
-                "At least one country route is required.",
-                400);
-        }
-
         if (request.DisplayName is not null)
         {
             var displayName = request.DisplayName.Trim();
             if (string.IsNullOrWhiteSpace(displayName))
                 return Result<PaymentGatewayConfigDto>.Failure("DisplayName cannot be empty.", 400);
-
-            config.DisplayName = displayName;
         }
+
+        if (request.CountryCodes is not null)
+        {
+            if (request.CountryCodes.Count == 0)
+            {
+                return Result<PaymentGatewayConfigDto>.Failure(
+                    "At least one country route is required.",
+                    400);
+            }
+
+            var routeValidation = await ValidateCountryRoutesAsync(
+                config,
+                request.CountryCodes,
+                request.CountryNameSnapshots ?? [],
+                cancellationToken);
+
+            if (!routeValidation.IsSuccess)
+            {
+                return Result<PaymentGatewayConfigDto>.Failure(
+                    routeValidation.Error!,
+                    routeValidation.StatusCode ?? 400);
+            }
+        }
+
+        if (request.DisplayName is not null)
+            config.DisplayName = request.DisplayName.Trim();
 
         if (request.LogoUrl is not null)
             config.LogoUrl = string.IsNullOrWhiteSpace(request.LogoUrl) ? null : request.LogoUrl.Trim();
@@ -79,7 +96,7 @@ public sealed class UpdatePaymentGatewayMetadataCommandHandler
 
         if (request.CountryCodes is not null)
         {
-            var routeResult = await ReplaceCountryRoutesAsync(
+            var routeResult = await ApplyCountryRouteReplacementsAsync(
                 config,
                 request.CountryCodes,
                 request.CountryNameSnapshots ?? [],
@@ -105,15 +122,12 @@ public sealed class UpdatePaymentGatewayMetadataCommandHandler
             routes));
     }
 
-    private async Task<Result<Unit>> ReplaceCountryRoutesAsync(
+    private async Task<Result<Unit>> ValidateCountryRoutesAsync(
         PaymentGatewayConfig config,
         IReadOnlyList<string> countryCodes,
         IReadOnlyList<string?> countryNameSnapshots,
-        Guid actorPlatformUserId,
-        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var normalizedCountryCodes = new List<string>(countryCodes.Count);
         var distinctCountryCodes = new HashSet<string>(StringComparer.Ordinal);
 
         for (var i = 0; i < countryCodes.Count; i++)
@@ -148,9 +162,22 @@ public sealed class UpdatePaymentGatewayMetadataCommandHandler
                     $"{displayName} ({code}) already has an active gateway route for {config.Environment}. " +
                     "Deactivate the existing route before assigning this country to a new gateway.");
             }
-
-            normalizedCountryCodes.Add(code);
         }
+
+        return Result<Unit>.Success(Unit.Value);
+    }
+
+    private async Task<Result<Unit>> ApplyCountryRouteReplacementsAsync(
+        PaymentGatewayConfig config,
+        IReadOnlyList<string> countryCodes,
+        IReadOnlyList<string?> countryNameSnapshots,
+        Guid actorPlatformUserId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var normalizedCountryCodes = countryCodes
+            .Select(code => code.ToUpperInvariant())
+            .ToList();
 
         var requestedCodes = normalizedCountryCodes.ToHashSet(StringComparer.Ordinal);
         var routesForEnvironment = config.CountryRoutes

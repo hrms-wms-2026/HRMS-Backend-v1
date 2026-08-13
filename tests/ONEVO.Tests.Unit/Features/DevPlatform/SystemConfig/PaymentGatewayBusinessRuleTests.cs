@@ -421,6 +421,236 @@ public sealed class PaymentGatewayBusinessRuleTests
     }
 
     [Fact]
+    public async Task Update_NotFound_Returns404()
+    {
+        var gatewayId = Guid.NewGuid();
+        var repository = new Mock<IPaymentGatewayRepository>();
+        repository
+            .Setup(repo => repo.GetByIdAsync(
+                gatewayId,
+                false,
+                true,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PaymentGatewayConfig?)null);
+        var handler = new UpdatePaymentGatewayMetadataCommandHandler(repository.Object);
+
+        var result = await handler.Handle(
+            new UpdatePaymentGatewayMetadataCommand(
+                gatewayId,
+                "Updated Name",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        repository.Verify(
+            repo => repo.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_EmptyDisplayName_Returns400()
+    {
+        var gatewayId = Guid.NewGuid();
+        var config = new PaymentGatewayConfig
+        {
+            Id = gatewayId,
+            GatewayKey = "stripe-prod",
+            Provider = "stripe",
+            Environment = "production",
+            DisplayName = "Stripe Production",
+            IsActive = true,
+            CountryRoutes = []
+        };
+        var repository = UpdateRepository(gatewayId, config, []);
+        var handler = new UpdatePaymentGatewayMetadataCommandHandler(repository.Object);
+
+        var result = await handler.Handle(
+            new UpdatePaymentGatewayMetadataCommand(
+                gatewayId,
+                "   ",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal("DisplayName cannot be empty.", result.Error);
+        Assert.Equal("Stripe Production", config.DisplayName);
+        repository.Verify(
+            repo => repo.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_EmptyOptionalFields_ClearExistingValues()
+    {
+        var gatewayId = Guid.NewGuid();
+        var config = new PaymentGatewayConfig
+        {
+            Id = gatewayId,
+            GatewayKey = "stripe-prod",
+            Provider = "stripe",
+            Environment = "production",
+            DisplayName = "Stripe Production",
+            LogoUrl = "https://example.com/logo.png",
+            PublicKey = "pk_live",
+            MerchantId = "merchant-1",
+            WebhookUrl = "https://example.com/webhook",
+            IsActive = true,
+            CountryRoutes = []
+        };
+        var repository = UpdateRepository(gatewayId, config, []);
+        var handler = new UpdatePaymentGatewayMetadataCommandHandler(repository.Object);
+
+        var result = await handler.Handle(
+            new UpdatePaymentGatewayMetadataCommand(
+                gatewayId,
+                null,
+                "",
+                "",
+                "",
+                "",
+                null,
+                null,
+                null,
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(config.LogoUrl);
+        Assert.Null(config.PublicKey);
+        Assert.Null(config.MerchantId);
+        Assert.Null(config.WebhookUrl);
+    }
+
+    [Fact]
+    public async Task Update_IsActiveTrue_ActivatesGateway()
+    {
+        var gatewayId = Guid.NewGuid();
+        var config = new PaymentGatewayConfig
+        {
+            Id = gatewayId,
+            GatewayKey = "stripe-prod",
+            Provider = "stripe",
+            Environment = "production",
+            DisplayName = "Stripe Production",
+            IsActive = false,
+            CountryRoutes = []
+        };
+        var repository = UpdateRepository(gatewayId, config, []);
+        var handler = new UpdatePaymentGatewayMetadataCommandHandler(repository.Object);
+
+        var result = await handler.Handle(
+            new UpdatePaymentGatewayMetadataCommand(
+                gatewayId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                true,
+                null,
+                null,
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(config.IsActive);
+        Assert.True(result.Value!.IsActive);
+    }
+
+    [Fact]
+    public async Task Update_InvalidCountryCode_Returns400_AndLeavesMetadataUnchanged()
+    {
+        var gatewayId = Guid.NewGuid();
+        var config = new PaymentGatewayConfig
+        {
+            Id = gatewayId,
+            GatewayKey = "stripe-prod",
+            Provider = "stripe",
+            Environment = "production",
+            DisplayName = "Stripe Production",
+            IsActive = true,
+            CountryRoutes = []
+        };
+        var repository = UpdateRepository(gatewayId, config, []);
+        var handler = new UpdatePaymentGatewayMetadataCommandHandler(repository.Object);
+
+        var result = await handler.Handle(
+            new UpdatePaymentGatewayMetadataCommand(
+                gatewayId,
+                "Updated Name",
+                null,
+                null,
+                null,
+                null,
+                null,
+                ["USA"],
+                null,
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal("Stripe Production", config.DisplayName);
+        repository.Verify(
+            repo => repo.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_DuplicateCountryCode_Returns409()
+    {
+        var gatewayId = Guid.NewGuid();
+        var config = new PaymentGatewayConfig
+        {
+            Id = gatewayId,
+            GatewayKey = "stripe-prod",
+            Provider = "stripe",
+            Environment = "production",
+            DisplayName = "Stripe Production",
+            IsActive = true,
+            CountryRoutes = []
+        };
+        var repository = UpdateRepository(gatewayId, config, []);
+        var handler = new UpdatePaymentGatewayMetadataCommandHandler(repository.Object);
+
+        var result = await handler.Handle(
+            new UpdatePaymentGatewayMetadataCommand(
+                gatewayId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                ["US", "us"],
+                null,
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        repository.Verify(
+            repo => repo.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task Update_CountryRouteConflict_Returns409()
     {
         var gatewayId = Guid.NewGuid();
