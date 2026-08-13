@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
 
@@ -73,9 +74,8 @@ public sealed class ActivityDailySummaryJob : BackgroundService
     {
         await using var scope = _services.CreateAsyncScope();
         var snapshots = scope.ServiceProvider.GetRequiredService<IActivitySnapshotRepository>();
-        var summaries = scope.ServiceProvider.GetRequiredService<IActivityDailySummaryRepository>();
+        var rebuilder = scope.ServiceProvider.GetRequiredService<IActivityDailySummaryRebuilder>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
 
         var keys = await snapshots.GetEmployeeKeysForDateAsync(date, ct);
         _logger.LogInformation(
@@ -83,23 +83,13 @@ public sealed class ActivityDailySummaryJob : BackgroundService
             date,
             keys.Count);
 
-        var now = clock.UtcNow;
         var processed = 0;
 
         foreach (var (tenantId, employeeId) in keys)
         {
             ct.ThrowIfCancellationRequested();
 
-            var daySnapshots = await snapshots.GetAllByEmployeeDateAsync(
-                tenantId, employeeId, date, ct);
-
-            if (daySnapshots.Count == 0)
-                continue;
-
-            var summary = ActivityDailySummaryAggregator.Aggregate(
-                tenantId, employeeId, date, daySnapshots, now);
-
-            await summaries.UpsertAsync(summary, ct);
+            await rebuilder.RebuildAsync(tenantId, employeeId, date, ct);
             processed++;
         }
 
