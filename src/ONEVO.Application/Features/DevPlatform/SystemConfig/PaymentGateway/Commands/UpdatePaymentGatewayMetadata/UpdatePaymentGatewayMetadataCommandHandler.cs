@@ -43,6 +43,13 @@ public sealed class UpdatePaymentGatewayMetadataCommandHandler
         if (config is null)
             return Result<PaymentGatewayConfigDto>.NotFound("Payment gateway config not found.");
 
+        if (request.CountryCodes is not null && request.CountryCodes.Count == 0)
+        {
+            return Result<PaymentGatewayConfigDto>.Failure(
+                "At least one country route is required.",
+                400);
+        }
+
         if (request.DisplayName is not null)
         {
             var displayName = request.DisplayName.Trim();

@@ -316,6 +316,111 @@ public sealed class PaymentGatewayBusinessRuleTests
     }
 
     [Fact]
+    public async Task Update_EmptyCountryCodes_Returns400_AndDoesNotDeactivateExistingRoutes()
+    {
+        var gatewayId = Guid.NewGuid();
+        var existingRoute = new PaymentGatewayCountryRoute
+        {
+            Id = Guid.NewGuid(),
+            GatewayConfigId = gatewayId,
+            CountryCode = "LK",
+            Environment = "production",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var config = new PaymentGatewayConfig
+        {
+            Id = gatewayId,
+            GatewayKey = "stripe-prod",
+            Provider = "stripe",
+            Environment = "production",
+            DisplayName = "Stripe Production",
+            IsActive = true,
+            CountryRoutes = [existingRoute]
+        };
+        var repository = UpdateRepository(gatewayId, config, []);
+        var handler = new UpdatePaymentGatewayMetadataCommandHandler(repository.Object);
+
+        var result = await handler.Handle(
+            new UpdatePaymentGatewayMetadataCommand(
+                gatewayId,
+                "Stripe Production Updated",
+                null,
+                null,
+                null,
+                null,
+                null,
+                [],
+                [],
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal("At least one country route is required.", result.Error);
+        Assert.True(existingRoute.IsActive);
+        Assert.Equal("Stripe Production", config.DisplayName);
+        repository.Verify(
+            repo => repo.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_NullCountryCodes_LeavesExistingRoutesUnchanged()
+    {
+        var gatewayId = Guid.NewGuid();
+        var existingRoute = new PaymentGatewayCountryRoute
+        {
+            Id = Guid.NewGuid(),
+            GatewayConfigId = gatewayId,
+            CountryCode = "LK",
+            Environment = "production",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var config = new PaymentGatewayConfig
+        {
+            Id = gatewayId,
+            GatewayKey = "stripe-prod",
+            Provider = "stripe",
+            Environment = "production",
+            DisplayName = "Stripe Production",
+            IsActive = true,
+            CountryRoutes = [existingRoute]
+        };
+        var repository = UpdateRepository(gatewayId, config, []);
+        var handler = new UpdatePaymentGatewayMetadataCommandHandler(repository.Object);
+
+        var result = await handler.Handle(
+            new UpdatePaymentGatewayMetadataCommand(
+                gatewayId,
+                "Stripe Production Updated",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(existingRoute.IsActive);
+        Assert.Equal("Stripe Production Updated", config.DisplayName);
+        repository.Verify(
+            repo => repo.AddCountryRouteAsync(
+                It.IsAny<PaymentGatewayCountryRoute>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        repository.Verify(
+            repo => repo.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task Update_CountryRouteConflict_Returns409()
     {
         var gatewayId = Guid.NewGuid();
