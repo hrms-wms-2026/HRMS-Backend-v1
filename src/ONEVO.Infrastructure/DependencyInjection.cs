@@ -382,6 +382,8 @@ public static class DependencyInjection
 
         // -- Platform options binding ------------------------------------------
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
+        services.Configure<ONEVO.Infrastructure.ExternalServices.Biometrics.BiometricProviderOptions>(
+            configuration.GetSection(ONEVO.Infrastructure.ExternalServices.Biometrics.BiometricProviderOptions.SectionName));
         services.Configure<PlatformUrlsOptions>(configuration.GetSection(PlatformUrlsOptions.SectionName));
         services.Configure<EncryptionOptions>(configuration.GetSection(EncryptionOptions.SectionName));
         services.Configure<ONEVO.Infrastructure.Configuration.StorageQuotaOptions>(
