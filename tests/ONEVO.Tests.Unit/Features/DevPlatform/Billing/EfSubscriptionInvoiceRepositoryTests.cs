@@ -82,6 +82,34 @@ public sealed class EfSubscriptionInvoiceRepositoryTests
     }
 
     [Fact]
+    public async Task CountAsync_AppliesSameFiltersAsListAsync()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var match = CreateInvoice("INV-5001", tenantId: tenantId, status: "open");
+        match.CreatedAt = new DateTimeOffset(2026, 8, 10, 12, 0, 0, TimeSpan.Zero);
+
+        var other = CreateInvoice("INV-5002", tenantId: tenantId, status: "paid");
+        other.CreatedAt = match.CreatedAt;
+
+        db.SubscriptionInvoices.AddRange(match, other);
+        await db.SaveChangesAsync();
+
+        var repository = new EfSubscriptionInvoiceRepository(db);
+        var filter = new SubscriptionInvoiceListFilter(
+            tenantId,
+            "open",
+            new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 8, 31, 0, 0, 0, TimeSpan.Zero),
+            Skip: 0,
+            Take: 10);
+
+        var count = await repository.CountAsync(filter, CancellationToken.None);
+
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
     public async Task ListByTenantAsync_ReturnsOnlyTenantInvoicesOrderedByCreatedAtDesc()
     {
         await using var db = BuildInMemoryDb();

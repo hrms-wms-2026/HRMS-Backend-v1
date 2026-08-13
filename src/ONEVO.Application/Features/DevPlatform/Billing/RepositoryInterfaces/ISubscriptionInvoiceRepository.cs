@@ -26,5 +26,7 @@ public interface ISubscriptionInvoiceRepository
         SubscriptionInvoiceListFilter filter,
         CancellationToken ct = default);
 
+    Task<int> CountAsync(SubscriptionInvoiceListFilter filter, CancellationToken ct = default);
+
     Task<IReadOnlyList<SubscriptionInvoice>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default);
 }

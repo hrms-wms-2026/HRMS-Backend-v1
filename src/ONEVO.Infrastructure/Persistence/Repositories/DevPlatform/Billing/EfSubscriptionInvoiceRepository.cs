@@ -53,6 +53,25 @@ public sealed class EfSubscriptionInvoiceRepository : ISubscriptionInvoiceReposi
             .ToListAsync(ct);
     }
 
+    public Task<int> CountAsync(SubscriptionInvoiceListFilter filter, CancellationToken ct = default)
+    {
+        var query = _db.SubscriptionInvoices.AsNoTracking();
+
+        if (filter.TenantId.HasValue)
+            query = query.Where(i => i.TenantId == filter.TenantId.Value);
+
+        if (!string.IsNullOrWhiteSpace(filter.Status))
+            query = query.Where(i => i.Status == filter.Status);
+
+        if (filter.From.HasValue)
+            query = query.Where(i => i.CreatedAt >= filter.From.Value);
+
+        if (filter.To.HasValue)
+            query = query.Where(i => i.CreatedAt <= filter.To.Value);
+
+        return query.CountAsync(ct);
+    }
+
     public async Task<IReadOnlyList<SubscriptionInvoice>> ListByTenantAsync(
         Guid tenantId,
         CancellationToken ct = default) =>
