@@ -168,6 +168,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<TenantProvisioningState> TenantProvisioningStates => Set<TenantProvisioningState>();
     public DbSet<TenantSetupSelection> TenantSetupSelections => Set<TenantSetupSelection>();
     public DbSet<TenantOneTimeCharge> TenantOneTimeCharges => Set<TenantOneTimeCharge>();
+    public DbSet<SubscriptionInvoice> SubscriptionInvoices => Set<SubscriptionInvoice>();
+    public DbSet<BillingAuditLog> BillingAuditLogs => Set<BillingAuditLog>();
 
     // System Config - Payment Gateway (Phase 1 canonical tables)
     public DbSet<PaymentGatewayConfig> PaymentGatewayConfigs => Set<PaymentGatewayConfig>();

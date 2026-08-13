@@ -39,6 +39,7 @@ using ONEVO.Application.Features.DevPlatform.ModuleCatalog.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Provisioning.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Billing.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.Provisioning;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
@@ -58,6 +59,7 @@ using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Invite;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.PlatformAccess;
+using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Billing;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Subscription;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
 using ONEVO.Infrastructure.Persistence.Seeders;
@@ -169,6 +171,10 @@ public static class DependencyInjection
         services.AddScoped<EfSubscriptionRepository>();
         services.AddScoped<ISubscriptionPlanRepository>(sp => sp.GetRequiredService<EfSubscriptionRepository>());
         services.AddScoped<ITenantSubscriptionRepository>(sp => sp.GetRequiredService<EfSubscriptionRepository>());
+        services.AddScoped<EfSubscriptionInvoiceRepository>();
+        services.AddScoped<ISubscriptionInvoiceRepository>(sp => sp.GetRequiredService<EfSubscriptionInvoiceRepository>());
+        services.AddScoped<EfBillingAuditLogRepository>();
+        services.AddScoped<IBillingAuditLogRepository>(sp => sp.GetRequiredService<EfBillingAuditLogRepository>());
 
         // Auth: invitation tokens
         services.AddScoped<IInvitationTokenRepository, EfInvitationTokenRepository>();
