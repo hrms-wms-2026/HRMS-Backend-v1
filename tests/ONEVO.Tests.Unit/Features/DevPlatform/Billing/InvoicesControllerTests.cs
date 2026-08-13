@@ -25,6 +25,7 @@ public sealed class InvoicesControllerTests
     [InlineData(nameof(InvoicesController.Create), PlatformPermissionCatalog.SubscriptionsManage)]
     [InlineData(nameof(InvoicesController.MarkPaid), PlatformPermissionCatalog.SubscriptionsManage)]
     [InlineData(nameof(InvoicesController.Void), PlatformPermissionCatalog.SubscriptionsManage)]
+    [InlineData(nameof(InvoicesController.ResendEmail), PlatformPermissionCatalog.SubscriptionsManage)]
     public void Endpoint_RequiresCorrectPlatformPermission(string methodName, string expectedPermission)
     {
         var method = typeof(InvoicesController).GetMethod(methodName);

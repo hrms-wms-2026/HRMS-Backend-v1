@@ -52,6 +52,9 @@ public class TransactionalEmailService : IEmailService
     public Task SendEmployeeOnboardingInviteAsync(string to, string firstName, string lastName, string inviteToken, CancellationToken ct = default)
         => SendTemplateAsync(to, "employee_onboarding_invite", new { first_name = firstName, last_name = lastName, invite_token = inviteToken }, ct);
 
+    public Task SendInvoiceEmailAsync(string to, object templateData, CancellationToken ct = default)
+        => SendTemplateAsync(to, "invoice_email", templateData, ct);
+
     private async Task SendInternalAsync(
         string to,
         string subject,

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.DevPlatform.Billing.Commands.CreateInvoice;
 using ONEVO.Application.Features.DevPlatform.Billing.Commands.MarkInvoicePaid;
+using ONEVO.Application.Features.DevPlatform.Billing.Commands.ResendInvoiceEmail;
 using ONEVO.Application.Features.DevPlatform.Billing.Commands.VoidInvoice;
 using ONEVO.Application.Features.DevPlatform.Billing.DTOs.Requests;
 using ONEVO.Application.Features.DevPlatform.Billing.Queries.GetInvoice;
@@ -108,6 +109,17 @@ public sealed class InvoicesController : ControllerBase
     public async Task<IActionResult> Void(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new VoidInvoiceCommand(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("{id:guid}/resend-email")]
+    [Authorize(Policy = "AdminPolicy")]
+    [RequirePlatformPermission(PlatformPermissionCatalog.SubscriptionsManage)]
+    public async Task<IActionResult> ResendEmail(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new ResendInvoiceEmailCommand(id), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

@@ -12,4 +12,7 @@ public static class InvoiceStatusRules
 
     public static bool CanVoid(string status) =>
         status is "draft" or "open";
+
+    public static bool CanResendEmail(string status) =>
+        status is "open" or "paid";
 }
