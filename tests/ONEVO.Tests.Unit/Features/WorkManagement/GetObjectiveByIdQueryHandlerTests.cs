@@ -1,11 +1,10 @@
 using Moq;
-using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveById;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
-using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using Xunit;
 
@@ -15,6 +14,7 @@ public class GetObjectiveByIdQueryHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
+    private static readonly Guid EmployeeId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid ParentId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
@@ -33,12 +33,20 @@ public class GetObjectiveByIdQueryHandlerTests
 
     private (GetObjectiveByIdQueryHandler Handler, Mock<IProjectMemberRepository> Members) BuildHandler(
         Objective? target, List<string> permissions, bool hasAncestorOrSelfMembership,
-        Guid? callerId = null, IReadOnlyList<Employee>? employees = null)
+        Guid? callerId = null, IReadOnlyDictionary<Guid, string>? names = null)
     {
+        var resolvedCallerId = callerId ?? UserId;
+
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(callerId ?? UserId);
+        currentUser.SetupGet(x => x.UserId).Returns(resolvedCallerId);
+
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, resolvedCallerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmployeeId);
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(names ?? new Dictionary<Guid, string>());
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(target);
@@ -51,11 +59,7 @@ public class GetObjectiveByIdQueryHandlerTests
         var permissionResolver = new Mock<IPermissionResolver>();
         permissionResolver.Setup(x => x.ResolveAsync(It.IsAny<Guid>(), TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
 
-        var employeeRepo = new Mock<IEmployeeRepository>();
-        employeeRepo.Setup(x => x.GetByUserIdsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(employees ?? []);
-
-        var handler = new GetObjectiveByIdQueryHandler(currentUser.Object, objectives.Object, members.Object, permissionResolver.Object, employeeRepo.Object);
+        var handler = new GetObjectiveByIdQueryHandler(currentUser.Object, identity.Object, objectives.Object, members.Object, permissionResolver.Object);
         return (handler, members);
     }
 
@@ -87,7 +91,7 @@ public class GetObjectiveByIdQueryHandlerTests
 
         await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);
 
-        members.Verify(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, UserId,
+        members.Verify(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, EmployeeId,
             It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(ObjectiveId) && ids.Contains(ParentId)), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -135,12 +139,12 @@ public class GetObjectiveByIdQueryHandlerTests
             Title = "Sub", OwnerId = ownerId, ReportingManagerId = managerId,
             StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), CreatedAt = DateTimeOffset.UtcNow
         };
-        var employees = new List<Employee>
+        var names = new Dictionary<Guid, string>
         {
-            new() { UserId = ownerId, FirstName = "Jane", LastName = "Doe", EmployeeNumber = "E1", Email = "jane@example.com", HireDate = new DateOnly(2020, 1, 1) },
-            new() { UserId = managerId, FirstName = "John", LastName = "Smith", EmployeeNumber = "E2", Email = "john@example.com", HireDate = new DateOnly(2019, 1, 1) }
+            [ownerId] = "Jane Doe",
+            [managerId] = "John Smith"
         };
-        var (handler, _) = BuildHandler(target, ["projects:read"], hasAncestorOrSelfMembership: false, employees: employees);
+        var (handler, _) = BuildHandler(target, ["projects:read"], hasAncestorOrSelfMembership: false, names: names);
 
         var result = await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);
 
@@ -152,7 +156,7 @@ public class GetObjectiveByIdQueryHandlerTests
     [Fact]
     public async Task Handle_IsOwnerTrue_WhenCallerIsTheOwner()
     {
-        var target = Target(ownerId: UserId);
+        var target = Target(ownerId: EmployeeId);
         var (handler, _) = BuildHandler(target, ["projects:read"], hasAncestorOrSelfMembership: false);
 
         var result = await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);

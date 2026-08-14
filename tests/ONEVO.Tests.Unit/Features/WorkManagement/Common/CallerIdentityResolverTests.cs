@@ -42,4 +42,34 @@ public class CallerIdentityResolverTests
 
         Assert.Null(result);
     }
+
+    [Fact]
+    public async Task ResolveDisplayNamesByEmployeeIdAsync_ExistingEmployees_ReturnsNameForEachId()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId1 = Guid.NewGuid();
+        var employeeId2 = Guid.NewGuid();
+        _employees.Setup(e => e.GetByIdAsync(tenantId, employeeId1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = employeeId1, TenantId = tenantId, FirstName = "Ada", LastName = "Lovelace" });
+        _employees.Setup(e => e.GetByIdAsync(tenantId, employeeId2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = employeeId2, TenantId = tenantId, FirstName = "Grace", LastName = "Hopper" });
+
+        var result = await _sut.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [employeeId1, employeeId2], CancellationToken.None);
+
+        Assert.Equal("Ada Lovelace", result[employeeId1]);
+        Assert.Equal("Grace Hopper", result[employeeId2]);
+    }
+
+    [Fact]
+    public async Task ResolveDisplayNamesByEmployeeIdAsync_MissingEmployee_OmittedFromResult()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        _employees.Setup(e => e.GetByIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Employee?)null);
+
+        var result = await _sut.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [employeeId], CancellationToken.None);
+
+        Assert.False(result.ContainsKey(employeeId));
+    }
 }

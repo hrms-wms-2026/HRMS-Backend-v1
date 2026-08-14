@@ -1,12 +1,11 @@
 using Moq;
-using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectById;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
-using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using Xunit;
@@ -17,12 +16,14 @@ public class GetProjectByIdQueryHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
+    private static readonly Guid EmployeeId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
-    private static readonly Guid LeadId = Guid.NewGuid();
+    private static readonly Guid LeadUserId = Guid.NewGuid();
+    private static readonly Guid LeadEmployeeId = Guid.NewGuid();
 
     private static Project Project(bool isActive = true) => new()
     {
-        Id = ProjectId, TenantId = TenantId, LeadId = LeadId, IsActive = isActive,
+        Id = ProjectId, TenantId = TenantId, LeadId = LeadEmployeeId, IsActive = isActive,
         Name = "P", Identifier = "P1", CreatedAt = DateTimeOffset.UtcNow
     };
 
@@ -45,21 +46,23 @@ public class GetProjectByIdQueryHandlerTests
 
     private static void SetupEmptyMemberLists(Mock<IProjectMemberRepository> members)
     {
-        members.Setup(x => x.ListDistinctActiveMemberUserIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        members.Setup(x => x.ListDistinctActiveMemberEmployeeIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<Guid>>());
         members.Setup(x => x.CountDistinctActiveMembersAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, int>());
     }
 
-    private static Mock<IEmployeeRepository> BuildEmptyEmployees()
+    private static Mock<ICallerIdentityResolver> BuildIdentity(Guid callerUserId, Guid callerEmployeeId, IReadOnlyDictionary<Guid, string>? names = null)
     {
-        var employees = new Mock<IEmployeeRepository>();
-        employees.Setup(x => x.GetByUserIdsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Employee>());
-        return employees;
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, callerUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerEmployeeId);
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(names ?? new Dictionary<Guid, string>());
+        return identity;
     }
 
-    private (GetProjectByIdQueryHandler Handler, Mock<IProjectMemberRepository> Members, Mock<IEntityAssetRepository> EntityAssets, Mock<ILabelRepository> Labels, Mock<IEmployeeRepository> Employees) BuildHandler(
+    private (GetProjectByIdQueryHandler Handler, Mock<IProjectMemberRepository> Members, Mock<IEntityAssetRepository> EntityAssets, Mock<ILabelRepository> Labels, Mock<ICallerIdentityResolver> Identity) BuildHandler(
         Project? project, List<string> permissions, bool isActiveMember)
     {
         var currentUser = new Mock<ICurrentUser>();
@@ -67,11 +70,13 @@ public class GetProjectByIdQueryHandlerTests
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
+        var identity = BuildIdentity(UserId, EmployeeId);
+
         var projects = new Mock<IProjectRepository>();
         projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
 
         var members = new Mock<IProjectMemberRepository>();
-        members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(isActiveMember);
+        members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(isActiveMember);
         SetupEmptyMemberLists(members);
 
         var permissionResolver = new Mock<IPermissionResolver>();
@@ -79,11 +84,10 @@ public class GetProjectByIdQueryHandlerTests
 
         var entityAssets = BuildEmptyEntityAssets();
         var labels = BuildEmptyLabels();
-        var employees = BuildEmptyEmployees();
 
         var handler = new GetProjectByIdQueryHandler(
-            currentUser.Object, projects.Object, members.Object, permissionResolver.Object, entityAssets.Object, labels.Object, employees.Object);
-        return (handler, members, entityAssets, labels, employees);
+            currentUser.Object, identity.Object, projects.Object, members.Object, permissionResolver.Object, entityAssets.Object, labels.Object);
+        return (handler, members, entityAssets, labels, identity);
     }
 
     [Fact]
@@ -145,7 +149,9 @@ public class GetProjectByIdQueryHandlerTests
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(LeadId);
+        currentUser.SetupGet(x => x.UserId).Returns(LeadUserId);
+
+        var identity = BuildIdentity(LeadUserId, LeadEmployeeId);
 
         var projects = new Mock<IProjectRepository>();
         projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(Project());
@@ -153,13 +159,12 @@ public class GetProjectByIdQueryHandlerTests
         var members = new Mock<IProjectMemberRepository>();
         SetupEmptyMemberLists(members);
         var permissionResolver = new Mock<IPermissionResolver>();
-        permissionResolver.Setup(x => x.ResolveAsync(LeadId, TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(["projects:read"]);
+        permissionResolver.Setup(x => x.ResolveAsync(LeadUserId, TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(["projects:read"]);
         var entityAssets = BuildEmptyEntityAssets();
         var labels = BuildEmptyLabels();
-        var employees = BuildEmptyEmployees();
 
         var handler = new GetProjectByIdQueryHandler(
-            currentUser.Object, projects.Object, members.Object, permissionResolver.Object, entityAssets.Object, labels.Object, employees.Object);
+            currentUser.Object, identity.Object, projects.Object, members.Object, permissionResolver.Object, entityAssets.Object, labels.Object);
 
         var result = await handler.Handle(new GetProjectByIdQuery(ProjectId), CancellationToken.None);
 
@@ -219,19 +224,19 @@ public class GetProjectByIdQueryHandlerTests
     [Fact]
     public async Task Handle_ProjectHasActiveMembers_AttachesResolvedDisplayNamesAndCount()
     {
-        var memberUserId = Guid.NewGuid();
-        var (handler, members, _, _, employees) = BuildHandler(Project(), ["projects:read"], isActiveMember: false);
-        members.Setup(x => x.ListDistinctActiveMemberUserIdsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(ProjectId)), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<Guid>> { [ProjectId] = [memberUserId] });
+        var memberEmployeeId = Guid.NewGuid();
+        var (handler, members, _, _, identity) = BuildHandler(Project(), ["projects:read"], isActiveMember: false);
+        members.Setup(x => x.ListDistinctActiveMemberEmployeeIdsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(ProjectId)), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<Guid>> { [ProjectId] = [memberEmployeeId] });
         members.Setup(x => x.CountDistinctActiveMembersAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(ProjectId)), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, int> { [ProjectId] = 3 });
-        employees.Setup(x => x.GetByUserIdsAsync(TenantId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(memberUserId)), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Employee> { new() { Id = Guid.NewGuid(), TenantId = TenantId, UserId = memberUserId, FirstName = "Diya", LastName = "Perera", Email = "diya@test.com", EmployeeNumber = "E2" } });
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(memberEmployeeId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [memberEmployeeId] = "Diya Perera" });
 
         var result = await handler.Handle(new GetProjectByIdQuery(ProjectId), CancellationToken.None);
 
         var member = result.Value!.Members.Single();
-        Assert.Equal(memberUserId, member.UserId);
+        Assert.Equal(memberEmployeeId, member.UserId);
         Assert.Equal("Diya Perera", member.DisplayName);
         Assert.Equal(3, result.Value.MemberCount);
     }
