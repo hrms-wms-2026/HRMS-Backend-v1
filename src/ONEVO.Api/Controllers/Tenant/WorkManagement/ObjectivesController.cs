@@ -113,7 +113,7 @@ public class ObjectivesController : ControllerBase
     [RequirePermission("projects:access")]
     public async Task<IActionResult> AddMember(Guid id, [FromBody] AddObjectiveMemberRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new AddObjectiveMemberCommand(id, request.UserId), ct);
+        var result = await _mediator.Send(new AddObjectiveMemberCommand(id, request.EmployeeId), ct);
 
         return result.IsSuccess
             ? NoContent()
@@ -121,11 +121,11 @@ public class ObjectivesController : ControllerBase
     }
 
     /// <summary>Removes a member from this milestone. Head-only. Rejects removing the current head - use Transfer instead.</summary>
-    [HttpDelete("{id:guid}/members/{userId:guid}")]
+    [HttpDelete("{id:guid}/members/{employeeId:guid}")]
     [RequirePermission("projects:access")]
-    public async Task<IActionResult> RemoveMember(Guid id, Guid userId, CancellationToken ct)
+    public async Task<IActionResult> RemoveMember(Guid id, Guid employeeId, CancellationToken ct)
     {
-        var result = await _mediator.Send(new RemoveObjectiveMemberCommand(id, userId), ct);
+        var result = await _mediator.Send(new RemoveObjectiveMemberCommand(id, employeeId), ct);
 
         return result.IsSuccess
             ? NoContent()
