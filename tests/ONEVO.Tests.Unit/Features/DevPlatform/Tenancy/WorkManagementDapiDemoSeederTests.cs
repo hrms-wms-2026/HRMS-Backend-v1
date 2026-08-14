@@ -245,7 +245,11 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         projects.Should().HaveCount(5);
         projects.Select(p => p.Identifier).Should().BeEquivalentTo(
             ["EPOS", "EVTIX", "ONEXSO", "WCRAFT", "HWPORTAL"]);
-        projects.Should().OnlyContain(p => p.LeadId == DapiOwnerUserId);
+
+        // Project.LeadId is Employee-typed (Phase 2, 2026-08-14) - resolve "dabi"'s actual
+        // Employee.Id from the seeded data rather than comparing against the raw DapiOwnerUserId.
+        var dabiEmployee = await verify.Employees.SingleAsync(e => e.UserId == DapiOwnerUserId);
+        projects.Should().OnlyContain(p => p.LeadId == dabiEmployee.Id);
     }
 
     [Fact]
