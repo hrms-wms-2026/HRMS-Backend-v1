@@ -95,6 +95,8 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
         if (employee is null || employee.EmploymentStatusId != EmploymentStatusIds.Active)
             return Result<ProjectCreationResponse>.Forbidden("No employee record for the current user.");
 
+        var employeeId = employee.Id;
+
         var legalEntity = await _legalEntities.GetPrimaryByTenantIdAsync(tenantId, ct);
         if (legalEntity is null)
             return Result<ProjectCreationResponse>.Forbidden("Tenant has no primary company configured.");
@@ -139,7 +141,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 Name = request.Name.Trim(),
                 Identifier = identifier,
                 Description = request.Description?.Trim(),
-                LeadId = userId,
+                LeadId = employeeId,
                 StartDate = request.StartDate,
                 TargetDate = request.TargetDate,
                 Color = request.Color,
@@ -160,7 +162,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 IsDefault = true,
                 Title = project.Name,
                 Description = project.Description,
-                OwnerId = userId,
+                OwnerId = employeeId,
                 IsActive = true,
                 StartDate = project.StartDate,
                 EndDate = project.TargetDate,
@@ -178,8 +180,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 TenantId = tenantId,
                 ProjectId = project.Id,
                 ObjectiveId = defaultObjective.Id,
-                UserId = userId,
-                EmployeeId = employee.Id,
+                EmployeeId = employeeId,
                 MembershipSource = ProjectMembershipSources.System,
                 IsActive = true,
                 JoinedAt = now,
