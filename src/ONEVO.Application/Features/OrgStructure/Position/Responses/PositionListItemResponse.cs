@@ -4,10 +4,14 @@ namespace ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 // row would require an extra query per row (N+1) in ListPositionsQueryHandler. PositionResponse
 // (single-item GetPositionByIdQuery) and PositionTreeNodeResponse (already has the full set
 // loaded in memory) populate the richer fields cheaply; the paginated list does not.
-// CurrentOccupancy is the exception: it is always (null, false) here, same as every other
-// Position response - no position_assignments table exists anywhere in this codebase, so the
-// count is unmeasurable, not zero, and there is no per-row query to avoid (see
-// PositionArchiveBlockers.ActiveOccupants for the same nullable-plus-supported-flag precedent).
+// CurrentOccupancy/CurrentOccupancyCheckSupported are left as their long-standing (null, false)
+// placeholder here deliberately, even though position_assignments now exists and
+// AssignedCount below is populated from it: PositionResponse (GetPositionByIdQuery) still
+// reports this pair as unsupported, and populating only the list response would make the same
+// position report contradictory occupancy-support between endpoints. AssignedCount/
+// OccupantPreview/RemainingAssignedCount are the real, populated successor fields; a follow-up
+// pass should retire CurrentOccupancy/CurrentOccupancyCheckSupported everywhere (including
+// PositionResponse and PositionArchiveBlockers.ActiveOccupants) rather than dual-write both.
 public record PositionListItemResponse(
     Guid Id,
     Guid LegalEntityId,
@@ -21,4 +25,7 @@ public record PositionListItemResponse(
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt,
     int? CurrentOccupancy,
-    bool CurrentOccupancyCheckSupported);
+    bool CurrentOccupancyCheckSupported,
+    int AssignedCount,
+    IReadOnlyList<PositionOccupantPreviewResponse> OccupantPreview,
+    int RemainingAssignedCount);

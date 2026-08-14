@@ -14,7 +14,7 @@ public class PositionConfiguration : IEntityTypeConfiguration<DomainPosition>
 
         builder.Property(p => p.TenantId).IsRequired();
         builder.Property(p => p.Name).HasMaxLength(100).IsRequired();
-        builder.Property(p => p.Code).HasMaxLength(40);
+        builder.Property(p => p.Code).HasMaxLength(5);
         builder.Property(p => p.PositionType).HasMaxLength(20).IsRequired().HasDefaultValue("unique");
         builder.Property(p => p.MaxOccupancy).IsRequired().HasDefaultValue(1);
         builder.Property(p => p.IsActive).IsRequired().HasDefaultValue(true);

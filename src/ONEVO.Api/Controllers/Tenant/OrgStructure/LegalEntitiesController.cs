@@ -94,7 +94,9 @@ public class LegalEntitiesController : ControllerBase
                 request.DefaultLanguage,
                 request.DateFormat,
                 request.TimeFormat,
-                request.Status),
+                request.Status,
+                request.WorkStartTime,
+                request.WorkEndTime),
             ct);
 
         return result.IsSuccess

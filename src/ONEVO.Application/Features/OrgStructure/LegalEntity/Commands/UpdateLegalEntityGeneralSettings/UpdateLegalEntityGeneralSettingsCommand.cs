@@ -26,4 +26,6 @@ public record UpdateLegalEntityGeneralSettingsCommand(
     string DefaultLanguage,
     string DateFormat,
     string TimeFormat,
-    string Status) : IRequest<Result<LegalEntityGeneralSettingsResponse>>;
+    string Status,
+    TimeOnly? WorkStartTime,
+    TimeOnly? WorkEndTime) : IRequest<Result<LegalEntityGeneralSettingsResponse>>;

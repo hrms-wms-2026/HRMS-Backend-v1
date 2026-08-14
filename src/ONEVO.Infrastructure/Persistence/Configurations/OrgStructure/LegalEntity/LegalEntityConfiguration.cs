@@ -23,6 +23,10 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
             table.HasCheckConstraint(
                 "ck_legal_entities_time_format",
                 "time_format IN ('12h', '24h')");
+            table.HasCheckConstraint(
+                "ck_legal_entities_work_time_pair",
+                "(work_start_time IS NULL AND work_end_time IS NULL) " +
+                "OR (work_start_time IS NOT NULL AND work_end_time IS NOT NULL AND work_start_time < work_end_time)");
         });
         builder.HasKey(l => l.Id);
         builder.Property(l => l.Name).HasMaxLength(200).IsRequired();
@@ -61,6 +65,12 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
         builder.Property(l => l.DefaultLanguage).HasMaxLength(10).IsRequired().HasDefaultValue("en-US");
         builder.Property(l => l.DateFormat).HasMaxLength(20).IsRequired().HasDefaultValue("DD MMM YYYY");
         builder.Property(l => l.TimeFormat).HasMaxLength(10).IsRequired().HasDefaultValue("12h");
+
+        // Default company working hours. Postgres "time without time zone",
+        // nullable; pairing/ordering enforced by ck_legal_entities_work_time_pair
+        // above (defense in depth alongside the command validator).
+        builder.Property(l => l.WorkStartTime).HasColumnType("time");
+        builder.Property(l => l.WorkEndTime).HasColumnType("time");
 
         // Existing index, preserved as-is.
         builder.HasIndex(l => l.TenantId);

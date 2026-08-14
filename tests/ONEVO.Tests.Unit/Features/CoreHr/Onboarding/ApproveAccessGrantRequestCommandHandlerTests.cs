@@ -436,10 +436,10 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
 
         var template = new ChecklistTemplate { Id = templateId, TenantId = _tenantId, Name = "Starter", TemplateType = "onboarding", TasksJson = "[]" };
         _checklistTemplateRepository
-            .Setup(r => r.GetActiveOnboardingAsync(_tenantId, templateId, _departmentId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetActiveOnboardingAsync(_tenantId, templateId, _legalEntityId, _departmentId, _positionId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(template);
         _checklistTaskRepository
-            .Setup(r => r.InstantiateAsync(template, It.IsAny<Guid>(), null, It.IsAny<CancellationToken>()))
+            .Setup(r => r.InstantiateAsync(template, It.IsAny<Guid>(), It.IsAny<Guid>(), null, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { new EmployeeChecklistTask(), new EmployeeChecklistTask() });
 
         var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);

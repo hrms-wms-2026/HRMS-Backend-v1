@@ -22,4 +22,6 @@ public record UpdateLegalEntityGeneralSettingsRequest(
     string DefaultLanguage,
     string DateFormat,
     string TimeFormat,
-    string Status);
+    string Status,
+    TimeOnly? WorkStartTime,
+    TimeOnly? WorkEndTime);

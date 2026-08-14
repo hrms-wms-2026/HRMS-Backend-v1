@@ -50,9 +50,9 @@ public sealed class CreatePositionCommandHandlerTests
         => new(_positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
 
     private CreatePositionCommand ValidCommand(
-        Guid? departmentId = null, string name = "Customer Support Manager", string code = "CS-MGR",
-        string positionType = "unique", int maxOccupancy = 1, Guid? reportsToPositionId = null)
-        => new(_legalEntityId, departmentId ?? _departmentId, name, code, positionType, maxOccupancy, reportsToPositionId);
+        Guid? departmentId = null, string name = "Customer Support Manager", string code = "CSMGR",
+        int maxOccupancy = 1, Guid? reportsToPositionId = null)
+        => new(_legalEntityId, departmentId ?? _departmentId, name, code, maxOccupancy, reportsToPositionId);
 
     [Fact]
     public async Task Handle_Succeeds_WithValidLegalEntityAndDepartment()
@@ -61,7 +61,7 @@ public sealed class CreatePositionCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Customer Support Manager", result.Value!.Name);
-        Assert.Equal("CS-MGR", result.Value.Code);
+        Assert.Equal("CSMGR", result.Value.Code);
         Assert.Equal("Customer Support", result.Value.DepartmentName);
         Assert.Equal(_now, result.Value.CreatedAt);
         _positionsMock.Verify(p => p.AddAsync(It.IsAny<PositionEntity>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -77,13 +77,13 @@ public sealed class CreatePositionCommandHandlerTests
             .Callback<PositionEntity, CancellationToken>((entity, _) => added = entity)
             .Returns(Task.CompletedTask);
 
-        var command = ValidCommand(name: "  Customer Support Manager  ", code: "  CS-MGR  ");
+        var command = ValidCommand(name: "  Customer Support Manager  ", code: "  CSMGR  ");
 
         var result = await CreateHandler().Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Customer Support Manager", added!.Name);
-        Assert.Equal("CS-MGR", added.Code);
+        Assert.Equal("CSMGR", added.Code);
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public sealed class CreatePositionCommandHandlerTests
     public async Task Handle_ReturnsConflict_WhenCodeAlreadyExists()
     {
         _positionsMock
-            .Setup(p => p.ExistsByCodeAsync(_tenantId, _legalEntityId, "CS-MGR", null, It.IsAny<CancellationToken>()))
+            .Setup(p => p.ExistsByCodeAsync(_tenantId, _legalEntityId, "CSMGR", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         var result = await CreateHandler().Handle(ValidCommand(), CancellationToken.None);
@@ -144,39 +144,83 @@ public sealed class CreatePositionCommandHandlerTests
     {
         var validator = new CreatePositionCommandValidator();
 
-        var result = validator.Validate(ValidCommand(code: "CS MGR!"));
+        var result = validator.Validate(ValidCommand(code: "AB!CD"));
 
         Assert.False(result.IsValid);
     }
 
     [Fact]
-    public void Validator_RejectsInvalidPositionType()
+    public void Validator_RejectsCodeLongerThanFiveCharacters()
     {
         var validator = new CreatePositionCommandValidator();
 
-        var result = validator.Validate(ValidCommand(positionType: "manager"));
+        var result = validator.Validate(ValidCommand(code: "ABCDEF"));
 
         Assert.False(result.IsValid);
     }
 
     [Fact]
-    public void Validator_RejectsSingleOccupancyCapacityOtherThanOne()
+    public void Validator_AllowsCodeAtFiveCharacters()
     {
         var validator = new CreatePositionCommandValidator();
 
-        var result = validator.Validate(ValidCommand(positionType: "unique", maxOccupancy: 2));
-
-        Assert.False(result.IsValid);
-    }
-
-    [Fact]
-    public void Validator_AllowsMultiOccupancyCapacityGreaterThanOne()
-    {
-        var validator = new CreatePositionCommandValidator();
-
-        var result = validator.Validate(ValidCommand(positionType: "pooled", maxOccupancy: 5));
+        var result = validator.Validate(ValidCommand(code: "ABCDE"));
 
         Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Validator_RejectsMaxOccupancyBelowOne(int maxOccupancy)
+    {
+        var validator = new CreatePositionCommandValidator();
+
+        var result = validator.Validate(ValidCommand(maxOccupancy: maxOccupancy));
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public void Validator_AllowsMaxOccupancyGreaterThanOne()
+    {
+        var validator = new CreatePositionCommandValidator();
+
+        var result = validator.Validate(ValidCommand(maxOccupancy: 5));
+
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public async Task Handle_DerivesUniquePositionType_WhenMaxOccupancyIsOne()
+    {
+        PositionEntity? added = null;
+        _positionsMock
+            .Setup(p => p.AddAsync(It.IsAny<PositionEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<PositionEntity, CancellationToken>((entity, _) => added = entity)
+            .Returns(Task.CompletedTask);
+
+        var result = await CreateHandler().Handle(ValidCommand(maxOccupancy: 1), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PositionEntity.TypeUnique, added!.PositionType);
+        Assert.Equal(PositionEntity.TypeUnique, result.Value!.PositionType);
+    }
+
+    [Fact]
+    public async Task Handle_DerivesPooledPositionType_WhenMaxOccupancyGreaterThanOne()
+    {
+        PositionEntity? added = null;
+        _positionsMock
+            .Setup(p => p.AddAsync(It.IsAny<PositionEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<PositionEntity, CancellationToken>((entity, _) => added = entity)
+            .Returns(Task.CompletedTask);
+
+        var result = await CreateHandler().Handle(ValidCommand(maxOccupancy: 4), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PositionEntity.TypePooled, added!.PositionType);
+        Assert.Equal(PositionEntity.TypePooled, result.Value!.PositionType);
     }
 
     [Fact]
@@ -228,7 +272,7 @@ public sealed class CreatePositionCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ReturnsUnprocessableEntity_WhenReportsToPositionIsPooled()
+    public async Task Handle_AllowsPooledPositionAsReportsToTarget()
     {
         var reportsToId = Guid.NewGuid();
         _positionsMock
@@ -238,12 +282,18 @@ public sealed class CreatePositionCommandHandlerTests
                 Id = reportsToId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Support Pool",
                 PositionType = PositionEntity.TypePooled, MaxOccupancy = 5, IsActive = true
             });
+        PositionEntity? added = null;
+        _positionsMock
+            .Setup(p => p.AddAsync(It.IsAny<PositionEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<PositionEntity, CancellationToken>((entity, _) => added = entity)
+            .Returns(Task.CompletedTask);
 
         var result = await CreateHandler().Handle(ValidCommand(reportsToPositionId: reportsToId), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(422, result.StatusCode);
-        _positionsMock.Verify(p => p.AddAsync(It.IsAny<PositionEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(reportsToId, added!.ReportsToPositionId);
+        Assert.Equal(reportsToId, result.Value!.ReportsToPositionId);
+        Assert.Equal("Support Pool", result.Value.ReportsToPositionName);
     }
 
     [Fact]

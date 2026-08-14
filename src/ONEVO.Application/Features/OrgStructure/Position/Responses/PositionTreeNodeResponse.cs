@@ -11,4 +11,7 @@ public record PositionTreeNodeResponse(
     Guid? ReportsToPositionId,
     bool IsActive,
     int ChildCount,
-    IReadOnlyList<PositionTreeNodeResponse> Children);
+    IReadOnlyList<PositionTreeNodeResponse> Children,
+    int AssignedCount,
+    IReadOnlyList<PositionOccupantPreviewResponse> OccupantPreview,
+    int RemainingAssignedCount);

@@ -46,7 +46,8 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         CreatedAt = DateTimeOffset.UtcNow.AddDays(-10)
     };
 
-    private static UpdateLegalEntityGeneralSettingsCommand ValidCommand(Guid id, string status = "active") => new(
+    private static UpdateLegalEntityGeneralSettingsCommand ValidCommand(
+        Guid id, string status = "active", TimeOnly? workStartTime = null, TimeOnly? workEndTime = null) => new(
         id,
         "New Name",
         "NEW",
@@ -61,7 +62,9 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         "en-US",
         "DD MMM YYYY",
         "12h",
-        status);
+        status,
+        workStartTime,
+        workEndTime);
 
     private void SetupNoDuplicates(Guid excludeId)
     {
@@ -129,6 +132,44 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         entity.CreatedAt.Should().Be(originalCreatedAt);
         entity.IsPrimary.Should().Be(originalIsPrimary);
         entity.TenantId.Should().Be(TenantId);
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_PersistsWorkStartAndEndTime()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            ValidCommand(entity.Id, workStartTime: new TimeOnly(9, 0), workEndTime: new TimeOnly(17, 30)),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        entity.WorkStartTime.Should().Be(new TimeOnly(9, 0));
+        entity.WorkEndTime.Should().Be(new TimeOnly(17, 30));
+        result.Value!.WorkStartTime.Should().Be(new TimeOnly(9, 0));
+        result.Value.WorkEndTime.Should().Be(new TimeOnly(17, 30));
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_NullWorkTimes_PersistsNull()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        entity.WorkStartTime = new TimeOnly(9, 0);
+        entity.WorkEndTime = new TimeOnly(17, 0);
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(ValidCommand(entity.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        entity.WorkStartTime.Should().BeNull();
+        entity.WorkEndTime.Should().BeNull();
     }
 
     [Fact]
