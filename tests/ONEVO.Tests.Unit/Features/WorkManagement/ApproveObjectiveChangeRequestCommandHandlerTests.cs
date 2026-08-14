@@ -3,6 +3,7 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.ApproveObjectiveChangeRequest;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
@@ -18,31 +19,43 @@ namespace ONEVO.Tests.Unit.Features.WorkManagement;
 public class ApproveObjectiveChangeRequestCommandHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
-    private static readonly Guid ManagerId = Guid.NewGuid();
+    private static readonly Guid ManagerUserId = Guid.NewGuid();
+    private static readonly Guid ManagerEmployeeId = Guid.NewGuid();
     private static readonly Guid OtherUserId = Guid.NewGuid();
+    private static readonly Guid OtherEmployeeId = Guid.NewGuid();
     private static readonly Guid RequestId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
-    private static readonly Guid NewHeadId = Guid.NewGuid();
+    private static readonly Guid NewHeadEmployeeId = Guid.NewGuid();
 
     private static Objective TargetObjective() => new()
     {
         Id = ObjectiveId, TenantId = TenantId, Title = "Sub", OwnerId = Guid.NewGuid(),
-        ReportingManagerId = ManagerId, IsActive = true,
+        ReportingManagerId = ManagerEmployeeId, IsActive = true,
         StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), CreatedAt = DateTimeOffset.UtcNow
     };
 
     private static ObjectiveChangeRequest DeleteRequest(string status = ObjectiveChangeRequestStatuses.Pending) => new()
     {
         Id = RequestId, TenantId = TenantId, ObjectiveId = ObjectiveId, RequestType = ObjectiveChangeRequestTypes.Delete,
-        ReportingManagerId = ManagerId, Status = status, CreatedAt = DateTimeOffset.UtcNow
+        ReportingManagerId = ManagerEmployeeId, Status = status, CreatedAt = DateTimeOffset.UtcNow
     };
 
     private static ObjectiveChangeRequest TransferRequest() => new()
     {
         Id = RequestId, TenantId = TenantId, ObjectiveId = ObjectiveId, RequestType = ObjectiveChangeRequestTypes.Transfer,
-        ReportingManagerId = ManagerId, Status = ObjectiveChangeRequestStatuses.Pending,
-        PayloadJson = JsonSerializer.Serialize(new TransferObjectiveRequestPayload(NewHeadId)), CreatedAt = DateTimeOffset.UtcNow
+        ReportingManagerId = ManagerEmployeeId, Status = ObjectiveChangeRequestStatuses.Pending,
+        PayloadJson = JsonSerializer.Serialize(new TransferObjectiveRequestPayload(NewHeadEmployeeId)), CreatedAt = DateTimeOffset.UtcNow
     };
+
+    private static Mock<ICallerIdentityResolver> BuildIdentity()
+    {
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, ManagerUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ManagerEmployeeId);
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, OtherUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OtherEmployeeId);
+        return identity;
+    }
 
     private (ApproveObjectiveChangeRequestCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IObjectiveChangeRequestRepository> Requests) BuildHandler(
         ObjectiveChangeRequest? request, Objective? objective, Guid? callerId = null)
@@ -57,7 +70,9 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(callerId ?? ManagerId);
+        currentUser.SetupGet(x => x.UserId).Returns(callerId ?? ManagerUserId);
+
+        var identity = BuildIdentity();
 
         var requests = new Mock<IObjectiveChangeRequestRepository>();
         requests.Setup(x => x.GetByIdForTenantAsync(TenantId, RequestId, It.IsAny<CancellationToken>())).ReturnsAsync(request);
@@ -78,7 +93,7 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
             .Returns<Func<CancellationToken, Task<Result>>, CancellationToken>((operation, innerCt) => operation(innerCt));
 
-        var handler = new ApproveObjectiveChangeRequestCommandHandler(currentUser.Object, requests.Object, objectives.Object, membership.Object, unitOfWork.Object);
+        var handler = new ApproveObjectiveChangeRequestCommandHandler(currentUser.Object, identity.Object, requests.Object, objectives.Object, membership.Object, unitOfWork.Object);
         return (handler, objectives, requests, membership);
     }
 
@@ -102,7 +117,7 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
         var result = await handler.Handle(new ApproveObjectiveChangeRequestCommand(RequestId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        objectives.Verify(x => x.Update(It.Is<Objective>(o => o.OwnerId == NewHeadId)), Times.Once);
+        objectives.Verify(x => x.Update(It.Is<Objective>(o => o.OwnerId == NewHeadEmployeeId)), Times.Once);
     }
 
     [Fact]
@@ -147,8 +162,8 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
         var result = await handler.Handle(new ApproveObjectiveChangeRequestCommand(RequestId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(NewHeadId, child.ReportingManagerId);
-        membership.Verify(x => x.UpsertMembershipAsync(TenantId, It.IsAny<Guid>(), ObjectiveId, NewHeadId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(NewHeadEmployeeId, child.ReportingManagerId);
+        membership.Verify(x => x.UpsertMembershipAsync(TenantId, It.IsAny<Guid>(), ObjectiveId, NewHeadEmployeeId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -157,7 +172,7 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
         var achieveRequest = new ObjectiveChangeRequest
         {
             Id = RequestId, TenantId = TenantId, ObjectiveId = ObjectiveId, RequestType = ObjectiveChangeRequestTypes.Achieve,
-            ReportingManagerId = ManagerId, Status = ObjectiveChangeRequestStatuses.Pending, CreatedAt = DateTimeOffset.UtcNow
+            ReportingManagerId = ManagerEmployeeId, Status = ObjectiveChangeRequestStatuses.Pending, CreatedAt = DateTimeOffset.UtcNow
         };
         var (handler, objectives, _, membership) = BuildHandlerWithMembership(achieveRequest, TargetObjective());
 
@@ -174,7 +189,7 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
         var unachieveRequest = new ObjectiveChangeRequest
         {
             Id = RequestId, TenantId = TenantId, ObjectiveId = ObjectiveId, RequestType = ObjectiveChangeRequestTypes.Unachieve,
-            ReportingManagerId = ManagerId, Status = ObjectiveChangeRequestStatuses.Pending, CreatedAt = DateTimeOffset.UtcNow
+            ReportingManagerId = ManagerEmployeeId, Status = ObjectiveChangeRequestStatuses.Pending, CreatedAt = DateTimeOffset.UtcNow
         };
         var achievedTarget = TargetObjective();
         achievedTarget.IsAchieved = true;
@@ -185,6 +200,6 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         objectives.Verify(x => x.Update(It.Is<Objective>(o => !o.IsAchieved && o.AchievedAt == null)), Times.Once);
-        membership.Verify(x => x.UpsertMembershipAsync(TenantId, It.IsAny<Guid>(), ObjectiveId, It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
+        membership.Verify(x => x.UpsertMembershipAsync(TenantId, It.IsAny<Guid>(), ObjectiveId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 }

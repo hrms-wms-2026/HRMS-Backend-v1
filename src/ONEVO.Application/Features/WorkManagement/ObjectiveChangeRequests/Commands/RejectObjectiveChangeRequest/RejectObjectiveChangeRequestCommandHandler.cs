@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 
@@ -10,13 +11,15 @@ namespace ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Comm
 public class RejectObjectiveChangeRequestCommandHandler : IRequestHandler<RejectObjectiveChangeRequestCommand, Result>
 {
     private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IUnitOfWork _unitOfWork;
 
     public RejectObjectiveChangeRequestCommandHandler(
-        ICurrentUser currentUser, IObjectiveChangeRequestRepository changeRequests, IUnitOfWork unitOfWork)
+        ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveChangeRequestRepository changeRequests, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
+        _identity = identity;
         _changeRequests = changeRequests;
         _unitOfWork = unitOfWork;
     }
@@ -31,11 +34,15 @@ public class RejectObjectiveChangeRequestCommandHandler : IRequestHandler<Reject
         if (tenantId == Guid.Empty)
             return Result.Forbidden("Tenant context missing.");
 
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
+        if (callerEmployeeId is null)
+            return Result.Forbidden("No employee record for the current user.");
+
         var changeRequest = await _changeRequests.GetByIdForTenantAsync(tenantId, request.RequestId, ct);
         if (changeRequest is null)
             return Result.NotFound("Change request not found.");
 
-        if (changeRequest.ReportingManagerId != userId)
+        if (changeRequest.ReportingManagerId != callerEmployeeId.Value)
             return Result.Forbidden("Only this request's reporting manager can reject it.");
 
         if (changeRequest.Status != ObjectiveChangeRequestStatuses.Pending)
