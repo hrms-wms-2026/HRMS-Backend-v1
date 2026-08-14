@@ -89,7 +89,7 @@ public class CreateProjectCommandHandlerTests
         Assert.Equal(result.Value.Project.Id, result.Value.DefaultObjective.ProjectId);
         Assert.Equal(1, result.Value.DefaultVersion.StatusId);
         Assert.Equal(result.Value.DefaultVersion.Id, result.Value.ReleaseReminder.VersionId);
-        Assert.Equal(EmployeeId, result.Value.CreatorMembership.EmployeeId);
+        Assert.Equal(EmployeeId, result.Value.CreatorMembership.UserId);
         Assert.Equal(result.Value.DefaultObjective.Id, result.Value.CreatorMembership.ObjectiveId);
     }
 
