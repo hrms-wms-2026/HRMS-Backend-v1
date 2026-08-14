@@ -427,11 +427,19 @@ public class TenantIsolationArchitectureTests
                 source,
                 "TenantTables\\s*=\\s*\\[(?<body>[\\s\\S]*?)\\];",
                 RegexOptions.None);
-            if (!arrayMatch.Success)
-                continue;
+            if (arrayMatch.Success)
+            {
+                foreach (Match tableNameMatch in Regex.Matches(arrayMatch.Groups["body"].Value, "\"(?<name>[a-z0-9_]+)\""))
+                    tablesWithRlsPolicy.Add(tableNameMatch.Groups["name"].Value);
+            }
 
-            foreach (Match tableNameMatch in Regex.Matches(arrayMatch.Groups["body"].Value, "\"(?<name>[a-z0-9_]+)\""))
-                tablesWithRlsPolicy.Add(tableNameMatch.Groups["name"].Value);
+            foreach (Match inlinePolicy in Regex.Matches(
+                         source,
+                         @"CREATE\s+POLICY\s+tenant_isolation\s+ON\s+(?<name>[a-z0-9_]+)",
+                         RegexOptions.IgnoreCase))
+            {
+                tablesWithRlsPolicy.Add(inlinePolicy.Groups["name"].Value);
+            }
         }
 
         return tablesWithRlsPolicy;
