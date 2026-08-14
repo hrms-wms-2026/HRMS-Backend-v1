@@ -132,7 +132,7 @@ public sealed class PositionsControllerTests
     {
         IReadOnlyList<PositionTreeNodeResponse> tree =
         [
-            new PositionTreeNodeResponse(_positionId, _legalEntityId, _departmentId, "CEO", "CEO", "unique", 1, null, true, 0, [])
+            new PositionTreeNodeResponse(_positionId, _legalEntityId, _departmentId, "CEO", "CEO", "unique", 1, null, true, 0, [], 0, [], 0)
         ];
 
         _mediatorMock
@@ -158,7 +158,7 @@ public sealed class PositionsControllerTests
             .Setup(m => m.Send(It.IsAny<CreatePositionCommand>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<PositionResponse>.Success(created));
 
-        var request = new CreatePositionRequest(_departmentId, "Software Engineer", "SWE-1", "unique", 1, null);
+        var request = new CreatePositionRequest(_departmentId, "Software Engineer", "SWE-1", 1, null);
 
         var result = await _sut.Create(_legalEntityId, request, CancellationToken.None);
 
@@ -168,7 +168,6 @@ public sealed class PositionsControllerTests
                 c.DepartmentId == _departmentId &&
                 c.Name == "Software Engineer" &&
                 c.Code == "SWE-1" &&
-                c.PositionType == "unique" &&
                 c.MaxOccupancy == 1 &&
                 c.ReportsToPositionId == null),
             It.IsAny<CancellationToken>()), Times.Once);
@@ -188,7 +187,7 @@ public sealed class PositionsControllerTests
             .Setup(m => m.Send(It.IsAny<CreatePositionCommand>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<PositionResponse>.Conflict("Position code already exists in this legal entity."));
 
-        var request = new CreatePositionRequest(_departmentId, "Software Engineer", "SWE-1", "unique", 1, null);
+        var request = new CreatePositionRequest(_departmentId, "Software Engineer", "SWE-1", 1, null);
 
         var result = await _sut.Create(_legalEntityId, request, CancellationToken.None);
 
@@ -205,7 +204,7 @@ public sealed class PositionsControllerTests
             .Setup(m => m.Send(It.IsAny<UpdatePositionCommand>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<PositionResponse>.Success(updated));
 
-        var request = new UpdatePositionRequest(_departmentId, "Senior Software Engineer", "SSWE-1", "unique", 1, null);
+        var request = new UpdatePositionRequest(_departmentId, "Senior Software Engineer", "SSWE1", 1, null);
 
         var result = await _sut.Update(_legalEntityId, _positionId, request, CancellationToken.None);
 
@@ -215,8 +214,7 @@ public sealed class PositionsControllerTests
                 c.PositionId == _positionId &&
                 c.DepartmentId == _departmentId &&
                 c.Name == "Senior Software Engineer" &&
-                c.Code == "SSWE-1" &&
-                c.PositionType == "unique" &&
+                c.Code == "SSWE1" &&
                 c.MaxOccupancy == 1 &&
                 c.ReportsToPositionId == null),
             It.IsAny<CancellationToken>()), Times.Once);
@@ -232,7 +230,7 @@ public sealed class PositionsControllerTests
             .Setup(m => m.Send(It.IsAny<UpdatePositionCommand>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<PositionResponse>.Conflict("Position cannot report to itself."));
 
-        var request = new UpdatePositionRequest(_departmentId, "Senior Software Engineer", "SSWE-1", "unique", 1, _positionId);
+        var request = new UpdatePositionRequest(_departmentId, "Senior Software Engineer", "SSWE1", 1, _positionId);
 
         var result = await _sut.Update(_legalEntityId, _positionId, request, CancellationToken.None);
 

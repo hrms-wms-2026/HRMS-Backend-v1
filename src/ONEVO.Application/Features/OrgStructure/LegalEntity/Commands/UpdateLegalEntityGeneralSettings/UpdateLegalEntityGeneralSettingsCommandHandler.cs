@@ -83,6 +83,8 @@ public class UpdateLegalEntityGeneralSettingsCommandHandler
         entity.DefaultLanguage = request.DefaultLanguage.Trim();
         entity.DateFormat = request.DateFormat.Trim();
         entity.TimeFormat = request.TimeFormat.Trim();
+        entity.WorkStartTime = request.WorkStartTime;
+        entity.WorkEndTime = request.WorkEndTime;
         entity.IsActive = newIsActive;
         entity.UpdatedAt = _dateTimeProvider.UtcNow;
 

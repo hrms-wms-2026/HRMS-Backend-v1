@@ -36,7 +36,9 @@ public class GetLegalEntityGeneralSettingsQueryHandlerTests
             Name = "Acme Lanka",
             CountryCode = "LKA",
             CurrencyCode = "LKR",
-            IsActive = true
+            IsActive = true,
+            WorkStartTime = new TimeOnly(9, 0),
+            WorkEndTime = new TimeOnly(17, 30)
         };
         _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entity);
@@ -47,6 +49,8 @@ public class GetLegalEntityGeneralSettingsQueryHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value!.Id.Should().Be(entity.Id);
         result.Value.Status.Should().Be("active");
+        result.Value.WorkStartTime.Should().Be(new TimeOnly(9, 0));
+        result.Value.WorkEndTime.Should().Be(new TimeOnly(17, 30));
     }
 
     [Fact]

@@ -3,6 +3,7 @@
 **Purpose:** Approved designs, produced by `superpowers:brainstorming`, that a `docs/superpowers/plans/` implementation plan is then built from. This folder had no `SUMMARY.md` until 2026-08-06, when it was also split into `finished/`/`next/` (mirroring the `plans/` restructure — see `docs/superpowers/rules/FILE_CREATION_RULES.md`).
 
 **Last updated:** 2026-08-13
+**Last updated:** 2026-08-10
 
 ## Layout
 
@@ -22,7 +23,9 @@ Every file here says `**Status:** Approved...` at the top — that field is the 
 | `finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve-design.md` | finished | `plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md` (18/18 tasks, executed 2026-08-08) |
 | `next/2026-08-03-platform-users-list-design.md` | pending | none written yet — design-approved 2026-08-03, no plan file exists in `plans/` under either `finished/` or `next/` |
 | `next/2026-08-07-work-management-objective-subtree-design.md` | **drift** | its plan, `plans/next/2026-08-07-work-management-objective-subtree.md`, already shipped (git commits `2a77bbc`..`b900ec5`, 2026-08-07) but neither the plan nor this design were ever moved to `finished/` — flagged, not fixed, during the 2026-08-08 pass (out of that session's scope) |
+| `next/2026-08-12-objective-viewmodel-owner-fields-fix-design.md` | pending | none written yet — approved 2026-08-12, companion to the frontend repo's `2026-08-12-milestone-tree-mockup-redesign-design.md` |
 | `finished/2026-08-08/2026-08-08-work-management-my-project-milestones-design.md` | finished | `plans/finished/2026-08-08/2026-08-08-work-management-my-project-milestones.md` (5/5 tasks, executed 2026-08-08) |
+| `finished/2026-08-10/2026-08-10-milestone-ownership-and-subtree-access-design.md` | finished | `plans/finished/2026-08-10/2026-08-10-milestone-ownership-and-subtree-access.md` (2/2 tasks, executed 2026-08-10) |
 
 | `next/2026-08-13-verified-employee-check-in-design.md` | pending | four-part plan under `plans/next/2026-08-13-verified-employee-check-in/`; live AWS/hardware gate and Parts 2-4 remain |
 | `next/2026-08-13-tray-monitoring-completion-roadmap-design.md` | pending | approved master roadmap; detailed plans execute one milestone at a time |
@@ -34,3 +37,4 @@ Every file here says `**Status:** Approved...` at the top — that field is the 
 
 - `platform-users-list-design.md` has been sitting approved-but-unplanned since 2026-08-03 with no corresponding plan file anywhere in `plans/` — worth checking with the user whether it's still wanted, or was superseded/abandoned silently.
 - `2026-08-07-work-management-objective-subtree-design.md`/its plan need a finished/next status sync — see the "drift" row above.
+- Two loose design files sit directly in `specs/` root, not yet filed into `next/`/`finished/` per the folder/status split this table otherwise follows: `2026-08-06-invite-platform-manager-design.md` and `2026-08-07-legal-entity-logo-upload-design.md`. Checked 2026-08-10: both designs are fully implemented in code already (their plans just have unticked checkboxes) — this is a bookkeeping-only gap, not in-flight work. Not fixed here, out of this session's scope; flagged so it isn't lost again.

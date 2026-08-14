@@ -25,4 +25,11 @@ public static class ManagementCoverageRecordMapper
             entity.IsLocked,
             entity.Status);
     }
+
+    // Mirrors the frontend's formatResponsibilityLabel: order 1 is Primary Manager, every order
+    // above that is "Backup Manager" numbered from 1 (order 2 = Backup Manager 1, order 3 = Backup
+    // Manager 2, ...). Used to phrase user-safe conflict messages without exposing ownerOrder or
+    // any DB constraint/index name.
+    public static string ResponsibilityLevelLabel(int ownerOrder) =>
+        ownerOrder <= 1 ? "Primary Manager" : $"Backup Manager {ownerOrder - 1}";
 }

@@ -539,6 +539,51 @@ Rules:
 - Tenant-owned entities must implement `ITenantOwnedEntity`.
 - Raw SQL must preserve tenant boundaries.
 
+#### 3.3.1 RLS Policy Coverage Convention (mandatory)
+
+Every migration that creates a table for an entity implementing `ITenantOwnedEntity` must enable PostgreSQL RLS for that table **in the same migration**, using the shared convention already established by `AddRlsPolicies`, `AddMissingRlsPolicies`, and `AddConfigurationTemplateApplicationsRlsPolicy`:
+
+```csharp
+private static readonly string[] TenantTables =
+[
+    "your_new_table"
+];
+
+protected override void Up(MigrationBuilder migrationBuilder)
+{
+    foreach (var table in TenantTables)
+    {
+        migrationBuilder.Sql($@"
+            ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE {table} FORCE ROW LEVEL SECURITY;
+            DROP POLICY IF EXISTS tenant_isolation ON {table};
+            CREATE POLICY tenant_isolation ON {table}
+                USING (
+                    current_setting('app.tenant_context_mode', true) = 'admin'
+                    OR (
+                        current_setting('app.tenant_context_mode', true) = 'tenant'
+                        AND tenant_id::text = current_setting('app.current_tenant_id', true)
+                    )
+                )
+                WITH CHECK (
+                    current_setting('app.tenant_context_mode', true) = 'admin'
+                    OR (
+                        current_setting('app.tenant_context_mode', true) = 'tenant'
+                        AND tenant_id::text = current_setting('app.current_tenant_id', true)
+                    )
+                );
+        ");
+    }
+}
+```
+
+Why this exact shape is mandatory, not just SQL correctness: `TenantIsolationArchitectureTests.EveryTenantOwnedEntityTable_HasRlsPolicyCoverage` proves RLS coverage without a live database — it scans migration **source text** for the literal pattern `TenantTables = [...]` inside a file that also contains `CREATE POLICY tenant_isolation`, and treats every table name found there as covered. It cannot see policies that exist only in the live database.
+
+- Writing the `CREATE POLICY`/`ENABLE ROW LEVEL SECURITY` SQL directly (without a `TenantTables` array + `foreach` loop) creates a table that is genuinely RLS-protected in Postgres but **invisible to the architecture test**, which will then fail with `EveryTenantOwnedEntityTable_HasRlsPolicyCoverage` listing your table as uncovered — even though the policy works.
+- This has happened twice: `tenant_configuration_template_applications` (fixed by `AddConfigurationTemplateApplicationsRlsPolicy`) and `objective_change_requests` (fixed by `AddObjectiveChangeRequestsRlsPolicyCoverage`, 2026-08-10) both had correct inline RLS SQL that the test couldn't parse.
+- If you inherit a migration that already has inline RLS SQL outside this convention, do not just delete/rewrite an already-applied migration — add a new, idempotent migration (the SQL above is safe to reissue: `DROP POLICY IF EXISTS` + `ENABLE ROW LEVEL SECURITY` are no-ops if already applied) that expresses the same table through the `TenantTables` convention, exactly like the two fixes above.
+- Before adding a migration for a new tenant-owned table, run `dotnet test tests/ONEVO.Tests.Architecture` locally — this test is the only signal that catches this class of gap; it is not caught by build, unit tests, or a working feature demo.
+
 ### 3.4 Authentication and Authorization
 
 #### Tenant User Authentication
@@ -877,7 +922,7 @@ Rules:
 7. Add mappers for repeated or non-trivial mapping.
 8. Add repository/service interfaces only when needed.
 9. Add Infrastructure implementations under matching feature/subfeature path.
-10. Add EF configurations and migrations for schema changes.
+10. Add EF configurations and migrations for schema changes. If the new/changed entity implements `ITenantOwnedEntity`, its table's RLS policy must be added in the same migration through the `TenantTables` array convention — see §3.3.1. Raw inline `CREATE POLICY` SQL will not satisfy `TenantIsolationArchitectureTests`.
 11. Add or update controller endpoints.
 12. Add authorization policy or permission filter.
 13. Check tenant context and tenant isolation.
@@ -1409,11 +1454,14 @@ Architecture tests must protect:
 - Dependency direction.
 - Clean Architecture boundaries.
 - Module boundaries.
-- Tenant-isolation rules.
+- Tenant-isolation rules, including RLS coverage — see §3.3.1 for the mandatory migration shape this depends on.
 - No controller-to-DbContext access.
 - No Application dependency on Infrastructure implementations.
+- Retirement of removed Domain fields (e.g. the legacy `Employee.ManagerId`/`JobTitleId` guard in `EmployeeLegacyFieldRetirementArchitectureTests`), so a retired field cannot silently come back through Application/Infrastructure code.
 
 Coverage target: at least 70% on business logic, with higher coverage expected for critical backend modules.
+
+**Writing source-text-scanning guard tests (e.g. retired-field or forbidden-API checks):** match on identifier word boundaries (`\bManagerId\b`), not `string.Contains`. A plain substring check also matches inside unrelated, legitimately-named identifiers that merely contain the same characters — e.g. a check for `ManagerId` (guarding the retired `Employee.ManagerId`) previously false-matched `Objective.ReportingManagerId`, an unrelated field with its own meaning. This blocked CI until the check was changed to `Regex.IsMatch(text, @"\b(ManagerId|JobTitleId)\b")`. When adding a new field, a name that happens to end with a retired/forbidden identifier's exact spelling (e.g. anything ending in `...ManagerId`) will still not trip a word-boundary check, but would trip a naive `Contains` one — keep guard tests on word boundaries so future field names aren't accidentally constrained by old substring collisions.
 
 ---
 

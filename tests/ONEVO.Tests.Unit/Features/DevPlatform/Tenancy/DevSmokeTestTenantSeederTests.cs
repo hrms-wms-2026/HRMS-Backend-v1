@@ -686,6 +686,15 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
         // Platform baseline capabilities must never appear as subscribed product modules.
         acmeModules.Should().NotContain(["auth", "configuration", "roles", "notifications"]);
         dapiModules.Should().NotContain(["auth", "configuration", "roles", "notifications"]);
+
+        // Guards the "trialing" status literal hardcoded in SeedTenantSubscriptionAsync: if this
+        // ever drifts from SubscriptionStatusRules.ActiveStatuses, GetLatestActiveByTenantIdAsync
+        // stops finding the subscription at all and every seeded tenant becomes storage_not_entitled
+        // (and loses every other subscription-gated entitlement) even with correct module data.
+        ONEVO.Application.Features.DevPlatform.Subscription.Helpers.SubscriptionStatusRules.ActiveStatuses
+            .Should().Contain(acmeSubscription.Status);
+        ONEVO.Application.Features.DevPlatform.Subscription.Helpers.SubscriptionStatusRules.ActiveStatuses
+            .Should().Contain(dapiSubscription.Status);
     }
 
     [Fact]
@@ -736,6 +745,106 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
 
         ownerCodes.Should().Contain("org:read");
         ownerCodes.Should().Contain("org:manage");
+    }
+
+    [Fact]
+    public async Task SeedAsync_AcmeAndDapiSubscriptionsHaveExplicitDevSeatPolicy()
+    {
+        using var db = CreateContext();
+        await RunSeederAsync(db);
+
+        using var verify = CreateContext();
+        var acmeTenant = await verify.Tenants.SingleAsync(t => t.Slug == "acme");
+        var dapiTenant = await verify.Tenants.SingleAsync(t => t.Slug == "dapi");
+        var acmeSubscription = await verify.TenantSubscriptions.SingleAsync(s => s.TenantId == acmeTenant.Id);
+        var dapiSubscription = await verify.TenantSubscriptions.SingleAsync(s => s.TenantId == dapiTenant.Id);
+
+        acmeSubscription.IncludedSeats.Should().Be(25);
+        acmeSubscription.OverageAllowed.Should().BeFalse();
+        dapiSubscription.IncludedSeats.Should().Be(25);
+        dapiSubscription.OverageAllowed.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SeedAsync_FillsInMissingSeatPolicy_OnAPreExistingSubscriptionRowFromBeforeThisFix()
+    {
+        using (var first = CreateContext())
+        {
+            await RunSeederAsync(first);
+        }
+
+        Guid acmeTenantId;
+        using (var stale = CreateContext())
+        {
+            acmeTenantId = (await stale.Tenants.SingleAsync(t => t.Slug == "acme")).Id;
+            var subscription = await stale.TenantSubscriptions.SingleAsync(s => s.TenantId == acmeTenantId);
+
+            // Simulates a dev database seeded by the pre-fix seeder build, where the subscription
+            // row already exists but IncludedSeats/OverageAllowed were never populated.
+            subscription.IncludedSeats = null;
+            subscription.OverageAllowed = null;
+            await stale.SaveChangesAsync();
+        }
+
+        using (var second = CreateContext())
+        {
+            await RunSeederAsync(second);
+        }
+
+        using var verify = CreateContext();
+        var subscriptionAfter = await verify.TenantSubscriptions.SingleAsync(s => s.TenantId == acmeTenantId);
+
+        subscriptionAfter.IncludedSeats.Should().Be(25);
+        subscriptionAfter.OverageAllowed.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SeedAsync_NeverOverwritesAnExplicitNonNullSeatPolicyAlreadyOnTheRow()
+    {
+        using (var first = CreateContext())
+        {
+            await RunSeederAsync(first);
+        }
+
+        Guid acmeTenantId;
+        using (var custom = CreateContext())
+        {
+            acmeTenantId = (await custom.Tenants.SingleAsync(t => t.Slug == "acme")).Id;
+            var subscription = await custom.TenantSubscriptions.SingleAsync(s => s.TenantId == acmeTenantId);
+
+            // An explicit value already set (e.g. manually adjusted for a specific local scenario)
+            // must survive re-seeding untouched.
+            subscription.IncludedSeats = 3;
+            subscription.OverageAllowed = true;
+            await custom.SaveChangesAsync();
+        }
+
+        using (var second = CreateContext())
+        {
+            await RunSeederAsync(second);
+        }
+
+        using var verify = CreateContext();
+        var subscriptionAfter = await verify.TenantSubscriptions.SingleAsync(s => s.TenantId == acmeTenantId);
+
+        subscriptionAfter.IncludedSeats.Should().Be(3);
+        subscriptionAfter.OverageAllowed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SeedAsync_AcmeSubscriptionSeatEntitlementApproves_BecauseSeededHeadroomExceedsSeededEmployees()
+    {
+        using var db = CreateContext();
+        await RunSeederAsync(db);
+
+        using var verify = CreateContext();
+        var acmeTenant = await verify.Tenants.SingleAsync(t => t.Slug == "acme");
+        var seatEntitlementService = new ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement.SeatEntitlementService(verify);
+
+        var decision = await seatEntitlementService.EvaluateAsync(acmeTenant.Id, CancellationToken.None);
+
+        decision.Status.Should().Be(SeatDecisionStatus.Approved);
+        decision.PurchasedSeats.Should().Be(25);
     }
 
     [Fact]

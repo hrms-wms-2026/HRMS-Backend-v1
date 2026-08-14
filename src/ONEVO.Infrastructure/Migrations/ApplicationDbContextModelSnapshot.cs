@@ -1369,11 +1369,19 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDefaultValue(true)
                         .HasColumnName("is_active");
 
+                    b.Property<Guid?>("LegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_entity_id");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
+
+                    b.Property<Guid?>("PositionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("position_id");
 
                     b.Property<string>("TasksJson")
                         .IsRequired()
@@ -1396,11 +1404,23 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("DepartmentId")
                         .HasDatabaseName("ix_checklist_templates_department_id");
 
+                    b.HasIndex("LegalEntityId")
+                        .HasDatabaseName("ix_checklist_templates_legal_entity_id");
+
+                    b.HasIndex("PositionId")
+                        .HasDatabaseName("ix_checklist_templates_position_id");
+
                     b.HasIndex("TenantId", "DepartmentId")
                         .HasDatabaseName("ix_checklist_templates_tenant_id_department_id");
 
+                    b.HasIndex("TenantId", "PositionId")
+                        .HasDatabaseName("ix_checklist_templates_tenant_id_position_id");
+
                     b.HasIndex("TenantId", "TemplateType", "IsActive")
                         .HasDatabaseName("ix_checklist_templates_tenant_id_template_type_is_active");
+
+                    b.HasIndex("TenantId", "LegalEntityId", "TemplateType", "IsActive")
+                        .HasDatabaseName("ix_checklist_templates_tenant_id_legal_entity_id_template_type");
 
                     b.ToTable("checklist_templates", (string)null);
                 });
@@ -1554,6 +1574,12 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid>("EmployeeId")
                         .HasColumnType("uuid")
                         .HasColumnName("employee_id");
+
+                    b.Property<bool>("IsRequired")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_required");
 
                     b.Property<string>("LifecycleType")
                         .IsRequired()
@@ -4889,6 +4915,14 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("website");
 
+                    b.Property<TimeOnly?>("WorkEndTime")
+                        .HasColumnType("time")
+                        .HasColumnName("work_end_time");
+
+                    b.Property<TimeOnly?>("WorkStartTime")
+                        .HasColumnType("time")
+                        .HasColumnName("work_start_time");
+
                     b.HasKey("Id")
                         .HasName("pk_legal_entities");
 
@@ -4922,6 +4956,8 @@ namespace ONEVO.Infrastructure.Migrations
                             t.HasCheckConstraint("ck_legal_entities_time_format", "time_format IN ('12h', '24h')");
 
                             t.HasCheckConstraint("ck_legal_entities_week_start_day", "week_start_day BETWEEN 1 AND 7");
+
+                            t.HasCheckConstraint("ck_legal_entities_work_time_pair", "(work_start_time IS NULL AND work_end_time IS NULL) OR (work_start_time IS NOT NULL AND work_end_time IS NOT NULL AND work_start_time < work_end_time)");
                         });
                 });
 
@@ -5039,8 +5075,8 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("id");
 
                     b.Property<string>("Code")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)")
                         .HasColumnName("code");
 
                     b.Property<DateTimeOffset>("CreatedAt")
@@ -7923,6 +7959,18 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("DepartmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_checklist_templates_departments_department_id");
+
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("LegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_checklist_templates_legal_entities_legal_entity_id");
+
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.Position", null)
+                        .WithMany()
+                        .HasForeignKey("PositionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_checklist_templates_positions_position_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeChecklistTask", b =>

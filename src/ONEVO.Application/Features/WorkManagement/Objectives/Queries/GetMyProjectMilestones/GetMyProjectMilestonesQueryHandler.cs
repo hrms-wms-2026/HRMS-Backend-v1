@@ -72,7 +72,7 @@ public class GetMyProjectMilestonesQueryHandler : IRequestHandler<GetMyProjectMi
                 objective.OwnerId, ownerName, objective.ReportingManagerId, reportingManagerName,
                 objective.StartDate, objective.EndDate, objective.AllocatedHours, objective.CompletedHours,
                 objective.IsActive, objective.IsAchieved, objective.AchievedAt,
-                membership.IsActive, membership.RemovedAt));
+                membership.IsActive, membership.RemovedAt, objective.OwnerId == userId));
         }
 
         return Result<IReadOnlyList<MyProjectMilestoneResponse>>.Success(items);

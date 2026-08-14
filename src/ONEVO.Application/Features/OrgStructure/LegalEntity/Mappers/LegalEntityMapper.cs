@@ -42,7 +42,9 @@ public static class LegalEntityMapper
             entity.DefaultLanguage,
             entity.DateFormat,
             entity.TimeFormat,
-            entity.IsActive ? "active" : "inactive");
+            entity.IsActive ? "active" : "inactive",
+            entity.WorkStartTime,
+            entity.WorkEndTime);
     }
 
     public static IReadOnlyList<int> ParseStandardWorkingDays(string standardWorkingDaysJson)

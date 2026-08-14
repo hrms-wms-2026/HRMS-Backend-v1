@@ -13,13 +13,16 @@ Gets a single milestone by id.
 
 `200 OK`
 
+Added 2026-08-10: `ownerName`, `reportingManagerName` (resolved server-side, `null` if the referenced employee record can't be found), and `isOwner` (true when the caller is the milestone's owner) — added for the Project Detail milestone tree view's detail panel.
+
 ```json
 {
   "id": "guid", "projectId": "guid", "parentObjectiveId": "guid|null", "isDefault": false,
   "title": "string", "description": "string|null", "ownerId": "guid", "reportingManagerId": "guid|null",
   "createdById": "guid", "startDate": "date", "endDate": "date", "progress": 0, "actualHours": "decimal|null",
   "allocatedHours": "decimal", "completedHours": "decimal", "isActive": true, "isAchieved": false,
-  "achievedAt": "datetime|null", "createdAt": "datetime", "updatedAt": "datetime|null"
+  "achievedAt": "datetime|null", "createdAt": "datetime", "updatedAt": "datetime|null",
+  "ownerName": "string|null", "reportingManagerName": "string|null", "isOwner": false
 }
 ```
 

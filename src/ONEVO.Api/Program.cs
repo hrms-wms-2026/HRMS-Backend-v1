@@ -4,6 +4,7 @@ using ONEVO.Api.Configuration;
 using ONEVO.Api.Extensions;
 using ONEVO.Api.Middleware;
 using ONEVO.Application;
+using ONEVO.Application.Common.Json;
 using ONEVO.Infrastructure;
 using ONEVO.Infrastructure.Configuration;
 using Serilog;
@@ -34,7 +35,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddMemoryCache();
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new TimeOnlyHhMmJsonConverter()));
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddApiAuthentication(builder.Environment, builder.Configuration);
 builder.Services.AddApiAuthorization();

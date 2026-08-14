@@ -498,6 +498,196 @@ public sealed class EfPositionRepositoryTests
         Assert.Equal("In Scope", results[0].Name);
     }
 
+    // HasActiveCoverageConflictAsync is exercised everywhere else only through a Moq stub, so none
+    // of those tests actually run the query that decides whether "automatic reporting coverage
+    // counts as active coverage" - they just assert the handler reacts correctly to whatever the
+    // mock is told to return. These tests run the real EF query against a seeded database instead.
+
+    [Fact]
+    public async Task HasActiveCoverageConflictAsync_ReturnsTrue_WhenAutomaticReportingStructureRecordOccupiesSameOrder()
+    {
+        using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var coveredPositionId = Guid.NewGuid();
+        var automaticOwnerId = Guid.NewGuid();
+
+        db.Set<ManagementCoverageRecord>().Add(new ManagementCoverageRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LegalEntityId = legalEntityId,
+            OwnerPositionId = automaticOwnerId,
+            CoveredTargetType = ManagementCoverageRecord.TargetPosition,
+            CoveredPositionId = coveredPositionId,
+            OwnerOrder = 1,
+            Source = ManagementCoverageRecord.SourceReportingStructure,
+            IsLocked = true,
+            Status = ManagementCoverageRecord.StatusActive
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfPositionRepository(db);
+
+        var hasConflict = await repository.HasActiveCoverageConflictAsync(
+            tenantId, legalEntityId, ManagementCoverageRecord.TargetPosition, coveredPositionId, null, ownerOrder: 1);
+
+        Assert.True(hasConflict);
+    }
+
+    [Fact]
+    public async Task HasActiveCoverageConflictAsync_ReturnsTrue_WhenDifferentOwnerClaimsSameTargetAndOrder()
+    {
+        using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var coveredPositionId = Guid.NewGuid();
+        var firstOwnerId = Guid.NewGuid();
+        var secondOwnerId = Guid.NewGuid();
+
+        db.Set<ManagementCoverageRecord>().Add(new ManagementCoverageRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LegalEntityId = legalEntityId,
+            OwnerPositionId = firstOwnerId,
+            CoveredTargetType = ManagementCoverageRecord.TargetPosition,
+            CoveredPositionId = coveredPositionId,
+            OwnerOrder = 1,
+            Source = ManagementCoverageRecord.SourceManual,
+            IsLocked = false,
+            Status = ManagementCoverageRecord.StatusActive
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfPositionRepository(db);
+
+        // A second, different owner position tries to claim the same covered target at the same
+        // responsibility order (order = 1, i.e. Primary Manager) - must conflict regardless of who
+        // already owns it.
+        var hasConflict = await repository.HasActiveCoverageConflictAsync(
+            tenantId, legalEntityId, ManagementCoverageRecord.TargetPosition, coveredPositionId, null, ownerOrder: 1);
+
+        Assert.True(hasConflict);
+        Assert.NotEqual(firstOwnerId, secondOwnerId);
+    }
+
+    [Fact]
+    public async Task HasActiveCoverageConflictAsync_ReturnsFalse_WhenRequestedOrderIsDifferentFromTakenOrder()
+    {
+        using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var coveredPositionId = Guid.NewGuid();
+
+        db.Set<ManagementCoverageRecord>().Add(new ManagementCoverageRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LegalEntityId = legalEntityId,
+            OwnerPositionId = Guid.NewGuid(),
+            CoveredTargetType = ManagementCoverageRecord.TargetPosition,
+            CoveredPositionId = coveredPositionId,
+            OwnerOrder = 2, // Backup Manager 1
+            Source = ManagementCoverageRecord.SourceManual,
+            IsLocked = false,
+            Status = ManagementCoverageRecord.StatusActive
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfPositionRepository(db);
+
+        // Backup Manager 2 (order = 3) is a different responsibility level from the taken
+        // Backup Manager 1 (order = 2), so it must be allowed.
+        var hasConflict = await repository.HasActiveCoverageConflictAsync(
+            tenantId, legalEntityId, ManagementCoverageRecord.TargetPosition, coveredPositionId, null, ownerOrder: 3);
+
+        Assert.False(hasConflict);
+    }
+
+    [Fact]
+    public async Task HasActiveCoverageConflictAsync_ExcludesGivenRecordId_SoEditingItsOwnOrderIsNotAConflict()
+    {
+        using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var coveredPositionId = Guid.NewGuid();
+        var recordId = Guid.NewGuid();
+
+        db.Set<ManagementCoverageRecord>().Add(new ManagementCoverageRecord
+        {
+            Id = recordId,
+            TenantId = tenantId,
+            LegalEntityId = legalEntityId,
+            OwnerPositionId = Guid.NewGuid(),
+            CoveredTargetType = ManagementCoverageRecord.TargetPosition,
+            CoveredPositionId = coveredPositionId,
+            OwnerOrder = 2,
+            Source = ManagementCoverageRecord.SourceManual,
+            IsLocked = false,
+            Status = ManagementCoverageRecord.StatusActive
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfPositionRepository(db);
+
+        var hasConflict = await repository.HasActiveCoverageConflictAsync(
+            tenantId, legalEntityId, ManagementCoverageRecord.TargetPosition, coveredPositionId, null,
+            ownerOrder: 2, excludingRecordId: recordId);
+
+        Assert.False(hasConflict);
+    }
+
+    [Fact]
+    public async Task HasActiveCoverageConflictAsync_IgnoresRecords_FromOtherTenantOrOtherLegalEntity()
+    {
+        using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var coveredPositionId = Guid.NewGuid();
+
+        db.Set<ManagementCoverageRecord>().AddRange(
+            new ManagementCoverageRecord
+            {
+                Id = Guid.NewGuid(),
+                TenantId = Guid.NewGuid(), // different tenant, same covered position id by coincidence
+                LegalEntityId = legalEntityId,
+                OwnerPositionId = Guid.NewGuid(),
+                CoveredTargetType = ManagementCoverageRecord.TargetPosition,
+                CoveredPositionId = coveredPositionId,
+                OwnerOrder = 1,
+                Source = ManagementCoverageRecord.SourceReportingStructure,
+                IsLocked = true,
+                Status = ManagementCoverageRecord.StatusActive
+            },
+            new ManagementCoverageRecord
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                LegalEntityId = Guid.NewGuid(), // same tenant, different legal entity
+                OwnerPositionId = Guid.NewGuid(),
+                CoveredTargetType = ManagementCoverageRecord.TargetPosition,
+                CoveredPositionId = coveredPositionId,
+                OwnerOrder = 1,
+                Source = ManagementCoverageRecord.SourceReportingStructure,
+                IsLocked = true,
+                Status = ManagementCoverageRecord.StatusActive
+            });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfPositionRepository(db);
+
+        var hasConflict = await repository.HasActiveCoverageConflictAsync(
+            tenantId, legalEntityId, ManagementCoverageRecord.TargetPosition, coveredPositionId, null, ownerOrder: 1);
+
+        Assert.False(hasConflict);
+    }
+
     private static PositionEntity CreatePosition(Guid tenantId, Guid legalEntityId, string name, string code)
     {
         return new PositionEntity

@@ -74,4 +74,39 @@ public class EfProjectMemberRepository : IProjectMemberRepository
     {
         _db.ProjectMembers.Update(member);
     }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListDistinctActiveMemberUserIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, int takePerProject, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Guid>>();
+
+        var rows = await _db.ProjectMembers.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && projectIds.Contains(m.ProjectId) && m.IsActive)
+            .OrderBy(m => m.JoinedAt)
+            .Select(m => new { m.ProjectId, m.UserId })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(r => r.ProjectId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<Guid>)g.Select(r => r.UserId).Distinct().Take(takePerProject).ToList());
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, int>> CountDistinctActiveMembersAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0)
+            return new Dictionary<Guid, int>();
+
+        var rows = await _db.ProjectMembers.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && projectIds.Contains(m.ProjectId) && m.IsActive)
+            .Select(m => new { m.ProjectId, m.UserId })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(r => r.ProjectId)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.UserId).Distinct().Count());
+    }
 }

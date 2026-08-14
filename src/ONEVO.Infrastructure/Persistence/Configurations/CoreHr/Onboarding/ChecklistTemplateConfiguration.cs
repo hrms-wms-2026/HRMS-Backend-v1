@@ -16,7 +16,13 @@ public sealed class ChecklistTemplateConfiguration : IEntityTypeConfiguration<Ch
         builder.Property(x => x.IsActive).HasDefaultValue(true);
         builder.HasIndex(x => new { x.TenantId, x.TemplateType, x.IsActive });
         builder.HasIndex(x => new { x.TenantId, x.DepartmentId });
+        builder.HasIndex(x => new { x.TenantId, x.LegalEntityId, x.TemplateType, x.IsActive });
+        builder.HasIndex(x => new { x.TenantId, x.PositionId });
         builder.HasOne<ONEVO.Domain.Features.OrgStructure.Entities.Department>().WithMany()
             .HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity>().WithMany()
+            .HasForeignKey(x => x.LegalEntityId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ONEVO.Domain.Features.OrgStructure.Entities.Position>().WithMany()
+            .HasForeignKey(x => x.PositionId).OnDelete(DeleteBehavior.Restrict);
     }
 }

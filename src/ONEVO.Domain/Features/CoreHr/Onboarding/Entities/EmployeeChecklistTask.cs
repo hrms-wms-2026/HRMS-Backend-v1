@@ -15,6 +15,7 @@ public class EmployeeChecklistTask : ITenantOwnedEntity
     public int? Sequence { get; set; }
     public Guid AssignedToId { get; set; }
     public DateOnly DueDate { get; set; }
+    public bool IsRequired { get; set; } = true;
     public string Status { get; set; } = "pending";
     public DateTimeOffset? CompletedAt { get; set; }
 }
