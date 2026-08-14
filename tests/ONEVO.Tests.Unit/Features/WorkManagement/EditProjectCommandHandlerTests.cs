@@ -2,6 +2,7 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.EditProject;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -15,7 +16,8 @@ public class EditProjectCommandHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
-    private static readonly Guid OtherUserId = Guid.NewGuid();
+    private static readonly Guid EmployeeId = Guid.NewGuid();
+    private static readonly Guid OtherEmployeeId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid CategoryId = Guid.NewGuid();
@@ -27,7 +29,7 @@ public class EditProjectCommandHandlerTests
     private static Project ExistingProject(Guid? leadId = null) => new()
     {
         Id = ProjectId, TenantId = TenantId, CategoryId = CategoryId, Name = "Website Revamp",
-        Identifier = "WEB", LeadId = leadId ?? UserId, StartDate = new DateOnly(2026, 1, 1),
+        Identifier = "WEB", LeadId = leadId ?? EmployeeId, StartDate = new DateOnly(2026, 1, 1),
         TargetDate = new DateOnly(2026, 6, 1), IsActive = true, CreatedAt = DateTimeOffset.UtcNow
     };
 
@@ -35,7 +37,7 @@ public class EditProjectCommandHandlerTests
     {
         Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, IsDefault = true,
         Title = "Website Revamp", StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 6, 1),
-        OwnerId = UserId, CreatedAt = DateTimeOffset.UtcNow
+        OwnerId = EmployeeId, CreatedAt = DateTimeOffset.UtcNow
     };
 
     private (EditProjectCommandHandler Handler, Mock<IProjectRepository> Projects, Mock<IObjectiveRepository> Objectives) BuildHandler(
@@ -45,6 +47,9 @@ public class EditProjectCommandHandlerTests
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
+
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(EmployeeId);
 
         var projects = new Mock<IProjectRepository>();
         projects.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
@@ -59,7 +64,7 @@ public class EditProjectCommandHandlerTests
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var handler = new EditProjectCommandHandler(currentUser.Object, projects.Object, objectives.Object, categories.Object, unitOfWork.Object);
+        var handler = new EditProjectCommandHandler(currentUser.Object, identity.Object, projects.Object, objectives.Object, categories.Object, unitOfWork.Object);
         return (handler, projects, objectives);
     }
 
@@ -152,7 +157,7 @@ public class EditProjectCommandHandlerTests
     [Fact]
     public async Task Handle_NonLeadCaller_ReturnsForbidden()
     {
-        var (handler, _, _) = BuildHandler(ExistingProject(leadId: OtherUserId), ExistingDefaultObjective());
+        var (handler, _, _) = BuildHandler(ExistingProject(leadId: OtherEmployeeId), ExistingDefaultObjective());
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 

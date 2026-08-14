@@ -6,6 +6,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectLogo;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -21,10 +22,12 @@ public class GetProjectLogoQueryHandlerTests
     private readonly Mock<IProjectMemberRepository> _members = new();
     private readonly Mock<IPermissionResolver> _permissionResolver = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
+    private readonly Mock<ICallerIdentityResolver> _identity = new();
     private readonly Mock<IFileStorageService> _fileStorage = new();
 
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
+    private static readonly Guid EmployeeId = Guid.NewGuid();
 
     private static Project MakeProject(Guid id) => new()
     {
@@ -37,10 +40,11 @@ public class GetProjectLogoQueryHandlerTests
         _currentUser.SetupGet(c => c.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(c => c.TenantId).Returns(TenantId);
         _currentUser.SetupGet(c => c.UserId).Returns(UserId);
+        _identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(EmployeeId);
     }
 
     private GetProjectLogoQueryHandler BuildHandler() =>
-        new(_projects.Object, _entityAssets.Object, _members.Object, _permissionResolver.Object, _currentUser.Object, _fileStorage.Object);
+        new(_projects.Object, _entityAssets.Object, _members.Object, _permissionResolver.Object, _currentUser.Object, _identity.Object, _fileStorage.Object);
 
     [Fact]
     public async Task Handle_ProjectNotFound_ReturnsNotFound()
@@ -66,7 +70,7 @@ public class GetProjectLogoQueryHandlerTests
             .ReturnsAsync(project);
         _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<string>());
-        _members.Setup(r => r.HasActiveMembershipAsync(TenantId, project.Id, UserId, It.IsAny<CancellationToken>()))
+        _members.Setup(r => r.HasActiveMembershipAsync(TenantId, project.Id, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var result = await BuildHandler().Handle(new GetProjectLogoQuery(project.Id), CancellationToken.None);
@@ -129,7 +133,7 @@ public class GetProjectLogoQueryHandlerTests
             .ReturnsAsync(project);
         _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<string>());
-        _members.Setup(r => r.HasActiveMembershipAsync(TenantId, project.Id, UserId, It.IsAny<CancellationToken>()))
+        _members.Setup(r => r.HasActiveMembershipAsync(TenantId, project.Id, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
                 TenantId, "project", It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(project.Id)), "project_cover", It.IsAny<CancellationToken>()))
