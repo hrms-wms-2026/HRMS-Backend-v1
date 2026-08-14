@@ -2,6 +2,7 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
@@ -17,25 +18,34 @@ namespace ONEVO.Tests.Unit.Features.WorkManagement;
 public class AchieveObjectiveCommandHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
-    private static readonly Guid HeadId = Guid.NewGuid();
+    private static readonly Guid HeadUserId = Guid.NewGuid();
+    private static readonly Guid HeadEmployeeId = Guid.NewGuid();
     private static readonly Guid OtherUserId = Guid.NewGuid();
+    private static readonly Guid OtherEmployeeId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
 
     private static Objective SubObjective(Guid createdById, bool isDefault = false, bool isAchieved = false) => new()
     {
         Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, IsDefault = isDefault, Title = "Sub",
-        OwnerId = HeadId, ReportingManagerId = createdById, CreatedById = createdById, IsActive = true, IsAchieved = isAchieved,
+        OwnerId = HeadEmployeeId, ReportingManagerId = createdById, CreatedById = createdById, IsActive = true, IsAchieved = isAchieved,
         StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), CreatedAt = DateTimeOffset.UtcNow
     };
 
     private (AchieveObjectiveCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IObjectiveChangeRequestRepository> Requests, Mock<IMilestoneMembershipCoordinator> Membership) BuildHandler(
         Objective? objective, List<Objective>? unachievedChildren = null, bool hasPending = false, Guid? callerId = null)
     {
+        var resolvedCallerUserId = callerId ?? HeadUserId;
+        var resolvedCallerEmployeeId = resolvedCallerUserId == OtherUserId ? OtherEmployeeId : HeadEmployeeId;
+
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(callerId ?? HeadId);
+        currentUser.SetupGet(x => x.UserId).Returns(resolvedCallerUserId);
+
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, resolvedCallerUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(resolvedCallerEmployeeId);
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
@@ -46,28 +56,28 @@ public class AchieveObjectiveCommandHandlerTests
         requests.Setup(x => x.HasPendingForObjectiveAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(hasPending);
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
-        membership.Setup(x => x.HasOtherActiveAccessAsync(TenantId, ProjectId, HeadId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        membership.Setup(x => x.HasOtherActiveAccessAsync(TenantId, ProjectId, HeadEmployeeId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveChangeOutcomeResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<ObjectiveChangeOutcomeResponse>>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var handler = new AchieveObjectiveCommandHandler(currentUser.Object, objectives.Object, requests.Object, membership.Object, unitOfWork.Object);
+        var handler = new AchieveObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, requests.Object, membership.Object, unitOfWork.Object);
         return (handler, objectives, requests, membership);
     }
 
     [Fact]
     public async Task Handle_CreatorHeadAchieves_AppliesImmediately()
     {
-        var (handler, objectives, requests, membership) = BuildHandler(SubObjective(createdById: HeadId));
+        var (handler, objectives, requests, membership) = BuildHandler(SubObjective(createdById: HeadUserId));
 
         var result = await handler.Handle(new AchieveObjectiveCommand(ObjectiveId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value!.Applied);
         objectives.Verify(x => x.Update(It.Is<Objective>(o => o.IsAchieved && o.AchievedAt != null)), Times.Once);
-        membership.Verify(x => x.DeactivateMembershipAsync(TenantId, ProjectId, ObjectiveId, HeadId, It.IsAny<CancellationToken>()), Times.Once);
+        membership.Verify(x => x.DeactivateMembershipAsync(TenantId, ProjectId, ObjectiveId, HeadEmployeeId, It.IsAny<CancellationToken>()), Times.Once);
         requests.Verify(x => x.AddAsync(It.IsAny<ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -89,7 +99,7 @@ public class AchieveObjectiveCommandHandlerTests
     public async Task Handle_DirectChildNotAchieved_ReturnsBadRequest()
     {
         var unachievedChild = new Objective { Id = Guid.NewGuid(), TenantId = TenantId, IsAchieved = false, IsActive = true };
-        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: HeadId), unachievedChildren: new List<Objective> { unachievedChild });
+        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: HeadUserId), unachievedChildren: new List<Objective> { unachievedChild });
 
         var result = await handler.Handle(new AchieveObjectiveCommand(ObjectiveId), CancellationToken.None);
 
@@ -100,7 +110,7 @@ public class AchieveObjectiveCommandHandlerTests
     [Fact]
     public async Task Handle_AlreadyAchieved_ReturnsConflict()
     {
-        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: HeadId, isAchieved: true));
+        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: HeadUserId, isAchieved: true));
 
         var result = await handler.Handle(new AchieveObjectiveCommand(ObjectiveId), CancellationToken.None);
 
@@ -122,7 +132,7 @@ public class AchieveObjectiveCommandHandlerTests
     [Fact]
     public async Task Handle_DefaultObjective_ReturnsBadRequest()
     {
-        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: HeadId, isDefault: true));
+        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: HeadUserId, isDefault: true));
 
         var result = await handler.Handle(new AchieveObjectiveCommand(ObjectiveId), CancellationToken.None);
 
