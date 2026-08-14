@@ -178,6 +178,27 @@ public sealed class WorkManagementSampleDataSeederDapiGuardTests : IDisposable
         acmeSmkProjectCount.Should().BeGreaterThan(0); // proves the guard is dapi-specific, not global
     }
 
+    [Fact]
+    public async Task SeedAsync_EveryObjectiveOwnerId_HasMatchingEmployeeRecord()
+    {
+        // Arrange - seed via the real seeder, exactly as production startup does.
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+
+        var tenantContext = new TenantContextAccessor();
+        await WorkManagementSampleDataSeeder.SeedAsync(db, tenantContext, CancellationToken.None);
+
+        using var verify = CreateContext();
+
+        // Act
+        var objectives = await verify.Objectives.AsNoTracking().ToListAsync();
+        var employeeIds = await verify.Employees.AsNoTracking().Select(e => e.Id).ToListAsync();
+
+        // Assert - every seeded OwnerId must be a real Employee.Id, never a bare UserId.
+        objectives.Should().NotBeEmpty();
+        Assert.All(objectives, o => Assert.Contains(o.OwnerId, employeeIds));
+    }
+
     private sealed class TestClock : IDateTimeProvider
     {
         public DateTimeOffset UtcNow { get; } = new(2026, 8, 2, 12, 0, 0, TimeSpan.Zero);

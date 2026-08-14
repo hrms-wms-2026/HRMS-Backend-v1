@@ -14,9 +14,9 @@ public class ProjectMemberInvitationConfiguration : IEntityTypeConfiguration<Pro
         builder.HasKey(i => i.Id);
         builder.Property(i => i.Status).HasMaxLength(20).IsRequired();
 
-        builder.HasIndex(i => new { i.TenantId, i.InvitedUserId, i.Status })
-            .HasDatabaseName("ix_project_member_invitations_tenant_invited_user_status");
-        builder.HasIndex(i => new { i.TenantId, i.ProjectId, i.ObjectiveId, i.InvitedUserId })
+        builder.HasIndex(i => new { i.TenantId, i.InvitedEmployeeId, i.Status })
+            .HasDatabaseName("ix_project_member_invitations_tenant_invited_employee_status");
+        builder.HasIndex(i => new { i.TenantId, i.ProjectId, i.ObjectiveId, i.InvitedEmployeeId })
             .IsUnique()
             .HasFilter("status = 'pending'")
             .HasDatabaseName("ix_project_member_invitations_one_pending");

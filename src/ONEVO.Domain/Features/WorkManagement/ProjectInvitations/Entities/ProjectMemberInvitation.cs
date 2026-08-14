@@ -15,7 +15,6 @@ public class ProjectMemberInvitation : BaseEntity
 {
     public Guid ProjectId { get; set; }
     public Guid ObjectiveId { get; set; }
-    public Guid InvitedUserId { get; set; }
     public Guid InvitedEmployeeId { get; set; }
     public string Status { get; set; } = ProjectInvitationStatuses.Pending;
     public Guid InvitedById { get; set; }
