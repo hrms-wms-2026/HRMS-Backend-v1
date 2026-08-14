@@ -2,6 +2,8 @@
 
 **Status:** Designed, pending implementation planning.
 
+**Amendment (2026-08-14, post-plan):** the frontend's only people-search source (`GET /api/v1/employees`, Core HR) returns Employee ids, never `userId` — a mismatch discovered while writing the implementation plan. Resolved: `AddObjectiveMemberRequest`, `TransferObjectiveHeadRequest`, and `CreateObjectiveRequest`'s member/leader fields now accept `employeeId` (tenant + employee id is already a unique identifier) instead of `userId`. Handlers resolve the linked `Employee.UserId` internally before writing to any `userId`-typed column — `ProjectMemberInvitation` already stores both `InvitedUserId` and `InvitedEmployeeId`, so no entity/table change, only the request contracts and the handlers' resolution direction. See the implementation plan for the exact diff.
+
 **Scope guardrail:** Work Management module only — `ONEVO.Domain/Features/WorkManagement/*`, `ONEVO.Application/Features/WorkManagement/*`, `ONEVO.Api/Controllers/Tenant/WorkManagement/*`, related EF migrations/configurations, `docs/postman-request/Work Management/`. Do not touch Core HR (`EmployeesController` etc.), Org Structure, or any other module — those are a teammate's active work. `GET /api/v1/employees` is consumed read-only (as the frontend's people-picker source) and never modified.
 
 **Origin:** brainstormed live with the user 2026-08-14 via `superpowers:brainstorming`.
