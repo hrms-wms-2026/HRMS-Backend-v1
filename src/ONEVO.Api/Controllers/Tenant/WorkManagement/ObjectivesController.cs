@@ -98,7 +98,7 @@ public class ObjectivesController : ControllerBase
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Transfer(Guid id, [FromBody] TransferObjectiveHeadRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new TransferObjectiveHeadCommand(id, request.NewHeadUserId), ct);
+        var result = await _mediator.Send(new TransferObjectiveHeadCommand(id, request.NewHeadEmployeeId), ct);
 
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
