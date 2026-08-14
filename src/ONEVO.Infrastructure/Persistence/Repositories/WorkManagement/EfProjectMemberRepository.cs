@@ -15,58 +15,52 @@ public class EfProjectMemberRepository : IProjectMemberRepository
         await _db.ProjectMembers.AddAsync(member, ct);
     }
 
-    public async Task<bool> HasActiveMembershipAsync(Guid tenantId, Guid projectId, Guid userId, CancellationToken ct = default)
+    public async Task<bool> HasActiveMembershipAsync(Guid tenantId, Guid projectId, Guid employeeId, CancellationToken ct = default)
     {
-        return await _db.ProjectMembers
-            .AsNoTracking()
-            .AnyAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.UserId == userId && m.IsActive, ct);
+        return await _db.ProjectMembers.AsNoTracking()
+            .AnyAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.EmployeeId == employeeId && m.IsActive, ct);
     }
 
-    public async Task<ProjectMember?> GetTrackedForObjectiveAsync(Guid tenantId, Guid projectId, Guid objectiveId, Guid userId, CancellationToken ct = default)
+    public async Task<ProjectMember?> GetTrackedForObjectiveAsync(Guid tenantId, Guid projectId, Guid objectiveId, Guid employeeId, CancellationToken ct = default)
     {
         return await _db.ProjectMembers
-            .FirstOrDefaultAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.ObjectiveId == objectiveId && m.UserId == userId, ct);
+            .FirstOrDefaultAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.ObjectiveId == objectiveId && m.EmployeeId == employeeId, ct);
     }
 
-    public async Task<bool> HasActiveMembershipExcludingObjectiveAsync(Guid tenantId, Guid projectId, Guid userId, Guid excludingObjectiveId, CancellationToken ct = default)
+    public async Task<bool> HasActiveMembershipExcludingObjectiveAsync(Guid tenantId, Guid projectId, Guid employeeId, Guid excludingObjectiveId, CancellationToken ct = default)
     {
-        return await _db.ProjectMembers
-            .AsNoTracking()
-            .AnyAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.UserId == userId
+        return await _db.ProjectMembers.AsNoTracking()
+            .AnyAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.EmployeeId == employeeId
                         && m.ObjectiveId != excludingObjectiveId && m.IsActive, ct);
     }
 
-    public async Task<bool> HasActiveMembershipForAnyObjectiveAsync(Guid tenantId, Guid projectId, Guid userId, IReadOnlyList<Guid> objectiveIds, CancellationToken ct = default)
+    public async Task<bool> HasActiveMembershipForAnyObjectiveAsync(Guid tenantId, Guid projectId, Guid employeeId, IReadOnlyList<Guid> objectiveIds, CancellationToken ct = default)
     {
-        return await _db.ProjectMembers
-            .AsNoTracking()
-            .AnyAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.UserId == userId
+        return await _db.ProjectMembers.AsNoTracking()
+            .AnyAsync(m => m.TenantId == tenantId && m.ProjectId == projectId && m.EmployeeId == employeeId
                         && m.IsActive && objectiveIds.Contains(m.ObjectiveId), ct);
     }
 
-    public async Task<IReadOnlyList<Guid>> GetActiveObjectiveIdsForUserInProjectAsync(Guid tenantId, Guid projectId, Guid userId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Guid>> GetActiveObjectiveIdsForEmployeeInProjectAsync(Guid tenantId, Guid projectId, Guid employeeId, CancellationToken ct = default)
     {
-        return await _db.ProjectMembers
-            .AsNoTracking()
-            .Where(m => m.TenantId == tenantId && m.ProjectId == projectId && m.UserId == userId && m.IsActive)
+        return await _db.ProjectMembers.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.ProjectId == projectId && m.EmployeeId == employeeId && m.IsActive)
             .Select(m => m.ObjectiveId)
             .ToListAsync(ct);
     }
 
-    public async Task<IReadOnlyList<ProjectMember>> ListInactiveMembershipsForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ProjectMember>> ListInactiveMembershipsForEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
     {
-        return await _db.ProjectMembers
-            .AsNoTracking()
-            .Where(m => m.TenantId == tenantId && m.UserId == userId && !m.IsActive && m.RemovedAt != null)
+        return await _db.ProjectMembers.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.EmployeeId == employeeId && !m.IsActive && m.RemovedAt != null)
             .OrderByDescending(m => m.RemovedAt)
             .ToListAsync(ct);
     }
 
-    public async Task<IReadOnlyList<ProjectMember>> ListForUserInProjectAsync(Guid tenantId, Guid projectId, Guid userId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ProjectMember>> ListForEmployeeInProjectAsync(Guid tenantId, Guid projectId, Guid employeeId, CancellationToken ct = default)
     {
-        return await _db.ProjectMembers
-            .AsNoTracking()
-            .Where(m => m.TenantId == tenantId && m.ProjectId == projectId && m.UserId == userId)
+        return await _db.ProjectMembers.AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.ProjectId == projectId && m.EmployeeId == employeeId)
             .ToListAsync(ct);
     }
 
@@ -75,7 +69,7 @@ public class EfProjectMemberRepository : IProjectMemberRepository
         _db.ProjectMembers.Update(member);
     }
 
-    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListDistinctActiveMemberUserIdsAsync(
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> ListDistinctActiveMemberEmployeeIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> projectIds, int takePerProject, CancellationToken ct = default)
     {
         if (projectIds.Count == 0)
@@ -84,14 +78,14 @@ public class EfProjectMemberRepository : IProjectMemberRepository
         var rows = await _db.ProjectMembers.AsNoTracking()
             .Where(m => m.TenantId == tenantId && projectIds.Contains(m.ProjectId) && m.IsActive)
             .OrderBy(m => m.JoinedAt)
-            .Select(m => new { m.ProjectId, m.UserId })
+            .Select(m => new { m.ProjectId, m.EmployeeId })
             .ToListAsync(ct);
 
         return rows
             .GroupBy(r => r.ProjectId)
             .ToDictionary(
                 g => g.Key,
-                g => (IReadOnlyList<Guid>)g.Select(r => r.UserId).Distinct().Take(takePerProject).ToList());
+                g => (IReadOnlyList<Guid>)g.Select(r => r.EmployeeId).Distinct().Take(takePerProject).ToList());
     }
 
     public async Task<IReadOnlyDictionary<Guid, int>> CountDistinctActiveMembersAsync(
@@ -102,11 +96,11 @@ public class EfProjectMemberRepository : IProjectMemberRepository
 
         var rows = await _db.ProjectMembers.AsNoTracking()
             .Where(m => m.TenantId == tenantId && projectIds.Contains(m.ProjectId) && m.IsActive)
-            .Select(m => new { m.ProjectId, m.UserId })
+            .Select(m => new { m.ProjectId, m.EmployeeId })
             .ToListAsync(ct);
 
         return rows
             .GroupBy(r => r.ProjectId)
-            .ToDictionary(g => g.Key, g => g.Select(r => r.UserId).Distinct().Count());
+            .ToDictionary(g => g.Key, g => g.Select(r => r.EmployeeId).Distinct().Count());
     }
 }
