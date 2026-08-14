@@ -24,4 +24,11 @@ public class EfEmployeeRepository : IEmployeeRepository
             .Where(e => e.TenantId == tenantId && userIds.Contains(e.UserId))
             .ToListAsync(ct);
     }
+
+    public async Task<Employee?> GetByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await _db.Employees
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
+    }
 }
