@@ -47,6 +47,7 @@ public class InactivityCaptureAttemptArchitectureTests
         var migrationDir = FindMigrationsDirectory();
 
         var migrationText = Directory.EnumerateFiles(migrationDir, "*AddInactivityCaptureAttempts*.cs")
+            .Where(path => !path.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase))
             .Select(File.ReadAllText)
             .FirstOrDefault(text => text.Contains("inactivity_capture_attempts", StringComparison.Ordinal));
 
