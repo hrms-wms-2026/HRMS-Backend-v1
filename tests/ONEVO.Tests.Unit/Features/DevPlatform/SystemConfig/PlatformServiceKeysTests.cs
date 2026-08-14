@@ -554,17 +554,16 @@ public class PlatformServiceKeysTests
     // Infrastructure stubs (verification + resolver)
 
     [Fact]
-    public async Task VerificationStub_AcceptsNonEmptyKey_RejectsEmptyKey()
+    public async Task Verification_RejectsEmptyKey()
     {
         var service = new PlatformServiceKeyVerificationService(
+            Mock.Of<IHttpClientFactory>(),
             NullLogger<PlatformServiceKeyVerificationService>.Instance);
 
-        var ok = await service.VerifyAsync("resend", "re_valid_key_123", CancellationToken.None);
         var empty = await service.VerifyAsync("sendgrid", "", CancellationToken.None);
 
-        Assert.True(ok.Success);
         Assert.False(empty.Success);
-        Assert.NotEqual(default, ok.CheckedAt);
+        Assert.NotEqual(default, empty.CheckedAt);
     }
 
     [Fact]

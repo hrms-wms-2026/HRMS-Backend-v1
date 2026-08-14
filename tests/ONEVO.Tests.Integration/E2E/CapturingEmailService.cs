@@ -56,4 +56,7 @@ public sealed class CapturingEmailService : IEmailService
 
     public Task SendEmployeeOnboardingInviteAsync(string to, string firstName, string lastName, string inviteToken, CancellationToken ct = default)
         => SendTemplateAsync(to, "employee_onboarding_invite", new { firstName, lastName, inviteToken }, ct);
+
+    public Task SendInvoiceEmailAsync(string to, object templateData, CancellationToken ct = default)
+        => SendTemplateAsync(to, "invoice_email", templateData, ct);
 }
