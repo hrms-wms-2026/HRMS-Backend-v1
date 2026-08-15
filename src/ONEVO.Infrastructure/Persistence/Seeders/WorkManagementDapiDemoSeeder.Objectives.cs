@@ -36,7 +36,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
                     Name = tree.ProjectName,
                     Identifier = tree.Identifier,
                     Description = $"Development demo project - {tree.ProjectName}.",
-                    LeadId = DapiOwnerUserId,
+                    LeadId = employeeIdByPersonKey["dabi"],
                     StartDate = tree.StartDate,
                     TargetDate = tree.TargetDate,
                     AllocatedHours = tree.AllocatedHours,
@@ -108,7 +108,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
         CancellationToken ct)
     {
         var objectiveId = DeterministicGuid($"dapi-demo:objective:{projectKey}:{path}");
-        var ownerUserId = ResolveUserId(node.OwnerKey);
+        var ownerEmployeeId = employeeIdByPersonKey[node.OwnerKey];
 
         var depth = path.Count(c => c == '/') + 1;
         var completedRatio = Math.Min(0.70m, depth * 0.15m);
@@ -126,8 +126,8 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 IsDefault = isDefault,
                 Title = node.Title,
                 Description = $"Development demo objective - {node.Title}.",
-                OwnerId = ownerUserId,
-                ReportingManagerId = DapiOwnerUserId,
+                OwnerId = ownerEmployeeId,
+                ReportingManagerId = employeeIdByPersonKey["dabi"],
                 IsActive = true,
                 StartDate = start,
                 EndDate = end,
@@ -187,7 +187,6 @@ public sealed partial class WorkManagementDapiDemoSeeder
             return;
         }
 
-        var userId = ResolveUserId(personKey);
         var employeeId = employeeIdByPersonKey[personKey];
 
         db.ProjectMembers.Add(new ProjectMember
@@ -196,7 +195,6 @@ public sealed partial class WorkManagementDapiDemoSeeder
             TenantId = DapiTenantId,
             ProjectId = projectId,
             ObjectiveId = objectiveId,
-            UserId = userId,
             EmployeeId = employeeId,
             MembershipSource = ProjectMembershipSources.System,
             IsActive = true,
