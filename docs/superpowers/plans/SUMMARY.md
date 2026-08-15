@@ -18,6 +18,7 @@
 
 | Plan | Location | Status |
 |---|---|---|
+| `2026-08-13-verified-employee-check-in/` (4 parts) | `next/` | pending |
 | `2026-08-13-tray-employee-identity-closure/` (3 parts) | `next/` | pending |
 | `2026-07-27-forgot-password-restricted-role-http-rls-proof.md` | `finished/2026-07-27/` | finished |
 | `2026-07-28-legal-document-rich-content.md` | `finished/2026-07-28/` | finished |
@@ -60,6 +61,8 @@ See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder
 
 ## Next up
 
+- **Verified Employee Check-In** (`next/2026-08-13-verified-employee-check-in/`, 4 parts) — approved design at `specs/next/2026-08-13-verified-employee-check-in-design.md`. Planning complete; implementation not started (~35% end-to-end readiness from existing pieces). Part 1 (foundation + AWS Rekognition enrollment + Windows/WebView2 camera gate) must pass its live-hardware gate before Part 2 (strict online CLOCK IN). Parts 3–4 cover employer review/fallback and offline rollout. See the folder's `SUMMARY.md` for execution order and acceptance checklist.
+- **Tray Employee Identity Closure** (`next/2026-08-13-tray-employee-identity-closure/`, 3 parts) — Milestone 2 of the tray monitoring roadmap; entry gate requires Part 1 biometric enrollment E2E PASS before final sign-off.
 - Nothing currently in flight for Work Management backend. The only remaining `next/` items are the two raw, not-yet-brainstormed `Project Management.md` entries (see `next/SUMMARY.md`), plus the still-unsynced `2026-08-07-work-management-objective-subtree.md` drift noted below.
 - `2026-08-10-milestone-ownership-and-subtree-access.md` (finished 2026-08-10) unblocks the frontend's Milestone Cards + Tree View feature — see `Hrms--Web-application---front-end---v1/docs/superpowers/plans/finished/2026-08-10/2026-08-10-milestone-cards-and-tree-view/`.
 - A separate, smaller plan — `docs/superpowers/plans/next/2026-08-07-work-management-objective-subtree.md` (`GET /api/v1/work/objectives/{id}/tree`) — is not reflected in this SUMMARY's status table at all, though its git commits (`2a77bbc`..`b900ec5`, 2026-08-07) show it already shipped. This predates the current session and wasn't touched during this pass; worth a status-sync check next time `plans/` is audited.

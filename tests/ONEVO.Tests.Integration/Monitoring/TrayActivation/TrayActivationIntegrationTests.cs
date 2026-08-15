@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -147,6 +148,30 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         doc.RootElement.GetProperty("employee_number").GetString().Should().Be("EMP-0001");
         body.Should().NotContain(user.UserId.ToString(), "response must never expose internal user ID");
         body.Should().NotContain(user.TenantId.ToString(), "response must never expose internal tenant ID");
+    }
+
+    [Fact]
+    public async Task Exchange_ValidCode_JwtContainsDeviceUserTenant_ButNotEmployeeDisplayFields()
+    {
+        var user = await SeedActiveUserWithEmployeeAsync(
+            "exchange-jwt-test", "exchange-jwt@test.dev", "JwtPass1!", "EMP-0001");
+        var session = await LoginAndGetSessionAsync(user);
+        var code = await GenerateCodeAsync(session);
+        const string fingerprint = "fp-exchange-jwt-001";
+
+        var (accessToken, _) = await ExchangeCodeAsync(code, fingerprint);
+
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(accessToken);
+
+        jwt.Subject.Should().NotBeNullOrEmpty("JWT sub must be the device registration ID");
+        jwt.Claims.Should().Contain(c => c.Type == "user_id" && c.Value == user.UserId.ToString());
+        jwt.Claims.Should().Contain(c => c.Type == "tenant_id" && c.Value == user.TenantId.ToString());
+        jwt.Claims.Should().Contain(c => c.Type == "token_type" && c.Value == "tray_device");
+
+        var claimValues = jwt.Claims.Select(c => c.Value).ToList();
+        claimValues.Should().NotContain("Priya Employee", "employee name must not be a JWT claim");
+        claimValues.Should().NotContain("priya.employee@test.dev", "employee email must not be a JWT claim");
+        claimValues.Should().NotContain("EMP-0001", "employee number must not be a JWT claim");
     }
 
     [Fact]

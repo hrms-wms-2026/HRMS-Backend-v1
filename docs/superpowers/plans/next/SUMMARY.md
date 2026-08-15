@@ -10,6 +10,8 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 
 ## Files
 
+- `2026-08-13-verified-employee-check-in/` — pending four-part plan. AWS Rekognition Face Liveness (Mumbai) + WebView2 enrollment (Part 1), strict online CLOCK IN gating (Part 2), employer review and provider/location fallback (Part 3), offline recovery and rollout hardening (Part 4). Design: `specs/next/2026-08-13-verified-employee-check-in-design.md`. Master index: folder `SUMMARY.md`. **Gate:** Part 1 must pass live Windows camera + staging liveness before Part 2 starts.
+
 - `2026-08-13-tray-employee-identity-closure/` - pending three-part Milestone 2 plan. Centralizes Tray identity cache ownership, prevents stale cross-user identity, removes Windows-username fallback, locks transport tests, and requires a real activation/reset smoke record.
 
 **Last updated:** 2026-08-12
@@ -24,6 +26,7 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 
 ## Known drift
 
+- `plans/2026-08-13-verified-checkin-foundation.md` sits loose at the `plans/` root (2,308 lines). It predates the split into `2026-08-13-verified-employee-check-in/part-*.md` and violates `FILE_CREATION_RULES.md` rule 1 (nothing loose in `plans/`). Canonical plan is the four-part folder above; the root file should be deleted or archived once confirmed redundant.
 - The previous version of this summary (when the folder was `docs/superpowers/next-plan/`) also listed a `Notification Management (Outbox Mapping).md` file. That file does not exist anywhere in the repo — the summary entry was never backed by an actual file. If that context still matters, it needs to be re-captured from scratch; nothing was lost in this move, the source file was already missing before 2026-08-06.
 - `2026-08-07-work-management-objective-subtree.md` sits in this folder (flat, per rule) but its git commits (`2a77bbc`..`b900ec5`, 2026-08-07) show it already shipped — it was never moved to `finished/` or given a status row in `plans/SUMMARY.md`. Not touched during the 2026-08-08 pass since it's outside that session's scope; flagged here so it isn't lost again.
 - `2026-08-10-milestone-ownership-and-subtree-access.md` moved to `plans/finished/2026-08-10/` on 2026-08-10 (both tasks done) — see `plans/SUMMARY.md`.

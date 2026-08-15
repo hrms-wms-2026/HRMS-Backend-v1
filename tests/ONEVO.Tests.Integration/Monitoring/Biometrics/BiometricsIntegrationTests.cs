@@ -254,7 +254,7 @@ public sealed class BiometricsIntegrationTests : IAsyncLifetime
                 Id = Guid.NewGuid(),
                 TenantId = tenant.Id,
                 UserId = user.Id,
-                EmployeeNumber = $"EMP-{tenantSlug}",
+                EmployeeNumber = $"E{Guid.NewGuid():N}"[..12],
                 FirstName = "Test",
                 LastName = "User",
                 Email = email,

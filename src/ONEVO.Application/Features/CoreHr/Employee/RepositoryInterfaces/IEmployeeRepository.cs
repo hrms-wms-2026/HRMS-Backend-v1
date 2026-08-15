@@ -24,6 +24,9 @@ public interface IEmployeeRepository
     Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetByIdAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetByUserIdAsync(
+        Guid tenantId, Guid userId, CancellationToken ct = default);
+
     Task<bool> EmailExistsAsync(Guid tenantId, string email, Guid? excludeId, CancellationToken ct = default);
 
     Task<bool> EmployeeNumberExistsAsync(Guid tenantId, string employeeNumber, Guid? excludeId, CancellationToken ct = default);

@@ -315,6 +315,9 @@ public static class DependencyInjection
         // Monitoring - Biometrics
         services.AddScoped<IBiometricRepository, EfBiometricRepository>();
         services.AddScoped<IEmployeeIdentityResolver, ONEVO.Infrastructure.Services.Common.EfEmployeeIdentityResolver>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Biometrics.ServiceInterfaces.ITrayEmployeeResolver,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.TrayEmployeeResolver>();
         services.AddSingleton<Amazon.Rekognition.IAmazonRekognition>(_ => new Amazon.Rekognition.AmazonRekognitionClient(
             Amazon.RegionEndpoint.GetBySystemName(configuration["Biometrics:Region"] ?? "ap-south-1")));
         services.AddSingleton<Amazon.SecurityToken.IAmazonSecurityTokenService>(

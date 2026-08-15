@@ -196,6 +196,10 @@ public class EfEmployeeRepository : IEmployeeRepository
         => await _db.Employees.AsNoTracking()
             .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
 
+    public async Task<EmployeeEntity?> GetByUserIdAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
+        => await _db.Employees.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.UserId == userId, ct);
+
     public async Task<bool> EmailExistsAsync(Guid tenantId, string email, Guid? excludeId, CancellationToken ct = default)
     {
         var normalized = email.Trim().ToLower();

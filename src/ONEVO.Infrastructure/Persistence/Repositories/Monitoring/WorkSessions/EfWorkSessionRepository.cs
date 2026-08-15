@@ -23,12 +23,15 @@ public class EfWorkSessionRepository : IWorkSessionRepository
         DateTimeOffset fromUtc,
         DateTimeOffset toUtc,
         CancellationToken ct)
-        => await _db.EmployeeWorkSessions
-            .AsNoTracking()
-            .Where(s => s.TenantId == tenantId
-                        && s.UserId == employeeId
-                        && s.ClockInAt >= fromUtc
-                        && s.ClockInAt < toUtc)
+        => await (
+            from session in _db.EmployeeWorkSessions.AsNoTracking()
+            join employee in _db.Employees.AsNoTracking()
+                on new { session.TenantId, session.UserId } equals new { employee.TenantId, employee.UserId }
+            where session.TenantId == tenantId
+                  && employee.Id == employeeId
+                  && session.ClockInAt >= fromUtc
+                  && session.ClockInAt < toUtc
+            select session)
             .OrderBy(s => s.ClockInAt)
             .ToListAsync(ct);
 }

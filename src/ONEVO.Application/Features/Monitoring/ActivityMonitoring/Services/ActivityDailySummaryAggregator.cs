@@ -1,3 +1,5 @@
+using System.Text.Json;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 
 namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
@@ -8,6 +10,11 @@ namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
 /// </summary>
 public static class ActivityDailySummaryAggregator
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     /// <summary>Default expected work minutes for data-coverage (8h).</summary>
     public const int DefaultExpectedWorkMinutes = 480;
 
@@ -48,6 +55,7 @@ public static class ActivityDailySummaryAggregator
             : 0m;
 
         var (focusMinutes, deepFocusSessions) = ComputeFocus(ordered);
+        var appMetrics = ComputeAppMetrics(ordered);
 
         var activityScore = Math.Round(
             activePercentage * (intensityAvg / 100m) * (dataCoverage / 100m),
@@ -61,15 +69,15 @@ public static class ActivityDailySummaryAggregator
             Date = date,
             TotalActiveMinutes = totalActiveMinutes,
             TotalIdleMinutes = totalIdleMinutes,
-            TotalMeetingMinutes = 0,
+            TotalMeetingMinutes = appMetrics.MeetingMinutes,
             ActivePercentage = activePercentage,
-            ProductiveAppMinutes = 0,
-            PersonalAppMinutes = 0,
-            UnknownAppMinutes = 0,
+            ProductiveAppMinutes = appMetrics.ProductiveMinutes,
+            PersonalAppMinutes = appMetrics.PersonalMinutes,
+            UnknownAppMinutes = appMetrics.UnknownMinutes,
             FocusMinutes = focusMinutes,
             ActivityScore = activityScore,
             DataCoveragePercentage = dataCoverage,
-            TopAppsJson = "[]",
+            TopAppsJson = appMetrics.TopAppsJson,
             IntensityAvg = intensityAvg,
             KeyboardTotal = keyboardTotal,
             MouseTotal = mouseTotal,
@@ -82,7 +90,7 @@ public static class ActivityDailySummaryAggregator
     }
 
     /// <summary>
-    /// Contiguous active windows ≥ 30 min in the same foreground process.
+    /// Contiguous active windows >= 30 min in the same foreground process.
     /// Snapshots are treated as sequential intervals ordered by CapturedAt.
     /// </summary>
     public static (int FocusMinutes, int DeepFocusSessions) ComputeFocus(
@@ -141,4 +149,76 @@ public static class ActivityDailySummaryAggregator
         FlushStreak();
         return (focusMinutes, sessions);
     }
+
+    private static AppMetrics ComputeAppMetrics(IReadOnlyList<ActivitySnapshot> snapshots)
+    {
+        if (snapshots.Count == 0)
+            return new AppMetrics(0, 0, 0, 0, "[]");
+
+        var appGroups = snapshots
+            .GroupBy(s => string.IsNullOrWhiteSpace(s.ForegroundProcessName)
+                ? "unknown"
+                : s.ForegroundProcessName.Trim())
+            .Select(g =>
+            {
+                var totalSeconds = g.Sum(s => s.ActiveSeconds + s.IdleSeconds);
+                var category = AppUsageCategorizer.Categorize(g.Key);
+                return new
+                {
+                    AppName = g.Key,
+                    TotalSeconds = totalSeconds,
+                    Category = category,
+                    FirstCapturedAt = g.Min(s => s.CapturedAt)
+                };
+            })
+            .Where(g => g.TotalSeconds > 0)
+            .ToList();
+
+        var productiveMinutes = appGroups
+            .Where(g => g.Category == AppUsageCategory.Productive)
+            .Sum(g => g.TotalSeconds) / 60;
+
+        var meetingMinutes = appGroups
+            .Where(g => g.Category == AppUsageCategory.Meeting)
+            .Sum(g => g.TotalSeconds) / 60;
+
+        var personalMinutes = appGroups
+            .Where(g => g.Category == AppUsageCategory.Personal)
+            .Sum(g => g.TotalSeconds) / 60;
+
+        var unknownMinutes = appGroups
+            .Where(g => g.Category == AppUsageCategory.Unknown)
+            .Sum(g => g.TotalSeconds) / 60;
+
+        var topApps = appGroups
+            .OrderByDescending(g => g.TotalSeconds)
+            .ThenBy(g => g.FirstCapturedAt)
+            .ThenBy(g => g.AppName, StringComparer.OrdinalIgnoreCase)
+            .Take(10)
+            .Select(g => new AppUsageSummary
+            {
+                AppName = g.AppName,
+                TotalSeconds = g.TotalSeconds,
+                Category = AppUsageCategorizer.ToWireValue(g.Category)
+            })
+            .ToList();
+
+        var topAppsJson = topApps.Count == 0
+            ? "[]"
+            : JsonSerializer.Serialize(topApps, JsonOptions);
+
+        return new AppMetrics(
+            productiveMinutes,
+            meetingMinutes,
+            personalMinutes,
+            unknownMinutes,
+            topAppsJson);
+    }
+
+    private sealed record AppMetrics(
+        int ProductiveMinutes,
+        int MeetingMinutes,
+        int PersonalMinutes,
+        int UnknownMinutes,
+        string TopAppsJson);
 }

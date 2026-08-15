@@ -1,4 +1,6 @@
 using FluentAssertions;
+using System.Text.Json;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 
@@ -40,7 +42,7 @@ public class ActivityDailySummaryAggregatorTests
         {
             Snap(120, 0, 50, 30, 80, "code.exe", baseTime),
             Snap(60, 60, 10, 5, 40, "code.exe", baseTime.AddMinutes(5)),
-            Snap(0, 120, 0, 0, 0, "slack.exe", baseTime.AddMinutes(10)),
+            Snap(0, 120, 0, 0, 0, "notes.exe", baseTime.AddMinutes(10)),
         };
 
         var summary = ActivityDailySummaryAggregator.Aggregate(
@@ -52,7 +54,7 @@ public class ActivityDailySummaryAggregatorTests
         summary.TotalIdleMinutes.Should().Be(3);   // 180s
         summary.KeyboardTotal.Should().Be(60);
         summary.MouseTotal.Should().Be(35);
-        summary.IntensityAvg.Should().Be(60m); // (80+40)/2 — idle window excluded
+        summary.IntensityAvg.Should().Be(60m); // (80+40)/2, idle window excluded
         summary.DataSource.Should().Be("agent_windows");
         summary.TotalMeetingMinutes.Should().Be(0);
     }
@@ -104,5 +106,37 @@ public class ActivityDailySummaryAggregatorTests
             Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), snapshots, baseTime);
 
         summary.DataCoveragePercentage.Should().Be(100m);
+    }
+
+    [Fact]
+    public void Aggregates_app_category_minutes_and_top_apps()
+    {
+        var baseTime = new DateTimeOffset(2026, 8, 5, 9, 0, 0, TimeSpan.Zero);
+        var snapshots = new List<ActivitySnapshot>
+        {
+            Snap(300, 0, 10, 5, 80, "Code.exe", baseTime),
+            Snap(180, 120, 6, 4, 50, "Teams.exe", baseTime.AddMinutes(5)),
+            Snap(60, 240, 1, 1, 20, "Spotify.exe", baseTime.AddMinutes(10)),
+            Snap(120, 180, 1, 1, 30, "unknown.exe", baseTime.AddMinutes(15)),
+        };
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), snapshots, baseTime);
+
+        summary.ProductiveAppMinutes.Should().Be(5);
+        summary.TotalMeetingMinutes.Should().Be(5);
+        summary.PersonalAppMinutes.Should().Be(5);
+        summary.UnknownAppMinutes.Should().Be(5);
+
+        var topApps = JsonSerializer.Deserialize<List<AppUsageSummary>>(
+            summary.TopAppsJson,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        topApps.Should().NotBeNull();
+        topApps!.Select(a => (a.AppName, a.TotalSeconds, a.Category)).Should().Equal(
+            ("Code.exe", 300, "productive"),
+            ("Teams.exe", 300, "meeting"),
+            ("Spotify.exe", 300, "personal"),
+            ("unknown.exe", 300, "unknown"));
     }
 }

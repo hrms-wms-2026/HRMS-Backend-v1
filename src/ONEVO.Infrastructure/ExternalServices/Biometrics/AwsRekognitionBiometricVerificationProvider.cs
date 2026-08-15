@@ -28,13 +28,17 @@ public class AwsRekognitionBiometricVerificationProvider : IBiometricVerificatio
     public async Task<FaceLivenessSessionCreated> CreateLivenessSessionAsync(
         CreateLivenessSessionRequest request, CancellationToken ct)
     {
+        var kmsKeyId = string.IsNullOrWhiteSpace(request.KmsKeyId)
+            ? _options.KmsKeyId
+            : request.KmsKeyId;
+
         var response = await _rekognition.CreateFaceLivenessSessionAsync(new Amazon.Rekognition.Model.CreateFaceLivenessSessionRequest
         {
             Settings = new CreateFaceLivenessSessionRequestSettings
             {
                 AuditImagesLimit = 4
             },
-            KmsKeyId = request.KmsKeyId
+            KmsKeyId = string.IsNullOrWhiteSpace(kmsKeyId) ? null : kmsKeyId
         }, ct);
 
         return new FaceLivenessSessionCreated(response.SessionId);
