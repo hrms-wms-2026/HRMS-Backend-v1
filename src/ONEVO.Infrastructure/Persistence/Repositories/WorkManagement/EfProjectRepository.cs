@@ -43,13 +43,13 @@ public class EfProjectRepository : IProjectRepository
     }
 
     public async Task<(IReadOnlyList<Project> Items, int TotalCount)> ListForMemberAsync(
-        Guid tenantId, Guid targetUserId, int skip, int take, string? sortBy, string sortDirection,
+        Guid tenantId, Guid targetEmployeeId, int skip, int take, string? sortBy, string sortDirection,
         CancellationToken ct = default)
     {
         var baseQuery = (
             from pm in _db.ProjectMembers.AsNoTracking()
             join p in _db.Projects.AsNoTracking() on pm.ProjectId equals p.Id
-            where pm.TenantId == tenantId && pm.UserId == targetUserId && pm.IsActive && p.IsActive
+            where pm.TenantId == tenantId && pm.EmployeeId == targetEmployeeId && pm.IsActive && p.IsActive
             select p
         ).Distinct();
 

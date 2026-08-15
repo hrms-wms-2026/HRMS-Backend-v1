@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Projects.Mappers;
@@ -12,6 +13,7 @@ namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.EditProjec
 public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Result<ProjectDetailResponse>>
 {
     private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
     private readonly IProjectRepository _projects;
     private readonly IObjectiveRepository _objectives;
     private readonly IProjectCategoryRepository _categories;
@@ -19,12 +21,14 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
 
     public EditProjectCommandHandler(
         ICurrentUser currentUser,
+        ICallerIdentityResolver identity,
         IProjectRepository projects,
         IObjectiveRepository objectives,
         IProjectCategoryRepository categories,
         IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
+        _identity = identity;
         _projects = projects;
         _objectives = objectives;
         _categories = categories;
@@ -41,6 +45,10 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
         if (tenantId == Guid.Empty)
             return Result<ProjectDetailResponse>.Forbidden("Tenant context missing.");
 
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
+        if (callerEmployeeId is null)
+            return Result<ProjectDetailResponse>.Forbidden("No employee record for the current user.");
+
         // Tracked fetch (not AsNoTracking) - this handler only mutates a subset of the entity's
         // fields, and relies on EF's automatic change detection at SaveChanges to produce a
         // partial UPDATE covering just those fields. See IProjectRepository.GetTrackedByIdForTenantAsync.
@@ -52,7 +60,7 @@ public class EditProjectCommandHandler : IRequestHandler<EditProjectCommand, Res
         // Head, the Lead, has unrestricted control over the node itself. Same rule
         // DeleteProjectCommandHandler already enforces; no approval needed either, since
         // the root has no Reporting Manager to route a request to.
-        if (project.LeadId != userId)
+        if (project.LeadId != callerEmployeeId.Value)
             return Result<ProjectDetailResponse>.Forbidden("Only the project lead can edit this project.");
 
         // Blank (empty/whitespace-only) is treated the same as omitted, not as "change to
