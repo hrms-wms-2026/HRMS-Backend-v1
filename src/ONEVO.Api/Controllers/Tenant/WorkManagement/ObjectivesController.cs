@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.WorkManagement.Objectives;
+using ONEVO.Api.Contracts.WorkManagement.ProjectInvitations;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.ApproveObjectiveChangeRequest;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RejectObjectiveChangeRequest;
@@ -17,8 +18,12 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Commands.UnachieveObj
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyObjectiveHistory;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyProjectMilestones;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveById;
+using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveMembers;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveSubtree;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveTree;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.AcceptObjectiveInvitation;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.RejectObjectiveInvitation;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Queries.GetMyObjectiveInvitations;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 
@@ -56,6 +61,17 @@ public class ObjectivesController : ControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetObjectiveByIdQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>This milestone's real members merged with pending invitations. Same visibility rule as GetById.</summary>
+    [HttpGet("{id:guid}/members")]
+    public async Task<IActionResult> GetMembers(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetObjectiveMembersQuery(id), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
@@ -135,7 +151,38 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Marks a milestone Achieved. Requires every direct sub-milestone to already be Achieved. Same immediate-vs-pending split as Delete.</summary>
+    /// <summary>Accepts a pending invitation. Caller must be the invited employee. Member invites create membership; leader invites reassign the milestone's head. No module-level projects:access gate: the invitee may not have that permission yet.</summary>
+    [HttpPost("invitations/{invitationId:guid}/accept")]
+    public async Task<IActionResult> AcceptInvitation(Guid invitationId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new AcceptObjectiveInvitationCommand(invitationId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Rejects a pending invitation. Caller must be the invited employee. No side effects - for a leader invite, the current head simply remains head.</summary>
+    [HttpPost("invitations/{invitationId:guid}/reject")]
+    public async Task<IActionResult> RejectInvitation(Guid invitationId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new RejectObjectiveInvitationCommand(invitationId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>The caller's own pending invitations across every objective they've been invited to.</summary>
+    [HttpGet("invitations/mine")]
+    public async Task<IActionResult> MyInvitations(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetMyObjectiveInvitationsQuery(), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(i => i.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
     [HttpPost("{id:guid}/achieve")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Achieve(Guid id, CancellationToken ct)

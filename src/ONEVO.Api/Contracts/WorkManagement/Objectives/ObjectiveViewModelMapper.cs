@@ -47,4 +47,13 @@ public static class ObjectiveViewModelMapper
         AlreadyMember = dto.AlreadyMember,
         Invitation = dto.Invitation?.ToViewModel()
     };
+
+    public static ObjectiveMemberListViewModel ToViewModel(this ObjectiveMemberListResponse response) => new()
+    {
+        Items = response.Items.Select(i => new ObjectiveMemberItemViewModel
+        {
+            EmployeeId = i.EmployeeId, IsHead = i.IsHead, Pending = i.Pending,
+            InviteType = i.InviteType, InvitationId = i.InvitationId, SinceOrInvitedAt = i.SinceOrInvitedAt
+        }).ToList()
+    };
 }
