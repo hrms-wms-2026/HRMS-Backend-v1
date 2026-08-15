@@ -130,6 +130,22 @@ public class StripeWebhookController : ControllerBase
         var periodEnd = invoice?.PeriodEnd is DateTime pe && pe != default
             ? new DateTimeOffset(pe, TimeSpan.Zero) : (DateTimeOffset?)null;
 
+        var issuedAt = invoice?.EffectiveAt is DateTime effectiveAt && effectiveAt != default
+            ? new DateTimeOffset(effectiveAt, TimeSpan.Zero)
+            : invoice?.Created is DateTime createdAt && createdAt != default
+                ? new DateTimeOffset(createdAt, TimeSpan.Zero)
+                : (DateTimeOffset?)null;
+
+        var dueAt = invoice?.DueDate is DateTime dueDate && dueDate != default
+            ? new DateTimeOffset(dueDate, TimeSpan.Zero)
+            : (DateTimeOffset?)null;
+
+        DateTimeOffset? paidAt = null;
+        if (e.Type == "invoice.payment_succeeded")
+        {
+            paidAt = issuedAt ?? new DateTimeOffset(DateTime.UtcNow, TimeSpan.Zero);
+        }
+
         return new ProcessStripeEventCommand(
             e.Type,
             subscriptionId,
@@ -137,7 +153,36 @@ public class StripeWebhookController : ControllerBase
             null,
             periodStart,
             periodEnd,
-            null);
+            null,
+            ExternalInvoiceId: invoice?.Id,
+            InvoiceNumber: invoice?.Number,
+            GatewayProvider: "stripe",
+            Currency: invoice?.Currency,
+            SubtotalAmount: FromStripeCents(invoice?.Subtotal),
+            TaxAmount: ExtractTaxAmount(invoice),
+            DiscountAmount: ExtractDiscountAmount(invoice),
+            TotalAmount: FromStripeCents(invoice?.Total),
+            IssuedAt: issuedAt,
+            DueAt: dueAt,
+            PaidAt: paidAt);
+    }
+
+    private static decimal FromStripeCents(long? cents) => (cents ?? 0) / 100m;
+
+    private static decimal ExtractTaxAmount(Invoice? invoice)
+    {
+        if (invoice?.TotalTaxes is null || invoice.TotalTaxes.Count == 0)
+            return 0m;
+
+        return invoice.TotalTaxes.Sum(t => t.Amount) / 100m;
+    }
+
+    private static decimal ExtractDiscountAmount(Invoice? invoice)
+    {
+        if (invoice?.TotalDiscountAmounts is null || invoice.TotalDiscountAmounts.Count == 0)
+            return 0m;
+
+        return invoice.TotalDiscountAmounts.Sum(d => d.Amount) / 100m;
     }
 
     private static ProcessStripeEventCommand ExtractFromSubscription(Event e)

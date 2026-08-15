@@ -31,4 +31,5 @@ public static class OutboxMessageTypes
     public const string PlatformManagerInviteEmail = "platform_manager_invite_email";
     public const string EmployeeOnboardingInviteEmail = "employee_onboarding_invite_email";
     public const string MonitoringWorkSessionCompleted = "monitoring_work_session_completed";
+    public const string InvoiceEmail = "invoice_email";
 }

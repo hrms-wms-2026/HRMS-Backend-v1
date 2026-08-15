@@ -1,0 +1,37 @@
+using System.Text.Json.Serialization;
+
+namespace ONEVO.Application.Features.DevPlatform.Billing.DTOs.Responses;
+
+public sealed record TenantSubscriptionDetailDto(
+    [property: JsonPropertyName("tenant_id")] Guid TenantId,
+    [property: JsonPropertyName("tenant_name")] string TenantName,
+    [property: JsonPropertyName("tenant_slug")] string TenantSlug,
+    [property: JsonPropertyName("subscription_id")] Guid SubscriptionId,
+    [property: JsonPropertyName("subscription_plan_id")] Guid SubscriptionPlanId,
+    [property: JsonPropertyName("plan_name")] string? PlanName,
+    [property: JsonPropertyName("plan_code")] string? PlanCode,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("billing_cycle")] string BillingCycle,
+    [property: JsonPropertyName("currency")] string Currency,
+    [property: JsonPropertyName("amount")] decimal Amount,
+    [property: JsonPropertyName("current_period_start")] DateOnly CurrentPeriodStart,
+    [property: JsonPropertyName("current_period_end")] DateOnly CurrentPeriodEnd,
+    [property: JsonPropertyName("trial_ends_at")] DateTimeOffset? TrialEndsAt,
+    [property: JsonPropertyName("grace_ends_at")] DateTimeOffset? GraceEndsAt,
+    [property: JsonPropertyName("access_ends_at")] DateTimeOffset? AccessEndsAt,
+    [property: JsonPropertyName("unpaid_grace_period_days")] int UnpaidGracePeriodDays,
+    [property: JsonPropertyName("gateway_provider")] string? GatewayProvider,
+    [property: JsonPropertyName("gateway_customer_ref")] string? GatewayCustomerRef,
+    [property: JsonPropertyName("gateway_subscription_ref")] string? GatewaySubscriptionRef,
+    [property: JsonPropertyName("maintenance_status")] string? MaintenanceStatus,
+    [property: JsonPropertyName("maintenance_billing_cycle")] string? MaintenanceBillingCycle,
+    [property: JsonPropertyName("maintenance_renewal_at")] DateOnly? MaintenanceRenewalAt,
+    [property: JsonPropertyName("maintenance_amount")] decimal? MaintenanceAmount,
+    [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
+    [property: JsonPropertyName("updated_at")] DateTimeOffset? UpdatedAt,
+    [property: JsonPropertyName("is_active_access")] bool IsActiveAccess,
+    [property: JsonPropertyName("is_in_trial")] bool IsInTrial,
+    [property: JsonPropertyName("is_past_due")] bool IsPastDue,
+    [property: JsonPropertyName("is_in_grace_period")] bool IsInGracePeriod,
+    [property: JsonPropertyName("days_until_renewal")] int? DaysUntilRenewal,
+    [property: JsonPropertyName("days_until_access_ends")] int? DaysUntilAccessEnds);
