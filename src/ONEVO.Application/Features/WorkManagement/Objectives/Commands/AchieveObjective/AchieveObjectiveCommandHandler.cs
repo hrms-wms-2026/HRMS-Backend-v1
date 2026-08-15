@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
@@ -14,16 +15,18 @@ namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveO
 public class AchieveObjectiveCommandHandler : IRequestHandler<AchieveObjectiveCommand, Result<ObjectiveChangeOutcomeResponse>>
 {
     private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IUnitOfWork _unitOfWork;
 
     public AchieveObjectiveCommandHandler(
-        ICurrentUser currentUser, IObjectiveRepository objectives, IObjectiveChangeRequestRepository changeRequests,
-        IMilestoneMembershipCoordinator membership, IUnitOfWork unitOfWork)
+        ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
+        IObjectiveChangeRequestRepository changeRequests, IMilestoneMembershipCoordinator membership, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
+        _identity = identity;
         _objectives = objectives;
         _changeRequests = changeRequests;
         _membership = membership;
@@ -40,6 +43,10 @@ public class AchieveObjectiveCommandHandler : IRequestHandler<AchieveObjectiveCo
         if (tenantId == Guid.Empty)
             return Result<ObjectiveChangeOutcomeResponse>.Forbidden("Tenant context missing.");
 
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
+        if (callerEmployeeId is null)
+            return Result<ObjectiveChangeOutcomeResponse>.Forbidden("No employee record for the current user.");
+
         var objective = await _objectives.GetByIdForTenantAsync(tenantId, request.ObjectiveId, ct);
         if (objective is null || !objective.IsActive)
             return Result<ObjectiveChangeOutcomeResponse>.NotFound("Objective not found.");
@@ -50,7 +57,7 @@ public class AchieveObjectiveCommandHandler : IRequestHandler<AchieveObjectiveCo
         if (objective.IsAchieved)
             return Result<ObjectiveChangeOutcomeResponse>.Conflict("Objective is already achieved.");
 
-        if (objective.OwnerId != userId)
+        if (objective.OwnerId != callerEmployeeId.Value)
             return Result<ObjectiveChangeOutcomeResponse>.Forbidden("Only this milestone's head can achieve it.");
 
         // Precondition (design §6): every direct child must already be achieved. Shallow check -
@@ -91,7 +98,7 @@ public class AchieveObjectiveCommandHandler : IRequestHandler<AchieveObjectiveCo
             TenantId = tenantId,
             ObjectiveId = objective.Id,
             RequestType = ObjectiveChangeRequestTypes.Achieve,
-            RequestedById = userId,
+            RequestedById = callerEmployeeId.Value,
             ReportingManagerId = objective.ReportingManagerId!.Value,
             Status = ObjectiveChangeRequestStatuses.Pending,
             PayloadJson = null,
