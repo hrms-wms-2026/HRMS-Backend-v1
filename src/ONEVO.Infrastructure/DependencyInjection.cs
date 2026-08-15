@@ -19,6 +19,7 @@ using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ReleaseCalendar.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
@@ -189,6 +190,8 @@ public static class DependencyInjection
         services.AddScoped<IObjectiveChangeRequestRepository>(sp => sp.GetRequiredService<EfObjectiveChangeRequestRepository>());
         services.AddScoped<EfProjectMemberRepository>();
         services.AddScoped<IProjectMemberRepository>(sp => sp.GetRequiredService<EfProjectMemberRepository>());
+        services.AddScoped<EfProjectMemberInvitationRepository>();
+        services.AddScoped<IProjectMemberInvitationRepository>(sp => sp.GetRequiredService<EfProjectMemberInvitationRepository>());
         services.AddScoped<EfProjectVersionRepository>();
         services.AddScoped<IProjectVersionRepository>(sp => sp.GetRequiredService<EfProjectVersionRepository>());
         services.AddScoped<EfReleaseCalendarRepository>();
