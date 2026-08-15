@@ -43,7 +43,8 @@ public class ObjectivesController : ControllerBase
     {
         var command = new CreateObjectiveCommand(
             request.ParentObjectiveId, request.Title, request.Description,
-            request.StartDate, request.EndDate, request.AllocatedHours, request.HeadUserId);
+            request.StartDate, request.EndDate, request.AllocatedHours, request.HeadEmployeeId,
+            request.MemberInvitations?.Select(m => (m.EmployeeId, m.Type)).ToList());
 
         var result = await _mediator.Send(command, ct);
 
@@ -109,7 +110,7 @@ public class ObjectivesController : ControllerBase
             : Accepted(result.Value.PendingRequest!.ToViewModel());
     }
 
-    /// <summary>Reassigns a milestone's head. Same immediate-vs-pending split as Delete. On applying, also syncs project membership for both heads and cascades ReportingManagerId to direct children.</summary>
+    /// <summary>Reassigns a milestone's head (by employeeId). If the objective has a Reporting Manager, applies immediately for the creator or routes to that Reporting Manager for approval otherwise. If the objective has no Reporting Manager, skips approval and sends a leader invitation — the caller remains Head until accepted.</summary>
     [HttpPost("{id:guid}/transfer")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Transfer(Guid id, [FromBody] TransferObjectiveHeadRequest request, CancellationToken ct)
@@ -120,8 +121,8 @@ public class ObjectivesController : ControllerBase
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
         return result.Value!.Applied
-            ? NoContent()
-            : Accepted(result.Value.PendingRequest!.ToViewModel());
+            ? StatusCode(204, result.Value.ToViewModel())
+            : StatusCode(202, result.Value.ToViewModel());
     }
 
     /// <summary>Invites an employee to this milestone. Head-only. Immediate no-op (204) if already an active member; otherwise creates a pending invitation (202) the invited employee must accept.</summary>

@@ -56,4 +56,11 @@ public static class ObjectiveViewModelMapper
             InviteType = i.InviteType, InvitationId = i.InvitationId, SinceOrInvitedAt = i.SinceOrInvitedAt
         }).ToList()
     };
+
+    public static TransferOutcomeViewModel ToViewModel(this TransferOutcomeResponse dto) => new()
+    {
+        Applied = dto.Applied,
+        PendingChangeRequest = dto.PendingChangeRequest?.ToViewModel(),
+        PendingInvitation = dto.PendingInvitation?.ToViewModel()
+    };
 }
