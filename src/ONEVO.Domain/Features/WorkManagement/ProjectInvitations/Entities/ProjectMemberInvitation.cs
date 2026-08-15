@@ -11,11 +11,18 @@ public static class ProjectInvitationStatuses
     public const string Cancelled = "cancelled";
 }
 
+public static class ProjectInvitationTypes
+{
+    public const string Member = "member";
+    public const string Leader = "leader";
+}
+
 public class ProjectMemberInvitation : BaseEntity
 {
     public Guid ProjectId { get; set; }
     public Guid ObjectiveId { get; set; }
     public Guid InvitedEmployeeId { get; set; }
+    public string InviteType { get; set; } = ProjectInvitationTypes.Member;
     public string Status { get; set; } = ProjectInvitationStatuses.Pending;
     public Guid InvitedById { get; set; }
     public DateTimeOffset? DecidedAt { get; set; }
