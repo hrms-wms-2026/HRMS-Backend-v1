@@ -49,6 +49,8 @@ Content type: `multipart/form-data` (not raw JSON — a file field is included).
 
 `logo` is `null` in the response when no file was uploaded.
 
+**Breaking change (2026-08-14):** `leadId` and `ownerId` now carry `employees.id` values, not `users.id`. Field names are unchanged. `creatorMembership.userId` is a stale JSON name: the Guid is `ProjectMember.EmployeeId` (`employees.id`), not `users.id`. Clients that were caching or comparing against the old UserId-space value must re-fetch.
+
 ## Errors
 
 | Status | Cause |

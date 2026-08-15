@@ -40,6 +40,8 @@ Content type: `application/json`.
 }
 ```
 
+**Breaking change (2026-08-14):** `leadId` now carries an `employees.id` value, not a `users.id`. The field name is unchanged. Clients that were caching or comparing against the old UserId-space value must re-fetch.
+
 ## Errors
 
 | Status | Cause |

@@ -19,6 +19,8 @@ Edits a milestone. A non-conflicting edit (within the parent's date/hours bounds
 `200 OK` (applied immediately) — the updated Objective, same shape as Create's response.
 `202 Accepted` (pending) — `{ "id": "guid", "objectiveId": "guid", "requestType": "edit", "requestedById": "guid", "reportingManagerId": "guid", "status": "pending", "payloadJson": "string", "decidedAt": null, "decidedById": null, "createdAt": "datetime" }`
 
+**Breaking change (2026-08-14):** `ownerId` on the immediate Objective response, and `requestedById` / `reportingManagerId` / `decidedById` on the pending-request body, now carry `employees.id` values, not `users.id`. Field names are unchanged. Clients that were caching or comparing against the old UserId-space value must re-fetch.
+
 ## Errors
 
 | Status | Cause |

@@ -18,6 +18,8 @@ No body.
 
 `204 No Content` (applied immediately) or `202 Accepted` with the created change request (pending approval).
 
+**Breaking change (2026-08-14):** `requestedById` and `reportingManagerId` on the pending-request body now carry `employees.id` values, not `users.id`. Field names are unchanged. Clients that were caching or comparing against the old UserId-space value must re-fetch.
+
 ## Errors
 
 | Status | Cause |

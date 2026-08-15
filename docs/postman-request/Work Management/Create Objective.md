@@ -24,6 +24,8 @@ Also syncs project membership for the resolved Head (creates or reactivates a `p
 { "id": "guid", "projectId": "guid", "parentObjectiveId": "guid", "isDefault": false, "title": "string", "description": "string|null", "ownerId": "guid", "reportingManagerId": "guid", "createdById": "guid", "startDate": "date", "endDate": "date", "progress": 0, "actualHours": null, "allocatedHours": 20, "completedHours": 0, "isActive": true, "createdAt": "datetime", "updatedAt": null }
 ```
 
+**Breaking change (2026-08-14):** `ownerId` and `reportingManagerId` now carry `employees.id` values, not `users.id`. Field names are unchanged. `headUserId` is still accepted on the request (JSON name unchanged) but the current handler ignores it and always assigns the creator as owner — optional-head / invitation assignment is backend Tasks 1–12, not yet implemented. Clients that were caching or comparing against the old UserId-space value must re-fetch.
+
 ## Errors
 
 | Status | Cause |

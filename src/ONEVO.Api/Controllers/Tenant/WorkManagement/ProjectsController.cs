@@ -150,12 +150,12 @@ public class ProjectsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Any given user's projects (admin/company-owner path). If userId doesn't resolve to a user with any active membership, returns an empty page, not 404 — list semantics. projects:read is unchanged by the 2026-08-04 permission-model update (it stays the sole "view others" gate); role configuration is expected to grant projects:access alongside it, not enforced here as a second attribute check.</summary>
+    /// <summary>Any given employee's projects (admin/company-owner path). If employeeId doesn't resolve to an employee with any active membership, returns an empty page, not 404 — list semantics. projects:read is unchanged by the 2026-08-04 permission-model update (it stays the sole "view others" gate); role configuration is expected to grant projects:access alongside it, not enforced here as a second attribute check.</summary>
     [HttpGet]
     [RequirePermission("projects:read")]
-    public async Task<IActionResult> ListByUser([FromQuery] Guid userId, [FromQuery] PagedRequest paging, CancellationToken ct)
+    public async Task<IActionResult> ListByUser([FromQuery] Guid employeeId, [FromQuery] PagedRequest paging, CancellationToken ct)
     {
-        var result = await _mediator.Send(new ListProjectsQuery(userId, paging), ct);
+        var result = await _mediator.Send(new ListProjectsQuery(employeeId, paging), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())

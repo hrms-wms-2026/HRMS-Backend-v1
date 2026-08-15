@@ -26,6 +26,8 @@ Added 2026-08-10: `ownerName`, `reportingManagerName` (resolved server-side, `nu
 }
 ```
 
+**Breaking change (2026-08-14):** `ownerId` and `reportingManagerId` now carry `employees.id` values, not `users.id`. The field names are unchanged. Clients that were caching or comparing against the old UserId-space value must re-fetch.
+
 ## Errors
 
 | Status | Cause |
