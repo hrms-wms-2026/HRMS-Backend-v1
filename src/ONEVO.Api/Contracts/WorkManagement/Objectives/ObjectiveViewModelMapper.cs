@@ -1,3 +1,4 @@
+using ONEVO.Api.Contracts.WorkManagement.ProjectInvitations;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 
@@ -40,4 +41,10 @@ public static class ObjectiveViewModelMapper
         dto.StartDate, dto.EndDate, dto.AllocatedHours, dto.CompletedHours,
         dto.ObjectiveIsActive, dto.IsAchieved, dto.AchievedAt,
         dto.MembershipIsActive, dto.MembershipRemovedAt, dto.IsOwner);
+
+    public static AddObjectiveMemberOutcomeViewModel ToViewModel(this AddObjectiveMemberOutcomeResponse dto) => new()
+    {
+        AlreadyMember = dto.AlreadyMember,
+        Invitation = dto.Invitation?.ToViewModel()
+    };
 }

@@ -24,4 +24,7 @@ public interface IMilestoneMembershipCoordinator
 
     /// <summary>True if the employee has any other active membership in this project (direct or a different milestone).</summary>
     Task<bool> HasOtherActiveAccessAsync(Guid tenantId, Guid projectId, Guid employeeId, Guid excludingObjectiveId, CancellationToken ct = default);
+
+    /// <summary>True if the employee has an active membership row scoped to exactly this objective.</summary>
+    Task<bool> HasActiveMembershipAsync(Guid tenantId, Guid projectId, Guid objectiveId, Guid employeeId, CancellationToken ct = default);
 }

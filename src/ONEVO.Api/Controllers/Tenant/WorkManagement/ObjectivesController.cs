@@ -108,16 +108,19 @@ public class ObjectivesController : ControllerBase
             : Accepted(result.Value.PendingRequest!.ToViewModel());
     }
 
-    /// <summary>Adds a member to this milestone. Head-only; the member becomes a project_members row scoped to this Objective. Does not grant projects:access (only assigning someone as Head does that).</summary>
+    /// <summary>Invites an employee to this milestone. Head-only. Immediate no-op (204) if already an active member; otherwise creates a pending invitation (202) the invited employee must accept.</summary>
     [HttpPost("{id:guid}/members")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> AddMember(Guid id, [FromBody] AddObjectiveMemberRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new AddObjectiveMemberCommand(id, request.EmployeeId), ct);
 
-        return result.IsSuccess
-            ? NoContent()
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return result.Value!.AlreadyMember
+            ? StatusCode(204, result.Value.ToViewModel())
+            : StatusCode(202, result.Value.ToViewModel());
     }
 
     /// <summary>Removes a member from this milestone. Head-only. Rejects removing the current head - use Transfer instead.</summary>
