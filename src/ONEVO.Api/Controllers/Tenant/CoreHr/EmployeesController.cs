@@ -4,9 +4,12 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Employees;
 using ONEVO.Api.Filters;
 using Microsoft.AspNetCore.Http;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.AddDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddEmergencyContact;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.SetMyAvatar;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
@@ -131,6 +134,35 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> DeleteMyEmergencyContact(Guid contactId, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new DeleteEmergencyContactCommand(contactId), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Add a dependent for the caller's own profile.</summary>
+    [HttpPost("me/dependents")]
+    public async Task<IActionResult> AddMyDependent([FromBody] UpsertDependentRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new AddDependentCommand(request.Name, request.Relationship, request.DateOfBirth, request.IsEmergencyContact, request.Phone), ct);
+        return result.IsSuccess
+            ? CreatedAtAction(nameof(GetMyProfile), null, new { id = result.Value })
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Update one of the caller's own dependents.</summary>
+    [HttpPut("me/dependents/{dependentId:guid}")]
+    public async Task<IActionResult> UpdateMyDependent(
+        Guid dependentId, [FromBody] UpsertDependentRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new UpdateDependentCommand(dependentId, request.Name, request.Relationship, request.DateOfBirth, request.IsEmergencyContact, request.Phone), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Remove one of the caller's own dependents.</summary>
+    [HttpDelete("me/dependents/{dependentId:guid}")]
+    public async Task<IActionResult> DeleteMyDependent(Guid dependentId, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new DeleteDependentCommand(dependentId), ct);
         return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }
