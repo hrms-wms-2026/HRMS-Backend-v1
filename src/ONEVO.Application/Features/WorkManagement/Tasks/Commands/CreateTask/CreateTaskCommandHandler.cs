@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
@@ -16,18 +17,23 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
+    private readonly IProjectRepository _projects;
     private readonly IWorkTaskRepository _tasks;
+    private readonly ITaskStatusRepository _statuses;
     private readonly IObjectiveAllocationSlackCalculator _slack;
     private readonly IUnitOfWork _unitOfWork;
 
     public CreateTaskCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IWorkTaskRepository tasks, IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork)
+        IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
+        IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
+        _projects = projects;
         _tasks = tasks;
+        _statuses = statuses;
         _slack = slack;
         _unitOfWork = unitOfWork;
     }
@@ -51,6 +57,15 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         if (objective.OwnerId != callerEmployeeId.Value)
             return Result<WorkTaskResponse>.Forbidden("Only this milestone's owner can create tasks directly. Non-owner members must submit a task creation request.");
 
+        var project = await _projects.GetByIdForTenantAsync(tenantId, objective.ProjectId, ct);
+        if (project is null || !project.IsActive)
+            return Result<WorkTaskResponse>.NotFound("Project not found.");
+
+        var statuses = await _statuses.GetByObjectiveIdAsync(tenantId, objective.Id, ct);
+        var defaultStatus = statuses.Where(s => !s.MarksTaskComplete).OrderBy(s => s.DisplayOrder).FirstOrDefault();
+        if (defaultStatus is null)
+            return Result<WorkTaskResponse>.Failure("No task statuses configured for this milestone yet.", 422);
+
         if (request.EstimatedHours.HasValue)
         {
             var slack = await _slack.CalculateAsync(tenantId, objective, ct: ct);
@@ -61,11 +76,13 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
+            var taskNumber = await _projects.IncrementAndGetNextTaskNumberAsync(tenantId, objective.ProjectId, innerCt);
             var now = DateTimeOffset.UtcNow;
             var task = new WorkTask
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = objective.ProjectId, ObjectiveId = objective.Id,
-                ShortId = $"TASK-{Guid.NewGuid():N}".Substring(0, 12),
+                ShortId = $"{project.Identifier}-{taskNumber}",
+                StatusId = defaultStatus.Id,
                 Title = request.Title.Trim(), Description = request.Description?.Trim(),
                 TaskType = request.TaskType, Priority = request.Priority, DueDate = request.DueDate,
                 EstimatedHours = request.EstimatedHours, StoryPoints = request.StoryPoints,

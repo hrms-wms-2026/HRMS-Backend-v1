@@ -34,4 +34,11 @@ public interface IProjectRepository
     Task<(IReadOnlyList<Project> Items, int TotalCount)> ListForMemberAsync(
         Guid tenantId, Guid targetEmployeeId, int skip, int take, string? sortBy, string sortDirection,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Atomically increments projects.next_task_number and returns the value to stamp on the new
+    /// task's ShortId (the pre-increment number). Uses a single UPDATE ... RETURNING so concurrent
+    /// task creates cannot collide.
+    /// </summary>
+    Task<long> IncrementAndGetNextTaskNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 }

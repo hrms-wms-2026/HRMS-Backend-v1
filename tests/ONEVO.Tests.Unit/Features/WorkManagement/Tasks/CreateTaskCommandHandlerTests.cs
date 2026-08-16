@@ -4,11 +4,14 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.Tasks;
@@ -20,6 +23,7 @@ public class CreateTaskCommandHandlerTests
     private static readonly Guid EmployeeId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
+    private static readonly Guid DefaultStatusId = Guid.NewGuid();
 
     private static Objective Owned(decimal allocatedHours) => new()
     {
@@ -45,6 +49,19 @@ public class CreateTaskCommandHandlerTests
         objectives.Setup(x => x.GetTrackedActiveDirectChildrenAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Objective>());
 
+        var projects = new Mock<IProjectRepository>();
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Project { Id = ProjectId, TenantId = TenantId, Identifier = "WEB", IsActive = true, CreatedAt = DateTimeOffset.UtcNow });
+        projects.Setup(x => x.IncrementAndGetNextTaskNumberAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(7L);
+
+        var statuses = new Mock<ITaskStatusRepository>();
+        statuses.Setup(x => x.GetByObjectiveIdAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TaskStatusEntity>
+            {
+                new() { Id = DefaultStatusId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, Name = "To Do", DisplayOrder = 0, CreatedAt = DateTimeOffset.UtcNow }
+            });
+
         var tasks = new Mock<IWorkTaskRepository>();
         tasks.Setup(x => x.GetActiveAllocationSumByObjectiveIdAsync(TenantId, ObjectiveId, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existingAllocationSum);
@@ -55,7 +72,9 @@ public class CreateTaskCommandHandlerTests
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<WorkTaskResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<WorkTaskResponse>>> op, CancellationToken ct) => op(ct));
 
-        var handler = new CreateTaskCommandHandler(currentUser.Object, identity.Object, objectives.Object, tasks.Object, slackCalculator, unitOfWork.Object);
+        var handler = new CreateTaskCommandHandler(
+            currentUser.Object, identity.Object, objectives.Object, projects.Object, tasks.Object,
+            statuses.Object, slackCalculator, unitOfWork.Object);
         return (handler, tasks);
     }
 
@@ -82,5 +101,18 @@ public class CreateTaskCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
         tasks.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_OwnerWithinSlack_GeneratesProjectPrefixedShortId()
+    {
+        var (handler, _) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m);
+        var result = await handler.Handle(
+            new CreateTaskCommand(ObjectiveId, "Build the thing", null, "task", "medium", null, EstimatedHours: 30m, StoryPoints: null),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("WEB-7", result.Value!.ShortId);
+        Assert.Equal(DefaultStatusId, result.Value.StatusId);
     }
 }
