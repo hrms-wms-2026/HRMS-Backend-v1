@@ -4,7 +4,10 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Employees;
 using ONEVO.Api.Filters;
 using Microsoft.AspNetCore.Http;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.AddEmergencyContact;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.SetMyAvatar;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
@@ -100,5 +103,34 @@ public class EmployeesController : ControllerBase
         return result.IsSuccess
             ? Ok(new { avatarFileId = result.Value })
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Add an emergency contact for the caller's own profile.</summary>
+    [HttpPost("me/emergency-contacts")]
+    public async Task<IActionResult> AddMyEmergencyContact([FromBody] UpsertEmergencyContactRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new AddEmergencyContactCommand(request.Name, request.Relationship, request.Phone, request.Email, request.IsPrimary), ct);
+        return result.IsSuccess
+            ? CreatedAtAction(nameof(GetMyProfile), null, new { id = result.Value })
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Update one of the caller's own emergency contacts.</summary>
+    [HttpPut("me/emergency-contacts/{contactId:guid}")]
+    public async Task<IActionResult> UpdateMyEmergencyContact(
+        Guid contactId, [FromBody] UpsertEmergencyContactRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new UpdateEmergencyContactCommand(contactId, request.Name, request.Relationship, request.Phone, request.Email, request.IsPrimary), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Remove one of the caller's own emergency contacts.</summary>
+    [HttpDelete("me/emergency-contacts/{contactId:guid}")]
+    public async Task<IActionResult> DeleteMyEmergencyContact(Guid contactId, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new DeleteEmergencyContactCommand(contactId), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }
