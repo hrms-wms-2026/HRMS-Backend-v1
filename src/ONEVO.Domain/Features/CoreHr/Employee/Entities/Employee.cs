@@ -22,4 +22,5 @@ public class Employee : BaseEntity
     public DateOnly? ProbationEndDate { get; set; }
     public DateOnly? TerminationDate { get; set; }
     public Guid? AvatarFileId { get; set; }
+    public string? DisplayTimezone { get; set; }
 }

@@ -19,6 +19,15 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<EmployeeEntity>
         builder.Property(e => e.EmploymentTypeId).IsRequired();
         builder.Property(e => e.EmploymentStatusId).IsRequired();
         builder.Property(e => e.WorkModeId).IsRequired();
+        builder.Property(e => e.DisplayTimezone).HasMaxLength(50);
+
+        // Concurrency token mapped to the PostgreSQL system column xmin - see
+        // OnboardingDraftConfiguration.cs for the identical precedent and rationale.
+        builder.Property<uint>("xmin")
+            .HasColumnName("xmin")
+            .HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
 
         builder.HasIndex(e => new { e.TenantId, e.EmployeeNumber }).IsUnique();
         builder.HasIndex(e => e.UserId).IsUnique();
