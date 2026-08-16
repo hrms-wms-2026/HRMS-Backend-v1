@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
@@ -15,6 +16,8 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
     private readonly IEmployeeRepository _featureEmployees;
     private readonly IEmployeeProfileRepository _profile;
     private readonly IWorkModeRepository _workModes;
+    private readonly IUserRepository _users;
+    private readonly IUserMfaRepository _userMfa;
     private readonly IEncryptionService _encryption;
     private readonly ICurrentUser _currentUser;
 
@@ -23,6 +26,8 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
         IEmployeeRepository featureEmployees,
         IEmployeeProfileRepository profile,
         IWorkModeRepository workModes,
+        IUserRepository users,
+        IUserMfaRepository userMfa,
         IEncryptionService encryption,
         ICurrentUser currentUser)
     {
@@ -30,6 +35,8 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
         _featureEmployees = featureEmployees;
         _profile = profile;
         _workModes = workModes;
+        _users = users;
+        _userMfa = userMfa;
         _encryption = encryption;
         _currentUser = currentUser;
     }
@@ -81,11 +88,18 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
             bankDetail is not null, bankDetail?.BankName, maskedAccountNumber, bankDetail?.AccountType,
             _currentUser.HasPermission("employees:write"));
 
+        var user = await _users.GetByIdAsync(_currentUser.UserId, ct);
+        var verifiedMfa = await _userMfa.GetTotpAsync(_currentUser.UserId, isVerified: true, ct);
+        // No dedicated "last password changed" column exists on users - UpdatedAt is a reasonable
+        // proxy since ChangePasswordCommandHandler/ResetPasswordCommandHandler both bump it on
+        // every password write, and no other self-service field on User changes independently.
+        var security = new MySecurityResponse(verifiedMfa is not null, user?.UpdatedAt);
+
         return Result<MyProfileResponse>.Success(new MyProfileResponse(
             personalInformation, jobInformation,
             emergencyContacts.Select(c => new MyEmergencyContactResponse(c.Id, c.Name, c.Relationship, c.Phone, c.Email, c.IsPrimary)).ToList(),
             dependents.Select(d => new MyDependentResponse(d.Id, d.Name, d.Relationship, d.DateOfBirth, d.IsEmergencyContact, d.Phone)).ToList(),
             payroll,
-            new MySecurityResponse(false, null) /* wired to real MFA/password state in Task 9/10 */));
+            security));
     }
 }
