@@ -196,6 +196,18 @@ public class EfEmployeeRepository : IEmployeeRepository
         => await _db.Employees.AsNoTracking()
             .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
 
+    public async Task<EmployeeEntity?> GetTrackedByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => await _db.Employees.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
+
+    public async Task<uint?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => await _db.Employees.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.Id == employeeId)
+            .Select(e => (uint?)EF.Property<uint>(e, "xmin"))
+            .FirstOrDefaultAsync(ct);
+
+    public void SetExpectedVersion(EmployeeEntity employee, uint expectedVersion)
+        => _db.Entry(employee).Property("xmin").OriginalValue = expectedVersion;
+
     public async Task<bool> EmailExistsAsync(Guid tenantId, string email, Guid? excludeId, CancellationToken ct = default)
     {
         var normalized = email.Trim().ToLower();
