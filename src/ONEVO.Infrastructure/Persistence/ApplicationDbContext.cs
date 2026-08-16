@@ -232,6 +232,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Label> Labels => Set<Label>();
     public DbSet<TaskStatusEntity> TaskStatuses => Set<TaskStatusEntity>();
     public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
+    public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
