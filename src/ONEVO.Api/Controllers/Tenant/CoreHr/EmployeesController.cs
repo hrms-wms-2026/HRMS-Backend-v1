@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -48,6 +49,18 @@ public class EmployeesController : ControllerBase
     {
         var result = await _mediator.Send(new GetEmployeeQuery(id), ct);
 
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Composite read of the caller's own profile: personal info, job info (read-only),
+    /// emergency contacts, dependents, masked payroll, and security status. Self-service only -
+    /// no permission code required, matches profile-management.md's "authenticated self-service".</summary>
+    [HttpGet("me")]
+    public async Task<IActionResult> GetMyProfile(CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetMyProfileQuery(), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
