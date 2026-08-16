@@ -9,10 +9,12 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.AddEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.SetMyAvatar;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateBankDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 
@@ -163,6 +165,29 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> DeleteMyDependent(Guid dependentId, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new DeleteDependentCommand(dependentId), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Get the caller's own masked payroll/bank details.</summary>
+    [HttpGet("me/payroll")]
+    public async Task<IActionResult> GetMyPayroll(CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetMyPayrollQuery(), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Update the caller's own bank details. Requires employees:write even for the
+    /// caller's own record - bank-detail edits are HR-mediated to prevent unauthorized
+    /// payroll-redirection (see design spec §6).</summary>
+    [HttpPut("me/payroll")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> UpdateMyPayroll([FromBody] UpdateBankDetailsRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new UpdateBankDetailsCommand(
+                request.BankName, request.BranchName, request.AccountHolderName,
+                request.AccountNumber, request.AccountType, request.RoutingNumber),
+            ct);
         return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }
