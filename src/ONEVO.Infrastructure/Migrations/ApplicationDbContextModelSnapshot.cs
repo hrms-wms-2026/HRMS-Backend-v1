@@ -199,6 +199,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("onboarding_draft_id");
 
+                    b.Property<Guid?>("PositionAssignmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("position_assignment_id");
+
                     b.Property<Guid?>("PositionId")
                         .HasColumnType("uuid")
                         .HasColumnName("position_id");
@@ -843,6 +847,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<Guid?>("ActiveEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("active_employee_id");
 
                     b.Property<string>("CsrfTokenHash")
                         .IsRequired()
@@ -1553,12 +1561,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasName("pk_employees");
 
                     b.HasIndex("UserId")
-                        .IsUnique()
                         .HasDatabaseName("ix_employees_user_id");
 
                     b.HasIndex("TenantId", "EmployeeNumber")
                         .IsUnique()
                         .HasDatabaseName("ix_employees_tenant_id_employee_number");
+
+                    b.HasIndex("UserId", "LegalEntityId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_employees_user_id_legal_entity_id");
 
                     b.ToTable("employees", (string)null);
                 });

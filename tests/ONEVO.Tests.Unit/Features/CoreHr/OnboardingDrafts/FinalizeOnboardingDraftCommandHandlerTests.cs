@@ -64,15 +64,18 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         _employmentTypeRepository.Setup(r => r.GetIdByCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         _employeeRepository
-            .Setup(r => r.EmailExistsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .Setup(r => r.EmployeeExistsInLegalEntityAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         _employeeRepository
             .Setup(r => r.EmployeeNumberExistsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         _positionAssignmentRepository
-            .Setup(r => r.CountActiveAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
+            .Setup(r => r.TryReservePositionAssignmentAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
 
         _seatEntitlementService
             .Setup(s => s.EvaluateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -309,7 +312,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         var draft = ValidDraft();
         SetupDraft(draft);
         _employeeRepository
-            .Setup(r => r.EmailExistsAsync(_tenantId, draft.WorkEmail, null, It.IsAny<CancellationToken>()))
+            .Setup(r => r.EmployeeExistsInLegalEntityAsync(_tenantId, draft.LegalEntityId, draft.WorkEmail, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
@@ -677,6 +680,71 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_EmployeeExistsInDifferentLegalEntity_DoesNotBlock()
+    {
+        var positionId = Guid.NewGuid();
+        var draft = ValidDraft(positionId: positionId);
+        SetupDraft(draft);
+        SetupPosition(positionId, departmentId: Guid.NewGuid());
+        var template = new PositionAccessTemplate { Id = Guid.NewGuid(), TenantId = _tenantId, PositionId = positionId, RoleId = Guid.NewGuid(), RequiresApproval = false, IsActive = true };
+        _positionRepository
+            .Setup(r => r.GetAccessTemplateByPositionAsync(_tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(template);
+        _employeeRepository
+            .Setup(r => r.EmployeeExistsInLegalEntityAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _employeeRepository.Verify(
+            r => r.EmailExistsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_EmployeeExistsInSameLegalEntity_ReturnsConflict()
+    {
+        var draft = ValidDraft();
+        SetupDraft(draft);
+        _employeeRepository
+            .Setup(r => r.EmployeeExistsInLegalEntityAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_ImmediateFinalize_WhenPositionAtCapacity_ReturnsConflict()
+    {
+        var positionId = Guid.NewGuid();
+        var draft = ValidDraft(positionId: positionId);
+        SetupDraft(draft);
+        SetupPosition(positionId, departmentId: Guid.NewGuid());
+        var template = new PositionAccessTemplate { Id = Guid.NewGuid(), TenantId = _tenantId, PositionId = positionId, RoleId = Guid.NewGuid(), RequiresApproval = false, IsActive = true };
+        _positionRepository
+            .Setup(r => r.GetAccessTemplateByPositionAsync(_tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(template);
+        _positionAssignmentRepository
+            .Setup(r => r.TryReservePositionAssignmentAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid?)null);
+
+        var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal("This position has reached its capacity.", result.Error);
+        _draftRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

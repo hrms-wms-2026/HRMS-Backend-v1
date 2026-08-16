@@ -11,6 +11,7 @@ using ONEVO.Application.Features.Auth.Legal.Services;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using Xunit;
@@ -42,6 +43,7 @@ public class AcceptEmployeeInvitationCommandHandlerTests
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Mock<ITenantContext> _tenantContext = new();
     private readonly Mock<IGlobalEmailDirectoryRepository> _globalDirectory = new();
+    private readonly Mock<IPositionAssignmentRepository> _positionAssignmentRepository = new();
 
     public AcceptEmployeeInvitationCommandHandlerTests()
     {
@@ -91,7 +93,7 @@ public class AcceptEmployeeInvitationCommandHandlerTests
     private AcceptEmployeeInvitationCommandHandler BuildSut() => new(
         _invitations.Object, _users.Object, _passwordHasher.Object, _legalSubmission.Object,
         _continuation.Object, _unitOfWork.Object, _clock.Object, _tenantContext.Object,
-        _globalDirectory.Object);
+        _globalDirectory.Object, _positionAssignmentRepository.Object);
 
     private static AcceptEmployeeInvitationCommand MakeCommand() => new(
         RawToken: RawToken,
@@ -237,5 +239,73 @@ public class AcceptEmployeeInvitationCommandHandlerTests
         _globalDirectory.Verify(
             g => g.UpsertAsync(InvitedEmail, TenantId, It.IsAny<CancellationToken>()), Times.Once);
         _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SuccessfulAccept_ActivatesReservedPositionAssignment()
+    {
+        var positionAssignmentId = Guid.NewGuid();
+        var invitation = MakeInvitation();
+        invitation.PositionAssignmentId = positionAssignmentId;
+        _invitations.Setup(i => i.GetByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(invitation);
+        _users.Setup(u => u.GetByIdAsync(UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = UserId, IsActive = false });
+
+        await BuildSut().Handle(MakeCommand(), CancellationToken.None);
+
+        _positionAssignmentRepository.Verify(
+            r => r.ActivatePlannedAsync(invitation.TenantId, positionAssignmentId, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ReturningUserWithExistingCredentials_DoesNotOverwritePassword()
+    {
+        const string existingHash = "already-set-hash";
+        var user = new User { Id = UserId, IsActive = true, PasswordHash = existingHash };
+        _users.Setup(u => u.GetByIdAsync(UserId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _invitations.Setup(r => r.GetByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeInvitation());
+
+        var result = await BuildSut().Handle(new AcceptEmployeeInvitationCommand(
+            RawToken, Password: "", ConfirmPassword: "", Acceptances: [], IpAddress: "127.0.0.1", UserAgent: "test"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        user.PasswordHash.Should().Be(existingHash);
+    }
+
+    [Fact]
+    public async Task Handle_BrandNewUser_NoPasswordSubmitted_ReturnsFailure()
+    {
+        var user = new User { Id = UserId, IsActive = false, PasswordHash = string.Empty };
+        _users.Setup(u => u.GetByIdAsync(UserId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _invitations.Setup(r => r.GetByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeInvitation());
+
+        var result = await BuildSut().Handle(new AcceptEmployeeInvitationCommand(
+            RawToken, Password: "", ConfirmPassword: "", Acceptances: [], IpAddress: "127.0.0.1", UserAgent: "test"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("A password is required to accept this invitation.");
+    }
+
+    [Fact]
+    public async Task Handle_BrandNewUser_PasswordSubmitted_SetsPasswordAsToday()
+    {
+        var user = new User { Id = UserId, IsActive = false, PasswordHash = string.Empty };
+        _users.Setup(u => u.GetByIdAsync(UserId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _invitations.Setup(r => r.GetByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeInvitation());
+        _passwordHasher.Setup(h => h.Hash("NewPassw0rd!")).Returns("new-hash");
+
+        var result = await BuildSut().Handle(new AcceptEmployeeInvitationCommand(
+            RawToken, Password: "NewPassw0rd!", ConfirmPassword: "NewPassw0rd!", Acceptances: [],
+            IpAddress: "127.0.0.1", UserAgent: "test"), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        user.PasswordHash.Should().Be("new-hash");
+        user.IsActive.Should().BeTrue();
     }
 }

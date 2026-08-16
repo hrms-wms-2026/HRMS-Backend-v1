@@ -28,7 +28,7 @@
 **Interfaces:**
 - Produces: permission code `"invitations:manage"`, seeded with module `"core_hr"` (same module as the `employees:*` permissions it sits beside).
 
-- [ ] **Step 1: Find the exact insertion point in `PermissionSeeder.cs`**
+- [x] **Step 1: Find the exact insertion point in `PermissionSeeder.cs`**
 
 Open `src/ONEVO.Infrastructure/Persistence/Seeders/PermissionSeeder.cs` and find these two existing lines (already confirmed present):
 
@@ -37,7 +37,7 @@ Perm("employees:read", "View all employees in scope.", "core_hr"),
 Perm("employees:write", "Create, update employees.", "core_hr"),
 ```
 
-- [ ] **Step 2: Add the new permission immediately after them**
+- [x] **Step 2: Add the new permission immediately after them**
 
 ```csharp
 Perm("employees:read", "View all employees in scope.", "core_hr"),
@@ -45,7 +45,7 @@ Perm("employees:write", "Create, update employees.", "core_hr"),
 Perm("invitations:manage", "Resend or revoke employee onboarding invitations.", "core_hr"),
 ```
 
-- [ ] **Step 3: Check for an existing seeder idempotency test and extend it, or write one**
+- [x] **Step 3: Check for an existing seeder idempotency test and extend it, or write one**
 
 Search `tests/ONEVO.Tests.Unit` for a test asserting the full seeded permission list (e.g. a test named `*PermissionSeeder*Tests.cs`). If one exists, add `"invitations:manage"` to its expected-codes assertion. If none exists, create `tests/ONEVO.Tests.Unit/Features/Auth/Permission/PermissionSeederTests.cs`:
 
@@ -70,7 +70,7 @@ public class PermissionSeederTests
 
 If `PermissionSeeder`'s seed list isn't exposed via a static method (check the class — it may only run inside a `SeedAsync(DbContext)` instance method), skip writing a new isolated test and instead confirm the permission appears by running the full seeder integration test suite in Task 6 of this file.
 
-- [ ] **Step 4: Re-point the Resend endpoint's permission attribute**
+- [x] **Step 4: Re-point the Resend endpoint's permission attribute**
 
 In `src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeesController.cs`, change:
 
@@ -88,12 +88,12 @@ to:
 public async Task<IActionResult> ResendInvitation(Guid id, CancellationToken ct = default)
 ```
 
-- [ ] **Step 5: Run the unit test suite for the touched areas**
+- [x] **Step 5: Run the unit test suite for the touched areas**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~PermissionSeeder|FullyQualifiedName~ResendEmployeeInvitation"`
 Expected: PASS (existing `ResendEmployeeInvitationCommandHandlerTests` don't assert on the controller attribute, so they should be unaffected; if any integration test asserts the old permission on this route, it will need updating — search `tests/ONEVO.Tests.Integration` for `resend-invitation` and update any `employees:write` expectation there to `invitations:manage`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Infrastructure/Persistence/Seeders/PermissionSeeder.cs src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeesController.cs tests/ONEVO.Tests.Unit/Features/Auth/Permission/PermissionSeederTests.cs
@@ -111,7 +111,7 @@ git commit -m "feat: add invitations:manage permission, gate resend-invitation o
 **Interfaces:**
 - Produces: `InvitationToken.PositionAssignmentId` (`Guid?`) — the exact reserved-seat row this invitation corresponds to, so accept/revoke/resend can reference it directly instead of re-deriving it from `EmployeeId`+`PositionId`.
 
-- [ ] **Step 1: Add the property**
+- [x] **Step 1: Add the property**
 
 In `src/ONEVO.Domain/Features/Auth/Invite/Entities/InvitationToken.cs`, add this line directly under the existing `EmployeeId` property:
 
@@ -121,18 +121,18 @@ In `src/ONEVO.Domain/Features/Auth/Invite/Entities/InvitationToken.cs`, add this
     public Guid? OnboardingDraftId { get; set; }
 ```
 
-- [ ] **Step 2: Generate the migration**
+- [x] **Step 2: Generate the migration**
 
 Run:
 ```bash
 dotnet ef migrations add AddInvitationTokenPositionAssignmentId --project src/ONEVO.Infrastructure --startup-project src/ONEVO.Api
 ```
 
-- [ ] **Step 3: Inspect the generated migration file**
+- [x] **Step 3: Inspect the generated migration file**
 
 Open the newly generated file under `src/ONEVO.Infrastructure/Migrations/`. Confirm it contains exactly one `AddColumn` call for `PositionAssignmentId` (nullable uuid) on the `invitation_tokens` table, and nothing else. If EF Core picked up unrelated pending model changes, stop and investigate before proceeding (do not silently include unrelated schema drift in this migration).
 
-- [ ] **Step 4: Apply the migration locally and verify**
+- [x] **Step 4: Apply the migration locally and verify**
 
 Run:
 ```bash
@@ -140,7 +140,7 @@ dotnet ef database update --project src/ONEVO.Infrastructure --startup-project s
 ```
 Expected: succeeds with no errors; `invitation_tokens` now has a `position_assignment_id` nullable uuid column.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ONEVO.Domain/Features/Auth/Invite/Entities/InvitationToken.cs src/ONEVO.Infrastructure/Migrations/
@@ -161,7 +161,7 @@ git commit -m "feat: add InvitationToken.PositionAssignmentId column"
 
 This mirrors the existing `EfTenantStorageStatsRepository.TryReserveBytesAsync` pattern already used in this codebase (`src/ONEVO.Infrastructure/Persistence/Repositories/Storage/Quota/EfTenantStorageStatsRepository.cs`): a single `INSERT ... WHERE <capacity condition>` statement, success determined by whether any row was affected.
 
-- [ ] **Step 1: Write the failing integration test**
+- [x] **Step 1: Write the failing integration test**
 
 Create `tests/ONEVO.Tests.Integration/CoreHr/PositionAssignment/TryReservePositionAssignmentTests.cs`. Follow this repo's existing Testcontainers integration-test base class pattern (find and inherit the same base class another integration test under `tests/ONEVO.Tests.Integration/CoreHr/` uses — e.g. look at how `FinalizeOnboardingDraftCommandHandlerTests`' integration counterpart, if any, or any other `EmployeesListIntegrationTests`-style test, sets up its tenant/DbContext/seed data, and copy that exact setup shape):
 
@@ -234,12 +234,12 @@ public class TryReservePositionAssignmentTests : IntegrationTestBase // adjust t
 
 Adjust `SeedTenantAsync`/`SeedEmployeeAndUniquePositionAsync`/`CreateNewDbContext` to whatever this repo's existing integration test helpers are actually named — find them by reading one existing integration test file under `tests/ONEVO.Tests.Integration/CoreHr/` before writing this file, since guessing the helper names would break the build.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj --filter "FullyQualifiedName~TryReservePositionAssignment"`
 Expected: FAIL (build error — `TryReservePositionAssignmentAsync` doesn't exist yet)
 
-- [ ] **Step 3: Add the interface method**
+- [x] **Step 3: Add the interface method**
 
 In `src/ONEVO.Application/Features/CoreHr/PositionAssignment/RepositoryInterfaces/IPositionAssignmentRepository.cs`, add:
 
@@ -268,7 +268,7 @@ In `src/ONEVO.Application/Features/CoreHr/PositionAssignment/RepositoryInterface
     Task<bool> CancelPlannedAsync(Guid tenantId, Guid positionAssignmentId, CancellationToken ct = default);
 ```
 
-- [ ] **Step 4: Implement all three methods**
+- [x] **Step 4: Implement all three methods**
 
 In `src/ONEVO.Infrastructure/Persistence/Repositories/CoreHr/EfPositionAssignmentRepository.cs`, add:
 
@@ -326,12 +326,12 @@ In `src/ONEVO.Infrastructure/Persistence/Repositories/CoreHr/EfPositionAssignmen
 
 Add `using ONEVO.Domain.Features.CoreHr.Entities;` at the top of the file if not already present (needed for `PositionAssignmentKind`/`PositionAssignmentStatus`).
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj --filter "FullyQualifiedName~TryReservePositionAssignment"`
 Expected: PASS (all 3 tests)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/CoreHr/PositionAssignment/RepositoryInterfaces/IPositionAssignmentRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/CoreHr/EfPositionAssignmentRepository.cs tests/ONEVO.Tests.Integration/CoreHr/PositionAssignment/TryReservePositionAssignmentTests.cs
@@ -349,7 +349,7 @@ git commit -m "feat: add atomic seat reservation to IPositionAssignmentRepositor
 **Interfaces:**
 - Consumes: `IPositionAssignmentRepository.TryReservePositionAssignmentAsync(...)` from Task 3.
 
-- [ ] **Step 1: Write the failing unit test**
+- [x] **Step 1: Write the failing unit test**
 
 Add to `tests/ONEVO.Tests.Unit/Features/CoreHr/Onboarding/ApproveAccessGrantRequestCommandHandlerTests.cs` (find the existing test class's constructor/mock-setup pattern and match it exactly — every existing test in this file already mocks `IPositionAssignmentRepository`, so this is an additive test, not a new fixture):
 
@@ -376,12 +376,12 @@ Add to `tests/ONEVO.Tests.Unit/Features/CoreHr/Onboarding/ApproveAccessGrantRequ
 
 Adjust `BuildValidCommand()`/mock field names (`_positionAssignmentRepository`, `_employeeRepository`, `_handler`) to whatever this existing test file actually calls them — read the file first.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~ApproveAccessGrantRequestCommandHandlerTests"`
 Expected: FAIL (the handler still uses `CountActiveAsync`, so `TryReservePositionAssignmentAsync` is never called and the mock setup is irrelevant — the old code path returns success instead of the expected 409)
 
-- [ ] **Step 3: Replace the capacity check + assignment creation**
+- [x] **Step 3: Replace the capacity check + assignment creation**
 
 In `ApproveAccessGrantRequestCommandHandler.cs`, replace this block:
 
@@ -420,7 +420,7 @@ and replace it with:
 
 This moves the capacity check to immediately before the reservation succeeds/fails (right after `employeeId` is minted, since the reservation needs it), rather than as an early separate check — the atomic reserve-or-fail call *is* the capacity check now, so the old two-step check-then-insert is gone entirely. Note: `PositionAssignmentEntity` may now be unused elsewhere in this file — if so, remove its `using`/type-alias only if no other reference remains (search the file for `PositionAssignmentEntity` before removing the alias at the top).
 
-- [ ] **Step 4: Carry `reservedAssignmentId` into the invitation**
+- [x] **Step 4: Carry `reservedAssignmentId` into the invitation**
 
 Find:
 
@@ -447,12 +447,12 @@ and add the new field:
             PositionAssignmentId = reservedAssignmentId,
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~ApproveAccessGrantRequestCommandHandlerTests"`
 Expected: PASS (all tests in this file, including the new one and every pre-existing one — update any pre-existing test's mock setup from `CountActiveAsync`/`AddAsync` to `TryReservePositionAssignmentAsync` returning a non-null Guid, or those tests will now fail since the old methods are no longer called)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/CoreHr/Onboarding/Commands/ApproveAccessGrantRequest/ApproveAccessGrantRequestCommandHandler.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Onboarding/ApproveAccessGrantRequestCommandHandlerTests.cs
@@ -470,11 +470,11 @@ git commit -m "feat: reserve seat atomically in ApproveAccessGrantRequestCommand
 **Interfaces:**
 - Consumes: same `TryReservePositionAssignmentAsync` from Task 3.
 
-- [ ] **Step 1: Read the handler's immediate-finalize branch first**
+- [x] **Step 1: Read the handler's immediate-finalize branch first**
 
 Open `FinalizeOnboardingDraftCommandHandler.cs` and locate the block starting around the confirmed line `var normalizedEmail = draft.WorkEmail.Trim().ToLowerInvariant();` (line ~293) through wherever it constructs a `PositionAssignmentEntity` with `AssignmentStatus = PositionAssignmentStatus.Active` and calls `_positionAssignmentRepository.AddAsync(...)`. This branch is structurally identical to `ApproveAccessGrantRequestCommandHandler`'s equivalent block (Task 4, Step 3) — same field names, same pattern, just reached via a different code path (immediate finalize, not deferred-then-approved).
 
-- [ ] **Step 2: Write the failing unit test**
+- [x] **Step 2: Write the failing unit test**
 
 Mirror Task 4 Step 1 exactly, but against this handler's test class and its own mock-setup helper/constructor pattern (read the file first to match names):
 
@@ -496,22 +496,22 @@ Mirror Task 4 Step 1 exactly, but against this handler's test class and its own 
     }
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~FinalizeOnboardingDraftCommandHandlerTests"`
 Expected: FAIL
 
-- [ ] **Step 4: Apply the same two edits as Task 4, Steps 3–4, to this handler**
+- [x] **Step 4: Apply the same two edits as Task 4, Steps 3–4, to this handler**
 
 1. Remove the early `CountActiveAsync`/`MaxOccupancy` check block (confirmed at lines ~208-213: `if (position is not null) { var activeAssignmentCount = ...; if (activeAssignmentCount >= position.MaxOccupancy) return Conflict(...); }`) — but note this handler's early check runs **before** the `requiresApproval` branch splits (it gates both the deferred and immediate paths). Since the deferred path creates nothing until `ApproveAccessGrantRequestCommandHandler` runs (which now does its own atomic reserve, Task 4), this early check is safe to remove entirely for both branches — the deferred branch never reserved a seat here anyway, and the immediate branch will now reserve one atomically at the point below.
 2. In the immediate-finalize branch (Step 1's location), replace the `PositionAssignmentEntity`/`AddAsync` block with the same `TryReservePositionAssignmentAsync` call + null-check pattern as Task 4 Step 3, and thread `reservedAssignmentId` into this handler's own `InvitationToken` construction (`PositionAssignmentId = reservedAssignmentId`) the same way as Task 4 Step 4.
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~FinalizeOnboardingDraftCommandHandlerTests"`
 Expected: PASS (all tests — update pre-existing mock setups the same way as Task 4 Step 5)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/CoreHr/OnboardingDraft/Commands/FinalizeOnboardingDraft/FinalizeOnboardingDraftCommandHandler.cs tests/ONEVO.Tests.Unit/Features/CoreHr/OnboardingDrafts/FinalizeOnboardingDraftCommandHandlerTests.cs
@@ -529,7 +529,7 @@ git commit -m "feat: reserve seat atomically in FinalizeOnboardingDraftCommandHa
 **Interfaces:**
 - Consumes: `IPositionAssignmentRepository.ActivatePlannedAsync(tenantId, positionAssignmentId, ct)` from Task 3.
 
-- [ ] **Step 1: Write the failing unit test**
+- [x] **Step 1: Write the failing unit test**
 
 Add to `AcceptEmployeeInvitationCommandHandlerTests.cs` (match the existing file's mock/constructor pattern):
 
@@ -549,12 +549,12 @@ Add to `AcceptEmployeeInvitationCommandHandlerTests.cs` (match the existing file
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~AcceptEmployeeInvitationCommandHandlerTests"`
 Expected: FAIL (constructor doesn't accept `IPositionAssignmentRepository` yet, or the mock is simply never called — build error if you add the mock field before the constructor is updated, so update the constructor in Step 3 first if the test file won't compile)
 
-- [ ] **Step 3: Add the dependency and the activation call**
+- [x] **Step 3: Add the dependency and the activation call**
 
 In `AcceptEmployeeInvitationCommandHandler.cs`, add the field, constructor parameter, and assignment (mirroring every other dependency already in this class):
 
@@ -604,12 +604,12 @@ add:
 
 Add `using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;` at the top of the file.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~AcceptEmployeeInvitationCommandHandlerTests"`
 Expected: PASS (all tests — every other existing test in this file needs the new constructor parameter added to its handler instantiation, or the file won't compile; use `Mock.Of<IPositionAssignmentRepository>()` or a shared mock field for tests that don't care about this behavior)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/Auth/Invite/Commands/AcceptEmployeeInvitation/AcceptEmployeeInvitationCommandHandler.cs tests/ONEVO.Tests.Unit/Features/Auth/Invite/AcceptEmployeeInvitationCommandHandlerTests.cs
@@ -627,7 +627,7 @@ git commit -m "feat: activate the reserved seat on employee invitation accept"
 **Interfaces:**
 - No new dependency — this is a one-field addition to an object this handler already constructs.
 
-- [ ] **Step 1: Write the failing unit test**
+- [x] **Step 1: Write the failing unit test**
 
 Add to `ResendEmployeeInvitationCommandHandlerTests.cs`:
 
@@ -654,12 +654,12 @@ Add to `ResendEmployeeInvitationCommandHandlerTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~ResendEmployeeInvitationCommandHandlerTests"`
 Expected: FAIL (`captured.PositionAssignmentId` is null — never set)
 
-- [ ] **Step 3: Add the field to the constructed invitation**
+- [x] **Step 3: Add the field to the constructed invitation**
 
 Find:
 
@@ -686,12 +686,12 @@ and add:
             PositionAssignmentId = current.PositionAssignmentId,
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~ResendEmployeeInvitationCommandHandlerTests"`
 Expected: PASS (all tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/CoreHr/Employee/Commands/ResendEmployeeInvitation/ResendEmployeeInvitationCommandHandler.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Employee/ResendEmployeeInvitationCommandHandlerTests.cs
@@ -713,7 +713,7 @@ git commit -m "feat: carry reserved seat forward when resending an invitation"
 - Produces: `RevokeEmployeeInvitationCommand(Guid EmployeeId)`, `POST /api/v1/employees/{id}/revoke-invitation`, gated `[RequirePermission("invitations:manage")]`.
 - Consumes: `IPositionAssignmentRepository.CancelPlannedAsync(...)` from Task 3.
 
-- [ ] **Step 1: Write the failing unit test**
+- [x] **Step 1: Write the failing unit test**
 
 Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Employee/RevokeEmployeeInvitationCommandHandlerTests.cs`, following `ResendEmployeeInvitationCommandHandlerTests.cs`'s exact mock/constructor setup pattern (same dependencies: `IEmployeeRepository`, `IInvitationTokenRepository`, `IUnitOfWork`, `ICurrentUser`, `IDateTimeProvider`, plus the new `IPositionAssignmentRepository`):
 
@@ -852,12 +852,12 @@ public class RevokeEmployeeInvitationCommandHandlerTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~RevokeEmployeeInvitationCommandHandlerTests"`
 Expected: FAIL (build error — `RevokeEmployeeInvitationCommand`/`RevokeEmployeeInvitationCommandHandler` don't exist yet)
 
-- [ ] **Step 3: Create the command**
+- [x] **Step 3: Create the command**
 
 `src/ONEVO.Application/Features/CoreHr/Employee/Commands/RevokeEmployeeInvitation/RevokeEmployeeInvitationCommand.cs`:
 
@@ -872,7 +872,7 @@ public sealed record RevokeEmployeeInvitationCommand(Guid EmployeeId) : IRequest
 
 (If this codebase's `Result<T>` doesn't support `Result<Unit>` cleanly, check `ResendEmployeeInvitationCommand`'s return-type pattern and use `Result<RevokeEmployeeInvitationResponse>` with an empty response record instead — match whatever convention `ResendEmployeeInvitationCommand`/`Response` already establishes.)
 
-- [ ] **Step 4: Create the validator**
+- [x] **Step 4: Create the validator**
 
 `src/ONEVO.Application/Features/CoreHr/Employee/Commands/RevokeEmployeeInvitation/RevokeEmployeeInvitationCommandValidator.cs`:
 
@@ -890,7 +890,7 @@ public sealed class RevokeEmployeeInvitationCommandValidator : AbstractValidator
 }
 ```
 
-- [ ] **Step 5: Create the handler**
+- [x] **Step 5: Create the handler**
 
 `src/ONEVO.Application/Features/CoreHr/Employee/Commands/RevokeEmployeeInvitation/RevokeEmployeeInvitationCommandHandler.cs`:
 
@@ -964,7 +964,7 @@ public sealed class RevokeEmployeeInvitationCommandHandler
 }
 ```
 
-- [ ] **Step 6: Wire the endpoint**
+- [x] **Step 6: Wire the endpoint**
 
 In `EmployeesController.cs`, add directly after the existing `ResendInvitation` action:
 
@@ -985,17 +985,17 @@ In `EmployeesController.cs`, add directly after the existing `ResendInvitation` 
 
 Add `using ONEVO.Application.Features.CoreHr.Employee.Commands.RevokeEmployeeInvitation;` to the controller's usings.
 
-- [ ] **Step 7: Run the test to verify it passes**
+- [x] **Step 7: Run the test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~RevokeEmployeeInvitationCommandHandlerTests"`
 Expected: PASS (all 4 tests)
 
-- [ ] **Step 8: Run the full unit suite**
+- [x] **Step 8: Run the full unit suite**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj`
 Expected: PASS (every test — this confirms Tasks 1-8 together haven't broken anything else in the invitation/onboarding/employee area)
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/CoreHr/Employee/Commands/RevokeEmployeeInvitation/ src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeesController.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Employee/RevokeEmployeeInvitationCommandHandlerTests.cs

@@ -40,7 +40,7 @@ public class GetObjectiveByIdQueryHandler : IRequestHandler<GetObjectiveByIdQuer
         if (objective is null || !objective.IsActive)
             return Result<ObjectiveDetailResponse>.NotFound("Objective not found.");
 
-        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, ct);
+        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
         var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
 
         if (!hasReadPermission)

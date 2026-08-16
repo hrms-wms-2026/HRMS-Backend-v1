@@ -24,7 +24,7 @@ public class PermissionResolver : IPermissionResolver
         _clock = clock;
     }
 
-    public async Task<List<string>> ResolveAsync(Guid userId, Guid tenantId, CancellationToken ct = default)
+    public async Task<List<string>> ResolveAsync(Guid userId, Guid tenantId, Guid? activeLegalEntityId, CancellationToken ct = default)
     {
         var now = _clock.UtcNow;
 
@@ -43,7 +43,7 @@ public class PermissionResolver : IPermissionResolver
         // active_modules API response, which is sourced from activeModuleKeys directly.
         activeModules.UnionWith(PlatformBaselineModules.Keys);
 
-        var roleRows = await _permissions.ListRolePermissionCodesWithModulesAsync(userId, now, ct);
+        var roleRows = await _permissions.ListRolePermissionCodesWithModulesAsync(userId, now, activeLegalEntityId, ct);
         var overrides = await _permissionOverrides.ListForUserAsync(tenantId, userId, ct);
 
         var grantCodes = overrides

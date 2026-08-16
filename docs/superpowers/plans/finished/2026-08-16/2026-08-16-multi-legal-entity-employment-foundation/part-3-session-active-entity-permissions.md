@@ -26,7 +26,7 @@
 **Interfaces:**
 - Produces: `Session.ActiveEmployeeId` (`Guid?`) — which `Employee` row (i.e. which legal entity) is currently active for this session. `null` until first set (defaults to the user's sole/most-recent `Employee` row, computed in Task 3, not stored as a DB default).
 
-- [ ] **Step 1: Add the property**
+- [x] **Step 1: Add the property**
 
 In `src/ONEVO.Domain/Features/Auth/Login/Entities/Session.cs`, add directly after `CsrfTokenHash`:
 
@@ -36,7 +36,7 @@ In `src/ONEVO.Domain/Features/Auth/Login/Entities/Session.cs`, add directly afte
     public string KeyHash { get; set; } = string.Empty;
 ```
 
-- [ ] **Step 2: Generate and inspect the migration**
+- [x] **Step 2: Generate and inspect the migration**
 
 Run:
 ```bash
@@ -44,12 +44,12 @@ dotnet ef migrations add AddSessionActiveEmployeeId --project src/ONEVO.Infrastr
 ```
 Open the generated file and confirm it contains exactly one `AddColumn` for `ActiveEmployeeId` (nullable uuid) on the `sessions` table.
 
-- [ ] **Step 3: Apply and verify**
+- [x] **Step 3: Apply and verify**
 
 Run: `dotnet ef database update --project src/ONEVO.Infrastructure --startup-project src/ONEVO.Api`
 Expected: succeeds; `sessions` now has a nullable `active_employee_id` uuid column.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/ONEVO.Domain/Features/Auth/Login/Entities/Session.cs src/ONEVO.Infrastructure/Migrations/
@@ -71,7 +71,7 @@ git commit -m "feat: add Session.ActiveEmployeeId column"
 - `IPermissionResolver.ResolveAsync` gains a new optional parameter: `Task<List<string>> ResolveAsync(Guid userId, Guid tenantId, Guid? activeLegalEntityId, CancellationToken ct = default)`.
 - `IPermissionRepository.ListRolePermissionCodesWithModulesAsync` gains the same new parameter.
 
-- [ ] **Step 1: Write the failing unit test for `PermissionResolver`**
+- [x] **Step 1: Write the failing unit test for `PermissionResolver`**
 
 Find the existing `PermissionResolverTests.cs` (or create it if it doesn't exist, matching this class's constructor-mock pattern exactly — 4 dependencies: `IPermissionRepository`, `IUserPermissionOverrideRepository`, `IModuleEntitlementService`, `IDateTimeProvider`). Add:
 
@@ -103,12 +103,12 @@ Find the existing `PermissionResolverTests.cs` (or create it if it doesn't exist
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~PermissionResolverTests"`
 Expected: FAIL (build error — neither method accepts a `legalEntityId` parameter yet)
 
-- [ ] **Step 3: Update `IPermissionRepository` and `IPermissionResolver`**
+- [x] **Step 3: Update `IPermissionRepository` and `IPermissionResolver`**
 
 In `IPermissionRepository.cs`, change:
 
@@ -137,7 +137,7 @@ to:
 
 In `IPermissionResolver.cs`, apply the identical parameter addition to `ResolveAsync`.
 
-- [ ] **Step 4: Update the EF implementation**
+- [x] **Step 4: Update the EF implementation**
 
 In `EfAuthRepository.cs`, replace the method (confirmed at line ~353):
 
@@ -213,7 +213,7 @@ which achieves the identical filter via a `Contains` subquery instead of an expl
 
 Also update the existing (unfiltered) `ListRolePermissionCodesAsync` method just above this one only if it's still called anywhere with an implicit assumption of "all entities" that should now change — grep for its callers first; if the only caller was `PermissionResolver` and it now exclusively uses the `WithModules` variant, leave `ListRolePermissionCodesAsync` untouched (it may serve a different, non-entity-aware caller).
 
-- [ ] **Step 5: Update `PermissionResolver.ResolveAsync`**
+- [x] **Step 5: Update `PermissionResolver.ResolveAsync`**
 
 In `PermissionResolver.cs`, change the signature and the one call site:
 
@@ -228,19 +228,19 @@ In `PermissionResolver.cs`, change the signature and the one call site:
 
 Every other line in the method body stays exactly as-is (module gating, overrides, derived-permissions steps are all unaffected by entity scoping — only the role-grant source rows are filtered).
 
-- [ ] **Step 6: Run the test to verify it passes**
+- [x] **Step 6: Run the test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~PermissionResolverTests"`
 Expected: PASS. Also update every other pre-existing call site of `ResolveAsync`/`ListRolePermissionCodesWithModulesAsync` in this codebase (grep for both method names) to pass an explicit argument — most callers outside `TenantDatabaseTicketStore` (Task 3) should pass `activeLegalEntityId: null` to preserve their current unfiltered behavior, since they don't have a session/active-entity context to work from.
 
-- [ ] **Step 7: Write an integration test for the entity-filtering query itself**
+- [x] **Step 7: Write an integration test for the entity-filtering query itself**
 
 Create/extend an integration test (find this repo's existing pattern for testing `EfAuthRepository`, or create `tests/ONEVO.Tests.Integration/Auth/Permission/ListRolePermissionCodesWithModulesEntityFilterTests.cs`) that: seeds one user with two `UserRole` rows, each `SourcePositionId` pointing at a position in a different legal entity, each role granting a different permission code; asserts that passing legal-entity-A's id returns only entity-A's permission code, passing entity-B's id returns only entity-B's, and passing `null` returns both (backward-compatible unfiltered behavior).
 
 Run: `dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj --filter "FullyQualifiedName~ListRolePermissionCodesWithModulesEntityFilter"`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/Auth/Permission/RepositoryInterfaces/IPermissionRepository.cs src/ONEVO.Application/Features/Auth/Permission/ServiceInterfaces/IPermissionResolver.cs src/ONEVO.Infrastructure/Persistence/Repositories/Auth/Login/EfAuthRepository.cs src/ONEVO.Infrastructure/Security/PermissionResolver.cs tests/ONEVO.Tests.Unit/Features/Auth/Permission/PermissionResolverTests.cs tests/ONEVO.Tests.Integration/Auth/Permission/ListRolePermissionCodesWithModulesEntityFilterTests.cs
@@ -261,7 +261,7 @@ git commit -m "feat: scope role-permission resolution to the active legal entity
 - Produces: `ICurrentUser.SessionId` (`Guid?`, default `null` via interface default method like `SessionBinding`/`SessionExpiresAt` already do) and a new `session_id` claim.
 - `RetrieveAsync` now resolves `activeLegalEntityId` from `session.ActiveEmployeeId` (via a new `IEmployeeRepository` lookup) and passes it into `IPermissionResolver.ResolveAsync`.
 
-- [ ] **Step 1: Add `SessionId` to `ICurrentUser`**
+- [x] **Step 1: Add `SessionId` to `ICurrentUser`**
 
 In `ICurrentUser.cs`, add directly after `SessionExpiresAt`:
 
@@ -270,7 +270,7 @@ In `ICurrentUser.cs`, add directly after `SessionExpiresAt`:
     Guid? SessionId { get => null; }
 ```
 
-- [ ] **Step 2: Implement it in `CurrentUserService`**
+- [x] **Step 2: Implement it in `CurrentUserService`**
 
 In `CurrentUserService.cs`, add:
 
@@ -285,7 +285,7 @@ In `CurrentUserService.cs`, add:
     }
 ```
 
-- [ ] **Step 3: Add the `session_id` claim and entity-scoped resolution in `TenantDatabaseTicketStore.RetrieveAsync`**
+- [x] **Step 3: Add the `session_id` claim and entity-scoped resolution in `TenantDatabaseTicketStore.RetrieveAsync`**
 
 In `TenantDatabaseTicketStore.cs`, inside `RetrieveAsync`, add an `IEmployeeRepository` resolution alongside the existing scoped services:
 
@@ -333,7 +333,7 @@ Add the new claim to the `claims` list, alongside the existing ones:
         };
 ```
 
-- [ ] **Step 4: Default a brand-new session's `ActiveEmployeeId` at login**
+- [x] **Step 4: Default a brand-new session's `ActiveEmployeeId` at login**
 
 In `StoreAsync` (same file), find where the `Session` object is constructed:
 
@@ -357,7 +357,7 @@ Add, just before constructing it: resolve the user's default active Employee (th
 
 and set `ActiveEmployeeId = defaultEmployee?.Id` on the constructed `Session`.
 
-- [ ] **Step 4a: Add `IEmployeeRepository.GetDefaultForUserAsync`**
+- [x] **Step 4a: Add `IEmployeeRepository.GetDefaultForUserAsync`**
 
 In `IEmployeeRepository.cs`, add:
 
@@ -394,12 +394,12 @@ In `EfEmployeeRepository.cs`, implement it:
 
 (Match this file's existing `using`/namespace-alias conventions for `PositionAssignmentKind`/`PositionAssignmentStatus` — they're already imported for other methods in this file per Task 3 of `part-1-invitation-capacity-lifecycle.md`.)
 
-- [ ] **Step 5: Run the full unit suite to confirm nothing broke**
+- [x] **Step 5: Run the full unit suite to confirm nothing broke**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj`
 Expected: PASS. `TenantDatabaseTicketStore` itself has no direct unit tests (confirmed by this task's own investigation step), so this is a compile-and-regression check, not new-behavior verification — that comes in Task 5's integration test.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Common/ServiceInterfaces/ICurrentUser.cs src/ONEVO.Infrastructure/Identity/CurrentUser/CurrentUserService.cs src/ONEVO.Infrastructure/Identity/Sessions/TenantDatabaseTicketStore.cs src/ONEVO.Application/Features/CoreHr/Employee/RepositoryInterfaces/IEmployeeRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/EfEmployeeRepository.cs
@@ -421,7 +421,7 @@ git commit -m "feat: resolve permissions against the session's active employee/l
 **Interfaces:**
 - Produces: `POST /api/v1/session/active-company`, body `{ employeeId: string }`, `[Authorize(Policy = "TenantPolicy")]`. `204 No Content` on success (the frontend re-fetches its own session/permission state afterward, per Task 5 — this endpoint doesn't need to echo the new permission set back).
 
-- [ ] **Step 1: Write the failing unit test**
+- [x] **Step 1: Write the failing unit test**
 
 Create `tests/ONEVO.Tests.Unit/Features/Auth/Session/SwitchActiveCompanyCommandHandlerTests.cs`:
 
@@ -523,12 +523,12 @@ public class SwitchActiveCompanyCommandHandlerTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~SwitchActiveCompanyCommandHandlerTests"`
 Expected: FAIL (build error — types don't exist yet)
 
-- [ ] **Step 3: Create the command and validator**
+- [x] **Step 3: Create the command and validator**
 
 `SwitchActiveCompanyCommand.cs`:
 
@@ -557,7 +557,7 @@ public sealed class SwitchActiveCompanyCommandValidator : AbstractValidator<Swit
 }
 ```
 
-- [ ] **Step 4: Create the handler**
+- [x] **Step 4: Create the handler**
 
 ```csharp
 using MediatR;
@@ -617,7 +617,7 @@ public sealed class SwitchActiveCompanyCommandHandler : IRequestHandler<SwitchAc
 }
 ```
 
-- [ ] **Step 5: Create the request contract**
+- [x] **Step 5: Create the request contract**
 
 `src/ONEVO.Api/Contracts/Auth/Session/SwitchActiveCompanyRequest.cs`:
 
@@ -627,7 +627,7 @@ namespace ONEVO.Api.Contracts.Auth.Session;
 public sealed record SwitchActiveCompanyRequest(Guid EmployeeId);
 ```
 
-- [ ] **Step 6: Wire the endpoint**
+- [x] **Step 6: Wire the endpoint**
 
 Search `src/ONEVO.Api/Controllers/Tenant/Auth/` for an existing session-scoped controller (e.g. anything exposing `GET /api/v1/auth/me` or similar "current session info" route) before creating a new one — if one exists, add the action there; otherwise create `SessionController.cs`:
 
@@ -663,12 +663,12 @@ public class SessionController : ControllerBase
 }
 ```
 
-- [ ] **Step 7: Run the test to verify it passes**
+- [x] **Step 7: Run the test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~SwitchActiveCompanyCommandHandlerTests"`
 Expected: PASS (all 3 tests)
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/Auth/Session/Commands/SwitchActiveCompany/ src/ONEVO.Api/Contracts/Auth/Session/SwitchActiveCompanyRequest.cs src/ONEVO.Api/Controllers/Tenant/Auth/SessionController.cs tests/ONEVO.Tests.Unit/Features/Auth/Session/SwitchActiveCompanyCommandHandlerTests.cs
@@ -687,7 +687,7 @@ git commit -m "feat: add POST /api/v1/session/active-company endpoint"
 **Interfaces:**
 - No new production interfaces on the frontend beyond calling the new endpoint — this task is verification + wiring, not new design.
 
-- [ ] **Step 1: Backend integration test**
+- [x] **Step 1: Backend integration test**
 
 Create `tests/ONEVO.Tests.Integration/Auth/Session/SwitchActiveCompanyIntegrationTests.cs`, following this repo's existing full-stack pattern (`WebApplicationFactory` + real login flow to get a cookie, matching whatever an existing auth integration test already does):
 
@@ -712,23 +712,23 @@ public async Task SwitchActiveCompany_ChangesEffectivePermissionsOnNextRequest()
 
 Fill in exact seeding/assertion calls using this repo's real integration-test helpers (read an existing auth integration test file first, matching its login-flow HTTP call shape).
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj --filter "FullyQualifiedName~SwitchActiveCompanyIntegrationTests"`
 Expected: PASS
 
-- [ ] **Step 3: Commit backend integration test**
+- [x] **Step 3: Commit backend integration test**
 
 ```bash
 git add tests/ONEVO.Tests.Integration/Auth/Session/SwitchActiveCompanyIntegrationTests.cs
 git commit -m "test: add end-to-end coverage for active-company permission switching"
 ```
 
-- [ ] **Step 4: Read the current frontend company-selector and session service**
+- [x] **Step 4: Read the current frontend company-selector and session service**
 
 Open `Hrms--Web-application---front-end---v1/src/app/layouts/main-layout/top-navbar/company-selector/company-selector.component.ts` and `modules/organization/state/legal-entity.store.ts`. Confirm the exact current `selectCompany()` implementation (expected, per earlier investigation: it only calls `patchState(store, { selectedLegalEntityId })`, no HTTP call) and find the app's session/auth data-access service (the one already called at bootstrap to load the current user/permissions — likely under `core/` or `modules/auth/data-access/`).
 
-- [ ] **Step 5: Wire the switch call**
+- [x] **Step 5: Wire the switch call**
 
 In `company-selector.component.ts`, change `selectCompany()` (or whatever the actual method name is, confirmed in Step 4) from a local-only `patchState` call to:
 
@@ -742,7 +742,7 @@ async selectCompany(employeeId: string): Promise<void> {
 
 Adjust exact syntax/DI-injected service names to match this component's real current structure (confirmed in Step 4) — this is Angular 21 with standalone components and `inject()`-style DI per the architecture doc, so match whatever pattern the file already uses.
 
-- [ ] **Step 6: Add the API call**
+- [x] **Step 6: Add the API call**
 
 In this module's `data-access/*-api.service.ts` (the one already used for other organization/legal-entity calls — confirmed in Step 4), add:
 
@@ -754,11 +754,11 @@ switchActiveCompany(employeeId: string): Observable<void> {
 
 Match the existing service's exact base-URL/`HttpClient` injection pattern rather than hardcoding `/api/v1/...` if a base-path constant already exists elsewhere in this file.
 
-- [ ] **Step 7: Manual verification**
+- [x] **Step 7: Manual verification**
 
 Start the frontend dev server and backend API locally. Log in as a seeded user with two Employee rows in two legal entities (use Task 1's integration test seeding as a reference for what "two Employee rows" looks like, or seed it directly via the dev-smoke seeder if this repo has one for local testing). Switch company via the topbar selector. Confirm a permission-gated nav item or button that should only appear for one entity's role toggles visibility after the switch, without a full page reload or re-login.
 
-- [ ] **Step 8: Commit frontend changes**
+- [x] **Step 8: Commit frontend changes**
 
 ```bash
 git add src/app/layouts/main-layout/top-navbar/company-selector/company-selector.component.ts

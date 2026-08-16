@@ -27,7 +27,7 @@
 **Interfaces:**
 - Produces: `Task<bool> EmployeeExistsInLegalEntityAsync(Guid tenantId, Guid legalEntityId, string email, Guid? excludeId, CancellationToken ct = default)` — same semantics as the existing `EmailExistsAsync`, but scoped to one legal entity instead of the whole tenant.
 
-- [ ] **Step 1: Write the failing integration test**
+- [x] **Step 1: Write the failing integration test**
 
 Create `tests/ONEVO.Tests.Integration/CoreHr/Employee/EmployeeExistsInLegalEntityAsyncTests.cs`. Match this repo's existing integration-test base-class/seeding-helper pattern (read an existing file under `tests/ONEVO.Tests.Integration/CoreHr/Employee/` first, e.g. any existing employee list/detail integration test, and copy its setup shape exactly):
 
@@ -83,12 +83,12 @@ public class EmployeeExistsInLegalEntityAsyncTests : IntegrationTestBase // adju
 
 Adjust `SeedTenantAsync`/`SeedLegalEntityAsync`/`SeedEmployeeAsync` to this repo's actual helper names — find them in an existing integration test file first.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj --filter "FullyQualifiedName~EmployeeExistsInLegalEntityAsync"`
 Expected: FAIL (build error — method doesn't exist)
 
-- [ ] **Step 3: Add the interface method**
+- [x] **Step 3: Add the interface method**
 
 In `IEmployeeRepository.cs`, add directly under the existing `EmailExistsAsync` line:
 
@@ -102,7 +102,7 @@ In `IEmployeeRepository.cs`, add directly under the existing `EmailExistsAsync` 
         Guid tenantId, Guid legalEntityId, string email, Guid? excludeId, CancellationToken ct = default);
 ```
 
-- [ ] **Step 4: Implement it**
+- [x] **Step 4: Implement it**
 
 First read `EfEmployeeRepository.cs`'s existing `EmailExistsAsync` implementation (around line 218) to match its exact normalization (lowercase/trim) approach, then add immediately after it:
 
@@ -125,12 +125,12 @@ First read `EfEmployeeRepository.cs`'s existing `EmailExistsAsync` implementatio
 
 (If the existing `EmailExistsAsync` uses a different normalization approach — e.g. a case-insensitive collation instead of `.ToLower()` in the query — match that approach instead, for consistency within the same file.)
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj --filter "FullyQualifiedName~EmployeeExistsInLegalEntityAsync"`
 Expected: PASS (all 3 tests)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/CoreHr/Employee/RepositoryInterfaces/IEmployeeRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/EfEmployeeRepository.cs tests/ONEVO.Tests.Integration/CoreHr/Employee/EmployeeExistsInLegalEntityAsyncTests.cs
@@ -150,7 +150,7 @@ git commit -m "feat: add legal-entity-scoped employee duplicate-email check"
 **Interfaces:**
 - Consumes: `IEmployeeRepository.EmployeeExistsInLegalEntityAsync(...)` from Task 1.
 
-- [ ] **Step 1: Write the failing unit test (`ApproveAccessGrantRequestCommandHandler`)**
+- [x] **Step 1: Write the failing unit test (`ApproveAccessGrantRequestCommandHandler`)**
 
 Add to `ApproveAccessGrantRequestCommandHandlerTests.cs`:
 
@@ -191,12 +191,12 @@ Add to `ApproveAccessGrantRequestCommandHandlerTests.cs`:
 
 Repeat the equivalent pair of tests in `FinalizeOnboardingDraftCommandHandlerTests.cs` and the `SaveOnboardingDraft` test file, adjusted to each file's own mock/builder helper names.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~ApproveAccessGrantRequestCommandHandlerTests|FullyQualifiedName~FinalizeOnboardingDraftCommandHandlerTests|FullyQualifiedName~SaveOnboardingDraftCommandHandlerTests"`
 Expected: FAIL (mock never called — handlers still call the old `EmailExistsAsync`)
 
-- [ ] **Step 3: `ApproveAccessGrantRequestCommandHandler` — replace the check**
+- [x] **Step 3: `ApproveAccessGrantRequestCommandHandler` — replace the check**
 
 Replace:
 
@@ -212,7 +212,7 @@ with:
             return Result<ApproveAccessGrantRequestResponse>.Conflict("An employee with this work email already exists in this company.");
 ```
 
-- [ ] **Step 4: `FinalizeOnboardingDraftCommandHandler` — replace the check**
+- [x] **Step 4: `FinalizeOnboardingDraftCommandHandler` — replace the check**
 
 Replace:
 
@@ -228,7 +228,7 @@ with:
             return Result<FinalizeOnboardingDraftResponse>.Conflict("An employee with this work email already exists in this company.");
 ```
 
-- [ ] **Step 5: `SaveOnboardingDraftCommandHandler` — replace the check**
+- [x] **Step 5: `SaveOnboardingDraftCommandHandler` — replace the check**
 
 Open the file, confirm the field carrying the draft's target legal entity on `request` (it should be `request.LegalEntityId` — verify by reading the command's other usages in this handler before editing). Replace:
 
@@ -244,12 +244,12 @@ with:
 
 and update the accompanying error message the same way as Steps 3-4 ("...already exists in this company.").
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~ApproveAccessGrantRequestCommandHandlerTests|FullyQualifiedName~FinalizeOnboardingDraftCommandHandlerTests|FullyQualifiedName~SaveOnboardingDraftCommandHandlerTests"`
 Expected: PASS (all tests — every pre-existing test that mocked `EmailExistsAsync` in these 3 handlers needs its mock switched to `EmployeeExistsInLegalEntityAsync`, or it will now fail since the handler no longer calls the old method)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/CoreHr/OnboardingDraft/Commands/SaveOnboardingDraft/SaveOnboardingDraftCommandHandler.cs src/ONEVO.Application/Features/CoreHr/OnboardingDraft/Commands/FinalizeOnboardingDraft/FinalizeOnboardingDraftCommandHandler.cs src/ONEVO.Application/Features/CoreHr/Onboarding/Commands/ApproveAccessGrantRequest/ApproveAccessGrantRequestCommandHandler.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Onboarding/ApproveAccessGrantRequestCommandHandlerTests.cs tests/ONEVO.Tests.Unit/Features/CoreHr/OnboardingDrafts/FinalizeOnboardingDraftCommandHandlerTests.cs tests/ONEVO.Tests.Unit/Features/CoreHr/OnboardingDrafts/SaveOnboardingDraftCommandHandlerTests.cs
@@ -270,7 +270,7 @@ git commit -m "feat: scope onboarding duplicate-email check to the target legal 
 **Interfaces:**
 - No new dependency. Behavior change only: password is set only when the resolved `User` doesn't already have active credentials.
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 Add to `AcceptEmployeeInvitationCommandHandlerTests.cs`:
 
@@ -332,12 +332,12 @@ Add to `AcceptEmployeeInvitationCommandHandlerTests.cs`:
 
 Adjust helper method names to whatever this test file's existing conventions actually are — read the file first.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~AcceptEmployeeInvitationCommandHandlerTests"`
 Expected: FAIL (the handler currently always sets the password unconditionally, and never fails on an empty one — the validator would reject an empty password before the handler even runs, since `ApplyPasswordPolicy()` is currently unconditional; fix the validator in Step 3 before these tests can even reach the handler)
 
-- [ ] **Step 3: Relax the validator to allow an empty password conditionally**
+- [x] **Step 3: Relax the validator to allow an empty password conditionally**
 
 In `AcceptEmployeeInvitationCommandValidator.cs`, replace:
 
@@ -364,7 +364,7 @@ with:
             .When(x => !string.IsNullOrEmpty(x.Password));
 ```
 
-- [ ] **Step 4: Make password-setting conditional in the handler**
+- [x] **Step 4: Make password-setting conditional in the handler**
 
 In `AcceptEmployeeInvitationCommandHandler.cs`, replace:
 
@@ -395,12 +395,12 @@ with:
         }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~AcceptEmployeeInvitationCommandHandlerTests"`
 Expected: PASS (all tests, including every pre-existing one — the pre-existing "happy path" test that submits a real password against a brand-new user must still pass unchanged, since that's the `!isReturningUser` branch preserved verbatim)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/Auth/Invite/Commands/AcceptEmployeeInvitation/AcceptEmployeeInvitationCommandValidator.cs src/ONEVO.Application/Features/Auth/Invite/Commands/AcceptEmployeeInvitation/AcceptEmployeeInvitationCommandHandler.cs tests/ONEVO.Tests.Unit/Features/Auth/Invite/AcceptEmployeeInvitationCommandHandlerTests.cs
@@ -419,11 +419,11 @@ git commit -m "feat: skip password reset when accepting invitation with existing
 **Interfaces:**
 - Produces: a new `RequiresPassword` (bool) field on the invitation preview response returned by `GET /api/v1/auth/invitations/{token}` — `true` unless the linked `User` is already active with a set password hash. The frontend's accept page (not part of this plan) uses this to decide whether to render a password field.
 
-- [ ] **Step 1: Read the current preview handler and mapper first**
+- [x] **Step 1: Read the current preview handler and mapper first**
 
 Open `GetInvitationByTokenQueryHandler.cs` and `InviteMapper.cs`. Confirm the exact name of the response DTO (`InvitationPreviewDto` per earlier investigation, but verify) and whether the handler already loads the linked `User` row (it may only load the `InvitationToken`) — if it doesn't, this task needs to add a `IUserRepository` dependency to the handler, following the same constructor-injection pattern as every other handler in this plan.
 
-- [ ] **Step 2: Write the failing unit test**
+- [x] **Step 2: Write the failing unit test**
 
 Add to the existing `GetInvitationByTokenQueryHandlerTests.cs` (match its existing setup pattern exactly):
 
@@ -445,12 +445,12 @@ Add to the existing `GetInvitationByTokenQueryHandlerTests.cs` (match its existi
 
 Fill in the arrange/assert bodies once Step 1's investigation confirms the handler's exact mock/dependency shape — this task cannot be written blind without first reading the file, unlike the earlier tasks in this plan where the surrounding code was already fully read.
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~GetInvitationByTokenQueryHandlerTests"`
 Expected: FAIL
 
-- [ ] **Step 4: Add the field to the response DTO and compute it**
+- [x] **Step 4: Add the field to the response DTO and compute it**
 
 Add `bool RequiresPassword` to the preview response record in `InviteMapper.cs`'s vicinity (wherever the DTO itself is declared — likely alongside `InvitationPreviewDto`). In the handler, compute it as:
 
@@ -460,17 +460,17 @@ var requiresPassword = !(linkedUser.IsActive && !string.IsNullOrEmpty(linkedUser
 
 using whichever `User` lookup the handler now has (Step 1), and pass it into the mapper call / DTO construction.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~GetInvitationByTokenQueryHandlerTests"`
 Expected: PASS
 
-- [ ] **Step 6: Run the full unit suite**
+- [x] **Step 6: Run the full unit suite**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj`
 Expected: PASS (confirms Part 2 hasn't broken anything elsewhere)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/Auth/Invite/Queries/GetInvitationByToken/GetInvitationByTokenQueryHandler.cs src/ONEVO.Application/Features/Auth/Invite/Mappers/InviteMapper.cs tests/ONEVO.Tests.Unit/Features/Auth/Invite/GetInvitationByTokenQueryHandlerTests.cs
@@ -489,7 +489,7 @@ git commit -m "feat: surface RequiresPassword on the invitation preview response
 **Interfaces:**
 - No new production code — this test exercises Tasks 1-4 together against a real (Testcontainers) database, end to end.
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Follow this repo's existing full-stack integration test pattern (e.g. whatever test class already drives a complete onboarding-draft-to-approval flow — find one under `tests/ONEVO.Tests.Integration/CoreHr/`, and copy its `WebApplicationFactory`/HTTP-client setup exactly):
 
@@ -547,17 +547,19 @@ public class CrossLegalEntityInvitationIntegrationTests : IntegrationTestBase //
 
 `OnboardAndApproveEmployeeAsync`/`ActivateUserWithPasswordAsync`/`GetLatestInvitationRawTokenAsync`/`CanLoginAsync` are placeholders for whatever this repo's real integration-test helper methods are named — before writing this file, read at least one existing full onboarding-flow integration test to find (or build, matching its style) equivalents. Do not invent a parallel onboarding path different from what production code actually does.
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `dotnet test tests/ONEVO.Tests.Integration/ONEVO.Tests.Integration.csproj --filter "FullyQualifiedName~CrossLegalEntityInvitationIntegrationTests"`
 Expected: PASS. If it fails, do not weaken the test to make it pass — the failure is telling you something in Tasks 1-4 is incomplete; go back and fix the handler code.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/ONEVO.Tests.Integration/CoreHr/Onboarding/CrossLegalEntityInvitationIntegrationTests.cs
 git commit -m "test: add end-to-end coverage for cross-legal-entity invitation flow"
 ```
+
+Review decision 2026-08-16: the shipped `CrossLegalEntityInvitationIntegrationTests` covers legal-entity-scoped duplicate checks against real Postgres. The full HTTP passwordless-accept / `RequiresPassword` path stays at unit level — `RequiresPassword` is derived in memory from `User.IsActive` + `PasswordHash`, and two `Employee` rows on one `User` are already persisted against Postgres in `SwitchActiveCompanyIntegrationTests` plus `EmployeeExistsInLegalEntityAsyncTests`.
 
 ---
 

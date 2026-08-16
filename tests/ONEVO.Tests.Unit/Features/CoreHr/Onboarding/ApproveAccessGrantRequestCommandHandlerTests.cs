@@ -19,7 +19,6 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
-using PositionAssignmentEntity = ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.Onboarding;
 
@@ -78,15 +77,18 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         _employmentTypeRepository.Setup(r => r.GetIdByCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         _employeeRepository
-            .Setup(r => r.EmailExistsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .Setup(r => r.EmployeeExistsInLegalEntityAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         _employeeRepository
             .Setup(r => r.EmployeeNumberExistsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         _positionAssignmentRepository
-            .Setup(r => r.CountActiveAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
+            .Setup(r => r.TryReservePositionAssignmentAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
 
         _seatEntitlementService
             .Setup(s => s.EvaluateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -287,7 +289,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
     {
         SetupHappyPath(out var requestId, out _);
         _employeeRepository
-            .Setup(r => r.EmailExistsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .Setup(r => r.EmployeeExistsInLegalEntityAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
@@ -367,7 +369,8 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         Assert.True(addedUser.MustChangePassword);
         Assert.NotNull(addedEmployee);
         Assert.Equal(addedUser.Id, addedEmployee!.UserId);
-        _positionAssignmentRepository.Verify(r => r.AddAsync(It.IsAny<PositionAssignmentEntity>(), It.IsAny<CancellationToken>()), Times.Once);
+        _positionAssignmentRepository.Verify(r => r.TryReservePositionAssignmentAsync(
+            _tenantId, It.IsAny<Guid>(), _positionId, It.IsAny<DateOnly>(), _userId, It.IsAny<CancellationToken>()), Times.Once);
         Assert.NotNull(addedRole);
         Assert.Equal(_roleId, addedRole!.RoleId);
         Assert.Equal(_positionId, addedRole.SourcePositionId);
@@ -381,6 +384,56 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         Assert.Equal(draftId, result.Value!.OnboardingDraftId);
         Assert.Equal("Approved", result.Value.PositionApprovalStatus);
         Assert.True(result.Value.InvitationQueued);
+    }
+
+    [Fact]
+    public async Task Handle_WhenPositionAtCapacity_ReturnsConflict_AndDoesNotCreateEmployee()
+    {
+        SetupHappyPath(out var requestId, out _);
+        _positionAssignmentRepository
+            .Setup(r => r.TryReservePositionAssignmentAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid?)null);
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal("This position has reached its capacity.", result.Error);
+        _draftRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_EmployeeExistsInDifferentLegalEntity_DoesNotBlock()
+    {
+        SetupHappyPath(out var requestId, out _);
+        _employeeRepository
+            .Setup(r => r.EmployeeExistsInLegalEntityAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _employeeRepository.Verify(
+            r => r.EmailExistsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_EmployeeExistsInSameLegalEntity_ReturnsConflict()
+    {
+        SetupHappyPath(out var requestId, out _);
+        _employeeRepository
+            .Setup(r => r.EmployeeExistsInLegalEntityAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
     }
 
     [Fact]

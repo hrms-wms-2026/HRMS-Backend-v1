@@ -7,6 +7,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.Security;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 
@@ -33,6 +34,7 @@ public sealed class AcceptEmployeeInvitationCommandHandler
     private readonly IDateTimeProvider _clock;
     private readonly ITenantContext _tenantContext;
     private readonly IGlobalEmailDirectoryRepository _globalDirectory;
+    private readonly IPositionAssignmentRepository _positionAssignmentRepository;
 
     public AcceptEmployeeInvitationCommandHandler(
         IInvitationTokenRepository invitations,
@@ -43,7 +45,8 @@ public sealed class AcceptEmployeeInvitationCommandHandler
         IUnitOfWork unitOfWork,
         IDateTimeProvider clock,
         ITenantContext tenantContext,
-        IGlobalEmailDirectoryRepository globalDirectory)
+        IGlobalEmailDirectoryRepository globalDirectory,
+        IPositionAssignmentRepository positionAssignmentRepository)
     {
         _invitations = invitations;
         _users = users;
@@ -54,6 +57,7 @@ public sealed class AcceptEmployeeInvitationCommandHandler
         _clock = clock;
         _tenantContext = tenantContext;
         _globalDirectory = globalDirectory;
+        _positionAssignmentRepository = positionAssignmentRepository;
     }
 
     public async Task<Result<LoginResponseDto>> Handle(
@@ -94,15 +98,25 @@ public sealed class AcceptEmployeeInvitationCommandHandler
         if (!legal.IsSuccess)
             return Result<LoginResponseDto>.Failure(legal.Error!, legal.StatusCode ?? 400);
 
-        user.PasswordHash = _passwordHasher.Hash(request.Password);
-        user.IsActive = true;
-        user.MustChangePassword = false;
-        user.PasswordSetByAdmin = false;
-        user.TemporaryPasswordExpiresAt = null;
-        user.UpdatedAt = now;
+        var isReturningUser = user.IsActive && !string.IsNullOrEmpty(user.PasswordHash);
+        if (!isReturningUser)
+        {
+            if (string.IsNullOrEmpty(request.Password))
+                return Result<LoginResponseDto>.Failure("A password is required to accept this invitation.", 400);
+
+            user.PasswordHash = _passwordHasher.Hash(request.Password);
+            user.IsActive = true;
+            user.MustChangePassword = false;
+            user.PasswordSetByAdmin = false;
+            user.TemporaryPasswordExpiresAt = null;
+            user.UpdatedAt = now;
+        }
 
         inv.UsedAt = now;
         inv.CompletedWith = "employee_password";
+
+        if (inv.PositionAssignmentId is Guid reservedAssignmentId)
+            await _positionAssignmentRepository.ActivatePlannedAsync(inv.TenantId, reservedAssignmentId, ct);
 
         await _globalDirectory.UpsertAsync(inv.InvitedEmail, inv.TenantId, ct);
         await _unitOfWork.SaveChangesAsync(ct);

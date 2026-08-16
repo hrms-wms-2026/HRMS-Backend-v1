@@ -568,14 +568,17 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
     }
 
     [Fact]
-    public void EmployeeEntity_UserIdIndex_IsUnique()
+    public void EmployeeEntity_UserIdLegalEntityIdIndex_IsUnique()
     {
         using var db = CreateContext();
         var entityType = db.Model.FindEntityType(typeof(Employee))!;
-        var index = entityType.GetIndexes()
+        var userIdOnly = entityType.GetIndexes()
             .Single(i => i.Properties.Select(p => p.Name).SequenceEqual(["UserId"]));
+        var composite = entityType.GetIndexes()
+            .Single(i => i.Properties.Select(p => p.Name).SequenceEqual(["UserId", "LegalEntityId"]));
 
-        index.IsUnique.Should().BeTrue();
+        userIdOnly.IsUnique.Should().BeFalse();
+        composite.IsUnique.Should().BeTrue();
     }
 
     [Fact]

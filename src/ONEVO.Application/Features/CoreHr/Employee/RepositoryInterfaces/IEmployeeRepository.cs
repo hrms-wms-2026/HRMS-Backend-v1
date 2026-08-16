@@ -24,6 +24,18 @@ public interface IEmployeeRepository
     Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetByIdAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    /// <summary>The Employee row a fresh session should default its ActiveEmployeeId to: the
+    /// user's only Employee row if they have exactly one, or - if they have more than one -
+    /// the one with the most recent active PrimaryEmployment PositionAssignment.EffectiveFrom.
+    /// Returns null if the user has no Employee row at all.</summary>
+    Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetDefaultForUserAsync(
+        Guid tenantId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>The caller's Employee row in a given legal entity, used when the company
+    /// switcher posts a legal-entity id rather than an employee id.</summary>
+    Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetByUserAndLegalEntityAsync(
+        Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default);
+
     /// <summary>Tracked fetch for mutation - GetByIdAsync above is AsNoTracking(). Used by
     /// self-service profile update handlers that need to change and save an Employee row.</summary>
     Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetTrackedByIdAsync(
@@ -40,6 +52,12 @@ public interface IEmployeeRepository
     void SetExpectedVersion(ONEVO.Domain.Features.CoreHr.Entities.Employee employee, string expectedVersion);
 
     Task<bool> EmailExistsAsync(Guid tenantId, string email, Guid? excludeId, CancellationToken ct = default);
+
+    /// <summary>Legal-entity-scoped duplicate check, used by onboarding to allow the same person
+    /// to be invited into a different legal entity under the same tenant. EmailExistsAsync above
+    /// stays tenant-wide and is retained for any caller that genuinely needs that broader check.</summary>
+    Task<bool> EmployeeExistsInLegalEntityAsync(
+        Guid tenantId, Guid legalEntityId, string email, Guid? excludeId, CancellationToken ct = default);
 
     Task<bool> EmployeeNumberExistsAsync(Guid tenantId, string employeeNumber, Guid? excludeId, CancellationToken ct = default);
 

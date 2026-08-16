@@ -91,6 +91,7 @@ public sealed class ResendEmployeeInvitationCommandHandler
             UserId = current.UserId,
             RoleId = null,
             PositionId = current.PositionId,
+            PositionAssignmentId = current.PositionAssignmentId,
             Purpose = InvitationToken.EmployeeOnboardingPurpose,
             LegalEntityId = current.LegalEntityId,
             EmployeeId = request.EmployeeId,

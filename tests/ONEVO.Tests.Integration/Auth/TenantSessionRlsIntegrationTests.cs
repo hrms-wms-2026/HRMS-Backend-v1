@@ -325,7 +325,7 @@ public sealed class TenantSessionRlsIntegrationTests : IAsyncLifetime
 
     private sealed class NoOpPermissionResolver : IPermissionResolver
     {
-        public Task<List<string>> ResolveAsync(Guid userId, Guid tenantId, CancellationToken ct = default) =>
+        public Task<List<string>> ResolveAsync(Guid userId, Guid tenantId, Guid? activeLegalEntityId, CancellationToken ct = default) =>
             Task.FromResult(new List<string>());
     }
 }

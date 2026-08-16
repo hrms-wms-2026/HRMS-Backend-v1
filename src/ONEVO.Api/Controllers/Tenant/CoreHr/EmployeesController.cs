@@ -9,6 +9,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.AddEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ResendEmployeeInvitation;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.RevokeEmployeeInvitation;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.SetMyAvatar;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateBankDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateDependent;
@@ -71,13 +72,26 @@ public class EmployeesController : ControllerBase
     /// current invitation has expired without being accepted - see
     /// ResendEmployeeInvitationCommandHandler for the exact guard.</summary>
     [HttpPost("{id:guid}/resend-invitation")]
-    [RequirePermission("employees:write")]
+    [RequirePermission("invitations:manage")]
     public async Task<IActionResult> ResendInvitation(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ResendEmployeeInvitationCommand(id), ct);
 
         return result.IsSuccess
             ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Revoke an employee's current onboarding invitation and free its reserved seat.
+    /// Unlike resend, this works on a still-pending invitation, not only an expired one.</summary>
+    [HttpPost("{id:guid}/revoke-invitation")]
+    [RequirePermission("invitations:manage")]
+    public async Task<IActionResult> RevokeInvitation(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new RevokeEmployeeInvitationCommand(id), ct);
+
+        return result.IsSuccess
+            ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

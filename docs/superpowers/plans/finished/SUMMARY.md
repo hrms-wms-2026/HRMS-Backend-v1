@@ -2,7 +2,7 @@
 
 **Purpose:** Completed plans and point-in-time audit/fix reports. Everything here was moved from the flat `plans/` folder on 2026-08-06 as part of the `finished/` + `next/` restructure (see `docs/superpowers/rules/FILE_CREATION_RULES.md`). Files were **not** re-split or content-edited during the move — only relocated, per the migration rule (existing files get moved + status-tagged, not retroactively restructured into parts). The `plans/kajaa/` personal folder was also dissolved into this structure the same day — its 3 finished plans now live here too (see "From `kajaa/`" below).
 
-**Last updated:** 2026-08-09
+**Last updated:** 2026-08-16
 
 ## Layout: date subfolders
 
@@ -80,6 +80,9 @@ Each entry's **Related:** line is a wiki-link (`[[bare-filename]]`, no extension
 
 **`2026-08-09/`** (1)
 - `2026-08-08-work-management-frontend-blocking-endpoints.md` — Related: the frontend repo's `Hrms--Web-application---front-end---v1/docs/superpowers/specs/next/2026-08-08-work-management-projects-milestones-design.md` (the consuming design, §6). Two same-module additions requested by the frontend and shipped same-session on direct user request (no separate brainstorm/spec, since both items were already fully specified in the request itself): (1) new `GET /api/v1/work/project-categories` endpoint (`ProjectCategoriesController` + `ListProjectCategoriesQuery`/Handler + `IProjectCategoryRepository.GetAllForTenantAsync`), (2) `isAchieved`/`achievedAt` added to `GET /work/projects/mine`'s response (`ProjectListItemResponse`/`ProjectListItemViewModel` + mappers). `dotnet build` clean (0 warnings/errors); `ListProjectCategoriesQueryHandlerTests.cs` added, 160/160 WorkManagement unit tests passing. Postman docs updated: new `List Project Categories.md`, `isAchieved`/`achievedAt` backfilled onto `List Projects.md` and `Get Project.md` (the latter was already stale before this change — its endpoint already returned these fields).
+
+**`2026-08-16/`** (1 folder)
+- `2026-08-16-multi-legal-entity-employment-foundation/` — Related: [[2026-08-16-multi-legal-entity-employment-foundation-design]] (its spec, in `specs/finished/2026-08-16/`). Three parts: invitation capacity reservation (`invitations:manage`, atomic `TryReservePositionAssignmentAsync` counting `active`+`planned`), cross-legal-entity invitation (same person, two `Employee` rows, one `User`; unique index on `(user_id, legal_entity_id)`), session active-company permission recompute (`Session.ActiveEmployeeId`, `POST /api/v1/session/active-company`). **Executed 2026-08-16**: all 3 parts; unit suite 2110/2110. Full HTTP passwordless-accept path kept at unit level; two-employee-per-user persistence covered against Postgres in `SwitchActiveCompanyIntegrationTests` and `EmployeeExistsInLegalEntityAsyncTests`.
 
 ## Notable plans (kept from earlier summary revisions)
 

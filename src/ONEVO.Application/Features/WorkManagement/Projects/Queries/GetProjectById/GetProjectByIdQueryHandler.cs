@@ -42,7 +42,7 @@ public class GetProjectByIdQueryHandler : IRequestHandler<GetProjectByIdQuery, R
         if (project is null || !project.IsActive)
             return Result<ProjectDetailResponse>.NotFound("Project not found.");
 
-        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, ct);
+        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
         var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
 
         if (!hasReadPermission)

@@ -176,4 +176,26 @@ public sealed class ResendEmployeeInvitationCommandHandlerTests
 
         _unitOfWork.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task Handle_Resend_CarriesForwardPositionAssignmentId()
+    {
+        var reservedAssignmentId = Guid.NewGuid();
+        var expired = ExpiredUnacceptedInvitation();
+        expired.PositionAssignmentId = reservedAssignmentId;
+        _invitationTokenRepository
+            .Setup(r => r.GetLatestByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expired);
+
+        InvitationToken? captured = null;
+        _invitationTokenRepository
+            .Setup(r => r.AddAsync(It.IsAny<InvitationToken>(), It.IsAny<CancellationToken>()))
+            .Callback<InvitationToken, CancellationToken>((inv, _) => captured = inv)
+            .Returns(Task.CompletedTask);
+
+        await CreateHandler().Handle(new ResendEmployeeInvitationCommand(_employeeId), CancellationToken.None);
+
+        Assert.NotNull(captured);
+        Assert.Equal(reservedAssignmentId, captured!.PositionAssignmentId);
+    }
 }

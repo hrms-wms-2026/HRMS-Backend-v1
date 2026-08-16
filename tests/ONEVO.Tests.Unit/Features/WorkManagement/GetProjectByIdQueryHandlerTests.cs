@@ -37,7 +37,7 @@ public class GetProjectByIdQueryHandlerTests
         members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(isActiveMember);
 
         var permissionResolver = new Mock<IPermissionResolver>();
-        permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
+        permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
 
         var handler = new GetProjectByIdQueryHandler(currentUser.Object, projects.Object, members.Object, permissionResolver.Object);
         return (handler, members);
@@ -109,7 +109,7 @@ public class GetProjectByIdQueryHandlerTests
 
         var members = new Mock<IProjectMemberRepository>();
         var permissionResolver = new Mock<IPermissionResolver>();
-        permissionResolver.Setup(x => x.ResolveAsync(LeadId, TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(["projects:read"]);
+        permissionResolver.Setup(x => x.ResolveAsync(LeadId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(["projects:read"]);
 
         var handler = new GetProjectByIdQueryHandler(currentUser.Object, projects.Object, members.Object, permissionResolver.Object);
 

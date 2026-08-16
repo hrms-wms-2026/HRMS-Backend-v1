@@ -21,7 +21,6 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
-using PositionAssignmentEntity = ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment;
 
 namespace ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboardingDraft;
 
@@ -181,8 +180,8 @@ public class FinalizeOnboardingDraftCommandHandler
         if (employmentTypeId is null)
             return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("The selected employment type does not exist.");
 
-        if (await _employeeRepository.EmailExistsAsync(tenantId, draft.WorkEmail, excludeId: null, ct))
-            return Result<FinalizeOnboardingDraftResponse>.Conflict("An employee with this work email already exists.");
+        if (await _employeeRepository.EmployeeExistsInLegalEntityAsync(tenantId, draft.LegalEntityId, draft.WorkEmail, excludeId: null, ct))
+            return Result<FinalizeOnboardingDraftResponse>.Conflict("An employee with this work email already exists in this company.");
 
         // EmployeeNumber is "conditional" per product docs (required when not auto-generated),
         // but no auto-generation policy exists in this codebase, and Employee.EmployeeNumber is
@@ -200,17 +199,6 @@ public class FinalizeOnboardingDraftCommandHandler
             accessTemplate = await _positionRepository.GetAccessTemplateByPositionAsync(tenantId, draft.PositionId.Value, ct);
         }
         var requiresApproval = accessTemplate is { IsActive: true, RequiresApproval: true };
-
-        // Position capacity is a pre-invite validation (per the userflow doc's error-scenario
-        // table), so it applies before either branch below, using PositionAssignment's active
-        // count against Position.MaxOccupancy - the only capacity signal this repository layer
-        // exposes.
-        if (position is not null)
-        {
-            var activeAssignmentCount = await _positionAssignmentRepository.CountActiveAsync(tenantId, position.Id, ct);
-            if (activeAssignmentCount >= position.MaxOccupancy)
-                return Result<FinalizeOnboardingDraftResponse>.Conflict("This position has reached its capacity.");
-        }
 
         if (requiresApproval)
         {
@@ -362,20 +350,13 @@ public class FinalizeOnboardingDraftCommandHandler
         };
         await _employeeRepository.AddAsync(employee, ct);
 
+        Guid? reservedAssignmentId = null;
         if (position is not null)
         {
-            var assignment = new PositionAssignmentEntity
-            {
-                Id = Guid.NewGuid(),
-                TenantId = draft.TenantId,
-                EmployeeId = employeeId,
-                PositionId = position.Id,
-                AssignmentKind = PositionAssignmentKind.PrimaryEmployment,
-                EffectiveFrom = draft.StartDate,
-                AssignmentStatus = PositionAssignmentStatus.Active,
-                CreatedById = _currentUser.UserId,
-            };
-            await _positionAssignmentRepository.AddAsync(assignment, ct);
+            reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
+                draft.TenantId, employeeId, position.Id, draft.StartDate, _currentUser.UserId, ct);
+            if (reservedAssignmentId is null)
+                return Result<FinalizeOnboardingDraftResponse>.Conflict("This position has reached its capacity.");
         }
 
         // The only role ever assigned here is the position access template's own RoleId - never
@@ -407,6 +388,7 @@ public class FinalizeOnboardingDraftCommandHandler
             UserId = user.Id,
             RoleId = null,
             PositionId = draft.PositionId,
+            PositionAssignmentId = reservedAssignmentId,
             Purpose = InvitationToken.EmployeeOnboardingPurpose,
             LegalEntityId = draft.LegalEntityId,
             EmployeeId = employeeId,

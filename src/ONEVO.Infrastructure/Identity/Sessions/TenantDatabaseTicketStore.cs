@@ -13,6 +13,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using CoreHrEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 
@@ -89,6 +90,9 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         var userId = Guid.Parse(ticket.Principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
         var csrfTokenHash = ticket.Properties.Items.TryGetValue(CsrfTokenHashItemKey, out var csrfVal) ? csrfVal : string.Empty;
 
+        var employees = scope.ServiceProvider.GetRequiredService<CoreHrEmployeeRepository>();
+        var defaultEmployee = await employees.GetDefaultForUserAsync(tenantId, userId, cancellationToken);
+
         var rawKey = GenerateRawKey();
         var now = _clock.UtcNow;
         var expiresAt = ticket.Properties.ExpiresUtc ?? now.Add(SessionPolicy.SlidingWindow);
@@ -104,7 +108,8 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
             StartedAt = now,
             LastActivityAt = now,
             ExpiresAt = expiresAt,
-            CsrfTokenHash = csrfTokenHash ?? string.Empty
+            CsrfTokenHash = csrfTokenHash ?? string.Empty,
+            ActiveEmployeeId = defaultEmployee?.Id
         };
 
         await sessions.AddAsync(session, cancellationToken);
@@ -164,6 +169,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         var permissionResolver = scope.ServiceProvider.GetRequiredService<IPermissionResolver>();
         var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
         var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+        var employees = scope.ServiceProvider.GetRequiredService<CoreHrEmployeeRepository>();
 
         // This scope has no tenant id yet - only the cookie's session key - so the only row this
         // scope is allowed to see before switching context is the one satisfying the
@@ -185,7 +191,15 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
         if (user is null || !user.IsActive)
             return null;
 
-        var permissions = await permissionResolver.ResolveAsync(session.UserId, session.TenantId, cancellationToken);
+        Guid? activeLegalEntityId = null;
+        if (session.ActiveEmployeeId is Guid activeEmployeeId)
+        {
+            var activeEmployee = await employees.GetByIdAsync(session.TenantId, activeEmployeeId, cancellationToken);
+            activeLegalEntityId = activeEmployee?.LegalEntityId;
+        }
+
+        var permissions = await permissionResolver.ResolveAsync(
+            session.UserId, session.TenantId, activeLegalEntityId, cancellationToken);
 
         var claims = new List<Claim>
         {
@@ -194,6 +208,7 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
             new(ClaimTypes.Email, user.Email),
             new("csrf_token_hash", session.CsrfTokenHash ?? string.Empty),
             new("session_expires_at", session.ExpiresAt.ToString("O")),
+            new("session_id", session.Id.ToString()),
         };
         claims.AddRange(permissions.Select(p => new Claim("permission", p)));
 

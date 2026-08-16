@@ -21,7 +21,6 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
-using PositionAssignmentEntity = ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment;
 
 namespace ONEVO.Application.Features.CoreHr.Onboarding.Commands.ApproveAccessGrantRequest;
 
@@ -176,8 +175,8 @@ public class ApproveAccessGrantRequestCommandHandler
         if (employmentTypeId is null)
             return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity("The selected employment type does not exist.");
 
-        if (await _employeeRepository.EmailExistsAsync(tenantId, draft.WorkEmail, excludeId: null, ct))
-            return Result<ApproveAccessGrantRequestResponse>.Conflict("An employee with this work email already exists.");
+        if (await _employeeRepository.EmployeeExistsInLegalEntityAsync(tenantId, draft.LegalEntityId, draft.WorkEmail, excludeId: null, ct))
+            return Result<ApproveAccessGrantRequestResponse>.Conflict("An employee with this work email already exists in this company.");
 
         if (string.IsNullOrWhiteSpace(draft.EmployeeNumber))
             return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity(
@@ -197,11 +196,6 @@ public class ApproveAccessGrantRequestCommandHandler
         if (accessTemplate.RoleId != grantRequest.RequestedRoleId)
             return Result<ApproveAccessGrantRequestResponse>.Conflict(
                 "The position's access role has changed since this request was submitted.");
-
-        // Capacity, same signal FinalizeOnboardingDraftCommandHandler uses.
-        var activeAssignmentCount = await _positionAssignmentRepository.CountActiveAsync(tenantId, position.Id, ct);
-        if (activeAssignmentCount >= position.MaxOccupancy)
-            return Result<ApproveAccessGrantRequestResponse>.Conflict("This position has reached its capacity.");
 
         // ---- Seat recheck. Blocked/Undetermined create nothing and leave the request pending -
         // approving again later (once seats/billing are resolved) must still be possible. ----
@@ -283,18 +277,10 @@ public class ApproveAccessGrantRequestCommandHandler
         };
         await _employeeRepository.AddAsync(employee, ct);
 
-        var assignment = new PositionAssignmentEntity
-        {
-            Id = Guid.NewGuid(),
-            TenantId = draft.TenantId,
-            EmployeeId = employeeId,
-            PositionId = position.Id,
-            AssignmentKind = PositionAssignmentKind.PrimaryEmployment,
-            EffectiveFrom = draft.StartDate,
-            AssignmentStatus = PositionAssignmentStatus.Active,
-            CreatedById = _currentUser.UserId,
-        };
-        await _positionAssignmentRepository.AddAsync(assignment, ct);
+        var reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
+            draft.TenantId, employeeId, position.Id, draft.StartDate, _currentUser.UserId, ct);
+        if (reservedAssignmentId is null)
+            return Result<ApproveAccessGrantRequestResponse>.Conflict("This position has reached its capacity.");
 
         // UserRole's key is (UserId, RoleId), not scoped by position/tenant - if the matched
         // existing user already holds the requested role (e.g. from an earlier grant), adding it
@@ -328,6 +314,7 @@ public class ApproveAccessGrantRequestCommandHandler
             UserId = user.Id,
             RoleId = null,
             PositionId = draft.PositionId,
+            PositionAssignmentId = reservedAssignmentId,
             Purpose = InvitationToken.EmployeeOnboardingPurpose,
             LegalEntityId = draft.LegalEntityId,
             EmployeeId = employeeId,

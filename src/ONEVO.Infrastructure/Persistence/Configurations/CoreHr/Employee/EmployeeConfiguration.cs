@@ -36,6 +36,7 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<EmployeeEntity>
             .IsConcurrencyToken();
 
         builder.HasIndex(e => new { e.TenantId, e.EmployeeNumber }).IsUnique();
-        builder.HasIndex(e => e.UserId).IsUnique();
+        builder.HasIndex(e => e.UserId);
+        builder.HasIndex(e => new { e.UserId, e.LegalEntityId }).IsUnique();
     }
 }

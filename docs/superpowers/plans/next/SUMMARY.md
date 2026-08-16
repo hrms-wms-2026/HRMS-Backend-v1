@@ -10,7 +10,6 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 
 ## Files
 
-- `2026-08-16-multi-legal-entity-employment-foundation/` — status: pending, not started. 3-part plan (`part-1-invitation-capacity-lifecycle.md`, `part-2-cross-legal-entity-invitation.md`, `part-3-session-active-entity-permissions.md`) built from `specs/next/2026-08-16-multi-legal-entity-employment-foundation-design.md`. Sub-project 1 of 2 in a decomposed employee-detail/invitation/cross-entity feature request; sub-project 2 (Employee Detail screen) gets its own spec+plan after this one ships.
 - `Project Management.md` — two future features, both raw context, not designs:
   1. Milestone (Objective) In-Charge Role & Permission System — **superseded**, see the file's own header: fully brainstormed and designed in `specs/2026-08-04-work-management-milestone-hierarchy-design.md`.
   2. Project Lifecycle Workflow, Approval Pipeline, Archive/Restore, and Progress Calculation — not started. Backend-relevant subset of a manager corrections doc on the Project Management user journey (2026-08-04). Blocked on Objective/Task CRUD existing first; conflicts with the schema's current "forbidden: free-form status" note on `projects`.
@@ -27,3 +26,4 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 - `2026-08-08-work-management-my-project-milestones.md` also moved to `plans/finished/2026-08-08/` the same day (all 5 tasks done) — see `plans/SUMMARY.md`.
 - `2026-08-07-work-management-objective-subtree.md`'s finished/next status needs syncing (see "Known drift" above) — separate follow-up, not part of the 2026-08-08 work.
 - `2026-08-08-work-management-frontend-blocking-endpoints.md` moved to `plans/finished/2026-08-09/` on 2026-08-09 — both requested items (List Project Categories endpoint, `isAchieved`/`achievedAt` on List Projects) shipped same day. See `plans/SUMMARY.md`.
+- `2026-08-16-multi-legal-entity-employment-foundation/` moved to `plans/finished/2026-08-16/` on 2026-08-16 — all 3 parts executed; unit suite 2110/2110. See `plans/SUMMARY.md`.
