@@ -375,7 +375,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
         for (var i = 0; i < node.Children.Length; i++)
         {
             var child = node.Children[i];
-            var childHours = ComputeChildHours(allocatedHours, i);
+            var childHours = ComputeChildHours(allocatedHours, i, node.Children.Length);
             foreach (var leaf in EnumerateLeaves(child, $"{path}/{child.Title}", childHours))
             {
                 yield return leaf;

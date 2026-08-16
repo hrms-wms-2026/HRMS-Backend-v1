@@ -12,6 +12,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
     private const decimal HoursRatioStep = 0.05m;
     private const decimal HoursRatioFloor = 0.30m;
     private const decimal MinimumAllocatedHours = 10m;
+    private const decimal ChildAllocationCeiling = 0.80m; // siblings collectively never exceed 80% of the parent
 
     private static async Task SeedProjectsAndObjectivesAsync(
         ApplicationDbContext db,
@@ -150,7 +151,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
         {
             var child = node.Children[i];
             var (childStart, childEnd) = ComputeChildDates(start, end, i);
-            var childHours = ComputeChildHours(allocatedHours, i);
+            var childHours = ComputeChildHours(allocatedHours, i, node.Children.Length);
 
             await SeedObjectiveNodeAsync(
                 db,
@@ -215,14 +216,19 @@ public sealed partial class WorkManagementDapiDemoSeeder
         return (parentStart.AddDays(inset), parentEnd.AddDays(-inset));
     }
 
-    private static decimal ComputeChildHours(decimal parentHours, int siblingIndex)
+    private static decimal ComputeChildHours(decimal parentHours, int siblingIndex, int siblingCount)
     {
-        var ratio = HoursRatioStart - (siblingIndex * HoursRatioStep);
-        if (ratio < HoursRatioFloor)
-        {
-            ratio = HoursRatioFloor;
-        }
-        var hours = Math.Round(parentHours * ratio, 0, MidpointRounding.AwayFromZero);
+        // Same front-loaded "shape" as before (earlier siblings get a bigger raw share), but now
+        // normalized so the whole sibling group sums to ChildAllocationCeiling of the parent,
+        // regardless of how many children there are - this is what the old per-sibling-only formula
+        // never did, which is the root cause of the overcommit bug.
+        var weights = Enumerable.Range(0, siblingCount)
+            .Select(i => Math.Max(HoursRatioFloor, HoursRatioStart - (i * HoursRatioStep)))
+            .ToArray();
+        var totalWeight = weights.Sum();
+        var share = weights[siblingIndex] / totalWeight;
+
+        var hours = Math.Round(parentHours * ChildAllocationCeiling * share, 0, MidpointRounding.AwayFromZero);
         return hours < MinimumAllocatedHours ? MinimumAllocatedHours : hours;
     }
 }

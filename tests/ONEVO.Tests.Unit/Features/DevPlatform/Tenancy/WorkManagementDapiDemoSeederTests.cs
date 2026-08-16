@@ -346,6 +346,54 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
     }
 
     [Fact]
+    public async Task SeedAsync_EveryObjective_ChildrenNeverCollectivelyExceedParentAllocation()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+
+        using var verify = CreateContext();
+        var all = await verify.Objectives
+            .Where(o => o.TenantId == DapiTenantId && o.IsActive)
+            .ToListAsync();
+        var byParent = all.Where(o => o.ParentObjectiveId.HasValue)
+            .GroupBy(o => o.ParentObjectiveId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(c => c.AllocatedHours));
+        var byId = all.ToDictionary(o => o.Id);
+
+        foreach (var (parentId, childSum) in byParent)
+        {
+            var parent = byId[parentId];
+            Assert.True(childSum <= parent.AllocatedHours,
+                $"{parent.Title}: children sum to {childSum}h but parent only has {parent.AllocatedHours}h");
+        }
+    }
+
+    [Theory]
+    [InlineData("epos", "E-pos_System", 40)]
+    [InlineData("evtix", "Event management ticketing", 30)]
+    [InlineData("onexso", "Onexso - HR and Work Management System", 50)]
+    [InlineData("watercraft", "Watercraft", 45)]
+    [InlineData("hwportal", "The Hardware integration portal", 35)]
+    public async Task SeedAsync_ProjectRoot_RetainsEnoughSlackForItsAllocationExtendDemo(
+        string projectKey, string rootTitle, decimal requiredSlack)
+    {
+        _ = projectKey;
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+
+        using var verify = CreateContext();
+        var root = await verify.Objectives.SingleAsync(o => o.Title == rootTitle && o.IsDefault);
+        var childSum = await verify.Objectives
+            .Where(o => o.ParentObjectiveId == root.Id && o.IsActive)
+            .SumAsync(o => o.AllocatedHours);
+
+        Assert.True(root.AllocatedHours - childSum >= requiredSlack,
+            $"{rootTitle}: only {root.AllocatedHours - childSum}h slack, needs >= {requiredSlack}h for its AllocationExtends demo");
+    }
+
+    [Fact]
     public async Task SeedAsync_TotalObjectiveCountAcrossAllFiveProjects_Is66()
     {
         using var db = CreateContext();
