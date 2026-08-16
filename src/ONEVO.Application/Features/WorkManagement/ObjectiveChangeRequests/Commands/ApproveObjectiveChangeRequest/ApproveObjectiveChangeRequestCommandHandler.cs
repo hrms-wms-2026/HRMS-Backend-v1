@@ -8,6 +8,7 @@ using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.ApproveObjectiveChangeRequest;
@@ -19,17 +20,20 @@ public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<Appro
     private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IObjectiveRepository _objectives;
     private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly IObjectiveAllocationSlackCalculator _slack;
     private readonly IUnitOfWork _unitOfWork;
 
     public ApproveObjectiveChangeRequestCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveChangeRequestRepository changeRequests,
-        IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership, IUnitOfWork unitOfWork)
+        IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership,
+        IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _changeRequests = changeRequests;
         _objectives = objectives;
         _membership = membership;
+        _slack = slack;
         _unitOfWork = unitOfWork;
     }
 
@@ -121,6 +125,24 @@ public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<Appro
                     objective.AchievedAt = null;
                     objective.UpdatedAt = now;
                     await _membership.UpsertMembershipAsync(tenantId, objective.ProjectId, objective.Id, objective.OwnerId, innerCt);
+                    break;
+
+                case ObjectiveChangeRequestTypes.ExtendAllocation:
+                    var extendPayload = JsonSerializer.Deserialize<ExtendAllocationRequestPayload>(changeRequest.PayloadJson!)!;
+                    if (objective.ParentObjectiveId is null)
+                        return Result.Failure("Approver's own milestone could not be resolved.", 422);
+
+                    var approverOwnObjective = await _objectives.GetByIdForTenantAsync(tenantId, objective.ParentObjectiveId.Value, innerCt);
+                    if (approverOwnObjective is null)
+                        return Result.Failure("Approver's own milestone could not be resolved.", 422);
+
+                    var approverSlack = await _slack.CalculateAsync(tenantId, approverOwnObjective, ct: innerCt);
+                    if (extendPayload.RequestedAdditionalHours > approverSlack)
+                        return Result.Conflict(
+                            "You don't have enough allocation yourself to approve this. Request more from your own reporting manager first, then return to approve this request.");
+
+                    objective.AllocatedHours += extendPayload.RequestedAdditionalHours;
+                    objective.UpdatedAt = now;
                     break;
             }
 
