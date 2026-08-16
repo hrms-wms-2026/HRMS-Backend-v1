@@ -72,4 +72,10 @@ public class MilestoneMembershipCoordinator : IMilestoneMembershipCoordinator
         var existing = await _members.GetTrackedForObjectiveAsync(tenantId, projectId, objectiveId, employeeId, ct);
         return existing?.IsActive == true;
     }
+
+    public async Task<bool> IsActiveMemberAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default)
+    {
+        var members = await _members.ListActiveForObjectiveAsync(tenantId, objectiveId, ct);
+        return members.Any(m => m.EmployeeId == employeeId);
+    }
 }

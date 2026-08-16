@@ -27,4 +27,7 @@ public interface IMilestoneMembershipCoordinator
 
     /// <summary>True if the employee has an active membership row scoped to exactly this objective.</summary>
     Task<bool> HasActiveMembershipAsync(Guid tenantId, Guid projectId, Guid objectiveId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>True if the employee has an active membership on this objective (looks up by objective id only).</summary>
+    Task<bool> IsActiveMemberAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default);
 }
