@@ -17,3 +17,4 @@
 - `2026-08-08-work-management-my-project-milestones-design.md` also moved to `specs/finished/2026-08-08/` the same day (its plan finished all 5 tasks) — see `specs/SUMMARY.md`.
 - `2026-08-07-work-management-objective-subtree-design.md` needs a finished/next status sync (see "Files" above).
 - `2026-08-16-multi-legal-entity-employment-foundation-design.md` moved to `specs/finished/2026-08-16/` on 2026-08-16 — its 3-part plan finished the same day. See `specs/SUMMARY.md`.
+- `2026-08-16-employee-detail-screen-backend-design.md` — status: pending, plan written (`plans/next/2026-08-16-employee-detail-screen-backend.md`, not yet implemented). Sub-project 2 of 2 (Employee Detail screen: Job/Personal Info, Emergency Contacts, sensitive-gated Payroll, minimal capacity-checked Change Position). Companion: `Hrms--Web-application---front-end---v1/docs/superpowers/specs/2026-08-16-employee-detail-screen-frontend-design.md`.
