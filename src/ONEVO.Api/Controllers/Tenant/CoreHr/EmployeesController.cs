@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Employees;
 using ONEVO.Api.Filters;
+using Microsoft.AspNetCore.Http;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.SetMyAvatar;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
@@ -84,6 +86,19 @@ public class EmployeesController : ControllerBase
 
         return result.IsSuccess
             ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Upload/replace the caller's own avatar photo.</summary>
+    [HttpPut("me/avatar")]
+    public async Task<IActionResult> SetMyAvatar(IFormFile file, CancellationToken ct = default)
+    {
+        await using var stream = file.OpenReadStream();
+        var result = await _mediator.Send(
+            new SetMyAvatarCommand(file.FileName, file.ContentType, stream), ct);
+
+        return result.IsSuccess
+            ? Ok(new { avatarFileId = result.Value })
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }
