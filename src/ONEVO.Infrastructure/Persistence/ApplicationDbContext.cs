@@ -14,6 +14,7 @@ using ONEVO.Domain.Features.SharedPlatform.TenantIntegrations.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities;
+using ONEVO.Domain.Features.DevPlatform.Support.Entities;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -193,6 +194,9 @@ public class ApplicationDbContext : DbContext
     // System Config - Configuration Templates (Phase 1 canonical tables)
     public DbSet<ConfigurationTemplate> ConfigurationTemplates => Set<ConfigurationTemplate>();
     public DbSet<TenantConfigurationTemplateApplication> TenantConfigurationTemplateApplications => Set<TenantConfigurationTemplateApplication>();
+    public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
+    public DbSet<SupportTicketComment> SupportTicketComments => Set<SupportTicketComment>();
+    public DbSet<PlatformAnnouncement> PlatformAnnouncements => Set<PlatformAnnouncement>();
 
     // CoreHR
     public DbSet<Employee> Employees => Set<Employee>();

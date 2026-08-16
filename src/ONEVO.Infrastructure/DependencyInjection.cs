@@ -67,6 +67,8 @@ using ONEVO.Infrastructure.Services.DevPlatform.Provisioning;
 using ONEVO.Infrastructure.Services.DevPlatform.Tenancy;
 using ONEVO.Application.Features.DevPlatform.ConfigurationTemplates.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.ConfigurationTemplates;
+using ONEVO.Application.Features.DevPlatform.Support.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Support;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.IntegrationCatalog.RepositoryInterfaces;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.RepositoryInterfaces;
@@ -257,6 +259,10 @@ public static class DependencyInjection
         // System Config - Configuration Templates (Phase 1 canonical tables)
         services.AddScoped<IConfigurationTemplateRepository, EfConfigurationTemplateRepository>();
         services.AddScoped<ITenantConfigurationTemplateApplicationRepository, EfTenantConfigurationTemplateApplicationRepository>();
+
+        // Support Center (Release 1 MVP)
+        services.AddScoped<ISupportTicketRepository, EfSupportTicketRepository>();
+        services.AddScoped<IPlatformAnnouncementRepository, EfPlatformAnnouncementRepository>();
 
         // Tenant-scoped connected integration credentials
         services.AddScoped<ITenantIntegrationCredentialRepository, EfTenantIntegrationCredentialRepository>();
