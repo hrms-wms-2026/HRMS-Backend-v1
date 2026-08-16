@@ -6,6 +6,7 @@ using ONEVO.Api.Contracts.WorkManagement.ProjectInvitations;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.ApproveObjectiveChangeRequest;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RejectObjectiveChangeRequest;
+using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Queries.ListMyObjectiveChangeRequests;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AddObjectiveMember;
@@ -222,6 +223,18 @@ public class ObjectivesController : ControllerBase
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Owner requests more allocated hours, routed to the Objective's Reporting Manager as an extend_allocation change request. Root (no reporting manager) returns 400 — edit the Project instead.</summary>
+    [HttpPost("{id:guid}/allocation-requests")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> RequestAllocationExtension(Guid id, [FromBody] RequestAllocationExtensionRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new RequestAllocationExtensionCommand(id, request.RequestedAdditionalHours, request.Reason), ct);
+
+        return result.IsSuccess
+            ? StatusCode(202, result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

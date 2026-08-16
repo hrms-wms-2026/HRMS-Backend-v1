@@ -64,14 +64,15 @@ public class ProjectsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Updates a Project's editable fields (name, description, category, dates, color, actual hours). Cascades the same title/description/dates onto the Project's Default Objective in the same transaction. Identifier is immutable.</summary>
+    /// <summary>Updates a Project's editable fields (name, description, category, dates, color, actual hours, optional allocated hours). Cascades title/description/dates onto the Default Objective; allocated hours also cascade when provided.</summary>
     [HttpPut("{id:guid}")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditProjectRequest request, CancellationToken ct)
     {
         var command = new EditProjectCommand(
             id, request.Name, request.Description, request.CategoryId,
-            request.StartDate, request.TargetDate, request.Color, request.ActualHours, request.Identifier);
+            request.StartDate, request.TargetDate, request.Color, request.ActualHours, request.Identifier,
+            request.AllocatedHours);
 
         var result = await _mediator.Send(command, ct);
 

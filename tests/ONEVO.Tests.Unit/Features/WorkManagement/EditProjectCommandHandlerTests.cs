@@ -164,4 +164,20 @@ public class EditProjectCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
     }
+
+    [Fact]
+    public async Task Handle_AllocatedHoursProvided_UpdatesProjectAndDefaultObjective()
+    {
+        var project = ExistingProject();
+        project.AllocatedHours = 40m;
+        var defaultObjective = ExistingDefaultObjective();
+        defaultObjective.AllocatedHours = 40m;
+        var (handler, _, _) = BuildHandler(project, defaultObjective);
+
+        var result = await handler.Handle(ValidCommand() with { AllocatedHours = 80m }, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(80m, project.AllocatedHours);
+        Assert.Equal(80m, defaultObjective.AllocatedHours);
+    }
 }
