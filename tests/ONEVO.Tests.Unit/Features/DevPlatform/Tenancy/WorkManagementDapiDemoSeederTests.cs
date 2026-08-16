@@ -358,6 +358,147 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         total.Should().Be(66);
     }
 
+    [Fact]
+    public async Task SeedAsync_CreatesProjectAndLeafTaskStatusesForEveryLeafWithTasks()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+
+        using var verify = CreateContext();
+        var projects = await verify.Projects.Where(p => p.TenantId == DapiTenantId).ToListAsync();
+        projects.Should().HaveCount(5);
+
+        foreach (var project in projects)
+        {
+            var templates = await verify.TaskStatuses
+                .Where(s => s.ProjectId == project.Id && s.ObjectiveId == null)
+                .ToListAsync();
+            templates.Should().HaveCount(4);
+            templates.Select(s => s.Name).Should().BeEquivalentTo(["To Do", "In Process", "Review", "Done"]);
+            templates.Single(s => s.Name == "Done").MarksTaskComplete.Should().BeTrue();
+        }
+
+        var leafIds = await GetLeafObjectiveIdsAsync(verify);
+        foreach (var leafId in leafIds)
+        {
+            var statuses = await verify.TaskStatuses
+                .Where(s => s.ObjectiveId == leafId)
+                .ToListAsync();
+            statuses.Should().HaveCount(4);
+        }
+    }
+
+    [Fact]
+    public async Task SeedAsync_CreatesTwoToThreeTasksPerLeaf_WithShortIdsAndSlack()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+
+        using var verify = CreateContext();
+        var projects = await verify.Projects.Where(p => p.TenantId == DapiTenantId).ToListAsync();
+        var leafIds = await GetLeafObjectiveIdsAsync(verify);
+
+        foreach (var leafId in leafIds)
+        {
+            var leaf = await verify.Objectives.SingleAsync(o => o.Id == leafId);
+            var project = projects.Single(p => p.Id == leaf.ProjectId);
+            var tasks = await verify.WorkTasks.Where(t => t.ObjectiveId == leafId).ToListAsync();
+
+            tasks.Should().HaveCount(3);
+            tasks.Should().OnlyContain(t => t.ShortId.StartsWith(project.Identifier + "-"));
+            tasks.Sum(t => t.EstimatedHours ?? 0m).Should().BeLessThanOrEqualTo(leaf.AllocatedHours);
+        }
+
+        foreach (var project in projects)
+        {
+            var numbers = await verify.WorkTasks
+                .Where(t => t.ProjectId == project.Id)
+                .Select(t => t.ShortId)
+                .ToListAsync();
+            var maxNumber = numbers
+                .Select(s => long.Parse(s[(project.Identifier.Length + 1)..]))
+                .DefaultIfEmpty(0)
+                .Max();
+            project.NextTaskNumber.Should().Be(maxNumber + 1);
+        }
+    }
+
+    [Fact]
+    public async Task SeedAsync_CreatesPendingApprovalsQueuePerProject()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+        await RunDemoSeederAsync(db);
+
+        using var verify = CreateContext();
+        var projects = await verify.Projects.Where(p => p.TenantId == DapiTenantId).ToListAsync();
+
+        foreach (var project in projects)
+        {
+            var objectiveIds = await verify.Objectives
+                .Where(o => o.ProjectId == project.Id)
+                .Select(o => o.Id)
+                .ToListAsync();
+
+            var pendingCreates = await verify.TaskCreationRequests
+                .CountAsync(r => objectiveIds.Contains(r.ObjectiveId) && r.Status == "pending");
+            pendingCreates.Should().BeGreaterThanOrEqualTo(3, because: $"{project.Identifier} needs ≥3 pending task creation requests");
+
+            var pendingExtends = await verify.ObjectiveChangeRequests
+                .CountAsync(r =>
+                    objectiveIds.Contains(r.ObjectiveId)
+                    && r.RequestType == "extend_allocation"
+                    && r.Status == "pending");
+            pendingExtends.Should().BeGreaterThanOrEqualTo(1, because: $"{project.Identifier} needs ≥1 pending extend_allocation");
+        }
+    }
+
+    [Fact]
+    public async Task SeedAsync_TaskLayer_IsIdempotent()
+    {
+        using (var first = CreateContext())
+        {
+            await RunDevSmokeSeederAsync(first);
+            await RunDemoSeederAsync(first);
+        }
+
+        int taskCount, statusCount, createCount, extendCount;
+        using (var afterFirst = CreateContext())
+        {
+            taskCount = await afterFirst.WorkTasks.CountAsync(t => t.TenantId == DapiTenantId);
+            statusCount = await afterFirst.TaskStatuses.CountAsync(s => s.TenantId == DapiTenantId);
+            createCount = await afterFirst.TaskCreationRequests.CountAsync(r => r.TenantId == DapiTenantId);
+            extendCount = await afterFirst.ObjectiveChangeRequests
+                .CountAsync(r => r.TenantId == DapiTenantId && r.RequestType == "extend_allocation");
+        }
+
+        using (var second = CreateContext())
+        {
+            await RunDevSmokeSeederAsync(second);
+            await RunDemoSeederAsync(second);
+        }
+
+        using var verify = CreateContext();
+        (await verify.WorkTasks.CountAsync(t => t.TenantId == DapiTenantId)).Should().Be(taskCount);
+        (await verify.TaskStatuses.CountAsync(s => s.TenantId == DapiTenantId)).Should().Be(statusCount);
+        (await verify.TaskCreationRequests.CountAsync(r => r.TenantId == DapiTenantId)).Should().Be(createCount);
+        (await verify.ObjectiveChangeRequests
+            .CountAsync(r => r.TenantId == DapiTenantId && r.RequestType == "extend_allocation"))
+            .Should().Be(extendCount);
+    }
+
+    private static async Task<List<Guid>> GetLeafObjectiveIdsAsync(ApplicationDbContext db)
+    {
+        var objectives = await db.Objectives.Where(o => o.TenantId == DapiTenantId).ToListAsync();
+        var parentIds = objectives
+            .Where(o => o.ParentObjectiveId.HasValue)
+            .Select(o => o.ParentObjectiveId!.Value)
+            .ToHashSet();
+        return objectives.Where(o => !parentIds.Contains(o.Id)).Select(o => o.Id).ToList();
+    }
+
     private sealed class TestClock : IDateTimeProvider
     {
         public DateTimeOffset UtcNow { get; } = new(2026, 8, 2, 12, 0, 0, TimeSpan.Zero);

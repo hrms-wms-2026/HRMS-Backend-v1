@@ -67,7 +67,8 @@ public sealed partial class WorkManagementDapiDemoSeeder : IHostedService
             tenantContext.SetAdminMode();
             await SeedAsync(db, tenantContext, passwordHasher, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Work Management dapi demo dataset seeded (22 employees, 5 projects).");
+            _logger.LogInformation(
+                "Work Management dapi demo dataset seeded (22 employees, 5 projects, leaf tasks + approvals).");
         }
         catch (Exception ex)
         {
@@ -104,6 +105,7 @@ public sealed partial class WorkManagementDapiDemoSeeder : IHostedService
         }
 
         await SeedProjectsAndObjectivesAsync(db, employeeIdByPersonKey, now, ct);
+        await SeedTasksAndApprovalsAsync(db, employeeIdByPersonKey, now, ct);
     }
 
     private static async Task<Dictionary<string, Guid>> SeedPersonsAsync(
