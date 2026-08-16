@@ -4,6 +4,7 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using Xunit;
@@ -34,6 +35,7 @@ public class GetMyProfileQueryHandlerTests
             new Mock<IUserRepository>().Object,
             new Mock<IUserMfaRepository>().Object,
             new Mock<IEncryptionService>().Object,
+            new Mock<ILegalEntityRepository>().Object,
             currentUser.Object);
 
         var result = await handler.Handle(new GetMyProfileQuery(), CancellationToken.None);
@@ -85,7 +87,8 @@ public class GetMyProfileQueryHandlerTests
 
         var handler = new GetMyProfileQueryHandler(
             commonRepo.Object, featureRepo.Object, profileRepo.Object, workModes.Object,
-            users.Object, userMfa.Object, new Mock<IEncryptionService>().Object, currentUser.Object);
+            users.Object, userMfa.Object, new Mock<IEncryptionService>().Object,
+            new Mock<ILegalEntityRepository>().Object, currentUser.Object);
 
         var result = await handler.Handle(new GetMyProfileQuery(), CancellationToken.None);
 

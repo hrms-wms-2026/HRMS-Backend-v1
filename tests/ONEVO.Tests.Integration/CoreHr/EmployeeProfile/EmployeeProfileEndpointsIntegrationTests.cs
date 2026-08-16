@@ -20,6 +20,7 @@ using CommonEfEmployeeRepository = ONEVO.Infrastructure.Persistence.Repositories
 using FeatureEfEmployeeRepository = ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository;
 using EfEmployeeProfileRepository = ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeProfileRepository;
 using EfWorkModeRepository = ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfWorkModeRepository;
+using EfLegalEntityRepository = ONEVO.Infrastructure.Persistence.Repositories.OrgStructure.EfLegalEntityRepository;
 using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -169,6 +170,7 @@ public sealed class EmployeeProfileEndpointsIntegrationTests : IAsyncLifetime
             new EfAuthRepository(db),
             new EfAuthRepository(db),
             _encryption,
+            new EfLegalEntityRepository(db),
             BuildCurrentUser(tenantId, userId, hasEmployeesWrite));
     }
 

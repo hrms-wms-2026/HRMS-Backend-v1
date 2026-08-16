@@ -1,13 +1,14 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Employees;
 using ONEVO.Api.Filters;
-using Microsoft.AspNetCore.Http;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteEmergencyContact;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.ResendEmployeeInvitation;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.SetMyAvatar;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateBankDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateDependent;
@@ -60,6 +61,20 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Resend an employee onboarding invitation. Only succeeds when the employee's
+    /// current invitation has expired without being accepted - see
+    /// ResendEmployeeInvitationCommandHandler for the exact guard.</summary>
+    [HttpPost("{id:guid}/resend-invitation")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> ResendInvitation(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new ResendEmployeeInvitationCommand(id), ct);
 
         return result.IsSuccess
             ? Ok(result.Value)
