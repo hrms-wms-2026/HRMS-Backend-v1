@@ -231,6 +231,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ReleaseCalendarEntry> ReleaseCalendarEntries => Set<ReleaseCalendarEntry>();
     public DbSet<Label> Labels => Set<Label>();
     public DbSet<TaskStatusEntity> TaskStatuses => Set<TaskStatusEntity>();
+    public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
