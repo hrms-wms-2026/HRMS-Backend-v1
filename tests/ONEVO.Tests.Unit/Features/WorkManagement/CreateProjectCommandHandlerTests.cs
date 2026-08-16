@@ -12,6 +12,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.ReleaseCalendar.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
@@ -54,6 +55,7 @@ public class CreateProjectCommandHandlerTests
         var versions = new Mock<IProjectVersionRepository>();
         var releaseCalendar = new Mock<IReleaseCalendarRepository>();
         var labels = new Mock<ILabelRepository>();
+        var taskStatuses = new Mock<ITaskStatusRepository>();
         var entityAssets = new Mock<IEntityAssetRepository>();
         var employees = new Mock<IEmployeeRepository>();
         employees.Setup(x => x.GetByUserIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
@@ -70,7 +72,7 @@ public class CreateProjectCommandHandlerTests
 
         var handler = new CreateProjectCommandHandler(
             currentUser.Object, categories.Object, projects.Object, objectives.Object, members.Object,
-            versions.Object, releaseCalendar.Object, labels.Object, entityAssets.Object, employees.Object,
+            versions.Object, releaseCalendar.Object, labels.Object, taskStatuses.Object, entityAssets.Object, employees.Object,
             legalEntities.Object, auditLogs.Object, fileStorage.Object, unitOfWork.Object);
 
         return (handler, projects);

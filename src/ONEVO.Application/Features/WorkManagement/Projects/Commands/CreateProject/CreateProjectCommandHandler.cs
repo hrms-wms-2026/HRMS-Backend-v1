@@ -17,6 +17,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.ReleaseCalendar.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
@@ -25,6 +26,7 @@ using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Versions.Entities;
+using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 using ONEVO.Domain.Lookups;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.CreateProject;
@@ -39,6 +41,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
     private readonly IProjectVersionRepository _versions;
     private readonly IReleaseCalendarRepository _releaseCalendar;
     private readonly ILabelRepository _labels;
+    private readonly ITaskStatusRepository _taskStatuses;
     private readonly IEntityAssetRepository _entityAssets;
     private readonly IEmployeeRepository _employees;
     private readonly ILegalEntityRepository _legalEntities;
@@ -56,6 +59,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
         IProjectVersionRepository versions,
         IReleaseCalendarRepository releaseCalendar,
         ILabelRepository labels,
+        ITaskStatusRepository taskStatuses,
         IEntityAssetRepository entityAssets,
         IEmployeeRepository employees,
         ILegalEntityRepository legalEntities,
@@ -72,6 +76,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
         _versions = versions;
         _releaseCalendar = releaseCalendar;
         _labels = labels;
+        _taskStatuses = taskStatuses;
         _entityAssets = entityAssets;
         _employees = employees;
         _legalEntities = legalEntities;
@@ -244,6 +249,13 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
 
             await _projects.AddAsync(project, ct);
             await _objectives.AddAsync(defaultObjective, ct);
+            await _taskStatuses.AddRangeAsync(new TaskStatusEntity[]
+            {
+                new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id, Name = "To Do", DisplayOrder = 0, CreatedById = userId, CreatedAt = now },
+                new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id, Name = "In Process", DisplayOrder = 1, CreatedById = userId, CreatedAt = now },
+                new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id, Name = "Review", DisplayOrder = 2, CreatedById = userId, CreatedAt = now },
+                new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id, Name = "Done", DisplayOrder = 3, MarksTaskComplete = true, CreatedById = userId, CreatedAt = now }
+            }, ct);
             await _members.AddAsync(creatorMembership, ct);
             await _versions.AddAsync(defaultVersion, ct);
             await _releaseCalendar.AddAsync(releaseReminder, ct);
