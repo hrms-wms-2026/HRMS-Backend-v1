@@ -37,6 +37,12 @@ public class EfObjectiveRepository : IObjectiveRepository
             .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.Id == id, ct);
     }
 
+    public async Task<Objective?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        return await _db.Objectives
+            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.Id == id, ct);
+    }
+
     public async Task<IReadOnlyList<Objective>> GetTreeByProjectIdAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
     {
         return await _db.Objectives

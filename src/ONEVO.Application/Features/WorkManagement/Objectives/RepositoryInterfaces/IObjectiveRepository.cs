@@ -19,6 +19,17 @@ public interface IObjectiveRepository
 
     Task<Objective?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Same lookup as <see cref="GetByIdForTenantAsync"/>, but returns the entity tracked by the
+    /// DbContext's change tracker instead of AsNoTracking. Use on write paths that later call
+    /// <see cref="Update"/> or mutate the entity directly - tracking it from the start lets EF's
+    /// identity map correctly deduplicate against any other tracked query that touches the same
+    /// row later in the same request (see ApproveObjectiveChangeRequestCommandHandler's
+    /// extend_allocation branch for why this matters - GetTrackedActiveDirectChildrenAsync can
+    /// re-fetch this same row as part of a sibling-sum check).
+    /// </summary>
+    Task<Objective?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
     /// <summary>Every Objective for a Project, unordered - the caller builds the tree from ParentObjectiveId.</summary>
     Task<IReadOnlyList<Objective>> GetTreeByProjectIdAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 

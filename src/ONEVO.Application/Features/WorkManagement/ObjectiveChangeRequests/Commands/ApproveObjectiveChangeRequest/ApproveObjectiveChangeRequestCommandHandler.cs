@@ -63,7 +63,7 @@ public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<Appro
         if (changeRequest.Status != ObjectiveChangeRequestStatuses.Pending)
             return Result.Conflict("This request has already been decided.");
 
-        var objective = await _objectives.GetByIdForTenantAsync(tenantId, changeRequest.ObjectiveId, ct);
+        var objective = await _objectives.GetTrackedByIdForTenantAsync(tenantId, changeRequest.ObjectiveId, ct);
         if (objective is null)
             return Result.NotFound("Objective not found.");
 

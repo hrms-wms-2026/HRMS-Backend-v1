@@ -81,7 +81,7 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
         requests.Setup(x => x.GetByIdForTenantAsync(TenantId, RequestId, It.IsAny<CancellationToken>())).ReturnsAsync(request);
 
         var objectives = new Mock<IObjectiveRepository>();
-        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
+        objectives.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
         objectives.Setup(x => x.GetTrackedActiveDirectChildrenAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(directChildren ?? new List<Objective>());
 
@@ -251,7 +251,7 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
             children.Add(new Objective { Id = Guid.NewGuid(), TenantId = TenantId, ParentObjectiveId = approverObjective.Id, AllocatedHours = siblingRemainder, IsActive = true, CreatedAt = DateTimeOffset.UtcNow });
 
         var objectives = new Mock<IObjectiveRepository>();
-        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, childObjective.Id, It.IsAny<CancellationToken>())).ReturnsAsync(childObjective);
+        objectives.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, childObjective.Id, It.IsAny<CancellationToken>())).ReturnsAsync(childObjective);
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, approverObjective.Id, It.IsAny<CancellationToken>())).ReturnsAsync(approverObjective);
         objectives.Setup(x => x.GetTrackedActiveDirectChildrenAsync(TenantId, approverObjective.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(children);
