@@ -13,6 +13,7 @@ using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -39,7 +40,7 @@ namespace ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOn
 public class FinalizeOnboardingDraftCommandHandler
     : IRequestHandler<FinalizeOnboardingDraftCommand, Result<FinalizeOnboardingDraftResponse>>
 {
-    private const int InvitationValidityHours = 72;
+    private const int InvitationValidityHours = 24;
 
     private readonly IOnboardingDraftRepository _draftRepository;
     private readonly IEmployeeRepository _employeeRepository;
@@ -56,6 +57,7 @@ public class FinalizeOnboardingDraftCommandHandler
     private readonly IChecklistTemplateRepository _checklistTemplateRepository;
     private readonly IEmployeeChecklistTaskRepository _checklistTaskRepository;
     private readonly IInvitationTokenRepository _invitationTokenRepository;
+    private readonly ITenantRepository _tenantRepository;
     private readonly IOutboxWriter _outboxWriter;
     private readonly ISecureTokenGenerator _tokenGenerator;
     private readonly ICurrentUser _currentUser;
@@ -77,6 +79,7 @@ public class FinalizeOnboardingDraftCommandHandler
         IChecklistTemplateRepository checklistTemplateRepository,
         IEmployeeChecklistTaskRepository checklistTaskRepository,
         IInvitationTokenRepository invitationTokenRepository,
+        ITenantRepository tenantRepository,
         IOutboxWriter outboxWriter,
         ISecureTokenGenerator tokenGenerator,
         ICurrentUser currentUser,
@@ -97,6 +100,7 @@ public class FinalizeOnboardingDraftCommandHandler
         _checklistTemplateRepository = checklistTemplateRepository;
         _checklistTaskRepository = checklistTaskRepository;
         _invitationTokenRepository = invitationTokenRepository;
+        _tenantRepository = tenantRepository;
         _outboxWriter = outboxWriter;
         _tokenGenerator = tokenGenerator;
         _currentUser = currentUser;
@@ -391,7 +395,7 @@ public class FinalizeOnboardingDraftCommandHandler
             await _userRoleRepository.AddAsync(userRole, ct);
         }
 
-        var rawToken = _tokenGenerator.GenerateOpaqueToken();
+        var rawToken = _tokenGenerator.GenerateUrlSafeOpaqueToken();
         var tokenHash = InvitationTokenHasher.Hash(rawToken);
         var expiresAt = _clock.UtcNow.AddHours(InvitationValidityHours);
         var fullName = $"{draft.FirstName.Trim()} {draft.LastName.Trim()}".Trim();
@@ -416,11 +420,13 @@ public class FinalizeOnboardingDraftCommandHandler
         };
         await _invitationTokenRepository.AddAsync(invitation, ct);
 
+        var tenant = await _tenantRepository.GetByIdAsync(draft.TenantId, ct);
         await _outboxWriter.EnqueueAsync(
             OutboxMessageTypes.EmployeeOnboardingInviteEmail,
             new EmployeeOnboardingInviteEmailPayload(
                 draft.TenantId, draft.LegalEntityId, employeeId, invitation.Id,
-                draft.WorkEmail.Trim(), draft.FirstName.Trim(), draft.LastName.Trim(), rawToken, expiresAt),
+                draft.WorkEmail.Trim(), draft.FirstName.Trim(), draft.LastName.Trim(), rawToken, expiresAt,
+                tenant?.Slug),
             draft.TenantId,
             ct);
 

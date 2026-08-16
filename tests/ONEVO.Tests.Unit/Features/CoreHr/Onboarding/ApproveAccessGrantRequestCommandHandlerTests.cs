@@ -11,6 +11,7 @@ using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -39,6 +40,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
     private readonly Mock<IChecklistTemplateRepository> _checklistTemplateRepository = new();
     private readonly Mock<IEmployeeChecklistTaskRepository> _checklistTaskRepository = new();
     private readonly Mock<IInvitationTokenRepository> _invitationTokenRepository = new();
+    private readonly Mock<ITenantRepository> _tenantRepository = new();
     private readonly Mock<IOutboxWriter> _outboxWriter = new();
     private readonly Mock<ISecureTokenGenerator> _tokenGenerator = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
@@ -98,9 +100,13 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
             .Setup(r => r.ListActiveByUserIdAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<UserRole>());
 
-        _tokenGenerator.Setup(t => t.GenerateOpaqueToken()).Returns("raw-token-value");
+        _tokenGenerator.Setup(t => t.GenerateUrlSafeOpaqueToken()).Returns("raw-token-value");
 
         _draftRepository.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        _tenantRepository
+            .Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = _tenantId, Slug = "acme" });
     }
 
     private ApproveAccessGrantRequestCommandHandler CreateHandler() => new(
@@ -108,7 +114,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         _userRoleRepository.Object, _positionRepository.Object, _positionAssignmentRepository.Object,
         _legalEntityRepository.Object, _departmentRepository.Object, _employmentTypeRepository.Object,
         _workModeRepository.Object, _seatEntitlementService.Object, _checklistTemplateRepository.Object,
-        _checklistTaskRepository.Object, _invitationTokenRepository.Object, _outboxWriter.Object,
+        _checklistTaskRepository.Object, _invitationTokenRepository.Object, _tenantRepository.Object, _outboxWriter.Object,
         _tokenGenerator.Object, _currentUser.Object, _clock.Object);
 
     private OnboardingDraftEntity ValidDraft(Guid draftId, string status = OnboardingDraftStatus.WaitingForPositionApproval) => new()

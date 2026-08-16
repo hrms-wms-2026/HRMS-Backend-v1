@@ -11,6 +11,7 @@ using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -38,6 +39,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
     private readonly Mock<IChecklistTemplateRepository> _checklistTemplateRepository = new();
     private readonly Mock<IEmployeeChecklistTaskRepository> _checklistTaskRepository = new();
     private readonly Mock<IInvitationTokenRepository> _invitationTokenRepository = new();
+    private readonly Mock<ITenantRepository> _tenantRepository = new();
     private readonly Mock<IOutboxWriter> _outboxWriter = new();
     private readonly Mock<ISecureTokenGenerator> _tokenGenerator = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
@@ -84,7 +86,11 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
             .Setup(r => r.GetByTenantAndEmailAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
 
-        _tokenGenerator.Setup(t => t.GenerateOpaqueToken()).Returns("raw-token-value");
+        _tokenGenerator.Setup(t => t.GenerateUrlSafeOpaqueToken()).Returns("raw-token-value");
+
+        _tenantRepository
+            .Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = _tenantId, Slug = "acme" });
 
         _draftRepository.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
     }
@@ -94,7 +100,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         _positionRepository.Object, _positionAssignmentRepository.Object, _legalEntityRepository.Object,
         _departmentRepository.Object, _employmentTypeRepository.Object, _workModeRepository.Object,
         _seatEntitlementService.Object, _accessGrantRequestRepository.Object, _checklistTemplateRepository.Object,
-        _checklistTaskRepository.Object, _invitationTokenRepository.Object, _outboxWriter.Object,
+        _checklistTaskRepository.Object, _invitationTokenRepository.Object, _tenantRepository.Object, _outboxWriter.Object,
         _tokenGenerator.Object, _currentUser.Object, _clock.Object);
 
     private OnboardingDraftEntity ValidDraft(
@@ -361,6 +367,28 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         Assert.NotNull(draft.FinalizedAt);
         Assert.True(result.Value!.InvitationQueued);
         Assert.False(result.Value.PositionApprovalPending);
+    }
+
+    [Fact]
+    public async Task Handle_EnqueuesInviteEmail_WithTenantSlugAnd24HourExpiry()
+    {
+        var draft = ValidDraft();
+        SetupDraft(draft);
+
+        EmployeeOnboardingInviteEmailPayload? payload = null;
+        _outboxWriter.Setup(w => w.EnqueueAsync(
+                OutboxMessageTypes.EmployeeOnboardingInviteEmail, It.IsAny<EmployeeOnboardingInviteEmailPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .Callback<string, object, Guid?, CancellationToken>((_, p, _, _) => payload = (EmployeeOnboardingInviteEmailPayload)p)
+            .Returns(Task.CompletedTask);
+
+        var before = _clock.Object.UtcNow;
+        var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(payload);
+        Assert.Equal("acme", payload!.TenantSlug);
+        Assert.Equal(before.AddHours(24), payload.ExpiresAt);
+        _tenantRepository.Verify(r => r.GetByIdAsync(_tenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
