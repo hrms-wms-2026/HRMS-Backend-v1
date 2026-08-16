@@ -1,7 +1,9 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ONEVO.Api.Contracts.CoreHr.Employees;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
@@ -63,6 +65,25 @@ public class EmployeesController : ControllerBase
         var result = await _mediator.Send(new GetMyProfileQuery(), ct);
         return result.IsSuccess
             ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Update the caller's own Personal Information. Optimistic concurrency: Version must
+    /// match the xmin token returned by GetMyProfile, or this returns 409.</summary>
+    [HttpPut("me/personal-information")]
+    public async Task<IActionResult> UpdateMyPersonalInformation(
+        [FromBody] UpdatePersonalInformationRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new UpdatePersonalInformationCommand(
+                request.FirstName, request.LastName, request.Phone, request.DateOfBirth,
+                request.Gender, request.NationalityId, request.DisplayTimezone,
+                request.Addresses.Select(a => new UpdateAddressInput(a.AddressType, a.AddressJson, a.IsPrimary)).ToList(),
+                request.Version),
+            ct);
+
+        return result.IsSuccess
+            ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }

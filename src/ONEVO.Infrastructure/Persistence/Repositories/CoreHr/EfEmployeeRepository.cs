@@ -205,8 +205,15 @@ public class EfEmployeeRepository : IEmployeeRepository
             .Select(e => (uint?)EF.Property<uint>(e, "xmin"))
             .FirstOrDefaultAsync(ct);
 
-    public void SetExpectedVersion(EmployeeEntity employee, uint expectedVersion)
-        => _db.Entry(employee).Property("xmin").OriginalValue = expectedVersion;
+    public void SetExpectedVersion(EmployeeEntity employee, string expectedVersion)
+    {
+        if (!uint.TryParse(expectedVersion, out var expectedXmin))
+        {
+            return;
+        }
+
+        _db.Entry(employee).Property("xmin").OriginalValue = expectedXmin;
+    }
 
     public async Task<bool> EmailExistsAsync(Guid tenantId, string email, Guid? excludeId, CancellationToken ct = default)
     {

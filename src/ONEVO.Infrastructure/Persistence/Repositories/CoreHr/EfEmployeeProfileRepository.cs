@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 
@@ -60,5 +61,15 @@ public class EfEmployeeProfileRepository : IEmployeeProfileRepository
     public async Task AddBankDetailAsync(EmployeeBankDetail bankDetail, CancellationToken ct = default)
         => await _db.EmployeeBankDetails.AddAsync(bankDetail, ct);
 
-    public Task<int> SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
+    public async Task<int> SaveChangesAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConcurrencyConflictException(ex);
+        }
+    }
 }

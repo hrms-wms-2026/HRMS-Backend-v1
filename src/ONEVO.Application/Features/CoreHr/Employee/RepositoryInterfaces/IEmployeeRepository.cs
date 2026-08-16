@@ -35,8 +35,9 @@ public interface IEmployeeRepository
 
     /// <summary>Sets the EF shadow "xmin" original value on a tracked Employee instance so
     /// SaveChangesAsync raises DbUpdateConcurrencyException when the row was modified since the
-    /// caller last read it.</summary>
-    void SetExpectedVersion(ONEVO.Domain.Features.CoreHr.Entities.Employee employee, uint expectedVersion);
+    /// caller last read it. No-ops silently on an unparsable version, matching
+    /// IOnboardingDraftRepository.SetExpectedVersion's precedent.</summary>
+    void SetExpectedVersion(ONEVO.Domain.Features.CoreHr.Entities.Employee employee, string expectedVersion);
 
     Task<bool> EmailExistsAsync(Guid tenantId, string email, Guid? excludeId, CancellationToken ct = default);
 
