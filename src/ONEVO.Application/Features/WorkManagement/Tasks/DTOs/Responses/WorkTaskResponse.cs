@@ -12,3 +12,14 @@ public sealed record TaskCreationRequestResponse(
 
 /// <summary>Returned alongside a 409 slack-conflict so the frontend can offer the extend-allocation flow (spec §3.2).</summary>
 public sealed record InsufficientAllocationResponse(decimal AvailableSlackHours, string SuggestedAction = "extend_allocation");
+
+public static class InsufficientAllocationResponseJson
+{
+    private static readonly System.Text.Json.JsonSerializerOptions Options = new()
+    {
+        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+    };
+
+    public static string Serialize(InsufficientAllocationResponse response)
+        => System.Text.Json.JsonSerializer.Serialize(response, Options);
+}

@@ -71,7 +71,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
             var slack = await _slack.CalculateAsync(tenantId, objective, ct: ct);
             if (request.EstimatedHours.Value > slack)
                 return Result<WorkTaskResponse>.Conflict(
-                    System.Text.Json.JsonSerializer.Serialize(new InsufficientAllocationResponse(slack)));
+                    InsufficientAllocationResponseJson.Serialize(new InsufficientAllocationResponse(slack)));
         }
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>

@@ -100,6 +100,8 @@ public class CreateTaskCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
+        Assert.Contains("\"availableSlackHours\"", result.Error);
+        Assert.DoesNotContain("\"AvailableSlackHours\"", result.Error);
         tasks.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 

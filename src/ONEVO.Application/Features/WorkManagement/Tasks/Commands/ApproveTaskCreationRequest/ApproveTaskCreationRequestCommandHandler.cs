@@ -79,7 +79,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
             var slack = await _slack.CalculateAsync(tenantId, objective, ct: ct);
             if (payload.EstimatedHours.Value > slack)
                 return Result<WorkTaskResponse>.Conflict(
-                    JsonSerializer.Serialize(new InsufficientAllocationResponse(slack)));
+                    InsufficientAllocationResponseJson.Serialize(new InsufficientAllocationResponse(slack)));
         }
 
         var statuses = await _statuses.GetByObjectiveIdAsync(tenantId, objective.Id, ct);

@@ -67,5 +67,7 @@ public class EditTaskCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
+        Assert.Contains("\"availableSlackHours\"", result.Error);
+        Assert.DoesNotContain("\"AvailableSlackHours\"", result.Error);
     }
 }

@@ -47,7 +47,7 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
             var slack = await _slack.CalculateAsync(tenantId, objective, excludingTaskId: task.Id, ct: ct);
             if (request.EstimatedHours.Value > slack)
                 return Result<WorkTaskResponse>.Conflict(
-                    System.Text.Json.JsonSerializer.Serialize(new InsufficientAllocationResponse(slack)));
+                    InsufficientAllocationResponseJson.Serialize(new InsufficientAllocationResponse(slack)));
         }
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
