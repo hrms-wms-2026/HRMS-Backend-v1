@@ -1,0 +1,183 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="6ba879cc-5e1e-4a8a-baf7-a5d7853b5fc2" name="User@TICS17 2026-08-16 22:09:52" runUser="TICS17\User" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-08-16T22:09:52.2408078+05:30" queuing="2026-08-16T22:09:52.2408084+05:30" start="2026-08-16T22:09:35.5826729+05:30" finish="2026-08-16T22:09:58.1469321+05:30" />
+  <TestSettings name="default" id="69dd21e1-33cc-4520-b49d-42bef068c9fb">
+    <Deployment runDeploymentRoot="User_TICS17_2026-08-16_22_09_52" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="df885c32-578d-49eb-82c0-e7bf7e1506be" testId="5aca4f64-303a-f3de-bd6d-f064cc8e5e14" testName="ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.GetDefaultForUserAsync_PrefersMostRecentPrimaryEmployment" computerName="TICS17" duration="00:00:00.0010000" startTime="2026-08-16T22:09:52.2211157+05:30" endTime="2026-08-16T22:09:58.0026792+05:30" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="df885c32-578d-49eb-82c0-e7bf7e1506be">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.EntityFrameworkCore.DbUpdateException : An error occurred while saving the entity changes. See the inner exception for details.&#xD;
+---- Npgsql.PostgresException : 23505: duplicate key value violates unique constraint "ix_employees_user_id"&#xD;
+&#xD;
+DETAIL: Detail redacted as it may contain sensitive data. Specify 'Include Error Detail' in the connection string to include this information.</Message>
+          <StackTrace>   at Npgsql.EntityFrameworkCore.PostgreSQL.Update.Internal.NpgsqlModificationCommandBatch.Consume(RelationalDataReader reader, Boolean async, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.Storage.RelationalDatabase.SaveChangesAsync(IList`1 entries, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.SaveChangesAsync(IList`1 entriesToSave, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.SaveChangesAsync(StateManager stateManager, Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)&#xD;
+   at Npgsql.EntityFrameworkCore.PostgreSQL.Storage.Internal.NpgsqlExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)&#xD;
+   at ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.InitializeAsync() in C:\onevoNew\HRMS-Backend-v1\tests\ONEVO.Tests.Integration\Auth\Session\SwitchActiveCompanyIntegrationTests.cs:line 166&#xD;
+   at ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.InitializeAsync() in C:\onevoNew\HRMS-Backend-v1\tests\ONEVO.Tests.Integration\Auth\Session\SwitchActiveCompanyIntegrationTests.cs:line 166&#xD;
+----- Inner Stack Trace -----&#xD;
+   at Npgsql.Internal.NpgsqlConnector.ReadMessageLong(Boolean async, DataRowLoadingMode dataRowLoadingMode, Boolean readingNotifications, Boolean isReadingPrependedMessage)&#xD;
+   at System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder`1.StateMachineBox`1.System.Threading.Tasks.Sources.IValueTaskSource&lt;TResult&gt;.GetResult(Int16 token)&#xD;
+   at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)&#xD;
+   at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)&#xD;
+   at Npgsql.EntityFrameworkCore.PostgreSQL.Update.Internal.NpgsqlModificationCommandBatch.Consume(RelationalDataReader reader, Boolean async, CancellationToken cancellationToken)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="d3718953-23d9-4d88-8996-468a244c2e3f" testId="0d09f529-b9a3-104e-2572-91b0391b3546" testName="ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.SwitchActiveCompany_ChangesEffectivePermissionsOnNextRequest" computerName="TICS17" duration="00:00:00.0010000" startTime="2026-08-16T22:09:36.2169919+05:30" endTime="2026-08-16T22:09:52.1783643+05:30" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d3718953-23d9-4d88-8996-468a244c2e3f">
+      <Output>
+        <ErrorInfo>
+          <Message>Microsoft.EntityFrameworkCore.DbUpdateException : An error occurred while saving the entity changes. See the inner exception for details.&#xD;
+---- Npgsql.PostgresException : 23505: duplicate key value violates unique constraint "ix_employees_user_id"&#xD;
+&#xD;
+DETAIL: Detail redacted as it may contain sensitive data. Specify 'Include Error Detail' in the connection string to include this information.</Message>
+          <StackTrace>   at Npgsql.EntityFrameworkCore.PostgreSQL.Update.Internal.NpgsqlModificationCommandBatch.Consume(RelationalDataReader reader, Boolean async, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.Storage.RelationalDatabase.SaveChangesAsync(IList`1 entries, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.SaveChangesAsync(IList`1 entriesToSave, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.SaveChangesAsync(StateManager stateManager, Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)&#xD;
+   at Npgsql.EntityFrameworkCore.PostgreSQL.Storage.Internal.NpgsqlExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)&#xD;
+   at Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)&#xD;
+   at ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.InitializeAsync() in C:\onevoNew\HRMS-Backend-v1\tests\ONEVO.Tests.Integration\Auth\Session\SwitchActiveCompanyIntegrationTests.cs:line 166&#xD;
+   at ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.InitializeAsync() in C:\onevoNew\HRMS-Backend-v1\tests\ONEVO.Tests.Integration\Auth\Session\SwitchActiveCompanyIntegrationTests.cs:line 166&#xD;
+----- Inner Stack Trace -----&#xD;
+   at Npgsql.Internal.NpgsqlConnector.ReadMessageLong(Boolean async, DataRowLoadingMode dataRowLoadingMode, Boolean readingNotifications, Boolean isReadingPrependedMessage)&#xD;
+   at System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder`1.StateMachineBox`1.System.Threading.Tasks.Sources.IValueTaskSource&lt;TResult&gt;.GetResult(Int16 token)&#xD;
+   at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)&#xD;
+   at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)&#xD;
+   at Npgsql.EntityFrameworkCore.PostgreSQL.Update.Internal.NpgsqlModificationCommandBatch.Consume(RelationalDataReader reader, Boolean async, CancellationToken cancellationToken)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.GetDefaultForUserAsync_PrefersMostRecentPrimaryEmployment" storage="c:\onevonew\hrms-backend-v1\tests\onevo.tests.integration\bin\debug\net10.0\onevo.tests.integration.dll" id="5aca4f64-303a-f3de-bd6d-f064cc8e5e14">
+      <Execution id="df885c32-578d-49eb-82c0-e7bf7e1506be" />
+      <TestMethod codeBase="C:\onevoNew\HRMS-Backend-v1\tests\ONEVO.Tests.Integration\bin\Debug\net10.0\ONEVO.Tests.Integration.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests" name="GetDefaultForUserAsync_PrefersMostRecentPrimaryEmployment" />
+    </UnitTest>
+    <UnitTest name="ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.SwitchActiveCompany_ChangesEffectivePermissionsOnNextRequest" storage="c:\onevonew\hrms-backend-v1\tests\onevo.tests.integration\bin\debug\net10.0\onevo.tests.integration.dll" id="0d09f529-b9a3-104e-2572-91b0391b3546">
+      <Execution id="d3718953-23d9-4d88-8996-468a244c2e3f" />
+      <TestMethod codeBase="C:\onevoNew\HRMS-Backend-v1\tests\ONEVO.Tests.Integration\bin\Debug\net10.0\ONEVO.Tests.Integration.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests" name="SwitchActiveCompany_ChangesEffectivePermissionsOnNextRequest" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="5aca4f64-303a-f3de-bd6d-f064cc8e5e14" executionId="df885c32-578d-49eb-82c0-e7bf7e1506be" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0d09f529-b9a3-104e-2572-91b0391b3546" executionId="d3718953-23d9-4d88-8996-468a244c2e3f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="2" executed="2" passed="0" failed="2" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 10.0.8)&#xD;
+[xUnit.net 00:00:00.10]   Discovering: ONEVO.Tests.Integration&#xD;
+[xUnit.net 00:00:00.17]   Discovered:  ONEVO.Tests.Integration&#xD;
+[xUnit.net 00:00:00.19]   Starting:    ONEVO.Tests.Integration&#xD;
+[testcontainers.org 00:00:00.14] Connected to Docker:&#xD;
+  Host: npipe://./pipe/docker_engine&#xD;
+  Server Version: 29.6.2&#xD;
+  Kernel Version: 6.18.33.2-microsoft-standard-WSL2&#xD;
+  API Version: 1.55&#xD;
+  Operating System: Docker Desktop&#xD;
+  Total Memory: 15.25 GB&#xD;
+  Labels: &#xD;
+    com.docker.desktop.address=npipe://\\.\pipe\docker_cli&#xD;
+[testcontainers.org 00:00:00.46] Docker container 753d7e0a6e1c created&#xD;
+[testcontainers.org 00:00:00.56] Start Docker container 753d7e0a6e1c&#xD;
+[testcontainers.org 00:00:00.84] Wait for Docker container 753d7e0a6e1c to complete readiness checks&#xD;
+[testcontainers.org 00:00:01.91] Docker container 753d7e0a6e1c ready&#xD;
+[testcontainers.org 00:00:02.09] Docker container 7864d3853966 created&#xD;
+[testcontainers.org 00:00:02.10] Start Docker container 7864d3853966&#xD;
+[testcontainers.org 00:00:02.33] Wait for Docker container 7864d3853966 to complete readiness checks&#xD;
+[testcontainers.org 00:00:02.35] Execute "pg_isready --host localhost --dbname onevo_switch_active_company_test --username test" at Docker container 7864d3853966&#xD;
+[testcontainers.org 00:00:03.48] Execute "pg_isready --host localhost --dbname onevo_switch_active_company_test --username test" at Docker container 7864d3853966&#xD;
+[testcontainers.org 00:00:04.63] Execute "pg_isready --host localhost --dbname onevo_switch_active_company_test --username test" at Docker container 7864d3853966&#xD;
+[testcontainers.org 00:00:04.88] Docker container 7864d3853966 ready&#xD;
+[xUnit.net 00:00:16.18]       Microsoft.EntityFrameworkCore.DbUpdateException : An error occurred while saving the entity changes. See the inner exception for details.&#xD;
+[xUnit.net 00:00:16.18]       ---- Npgsql.PostgresException : 23505: duplicate key value violates unique constraint "ix_employees_user_id"&#xD;
+[xUnit.net 00:00:16.19]       &#xD;
+[xUnit.net 00:00:16.19]       DETAIL: Detail redacted as it may contain sensitive data. Specify 'Include Error Detail' in the connection string to include this information.&#xD;
+[xUnit.net 00:00:16.19]       Stack Trace:&#xD;
+[xUnit.net 00:00:16.19]            at Npgsql.EntityFrameworkCore.PostgreSQL.Update.Internal.NpgsqlModificationCommandBatch.Consume(RelationalDataReader reader, Boolean async, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Microsoft.EntityFrameworkCore.Storage.RelationalDatabase.SaveChangesAsync(IList`1 entries, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.SaveChangesAsync(IList`1 entriesToSave, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.SaveChangesAsync(StateManager stateManager, Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Npgsql.EntityFrameworkCore.PostgreSQL.Storage.Internal.NpgsqlExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]         C:\onevoNew\HRMS-Backend-v1\tests\ONEVO.Tests.Integration\Auth\Session\SwitchActiveCompanyIntegrationTests.cs(166,0): at ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.InitializeAsync()&#xD;
+[xUnit.net 00:00:16.19]         C:\onevoNew\HRMS-Backend-v1\tests\ONEVO.Tests.Integration\Auth\Session\SwitchActiveCompanyIntegrationTests.cs(166,0): at ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.InitializeAsync()&#xD;
+[xUnit.net 00:00:16.19]         ----- Inner Stack Trace -----&#xD;
+[xUnit.net 00:00:16.19]            at Npgsql.Internal.NpgsqlConnector.ReadMessageLong(Boolean async, DataRowLoadingMode dataRowLoadingMode, Boolean readingNotifications, Boolean isReadingPrependedMessage)&#xD;
+[xUnit.net 00:00:16.19]            at System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder`1.StateMachineBox`1.System.Threading.Tasks.Sources.IValueTaskSource&lt;TResult&gt;.GetResult(Int16 token)&#xD;
+[xUnit.net 00:00:16.19]            at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:16.19]            at Npgsql.EntityFrameworkCore.PostgreSQL.Update.Internal.NpgsqlModificationCommandBatch.Consume(RelationalDataReader reader, Boolean async, CancellationToken cancellationToken)&#xD;
+[testcontainers.org 00:00:16.03] Docker container 6016a08718a8 created&#xD;
+[testcontainers.org 00:00:16.05] Start Docker container 6016a08718a8&#xD;
+[testcontainers.org 00:00:16.29] Wait for Docker container 6016a08718a8 to complete readiness checks&#xD;
+[testcontainers.org 00:00:16.30] Execute "pg_isready --host localhost --dbname onevo_switch_active_company_test --username test" at Docker container 6016a08718a8&#xD;
+[testcontainers.org 00:00:17.39] Execute "pg_isready --host localhost --dbname onevo_switch_active_company_test --username test" at Docker container 6016a08718a8&#xD;
+[testcontainers.org 00:00:18.48] Execute "pg_isready --host localhost --dbname onevo_switch_active_company_test --username test" at Docker container 6016a08718a8&#xD;
+[testcontainers.org 00:00:18.56] Docker container 6016a08718a8 ready&#xD;
+[xUnit.net 00:00:22.00]       Microsoft.EntityFrameworkCore.DbUpdateException : An error occurred while saving the entity changes. See the inner exception for details.&#xD;
+[xUnit.net 00:00:22.00]       ---- Npgsql.PostgresException : 23505: duplicate key value violates unique constraint "ix_employees_user_id"&#xD;
+[xUnit.net 00:00:22.00]       &#xD;
+[xUnit.net 00:00:22.00]       DETAIL: Detail redacted as it may contain sensitive data. Specify 'Include Error Detail' in the connection string to include this information.&#xD;
+[xUnit.net 00:00:22.00]       Stack Trace:&#xD;
+[xUnit.net 00:00:22.00]            at Npgsql.EntityFrameworkCore.PostgreSQL.Update.Internal.NpgsqlModificationCommandBatch.Consume(RelationalDataReader reader, Boolean async, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Microsoft.EntityFrameworkCore.Update.ReaderModificationCommandBatch.ExecuteAsync(IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Microsoft.EntityFrameworkCore.Update.Internal.BatchExecutor.ExecuteAsync(IEnumerable`1 commandBatches, IRelationalConnection connection, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Microsoft.EntityFrameworkCore.Storage.RelationalDatabase.SaveChangesAsync(IList`1 entries, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.SaveChangesAsync(IList`1 entriesToSave, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Microsoft.EntityFrameworkCore.ChangeTracking.Internal.StateManager.SaveChangesAsync(StateManager stateManager, Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Npgsql.EntityFrameworkCore.PostgreSQL.Storage.Internal.NpgsqlExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(Boolean acceptAllChangesOnSuccess, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]         C:\onevoNew\HRMS-Backend-v1\tests\ONEVO.Tests.Integration\Auth\Session\SwitchActiveCompanyIntegrationTests.cs(166,0): at ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.InitializeAsync()&#xD;
+[xUnit.net 00:00:22.00]         C:\onevoNew\HRMS-Backend-v1\tests\ONEVO.Tests.Integration\Auth\Session\SwitchActiveCompanyIntegrationTests.cs(166,0): at ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.InitializeAsync()&#xD;
+[xUnit.net 00:00:22.00]         ----- Inner Stack Trace -----&#xD;
+[xUnit.net 00:00:22.00]            at Npgsql.Internal.NpgsqlConnector.ReadMessageLong(Boolean async, DataRowLoadingMode dataRowLoadingMode, Boolean readingNotifications, Boolean isReadingPrependedMessage)&#xD;
+[xUnit.net 00:00:22.00]            at System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder`1.StateMachineBox`1.System.Threading.Tasks.Sources.IValueTaskSource&lt;TResult&gt;.GetResult(Int16 token)&#xD;
+[xUnit.net 00:00:22.00]            at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Npgsql.NpgsqlDataReader.NextResult(Boolean async, Boolean isConsuming, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.00]            at Npgsql.EntityFrameworkCore.PostgreSQL.Update.Internal.NpgsqlModificationCommandBatch.Consume(RelationalDataReader reader, Boolean async, CancellationToken cancellationToken)&#xD;
+[xUnit.net 00:00:22.01]   Finished:    ONEVO.Tests.Integration&#xD;
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="TICS17" outcome="Error" timestamp="2026-08-16T22:09:52.1828028+05:30">
+        <Text>[xUnit.net 00:00:16.18]     ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.SwitchActiveCompany_ChangesEffectivePermissionsOnNextRequest [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="TICS17" outcome="Error" timestamp="2026-08-16T22:09:58.0033312+05:30">
+        <Text>[xUnit.net 00:00:22.00]     ONEVO.Tests.Integration.Auth.ActiveCompany.SwitchActiveCompanyIntegrationTests.GetDefaultForUserAsync_PrefersMostRecentPrimaryEmployment [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>
