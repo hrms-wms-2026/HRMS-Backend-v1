@@ -6,10 +6,11 @@
 
 This folder absorbed the former top-level `docs/superpowers/next-plan/` folder on 2026-08-06 as part of the `plans/` restructure into `finished/` and `next/` — see `FILE_CREATION_RULES.md` in `docs/superpowers/rules/`.
 
-**Last updated:** 2026-08-09
+**Last updated:** 2026-08-16
 
 ## Files
 
+- `2026-08-16-multi-legal-entity-employment-foundation/` — status: pending, not started. 3-part plan (`part-1-invitation-capacity-lifecycle.md`, `part-2-cross-legal-entity-invitation.md`, `part-3-session-active-entity-permissions.md`) built from `specs/next/2026-08-16-multi-legal-entity-employment-foundation-design.md`. Sub-project 1 of 2 in a decomposed employee-detail/invitation/cross-entity feature request; sub-project 2 (Employee Detail screen) gets its own spec+plan after this one ships.
 - `Project Management.md` — two future features, both raw context, not designs:
   1. Milestone (Objective) In-Charge Role & Permission System — **superseded**, see the file's own header: fully brainstormed and designed in `specs/2026-08-04-work-management-milestone-hierarchy-design.md`.
   2. Project Lifecycle Workflow, Approval Pipeline, Archive/Restore, and Progress Calculation — not started. Backend-relevant subset of a manager corrections doc on the Project Management user journey (2026-08-04). Blocked on Objective/Task CRUD existing first; conflicts with the schema's current "forbidden: free-form status" note on `projects`.

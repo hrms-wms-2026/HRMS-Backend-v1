@@ -41,6 +41,7 @@
 | `2026-08-08-work-management-frontend-blocking-endpoints.md` | `finished/2026-08-09/` | finished (2/2 items shipped) |
 | 26 `*_REPORT.md` / `*_AUDIT_PLAN.md` files (Department, Position, Legal Entity, Dev Smoke, Tenant Provisioning, etc.) | `finished/2026-08-03/` through `finished/2026-08-06/` | finished |
 | `Project Management.md` (raw future-feature context, 1 of 2 items still open) | `next/` | pending (not brainstormed) |
+| `2026-08-16-multi-legal-entity-employment-foundation/` (3 parts) | `next/` | pending (not started) |
 
 See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all 44 files in that folder (kept short here to avoid duplicating the same list twice).
 
