@@ -30,3 +30,6 @@ public sealed record TaskDeadlineViewModel(Guid TaskId, string ShortId, string T
 public sealed record MyDeadlinesViewModel(
     IReadOnlyList<ObjectiveDeadlineViewModel> ObjectiveDeadlines,
     IReadOnlyList<TaskDeadlineViewModel> TaskDeadlines);
+
+public sealed record WorkNotificationNavigationViewModel(
+    Guid ProjectId, Guid ObjectiveId, Guid? TaskId, string TargetTab);

@@ -15,4 +15,7 @@ public static class WorkTaskViewModelMapper
     public static MyDeadlinesViewModel ToViewModel(this MyDeadlinesResponse dto) => new(
         dto.ObjectiveDeadlines.Select(o => new ObjectiveDeadlineViewModel(o.ObjectiveId, o.Title, o.EndDate)).ToList(),
         dto.TaskDeadlines.Select(t => new TaskDeadlineViewModel(t.TaskId, t.ShortId, t.Title, t.DueDate)).ToList());
+
+    public static WorkNotificationNavigationViewModel ToViewModel(this WorkNotificationNavigationResponse dto) =>
+        new(dto.ProjectId, dto.ObjectiveId, dto.TaskId, dto.TargetTab);
 }

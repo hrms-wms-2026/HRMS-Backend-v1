@@ -17,6 +17,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyDeadlines;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskCreationRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTaskStatuses;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetWorkNotificationNavigation;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 
@@ -33,6 +34,19 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> MyDeadlines([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetMyDeadlinesQuery(from, to), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Resolves Work Management notification click-through targets (Board / Approvals).</summary>
+    [HttpGet("notification-navigation")]
+    public async Task<IActionResult> NotificationNavigation(
+        [FromQuery] string relatedEntityType, [FromQuery] Guid relatedEntityId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(
+            new GetWorkNotificationNavigationQuery(relatedEntityType, relatedEntityId), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
