@@ -233,6 +233,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<TaskStatusEntity> TaskStatuses => Set<TaskStatusEntity>();
     public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
+    public DbSet<TaskCreationRequest> TaskCreationRequests => Set<TaskCreationRequest>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
