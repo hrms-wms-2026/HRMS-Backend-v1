@@ -202,7 +202,7 @@ public class EfEmployeeRepository : IEmployeeRepository
     public async Task<uint?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => await _db.Employees.AsNoTracking()
             .Where(e => e.TenantId == tenantId && e.Id == employeeId)
-            .Select(e => (uint?)EF.Property<uint>(e, "xmin"))
+            .Select(e => EF.Property<uint?>(e, "xmin"))
             .FirstOrDefaultAsync(ct);
 
     public void SetExpectedVersion(EmployeeEntity employee, string expectedVersion)

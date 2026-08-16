@@ -22,8 +22,14 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<EmployeeEntity>
         builder.Property(e => e.DisplayTimezone).HasMaxLength(50);
 
         // Concurrency token mapped to the PostgreSQL system column xmin - see
-        // OnboardingDraftConfiguration.cs for the identical precedent and rationale.
-        builder.Property<uint>("xmin")
+        // OnboardingDraftConfiguration.cs for the identical precedent and rationale. Declared
+        // nullable (uint?, not uint) so EF does not emit a NOT NULL constraint: PostgreSQL always
+        // populates its own xmin system column regardless of this metadata, but
+        // DevSmokeTestTenantSeederTests exercises a real non-PostgreSQL unit-test database schema
+        // via Database.EnsureCreated() (unlike OnboardingDraft, whose xmin column that test never
+        // inserts through), and that provider has no such system column - a NOT NULL "xmin" there
+        // would reject every insert.
+        builder.Property<uint?>("xmin")
             .HasColumnName("xmin")
             .HasColumnType("xid")
             .ValueGeneratedOnAddOrUpdate()
