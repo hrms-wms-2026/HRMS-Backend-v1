@@ -14,5 +14,9 @@ public interface IWorkTaskRepository
     /// edit, to avoid double-counting the task's own current value against its own proposed new value).</summary>
     Task<decimal> GetActiveAllocationSumByObjectiveIdAsync(Guid tenantId, Guid objectiveId, Guid? excludingTaskId = null, CancellationToken ct = default);
 
+    /// <summary>Tasks with an assignment to this employee and DueDate in [from, to]. For the
+    /// my-deadlines endpoint (spec §7) - not used by any other query.</summary>
+    Task<IReadOnlyList<WorkTask>> GetAssignedToEmployeeWithinRangeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
+
     void Update(WorkTask task);
 }

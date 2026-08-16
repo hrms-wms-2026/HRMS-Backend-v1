@@ -29,5 +29,16 @@ public class EfWorkTaskRepository : IWorkTaskRepository
             .Where(t => t.TenantId == tenantId && t.ObjectiveId == objectiveId && t.Id != (excludingTaskId ?? Guid.Empty))
             .SumAsync(t => t.EstimatedHours ?? 0m, ct);
 
+    public async Task<IReadOnlyList<WorkTask>> GetAssignedToEmployeeWithinRangeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        return await _db.WorkTasks.AsNoTracking()
+            .Where(t => t.TenantId == tenantId
+                        && t.DueDate.HasValue
+                        && t.DueDate >= from
+                        && t.DueDate <= to
+                        && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId))
+            .ToListAsync(ct);
+    }
+
     public void Update(WorkTask task) => _db.WorkTasks.Update(task);
 }

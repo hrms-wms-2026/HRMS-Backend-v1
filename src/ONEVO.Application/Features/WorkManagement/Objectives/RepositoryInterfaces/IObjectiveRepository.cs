@@ -35,5 +35,9 @@ public interface IObjectiveRepository
     /// </summary>
     Task<IReadOnlyList<Objective>> GetTrackedActiveDirectChildrenAsync(Guid tenantId, Guid parentObjectiveId, CancellationToken ct = default);
 
+    /// <summary>Active objectives owned by this employee with EndDate in [from, to]. For the
+    /// my-deadlines endpoint (spec §7) - not used by any other query.</summary>
+    Task<IReadOnlyList<Objective>> GetOwnedByEmployeeIdWithinRangeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
+
     void Update(Objective objective);
 }

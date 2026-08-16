@@ -60,6 +60,11 @@ public class EfObjectiveRepository : IObjectiveRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Objective>> GetOwnedByEmployeeIdWithinRangeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default)
+        => await _db.Objectives.AsNoTracking()
+            .Where(o => o.TenantId == tenantId && o.OwnerId == employeeId && o.IsActive && o.EndDate >= from && o.EndDate <= to)
+            .ToListAsync(ct);
+
     public void Update(Objective objective)
     {
         _db.Objectives.Update(objective);

@@ -22,3 +22,11 @@ public sealed record WorkTaskViewModel(
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, bool MarksTaskComplete);
+
+public sealed record ObjectiveDeadlineViewModel(Guid ObjectiveId, string Title, DateOnly EndDate);
+
+public sealed record TaskDeadlineViewModel(Guid TaskId, string ShortId, string Title, DateOnly DueDate);
+
+public sealed record MyDeadlinesViewModel(
+    IReadOnlyList<ObjectiveDeadlineViewModel> ObjectiveDeadlines,
+    IReadOnlyList<TaskDeadlineViewModel> TaskDeadlines);

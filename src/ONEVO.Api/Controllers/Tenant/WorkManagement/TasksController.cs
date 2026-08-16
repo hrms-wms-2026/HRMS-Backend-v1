@@ -13,6 +13,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.MoveTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.RejectTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.UnassignTask;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyDeadlines;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskCreationRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTaskStatuses;
@@ -27,6 +28,16 @@ public class TasksController : ControllerBase
     private readonly IMediator _mediator;
 
     public TasksController(IMediator mediator) => _mediator = mediator;
+
+    [HttpGet("my-deadlines")]
+    public async Task<IActionResult> MyDeadlines([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetMyDeadlinesQuery(from, to), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
 
     [HttpPost("objectives/{objectiveId:guid}/tasks")]
     [RequirePermission("projects:access")]
