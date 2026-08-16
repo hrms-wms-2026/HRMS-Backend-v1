@@ -99,7 +99,7 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
         var handler = new ApproveObjectiveChangeRequestCommandHandler(
             currentUser.Object, identity.Object, requests.Object, objectives.Object, membership.Object,
             new ObjectiveAllocationSlackCalculator(objectives.Object, new Mock<IWorkTaskRepository>().Object),
-            unitOfWork.Object);
+            new Mock<INotificationDispatcher>().Object, unitOfWork.Object);
         return (handler, objectives, requests, membership);
     }
 
@@ -268,7 +268,8 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
 
         var handler = new ApproveObjectiveChangeRequestCommandHandler(
             currentUser.Object, identity.Object, requests.Object, objectives.Object, membership.Object,
-            new ObjectiveAllocationSlackCalculator(objectives.Object, tasks.Object), unitOfWork.Object);
+            new ObjectiveAllocationSlackCalculator(objectives.Object, tasks.Object),
+            new Mock<INotificationDispatcher>().Object, unitOfWork.Object);
         return (handler, objectives);
     }
 

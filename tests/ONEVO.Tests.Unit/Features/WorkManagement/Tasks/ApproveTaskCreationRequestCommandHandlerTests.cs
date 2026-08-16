@@ -5,6 +5,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ApproveTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CancelTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.RejectTaskCreationRequest;
@@ -87,6 +88,8 @@ public class ApproveTaskCreationRequestCommandHandlerTests
             });
 
         var slack = new ObjectiveAllocationSlackCalculator(objectives.Object, tasks.Object);
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        var notifications = new Mock<INotificationDispatcher>();
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<WorkTaskResponse>>>>(), It.IsAny<CancellationToken>()))
@@ -94,7 +97,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
 
         var handler = new ApproveTaskCreationRequestCommandHandler(
             currentUser.Object, identity.Object, requests.Object, objectives.Object, projects.Object,
-            tasks.Object, statuses.Object, slack, unitOfWork.Object);
+            tasks.Object, statuses.Object, slack, membership.Object, notifications.Object, unitOfWork.Object);
         return (handler, tasks, requests);
     }
 
@@ -171,7 +174,8 @@ public class RejectTaskCreationRequestCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result>> op, CancellationToken ct) => op(ct));
 
         var handler = new RejectTaskCreationRequestCommandHandler(
-            currentUser.Object, identity.Object, requests.Object, objectives.Object, unitOfWork.Object);
+            currentUser.Object, identity.Object, requests.Object, objectives.Object,
+            new Mock<IMilestoneMembershipCoordinator>().Object, new Mock<INotificationDispatcher>().Object, unitOfWork.Object);
         return (handler, requests);
     }
 

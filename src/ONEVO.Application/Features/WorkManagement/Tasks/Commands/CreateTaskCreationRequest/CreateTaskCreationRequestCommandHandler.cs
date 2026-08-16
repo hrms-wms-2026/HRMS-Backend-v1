@@ -20,17 +20,20 @@ public class CreateTaskCreationRequestCommandHandler : IRequestHandler<CreateTas
     private readonly IObjectiveRepository _objectives;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly ITaskCreationRequestRepository _requests;
+    private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
 
     public CreateTaskCreationRequestCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IMilestoneMembershipCoordinator membership, ITaskCreationRequestRepository requests, IUnitOfWork unitOfWork)
+        IMilestoneMembershipCoordinator membership, ITaskCreationRequestRepository requests,
+        INotificationDispatcher notifications, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _membership = membership;
         _requests = requests;
+        _notifications = notifications;
         _unitOfWork = unitOfWork;
     }
 
@@ -59,6 +62,9 @@ public class CreateTaskCreationRequestCommandHandler : IRequestHandler<CreateTas
             request.Title.Trim(), request.Description?.Trim(), request.TaskType, request.Priority,
             request.DueDate, request.EstimatedHours, request.StoryPoints);
 
+        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [callerEmployeeId.Value], ct);
+        var requesterDisplayName = names.GetValueOrDefault(callerEmployeeId.Value) ?? "A teammate";
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             var now = DateTimeOffset.UtcNow;
@@ -70,6 +76,21 @@ public class CreateTaskCreationRequestCommandHandler : IRequestHandler<CreateTas
             };
 
             await _requests.AddAsync(entity, innerCt);
+
+            var ownerAssignee = await _membership.GetActiveAssigneeAsync(tenantId, objective.OwnerId, innerCt);
+            if (ownerAssignee is not null)
+            {
+                await _notifications.SendTemplatedAsync(
+                    tenantId, ownerAssignee.UserId, "work_task_creation_request_created",
+                    new Dictionary<string, string>
+                    {
+                        ["requesterName"] = requesterDisplayName,
+                        ["taskTitle"] = payload.Title,
+                        ["objectiveName"] = objective.Title
+                    },
+                    "task_creation_request", entity.Id, innerCt);
+            }
+
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<TaskCreationRequestResponse>.Success(new TaskCreationRequestResponse(entity.Id, entity.ObjectiveId, entity.Status, payload, entity.CreatedAt));

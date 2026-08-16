@@ -30,22 +30,27 @@ public class CreateTaskCreationRequestCommandHandlerTests
 
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(EmployeeId);
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [EmployeeId] = "Requester" });
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Objective { Id = ObjectiveId, TenantId = TenantId, OwnerId = OwnerId, IsActive = true, CreatedAt = DateTimeOffset.UtcNow });
+            .ReturnsAsync(new Objective { Id = ObjectiveId, TenantId = TenantId, OwnerId = OwnerId, Title = "Milestone", IsActive = true, CreatedAt = DateTimeOffset.UtcNow });
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.IsActiveMemberAsync(TenantId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(isActiveMember);
 
         var requests = new Mock<ITaskCreationRequestRepository>();
+        var notifications = new Mock<INotificationDispatcher>();
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<TaskCreationRequestResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<TaskCreationRequestResponse>>> op, CancellationToken ct) => op(ct));
 
-        var handler = new CreateTaskCreationRequestCommandHandler(currentUser.Object, identity.Object, objectives.Object, membership.Object, requests.Object, unitOfWork.Object);
+        var handler = new CreateTaskCreationRequestCommandHandler(
+            currentUser.Object, identity.Object, objectives.Object, membership.Object, requests.Object,
+            notifications.Object, unitOfWork.Object);
         return (handler, requests);
     }
 

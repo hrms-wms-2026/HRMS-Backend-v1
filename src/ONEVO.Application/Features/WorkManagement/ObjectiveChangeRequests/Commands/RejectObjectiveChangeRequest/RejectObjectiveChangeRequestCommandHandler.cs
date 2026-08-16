@@ -4,6 +4,8 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RejectObjectiveChangeRequest;
@@ -13,14 +15,22 @@ public class RejectObjectiveChangeRequestCommandHandler : IRequestHandler<Reject
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
+    private readonly IObjectiveRepository _objectives;
+    private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
 
     public RejectObjectiveChangeRequestCommandHandler(
-        ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveChangeRequestRepository changeRequests, IUnitOfWork unitOfWork)
+        ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveChangeRequestRepository changeRequests,
+        IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership,
+        INotificationDispatcher notifications, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _changeRequests = changeRequests;
+        _objectives = objectives;
+        _membership = membership;
+        _notifications = notifications;
         _unitOfWork = unitOfWork;
     }
 
@@ -52,6 +62,23 @@ public class RejectObjectiveChangeRequestCommandHandler : IRequestHandler<Reject
         changeRequest.DecidedAt = DateTimeOffset.UtcNow;
         changeRequest.DecidedById = userId;
         _changeRequests.Update(changeRequest);
+
+        if (changeRequest.RequestType == ObjectiveChangeRequestTypes.ExtendAllocation)
+        {
+            var objective = await _objectives.GetByIdForTenantAsync(tenantId, changeRequest.ObjectiveId, ct);
+            var requester = await _membership.GetActiveAssigneeAsync(tenantId, changeRequest.RequestedById, ct);
+            if (objective is not null && requester is not null)
+            {
+                await _notifications.SendTemplatedAsync(
+                    tenantId, requester.UserId, "work_allocation_extend_request_decided",
+                    new Dictionary<string, string>
+                    {
+                        ["decision"] = "rejected",
+                        ["objectiveName"] = objective.Title
+                    },
+                    "objective_change_request", changeRequest.Id, ct);
+            }
+        }
 
         await _unitOfWork.SaveChangesAsync(ct);
 

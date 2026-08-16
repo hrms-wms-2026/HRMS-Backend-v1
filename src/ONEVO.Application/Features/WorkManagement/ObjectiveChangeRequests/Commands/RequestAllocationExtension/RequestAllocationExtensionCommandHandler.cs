@@ -9,6 +9,7 @@ using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs.Res
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
@@ -19,16 +20,21 @@ public class RequestAllocationExtensionCommandHandler : IRequestHandler<RequestA
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
     private readonly IObjectiveChangeRequestRepository _requests;
+    private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
 
     public RequestAllocationExtensionCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IObjectiveChangeRequestRepository requests, IUnitOfWork unitOfWork)
+        IObjectiveChangeRequestRepository requests, IMilestoneMembershipCoordinator membership,
+        INotificationDispatcher notifications, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _requests = requests;
+        _membership = membership;
+        _notifications = notifications;
         _unitOfWork = unitOfWork;
     }
 
@@ -58,6 +64,8 @@ public class RequestAllocationExtensionCommandHandler : IRequestHandler<RequestA
             return Result<ObjectiveChangeRequestResponse>.Conflict("A change request is already pending for this objective.");
 
         var payload = new ExtendAllocationRequestPayload(request.RequestedAdditionalHours, request.Reason.Trim());
+        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [callerEmployeeId.Value], ct);
+        var requesterDisplayName = names.GetValueOrDefault(callerEmployeeId.Value) ?? "A teammate";
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
@@ -72,6 +80,21 @@ public class RequestAllocationExtensionCommandHandler : IRequestHandler<RequestA
             };
 
             await _requests.AddAsync(entity, innerCt);
+
+            var manager = await _membership.GetActiveAssigneeAsync(tenantId, objective.ReportingManagerId.Value, innerCt);
+            if (manager is not null)
+            {
+                await _notifications.SendTemplatedAsync(
+                    tenantId, manager.UserId, "work_allocation_extend_request_created",
+                    new Dictionary<string, string>
+                    {
+                        ["requesterName"] = requesterDisplayName,
+                        ["requestedHours"] = payload.RequestedAdditionalHours.ToString("0.##"),
+                        ["objectiveName"] = objective.Title
+                    },
+                    "objective_change_request", entity.Id, innerCt);
+            }
+
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<ObjectiveChangeRequestResponse>.Success(ObjectiveMapper.ToResponse(entity));

@@ -30,22 +30,28 @@ public class RequestAllocationExtensionCommandHandlerTests
 
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(EmployeeId);
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [EmployeeId] = "Owner" });
 
         var objective = new Objective
         {
             Id = ObjectiveId, TenantId = TenantId, OwnerId = EmployeeId, ReportingManagerId = reportingManagerId,
-            IsActive = true, AllocatedHours = 60m, CreatedAt = DateTimeOffset.UtcNow
+            Title = "Child", IsActive = true, AllocatedHours = 60m, CreatedAt = DateTimeOffset.UtcNow
         };
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
 
         var requests = new Mock<IObjectiveChangeRequestRepository>();
+        var membership = new Mock<ONEVO.Application.Features.WorkManagement.Objectives.Services.IMilestoneMembershipCoordinator>();
+        var notifications = new Mock<INotificationDispatcher>();
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveChangeRequestResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<ObjectiveChangeRequestResponse>>> op, CancellationToken ct) => op(ct));
 
-        var handler = new RequestAllocationExtensionCommandHandler(currentUser.Object, identity.Object, objectives.Object, requests.Object, unitOfWork.Object);
+        var handler = new RequestAllocationExtensionCommandHandler(
+            currentUser.Object, identity.Object, objectives.Object, requests.Object,
+            membership.Object, notifications.Object, unitOfWork.Object);
         return (handler, requests);
     }
 

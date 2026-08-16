@@ -5,6 +5,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
@@ -24,12 +25,15 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskStatusRepository _statuses;
     private readonly IObjectiveAllocationSlackCalculator _slack;
+    private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
 
     public ApproveTaskCreationRequestCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, ITaskCreationRequestRepository requests,
         IObjectiveRepository objectives, IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
-        IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork)
+        IObjectiveAllocationSlackCalculator slack, IMilestoneMembershipCoordinator membership,
+        INotificationDispatcher notifications, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -39,6 +43,8 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
         _tasks = tasks;
         _statuses = statuses;
         _slack = slack;
+        _membership = membership;
+        _notifications = notifications;
         _unitOfWork = unitOfWork;
     }
 
@@ -107,6 +113,20 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
             pending.CreatedTaskId = task.Id;
             pending.UpdatedAt = now;
             _requests.Update(pending);
+
+            var requester = await _membership.GetActiveAssigneeAsync(tenantId, pending.RequestedByEmployeeId, innerCt);
+            if (requester is not null)
+            {
+                await _notifications.SendTemplatedAsync(
+                    tenantId, requester.UserId, "work_task_creation_request_decided",
+                    new Dictionary<string, string>
+                    {
+                        ["decision"] = "approved",
+                        ["taskTitle"] = payload.Title,
+                        ["objectiveName"] = objective.Title
+                    },
+                    "task_creation_request", pending.Id, innerCt);
+            }
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 

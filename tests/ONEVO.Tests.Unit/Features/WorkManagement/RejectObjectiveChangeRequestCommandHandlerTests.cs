@@ -43,10 +43,16 @@ public class RejectObjectiveChangeRequestCommandHandlerTests
         var requests = new Mock<IObjectiveChangeRequestRepository>();
         requests.Setup(x => x.GetByIdForTenantAsync(TenantId, RequestId, It.IsAny<CancellationToken>())).ReturnsAsync(request);
 
+        var objectives = new Mock<ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces.IObjectiveRepository>();
+        var membership = new Mock<ONEVO.Application.Features.WorkManagement.Objectives.Services.IMilestoneMembershipCoordinator>();
+        var notifications = new Mock<INotificationDispatcher>();
+
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var handler = new RejectObjectiveChangeRequestCommandHandler(currentUser.Object, identity.Object, requests.Object, unitOfWork.Object);
+        var handler = new RejectObjectiveChangeRequestCommandHandler(
+            currentUser.Object, identity.Object, requests.Object, objectives.Object,
+            membership.Object, notifications.Object, unitOfWork.Object);
         return (handler, requests);
     }
 

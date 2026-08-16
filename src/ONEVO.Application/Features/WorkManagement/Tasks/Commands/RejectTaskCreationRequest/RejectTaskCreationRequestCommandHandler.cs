@@ -1,9 +1,12 @@
+using System.Text.Json;
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
@@ -15,16 +18,21 @@ public class RejectTaskCreationRequestCommandHandler : IRequestHandler<RejectTas
     private readonly ICallerIdentityResolver _identity;
     private readonly ITaskCreationRequestRepository _requests;
     private readonly IObjectiveRepository _objectives;
+    private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
 
     public RejectTaskCreationRequestCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, ITaskCreationRequestRepository requests,
-        IObjectiveRepository objectives, IUnitOfWork unitOfWork)
+        IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership,
+        INotificationDispatcher notifications, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _requests = requests;
         _objectives = objectives;
+        _membership = membership;
+        _notifications = notifications;
         _unitOfWork = unitOfWork;
     }
 
@@ -52,6 +60,8 @@ public class RejectTaskCreationRequestCommandHandler : IRequestHandler<RejectTas
         if (objective.OwnerId != callerEmployeeId.Value)
             return Result.Forbidden("Only this milestone's owner can decide this request.");
 
+        var payload = JsonSerializer.Deserialize<TaskCreationRequestPayload>(pending.PayloadJson);
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             var now = DateTimeOffset.UtcNow;
@@ -61,6 +71,21 @@ public class RejectTaskCreationRequestCommandHandler : IRequestHandler<RejectTas
             pending.DecidedAt = now;
             pending.UpdatedAt = now;
             _requests.Update(pending);
+
+            var requester = await _membership.GetActiveAssigneeAsync(tenantId, pending.RequestedByEmployeeId, innerCt);
+            if (requester is not null)
+            {
+                await _notifications.SendTemplatedAsync(
+                    tenantId, requester.UserId, "work_task_creation_request_decided",
+                    new Dictionary<string, string>
+                    {
+                        ["decision"] = "rejected",
+                        ["taskTitle"] = payload?.Title ?? "a task",
+                        ["objectiveName"] = objective.Title
+                    },
+                    "task_creation_request", pending.Id, innerCt);
+            }
+
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result.Success();
         }, ct);

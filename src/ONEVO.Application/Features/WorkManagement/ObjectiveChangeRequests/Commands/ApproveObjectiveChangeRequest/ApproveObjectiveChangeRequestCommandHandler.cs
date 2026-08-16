@@ -21,12 +21,13 @@ public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<Appro
     private readonly IObjectiveRepository _objectives;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IObjectiveAllocationSlackCalculator _slack;
+    private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
 
     public ApproveObjectiveChangeRequestCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveChangeRequestRepository changeRequests,
         IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership,
-        IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork)
+        IObjectiveAllocationSlackCalculator slack, INotificationDispatcher notifications, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -34,6 +35,7 @@ public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<Appro
         _objectives = objectives;
         _membership = membership;
         _slack = slack;
+        _notifications = notifications;
         _unitOfWork = unitOfWork;
     }
 
@@ -143,6 +145,19 @@ public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<Appro
 
                     objective.AllocatedHours += extendPayload.RequestedAdditionalHours;
                     objective.UpdatedAt = now;
+
+                    var extendRequester = await _membership.GetActiveAssigneeAsync(tenantId, changeRequest.RequestedById, innerCt);
+                    if (extendRequester is not null)
+                    {
+                        await _notifications.SendTemplatedAsync(
+                            tenantId, extendRequester.UserId, "work_allocation_extend_request_decided",
+                            new Dictionary<string, string>
+                            {
+                                ["decision"] = "approved",
+                                ["objectiveName"] = objective.Title
+                            },
+                            "objective_change_request", changeRequest.Id, innerCt);
+                    }
                     break;
             }
 
