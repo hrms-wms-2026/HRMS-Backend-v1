@@ -7,6 +7,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 
@@ -19,6 +20,7 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
     private readonly IUserRepository _users;
     private readonly IUserMfaRepository _userMfa;
     private readonly IEncryptionService _encryption;
+    private readonly ILegalEntityRepository _legalEntities;
     private readonly ICurrentUser _currentUser;
 
     public GetMyProfileQueryHandler(
@@ -29,6 +31,7 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
         IUserRepository users,
         IUserMfaRepository userMfa,
         IEncryptionService encryption,
+        ILegalEntityRepository legalEntities,
         ICurrentUser currentUser)
     {
         _commonEmployees = commonEmployees;
@@ -38,6 +41,7 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
         _users = users;
         _userMfa = userMfa;
         _encryption = encryption;
+        _legalEntities = legalEntities;
         _currentUser = currentUser;
     }
 
@@ -66,10 +70,17 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
         var workModes = await _workModes.ListActiveAsync(ct);
         var workModeLabel = workModes.FirstOrDefault(w => w.Id == employee.WorkModeId)?.Label ?? "Unknown";
 
+        string? legalEntityTimezone = null;
+        if (employee.LegalEntityId is Guid legalEntityId)
+        {
+            var legalEntity = await _legalEntities.GetByIdForTenantAsync(tenantId, legalEntityId, ct);
+            legalEntityTimezone = legalEntity?.Timezone;
+        }
+
         var personalInformation = new MyPersonalInformationResponse(
             employee.FirstName, employee.LastName, employee.Email, employee.Phone,
             employee.DateOfBirth, employee.Gender, employee.NationalityId, null,
-            employee.DisplayTimezone, null,
+            employee.DisplayTimezone, legalEntityTimezone, null,
             addresses.Select(a => new MyAddressResponse(a.Id, a.AddressType, a.AddressJson, a.IsPrimary)).ToList(),
             versionToken?.ToString() ?? string.Empty);
 

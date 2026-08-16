@@ -3,7 +3,7 @@ namespace ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 public record MyPersonalInformationResponse(
     string FirstName, string LastName, string Email, string? Phone,
     DateOnly? DateOfBirth, string? Gender, Guid? NationalityId, string? CountryName,
-    string? DisplayTimezone, string? AvatarUrl,
+    string? DisplayTimezone, string? LegalEntityTimezone, string? AvatarUrl,
     IReadOnlyList<MyAddressResponse> Addresses, string Version);
 
 public record MyAddressResponse(Guid Id, string AddressType, string AddressJson, bool IsPrimary);
