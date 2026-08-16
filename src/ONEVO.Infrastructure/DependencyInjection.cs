@@ -421,6 +421,7 @@ public static class DependencyInjection
         services.AddHostedService<PermissionSeeder>();
         services.AddHostedService<RoleTemplateSeeder>();
         services.AddHostedService<LookupDataSeeder>();
+        services.AddHostedService<NotificationTemplateSeeder>();
         services.AddHostedService<PlatformAccessSeeder>();
         services.AddHostedService<PositionTemplatePackSeeder>();
         services.AddHostedService<ModuleCatalogSeeder>();
