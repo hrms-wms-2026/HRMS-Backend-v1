@@ -56,6 +56,12 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "work_task_edit_request_decided",
+                InAppTitleTemplate = "Task edit request {{decision}}",
+                InAppBodyTemplate = "Your edit request for \"{{taskTitle}}\" on {{objectiveName}} was {{decision}}."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "work_allocation_extend_request_created",
                 InAppTitleTemplate = "Allocation extension requested",
                 InAppBodyTemplate = "{{requesterName}} requested {{requestedHours}} more hours for {{objectiveName}}."
