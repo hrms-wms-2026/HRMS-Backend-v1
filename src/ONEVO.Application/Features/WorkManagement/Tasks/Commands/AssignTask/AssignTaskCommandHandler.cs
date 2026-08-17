@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
@@ -14,17 +15,20 @@ public class AssignTaskCommandHandler : IRequestHandler<AssignTaskCommand, Resul
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IWorkTaskRepository _tasks;
+    private readonly IObjectiveRepository _objectives;
     private readonly ITaskAssignmentRepository _assignments;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IUnitOfWork _unitOfWork;
 
     public AssignTaskCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IWorkTaskRepository tasks,
-        ITaskAssignmentRepository assignments, IMilestoneMembershipCoordinator membership, IUnitOfWork unitOfWork)
+        IObjectiveRepository objectives, ITaskAssignmentRepository assignments,
+        IMilestoneMembershipCoordinator membership, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _tasks = tasks;
+        _objectives = objectives;
         _assignments = assignments;
         _membership = membership;
         _unitOfWork = unitOfWork;
@@ -45,6 +49,13 @@ public class AssignTaskCommandHandler : IRequestHandler<AssignTaskCommand, Resul
         var task = await _tasks.GetByIdForTenantAsync(tenantId, request.TaskId, ct);
         if (task is null)
             return Result.NotFound("Task not found.");
+
+        var objective = await _objectives.GetByIdForTenantAsync(tenantId, task.ObjectiveId, ct);
+        if (objective is null || !objective.IsActive)
+            return Result.NotFound("Objective not found.");
+
+        if (objective.OwnerId != callerEmployeeId.Value)
+            return Result.Forbidden("Only this milestone's owner can assign tasks.");
 
         var assignee = await _membership.GetActiveAssigneeAsync(tenantId, request.EmployeeId, ct);
         if (assignee is null)
