@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Employees;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddDependent;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteEmergencyContact;
@@ -79,6 +80,21 @@ public class EmployeesController : ControllerBase
 
         return result.IsSuccess
             ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Reassign an employee's primary position. Minimal capacity-checked reassignment -
+    /// not an approval-routed workflow. See ChangeEmployeePositionCommandHandler.</summary>
+    [HttpPost("{id:guid}/change-position")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> ChangePosition(
+        Guid id, [FromBody] ChangePositionRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new ChangeEmployeePositionCommand(id, request.PositionId, request.EffectiveFrom), ct);
+
+        return result.IsSuccess
+            ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
