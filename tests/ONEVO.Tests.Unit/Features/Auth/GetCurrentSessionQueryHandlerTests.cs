@@ -1,9 +1,11 @@
 using System.Text.Json;
 using FluentAssertions;
 using Moq;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.Queries.GetCurrentSession;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 
 namespace ONEVO.Tests.Unit.Features.Auth;
@@ -33,6 +35,21 @@ public sealed class GetCurrentSessionQueryHandlerTests
         return tenant;
     }
 
+    private static Mock<IEmployeeRepository> MakeEmployees(
+        Guid tenantId,
+        Guid userId,
+        Employee? employee)
+    {
+        var employees = new Mock<IEmployeeRepository>();
+        employees
+            .Setup(instance => instance.GetByUserIdAsync(
+                tenantId,
+                userId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(employee);
+        return employees;
+    }
+
     [Fact]
     public async Task Me_ReturnsOnlyCurrentTenantSessionMetadata()
     {
@@ -54,11 +71,13 @@ public sealed class GetCurrentSessionQueryHandlerTests
             .Setup(instance => instance.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Tenant { Id = tenantId, Slug = "acme", Name = "Acme" });
 
+        var employees = MakeEmployees(tenantId, userId, employee: null);
         var handler = new GetCurrentSessionQueryHandler(
             current.Object,
             tenantContext.Object,
             entitlements.Object,
-            tenants.Object);
+            tenants.Object,
+            employees.Object);
 
         var result = await handler.Handle(new GetCurrentSessionQuery(), default);
 
@@ -89,8 +108,9 @@ public sealed class GetCurrentSessionQueryHandlerTests
             .Setup(instance => instance.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Tenant { Id = tenantId, Slug = "acme", Name = "Acme Inc" });
 
+        var employees = MakeEmployees(tenantId, userId, employee: null);
         var handler = new GetCurrentSessionQueryHandler(
-            current.Object, tenantContext.Object, entitlements.Object, tenants.Object);
+            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object);
 
         var result = await handler.Handle(new GetCurrentSessionQuery(), default);
 
@@ -111,9 +131,10 @@ public sealed class GetCurrentSessionQueryHandlerTests
 
         var entitlements = new Mock<IModuleEntitlementService>();
         var tenants = new Mock<ITenantRepository>();
+        var employees = new Mock<IEmployeeRepository>();
 
         var handler = new GetCurrentSessionQueryHandler(
-            current.Object, tenantContext.Object, entitlements.Object, tenants.Object);
+            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object);
 
         var result = await handler.Handle(new GetCurrentSessionQuery(), default);
 
@@ -143,8 +164,9 @@ public sealed class GetCurrentSessionQueryHandlerTests
             .Setup(instance => instance.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Tenant { Id = tenantId, Slug = "acme", Name = "Acme Inc" });
 
+        var employees = MakeEmployees(tenantId, userId, employee: null);
         var handler = new GetCurrentSessionQueryHandler(
-            current.Object, tenantContext.Object, entitlements.Object, tenants.Object);
+            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object);
 
         var result = await handler.Handle(new GetCurrentSessionQuery(), default);
 
@@ -158,5 +180,74 @@ public sealed class GetCurrentSessionQueryHandlerTests
         json.Should().NotContain(userId.ToString());
         json.Should().Contain("\"slug\":\"acme\"");
         json.Should().Contain("\"display_name\":\"Acme Inc\"");
+    }
+
+    [Fact]
+    public async Task Handle_UserHasEmployeeRecord_IncludesEmployeeIdInResponse()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var current = MakeAuthenticatedCurrentUser(userId, tenantId, DateTimeOffset.UtcNow.AddMinutes(20));
+        var tenantContext = MakeResolvedTenantContext(tenantId);
+
+        var entitlements = new Mock<IModuleEntitlementService>();
+        entitlements
+            .Setup(instance => instance.GetActiveModuleKeysForTenantAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<string>());
+
+        var tenants = new Mock<ITenantRepository>();
+        tenants
+            .Setup(instance => instance.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, Slug = "acme", Name = "Acme" });
+
+        var employees = MakeEmployees(tenantId, userId, new Employee
+        {
+            Id = employeeId,
+            TenantId = tenantId,
+            UserId = userId,
+            FirstName = "Jane",
+            LastName = "Doe",
+            Email = "jane@example.com",
+            HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            EmployeeNumber = "E-001"
+        });
+
+        var handler = new GetCurrentSessionQueryHandler(
+            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object);
+
+        var result = await handler.Handle(new GetCurrentSessionQuery(), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.User!.EmployeeId.Should().Be(employeeId);
+    }
+
+    [Fact]
+    public async Task Handle_UserHasNoEmployeeRecord_EmployeeIdIsNull()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var current = MakeAuthenticatedCurrentUser(userId, tenantId, DateTimeOffset.UtcNow.AddMinutes(20));
+        var tenantContext = MakeResolvedTenantContext(tenantId);
+
+        var entitlements = new Mock<IModuleEntitlementService>();
+        entitlements
+            .Setup(instance => instance.GetActiveModuleKeysForTenantAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<string>());
+
+        var tenants = new Mock<ITenantRepository>();
+        tenants
+            .Setup(instance => instance.GetByIdAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = tenantId, Slug = "acme", Name = "Acme" });
+
+        var employees = MakeEmployees(tenantId, userId, employee: null);
+
+        var handler = new GetCurrentSessionQueryHandler(
+            current.Object, tenantContext.Object, entitlements.Object, tenants.Object, employees.Object);
+
+        var result = await handler.Handle(new GetCurrentSessionQuery(), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.User!.EmployeeId.Should().BeNull();
     }
 }
