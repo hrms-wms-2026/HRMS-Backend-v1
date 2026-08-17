@@ -141,6 +141,44 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
         return rowsAffected > 0;
     }
 
+    public async Task<Guid?> TryCreateActiveAssignmentAsync(
+        Guid tenantId, Guid employeeId, Guid positionId, DateOnly effectiveFrom, Guid createdById,
+        CancellationToken ct = default)
+    {
+        var newId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        var rowsAffected = await _db.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO position_assignments
+                (id, tenant_id, employee_id, position_id, assignment_kind, effective_from,
+                 assignment_status, created_by_id, created_at, is_deleted)
+            SELECT {newId}, {tenantId}, {employeeId}, {positionId}, {PositionAssignmentKind.PrimaryEmployment},
+                   {effectiveFrom}, {PositionAssignmentStatus.Active}, {createdById}, {now}, false
+            WHERE (
+                SELECT COUNT(*) FROM position_assignments
+                WHERE tenant_id = {tenantId} AND position_id = {positionId}
+                  AND assignment_kind = {PositionAssignmentKind.PrimaryEmployment}
+                  AND assignment_status IN ({PositionAssignmentStatus.Active}, {PositionAssignmentStatus.Planned})
+            ) < (
+                SELECT max_occupancy FROM positions WHERE id = {positionId} AND tenant_id = {tenantId}
+            )
+        ", ct);
+
+        return rowsAffected > 0 ? newId : null;
+    }
+
+    public async Task<bool> EndActiveAsync(Guid tenantId, Guid positionAssignmentId, DateOnly effectiveTo, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var rowsAffected = await _db.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE position_assignments
+            SET assignment_status = {PositionAssignmentStatus.Ended}, effective_to = {effectiveTo}, updated_at = {now}
+            WHERE id = {positionAssignmentId} AND tenant_id = {tenantId}
+              AND assignment_status = {PositionAssignmentStatus.Active}
+        ", ct);
+        return rowsAffected > 0;
+    }
+
     public async Task AddAsync(ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment assignment, CancellationToken ct = default)
     {
         await _db.PositionAssignments.AddAsync(assignment, ct);

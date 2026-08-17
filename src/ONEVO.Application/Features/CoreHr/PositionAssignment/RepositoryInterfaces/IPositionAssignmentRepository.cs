@@ -52,6 +52,16 @@ public interface IPositionAssignmentRepository
     /// "planned".</summary>
     Task<bool> CancelPlannedAsync(Guid tenantId, Guid positionAssignmentId, CancellationToken ct = default);
 
+    /// <summary>Same atomic capacity-guarded INSERT as TryReservePositionAssignmentAsync, but
+    /// inserts the row as "active" directly - used for immediate, non-invitation position
+    /// changes (Change Position action) rather than an invitation's reserve-then-activate
+    /// lifecycle.</summary>
+    Task<Guid?> TryCreateActiveAssignmentAsync(
+        Guid tenantId, Guid employeeId, Guid positionId, DateOnly effectiveFrom, Guid createdById,
+        CancellationToken ct = default);
+
+    Task<bool> EndActiveAsync(Guid tenantId, Guid positionAssignmentId, DateOnly effectiveTo, CancellationToken ct = default);
+
     Task AddAsync(ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment assignment, CancellationToken ct = default);
 
     Task<ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment?> GetTrackedAsync(
