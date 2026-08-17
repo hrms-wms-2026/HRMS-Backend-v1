@@ -32,12 +32,13 @@ namespace ONEVO.Application.Features.CoreHr.Onboarding.Commands.RejectAccessGran
 /// since moved on (e.g. already Finalized via a different request, or Cancelled), resetting it to
 /// Draft would silently undo that outcome - so in that case only draft.UpdatedAt changes.
 ///
-/// Concurrency: still saves through IOnboardingDraftRepository.SaveChangesAsync (touching
-/// draft.UpdatedAt even when Status/DraftReason are left alone) rather than the
-/// access-grant-request repository's own SaveChangesAsync, specifically so this handler contends
-/// on the draft's xmin token with ApproveAccessGrantRequestCommandHandler. AccessGrantRequest
-/// itself carries no concurrency token, so without this the loser of a simultaneous approve/reject
-/// race would silently overwrite the winner's decision instead of getting a clean 409.
+/// Concurrency: onboarding approve/reject still save through IOnboardingDraftRepository.SaveChangesAsync
+/// (touching draft.UpdatedAt even when Status/DraftReason are left alone) so they contend on the
+/// draft's xmin token. PositionChange has no draft: AccessGrantRequest maps PostgreSQL xmin as a
+/// concurrency token, and this handler saves the request (with CancelPlanned) through
+/// IAccessGrantRequestRepository.SaveChangesAsync inside IUnitOfWork.ExecuteInTransactionAsync.
+/// A simultaneous approve/reject on the same PositionChange request therefore gets a clean 409
+/// instead of silently overwriting the winner's decision.
 /// </summary>
 public class RejectAccessGrantRequestCommandHandler
     : IRequestHandler<RejectAccessGrantRequestCommand, Result<RejectAccessGrantRequestResponse>>

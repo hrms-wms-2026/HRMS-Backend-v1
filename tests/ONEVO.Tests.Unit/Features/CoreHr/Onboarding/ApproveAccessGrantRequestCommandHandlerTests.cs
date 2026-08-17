@@ -609,6 +609,36 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_PositionChange_WhenSaveRacesOnConcurrency_ReturnsConflict()
+    {
+        var reservedAssignmentId = Guid.NewGuid();
+        var grantRequest = ValidGrantRequest(Guid.NewGuid(), Guid.NewGuid());
+        grantRequest.OnboardingDraftId = null;
+        grantRequest.EmployeeId = Guid.NewGuid();
+        grantRequest.ActionType = AccessGrantActionType.PositionChange;
+        grantRequest.ReservedPositionAssignmentId = reservedAssignmentId;
+        grantRequest.RequestedByUserId = Guid.NewGuid();
+        _accessGrantRequestRepository
+            .Setup(r => r.GetTrackedByIdAsync(_tenantId, grantRequest.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(grantRequest);
+        _positionAssignmentRepository
+            .Setup(a => a.GetActivePrimaryAsync(_tenantId, grantRequest.EmployeeId!.Value, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PositionAssignmentEntity?)null);
+        _positionAssignmentRepository
+            .Setup(a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _accessGrantRequestRepository
+            .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ConcurrencyConflictException(new Exception("stale")));
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(grantRequest.Id), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.False(_unitOfWork.TransactionCommitted);
+    }
+
+    [Fact]
     public void ConstructorDoesNotTakeATenantOwnerDependency()
     {
         var ctorParams = typeof(ApproveAccessGrantRequestCommandHandler)

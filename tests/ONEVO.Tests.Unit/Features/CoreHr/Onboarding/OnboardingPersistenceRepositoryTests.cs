@@ -41,6 +41,18 @@ public sealed class OnboardingPersistenceRepositoryTests
     }
 
     [Fact]
+    public void AccessGrantRequest_XminIsConcurrencyToken()
+    {
+        using var db = BuildDb();
+        var xmin = db.Model.FindEntityType(typeof(AccessGrantRequest))!.FindProperty("xmin");
+
+        xmin.Should().NotBeNull();
+        xmin!.IsConcurrencyToken.Should().BeTrue();
+        xmin.ValueGenerated.Should().Be(Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.OnAddOrUpdate);
+        xmin.ClrType.Should().Be(typeof(uint?));
+    }
+
+    [Fact]
     public async Task AccessGrantRequest_AnyPendingByDraft_OnlyMatchesPendingAndIsTenantScoped()
     {
         await using var db = BuildDb();

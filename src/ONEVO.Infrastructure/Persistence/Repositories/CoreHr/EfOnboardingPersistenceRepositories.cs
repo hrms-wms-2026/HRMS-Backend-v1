@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Onboarding.Models;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
@@ -115,7 +117,21 @@ public sealed class EfAccessGrantRequestRepository(ApplicationDbContext db) : IA
         return (items, totalCount);
     }
 
-    public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
+    public async Task<int> SaveChangesAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConcurrencyConflictException(ex);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new UniqueConstraintConflictException(ex);
+        }
+    }
 }
 
 public sealed class EfChecklistTemplateRepository(ApplicationDbContext db) : IChecklistTemplateRepository
