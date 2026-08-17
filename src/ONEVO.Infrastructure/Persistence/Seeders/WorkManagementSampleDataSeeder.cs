@@ -31,6 +31,12 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
     private const int TargetMilestonesPerProject = 2;
     private const string SampleIdentifierPrefix = "SMK";
 
+    // WorkManagementDapiDemoSeeder is now the sole source of Work Management data for this
+    // tenant (5 hand-designed projects, 22 named employees) - without this guard, every one of
+    // those 22 employees would also pick up 2 generic "SMK..." sample projects here, burying the
+    // curated dataset under 44 unrelated rows on every dev boot.
+    private const string DapiTenantSlug = "dapi";
+
     private static readonly string[] CategoryNames =
         ["Backend", "Frontend", "Infrastructure", "Design", "Marketing"];
 
@@ -61,53 +67,7 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
 
-            tenantContext.SetAdminMode();
-            var tenants = await db.Tenants
-                .Where(t => t.Status == TenantStatus.Active)
-                .ToListAsync(cancellationToken);
-
-            foreach (var tenant in tenants)
-            {
-                // RLS is enforced per-DB-session against whichever tenant is currently Resolve()d,
-                // so every tenant's staged inserts must be flushed with SaveChangesAsync before the
-                // loop moves on and re-resolves to the next tenant - a single SaveChangesAsync after
-                // the whole loop (saving all tenants' rows under only the last-resolved tenant) gets
-                // rejected by Postgres for every other tenant's rows. Matches
-                // DevSmokeTestTenantSeeder's per-tenant SetAdminMode+Resolve+SaveChanges pattern.
-                tenantContext.SetAdminMode();
-                tenantContext.Resolve(new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null));
-
-                var categories = await EnsureProjectCategoriesAsync(db, tenant.Id, cancellationToken);
-
-                var legalEntity = await db.LegalEntities
-                    .FirstOrDefaultAsync(l => l.TenantId == tenant.Id && l.IsPrimary, cancellationToken);
-                if (legalEntity is null)
-                {
-                    await db.SaveChangesAsync(cancellationToken);
-                    _logger.LogInformation(
-                        "WorkManagementSampleDataSeeder: tenant {Slug} has no primary legal entity yet - skipping sample projects.",
-                        tenant.Slug);
-                    continue;
-                }
-
-                var users = await db.Users
-                    .Where(u => u.TenantId == tenant.Id && u.IsActive)
-                    .ToListAsync(cancellationToken);
-
-                foreach (var user in users)
-                {
-                    var employee = await db.Employees
-                        .FirstOrDefaultAsync(e => e.TenantId == tenant.Id && e.UserId == user.Id, cancellationToken);
-                    if (employee is null)
-                    {
-                        continue;
-                    }
-
-                    await EnsureUserSampleProjectsAsync(db, tenant.Id, user, employee, legalEntity.Id, categories, cancellationToken);
-                }
-
-                await db.SaveChangesAsync(cancellationToken);
-            }
+            await SeedAsync(db, tenantContext, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -117,6 +77,62 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public static async Task SeedAsync(
+        ApplicationDbContext db,
+        IWritableTenantContext tenantContext,
+        CancellationToken cancellationToken)
+    {
+        tenantContext.SetAdminMode();
+        var tenants = await db.Tenants
+            .Where(t => t.Status == TenantStatus.Active)
+            .ToListAsync(cancellationToken);
+
+        foreach (var tenant in tenants)
+        {
+            if (tenant.Slug == DapiTenantSlug)
+            {
+                continue;
+            }
+
+            // RLS is enforced per-DB-session against whichever tenant is currently Resolve()d,
+            // so every tenant's staged inserts must be flushed with SaveChangesAsync before the
+            // loop moves on and re-resolves to the next tenant - a single SaveChangesAsync after
+            // the whole loop (saving all tenants' rows under only the last-resolved tenant) gets
+            // rejected by Postgres for every other tenant's rows. Matches
+            // DevSmokeTestTenantSeeder's per-tenant SetAdminMode+Resolve+SaveChanges pattern.
+            tenantContext.SetAdminMode();
+            tenantContext.Resolve(new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null));
+
+            var categories = await EnsureProjectCategoriesAsync(db, tenant.Id, cancellationToken);
+
+            var legalEntity = await db.LegalEntities
+                .FirstOrDefaultAsync(l => l.TenantId == tenant.Id && l.IsPrimary, cancellationToken);
+            if (legalEntity is null)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                continue;
+            }
+
+            var users = await db.Users
+                .Where(u => u.TenantId == tenant.Id && u.IsActive)
+                .ToListAsync(cancellationToken);
+
+            foreach (var user in users)
+            {
+                var employee = await db.Employees
+                    .FirstOrDefaultAsync(e => e.TenantId == tenant.Id && e.UserId == user.Id, cancellationToken);
+                if (employee is null)
+                {
+                    continue;
+                }
+
+                await EnsureUserSampleProjectsAsync(db, tenant.Id, user, employee, legalEntity.Id, categories, cancellationToken);
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+        }
+    }
 
     private static async Task<List<ProjectCategory>> EnsureProjectCategoriesAsync(
         ApplicationDbContext db,

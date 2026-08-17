@@ -1,9 +1,11 @@
 using Moq;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveById;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using Xunit;
 
@@ -17,10 +19,10 @@ public class GetObjectiveByIdQueryHandlerTests
     private static readonly Guid ParentId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
 
-    private static Objective Target(bool isActive = true) => new()
+    private static Objective Target(bool isActive = true, Guid? ownerId = null) => new()
     {
         Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, ParentObjectiveId = ParentId, IsActive = isActive,
-        Title = "Sub", OwnerId = Guid.NewGuid(), StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), CreatedAt = DateTimeOffset.UtcNow
+        Title = "Sub", OwnerId = ownerId ?? Guid.NewGuid(), StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), CreatedAt = DateTimeOffset.UtcNow
     };
 
     private static Objective Parent() => new()
@@ -30,25 +32,30 @@ public class GetObjectiveByIdQueryHandlerTests
     };
 
     private (GetObjectiveByIdQueryHandler Handler, Mock<IProjectMemberRepository> Members) BuildHandler(
-        Objective? target, List<string> permissions, bool hasAncestorOrSelfMembership)
+        Objective? target, List<string> permissions, bool hasAncestorOrSelfMembership,
+        Guid? callerId = null, IReadOnlyList<Employee>? employees = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(UserId);
+        currentUser.SetupGet(x => x.UserId).Returns(callerId ?? UserId);
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(target);
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ParentId, It.IsAny<CancellationToken>())).ReturnsAsync(Parent());
 
         var members = new Mock<IProjectMemberRepository>();
-        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, UserId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, It.IsAny<Guid>(), It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(hasAncestorOrSelfMembership);
 
         var permissionResolver = new Mock<IPermissionResolver>();
-        permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
+        permissionResolver.Setup(x => x.ResolveAsync(It.IsAny<Guid>(), TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
 
-        var handler = new GetObjectiveByIdQueryHandler(currentUser.Object, objectives.Object, members.Object, permissionResolver.Object);
+        var employeeRepo = new Mock<IEmployeeRepository>();
+        employeeRepo.Setup(x => x.GetByUserIdsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(employees ?? []);
+
+        var handler = new GetObjectiveByIdQueryHandler(currentUser.Object, objectives.Object, members.Object, permissionResolver.Object, employeeRepo.Object);
         return (handler, members);
     }
 
@@ -115,5 +122,52 @@ public class GetObjectiveByIdQueryHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_ResolvesOwnerAndReportingManagerNames()
+    {
+        var ownerId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var target = new Objective
+        {
+            Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, ParentObjectiveId = ParentId, IsActive = true,
+            Title = "Sub", OwnerId = ownerId, ReportingManagerId = managerId,
+            StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), CreatedAt = DateTimeOffset.UtcNow
+        };
+        var employees = new List<Employee>
+        {
+            new() { UserId = ownerId, FirstName = "Jane", LastName = "Doe", EmployeeNumber = "E1", Email = "jane@example.com", HireDate = new DateOnly(2020, 1, 1) },
+            new() { UserId = managerId, FirstName = "John", LastName = "Smith", EmployeeNumber = "E2", Email = "john@example.com", HireDate = new DateOnly(2019, 1, 1) }
+        };
+        var (handler, _) = BuildHandler(target, ["projects:read"], hasAncestorOrSelfMembership: false, employees: employees);
+
+        var result = await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Jane Doe", result.Value!.OwnerName);
+        Assert.Equal("John Smith", result.Value.ReportingManagerName);
+    }
+
+    [Fact]
+    public async Task Handle_IsOwnerTrue_WhenCallerIsTheOwner()
+    {
+        var target = Target(ownerId: UserId);
+        var (handler, _) = BuildHandler(target, ["projects:read"], hasAncestorOrSelfMembership: false);
+
+        var result = await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);
+
+        Assert.True(result.Value!.IsOwner);
+    }
+
+    [Fact]
+    public async Task Handle_IsOwnerFalse_WhenCallerIsNotTheOwner()
+    {
+        var target = Target();
+        var (handler, _) = BuildHandler(target, ["projects:read"], hasAncestorOrSelfMembership: false);
+
+        var result = await handler.Handle(new GetObjectiveByIdQuery(ObjectiveId), CancellationToken.None);
+
+        Assert.False(result.Value!.IsOwner);
     }
 }

@@ -34,4 +34,5 @@ public static class OutboxMessageTypes
     // No IOutboxMessageHandler consumer beyond the registered no-op yet - see
     // NoOpEmployeeSecurityOutboxHandler. Producer-side audit trail for now.
     public const string EmployeeSecurityUpdated = "employee_security_updated";
+    public const string InvoiceEmail = "invoice_email";
 }

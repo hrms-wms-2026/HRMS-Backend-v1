@@ -5,4 +5,4 @@ public sealed record MyProjectMilestoneViewModel(
     Guid OwnerId, string? OwnerName, Guid? ReportingManagerId, string? ReportingManagerName,
     DateOnly StartDate, DateOnly EndDate, decimal AllocatedHours, decimal CompletedHours,
     bool ObjectiveIsActive, bool IsAchieved, DateTimeOffset? AchievedAt,
-    bool MembershipIsActive, DateTimeOffset? MembershipRemovedAt);
+    bool MembershipIsActive, DateTimeOffset? MembershipRemovedAt, bool IsOwner);

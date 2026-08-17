@@ -192,6 +192,35 @@ public class GetMyProjectMilestonesQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_CallerIsOwner_IsOwnerTrue()
+    {
+        var (handler, _) = BuildHandler(
+            new List<ProjectMember> { Membership(MilestoneId) },
+            new List<Objective> { Milestone() },
+            new List<Employee> { Owner(), ReportingManager() },
+            callerId: OwnerId);
+
+        var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(Assert.Single(result.Value!).IsOwner);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsNotOwner_IsOwnerFalse()
+    {
+        var (handler, _) = BuildHandler(
+            new List<ProjectMember> { Membership(MilestoneId) },
+            new List<Objective> { Milestone() },
+            new List<Employee> { Owner(), ReportingManager() });
+
+        var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(Assert.Single(result.Value!).IsOwner);
+    }
+
+    [Fact]
     public async Task Handle_NotAuthenticated_ReturnsForbidden()
     {
         var currentUser = new Mock<ICurrentUser>();

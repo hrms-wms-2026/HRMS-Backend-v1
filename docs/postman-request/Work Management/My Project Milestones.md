@@ -7,7 +7,7 @@
 
 ## Description
 
-Every milestone in the given project the caller has ever had a `project_members` row for, at any status (active, removed, or transferred-away) — the frontend is expected to filter by `membershipIsActive`/`objectiveIsActive`/`isAchieved` as needed; the API does not pre-filter to active-only. Each milestone's current Head (`ownerId`) and Reporting Manager (`reportingManagerId`) names are resolved server-side as `ownerName`/`reportingManagerName` (`First Last`, from the matching `Employee` record) — the frontend derives whether the caller themselves is the Head by comparing `ownerId` to their own `userId`; this endpoint does not compute or return a role field. `reportingManagerId`/`reportingManagerName` are `null` for the Default Objective (it has no Reporting Manager). A nonexistent or inaccessible `projectId` returns `200` with an empty array, never `404`.
+Every milestone in the given project the caller has ever had a `project_members` row for, at any status (active, removed, or transferred-away) — the frontend is expected to filter by `membershipIsActive`/`objectiveIsActive`/`isAchieved` as needed; the API does not pre-filter to active-only. Each milestone's current Head (`ownerId`) and Reporting Manager (`reportingManagerId`) names are resolved server-side as `ownerName`/`reportingManagerName` (`First Last`, from the matching `Employee` record). `reportingManagerId`/`reportingManagerName` are `null` for the Default Objective (it has no Reporting Manager). A nonexistent or inaccessible `projectId` returns `200` with an empty array, never `404`. `isOwner` is `true` when the caller is this milestone's current Head — computed server-side the same way `Project.isLead` is, so the frontend never needs its own user id.
 
 ## Response
 
@@ -21,7 +21,7 @@ Every milestone in the given project the caller has ever had a `project_members`
     "reportingManagerId": "guid|null", "reportingManagerName": "string|null",
     "startDate": "date", "endDate": "date", "allocatedHours": "decimal", "completedHours": "decimal",
     "objectiveIsActive": true, "isAchieved": false, "achievedAt": "datetime|null",
-    "membershipIsActive": true, "membershipRemovedAt": "datetime|null"
+    "membershipIsActive": true, "membershipRemovedAt": "datetime|null", "isOwner": true
   }
 ]
 ```

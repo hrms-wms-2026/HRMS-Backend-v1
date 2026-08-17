@@ -1,5 +1,6 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
@@ -15,15 +16,18 @@ public class GetObjectiveByIdQueryHandler : IRequestHandler<GetObjectiveByIdQuer
     private readonly IObjectiveRepository _objectives;
     private readonly IProjectMemberRepository _members;
     private readonly IPermissionResolver _permissionResolver;
+    private readonly IEmployeeRepository _employees;
 
     public GetObjectiveByIdQueryHandler(
         ICurrentUser currentUser, IObjectiveRepository objectives,
-        IProjectMemberRepository members, IPermissionResolver permissionResolver)
+        IProjectMemberRepository members, IPermissionResolver permissionResolver,
+        IEmployeeRepository employees)
     {
         _currentUser = currentUser;
         _objectives = objectives;
         _members = members;
         _permissionResolver = permissionResolver;
+        _employees = employees;
     }
 
     public async Task<Result<ObjectiveDetailResponse>> Handle(GetObjectiveByIdQuery request, CancellationToken ct)
@@ -62,6 +66,13 @@ public class GetObjectiveByIdQueryHandler : IRequestHandler<GetObjectiveByIdQuer
                 return Result<ObjectiveDetailResponse>.Forbidden("You do not have access to this milestone.");
         }
 
-        return Result<ObjectiveDetailResponse>.Success(ObjectiveMapper.ToDetail(objective));
+        var nameLookupIds = new List<Guid> { objective.OwnerId };
+        if (objective.ReportingManagerId.HasValue)
+            nameLookupIds.Add(objective.ReportingManagerId.Value);
+
+        var employees = await _employees.GetByUserIdsAsync(tenantId, nameLookupIds, ct);
+        var namesByUserId = employees.ToDictionary(e => e.UserId, e => $"{e.FirstName} {e.LastName}");
+
+        return Result<ObjectiveDetailResponse>.Success(ObjectiveMapper.ToDetail(objective, namesByUserId, userId));
     }
 }

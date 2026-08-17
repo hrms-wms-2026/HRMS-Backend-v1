@@ -18,6 +18,9 @@
 - `2026-08-06-work-management-milestone-membership-and-achieve-design.md` — its plan, `plans/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve.md`, finished all 18 tasks 2026-08-08.
 - `2026-08-08-work-management-my-project-milestones-design.md` — its plan, `plans/finished/2026-08-08/2026-08-08-work-management-my-project-milestones.md`, finished all 5 tasks 2026-08-08 (same day, both design and plan dated 2026-08-08 — no completion-date/filename-date mismatch for this one).
 
+**`2026-08-10/`** (1)
+- `2026-08-10-milestone-ownership-and-subtree-access-design.md` — its plan, `plans/finished/2026-08-10/2026-08-10-milestone-ownership-and-subtree-access.md`, finished both tasks 2026-08-10 (same day). Backend half of a cross-repo feature — frontend half in `Hrms--Web-application---front-end---v1`.
+
 **`2026-08-16/`** (1)
 - `2026-08-16-multi-legal-entity-employment-foundation-design.md` — its plan, `plans/finished/2026-08-16/2026-08-16-multi-legal-entity-employment-foundation/`, finished all 3 parts 2026-08-16. Unique index on `employees` is `(user_id, legal_entity_id)`.
 

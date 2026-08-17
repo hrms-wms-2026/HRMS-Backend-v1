@@ -12,6 +12,7 @@ using ONEVO.Application.Features.WorkManagement.Projects.Commands.EditProject;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.UnachieveProject;
 using ONEVO.Application.Features.WorkManagement.Projects.DTOs.Requests;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectById;
+using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectLogo;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.ListProjects;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
@@ -124,6 +125,17 @@ public class ProjectsController : ControllerBase
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Streams a Project's cover/logo image. Same access rule as GetById (projects:read/* OR active membership) so the image is never more visible than the project itself. 404 if no logo is set.</summary>
+    [HttpGet("{id:guid}/logo")]
+    public async Task<IActionResult> GetLogo(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetProjectLogoQuery(id), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return File(result.Value!.Content, result.Value!.ContentType);
     }
 
     /// <summary>The caller's own projects. Requires projects:access (the module-wide base gate) — this only ever returns the caller's own data, so no additional permission is needed beyond that base gate.</summary>

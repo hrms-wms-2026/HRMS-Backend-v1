@@ -41,9 +41,13 @@
 | `2026-08-08-work-management-frontend-blocking-endpoints.md` | `finished/2026-08-09/` | finished (2/2 items shipped) |
 | 26 `*_REPORT.md` / `*_AUDIT_PLAN.md` files (Department, Position, Legal Entity, Dev Smoke, Tenant Provisioning, etc.) | `finished/2026-08-03/` through `finished/2026-08-06/` | finished |
 | `Project Management.md` (raw future-feature context, 1 of 2 items still open) | `next/` | pending (not brainstormed) |
+| `2026-08-10-milestone-ownership-and-subtree-access.md` | `finished/2026-08-10/` | finished (2/2 tasks) |
+| `2026-08-10-project-detail-milestone-tree-view-backend.md` | `finished/2026-08-10/` | finished (3/3 tasks) |
+| `2026-08-12-milestone-to-module-display-rename.md` | `next/` | pending (not started) |
 | `2026-08-16-multi-legal-entity-employment-foundation/` (3 parts) | `finished/2026-08-16/` | finished |
+| `2026-08-16-employee-detail-screen-backend.md` | `next/` | pending (not started) |
 
-See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all 44 files in that folder (kept short here to avoid duplicating the same list twice).
+See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all files in that folder (kept short here to avoid duplicating the same list twice).
 
 ## Notable finished plans (kept from the pre-restructure summary)
 
@@ -58,8 +62,9 @@ See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder
 
 ## Next up
 
-- Nothing currently in flight for the multi-legal-entity employment foundation (shipped 2026-08-16). Sub-project 2 (Employee Detail screen, `employees:read:sensitive`, Change Position) is the next design, not yet brainstormed.
-- Nothing currently in flight for Work Management. The only remaining `next/` items are the two raw, not-yet-brainstormed `Project Management.md` entries (see `next/SUMMARY.md`), plus the still-unsynced `2026-08-07-work-management-objective-subtree.md` drift noted below.
+- The multi-legal-entity employment foundation shipped 2026-08-16. Sub-project 2 (Employee Detail screen, `employees:read:sensitive`, Change Position) has both a design and a plan (`next/2026-08-16-employee-detail-screen-backend.md`) but hasn't started implementation yet.
+- Nothing currently in flight for Work Management backend. The only remaining `next/` items are the two raw, not-yet-brainstormed `Project Management.md` entries (see `next/SUMMARY.md`), plus the still-unsynced `2026-08-07-work-management-objective-subtree.md` drift noted below.
+- `2026-08-10-milestone-ownership-and-subtree-access.md` (finished 2026-08-10) unblocks the frontend's Milestone Cards + Tree View feature — see `Hrms--Web-application---front-end---v1/docs/superpowers/plans/finished/2026-08-10/2026-08-10-milestone-cards-and-tree-view/`.
 - A separate, smaller plan — `docs/superpowers/plans/next/2026-08-07-work-management-objective-subtree.md` (`GET /api/v1/work/objectives/{id}/tree`) — is not reflected in this SUMMARY's status table at all, though its git commits (`2a77bbc`..`b900ec5`, 2026-08-07) show it already shipped. This predates the current session and wasn't touched during this pass; worth a status-sync check next time `plans/` is audited.
 
 ## Open items

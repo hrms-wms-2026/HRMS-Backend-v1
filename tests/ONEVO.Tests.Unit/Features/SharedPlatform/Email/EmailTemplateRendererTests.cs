@@ -271,4 +271,61 @@ public sealed class EmailTemplateRendererTests
         rendered.HtmlBody.Should().Contain("password was changed");
         rendered.TextBody.Should().Contain("If this wasn't you", "must tell the recipient how to react if this wasn't them");
     }
+
+    [Fact]
+    public void RenderInvoiceEmail_IncludesInvoiceNumberTenantNameAmountAndDueDate()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("invoice_email", new
+        {
+            tenant_name = "Acme Co",
+            invoice_number = "INV-1001",
+            status = "open",
+            currency = "USD",
+            subtotal_amount = 100m,
+            tax_amount = 10m,
+            discount_amount = 0m,
+            total_amount = 110m,
+            period_start = "2026-08-01",
+            period_end = "2026-08-31",
+            due_at = "2026-08-20 00:00:00Z",
+            paid_at = (string?)null,
+            is_receipt = false
+        });
+
+        rendered.Subject.Should().Contain("INV-1001");
+        rendered.Subject.Should().Contain("Acme Co");
+        rendered.HtmlBody.Should().Contain("INV-1001");
+        rendered.HtmlBody.Should().Contain("Acme Co");
+        rendered.HtmlBody.Should().Contain("USD");
+        rendered.HtmlBody.Should().Contain("110");
+        rendered.HtmlBody.Should().Contain("2026-08-20 00:00:00Z");
+    }
+
+    [Fact]
+    public void RenderInvoiceEmail_PaidStatus_UsesReceiptSubject()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("invoice_email", new
+        {
+            tenant_name = "Acme Co",
+            invoice_number = "INV-2002",
+            status = "paid",
+            currency = "USD",
+            subtotal_amount = 50m,
+            tax_amount = 0m,
+            discount_amount = 0m,
+            total_amount = 50m,
+            period_start = "2026-08-01",
+            period_end = "2026-08-31",
+            due_at = (string?)null,
+            paid_at = "2026-08-13 12:00:00Z",
+            is_receipt = true
+        });
+
+        rendered.Subject.Should().Contain("Payment receipt");
+        rendered.HtmlBody.Should().Contain("Paid on");
+    }
 }
