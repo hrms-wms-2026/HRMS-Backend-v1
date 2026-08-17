@@ -108,6 +108,18 @@ public class ReorderTaskStatusesCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_NullUpdates_ReturnsFailure()
+    {
+        var (handler, _) = Build(OwnerEmployeeId);
+        var command = new ReorderTaskStatusesCommand(ObjectiveId, null!);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(422, result.StatusCode);
+    }
+
+    [Fact]
     public async Task Handle_NotOwner_ReturnsForbidden()
     {
         var (handler, statuses) = Build(OtherEmployeeId);

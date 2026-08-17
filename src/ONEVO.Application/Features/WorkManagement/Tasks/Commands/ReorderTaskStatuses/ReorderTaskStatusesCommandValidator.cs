@@ -14,7 +14,8 @@ public class ReorderTaskStatusesCommandValidator : AbstractValidator<ReorderTask
             update.RuleFor(u => u.Visibility).Must(v => v is TaskStatusVisibilities.Public or TaskStatusVisibilities.Private);
             update.RuleFor(u => u.DisplayOrder).GreaterThanOrEqualTo(0);
         });
-        RuleFor(x => x.Updates).Must(updates => updates.Count(u => u.MarksTaskComplete) == 1)
+        RuleFor(x => x.Updates).Must(updates =>
+                updates is not null && updates.Count(u => u?.MarksTaskComplete == true) == 1)
             .WithMessage("Exactly one status must be marked as the complete status.");
     }
 }
