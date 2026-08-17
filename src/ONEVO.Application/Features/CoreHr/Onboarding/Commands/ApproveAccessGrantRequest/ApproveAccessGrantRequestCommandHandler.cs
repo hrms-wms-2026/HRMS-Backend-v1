@@ -150,6 +150,11 @@ public class ApproveAccessGrantRequestCommandHandler
                     if (!activated)
                         throw new ReservedSeatUnavailableException();
 
+                    var reservedAssignment = await _positionAssignmentRepository.GetTrackedAsync(
+                        tenantId, grantRequest.ReservedPositionAssignmentId.Value, txnCt);
+                    if (reservedAssignment is not null)
+                        reservedAssignment.ChangeReason = grantRequest.ChangeReason;
+
                     grantRequest.ApprovalStatus = "Approved";
                     grantRequest.DecidedByUserId = _currentUser.UserId;
                     grantRequest.DecidedAt = _clock.UtcNow;

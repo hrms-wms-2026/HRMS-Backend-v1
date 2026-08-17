@@ -554,13 +554,18 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
                 Id = previousAssignmentId,
                 EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-1)),
             });
+        var reservedAssignment = new PositionAssignmentEntity { Id = reservedAssignmentId };
         _positionAssignmentRepository
             .Setup(a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+        _positionAssignmentRepository
+            .Setup(a => a.GetTrackedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(reservedAssignment);
 
         var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(grantRequest.Id), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
+        Assert.Equal("Promotion", reservedAssignment.ChangeReason);
         _positionAssignmentRepository.Verify(
             a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()), Times.Once);
         _positionAssignmentRepository.Verify(

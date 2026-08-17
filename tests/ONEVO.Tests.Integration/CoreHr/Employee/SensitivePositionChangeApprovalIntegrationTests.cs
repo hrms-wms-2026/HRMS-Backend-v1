@@ -202,6 +202,7 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
             .SingleAsync(a => a.Id == planned.Id);
         Assert.Equal(PositionAssignmentStatus.Active, activated.AssignmentStatus);
         Assert.Equal(_sensitivePositionId, activated.PositionId);
+        Assert.Equal("Promotion", activated.ChangeReason);
 
         var grantAfter = await afterApprove.AccessGrantRequests.AsNoTracking()
             .SingleAsync(g => g.Id == grant.Id);
