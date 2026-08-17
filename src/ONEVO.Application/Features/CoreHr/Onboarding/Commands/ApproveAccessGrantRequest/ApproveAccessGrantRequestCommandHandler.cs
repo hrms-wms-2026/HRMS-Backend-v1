@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.Security;
 using ONEVO.Application.Common.ServiceInterfaces;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
@@ -63,6 +64,7 @@ public class ApproveAccessGrantRequestCommandHandler
     private readonly ISecureTokenGenerator _tokenGenerator;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
+    private readonly IUnitOfWork _unitOfWork;
 
     public ApproveAccessGrantRequestCommandHandler(
         IAccessGrantRequestRepository accessGrantRequestRepository,
@@ -84,7 +86,8 @@ public class ApproveAccessGrantRequestCommandHandler
         IOutboxWriter outboxWriter,
         ISecureTokenGenerator tokenGenerator,
         ICurrentUser currentUser,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IUnitOfWork unitOfWork)
     {
         _accessGrantRequestRepository = accessGrantRequestRepository;
         _draftRepository = draftRepository;
@@ -106,6 +109,7 @@ public class ApproveAccessGrantRequestCommandHandler
         _tokenGenerator = tokenGenerator;
         _currentUser = currentUser;
         _clock = clock;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<Result<ApproveAccessGrantRequestResponse>> Handle(
@@ -128,25 +132,47 @@ public class ApproveAccessGrantRequestCommandHandler
         {
             var currentAssignment = await _positionAssignmentRepository.GetActivePrimaryAsync(
                 tenantId, grantRequest.EmployeeId!.Value, ct);
-            if (currentAssignment is not null)
-            {
-                var effectiveTo = DateOnly.FromDateTime(grantRequest.EffectiveFrom.UtcDateTime).AddDays(-1);
-                if (effectiveTo < currentAssignment.EffectiveFrom)
-                    effectiveTo = currentAssignment.EffectiveFrom;
-                await _positionAssignmentRepository.EndActiveAsync(tenantId, currentAssignment.Id, effectiveTo, ct);
-            }
 
-            var activated = await _positionAssignmentRepository.ActivatePlannedAsync(
-                tenantId, grantRequest.ReservedPositionAssignmentId!.Value, ct);
-            if (!activated)
+            try
+            {
+                await _unitOfWork.ExecuteInTransactionAsync(async txnCt =>
+                {
+                    if (currentAssignment is not null)
+                    {
+                        var effectiveTo = DateOnly.FromDateTime(grantRequest.EffectiveFrom.UtcDateTime).AddDays(-1);
+                        if (effectiveTo < currentAssignment.EffectiveFrom)
+                            effectiveTo = currentAssignment.EffectiveFrom;
+                        await _positionAssignmentRepository.EndActiveAsync(tenantId, currentAssignment.Id, effectiveTo, txnCt);
+                    }
+
+                    var activated = await _positionAssignmentRepository.ActivatePlannedAsync(
+                        tenantId, grantRequest.ReservedPositionAssignmentId!.Value, txnCt);
+                    if (!activated)
+                        throw new ReservedSeatUnavailableException();
+
+                    grantRequest.ApprovalStatus = "Approved";
+                    grantRequest.DecidedByUserId = _currentUser.UserId;
+                    grantRequest.DecidedAt = _clock.UtcNow;
+
+                    await _accessGrantRequestRepository.SaveChangesAsync(txnCt);
+                    return true;
+                }, ct);
+            }
+            catch (ReservedSeatUnavailableException)
+            {
                 return Result<ApproveAccessGrantRequestResponse>.Conflict(
                     "The reserved seat for this request is no longer available.");
-
-            grantRequest.ApprovalStatus = "Approved";
-            grantRequest.DecidedByUserId = _currentUser.UserId;
-            grantRequest.DecidedAt = _clock.UtcNow;
-
-            await _accessGrantRequestRepository.SaveChangesAsync(ct);
+            }
+            catch (ConcurrencyConflictException)
+            {
+                return Result<ApproveAccessGrantRequestResponse>.Conflict(
+                    "This request was just updated by someone else. Please refresh and try again.");
+            }
+            catch (UniqueConstraintConflictException)
+            {
+                return Result<ApproveAccessGrantRequestResponse>.Conflict(
+                    "This request conflicts with an existing record. Please refresh and try again.");
+            }
 
             return Result<ApproveAccessGrantRequestResponse>.Success(
                 new ApproveAccessGrantRequestResponse(
@@ -433,4 +459,10 @@ public class ApproveAccessGrantRequestCommandHandler
             return false;
         }
     }
+
+    /// <summary>
+    /// Thrown inside <see cref="IUnitOfWork.ExecuteInTransactionAsync{TResult}"/> so EndActive
+    /// is rolled back when the reserved Planned assignment cannot be activated.
+    /// </summary>
+    private sealed class ReservedSeatUnavailableException : Exception;
 }

@@ -1,11 +1,13 @@
 using Moq;
 using ONEVO.Application.Common.Exceptions;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.RejectAccessGrantRequest;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Tests.Unit.Fakes;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.Onboarding;
@@ -17,6 +19,7 @@ public sealed class RejectAccessGrantRequestCommandHandlerTests
     private readonly Mock<IPositionAssignmentRepository> _positionAssignmentRepository = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly FakeUnitOfWork _unitOfWork = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -31,7 +34,7 @@ public sealed class RejectAccessGrantRequestCommandHandlerTests
 
     private RejectAccessGrantRequestCommandHandler CreateHandler() => new(
         _accessGrantRequestRepository.Object, _draftRepository.Object, _positionAssignmentRepository.Object,
-        _currentUser.Object, _clock.Object);
+        _currentUser.Object, _clock.Object, _unitOfWork);
 
     private AccessGrantRequest ValidGrantRequest(Guid requestId, Guid? draftId, string status = "Pending") => new()
     {

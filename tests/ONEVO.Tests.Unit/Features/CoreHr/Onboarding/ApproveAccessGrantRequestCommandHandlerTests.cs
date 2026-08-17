@@ -1,6 +1,7 @@
 using Moq;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.ServiceInterfaces;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
@@ -45,6 +46,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
     private readonly Mock<ISecureTokenGenerator> _tokenGenerator = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly TrackingUnitOfWork _unitOfWork = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -118,7 +120,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         _legalEntityRepository.Object, _departmentRepository.Object, _employmentTypeRepository.Object,
         _workModeRepository.Object, _seatEntitlementService.Object, _checklistTemplateRepository.Object,
         _checklistTaskRepository.Object, _invitationTokenRepository.Object, _tenantRepository.Object, _outboxWriter.Object,
-        _tokenGenerator.Object, _currentUser.Object, _clock.Object);
+        _tokenGenerator.Object, _currentUser.Object, _clock.Object, _unitOfWork);
 
     private OnboardingDraftEntity ValidDraft(Guid draftId, string status = OnboardingDraftStatus.WaitingForPositionApproval) => new()
     {
@@ -563,6 +565,47 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
             a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()), Times.Once);
         _positionAssignmentRepository.Verify(
             a => a.EndActiveAsync(_tenantId, previousAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.True(_unitOfWork.TransactionCommitted);
+    }
+
+    [Fact]
+    public async Task Handle_PositionChange_WhenActivateFails_ReturnsConflict_AndDoesNotCommitEndedAssignment()
+    {
+        var reservedAssignmentId = Guid.NewGuid();
+        var previousAssignmentId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var grantRequest = ValidGrantRequest(Guid.NewGuid(), Guid.NewGuid());
+        grantRequest.OnboardingDraftId = null;
+        grantRequest.EmployeeId = employeeId;
+        grantRequest.ActionType = AccessGrantActionType.PositionChange;
+        grantRequest.ReservedPositionAssignmentId = reservedAssignmentId;
+        grantRequest.RequestedByUserId = Guid.NewGuid();
+        _accessGrantRequestRepository
+            .Setup(r => r.GetTrackedByIdAsync(_tenantId, grantRequest.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(grantRequest);
+        _positionAssignmentRepository
+            .Setup(a => a.GetActivePrimaryAsync(_tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionAssignmentEntity
+            {
+                Id = previousAssignmentId,
+                EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-1)),
+            });
+        _positionAssignmentRepository
+            .Setup(a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(grantRequest.Id), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal("The reserved seat for this request is no longer available.", result.Error);
+        Assert.Equal("Pending", grantRequest.ApprovalStatus);
+        Assert.False(_unitOfWork.TransactionCommitted);
+        _accessGrantRequestRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        _positionAssignmentRepository.Verify(
+            a => a.EndActiveAsync(_tenantId, previousAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Once);
+        _positionAssignmentRepository.Verify(
+            a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -572,5 +615,35 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
             .GetConstructors().Single().GetParameters();
 
         Assert.DoesNotContain(ctorParams, p => p.ParameterType.Name.Contains("TenantOwner", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Mirrors <see cref="ONEVO.Infrastructure.Persistence.UnitOfWork.ExecuteInTransactionAsync{TResult}"/>:
+    /// commit only if the operation returns; a throw leaves the transaction uncommitted so
+    /// raw-SQL EndActive is rolled back.
+    /// </summary>
+    private sealed class TrackingUnitOfWork : IUnitOfWork
+    {
+        public bool TransactionCommitted { get; private set; }
+
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(1);
+
+        public async Task<TResult> ExecuteInTransactionAsync<TResult>(
+            Func<CancellationToken, Task<TResult>> operation,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await operation(cancellationToken);
+                TransactionCommitted = true;
+                return result;
+            }
+            catch
+            {
+                TransactionCommitted = false;
+                throw;
+            }
+        }
     }
 }

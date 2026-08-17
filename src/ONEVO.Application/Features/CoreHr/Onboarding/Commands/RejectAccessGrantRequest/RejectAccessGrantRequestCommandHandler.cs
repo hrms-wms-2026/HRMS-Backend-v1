@@ -7,6 +7,7 @@ using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 
 namespace ONEVO.Application.Features.CoreHr.Onboarding.Commands.RejectAccessGrantRequest;
 
@@ -46,19 +47,22 @@ public class RejectAccessGrantRequestCommandHandler
     private readonly IPositionAssignmentRepository _positionAssignmentRepository;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
+    private readonly IUnitOfWork _unitOfWork;
 
     public RejectAccessGrantRequestCommandHandler(
         IAccessGrantRequestRepository accessGrantRequestRepository,
         IOnboardingDraftRepository draftRepository,
         IPositionAssignmentRepository positionAssignmentRepository,
         ICurrentUser currentUser,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IUnitOfWork unitOfWork)
     {
         _accessGrantRequestRepository = accessGrantRequestRepository;
         _draftRepository = draftRepository;
         _positionAssignmentRepository = positionAssignmentRepository;
         _currentUser = currentUser;
         _clock = clock;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<Result<RejectAccessGrantRequestResponse>> Handle(
@@ -82,16 +86,33 @@ public class RejectAccessGrantRequestCommandHandler
 
         if (grantRequest.ActionType == AccessGrantActionType.PositionChange)
         {
-            await _positionAssignmentRepository.CancelPlannedAsync(
-                tenantId, grantRequest.ReservedPositionAssignmentId!.Value, ct);
-
             var positionChangeNote = request.DecisionNote?.Trim();
-            grantRequest.ApprovalStatus = "Rejected";
-            grantRequest.DecidedByUserId = _currentUser.UserId;
-            grantRequest.DecidedAt = _clock.UtcNow;
-            grantRequest.DecisionNote = string.IsNullOrEmpty(positionChangeNote) ? null : positionChangeNote;
+            try
+            {
+                await _unitOfWork.ExecuteInTransactionAsync(async txnCt =>
+                {
+                    await _positionAssignmentRepository.CancelPlannedAsync(
+                        tenantId, grantRequest.ReservedPositionAssignmentId!.Value, txnCt);
 
-            await _accessGrantRequestRepository.SaveChangesAsync(ct);
+                    grantRequest.ApprovalStatus = "Rejected";
+                    grantRequest.DecidedByUserId = _currentUser.UserId;
+                    grantRequest.DecidedAt = _clock.UtcNow;
+                    grantRequest.DecisionNote = string.IsNullOrEmpty(positionChangeNote) ? null : positionChangeNote;
+
+                    await _accessGrantRequestRepository.SaveChangesAsync(txnCt);
+                    return true;
+                }, ct);
+            }
+            catch (ConcurrencyConflictException)
+            {
+                return Result<RejectAccessGrantRequestResponse>.Conflict(
+                    "This request was just updated by someone else. Please refresh and try again.");
+            }
+            catch (UniqueConstraintConflictException)
+            {
+                return Result<RejectAccessGrantRequestResponse>.Conflict(
+                    "This request conflicts with an existing record. Please refresh and try again.");
+            }
 
             return Result<RejectAccessGrantRequestResponse>.Success(new RejectAccessGrantRequestResponse(
                 grantRequest.Id,
