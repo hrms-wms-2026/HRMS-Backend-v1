@@ -33,7 +33,9 @@ public sealed class IntegrationTestEnvironmentScope : IDisposable, IAsyncDisposa
         "DevAdmin__Password",
         "PlatformBootstrap__SuperAdminEmail",
         "PlatformBootstrap__SuperAdminFullName",
-        "Tenancy__RootDomain"
+        "Tenancy__RootDomain",
+        "AwsRekognition__Region",
+        "AwsRekognition__LivenessRoleArn"
     };
 
     private readonly Dictionary<string, string?> _previousValues = new(StringComparer.Ordinal);
@@ -67,6 +69,8 @@ public sealed class IntegrationTestEnvironmentScope : IDisposable, IAsyncDisposa
         Set("PlatformBootstrap__SuperAdminEmail", "test_admin@onevo.dev");
         Set("PlatformBootstrap__SuperAdminFullName", "Integration Test Super Admin");
         Set("Tenancy__RootDomain", "localhost");
+        Set("AwsRekognition__Region", "us-east-1");
+        Set("AwsRekognition__LivenessRoleArn", "arn:aws:iam::000000000000:role/integration-test-face-liveness");
     }
 
     private static string BuildConnectionString(string adminConnectionString, string username, string password)
