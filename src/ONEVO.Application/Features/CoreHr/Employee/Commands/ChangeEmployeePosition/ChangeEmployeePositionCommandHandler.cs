@@ -110,7 +110,7 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
                 ApprovalStatus = "Pending",
                 RequestedByUserId = _currentUser.UserId,
                 RequestedAt = _clock.UtcNow,
-                EffectiveFrom = request.EffectiveFrom.ToDateTime(TimeOnly.MinValue),
+                EffectiveFrom = new DateTimeOffset(request.EffectiveFrom.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
                 ReservedPositionAssignmentId = reservedAssignmentId,
                 ChangeReason = request.ChangeReason,
             };
