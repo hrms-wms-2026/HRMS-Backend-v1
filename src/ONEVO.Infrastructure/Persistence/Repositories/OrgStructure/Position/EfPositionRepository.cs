@@ -59,6 +59,18 @@ public class EfPositionRepository : IPositionRepository
         return result;
     }
 
+    public async Task<IReadOnlyList<Position>> GetByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return Array.Empty<Position>();
+
+        return await _db.Positions
+            .AsNoTracking()
+            .Where(position => position.TenantId == tenantId && ids.Contains(position.Id))
+            .ToListAsync(ct);
+    }
+
     public async Task<Position?> GetByIdForLegalEntityAsync(
         Guid tenantId, Guid legalEntityId, Guid positionId, CancellationToken ct = default)
     {

@@ -18,6 +18,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmergencyContact
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
@@ -81,6 +82,17 @@ public class EmployeesController : ControllerBase
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Job Journey: primary-employment position history for one employee, oldest first.
+    /// Planned assignments are excluded. ApprovedByName is set only when an approved access-grant
+    /// request exists for that assignment.</summary>
+    [HttpGet("{id:guid}/position-history")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetPositionHistory(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeePositionHistoryQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
     /// <summary>Reassign an employee's primary position. Minimal capacity-checked reassignment -

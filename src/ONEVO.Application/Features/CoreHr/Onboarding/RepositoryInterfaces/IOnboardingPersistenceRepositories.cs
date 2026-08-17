@@ -42,6 +42,11 @@ public interface IAccessGrantRequestRepository
     Task<IReadOnlyList<PendingAccessGrantRequestResponse>> ListPendingAsync(
         Guid tenantId, CancellationToken ct = default);
 
+    /// <summary>Approved requests keyed by <see cref="AccessGrantRequest.ReservedPositionAssignmentId"/>
+    /// to <see cref="AccessGrantRequest.DecidedByUserId"/>.</summary>
+    Task<IReadOnlyDictionary<Guid, Guid>> GetApprovedByUserIdsForAssignmentsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> assignmentIds, CancellationToken ct = default);
+
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
 

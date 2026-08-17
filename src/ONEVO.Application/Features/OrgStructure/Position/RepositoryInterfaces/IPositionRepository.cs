@@ -17,6 +17,9 @@ public interface IPositionRepository
 
     Task<Position?> GetByIdForLegalEntityAsync(Guid tenantId, Guid legalEntityId, Guid positionId, CancellationToken ct = default);
 
+    Task<IReadOnlyList<Position>> GetByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+
     Task<IReadOnlyList<Position>> ListByLegalEntityAsync(
         Guid tenantId, Guid legalEntityId, bool includeInactive = false, Guid? departmentId = null, CancellationToken ct = default);
 

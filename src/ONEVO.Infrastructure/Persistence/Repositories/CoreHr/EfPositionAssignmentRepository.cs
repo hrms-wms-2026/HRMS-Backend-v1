@@ -209,6 +209,21 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
             .FirstOrDefaultAsync(pa => pa.TenantId == tenantId && pa.Id == id, ct);
     }
 
+    public async Task<IReadOnlyList<ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment>> ListHistoryForEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await _db.PositionAssignments
+            .AsNoTracking()
+            .Where(pa =>
+                pa.TenantId == tenantId
+                && pa.EmployeeId == employeeId
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && (pa.AssignmentStatus == PositionAssignmentStatus.Active
+                    || pa.AssignmentStatus == PositionAssignmentStatus.Ended))
+            .OrderBy(pa => pa.EffectiveFrom)
+            .ToListAsync(ct);
+    }
+
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         return await _db.SaveChangesAsync(ct);

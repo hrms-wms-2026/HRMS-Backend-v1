@@ -152,6 +152,27 @@ public sealed class EfAccessGrantRequestRepository(ApplicationDbContext db) : IA
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, Guid>> GetApprovedByUserIdsForAssignmentsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> assignmentIds, CancellationToken ct = default)
+    {
+        if (assignmentIds.Count == 0)
+            return new Dictionary<Guid, Guid>();
+
+        var rows = await db.AccessGrantRequests
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId
+                && x.ApprovalStatus == "Approved"
+                && x.ReservedPositionAssignmentId != null
+                && assignmentIds.Contains(x.ReservedPositionAssignmentId.Value)
+                && x.DecidedByUserId != null)
+            .Select(x => new { AssignmentId = x.ReservedPositionAssignmentId!.Value, UserId = x.DecidedByUserId!.Value })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(row => row.AssignmentId)
+            .ToDictionary(group => group.Key, group => group.First().UserId);
+    }
+
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         try

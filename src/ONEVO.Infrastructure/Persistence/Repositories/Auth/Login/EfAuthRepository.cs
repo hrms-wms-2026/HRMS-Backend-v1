@@ -50,6 +50,18 @@ public sealed class EfAuthRepository :
         return user;
     }
 
+    // Explicit: EfAuthRepository also exposes IPermissionRepository.GetByIdsAsync(IEnumerable<Guid>),
+    // and Guid[] binds more specifically to IReadOnlyCollection<Guid> than IEnumerable<Guid>.
+    async Task<IReadOnlyList<User>> IUserRepository.GetByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0)
+            return Array.Empty<User>();
+
+        return await _db.Users
+            .Where(u => ids.Contains(u.Id) && !u.IsDeleted)
+            .ToListAsync(ct);
+    }
+
     public async Task<User?> GetByTenantAndEmailAsync(Guid tenantId, string normalizedEmail, CancellationToken ct = default)
     {
         var user = await _db.Users.FirstOrDefaultAsync(
