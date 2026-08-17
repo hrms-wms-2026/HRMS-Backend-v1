@@ -344,8 +344,15 @@ public static class DependencyInjection
             ONEVO.Application.Common.ServiceInterfaces.IFaceLivenessService,
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceLivenessService>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces.IProductivityReportRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Reports.EfProductivityReportRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces.IExceptionRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Exceptions.EfExceptionRepository>();
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Exceptions.ExceptionDetectionJob>();
 
         // Monitoring - Screenshots
         services.AddScoped<
