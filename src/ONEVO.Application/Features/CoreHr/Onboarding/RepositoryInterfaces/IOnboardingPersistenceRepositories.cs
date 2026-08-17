@@ -1,4 +1,5 @@
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
+using ONEVO.Application.Features.CoreHr.Onboarding.Queries.ListPendingAccessGrantRequestsForMe;
 using ONEVO.Domain.Features.CoreHr.Entities;
 
 namespace ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
@@ -32,6 +33,14 @@ public interface IAccessGrantRequestRepository
     Task<(IReadOnlyList<OnboardingAccessGrantRequestListItemResponse> Items, int TotalCount)> ListOnboardingRequestsAsync(
         Guid tenantId, string approvalStatus, string actionType, Guid? legalEntityId, Guid? requestedRoleId,
         string? search, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>Tenant-scoped list of every Pending access-grant request, including both
+    /// onboarding and position-change action types. Names are resolved with the same LEFT-join
+    /// style as <see cref="ListOnboardingRequestsAsync"/>: a missing employee/position/requester
+    /// must not drop the row. <see cref="PendingAccessGrantRequestResponse.EmployeeName"/> is
+    /// null when <see cref="AccessGrantRequest.EmployeeId"/> is null.</summary>
+    Task<IReadOnlyList<PendingAccessGrantRequestResponse>> ListPendingAsync(
+        Guid tenantId, CancellationToken ct = default);
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

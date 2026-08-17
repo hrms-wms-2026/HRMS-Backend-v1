@@ -6,6 +6,7 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.ApproveAccessGrantRequest;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.RejectAccessGrantRequest;
 using ONEVO.Application.Features.CoreHr.Onboarding.Queries.ListOnboardingAccessGrantRequests;
+using ONEVO.Application.Features.CoreHr.Onboarding.Queries.ListPendingAccessGrantRequestsForMe;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 
@@ -48,6 +49,14 @@ public class AccessGrantRequestsController : ControllerBase
         var query = new ListOnboardingAccessGrantRequestsQuery(
             status, actionType, page, pageSize, search, legalEntityId, requestedRoleId);
         var result = await _mediator.Send(query, ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("pending-for-me")]
+    [RequirePermission("roles:manage")]
+    public async Task<IActionResult> PendingForMe(CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new ListPendingAccessGrantRequestsForMeQuery(), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

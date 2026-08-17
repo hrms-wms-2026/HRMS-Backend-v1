@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.Queries.ListPendingAccessGrantRequestsForMe;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -70,6 +71,72 @@ public sealed class OnboardingPersistenceRepositoryTests
 
         (await repository.AnyPendingByDraftAsync(tenant, draftId)).Should().BeTrue();
         (await repository.AnyPendingByDraftAsync(Guid.NewGuid(), draftId)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ListPending_ReturnsOnlyPendingRows_WithResolvedNames()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var otherTenant = Guid.NewGuid();
+
+        var onboarding = await SeedFullRequestAsync(
+            db, tenant, approvalStatus: "Pending", actionType: AccessGrantActionType.EmployeeOnboarding,
+            positionName: "Software Engineer", requesterFirstName: "Riya", requesterLastName: "Starter");
+        await SeedFullRequestAsync(db, tenant, approvalStatus: "Approved", actionType: AccessGrantActionType.EmployeeOnboarding);
+        await SeedFullRequestAsync(db, tenant, approvalStatus: "Rejected", actionType: AccessGrantActionType.EmployeeOnboarding);
+        await SeedFullRequestAsync(db, otherTenant, approvalStatus: "Pending", actionType: AccessGrantActionType.EmployeeOnboarding);
+
+        var changePosition = new Position
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, Name = "Engineering Manager",
+        };
+        var employee = new ONEVO.Domain.Features.CoreHr.Entities.Employee
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, UserId = Guid.NewGuid(), EmployeeNumber = "E-1",
+            FirstName = "Jane", LastName = "Doe", Email = "jane.doe@example.com",
+            HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
+        };
+        var changeRequester = new User
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, FirstName = "Riya", LastName = "Starter",
+            Email = $"requester-{Guid.NewGuid()}@example.com",
+        };
+        var positionChange = new AccessGrantRequest
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, EmployeeId = employee.Id, UserId = employee.UserId,
+            ActionType = AccessGrantActionType.PositionChange, TargetPositionId = changePosition.Id,
+            TargetDepartmentId = Guid.NewGuid(), PositionAccessTemplateId = Guid.NewGuid(),
+            RequestedRoleId = Guid.NewGuid(), ApprovalStatus = "Pending", ChangeReason = "Promotion",
+            RequestedByUserId = changeRequester.Id, RequestedAt = DateTimeOffset.UtcNow.AddMinutes(1),
+            EffectiveFrom = DateTimeOffset.UtcNow,
+        };
+        db.Positions.Add(changePosition);
+        db.Employees.Add(employee);
+        db.Users.Add(changeRequester);
+        db.AccessGrantRequests.Add(positionChange);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfAccessGrantRequestRepository(db);
+        var items = await repository.ListPendingAsync(tenant);
+
+        items.Should().HaveCount(2);
+        items.Should().OnlyContain(x => x.Id == onboarding.RequestId || x.Id == positionChange.Id);
+
+        var onboardingItem = items.Should().ContainSingle(x => x.Id == onboarding.RequestId).Subject;
+        onboardingItem.ActionType.Should().Be(AccessGrantActionType.EmployeeOnboarding);
+        onboardingItem.EmployeeName.Should().BeNull();
+        onboardingItem.TargetPositionName.Should().Be("Software Engineer");
+        onboardingItem.RequestedByName.Should().Be("Riya Starter");
+        onboardingItem.ChangeReason.Should().BeNull();
+
+        var changeItem = items.Should().ContainSingle(x => x.Id == positionChange.Id).Subject;
+        changeItem.ActionType.Should().Be(AccessGrantActionType.PositionChange);
+        changeItem.EmployeeName.Should().Be("Jane Doe");
+        changeItem.TargetPositionName.Should().Be("Engineering Manager");
+        changeItem.ChangeReason.Should().Be("Promotion");
+        changeItem.RequestedByName.Should().Be("Riya Starter");
     }
 
     [Fact]

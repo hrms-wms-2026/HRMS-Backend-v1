@@ -3,6 +3,7 @@ using Npgsql;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Onboarding.Models;
+using ONEVO.Application.Features.CoreHr.Onboarding.Queries.ListPendingAccessGrantRequestsForMe;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 
@@ -115,6 +116,40 @@ public sealed class EfAccessGrantRequestRepository(ApplicationDbContext db) : IA
             .ToListAsync(ct);
 
         return (items, totalCount);
+    }
+
+    public async Task<IReadOnlyList<PendingAccessGrantRequestResponse>> ListPendingAsync(
+        Guid tenantId, CancellationToken ct = default)
+    {
+        var requests = db.AccessGrantRequests.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ApprovalStatus == "Pending");
+        var positions = db.Positions.AsNoTracking().Where(p => p.TenantId == tenantId);
+        var users = db.Users.AsNoTracking().Where(u => u.TenantId == tenantId);
+        var employees = db.Employees.AsNoTracking().Where(e => e.TenantId == tenantId);
+
+        // Every join is LEFT - a display name that fails to resolve must not drop the row.
+        // Employee is left-joined on EmployeeId; when EmployeeId is null, EmployeeName is null.
+        var joined =
+            from x in requests
+            join position in positions on x.TargetPositionId equals position.Id into positionJoin
+            from position in positionJoin.DefaultIfEmpty()
+            join requester in users on x.RequestedByUserId equals requester.Id into requesterJoin
+            from requester in requesterJoin.DefaultIfEmpty()
+            join employee in employees on x.EmployeeId equals employee.Id into employeeJoin
+            from employee in employeeJoin.DefaultIfEmpty()
+            select new { x, position, requester, employee };
+
+        return await joined
+            .OrderByDescending(row => row.x.RequestedAt).ThenBy(row => row.x.Id)
+            .Select(row => new PendingAccessGrantRequestResponse(
+                row.x.Id,
+                row.x.ActionType,
+                row.employee != null ? row.employee.FirstName + " " + row.employee.LastName : null,
+                row.position != null ? row.position.Name : string.Empty,
+                row.x.ChangeReason,
+                row.requester != null ? row.requester.FirstName + " " + row.requester.LastName : string.Empty,
+                row.x.RequestedAt))
+            .ToListAsync(ct);
     }
 
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
