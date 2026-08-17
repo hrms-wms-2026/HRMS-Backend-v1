@@ -47,7 +47,10 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
 
         // Defense in depth beyond the validator (which runs in the MediatR pipeline in production,
         // but not when a test calls Handle directly) - exactly one complete status, always.
-        if (request.Updates is null || request.Updates.Count(u => u?.MarksTaskComplete == true) != 1)
+        if (request.Updates is null || request.Updates.Any(u => u is null))
+            return Result<IReadOnlyList<TaskStatusResponse>>.Failure("Updates must not contain null entries.", 422);
+
+        if (request.Updates.Count(u => u.MarksTaskComplete) != 1)
             return Result<IReadOnlyList<TaskStatusResponse>>.Failure("Exactly one status must be marked as the complete status.", 422);
 
         var existing = await _statuses.GetByObjectiveIdAsync(tenantId, objective.Id, ct);
