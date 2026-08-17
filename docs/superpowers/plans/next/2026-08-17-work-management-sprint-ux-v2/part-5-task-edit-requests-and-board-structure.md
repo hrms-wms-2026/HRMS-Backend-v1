@@ -1,4 +1,4 @@
-# Work Management — Task Edit Requests & Board Structure API (Part 5 of 8) Implementation Plan
+﻿# Work Management — Task Edit Requests & Board Structure API (Part 5 of 8) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **Depends on the Sprint Foundation plan being complete** (all 4 parts, shipped).
 
@@ -49,9 +49,9 @@ existing bulk-update command in Work Management) but follows the same owner-only
   `TaskEditRequestStatuses { Pending, Approved, Rejected, Cancelled }` (same 4 values as `TaskCreationRequestStatuses`),
   `ITaskEditRequestRepository { AddAsync, GetByIdForTenantAsync, GetTrackedByIdForTenantAsync, GetPendingForOwnerEmployeeIdAsync, Update }` — signatures identical to `ITaskCreationRequestRepository`'s, just `TaskEditRequest` in place of `TaskCreationRequest`.
 
-- [ ] **Step 1: Read `TaskCreationRequest.cs`, its EF configuration, and `ITaskCreationRequestRepository`/`EfTaskCreationRequestRepository` in full** (all already exist, all four files) — this task is a structural mirror; match every field, index, and method signature exactly except the entity/table name.
+- [x] **Step 1: Read `TaskCreationRequest.cs`, its EF configuration, and `ITaskCreationRequestRepository`/`EfTaskCreationRequestRepository` in full** (all already exist, all four files) — this task is a structural mirror; match every field, index, and method signature exactly except the entity/table name.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```csharp
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
@@ -71,12 +71,12 @@ public class TaskEditRequestConfigurationTests
 }
 ```
 
-- [ ] **Step 3: Run to verify it fails**
+- [x] **Step 3: Run to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~TaskEditRequestConfigurationTests`
 Expected: FAIL to compile.
 
-- [ ] **Step 4: Write the entity**
+- [x] **Step 4: Write the entity**
 
 ```csharp
 using ONEVO.Domain.Common;
@@ -108,7 +108,7 @@ public class TaskEditRequest : BaseEntity
 }
 ```
 
-- [ ] **Step 5: Write the EF configuration, DbContext registration, repository interface + implementation, DI registration**
+- [x] **Step 5: Write the EF configuration, DbContext registration, repository interface + implementation, DI registration**
 
 Mirror `TaskCreationRequestConfiguration.cs` (table name `task_edit_requests`, same index shape but
 keyed on `TaskId` instead of `ObjectiveId`), `ApplicationDbContext.TaskEditRequests => Set<TaskEditRequest>()`,
@@ -119,13 +119,13 @@ keyed on `TaskId` instead of `ObjectiveId`), `ApplicationDbContext.TaskEditReque
 implementation of that method first to match its join style exactly, adjusting only the extra hop
 through `WorkTasks`). Register in `DependencyInjection.cs` alongside `ITaskCreationRequestRepository`.
 
-- [ ] **Step 6: Generate and apply the migration**
+- [x] **Step 6: Generate and apply the migration**
 
 Run: `dotnet ef migrations add AddTaskEditRequests --project src/ONEVO.Infrastructure --startup-project src/ONEVO.Api --output-dir Migrations`,
 rename to `20260817000004_AddTaskEditRequests.cs` for ordering after Sprint Foundation's migrations.
 Run: `dotnet ef database update --project src/ONEVO.Infrastructure --startup-project src/ONEVO.Api`.
 
-- [ ] **Step 7: Run to verify the test passes, then commit**
+- [x] **Step 7: Run to verify the test passes, then commit**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~TaskEditRequestConfigurationTests`
 Expected: PASS.
@@ -153,12 +153,12 @@ git commit -m "feat(work): TaskEditRequest entity + repository, mirrors TaskCrea
   (carries the resolved name per this plan's Global Constraints — **do not omit it**);
   `CreateTaskEditRequestCommand(Guid TaskId, string Title, string? Description, string Priority, DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints) : IRequest<Result<TaskEditRequestResponse>>`.
 
-- [ ] **Step 1: Read `CreateTaskCreationRequestCommandHandler.cs` in full** (already read earlier in
+- [x] **Step 1: Read `CreateTaskCreationRequestCommandHandler.cs` in full** (already read earlier in
   this project's history — re-read now to confirm current state) — this task mirrors its
   authorization logic (caller must be an active Objective member, must not be the owner) exactly, but
   resolves the Objective via `task.ObjectiveId` first since the command only receives a `TaskId`.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```csharp
 using Moq;
@@ -280,12 +280,12 @@ public class CreateTaskEditRequestCommandHandlerTests
 }
 ```
 
-- [ ] **Step 3: Run to verify it fails**
+- [x] **Step 3: Run to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~CreateTaskEditRequestCommandHandlerTests`
 Expected: FAIL to compile.
 
-- [ ] **Step 4: Write the payload, command, validator**
+- [x] **Step 4: Write the payload, command, validator**
 
 ```csharp
 // TaskEditRequestPayload.cs
@@ -333,7 +333,7 @@ Add `TaskEditRequestResponse(Guid Id, Guid TaskId, string Status, TaskEditReques
 to `src/ONEVO.Application/Features/WorkManagement/Tasks/DTOs/Responses/WorkTaskResponse.cs`, alongside
 the other response records already in that file.
 
-- [ ] **Step 5: Write the handler**
+- [x] **Step 5: Write the handler**
 
 ```csharp
 using System.Text.Json;
@@ -443,12 +443,12 @@ for this feature in the design conversation. If added, seed the new template cod
 Foundation Part 2 Task 11 added its three template codes (per-template existence check, not the
 all-or-nothing gate that was already fixed there).
 
-- [ ] **Step 6: Run to verify all pass**
+- [x] **Step 6: Run to verify all pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~CreateTaskEditRequestCommandHandlerTests`
 Expected: PASS (all 4 tests).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/DTOs/TaskEditRequestPayload.cs src/ONEVO.Application/Features/WorkManagement/Tasks/DTOs/Responses/WorkTaskResponse.cs src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/CreateTaskEditRequest/ tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/CreateTaskEditRequestCommandHandlerTests.cs
@@ -467,7 +467,7 @@ git commit -m "feat(work): CreateTaskEditRequestCommand - non-owner members can 
 **Interfaces:**
 - Produces: `ApproveTaskEditRequestCommand(Guid RequestId) : IRequest<Result<WorkTaskResponse>>`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Follow `ApproveTaskCreationRequestCommandHandlerTests.cs`'s exact fixture style (read it first) but
 simplified: no `Sprint`/`Project`/task-number-increment concerns here, since this approves an edit to
@@ -477,12 +477,12 @@ already does), not-owner (403), already-decided (409), sprint-achieved-since-req
 defense in depth — re-check at approval time even though it was also checked at creation time, since
 the sprint could have been achieved in between).
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~ApproveTaskEditRequestCommandHandlerTests`
 Expected: FAIL to compile.
 
-- [ ] **Step 3: Write the command and handler**
+- [x] **Step 3: Write the command and handler**
 
 ```csharp
 // ApproveTaskEditRequestCommand.cs
@@ -632,7 +632,7 @@ This introduces the `"work_task_edit_request_decided"` notification template —
 Task 11), alongside a `"work_task_edit_request_created"` one if Task 2's optional create-notification
 was added.
 
-- [ ] **Step 4: Run to verify all pass, then commit**
+- [x] **Step 4: Run to verify all pass, then commit**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~ApproveTaskEditRequestCommandHandlerTests`
 Expected: PASS.
@@ -664,14 +664,14 @@ whether it already batches this correctly or has the same gap `GetMyTaskCreation
 itself has (if it doesn't resolve names either, don't copy that gap forward — resolve it here even
 though fixing the original is out of this plan's scope).
 
-- [ ] **Step 1: Write failing tests for all three** (Reject: owner-only, sets Rejected + comment,
+- [x] **Step 1: Write failing tests for all three** (Reject: owner-only, sets Rejected + comment,
   notifies; Cancel: requester-only, sets Cancelled; GetMy: returns the caller's own pending requests
   with `RequestedByName` populated).
-- [ ] **Step 2: Run to verify they fail.**
-- [ ] **Step 3: Implement all three, mirroring the read reference files exactly** (plus the
+- [x] **Step 2: Run to verify they fail.**
+- [x] **Step 3: Implement all three, mirroring the read reference files exactly** (plus the
   batched-name-resolution fix for the query).
-- [ ] **Step 4: Run to verify all pass.**
-- [ ] **Step 5: Commit**
+- [x] **Step 4: Run to verify all pass.**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/RejectTaskEditRequest/ src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/CancelTaskEditRequest/ src/ONEVO.Application/Features/WorkManagement/Tasks/Queries/GetMyTaskEditRequests/ tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/RejectTaskEditRequestCommandHandlerTests.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/CancelTaskEditRequestCommandHandlerTests.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/GetMyTaskEditRequestsQueryHandlerTests.cs
@@ -692,7 +692,7 @@ git commit -m "feat(work): Reject/Cancel TaskEditRequest + GetMyTaskEditRequests
 - Produces: `TaskStatusOrderUpdate(Guid StatusId, int DisplayOrder, string Visibility, bool MarksTaskComplete)`,
   `ReorderTaskStatusesCommand(Guid ObjectiveId, List<TaskStatusOrderUpdate> Updates) : IRequest<Result<IReadOnlyList<TaskStatusResponse>>>`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```csharp
 using Moq;
@@ -820,12 +820,12 @@ public class ReorderTaskStatusesCommandHandlerTests
 }
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~ReorderTaskStatusesCommandHandlerTests`
 Expected: FAIL to compile.
 
-- [ ] **Step 3: Write the command, validator, handler**
+- [x] **Step 3: Write the command, validator, handler**
 
 ```csharp
 // ReorderTaskStatusesCommand.cs
@@ -948,12 +948,12 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
 }
 ```
 
-- [ ] **Step 4: Run to verify all pass**
+- [x] **Step 4: Run to verify all pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~ReorderTaskStatusesCommandHandlerTests`
 Expected: PASS (all 4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/ReorderTaskStatuses/ tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/ReorderTaskStatusesCommandHandlerTests.cs
@@ -968,7 +968,7 @@ git commit -m "feat(work): ReorderTaskStatusesCommand - atomic drag-reorder/visi
 - Modify: `src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskContracts.cs`
 - Modify: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/TasksController.cs`
 
-- [ ] **Step 1: Add contracts**
+- [x] **Step 1: Add contracts**
 
 ```csharp
 public sealed record CreateTaskEditRequestRequest(string Title, string? Description, string Priority, DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints);
@@ -980,7 +980,7 @@ public sealed record ReorderTaskStatusesRequest(List<TaskStatusOrderUpdateReques
 Add view-model + mapper for `TaskEditRequestResponse` following `TaskCreationRequestViewModel`'s exact
 pattern (Id, TaskId, Status, Payload, RequestedByName, CreatedAt).
 
-- [ ] **Step 2: Add controller actions**, mirroring the existing task-creation-request routes exactly
+- [x] **Step 2: Add controller actions**, mirroring the existing task-creation-request routes exactly
   but under `tasks/{taskId}/edit-requests` / `task-edit-requests/{id}/...`:
 
 ```csharp
@@ -1034,12 +1034,12 @@ pattern (Id, TaskId, Status, Payload, RequestedByName, CreatedAt).
 
 Add the needed `using` statements for the new command namespaces.
 
-- [ ] **Step 3: Manual verification**
+- [x] **Step 3: Manual verification**
 
 Run: `dotnet build src/ONEVO.Api` then `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~WorkManagement`
 Expected: builds clean, all tests PASS — this is Part 5's full completion gate.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskContracts.cs src/ONEVO.Api/Controllers/Tenant/WorkManagement/TasksController.cs
@@ -1054,3 +1054,4 @@ Part 5 done when all 6 tasks are committed and the full WorkManagement-scoped un
 Unblocks Part 6 (frontend employee directory service — no backend dependency, could run in parallel)
 and Part 7 (frontend task-detail popup + Board Structure tab UI, which directly consume this part's
 endpoints).
+
