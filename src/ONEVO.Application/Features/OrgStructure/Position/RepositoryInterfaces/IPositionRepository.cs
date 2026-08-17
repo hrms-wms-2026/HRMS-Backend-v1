@@ -94,6 +94,8 @@ public interface IPositionRepository
 
     // Access template helpers
     Task<PositionAccessTemplate?> GetAccessTemplateByPositionAsync(Guid tenantId, Guid positionId, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<Guid, bool>> GetRequiresApprovalByPositionIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> positionIds, CancellationToken ct = default);
     Task AddAccessTemplateAsync(PositionAccessTemplate template, CancellationToken ct = default);
     void UpdateAccessTemplate(PositionAccessTemplate template);
 

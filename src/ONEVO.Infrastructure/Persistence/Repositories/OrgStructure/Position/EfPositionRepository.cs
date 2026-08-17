@@ -421,6 +421,18 @@ public class EfPositionRepository : IPositionRepository
         return result;
     }
 
+    public async Task<IReadOnlyDictionary<Guid, bool>> GetRequiresApprovalByPositionIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> positionIds, CancellationToken ct = default)
+    {
+        if (positionIds.Count == 0)
+            return new Dictionary<Guid, bool>();
+
+        return await _db.Set<PositionAccessTemplate>()
+            .AsNoTracking()
+            .Where(t => t.TenantId == tenantId && positionIds.Contains(t.PositionId) && t.IsActive)
+            .ToDictionaryAsync(t => t.PositionId, t => t.RequiresApproval, ct);
+    }
+
     public async Task AddAccessTemplateAsync(PositionAccessTemplate template, CancellationToken ct = default)
     {
         await _db.Set<PositionAccessTemplate>().AddAsync(template, ct);
