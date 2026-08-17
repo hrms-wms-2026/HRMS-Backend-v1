@@ -14,9 +14,11 @@ using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Invite;
+using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Infrastructure.Security;
+using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -223,7 +225,7 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
         var handler = BuildChangePositionHandler(_adminUserId);
 
         var result = await handler.Handle(
-            new ChangeEmployeePositionCommand(_reassignEmployeeId, _reassignToPositionId, effectiveFrom),
+            new ChangeEmployeePositionCommand(_reassignEmployeeId, _reassignToPositionId, effectiveFrom, "Promotion"),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -251,7 +253,7 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
         var handler = BuildChangePositionHandler(_adminUserId);
 
         var result = await handler.Handle(
-            new ChangeEmployeePositionCommand(_capacityEmployeeId, _fullPositionId, effectiveFrom),
+            new ChangeEmployeePositionCommand(_capacityEmployeeId, _fullPositionId, effectiveFrom, "Promotion"),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -298,7 +300,11 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
             new EfPositionRepository(db),
             new EfPositionAssignmentRepository(db),
             new UnitOfWork(db),
-            new StubCurrentUser(_tenantId, userId, orgManage: true, sensitive: false));
+            new StubCurrentUser(_tenantId, userId, orgManage: true, sensitive: false),
+            new EfAuthRepository(db),
+            new EfAccessGrantRequestRepository(db),
+            _clock,
+            new OutboxWriter(db, _encryption, _clock));
     }
 
     private Position NewPosition(Guid id, string name) => new()

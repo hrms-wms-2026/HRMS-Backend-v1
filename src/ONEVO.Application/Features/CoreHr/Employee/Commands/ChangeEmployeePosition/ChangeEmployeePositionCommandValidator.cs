@@ -9,5 +9,6 @@ public sealed class ChangeEmployeePositionCommandValidator : AbstractValidator<C
         RuleFor(x => x.EmployeeId).NotEmpty();
         RuleFor(x => x.PositionId).NotEmpty();
         RuleFor(x => x.EffectiveFrom).NotEmpty();
+        RuleFor(x => x.ChangeReason).Must(r => r is "Promotion" or "Transfer" or "LateralMove");
     }
 }

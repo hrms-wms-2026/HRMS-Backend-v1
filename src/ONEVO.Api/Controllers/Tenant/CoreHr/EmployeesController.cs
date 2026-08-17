@@ -91,10 +91,10 @@ public class EmployeesController : ControllerBase
         Guid id, [FromBody] ChangePositionRequest request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(
-            new ChangeEmployeePositionCommand(id, request.PositionId, request.EffectiveFrom), ct);
+            new ChangeEmployeePositionCommand(id, request.PositionId, request.EffectiveFrom, request.ChangeReason), ct);
 
         return result.IsSuccess
-            ? NoContent()
+            ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
