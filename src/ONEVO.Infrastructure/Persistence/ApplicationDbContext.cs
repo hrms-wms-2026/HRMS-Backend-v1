@@ -88,6 +88,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot> AppUsageSnapshots => Set<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot>();
     public DbSet<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot> DeviceStateSnapshots => Set<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot>();
     public DbSet<ONEVO.Domain.Features.Monitoring.Meetings.Entities.MeetingSignal> MeetingSignals => Set<ONEVO.Domain.Features.Monitoring.Meetings.Entities.MeetingSignal>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt> BiometricEnrollmentAttempts => Set<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile> BiometricProfiles => Set<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile>();
 
     // Monitoring - Feature toggles & overrides
     public DbSet<MonitoringFeatureToggles> MonitoringFeatureToggles => Set<MonitoringFeatureToggles>();
