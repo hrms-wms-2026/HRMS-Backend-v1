@@ -36,6 +36,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
     private readonly Mock<IWorkModeRepository> _workModeRepository = new();
     private readonly Mock<ISeatEntitlementService> _seatEntitlementService = new();
     private readonly Mock<IAccessGrantRequestRepository> _accessGrantRequestRepository = new();
+    private readonly Mock<IPermissionRepository> _permissionRepository = new();
     private readonly Mock<IChecklistTemplateRepository> _checklistTemplateRepository = new();
     private readonly Mock<IEmployeeChecklistTaskRepository> _checklistTaskRepository = new();
     private readonly Mock<IInvitationTokenRepository> _invitationTokenRepository = new();
@@ -85,6 +86,11 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
             .Setup(r => r.GetPendingByDraftAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((AccessGrantRequest?)null);
 
+        _permissionRepository
+            .Setup(r => r.ListUserIdsWithPermissionCodeAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Guid>());
+
         _userRepository
             .Setup(r => r.GetByTenantAndEmailAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null);
@@ -102,7 +108,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         _draftRepository.Object, _employeeRepository.Object, _userRepository.Object, _userRoleRepository.Object,
         _positionRepository.Object, _positionAssignmentRepository.Object, _legalEntityRepository.Object,
         _departmentRepository.Object, _employmentTypeRepository.Object, _workModeRepository.Object,
-        _seatEntitlementService.Object, _accessGrantRequestRepository.Object, _checklistTemplateRepository.Object,
+        _seatEntitlementService.Object, _accessGrantRequestRepository.Object, _permissionRepository.Object, _checklistTemplateRepository.Object,
         _checklistTaskRepository.Object, _invitationTokenRepository.Object, _tenantRepository.Object, _outboxWriter.Object,
         _tokenGenerator.Object, _currentUser.Object, _clock.Object);
 

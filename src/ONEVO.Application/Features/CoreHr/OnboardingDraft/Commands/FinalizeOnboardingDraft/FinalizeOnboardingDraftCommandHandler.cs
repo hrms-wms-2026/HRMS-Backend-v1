@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
@@ -53,6 +54,7 @@ public class FinalizeOnboardingDraftCommandHandler
     private readonly IWorkModeRepository _workModeRepository;
     private readonly ISeatEntitlementService _seatEntitlementService;
     private readonly IAccessGrantRequestRepository _accessGrantRequestRepository;
+    private readonly IPermissionRepository _permissionRepository;
     private readonly IChecklistTemplateRepository _checklistTemplateRepository;
     private readonly IEmployeeChecklistTaskRepository _checklistTaskRepository;
     private readonly IInvitationTokenRepository _invitationTokenRepository;
@@ -75,6 +77,7 @@ public class FinalizeOnboardingDraftCommandHandler
         IWorkModeRepository workModeRepository,
         ISeatEntitlementService seatEntitlementService,
         IAccessGrantRequestRepository accessGrantRequestRepository,
+        IPermissionRepository permissionRepository,
         IChecklistTemplateRepository checklistTemplateRepository,
         IEmployeeChecklistTaskRepository checklistTaskRepository,
         IInvitationTokenRepository invitationTokenRepository,
@@ -96,6 +99,7 @@ public class FinalizeOnboardingDraftCommandHandler
         _workModeRepository = workModeRepository;
         _seatEntitlementService = seatEntitlementService;
         _accessGrantRequestRepository = accessGrantRequestRepository;
+        _permissionRepository = permissionRepository;
         _checklistTemplateRepository = checklistTemplateRepository;
         _checklistTaskRepository = checklistTaskRepository;
         _invitationTokenRepository = invitationTokenRepository;
@@ -235,6 +239,21 @@ public class FinalizeOnboardingDraftCommandHandler
                 EffectiveTo = null,
             };
             await _accessGrantRequestRepository.AddAsync(grantRequest, ct);
+
+            var approverUserIds = await _permissionRepository.ListUserIdsWithPermissionCodeAsync(
+                draft.TenantId, "roles:manage", _clock.UtcNow, ct);
+            foreach (var approverUserId in approverUserIds)
+            {
+                var approver = await _userRepository.GetByIdAsync(approverUserId, ct);
+                if (approver is null) continue;
+
+                await _outboxWriter.EnqueueAsync(
+                    OutboxMessageTypes.PositionChangeApprovalRequestEmail,
+                    new PositionChangeApprovalRequestEmailPayload(
+                        draft.TenantId, approverUserId, grantRequest.Id, approver.Email,
+                        $"{draft.FirstName} {draft.LastName}".Trim(), position.Name, grantRequest.ChangeReason),
+                    draft.TenantId, ct);
+            }
         }
 
         draft.Status = OnboardingDraftStatus.WaitingForPositionApproval;

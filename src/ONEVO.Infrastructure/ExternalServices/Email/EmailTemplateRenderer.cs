@@ -33,6 +33,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             "admin_password_changed" => RenderAdminPasswordChanged(),
             "platform_manager_invite" => RenderPlatformManagerInvite(fields),
             "employee_onboarding_invite" => RenderEmployeeOnboardingInvite(fields),
+            "position_change_approval_request" => RenderPositionChangeApprovalRequest(fields),
             "invoice_email" => RenderInvoiceEmail(fields),
             _ => throw new InvalidOperationException(
                 $"Unknown email template '{templateId}'. Add a case in EmailTemplateRenderer.")
@@ -205,6 +206,29 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             This link expires in 24 hours. If you didn't expect this email, you can safely ignore it.
             """;
 
+        return new RenderedEmail(subject, html, text);
+    }
+
+    private RenderedEmail RenderPositionChangeApprovalRequest(IReadOnlyDictionary<string, object?> f)
+    {
+        var employeeName = Get(f, "employeeName");
+        var positionName = Get(f, "positionName");
+        var changeReason = Get(f, "changeReason", fallback: "position change");
+        var tenantSlug = Get(f, "tenant_slug");
+        var appBaseUrl = string.IsNullOrWhiteSpace(_options.AppBaseUrl) ? string.Empty : _options.AppBaseUrl;
+        appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
+        var approvalsUrl = string.IsNullOrWhiteSpace(appBaseUrl)
+            ? "[approvals_url placeholder - set Email:AppBaseUrl]"
+            : $"{appBaseUrl.TrimEnd('/')}/people/approvals";
+
+        var subject = $"Approval needed: {Escape(employeeName)}'s {Escape(changeReason)} to {Escape(positionName)}";
+        var html = $"""
+            <!doctype html><html><body>
+              <p>{Escape(employeeName)} has been proposed for a {Escape(changeReason)} into <strong>{Escape(positionName)}</strong>, a sensitive position that requires your approval.</p>
+              <p><a href="{Escape(approvalsUrl)}">Review this request</a></p>
+            </body></html>
+            """;
+        var text = $"{employeeName} has been proposed for a {changeReason} into {positionName}, which requires your approval.\nReview: {approvalsUrl}";
         return new RenderedEmail(subject, html, text);
     }
 

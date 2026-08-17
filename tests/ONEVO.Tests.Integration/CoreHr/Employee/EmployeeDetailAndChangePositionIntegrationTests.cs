@@ -304,7 +304,8 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
             new EfAuthRepository(db),
             new EfAccessGrantRequestRepository(db),
             _clock,
-            new OutboxWriter(db, _encryption, _clock));
+            new OutboxWriter(db, _encryption, _clock),
+            new EfAuthRepository(db));
     }
 
     private Position NewPosition(Guid id, string name) => new()

@@ -3,7 +3,9 @@ using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -37,6 +39,7 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
     private readonly IAccessGrantRequestRepository _accessGrantRequestRepository;
     private readonly IDateTimeProvider _clock;
     private readonly IOutboxWriter _outboxWriter;
+    private readonly IUserRepository _userRepository;
 
     public ChangeEmployeePositionCommandHandler(
         IEmployeeRepository employeeRepository,
@@ -47,7 +50,8 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         IPermissionRepository permissionRepository,
         IAccessGrantRequestRepository accessGrantRequestRepository,
         IDateTimeProvider clock,
-        IOutboxWriter outboxWriter)
+        IOutboxWriter outboxWriter,
+        IUserRepository userRepository)
     {
         _employeeRepository = employeeRepository;
         _positionRepository = positionRepository;
@@ -58,6 +62,7 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         _accessGrantRequestRepository = accessGrantRequestRepository;
         _clock = clock;
         _outboxWriter = outboxWriter;
+        _userRepository = userRepository;
     }
 
     public async Task<Result<ChangeEmployeePositionResponse>> Handle(ChangeEmployeePositionCommand request, CancellationToken ct)
@@ -160,16 +165,18 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         return Result<ChangeEmployeePositionResponse>.Success(new ChangeEmployeePositionResponse(PendingApproval: false));
     }
 
-    private Task EnqueuePositionChangeApprovalEmailAsync(
-        Guid tenantId,
-        Guid approverUserId,
-        AccessGrantRequest grantRequest,
-        ONEVO.Domain.Features.CoreHr.Entities.Employee employee,
-        Position position,
-        CancellationToken ct)
+    private async Task EnqueuePositionChangeApprovalEmailAsync(
+        Guid tenantId, Guid approverUserId, AccessGrantRequest grantRequest, ONEVO.Domain.Features.CoreHr.Entities.Employee employee, Position position, CancellationToken ct)
     {
-        _ = _outboxWriter;
-        return Task.CompletedTask;
+        var approver = await _userRepository.GetByIdAsync(approverUserId, ct);
+        if (approver is null) return;
+
+        await _outboxWriter.EnqueueAsync(
+            OutboxMessageTypes.PositionChangeApprovalRequestEmail,
+            new PositionChangeApprovalRequestEmailPayload(
+                tenantId, approverUserId, grantRequest.Id, approver.Email,
+                $"{employee.FirstName} {employee.LastName}".Trim(), position.Name, grantRequest.ChangeReason),
+            tenantId, ct);
     }
 
     private sealed class PositionAtCapacityException : Exception;

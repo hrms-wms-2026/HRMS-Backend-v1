@@ -55,6 +55,9 @@ public class TransactionalEmailService : IEmailService
     public Task SendInvoiceEmailAsync(string to, object templateData, CancellationToken ct = default)
         => SendTemplateAsync(to, "invoice_email", templateData, ct);
 
+    public Task SendPositionChangeApprovalRequestAsync(string to, string employeeName, string positionName, string? changeReason, CancellationToken ct = default)
+        => SendTemplateAsync(to, "position_change_approval_request", new { employeeName, positionName, changeReason }, ct);
+
     private async Task SendInternalAsync(
         string to,
         string subject,

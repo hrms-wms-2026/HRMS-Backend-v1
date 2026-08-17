@@ -6,6 +6,7 @@ using Moq;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
@@ -33,6 +34,7 @@ public class ChangeEmployeePositionCommandHandlerTests
     private readonly Mock<IAccessGrantRequestRepository> _accessGrantRequestRepository = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Mock<IOutboxWriter> _outboxWriter = new();
+    private readonly Mock<IUserRepository> _userRepository = new();
 
     private ChangeEmployeePositionCommandHandler CreateHandler() =>
         new(
@@ -44,7 +46,8 @@ public class ChangeEmployeePositionCommandHandlerTests
             _permissionRepository.Object,
             _accessGrantRequestRepository.Object,
             _clock.Object,
-            _outboxWriter.Object);
+            _outboxWriter.Object,
+            _userRepository.Object);
 
     private void SetupNonSelfCaller(Guid tenantId, Guid employeeId)
     {
