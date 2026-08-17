@@ -152,14 +152,28 @@ New read endpoint, `[RequirePermission("roles:manage")]` (simpler than v1 — be
 
 `PositionListItemResponse` (or whichever DTO backs `GET /org/legal-entities/{id}/positions`, consumed by `PositionApiService.listFlat`) gains `RequiresApproval` (bool), sourced the same way `PositionListItemResponse` already resolves other position-scoped facts (a join to `PositionAccessTemplate` where `IsActive = true`, false if none exists). Lets the frontend show the sensitivity reminder the moment a position is selected in the Change Position modal, no second round trip.
 
-## 10. Testing
+## 10. Job Journey — `GET /api/v1/employees/{id}/position-history`
 
-- Unit: `ChangeEmployeePositionCommandHandlerTests` (self-position-change rejection, sensitive-branch zero-approver rejection, capacity-conflict, successful pending-request creation with reservation + ChangeReason carried through), `ApproveAccessGrantRequestCommandHandlerTests`/`RejectAccessGrantRequestCommandHandlerTests` (both `ActionType`s, self-approval rejection, already-decided conflict, successful approve activates+ends+sets ChangeReason, successful reject cancels reservation), `PermissionRepositoryTests` for `ListUserIdsWithPermissionCodeAsync`.
-- Integration: two `roles:manage` holders, one approves, the other's subsequent attempt gets the already-decided conflict; end-to-end position-change-with-approval against real Postgres verifying the seat stays reserved throughout the pending window; self-position-change rejected even for a caller who holds `org:manage`.
+`PositionAssignment.ChangeReason` (§3.2) accumulates history but nothing surfaces it — flagged during this spec's own review as a real gap: the data is captured, nothing shows it. New read endpoint, `[RequirePermission("employees:read")]`, reusing the same visibility/coverage check `GetEmployeeDetailQueryHandler` already applies (`EmployeeVisibilityScopeResolver`/`GetVisibleByIdAsync`) — this is part of an employee's record, not separately gated.
 
-## 11. Self-review
+Returns every `PrimaryEmployment` `PositionAssignment` for the employee (both `Active` and `Ended`, ordered by `EffectiveFrom` ascending — the original hire first, per explicit user decision that the journey starts at hire, not at the first change). Each entry:
+
+```
+PositionName, DepartmentName, EffectiveFrom, EffectiveTo (null = current), ChangeReason (null for the hire entry),
+InitiatedByName, ApprovedByName (nullable)
+```
+
+`InitiatedByName` resolves `PositionAssignment.CreatedById` → user's name — this is already the *requester's* id in both the immediate and approval-routed paths, since `TryReservePositionAssignmentAsync`/`TryCreateActiveAssignmentAsync` are both called with `_currentUser.UserId` as `createdById` at request time, not at approval time. `ApprovedByName` resolves via a lookup on `AccessGrantRequest` where `ReservedPositionAssignmentId` equals this assignment's id and `ApprovalStatus = "Approved"`, returning `DecidedByUserId`'s name — `null` when no such request exists (a non-sensitive, immediately-effective change, including most original hires).
+
+## 11. Testing
+
+- Unit: `ChangeEmployeePositionCommandHandlerTests` (self-position-change rejection, sensitive-branch zero-approver rejection, capacity-conflict, successful pending-request creation with reservation + ChangeReason carried through), `ApproveAccessGrantRequestCommandHandlerTests`/`RejectAccessGrantRequestCommandHandlerTests` (both `ActionType`s, self-approval rejection, already-decided conflict, successful approve activates+ends+sets ChangeReason, successful reject cancels reservation), `PermissionRepositoryTests` for `ListUserIdsWithPermissionCodeAsync`, `GetEmployeePositionHistoryQueryHandlerTests` (hire-entry-first ordering, ApprovedByName null for non-sensitive changes, populated for approved sensitive ones).
+- Integration: two `roles:manage` holders, one approves, the other's subsequent attempt gets the already-decided conflict; end-to-end position-change-with-approval against real Postgres verifying the seat stays reserved throughout the pending window; self-position-change rejected even for a caller who holds `org:manage`; an employee promoted through approval shows both `InitiatedByName` and `ApprovedByName` correctly on their history.
+
+## 12. Self-review
 
 - No placeholders — every field traces to an explicit current-codebase fact (§2) or a decision made during brainstorming (including the v1→v2 revision itself).
 - Internal consistency: v1's `PositionAccessTemplate.ApprovingPositionId`/`SetPositionAccessCommand` changes are fully removed, not left as dead references alongside the new model.
 - Scope: onboarding's approval authorization is intentionally changed too (explicit user decision to unify both flows, not leave the older one's self-approval bypass unfixed) — the one place this spec touches already-shipped code, called out rather than buried.
 - §9 (position picker exposing `RequiresApproval`) was added because the frontend's sensitivity-reminder requirement has no way to work without it — surfaced here rather than left as a cross-spec gap the way §8 was caught in v1.
+- §10 (Job Journey) was added after the user asked directly whether `ChangeReason` being captured meant it was actually visible anywhere — it wasn't; this closes that gap in the same revision rather than as a follow-up.
