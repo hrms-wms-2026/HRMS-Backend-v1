@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -148,23 +150,39 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
         var newId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
 
-        var rowsAffected = await _db.Database.ExecuteSqlInterpolatedAsync($@"
-            INSERT INTO position_assignments
-                (id, tenant_id, employee_id, position_id, assignment_kind, effective_from,
-                 assignment_status, created_by_id, created_at, is_deleted)
-            SELECT {newId}, {tenantId}, {employeeId}, {positionId}, {PositionAssignmentKind.PrimaryEmployment},
-                   {effectiveFrom}, {PositionAssignmentStatus.Active}, {createdById}, {now}, false
-            WHERE (
-                SELECT COUNT(*) FROM position_assignments
-                WHERE tenant_id = {tenantId} AND position_id = {positionId}
-                  AND assignment_kind = {PositionAssignmentKind.PrimaryEmployment}
-                  AND assignment_status IN ({PositionAssignmentStatus.Active}, {PositionAssignmentStatus.Planned})
-            ) < (
-                SELECT max_occupancy FROM positions WHERE id = {positionId} AND tenant_id = {tenantId}
-            )
-        ", ct);
+        try
+        {
+            // Concurrent change-position can still race the end-then-create sequence and hit
+            // ix_position_assignments_one_active_primary_per_employee; map that to an
+            // application-layer conflict instead of an unhandled 500.
+            var rowsAffected = await _db.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO position_assignments
+                    (id, tenant_id, employee_id, position_id, assignment_kind, effective_from,
+                     assignment_status, created_by_id, created_at, is_deleted)
+                SELECT {newId}, {tenantId}, {employeeId}, {positionId}, {PositionAssignmentKind.PrimaryEmployment},
+                       {effectiveFrom}, {PositionAssignmentStatus.Active}, {createdById}, {now}, false
+                WHERE (
+                    SELECT COUNT(*) FROM position_assignments
+                    WHERE tenant_id = {tenantId} AND position_id = {positionId}
+                      AND assignment_kind = {PositionAssignmentKind.PrimaryEmployment}
+                      AND assignment_status IN ({PositionAssignmentStatus.Active}, {PositionAssignmentStatus.Planned})
+                ) < (
+                    SELECT max_occupancy FROM positions WHERE id = {positionId} AND tenant_id = {tenantId}
+                )
+            ", ct);
 
-        return rowsAffected > 0 ? newId : null;
+            return rowsAffected > 0 ? newId : null;
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new UniqueConstraintConflictException(ex);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            // ExecuteSqlInterpolatedAsync typically surfaces Npgsql's PostgresException directly
+            // (unlike SaveChanges, which wraps it in DbUpdateException).
+            throw new UniqueConstraintConflictException(ex);
+        }
     }
 
     public async Task<bool> EndActiveAsync(Guid tenantId, Guid positionAssignmentId, DateOnly effectiveTo, CancellationToken ct = default)

@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -67,8 +68,14 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
                     var effectiveTo = request.EffectiveFrom.AddDays(-1);
                     if (effectiveTo < currentAssignment.EffectiveFrom)
                         effectiveTo = currentAssignment.EffectiveFrom;
-                    await _positionAssignmentRepository.EndActiveAsync(
+                    var ended = await _positionAssignmentRepository.EndActiveAsync(
                         tenantId, currentAssignment.Id, effectiveTo, txnCt);
+                    if (!ended)
+                    {
+                        // Another concurrent change already ended this active primary.
+                        throw new UniqueConstraintConflictException(
+                            new InvalidOperationException("Active primary assignment was already ended."));
+                    }
                 }
 
                 var reservedAssignmentId = await _positionAssignmentRepository.TryCreateActiveAssignmentAsync(
@@ -82,6 +89,11 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         catch (PositionAtCapacityException)
         {
             return Result<Unit>.Conflict("This position has reached its capacity.");
+        }
+        catch (UniqueConstraintConflictException)
+        {
+            return Result<Unit>.Conflict(
+                "This employee's position was just changed by someone else. Please refresh and try again.");
         }
 
         return Result<Unit>.Success(Unit.Value);

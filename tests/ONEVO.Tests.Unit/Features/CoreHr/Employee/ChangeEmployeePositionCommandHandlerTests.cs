@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Moq;
+using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
@@ -51,6 +52,9 @@ public class ChangeEmployeePositionCommandHandlerTests
                 EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30)),
             });
         _assignments
+            .Setup(a => a.EndActiveAsync(tenantId, oldAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _assignments
             .Setup(a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid?)null);
 
@@ -93,6 +97,9 @@ public class ChangeEmployeePositionCommandHandlerTests
                 EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30)),
             });
         _assignments
+            .Setup(a => a.EndActiveAsync(tenantId, oldAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _assignments
             .Setup(a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(newAssignmentId);
 
@@ -127,5 +134,82 @@ public class ChangeEmployeePositionCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_UniqueConstraintConflictOnCreate_ReturnsConflict()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var newPositionId = Guid.NewGuid();
+        var oldAssignmentId = Guid.NewGuid();
+        _currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        _currentUser.Setup(c => c.UserId).Returns(Guid.NewGuid());
+        _employees.Setup(e => e.GetTrackedByIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = employeeId, TenantId = tenantId, LegalEntityId = Guid.NewGuid() });
+        _positions.Setup(p => p.GetByIdForLegalEntityAsync(tenantId, It.IsAny<Guid>(), newPositionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = newPositionId, TenantId = tenantId, IsActive = true });
+        _assignments
+            .Setup(a => a.GetActivePrimaryAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment
+            {
+                Id = oldAssignmentId,
+                TenantId = tenantId,
+                EmployeeId = employeeId,
+                EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30)),
+            });
+        _assignments
+            .Setup(a => a.EndActiveAsync(tenantId, oldAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _assignments
+            .Setup(a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new UniqueConstraintConflictException(new Exception("duplicate key value violates unique constraint")));
+
+        var handler = CreateHandler();
+        var result = await handler.Handle(
+            new ChangeEmployeePositionCommand(employeeId, newPositionId, DateOnly.FromDateTime(DateTime.UtcNow)),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Contains("refresh", result.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Handle_EndActiveReturnsFalse_ReturnsConflict()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var newPositionId = Guid.NewGuid();
+        var oldAssignmentId = Guid.NewGuid();
+        _currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        _currentUser.Setup(c => c.UserId).Returns(Guid.NewGuid());
+        _employees.Setup(e => e.GetTrackedByIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = employeeId, TenantId = tenantId, LegalEntityId = Guid.NewGuid() });
+        _positions.Setup(p => p.GetByIdForLegalEntityAsync(tenantId, It.IsAny<Guid>(), newPositionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = newPositionId, TenantId = tenantId, IsActive = true });
+        _assignments
+            .Setup(a => a.GetActivePrimaryAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment
+            {
+                Id = oldAssignmentId,
+                TenantId = tenantId,
+                EmployeeId = employeeId,
+                EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30)),
+            });
+        _assignments
+            .Setup(a => a.EndActiveAsync(tenantId, oldAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var handler = CreateHandler();
+        var result = await handler.Handle(
+            new ChangeEmployeePositionCommand(employeeId, newPositionId, DateOnly.FromDateTime(DateTime.UtcNow)),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        _assignments.Verify(
+            a => a.TryCreateActiveAssignmentAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 }
