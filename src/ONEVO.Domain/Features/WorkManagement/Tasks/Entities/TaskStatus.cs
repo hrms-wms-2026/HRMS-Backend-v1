@@ -2,6 +2,12 @@ using ONEVO.Domain.Common;
 
 namespace ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
+public static class TaskStatusVisibilities
+{
+    public const string Public = "public";
+    public const string Private = "private";
+}
+
 /// <summary>
 /// Configurable task-status definitions. A row with ObjectiveId == null is a Project-level
 /// template; a row with ObjectiveId set is that Objective's own independently-customizable copy.
@@ -16,4 +22,5 @@ public class TaskStatus : BaseEntity
     public bool RequiresApproval { get; set; }
     public Guid? ApproverId { get; set; }
     public bool MarksTaskComplete { get; set; }
+    public string Visibility { get; set; } = TaskStatusVisibilities.Public;
 }

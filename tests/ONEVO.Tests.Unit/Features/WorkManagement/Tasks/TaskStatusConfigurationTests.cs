@@ -20,4 +20,12 @@ public class TaskStatusConfigurationTests
         Assert.Null(status.ObjectiveId);
         Assert.Null(status.ApproverId);
     }
+
+    [Fact]
+    public void TaskStatus_DefaultsVisibilityToPublic()
+    {
+        var status = new TaskStatusEntity { Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), ProjectId = Guid.NewGuid(), Name = "Custom", CreatedAt = DateTimeOffset.UtcNow };
+
+        Assert.Equal(TaskStatusVisibilities.Public, status.Visibility);
+    }
 }
