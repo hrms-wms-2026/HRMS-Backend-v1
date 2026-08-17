@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.RejectAccessGrantRequest;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
 
@@ -13,6 +14,7 @@ public sealed class RejectAccessGrantRequestCommandHandlerTests
 {
     private readonly Mock<IAccessGrantRequestRepository> _accessGrantRequestRepository = new();
     private readonly Mock<IOnboardingDraftRepository> _draftRepository = new();
+    private readonly Mock<IPositionAssignmentRepository> _positionAssignmentRepository = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
 
@@ -28,7 +30,8 @@ public sealed class RejectAccessGrantRequestCommandHandlerTests
     }
 
     private RejectAccessGrantRequestCommandHandler CreateHandler() => new(
-        _accessGrantRequestRepository.Object, _draftRepository.Object, _currentUser.Object, _clock.Object);
+        _accessGrantRequestRepository.Object, _draftRepository.Object, _positionAssignmentRepository.Object,
+        _currentUser.Object, _clock.Object);
 
     private AccessGrantRequest ValidGrantRequest(Guid requestId, Guid? draftId, string status = "Pending") => new()
     {
@@ -213,5 +216,49 @@ public sealed class RejectAccessGrantRequestCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsTheRequester_ReturnsForbidden()
+    {
+        var requestId = Guid.NewGuid();
+        var grantRequest = ValidGrantRequest(requestId, Guid.NewGuid());
+        grantRequest.RequestedByUserId = _userId;
+        _accessGrantRequestRepository
+            .Setup(r => r.GetTrackedByIdAsync(_tenantId, requestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(grantRequest);
+
+        var result = await CreateHandler().Handle(new RejectAccessGrantRequestCommand(requestId, null), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal("You cannot approve or reject a request you submitted yourself.", result.Error);
+    }
+
+    [Fact]
+    public async Task Handle_PositionChangeActionType_CancelsReservation()
+    {
+        var requestId = Guid.NewGuid();
+        var reservedAssignmentId = Guid.NewGuid();
+        var grantRequest = ValidGrantRequest(requestId, draftId: null);
+        grantRequest.ActionType = AccessGrantActionType.PositionChange;
+        grantRequest.EmployeeId = Guid.NewGuid();
+        grantRequest.ReservedPositionAssignmentId = reservedAssignmentId;
+        grantRequest.ChangeReason = "Promotion";
+        _accessGrantRequestRepository
+            .Setup(r => r.GetTrackedByIdAsync(_tenantId, requestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(grantRequest);
+        _accessGrantRequestRepository
+            .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        _positionAssignmentRepository
+            .Setup(a => a.CancelPlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await CreateHandler().Handle(new RejectAccessGrantRequestCommand(requestId, null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _positionAssignmentRepository.Verify(
+            a => a.CancelPlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

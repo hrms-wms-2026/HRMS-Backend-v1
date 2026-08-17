@@ -5,6 +5,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 
 namespace ONEVO.Application.Features.CoreHr.Onboarding.Commands.RejectAccessGrantRequest;
@@ -42,17 +43,20 @@ public class RejectAccessGrantRequestCommandHandler
 {
     private readonly IAccessGrantRequestRepository _accessGrantRequestRepository;
     private readonly IOnboardingDraftRepository _draftRepository;
+    private readonly IPositionAssignmentRepository _positionAssignmentRepository;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
 
     public RejectAccessGrantRequestCommandHandler(
         IAccessGrantRequestRepository accessGrantRequestRepository,
         IOnboardingDraftRepository draftRepository,
+        IPositionAssignmentRepository positionAssignmentRepository,
         ICurrentUser currentUser,
         IDateTimeProvider clock)
     {
         _accessGrantRequestRepository = accessGrantRequestRepository;
         _draftRepository = draftRepository;
+        _positionAssignmentRepository = positionAssignmentRepository;
         _currentUser = currentUser;
         _clock = clock;
     }
@@ -69,8 +73,34 @@ public class RejectAccessGrantRequestCommandHandler
         if (grantRequest.ApprovalStatus != "Pending")
             return Result<RejectAccessGrantRequestResponse>.Conflict("This access grant request has already been decided.");
 
+        if (grantRequest.RequestedByUserId == _currentUser.UserId)
+            return Result<RejectAccessGrantRequestResponse>.Forbidden(
+                "You cannot approve or reject a request you submitted yourself.");
+
         if (request.DecisionNote is { Length: > 500 })
             return Result<RejectAccessGrantRequestResponse>.UnprocessableEntity("Decision note must be 500 characters or fewer.");
+
+        if (grantRequest.ActionType == AccessGrantActionType.PositionChange)
+        {
+            await _positionAssignmentRepository.CancelPlannedAsync(
+                tenantId, grantRequest.ReservedPositionAssignmentId!.Value, ct);
+
+            var positionChangeNote = request.DecisionNote?.Trim();
+            grantRequest.ApprovalStatus = "Rejected";
+            grantRequest.DecidedByUserId = _currentUser.UserId;
+            grantRequest.DecidedAt = _clock.UtcNow;
+            grantRequest.DecisionNote = string.IsNullOrEmpty(positionChangeNote) ? null : positionChangeNote;
+
+            await _accessGrantRequestRepository.SaveChangesAsync(ct);
+
+            return Result<RejectAccessGrantRequestResponse>.Success(new RejectAccessGrantRequestResponse(
+                grantRequest.Id,
+                grantRequest.OnboardingDraftId ?? Guid.Empty,
+                "Rejected",
+                DraftStatus: string.Empty,
+                DraftReason: null,
+                MessageKey: "onboarding.access_grant.position_change_rejected"));
+        }
 
         if (grantRequest.OnboardingDraftId is null)
             return Result<RejectAccessGrantRequestResponse>.UnprocessableEntity(

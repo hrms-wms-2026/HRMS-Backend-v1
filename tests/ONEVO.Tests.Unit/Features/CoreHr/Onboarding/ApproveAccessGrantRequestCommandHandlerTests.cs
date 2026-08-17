@@ -19,6 +19,7 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
+using PositionAssignmentEntity = ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.Onboarding;
 
@@ -505,6 +506,63 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.ChecklistTaskCount);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsTheRequester_ReturnsForbidden()
+    {
+        var requestId = Guid.NewGuid();
+        var draftId = Guid.NewGuid();
+        var grantRequest = ValidGrantRequest(requestId, draftId);
+        grantRequest.RequestedByUserId = _userId;
+        _accessGrantRequestRepository
+            .Setup(r => r.GetTrackedByIdAsync(_tenantId, requestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(grantRequest);
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal("You cannot approve or reject a request you submitted yourself.", result.Error);
+    }
+
+    [Fact]
+    public async Task Handle_PositionChangeActionType_ActivatesReservationAndEndsPreviousAssignment()
+    {
+        var reservedAssignmentId = Guid.NewGuid();
+        var previousAssignmentId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var grantRequest = ValidGrantRequest(Guid.NewGuid(), Guid.NewGuid());
+        grantRequest.OnboardingDraftId = null;
+        grantRequest.EmployeeId = employeeId;
+        grantRequest.ActionType = AccessGrantActionType.PositionChange;
+        grantRequest.ReservedPositionAssignmentId = reservedAssignmentId;
+        grantRequest.ChangeReason = "Promotion";
+        grantRequest.RequestedByUserId = Guid.NewGuid();
+        _accessGrantRequestRepository
+            .Setup(r => r.GetTrackedByIdAsync(_tenantId, grantRequest.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(grantRequest);
+        _accessGrantRequestRepository
+            .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        _positionAssignmentRepository
+            .Setup(a => a.GetActivePrimaryAsync(_tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionAssignmentEntity
+            {
+                Id = previousAssignmentId,
+                EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-1)),
+            });
+        _positionAssignmentRepository
+            .Setup(a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(grantRequest.Id), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _positionAssignmentRepository.Verify(
+            a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()), Times.Once);
+        _positionAssignmentRepository.Verify(
+            a => a.EndActiveAsync(_tenantId, previousAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

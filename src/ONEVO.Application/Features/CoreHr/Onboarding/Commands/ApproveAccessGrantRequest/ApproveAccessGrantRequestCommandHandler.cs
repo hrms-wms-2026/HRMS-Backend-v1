@@ -120,6 +120,46 @@ public class ApproveAccessGrantRequestCommandHandler
         if (grantRequest.ApprovalStatus != "Pending")
             return Result<ApproveAccessGrantRequestResponse>.Conflict("This access grant request has already been decided.");
 
+        if (grantRequest.RequestedByUserId == _currentUser.UserId)
+            return Result<ApproveAccessGrantRequestResponse>.Forbidden(
+                "You cannot approve or reject a request you submitted yourself.");
+
+        if (grantRequest.ActionType == AccessGrantActionType.PositionChange)
+        {
+            var currentAssignment = await _positionAssignmentRepository.GetActivePrimaryAsync(
+                tenantId, grantRequest.EmployeeId!.Value, ct);
+            if (currentAssignment is not null)
+            {
+                var effectiveTo = DateOnly.FromDateTime(grantRequest.EffectiveFrom.UtcDateTime).AddDays(-1);
+                if (effectiveTo < currentAssignment.EffectiveFrom)
+                    effectiveTo = currentAssignment.EffectiveFrom;
+                await _positionAssignmentRepository.EndActiveAsync(tenantId, currentAssignment.Id, effectiveTo, ct);
+            }
+
+            var activated = await _positionAssignmentRepository.ActivatePlannedAsync(
+                tenantId, grantRequest.ReservedPositionAssignmentId!.Value, ct);
+            if (!activated)
+                return Result<ApproveAccessGrantRequestResponse>.Conflict(
+                    "The reserved seat for this request is no longer available.");
+
+            grantRequest.ApprovalStatus = "Approved";
+            grantRequest.DecidedByUserId = _currentUser.UserId;
+            grantRequest.DecidedAt = _clock.UtcNow;
+
+            await _accessGrantRequestRepository.SaveChangesAsync(ct);
+
+            return Result<ApproveAccessGrantRequestResponse>.Success(
+                new ApproveAccessGrantRequestResponse(
+                    grantRequest.Id,
+                    grantRequest.OnboardingDraftId ?? Guid.Empty,
+                    grantRequest.EmployeeId!.Value,
+                    "Approved",
+                    InvitationQueued: false,
+                    ChecklistTaskCount: 0,
+                    PositionApprovalStatus: "Approved",
+                    MessageKey: "onboarding.access_grant.position_change_approved"));
+        }
+
         if (grantRequest.OnboardingDraftId is null)
             return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity(
                 "This access grant request is not correlated to an onboarding draft.");

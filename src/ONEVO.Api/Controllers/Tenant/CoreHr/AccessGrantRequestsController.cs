@@ -15,10 +15,7 @@ namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 /// server-derived; approve/reject take the request id from the route only, and the list action
 /// never accepts tenantId as a query parameter.
 ///
-/// Permission: no permission finer than employees:write exists for position-access approval in
-/// this codebase (the userflow doc references position:approve/org:manage, but neither is
-/// seeded for this purpose - see PermissionSeeder.cs). All three actions are gated by
-/// employees:write until a dedicated approval permission is introduced.
+/// Permission: list remains employees:write. Approve and reject are gated by roles:manage.
 /// </summary>
 [ApiController]
 [Route("api/v1/onboarding/access-grant-requests")]
@@ -59,7 +56,7 @@ public class AccessGrantRequestsController : ControllerBase
     /// role, and invitation (queued via outbox) in one transaction, and marks both the request
     /// and the draft decided.</summary>
     [HttpPost("{id:guid}/approve-and-send-invite")]
-    [RequirePermission("employees:write")]
+    [RequirePermission("roles:manage")]
     public async Task<IActionResult> ApproveAndSendInvite(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new ApproveAccessGrantRequestCommand(id), ct);
@@ -72,7 +69,7 @@ public class AccessGrantRequestsController : ControllerBase
     /// again (which submits a fresh request); the rejection itself remains visible on the
     /// request's own status.</summary>
     [HttpPost("{id:guid}/reject")]
-    [RequirePermission("employees:write")]
+    [RequirePermission("roles:manage")]
     public async Task<IActionResult> Reject(Guid id, [FromBody] RejectAccessGrantRequestRequest? request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new RejectAccessGrantRequestCommand(id, request?.DecisionNote), ct);
