@@ -273,7 +273,8 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
             new EfAccessGrantRequestRepository(db),
             _clock,
             new OutboxWriter(db, _encryption, _clock),
-            new EfAuthRepository(db));
+            new EfAuthRepository(db),
+            new EfTenantRepository(db));
     }
 
     private ApproveAccessGrantRequestCommandHandler BuildApproveHandler(Guid userId)

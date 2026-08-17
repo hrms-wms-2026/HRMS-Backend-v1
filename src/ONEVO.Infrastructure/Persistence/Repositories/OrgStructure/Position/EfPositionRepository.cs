@@ -427,6 +427,17 @@ public class EfPositionRepository : IPositionRepository
     {
         var result = await _db.Set<PositionAccessTemplate>()
             .AsNoTracking()
+            .Where(t => t.TenantId == tenantId && t.PositionId == positionId && t.IsActive)
+            .FirstOrDefaultAsync(ct);
+
+        return result;
+    }
+
+    public async Task<PositionAccessTemplate?> GetAccessTemplateByPositionIncludingInactiveAsync(
+        Guid tenantId, Guid positionId, CancellationToken ct = default)
+    {
+        var result = await _db.Set<PositionAccessTemplate>()
+            .AsNoTracking()
             .Where(t => t.TenantId == tenantId && t.PositionId == positionId)
             .FirstOrDefaultAsync(ct);
 

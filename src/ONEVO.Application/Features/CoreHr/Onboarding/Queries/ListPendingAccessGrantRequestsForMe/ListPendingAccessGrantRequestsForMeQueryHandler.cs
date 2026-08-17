@@ -21,7 +21,7 @@ public class ListPendingAccessGrantRequestsForMeQueryHandler
     public async Task<Result<IReadOnlyList<PendingAccessGrantRequestResponse>>> Handle(
         ListPendingAccessGrantRequestsForMeQuery request, CancellationToken ct)
     {
-        var items = await _repository.ListPendingAsync(_currentUser.TenantId, ct);
+        var items = await _repository.ListPendingAsync(_currentUser.TenantId, _currentUser.UserId, ct);
         return Result<IReadOnlyList<PendingAccessGrantRequestResponse>>.Success(items);
     }
 }

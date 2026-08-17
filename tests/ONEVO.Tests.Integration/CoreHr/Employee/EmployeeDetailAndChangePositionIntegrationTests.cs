@@ -16,6 +16,7 @@ using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Invite;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
+using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Infrastructure.Security;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
@@ -305,7 +306,8 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
             new EfAccessGrantRequestRepository(db),
             _clock,
             new OutboxWriter(db, _encryption, _clock),
-            new EfAuthRepository(db));
+            new EfAuthRepository(db),
+            new EfTenantRepository(db));
     }
 
     private Position NewPosition(Guid id, string name) => new()

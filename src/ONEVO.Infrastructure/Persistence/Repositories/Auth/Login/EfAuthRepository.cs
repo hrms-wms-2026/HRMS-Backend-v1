@@ -442,14 +442,18 @@ public sealed class EfAuthRepository :
     public async Task<IReadOnlyList<Guid>> ListUserIdsWithPermissionCodeAsync(
         Guid tenantId, string permissionCode, DateTimeOffset now, CancellationToken ct = default)
     {
-        // UserRole carries TenantId (ITenantOwnedEntity) — filter directly instead of joining Users.
+        // UserRole carries TenantId (ITenantOwnedEntity) — filter directly instead of joining Users
+        // for tenancy. Join Users to skip soft-deleted and inactive accounts so the empty-approver
+        // gate matches who will actually receive notification email.
         var query = _db.UserRoles
             .AsNoTracking()
             .Where(ur => ur.TenantId == tenantId && (ur.ExpiresAt == null || ur.ExpiresAt > now))
             .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => new { ur, rp })
             .Join(_db.Permissions, x => x.rp.PermissionId, p => p.Id, (x, p) => new { x.ur, p })
             .Where(x => x.p.Code == permissionCode)
-            .Select(x => x.ur.UserId)
+            .Join(_db.Users, x => x.ur.UserId, u => u.Id, (x, u) => u)
+            .Where(u => !u.IsDeleted && u.IsActive)
+            .Select(u => u.Id)
             .Distinct();
 
         return await query.ToListAsync(ct);

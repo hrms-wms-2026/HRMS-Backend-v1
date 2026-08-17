@@ -80,6 +80,25 @@ public sealed class ListUserIdsWithPermissionCodeAsyncTests : IAsyncLifetime
         result.Should().NotContain(expiredUser);
     }
 
+    [Fact]
+    public async Task ExcludesInactiveAndDeletedUsers()
+    {
+        var tenantId = await SeedTenantAsync("list-perm-inactive");
+        var roleId = await SeedRoleWithPermissionAsync(tenantId, "roles:manage");
+        var activeUser = await SeedUserWithRoleAsync(tenantId, roleId);
+        var inactiveUser = await SeedUserWithRoleAsync(tenantId, roleId, isActive: false);
+        var deletedUser = await SeedUserWithRoleAsync(tenantId, roleId, isDeleted: true);
+
+        await using var db = CreateContext(tenantId, "list-perm-inactive");
+        var repo = new EfAuthRepository(db);
+        var result = await repo.ListUserIdsWithPermissionCodeAsync(tenantId, "roles:manage", DateTimeOffset.UtcNow);
+
+        result.Should().Contain(activeUser);
+        result.Should().NotContain(inactiveUser);
+        result.Should().NotContain(deletedUser);
+        result.Should().HaveCount(1);
+    }
+
     private async Task<Guid> SeedTenantAsync(string slug)
     {
         var tenantId = Guid.NewGuid();
@@ -131,7 +150,7 @@ public sealed class ListUserIdsWithPermissionCodeAsyncTests : IAsyncLifetime
         return roleId;
     }
 
-    private async Task<Guid> SeedUserAsync(Guid tenantId)
+    private async Task<Guid> SeedUserAsync(Guid tenantId, bool isActive = true, bool isDeleted = false)
     {
         var userId = Guid.NewGuid();
         await using var db = CreateContext();
@@ -142,7 +161,8 @@ public sealed class ListUserIdsWithPermissionCodeAsyncTests : IAsyncLifetime
             Email = $"{userId:N}@example.com",
             FirstName = "User",
             LastName = "Seed",
-            IsActive = true,
+            IsActive = isActive,
+            IsDeleted = isDeleted,
         });
         await db.SaveChangesAsync();
         return userId;
@@ -151,9 +171,11 @@ public sealed class ListUserIdsWithPermissionCodeAsyncTests : IAsyncLifetime
     private async Task<Guid> SeedUserWithRoleAsync(
         Guid tenantId,
         Guid roleId,
-        DateTimeOffset? expiresAt = null)
+        DateTimeOffset? expiresAt = null,
+        bool isActive = true,
+        bool isDeleted = false)
     {
-        var userId = await SeedUserAsync(tenantId);
+        var userId = await SeedUserAsync(tenantId, isActive, isDeleted);
         await using var db = CreateContext();
         db.UserRoles.Add(new UserRole
         {

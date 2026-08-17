@@ -13,4 +13,5 @@ public sealed record PendingAccessGrantRequestResponse(
     string TargetPositionName,
     string? ChangeReason,
     string RequestedByName,
-    DateTimeOffset RequestedAt);
+    DateTimeOffset RequestedAt,
+    string? InvitedFullName = null);

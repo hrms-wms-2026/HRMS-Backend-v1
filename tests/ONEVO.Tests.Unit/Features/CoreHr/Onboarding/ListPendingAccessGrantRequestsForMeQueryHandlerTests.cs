@@ -11,10 +11,12 @@ public sealed class ListPendingAccessGrantRequestsForMeQueryHandlerTests
     private readonly Mock<IAccessGrantRequestRepository> _repository = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Guid _tenantId = Guid.NewGuid();
+    private readonly Guid _userId = Guid.NewGuid();
 
     public ListPendingAccessGrantRequestsForMeQueryHandlerTests()
     {
         _currentUser.SetupGet(u => u.TenantId).Returns(_tenantId);
+        _currentUser.SetupGet(u => u.UserId).Returns(_userId);
     }
 
     private ListPendingAccessGrantRequestsForMeQueryHandler CreateHandler()
@@ -39,7 +41,8 @@ public sealed class ListPendingAccessGrantRequestsForMeQueryHandlerTests
                 TargetPositionName: "Software Engineer",
                 ChangeReason: null,
                 RequestedByName: "Riya Starter",
-                RequestedAt: requestedAt),
+                RequestedAt: requestedAt,
+                InvitedFullName: "Ada Lovelace"),
             new(
                 positionChangeId,
                 AccessGrantActionType.PositionChange,
@@ -51,7 +54,7 @@ public sealed class ListPendingAccessGrantRequestsForMeQueryHandlerTests
         ];
 
         _repository
-            .Setup(r => r.ListPendingAsync(_tenantId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.ListPendingAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(pending);
 
         var result = await CreateHandler().Handle(new ListPendingAccessGrantRequestsForMeQuery(), CancellationToken.None);
@@ -63,6 +66,7 @@ public sealed class ListPendingAccessGrantRequestsForMeQueryHandlerTests
         var onboarding = Assert.Single(result.Value, x => x.Id == onboardingId);
         Assert.Equal(AccessGrantActionType.EmployeeOnboarding, onboarding.ActionType);
         Assert.Null(onboarding.EmployeeName);
+        Assert.Equal("Ada Lovelace", onboarding.InvitedFullName);
         Assert.Equal("Software Engineer", onboarding.TargetPositionName);
         Assert.Null(onboarding.ChangeReason);
         Assert.Equal("Riya Starter", onboarding.RequestedByName);
@@ -75,7 +79,21 @@ public sealed class ListPendingAccessGrantRequestsForMeQueryHandlerTests
         Assert.Equal("Promotion", positionChange.ChangeReason);
         Assert.Equal("Riya Starter", positionChange.RequestedByName);
 
-        _repository.Verify(r => r.ListPendingAsync(_tenantId, It.IsAny<CancellationToken>()), Times.Once);
-        _repository.Verify(r => r.ListPendingAsync(It.Is<Guid>(id => id != _tenantId), It.IsAny<CancellationToken>()), Times.Never);
+        _repository.Verify(r => r.ListPendingAsync(_tenantId, _userId, It.IsAny<CancellationToken>()), Times.Once);
+        _repository.Verify(r => r.ListPendingAsync(It.Is<Guid>(id => id != _tenantId), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_PassesCurrentUserId_SoCallersOwnSubmissionsAreExcluded()
+    {
+        _repository
+            .Setup(r => r.ListPendingAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var result = await CreateHandler().Handle(new ListPendingAccessGrantRequestsForMeQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _repository.Verify(r => r.ListPendingAsync(_tenantId, _userId, It.IsAny<CancellationToken>()), Times.Once);
+        _repository.Verify(r => r.ListPendingAsync(_tenantId, It.Is<Guid>(id => id != _userId), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

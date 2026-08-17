@@ -242,6 +242,7 @@ public class FinalizeOnboardingDraftCommandHandler
 
             var approverUserIds = await _permissionRepository.ListUserIdsWithPermissionCodeAsync(
                 draft.TenantId, "roles:manage", _clock.UtcNow, ct);
+            var tenantSlug = (await _tenantRepository.GetByIdAsync(draft.TenantId, ct))?.Slug;
             foreach (var approverUserId in approverUserIds)
             {
                 var approver = await _userRepository.GetByIdAsync(approverUserId, ct);
@@ -251,7 +252,8 @@ public class FinalizeOnboardingDraftCommandHandler
                     OutboxMessageTypes.PositionChangeApprovalRequestEmail,
                     new PositionChangeApprovalRequestEmailPayload(
                         draft.TenantId, approverUserId, grantRequest.Id, approver.Email,
-                        $"{draft.FirstName} {draft.LastName}".Trim(), position.Name, grantRequest.ChangeReason),
+                        $"{draft.FirstName} {draft.LastName}".Trim(), position.Name, grantRequest.ChangeReason,
+                        tenantSlug),
                     draft.TenantId, ct);
             }
         }

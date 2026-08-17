@@ -24,6 +24,12 @@ public interface IAccessGrantRequestRepository
     /// re-finalize to re-evaluate and submit a fresh request).</summary>
     Task<bool> AnyPendingByDraftAsync(Guid tenantId, Guid onboardingDraftId, CancellationToken ct = default);
 
+    /// <summary>Whether any Pending position-change request exists for this employee.
+    /// PostgreSQL treats NULLs as distinct, so the filtered unique index on
+    /// OnboardingDraftId does not constrain PositionChange rows (EmployeeId is set,
+    /// OnboardingDraftId is null). Callers must reject a second pending change.</summary>
+    Task<bool> AnyPendingByEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
     /// <summary>Tenant-scoped, paged list for the position-approval queue (Position Approver
     /// Inbox). Only requests correlated to an onboarding draft (<see cref="AccessGrantRequest.OnboardingDraftId"/>
     /// not null) and matching <paramref name="actionType"/> are returned - the draft join is
@@ -34,13 +40,16 @@ public interface IAccessGrantRequestRepository
         Guid tenantId, string approvalStatus, string actionType, Guid? legalEntityId, Guid? requestedRoleId,
         string? search, int page, int pageSize, CancellationToken ct = default);
 
-    /// <summary>Tenant-scoped list of every Pending access-grant request, including both
-    /// onboarding and position-change action types. Names are resolved with the same LEFT-join
-    /// style as <see cref="ListOnboardingRequestsAsync"/>: a missing employee/position/requester
-    /// must not drop the row. <see cref="PendingAccessGrantRequestResponse.EmployeeName"/> is
-    /// null when <see cref="AccessGrantRequest.EmployeeId"/> is null.</summary>
+    /// <summary>Tenant-scoped list of Pending access-grant requests the caller can decide,
+    /// including both onboarding and position-change action types. Rows submitted by
+    /// <paramref name="excludeRequestedByUserId"/> are omitted (self-approval is forbidden).
+    /// Names are resolved with LEFT joins: a missing employee/position/requester/draft must
+    /// not drop the row. <see cref="PendingAccessGrantRequestResponse.EmployeeName"/> is
+    /// null when <see cref="AccessGrantRequest.EmployeeId"/> is null;
+    /// <see cref="PendingAccessGrantRequestResponse.InvitedFullName"/> is populated from the
+    /// onboarding draft when present.</summary>
     Task<IReadOnlyList<PendingAccessGrantRequestResponse>> ListPendingAsync(
-        Guid tenantId, CancellationToken ct = default);
+        Guid tenantId, Guid excludeRequestedByUserId, CancellationToken ct = default);
 
     /// <summary>Approved requests keyed by <see cref="AccessGrantRequest.ReservedPositionAssignmentId"/>
     /// to <see cref="AccessGrantRequest.DecidedByUserId"/>.</summary>

@@ -328,4 +328,24 @@ public sealed class EmailTemplateRendererTests
         rendered.Subject.Should().Contain("Payment receipt");
         rendered.HtmlBody.Should().Contain("Paid on");
     }
+
+    [Fact]
+    public void RenderPositionChangeApprovalRequest_WithTenantSlug_PrefixesSlugOntoAppBaseUrlHost()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AppBaseUrl = "https://localhost:4200"
+        }));
+
+        var rendered = renderer.Render("position_change_approval_request", new
+        {
+            employeeName = "Ada Lovelace",
+            positionName = "CFO",
+            changeReason = "promotion",
+            tenant_slug = "dapi"
+        });
+
+        rendered.HtmlBody.Should().Contain("https://dapi.localhost:4200/people/approvals");
+        rendered.TextBody.Should().Contain("https://dapi.localhost:4200/people/approvals");
+    }
 }

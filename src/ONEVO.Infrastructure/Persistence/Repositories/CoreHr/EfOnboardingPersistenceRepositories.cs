@@ -26,6 +26,10 @@ public sealed class EfAccessGrantRequestRepository(ApplicationDbContext db) : IA
         => db.AccessGrantRequests.AnyAsync(x => x.TenantId == tenantId && x.OnboardingDraftId == onboardingDraftId
             && x.ApprovalStatus == "Pending", ct);
 
+    public Task<bool> AnyPendingByEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => db.AccessGrantRequests.AnyAsync(x => x.TenantId == tenantId && x.EmployeeId == employeeId
+            && x.ActionType == AccessGrantActionType.PositionChange && x.ApprovalStatus == "Pending", ct);
+
     public async Task<(IReadOnlyList<OnboardingAccessGrantRequestListItemResponse> Items, int TotalCount)> ListOnboardingRequestsAsync(
         Guid tenantId, string approvalStatus, string actionType, Guid? legalEntityId, Guid? requestedRoleId,
         string? search, int page, int pageSize, CancellationToken ct = default)
@@ -119,16 +123,19 @@ public sealed class EfAccessGrantRequestRepository(ApplicationDbContext db) : IA
     }
 
     public async Task<IReadOnlyList<PendingAccessGrantRequestResponse>> ListPendingAsync(
-        Guid tenantId, CancellationToken ct = default)
+        Guid tenantId, Guid excludeRequestedByUserId, CancellationToken ct = default)
     {
         var requests = db.AccessGrantRequests.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ApprovalStatus == "Pending");
+            .Where(x => x.TenantId == tenantId && x.ApprovalStatus == "Pending"
+                && x.RequestedByUserId != excludeRequestedByUserId);
         var positions = db.Positions.AsNoTracking().Where(p => p.TenantId == tenantId);
         var users = db.Users.AsNoTracking().Where(u => u.TenantId == tenantId);
         var employees = db.Employees.AsNoTracking().Where(e => e.TenantId == tenantId);
+        var drafts = db.OnboardingDrafts.AsNoTracking().Where(d => d.TenantId == tenantId);
 
         // Every join is LEFT - a display name that fails to resolve must not drop the row.
-        // Employee is left-joined on EmployeeId; when EmployeeId is null, EmployeeName is null.
+        // Employee is left-joined on EmployeeId; when EmployeeId is null, EmployeeName is null
+        // and InvitedFullName is filled from the onboarding draft when present.
         var joined =
             from x in requests
             join position in positions on x.TargetPositionId equals position.Id into positionJoin
@@ -137,7 +144,9 @@ public sealed class EfAccessGrantRequestRepository(ApplicationDbContext db) : IA
             from requester in requesterJoin.DefaultIfEmpty()
             join employee in employees on x.EmployeeId equals employee.Id into employeeJoin
             from employee in employeeJoin.DefaultIfEmpty()
-            select new { x, position, requester, employee };
+            join draft in drafts on x.OnboardingDraftId equals draft.Id into draftJoin
+            from draft in draftJoin.DefaultIfEmpty()
+            select new { x, position, requester, employee, draft };
 
         return await joined
             .OrderByDescending(row => row.x.RequestedAt).ThenBy(row => row.x.Id)
@@ -148,7 +157,8 @@ public sealed class EfAccessGrantRequestRepository(ApplicationDbContext db) : IA
                 row.position != null ? row.position.Name : string.Empty,
                 row.x.ChangeReason,
                 row.requester != null ? row.requester.FirstName + " " + row.requester.LastName : string.Empty,
-                row.x.RequestedAt))
+                row.x.RequestedAt,
+                row.draft != null ? row.draft.FirstName + " " + row.draft.LastName : null))
             .ToListAsync(ct);
     }
 

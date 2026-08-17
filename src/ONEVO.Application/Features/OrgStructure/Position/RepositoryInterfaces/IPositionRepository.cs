@@ -96,7 +96,13 @@ public interface IPositionRepository
         CancellationToken ct = default);
 
     // Access template helpers
+    /// <summary>Active access template for the position. Inactive templates are excluded so
+    /// routing (RequiresApproval) matches <see cref="GetRequiresApprovalByPositionIdsAsync"/>.</summary>
     Task<PositionAccessTemplate?> GetAccessTemplateByPositionAsync(Guid tenantId, Guid positionId, CancellationToken ct = default);
+
+    /// <summary>Access template including inactive rows, so Get/Set Position Access can still
+    /// display and reactivate a deactivated template.</summary>
+    Task<PositionAccessTemplate?> GetAccessTemplateByPositionIncludingInactiveAsync(Guid tenantId, Guid positionId, CancellationToken ct = default);
     Task<IReadOnlyDictionary<Guid, bool>> GetRequiresApprovalByPositionIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> positionIds, CancellationToken ct = default);
     Task AddAccessTemplateAsync(PositionAccessTemplate template, CancellationToken ct = default);

@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -40,6 +41,7 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
     private readonly IDateTimeProvider _clock;
     private readonly IOutboxWriter _outboxWriter;
     private readonly IUserRepository _userRepository;
+    private readonly ITenantRepository _tenantRepository;
 
     public ChangeEmployeePositionCommandHandler(
         IEmployeeRepository employeeRepository,
@@ -51,7 +53,8 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         IAccessGrantRequestRepository accessGrantRequestRepository,
         IDateTimeProvider clock,
         IOutboxWriter outboxWriter,
-        IUserRepository userRepository)
+        IUserRepository userRepository,
+        ITenantRepository tenantRepository)
     {
         _employeeRepository = employeeRepository;
         _positionRepository = positionRepository;
@@ -63,6 +66,7 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         _clock = clock;
         _outboxWriter = outboxWriter;
         _userRepository = userRepository;
+        _tenantRepository = tenantRepository;
     }
 
     public async Task<Result<ChangeEmployeePositionResponse>> Handle(ChangeEmployeePositionCommand request, CancellationToken ct)
@@ -86,40 +90,74 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         var accessTemplate = await _positionRepository.GetAccessTemplateByPositionAsync(tenantId, position.Id, ct);
         if (accessTemplate is { RequiresApproval: true })
         {
+            if (position.DepartmentId is null)
+                return Result<ChangeEmployeePositionResponse>.UnprocessableEntity(
+                    "The selected position has no department and cannot be used.");
+
+            var hasPendingChange = await _accessGrantRequestRepository.AnyPendingByEmployeeAsync(
+                tenantId, employee.Id, ct);
+            if (hasPendingChange)
+                return Result<ChangeEmployeePositionResponse>.Conflict(
+                    "A position change for this employee is already awaiting approval.");
+
             var approverUserIds = await _permissionRepository.ListUserIdsWithPermissionCodeAsync(
                 tenantId, "roles:manage", _clock.UtcNow, ct);
             if (approverUserIds.Count == 0)
                 return Result<ChangeEmployeePositionResponse>.UnprocessableEntity(
                     "No one currently holds the permission required to approve this request.");
 
-            var reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
-                tenantId, employee.Id, position.Id, request.EffectiveFrom, _currentUser.UserId, ct);
-            if (reservedAssignmentId is null)
-                return Result<ChangeEmployeePositionResponse>.Conflict("This position has reached its capacity.");
+            var tenantSlug = (await _tenantRepository.GetByIdAsync(tenantId, ct))?.Slug;
 
-            var grantRequest = new AccessGrantRequest
+            try
             {
-                Id = Guid.NewGuid(),
-                TenantId = tenantId,
-                EmployeeId = employee.Id,
-                ActionType = AccessGrantActionType.PositionChange,
-                TargetPositionId = position.Id,
-                TargetDepartmentId = position.DepartmentId!.Value,
-                PositionAccessTemplateId = accessTemplate.Id,
-                RequestedRoleId = accessTemplate.RoleId,
-                ApprovalStatus = "Pending",
-                RequestedByUserId = _currentUser.UserId,
-                RequestedAt = _clock.UtcNow,
-                EffectiveFrom = new DateTimeOffset(request.EffectiveFrom.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
-                ReservedPositionAssignmentId = reservedAssignmentId,
-                ChangeReason = request.ChangeReason,
-            };
-            await _accessGrantRequestRepository.AddAsync(grantRequest, ct);
+                await _unitOfWork.ExecuteInTransactionAsync(async txnCt =>
+                {
+                    var reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
+                        tenantId, employee.Id, position.Id, request.EffectiveFrom, _currentUser.UserId, txnCt);
+                    if (reservedAssignmentId is null)
+                        throw new PositionAtCapacityException();
 
-            foreach (var approverUserId in approverUserIds)
-                await EnqueuePositionChangeApprovalEmailAsync(tenantId, approverUserId, grantRequest, employee, position, ct);
+                    var grantRequest = new AccessGrantRequest
+                    {
+                        Id = Guid.NewGuid(),
+                        TenantId = tenantId,
+                        EmployeeId = employee.Id,
+                        ActionType = AccessGrantActionType.PositionChange,
+                        TargetPositionId = position.Id,
+                        TargetDepartmentId = position.DepartmentId.Value,
+                        PositionAccessTemplateId = accessTemplate.Id,
+                        RequestedRoleId = accessTemplate.RoleId,
+                        ApprovalStatus = "Pending",
+                        RequestedByUserId = _currentUser.UserId,
+                        RequestedAt = _clock.UtcNow,
+                        EffectiveFrom = new DateTimeOffset(request.EffectiveFrom.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+                        ReservedPositionAssignmentId = reservedAssignmentId,
+                        ChangeReason = request.ChangeReason,
+                    };
+                    await _accessGrantRequestRepository.AddAsync(grantRequest, txnCt);
 
-            await _unitOfWork.SaveChangesAsync(ct);
+                    foreach (var approverUserId in approverUserIds)
+                        await EnqueuePositionChangeApprovalEmailAsync(
+                            tenantId, approverUserId, grantRequest, employee, position, tenantSlug, txnCt);
+
+                    await _accessGrantRequestRepository.SaveChangesAsync(txnCt);
+                    return true;
+                }, ct);
+            }
+            catch (PositionAtCapacityException)
+            {
+                return Result<ChangeEmployeePositionResponse>.Conflict("This position has reached its capacity.");
+            }
+            catch (ConcurrencyConflictException)
+            {
+                return Result<ChangeEmployeePositionResponse>.Conflict(
+                    "This request was just updated by someone else. Please refresh and try again.");
+            }
+            catch (UniqueConstraintConflictException)
+            {
+                return Result<ChangeEmployeePositionResponse>.Conflict(
+                    "This employee's position was just changed by someone else. Please refresh and try again.");
+            }
 
             return Result<ChangeEmployeePositionResponse>.Success(new ChangeEmployeePositionResponse(PendingApproval: true));
         }
@@ -167,7 +205,9 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
     }
 
     private async Task EnqueuePositionChangeApprovalEmailAsync(
-        Guid tenantId, Guid approverUserId, AccessGrantRequest grantRequest, ONEVO.Domain.Features.CoreHr.Entities.Employee employee, Position position, CancellationToken ct)
+        Guid tenantId, Guid approverUserId, AccessGrantRequest grantRequest,
+        ONEVO.Domain.Features.CoreHr.Entities.Employee employee, Position position,
+        string? tenantSlug, CancellationToken ct)
     {
         var approver = await _userRepository.GetByIdAsync(approverUserId, ct);
         if (approver is null) return;
@@ -176,7 +216,8 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
             OutboxMessageTypes.PositionChangeApprovalRequestEmail,
             new PositionChangeApprovalRequestEmailPayload(
                 tenantId, approverUserId, grantRequest.Id, approver.Email,
-                $"{employee.FirstName} {employee.LastName}".Trim(), position.Name, grantRequest.ChangeReason),
+                $"{employee.FirstName} {employee.LastName}".Trim(), position.Name, grantRequest.ChangeReason,
+                tenantSlug),
             tenantId, ct);
     }
 

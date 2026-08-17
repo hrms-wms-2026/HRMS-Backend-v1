@@ -74,6 +74,40 @@ public sealed class OnboardingPersistenceRepositoryTests
     }
 
     [Fact]
+    public async Task AccessGrantRequest_AnyPendingByEmployee_OnlyMatchesPendingPositionChange()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var rejected = new AccessGrantRequest
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, EmployeeId = employeeId, UserId = null,
+            TargetPositionId = Guid.NewGuid(), TargetDepartmentId = Guid.NewGuid(),
+            PositionAccessTemplateId = Guid.NewGuid(), RequestedRoleId = Guid.NewGuid(),
+            RequestedByUserId = Guid.NewGuid(), ActionType = AccessGrantActionType.PositionChange,
+            ApprovalStatus = "Rejected", RequestedAt = DateTimeOffset.UtcNow, EffectiveFrom = DateTimeOffset.UtcNow,
+        };
+        var repository = new EfAccessGrantRequestRepository(db);
+        await repository.AddAsync(rejected); await repository.SaveChangesAsync(); db.ChangeTracker.Clear();
+
+        (await repository.AnyPendingByEmployeeAsync(tenant, employeeId)).Should().BeFalse();
+
+        var pending = new AccessGrantRequest
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, EmployeeId = employeeId, UserId = null,
+            TargetPositionId = Guid.NewGuid(), TargetDepartmentId = Guid.NewGuid(),
+            PositionAccessTemplateId = Guid.NewGuid(), RequestedRoleId = Guid.NewGuid(),
+            RequestedByUserId = Guid.NewGuid(), ActionType = AccessGrantActionType.PositionChange,
+            RequestedAt = DateTimeOffset.UtcNow, EffectiveFrom = DateTimeOffset.UtcNow,
+        };
+        await repository.AddAsync(pending); await repository.SaveChangesAsync(); db.ChangeTracker.Clear();
+
+        (await repository.AnyPendingByEmployeeAsync(tenant, employeeId)).Should().BeTrue();
+        (await repository.AnyPendingByEmployeeAsync(Guid.NewGuid(), employeeId)).Should().BeFalse();
+        (await repository.AnyPendingByEmployeeAsync(tenant, Guid.NewGuid())).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task ListPending_ReturnsOnlyPendingRows_WithResolvedNames()
     {
         await using var db = BuildDb();
@@ -119,7 +153,7 @@ public sealed class OnboardingPersistenceRepositoryTests
         db.ChangeTracker.Clear();
 
         var repository = new EfAccessGrantRequestRepository(db);
-        var items = await repository.ListPendingAsync(tenant);
+        var items = await repository.ListPendingAsync(tenant, excludeRequestedByUserId: Guid.Empty);
 
         items.Should().HaveCount(2);
         items.Should().OnlyContain(x => x.Id == onboarding.RequestId || x.Id == positionChange.Id);
@@ -127,6 +161,7 @@ public sealed class OnboardingPersistenceRepositoryTests
         var onboardingItem = items.Should().ContainSingle(x => x.Id == onboarding.RequestId).Subject;
         onboardingItem.ActionType.Should().Be(AccessGrantActionType.EmployeeOnboarding);
         onboardingItem.EmployeeName.Should().BeNull();
+        onboardingItem.InvitedFullName.Should().Be("Firstname Lastname");
         onboardingItem.TargetPositionName.Should().Be("Software Engineer");
         onboardingItem.RequestedByName.Should().Be("Riya Starter");
         onboardingItem.ChangeReason.Should().BeNull();
@@ -134,9 +169,35 @@ public sealed class OnboardingPersistenceRepositoryTests
         var changeItem = items.Should().ContainSingle(x => x.Id == positionChange.Id).Subject;
         changeItem.ActionType.Should().Be(AccessGrantActionType.PositionChange);
         changeItem.EmployeeName.Should().Be("Jane Doe");
+        changeItem.InvitedFullName.Should().BeNull();
         changeItem.TargetPositionName.Should().Be("Engineering Manager");
         changeItem.ChangeReason.Should().Be("Promotion");
         changeItem.RequestedByName.Should().Be("Riya Starter");
+    }
+
+    [Fact]
+    public async Task ListPending_ExcludesRowsSubmittedByCaller()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var callerId = Guid.NewGuid();
+
+        var own = await SeedFullRequestAsync(
+            db, tenant, approvalStatus: "Pending", actionType: AccessGrantActionType.EmployeeOnboarding,
+            requesterFirstName: "Self", requesterLastName: "Submitter");
+        db.AccessGrantRequests.First(x => x.Id == own.RequestId).RequestedByUserId = callerId;
+        await db.SaveChangesAsync();
+
+        var other = await SeedFullRequestAsync(
+            db, tenant, approvalStatus: "Pending", actionType: AccessGrantActionType.EmployeeOnboarding,
+            requesterFirstName: "Other", requesterLastName: "Person");
+        db.ChangeTracker.Clear();
+
+        var repository = new EfAccessGrantRequestRepository(db);
+        var items = await repository.ListPendingAsync(tenant, excludeRequestedByUserId: callerId);
+
+        items.Should().ContainSingle(x => x.Id == other.RequestId);
+        items.Should().NotContain(x => x.Id == own.RequestId);
     }
 
     [Fact]

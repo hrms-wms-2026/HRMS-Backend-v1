@@ -17,6 +17,6 @@ public sealed class PositionChangeApprovalRequestEmailOutboxHandler : IOutboxMes
             ?? throw new InvalidOperationException("Invalid position-change approval request email payload.");
 
         await _emailService.SendPositionChangeApprovalRequestAsync(
-            payload.ApproverEmail, payload.EmployeeName, payload.PositionName, payload.ChangeReason, ct);
+            payload.ApproverEmail, payload.EmployeeName, payload.PositionName, payload.ChangeReason, ct, payload.TenantSlug);
     }
 }
