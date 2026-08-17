@@ -70,5 +70,6 @@ public class PermissionSeederTests
         codes.Should().NotContain("settings:notifications");
         codes.Should().Contain("notifications:manage");
         codes.Should().Contain("invitations:manage");
+        codes.Should().Contain("employees:read:sensitive");
     }
 }
