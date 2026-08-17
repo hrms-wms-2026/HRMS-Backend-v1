@@ -41,7 +41,8 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     }
 
     public async Task<bool> AnyActiveByStatusIdAsync(Guid tenantId, Guid statusId, CancellationToken ct = default)
-        => await _db.WorkTasks.AnyAsync(t => t.TenantId == tenantId && t.StatusId == statusId && !t.IsDeleted, ct);
+        => await _db.WorkTasks.IgnoreQueryFilters()
+            .AnyAsync(t => t.TenantId == tenantId && t.StatusId == statusId, ct);
 
     public void Update(WorkTask task) => _db.WorkTasks.Update(task);
 }

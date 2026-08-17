@@ -56,7 +56,7 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
             return Result.NotFound("Task not found.");
 
         var newStatus = await _statuses.GetByIdForTenantAsync(tenantId, request.NewStatusId, ct);
-        if (newStatus is null)
+        if (newStatus is null || newStatus.ObjectiveId != task.ObjectiveId)
             return Result.NotFound("Target status not found.");
 
         var objective = await _objectives.GetTrackedByIdForTenantAsync(tenantId, task.ObjectiveId, ct);

@@ -27,8 +27,12 @@ public class MoveTaskStatusCommandHandlerTests
     private static readonly Guid NewStatusId = Guid.NewGuid();
 
     private (MoveTaskStatusCommandHandler Handler, Objective Objective, WorkTask Task, Mock<ITaskStatusRepository> Statuses) Build(
-        Guid callerEmployeeId, bool callerIsMember, TaskStatusEntity newStatus, decimal? estimatedHours = 8m)
+        Guid callerEmployeeId, bool callerIsMember, TaskStatusEntity newStatus, decimal? estimatedHours = 8m,
+        bool preserveNullStatusObjectiveId = false)
     {
+        if (!preserveNullStatusObjectiveId && newStatus.ObjectiveId is null)
+            newStatus.ObjectiveId = ObjectiveId;
+
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
@@ -101,6 +105,54 @@ public class MoveTaskStatusCommandHandlerTests
             unitOfWork.Object);
 
         return (handler, objective, task, statuses);
+    }
+
+    [Fact]
+    public async Task Handle_TargetStatusBelongsToDifferentObjective_ReturnsNotFoundWithoutMovingTask()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId,
+            TenantId = TenantId,
+            ObjectiveId = Guid.NewGuid(),
+            Name = "Other Objective",
+            MarksTaskComplete = false,
+            Visibility = TaskStatusVisibilities.Public,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, task, _) = Build(OwnerEmployeeId, callerIsMember: false, newStatus);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(OldStatusId, task.StatusId);
+    }
+
+    [Fact]
+    public async Task Handle_TargetStatusIsProjectLevel_ReturnsNotFoundWithoutMovingTask()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId,
+            TenantId = TenantId,
+            ObjectiveId = null,
+            Name = "Project Template",
+            MarksTaskComplete = false,
+            Visibility = TaskStatusVisibilities.Public,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, task, _) = Build(
+            OwnerEmployeeId,
+            callerIsMember: false,
+            newStatus,
+            preserveNullStatusObjectiveId: true);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(OldStatusId, task.StatusId);
     }
 
     [Fact]

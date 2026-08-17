@@ -63,7 +63,7 @@ public class DeleteTaskStatusCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_TasksStillInStatus_ReturnsConflict()
+    public async Task Handle_PhysicalTaskReferenceStillUsesStatus_ReturnsConflict()
     {
         var (handler, statuses) = Build(anyTasksInStatus: true);
 
