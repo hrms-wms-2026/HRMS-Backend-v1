@@ -352,6 +352,7 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IAgentCommandRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfAgentCommandRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
+        services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
