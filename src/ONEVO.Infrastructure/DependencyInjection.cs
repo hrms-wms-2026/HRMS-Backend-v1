@@ -25,6 +25,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInt
 using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ReleaseCalendar.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
 using ONEVO.Infrastructure.Persistence.Repositories;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
@@ -192,6 +193,8 @@ public static class DependencyInjection
         services.AddScoped<ITaskStatusRepository>(sp => sp.GetRequiredService<EfTaskStatusRepository>());
         services.AddScoped<EfWorkTaskRepository>();
         services.AddScoped<IWorkTaskRepository>(sp => sp.GetRequiredService<EfWorkTaskRepository>());
+        services.AddScoped<EfSprintRepository>();
+        services.AddScoped<ISprintRepository>(sp => sp.GetRequiredService<EfSprintRepository>());
         services.AddScoped<EfTaskAssignmentRepository>();
         services.AddScoped<ITaskAssignmentRepository>(sp => sp.GetRequiredService<EfTaskAssignmentRepository>());
         services.AddScoped<EfTaskCreationRequestRepository>();
