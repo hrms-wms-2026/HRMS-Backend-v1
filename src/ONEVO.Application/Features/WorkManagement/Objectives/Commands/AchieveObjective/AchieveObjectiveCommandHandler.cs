@@ -8,7 +8,9 @@ using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
 
@@ -19,17 +21,20 @@ public class AchieveObjectiveCommandHandler : IRequestHandler<AchieveObjectiveCo
     private readonly IObjectiveRepository _objectives;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly ISprintRepository _sprints;
     private readonly IUnitOfWork _unitOfWork;
 
     public AchieveObjectiveCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IObjectiveChangeRequestRepository changeRequests, IMilestoneMembershipCoordinator membership, IUnitOfWork unitOfWork)
+        IObjectiveChangeRequestRepository changeRequests, IMilestoneMembershipCoordinator membership,
+        ISprintRepository sprints, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _changeRequests = changeRequests;
         _membership = membership;
+        _sprints = sprints;
         _unitOfWork = unitOfWork;
     }
 
@@ -66,6 +71,10 @@ public class AchieveObjectiveCommandHandler : IRequestHandler<AchieveObjectiveCo
         var directChildren = await _objectives.GetTrackedActiveDirectChildrenAsync(tenantId, objective.Id, ct);
         if (directChildren.Any(c => !c.IsAchieved))
             return Result<ObjectiveChangeOutcomeResponse>.Failure("All sub-milestones must be achieved before this one can be.");
+
+        var sprints = await _sprints.GetByObjectiveIdAsync(tenantId, objective.Id, ct);
+        if (sprints.Any(s => s.Status is not (SprintStatuses.Complete or SprintStatuses.Achieved)))
+            return Result<ObjectiveChangeOutcomeResponse>.Failure("All sprints on this milestone must be Complete or Achieved before it can be achieved.");
 
         if (objective.CreatedById == userId)
         {
