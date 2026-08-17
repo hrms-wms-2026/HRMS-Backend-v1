@@ -18,6 +18,7 @@ using ONEVO.Application.Features.WorkManagement.ReleaseCalendar.RepositoryInterf
 using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
@@ -26,7 +27,6 @@ using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities;
 using ONEVO.Domain.Features.WorkManagement.Versions.Entities;
-using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 using ONEVO.Domain.Lookups;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.CreateProject;
@@ -249,13 +249,10 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
 
             await _projects.AddAsync(project, ct);
             await _objectives.AddAsync(defaultObjective, ct);
-            await _taskStatuses.AddRangeAsync(new TaskStatusEntity[]
-            {
-                new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id, Name = "To Do", DisplayOrder = 0, CreatedById = userId, CreatedAt = now },
-                new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id, Name = "In Process", DisplayOrder = 1, CreatedById = userId, CreatedAt = now },
-                new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id, Name = "Review", DisplayOrder = 2, CreatedById = userId, CreatedAt = now },
-                new() { Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id, Name = "Done", DisplayOrder = 3, MarksTaskComplete = true, CreatedById = userId, CreatedAt = now }
-            }, ct);
+            await _taskStatuses.AddRangeAsync(
+                DefaultTaskStatusTemplate.BuildRows(tenantId, project.Id, objectiveId: null, userId, now), ct);
+            await _taskStatuses.AddRangeAsync(
+                DefaultTaskStatusTemplate.BuildRows(tenantId, project.Id, objectiveId: defaultObjective.Id, userId, now), ct);
             await _members.AddAsync(creatorMembership, ct);
             await _versions.AddAsync(defaultVersion, ct);
             await _releaseCalendar.AddAsync(releaseReminder, ct);
