@@ -74,7 +74,9 @@ public sealed partial class WorkManagementDapiDemoSeeder
         foreach (var name in WorkManagementDapiDemoData.ProjectCategoryNames)
         {
             var categoryId = DeterministicGuid($"dapi-demo:category:{name}");
-            var category = await db.ProjectCategories.FirstOrDefaultAsync(c => c.Id == categoryId, ct);
+            var category = await db.ProjectCategories.FirstOrDefaultAsync(c => c.Id == categoryId, ct)
+                ?? await db.ProjectCategories.FirstOrDefaultAsync(
+                    c => c.TenantId == DapiTenantId && c.Name == name, ct);
             if (category is null)
             {
                 db.ProjectCategories.Add(new ProjectCategory
@@ -86,8 +88,14 @@ public sealed partial class WorkManagementDapiDemoSeeder
                     CreatedById = DapiOwnerUserId,
                     CreatedAt = now
                 });
+                categoryIdByName[name] = categoryId;
             }
-            categoryIdByName[name] = categoryId;
+            else
+            {
+                // Unique on (tenant_id, name): a leftover SampleData/manual row with the same
+                // name but a different Id must be reused, not inserted again.
+                categoryIdByName[name] = category.Id;
+            }
         }
         return categoryIdByName;
     }
