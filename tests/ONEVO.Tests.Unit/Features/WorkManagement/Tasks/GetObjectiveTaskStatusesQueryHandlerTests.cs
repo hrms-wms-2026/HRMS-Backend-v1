@@ -5,6 +5,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTaskStatuses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 using Xunit;
 
@@ -48,5 +49,49 @@ public class GetObjectiveTaskStatusesQueryHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(4, result.Value!.Count);
         statuses.Verify(x => x.AddRangeAsync(It.Is<IReadOnlyList<TaskStatusEntity>>(list => list.Count == 4 && list.All(s => s.ObjectiveId == ObjectiveId)), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_NoExistingObjectiveStatuses_CopiesTemplateIncludingVisibility()
+    {
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
+
+        var objectives = new Mock<IObjectiveRepository>();
+        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Objective { Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, IsActive = true, CreatedAt = DateTimeOffset.UtcNow });
+
+        var statuses = new Mock<ITaskStatusRepository>();
+        statuses.Setup(x => x.GetByObjectiveIdAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TaskStatusEntity>());
+        statuses.Setup(x => x.GetProjectTemplateAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TaskStatusEntity>
+            {
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = TenantId,
+                    ProjectId = ProjectId,
+                    Name = "Done",
+                    DisplayOrder = 3,
+                    MarksTaskComplete = true,
+                    Visibility = TaskStatusVisibilities.Private,
+                    CreatedAt = DateTimeOffset.UtcNow
+                }
+            });
+
+        var unitOfWork = new Mock<IUnitOfWork>();
+        unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        var handler = new GetObjectiveTaskStatusesQueryHandler(
+            currentUser.Object, objectives.Object, statuses.Object, unitOfWork.Object);
+
+        var result = await handler.Handle(
+            new GetObjectiveTaskStatusesQuery(ObjectiveId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var done = result.Value!.Single(s => s.Name == "Done");
+        Assert.Equal(TaskStatusVisibilities.Private, done.Visibility);
     }
 }

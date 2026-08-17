@@ -45,7 +45,8 @@ public class GetObjectiveTaskStatusesQueryHandler : IRequestHandler<GetObjective
         {
             Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = objective.ProjectId, ObjectiveId = request.ObjectiveId,
             Name = t.Name, DisplayOrder = t.DisplayOrder, RequiresApproval = t.RequiresApproval,
-            MarksTaskComplete = t.MarksTaskComplete, CreatedById = _currentUser.UserId, CreatedAt = now
+            MarksTaskComplete = t.MarksTaskComplete, Visibility = t.Visibility,
+            CreatedById = _currentUser.UserId, CreatedAt = now
         }).ToList();
 
         if (copies.Count == 0)
@@ -59,6 +60,8 @@ public class GetObjectiveTaskStatusesQueryHandler : IRequestHandler<GetObjective
 
     private static IReadOnlyList<TaskStatusResponse> ToResponses(IReadOnlyList<TaskStatusEntity> statuses)
         => statuses.OrderBy(s => s.DisplayOrder)
-            .Select(s => new TaskStatusResponse(s.Id, s.Name, s.DisplayOrder, s.RequiresApproval, s.ApproverId, s.MarksTaskComplete))
+            .Select(s => new TaskStatusResponse(
+                s.Id, s.Name, s.DisplayOrder, s.RequiresApproval,
+                s.ApproverId, s.MarksTaskComplete, s.Visibility))
             .ToList();
 }

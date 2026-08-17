@@ -10,7 +10,8 @@ public static class WorkTaskViewModelMapper
         dto.DueDate, dto.EstimatedHours, dto.CompletedHours, dto.ProgressPercent);
 
     public static TaskStatusViewModel ToViewModel(this TaskStatusResponse dto) => new(
-        dto.Id, dto.Name, dto.DisplayOrder, dto.RequiresApproval, dto.ApproverId, dto.MarksTaskComplete);
+        dto.Id, dto.Name, dto.DisplayOrder, dto.RequiresApproval,
+        dto.ApproverId, dto.MarksTaskComplete, dto.Visibility);
 
     public static MyDeadlinesViewModel ToViewModel(this MyDeadlinesResponse dto) => new(
         dto.ObjectiveDeadlines.Select(o => new ObjectiveDeadlineViewModel(o.ObjectiveId, o.Title, o.EndDate)).ToList(),

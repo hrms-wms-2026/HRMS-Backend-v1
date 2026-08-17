@@ -21,7 +21,8 @@ public sealed record WorkTaskViewModel(
     DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent);
 
 public sealed record TaskStatusViewModel(
-    Guid Id, string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, bool MarksTaskComplete);
+    Guid Id, string Name, int DisplayOrder, bool RequiresApproval,
+    Guid? ApproverId, bool MarksTaskComplete, string Visibility);
 
 public sealed record ObjectiveDeadlineViewModel(Guid ObjectiveId, string Title, DateOnly EndDate);
 
