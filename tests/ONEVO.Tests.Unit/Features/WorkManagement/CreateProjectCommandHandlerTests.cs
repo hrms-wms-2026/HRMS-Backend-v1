@@ -18,6 +18,7 @@ using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Lookups;
 using Xunit;
+using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement;
 
@@ -34,7 +35,7 @@ public class CreateProjectCommandHandlerTests
         new DateOnly(2026, 1, 1), new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 15),
         "#2563EB", 10m, 40m, labels ?? [], null, null, null);
 
-    private (CreateProjectCommandHandler Handler, Mock<IProjectRepository> Projects) BuildHandler(
+    private (CreateProjectCommandHandler Handler, Mock<IProjectRepository> Projects, Mock<ITaskStatusRepository> TaskStatuses) BuildHandler(
         bool categoryExists = true, bool identifierExists = false, int employmentStatusId = EmploymentStatusIds.Active)
     {
         var currentUser = new Mock<ICurrentUser>();
@@ -75,13 +76,13 @@ public class CreateProjectCommandHandlerTests
             versions.Object, releaseCalendar.Object, labels.Object, taskStatuses.Object, entityAssets.Object, employees.Object,
             legalEntities.Object, auditLogs.Object, fileStorage.Object, unitOfWork.Object);
 
-        return (handler, projects);
+        return (handler, projects, taskStatuses);
     }
 
     [Fact]
     public async Task Handle_ValidRequest_ReturnsSuccessWithDefaultObjectiveMembershipVersionAndReminder()
     {
-        var (handler, _) = BuildHandler();
+        var (handler, _, _) = BuildHandler();
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -96,9 +97,31 @@ public class CreateProjectCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ValidRequest_SeedsProjectAndDefaultObjectiveTaskStatuses()
+    {
+        var (handler, _, taskStatuses) = BuildHandler();
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var defaultObjectiveId = result.Value!.DefaultObjective.Id;
+        taskStatuses.Verify(x => x.AddRangeAsync(
+            It.Is<IReadOnlyList<TaskStatusEntity>>(rows =>
+                rows.Count == 4 && rows.All(r => r.ObjectiveId == null)),
+            It.IsAny<CancellationToken>()), Times.Once);
+        taskStatuses.Verify(x => x.AddRangeAsync(
+            It.Is<IReadOnlyList<TaskStatusEntity>>(rows =>
+                rows.Count == 4 && rows.All(r => r.ObjectiveId == defaultObjectiveId)),
+            It.IsAny<CancellationToken>()), Times.Once);
+        taskStatuses.Verify(x => x.AddRangeAsync(
+            It.IsAny<IReadOnlyList<TaskStatusEntity>>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
     public async Task Handle_DuplicateIdentifier_ReturnsConflict()
     {
-        var (handler, _) = BuildHandler(identifierExists: true);
+        var (handler, _, _) = BuildHandler(identifierExists: true);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -109,7 +132,7 @@ public class CreateProjectCommandHandlerTests
     [Fact]
     public async Task Handle_CategoryNotFoundForTenant_ReturnsNotFound()
     {
-        var (handler, _) = BuildHandler(categoryExists: false);
+        var (handler, _, _) = BuildHandler(categoryExists: false);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -120,7 +143,7 @@ public class CreateProjectCommandHandlerTests
     [Fact]
     public async Task Handle_AllocatedHoursExceedActualHours_StillSucceeds_OverAllocationIsWarningOnly()
     {
-        var (handler, _) = BuildHandler();
+        var (handler, _, _) = BuildHandler();
         var command = ValidCommand() with { ActualHours = 5m, DefaultObjectiveAllocatedHours = 999m };
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -132,7 +155,7 @@ public class CreateProjectCommandHandlerTests
     [Fact]
     public async Task Handle_DuplicateLabelNamesInRequest_ReturnsValidationConflict()
     {
-        var (handler, _) = BuildHandler();
+        var (handler, _, _) = BuildHandler();
         var command = ValidCommand([new CreateProjectLabelInput("Backend", "#111111"), new CreateProjectLabelInput("backend", "#222222")]);
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -144,7 +167,7 @@ public class CreateProjectCommandHandlerTests
     [Fact]
     public async Task Handle_CallerEmployeeNotActive_ReturnsForbidden()
     {
-        var (handler, _) = BuildHandler(employmentStatusId: 4); // 4 = terminated, per EmploymentStatusIds precedent
+        var (handler, _, _) = BuildHandler(employmentStatusId: 4); // 4 = terminated, per EmploymentStatusIds precedent
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
