@@ -267,6 +267,9 @@ public sealed class TenantSessionRlsIntegrationTests : IAsyncLifetime
         services.AddScoped<ITenantRepository, EfTenantRepository>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
         services.AddScoped<IPermissionResolver, NoOpPermissionResolver>();
+        services.AddScoped<
+            ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository>();
 
         return services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
     }
