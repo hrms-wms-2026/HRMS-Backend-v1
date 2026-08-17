@@ -86,6 +86,8 @@ public class PermissionSeeder : IHostedService
         Perm("employees:read", "View all employees in scope.", "core_hr"),
         Perm("employees:read-team", "View direct reports only.", "core_hr"),
         Perm("employees:write", "Create, update employees.", "core_hr"),
+        Perm("employees:read:sensitive", "View sensitive employee data (bank details) on the employee detail screen.", "core_hr"),
+        Perm("invitations:manage", "Resend or revoke employee onboarding invitations.", "core_hr"),
         Perm("employees:delete", "Delete employee records.", "core_hr"),
 
         // Organization

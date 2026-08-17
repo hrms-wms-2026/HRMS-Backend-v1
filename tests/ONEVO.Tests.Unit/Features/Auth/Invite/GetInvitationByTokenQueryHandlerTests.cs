@@ -25,6 +25,7 @@ public class GetInvitationByTokenQueryHandlerTests
     private readonly Mock<ITenantRepository> _tenants = new();
     private readonly Mock<IRoleRepository> _roles = new();
     private readonly Mock<ITenantAuthPolicyRepository> _policies = new();
+    private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
 
     public GetInvitationByTokenQueryHandlerTests()
@@ -32,6 +33,8 @@ public class GetInvitationByTokenQueryHandlerTests
         _clock.Setup(c => c.UtcNow).Returns(Now);
         _policies.Setup(p => p.GetByTenantIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((TenantAuthPolicy?)null);
+        _users.Setup(u => u.GetByIdAsync(UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = UserId, IsActive = false, PasswordHash = string.Empty });
     }
 
     private static InvitationToken MakeInvitation(
@@ -65,6 +68,7 @@ public class GetInvitationByTokenQueryHandlerTests
         _tenants.Object,
         _roles.Object,
         _policies.Object,
+        _users.Object,
         _clock.Object);
 
     [Fact]
@@ -282,5 +286,37 @@ public class GetInvitationByTokenQueryHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.AllowedEmailDomains.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Handle_ReturningUserWithExistingCredentials_SetsRequiresPasswordFalse()
+    {
+        _invitations.Setup(r => r.GetByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeInvitation());
+        _tenants.Setup(t => t.GetByIdAsync(TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeTenant());
+        _users.Setup(u => u.GetByIdAsync(UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = UserId, IsActive = true, PasswordHash = "existing-hash" });
+
+        var result = await BuildSut().Handle(new GetInvitationByTokenQuery(RawToken), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.RequiresPassword.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Handle_BrandNewUser_SetsRequiresPasswordTrue()
+    {
+        _invitations.Setup(r => r.GetByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeInvitation());
+        _tenants.Setup(t => t.GetByIdAsync(TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeTenant());
+        _users.Setup(u => u.GetByIdAsync(UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Id = UserId, IsActive = false, PasswordHash = string.Empty });
+
+        var result = await BuildSut().Handle(new GetInvitationByTokenQuery(RawToken), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.RequiresPassword.Should().BeTrue();
     }
 }

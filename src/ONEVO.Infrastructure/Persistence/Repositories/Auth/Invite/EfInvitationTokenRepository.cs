@@ -85,4 +85,13 @@ public class EfInvitationTokenRepository : IInvitationTokenRepository
         var invitationToken = await query.FirstOrDefaultAsync(ct);
         return invitationToken;
     }
+
+    public async Task<InvitationToken?> GetLatestByEmployeeIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        var query = _db.InvitationTokens
+            .Where(i => i.TenantId == tenantId && i.EmployeeId == employeeId)
+            .OrderByDescending(i => i.CreatedAt);
+        var invitationToken = await query.FirstOrDefaultAsync(ct);
+        return invitationToken;
+    }
 }

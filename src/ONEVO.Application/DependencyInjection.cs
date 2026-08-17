@@ -44,6 +44,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler>(_ => new NoOpPositionOutboxHandler(OutboxMessageTypes.PositionUpdated));
         services.AddScoped<IOutboxMessageHandler>(_ => new NoOpPositionOutboxHandler(OutboxMessageTypes.PositionArchived));
         services.AddScoped<IOutboxMessageHandler>(_ => new NoOpPositionOutboxHandler(OutboxMessageTypes.PositionRestored));
+        services.AddScoped<IOutboxMessageHandler>(_ => new NoOpEmployeeSecurityOutboxHandler(OutboxMessageTypes.EmployeeSecurityUpdated));
 
         services.AddScoped<IOutboxMessageHandler, PlatformManagerInviteEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, EmployeeOnboardingInviteEmailOutboxHandler>();

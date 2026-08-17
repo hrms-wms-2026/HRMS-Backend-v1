@@ -32,6 +32,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             "admin_password_reset" => RenderAdminPasswordReset(fields),
             "admin_password_changed" => RenderAdminPasswordChanged(),
             "platform_manager_invite" => RenderPlatformManagerInvite(fields),
+            "employee_onboarding_invite" => RenderEmployeeOnboardingInvite(fields),
             "invoice_email" => RenderInvoiceEmail(fields),
             _ => throw new InvalidOperationException(
                 $"Unknown email template '{templateId}'. Add a case in EmailTemplateRenderer.")
@@ -159,6 +160,51 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             </body></html>
             """;
         var text = $"Hi {fullName},\n\nYou've been invited to join ONEXSO Platform Administration.\nAccept: {inviteUrl}\nThis link expires in 72 hours.";
+        return new RenderedEmail(subject, html, text);
+    }
+
+    private RenderedEmail RenderEmployeeOnboardingInvite(IReadOnlyDictionary<string, object?> f)
+    {
+        var firstName = Get(f, "first_name");
+        var token = Get(f, "invite_token");
+        var tenantSlug = Get(f, "tenant_slug");
+        var appBaseUrl = string.IsNullOrWhiteSpace(_options.AppBaseUrl)
+            ? Get(f, "app_base_url", fallback: string.Empty)
+            : _options.AppBaseUrl;
+        appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
+        var inviteUrl = string.IsNullOrWhiteSpace(appBaseUrl)
+            ? $"[invite_url placeholder - set Email:AppBaseUrl] token={token}"
+            : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}";
+
+        var subject = "You're invited to ONEVO — set up your account";
+
+        var html = $"""
+            <!doctype html>
+            <html>
+              <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height:1.5; color:#0f172a;">
+                <h2 style="margin:0 0 12px;">Welcome to ONEVO</h2>
+                <p>Hi {Escape(firstName)},</p>
+                <p>An account has been set up for you. Click the link below to finish setting up your account and sign in:</p>
+                <p><a href="{Escape(inviteUrl)}" style="display:inline-block; padding:10px 16px; background:#0f172a; color:#fff; text-decoration:none; border-radius:6px;">Set up your account</a></p>
+                <p>If the button doesn't work, copy this link into your browser:</p>
+                <p><code style="word-break:break-all;">{Escape(inviteUrl)}</code></p>
+                <hr style="border:none; border-top:1px solid #e2e8f0;" />
+                <p style="font-size:12px; color:#64748b;">This link expires in 24 hours. If you didn't expect this email, you can safely ignore it.</p>
+              </body>
+            </html>
+            """;
+
+        var text = $"""
+            Hi {firstName},
+
+            An account has been set up for you on ONEVO.
+
+            Set up your account and sign in:
+            {inviteUrl}
+
+            This link expires in 24 hours. If you didn't expect this email, you can safely ignore it.
+            """;
+
         return new RenderedEmail(subject, html, text);
     }
 

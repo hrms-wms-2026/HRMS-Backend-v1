@@ -10,4 +10,5 @@ public interface ICurrentUser
     bool IsAuthenticated { get; }
     string? SessionBinding { get => null; }
     DateTimeOffset? SessionExpiresAt { get => null; }
+    Guid? SessionId { get => null; }
 }

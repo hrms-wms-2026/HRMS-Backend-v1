@@ -4,6 +4,7 @@
 
 **Last updated:** 2026-08-13
 **Last updated:** 2026-08-10
+**Last updated:** 2026-08-16
 
 ## Layout
 
@@ -26,6 +27,8 @@ Every file here says `**Status:** Approved...` at the top — that field is the 
 | `next/2026-08-12-objective-viewmodel-owner-fields-fix-design.md` | pending | none written yet — approved 2026-08-12, companion to the frontend repo's `2026-08-12-milestone-tree-mockup-redesign-design.md` |
 | `finished/2026-08-08/2026-08-08-work-management-my-project-milestones-design.md` | finished | `plans/finished/2026-08-08/2026-08-08-work-management-my-project-milestones.md` (5/5 tasks, executed 2026-08-08) |
 | `finished/2026-08-10/2026-08-10-milestone-ownership-and-subtree-access-design.md` | finished | `plans/finished/2026-08-10/2026-08-10-milestone-ownership-and-subtree-access.md` (2/2 tasks, executed 2026-08-10) |
+| `finished/2026-08-16/2026-08-16-multi-legal-entity-employment-foundation-design.md` | finished | `plans/finished/2026-08-16/2026-08-16-multi-legal-entity-employment-foundation/` (3/3 parts, executed 2026-08-16) |
+| `next/2026-08-16-employee-detail-screen-backend-design.md` | pending | `plans/next/2026-08-16-employee-detail-screen-backend.md` (plan written, not yet implemented) |
 
 | `next/2026-08-13-verified-employee-check-in-design.md` | pending | four-part plan under `plans/next/2026-08-13-verified-employee-check-in/`; live AWS/hardware gate and Parts 2-4 remain |
 | `next/2026-08-13-tray-monitoring-completion-roadmap-design.md` | pending | approved master roadmap; detailed plans execute one milestone at a time |

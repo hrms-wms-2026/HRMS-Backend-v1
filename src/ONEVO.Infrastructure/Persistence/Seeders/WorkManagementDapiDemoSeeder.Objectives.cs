@@ -78,6 +78,9 @@ public sealed partial class WorkManagementDapiDemoSeeder
             // may have a different Id if it was seeded before this deterministic key was adopted.
             var category = await db.ProjectCategories.FirstOrDefaultAsync(
                 c => c.TenantId == DapiTenantId && c.Name == name, ct);
+            var category = await db.ProjectCategories.FirstOrDefaultAsync(c => c.Id == categoryId, ct)
+                ?? await db.ProjectCategories.FirstOrDefaultAsync(
+                    c => c.TenantId == DapiTenantId && c.Name == name, ct);
             if (category is null)
             {
                 db.ProjectCategories.Add(new ProjectCategory
@@ -93,6 +96,8 @@ public sealed partial class WorkManagementDapiDemoSeeder
             }
             else
             {
+                // Unique on (tenant_id, name): a leftover SampleData/manual row with the same
+                // name but a different Id must be reused, not inserted again.
                 categoryIdByName[name] = category.Id;
             }
         }

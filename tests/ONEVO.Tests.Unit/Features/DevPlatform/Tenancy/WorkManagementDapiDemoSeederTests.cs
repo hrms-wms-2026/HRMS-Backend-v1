@@ -9,6 +9,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
@@ -228,6 +229,37 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
 
         secondUserCount.Should().Be(firstUserCount);
         secondRolePermissionCount.Should().Be(firstRolePermissionCount);
+    }
+
+    [Fact]
+    public async Task SeedAsync_WhenCategoryNameAlreadyExistsWithDifferentId_DoesNotThrowAndReusesExistingRow()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+
+        var preexistingId = Guid.NewGuid();
+        db.ProjectCategories.Add(new ProjectCategory
+        {
+            Id = preexistingId,
+            TenantId = DapiTenantId,
+            Name = "Engineering",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var act = async () => await RunDemoSeederAsync(db);
+        await act.Should().NotThrowAsync();
+
+        using var verify = CreateContext();
+        var engineering = await verify.ProjectCategories
+            .Where(c => c.TenantId == DapiTenantId && c.Name == "Engineering")
+            .ToListAsync();
+        engineering.Should().HaveCount(1);
+        engineering[0].Id.Should().Be(preexistingId);
+
+        var epos = await verify.Projects.SingleAsync(p => p.Identifier == "EPOS");
+        epos.CategoryId.Should().Be(preexistingId);
     }
 
     [Fact]

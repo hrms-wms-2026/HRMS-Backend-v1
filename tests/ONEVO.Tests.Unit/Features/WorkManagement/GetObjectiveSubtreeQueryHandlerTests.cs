@@ -54,7 +54,7 @@ public class GetObjectiveSubtreeQueryHandlerTests
             .ReturnsAsync(hasMembershipOnAncestor);
 
         var permissionResolver = new Mock<IPermissionResolver>();
-        permissionResolver.Setup(x => x.ResolveAsync(It.IsAny<Guid>(), TenantId, It.IsAny<CancellationToken>()))
+        permissionResolver.Setup(x => x.ResolveAsync(It.IsAny<Guid>(), TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
 
         var employeeRepo = new Mock<IEmployeeRepository>();

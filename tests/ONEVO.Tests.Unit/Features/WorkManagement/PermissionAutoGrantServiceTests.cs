@@ -18,7 +18,7 @@ public class PermissionAutoGrantServiceTests
         List<string> effectivePermissions, Permission? permission)
     {
         var resolver = new Mock<IPermissionResolver>();
-        resolver.Setup(x => x.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(effectivePermissions);
+        resolver.Setup(x => x.ResolveAsync(UserId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(effectivePermissions);
 
         var permissions = new Mock<IPermissionRepository>();
         permissions.Setup(x => x.GetByCodeAsync("projects:access", It.IsAny<CancellationToken>())).ReturnsAsync(permission);
