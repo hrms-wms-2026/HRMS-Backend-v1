@@ -1,9 +1,10 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
 
@@ -13,23 +14,30 @@ namespace ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosi
 /// codebase; per explicit product decision this is the deliberately smaller version). Reuses the
 /// same atomic seat-reservation SQL pattern as onboarding invitations, adapted to create the new
 /// assignment "active" immediately rather than "planned".
+///
+/// Mutation order is end-then-create inside one transaction so the unique index
+/// ix_position_assignments_one_active_primary_per_employee is never violated; a failed create
+/// rolls back the EndActive via <see cref="IUnitOfWork.ExecuteInTransactionAsync{TResult}"/>.
 /// </summary>
 public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmployeePositionCommand, Result<Unit>>
 {
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IPositionRepository _positionRepository;
     private readonly IPositionAssignmentRepository _positionAssignmentRepository;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
 
     public ChangeEmployeePositionCommandHandler(
         IEmployeeRepository employeeRepository,
         IPositionRepository positionRepository,
         IPositionAssignmentRepository positionAssignmentRepository,
+        IUnitOfWork unitOfWork,
         ICurrentUser currentUser)
     {
         _employeeRepository = employeeRepository;
         _positionRepository = positionRepository;
         _positionAssignmentRepository = positionAssignmentRepository;
+        _unitOfWork = unitOfWork;
         _currentUser = currentUser;
     }
 
@@ -48,20 +56,36 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         if (position is null || !position.IsActive)
             return Result<Unit>.NotFound("The selected position does not exist or is not active in this employee's company.");
 
-        var reservedAssignmentId = await _positionAssignmentRepository.TryCreateActiveAssignmentAsync(
-            tenantId, employee.Id, position.Id, request.EffectiveFrom, _currentUser.UserId, ct);
-        if (reservedAssignmentId is null)
-            return Result<Unit>.Conflict("This position has reached its capacity.");
-
         var currentAssignment = await _positionAssignmentRepository.GetActivePrimaryAsync(tenantId, employee.Id, ct);
-        if (currentAssignment is not null)
+
+        try
         {
-            var effectiveTo = request.EffectiveFrom.AddDays(-1);
-            if (effectiveTo < currentAssignment.EffectiveFrom)
-                effectiveTo = currentAssignment.EffectiveFrom;
-            await _positionAssignmentRepository.EndActiveAsync(tenantId, currentAssignment.Id, effectiveTo, ct);
+            await _unitOfWork.ExecuteInTransactionAsync(async txnCt =>
+            {
+                if (currentAssignment is not null)
+                {
+                    var effectiveTo = request.EffectiveFrom.AddDays(-1);
+                    if (effectiveTo < currentAssignment.EffectiveFrom)
+                        effectiveTo = currentAssignment.EffectiveFrom;
+                    await _positionAssignmentRepository.EndActiveAsync(
+                        tenantId, currentAssignment.Id, effectiveTo, txnCt);
+                }
+
+                var reservedAssignmentId = await _positionAssignmentRepository.TryCreateActiveAssignmentAsync(
+                    tenantId, employee.Id, position.Id, request.EffectiveFrom, _currentUser.UserId, txnCt);
+                if (reservedAssignmentId is null)
+                    throw new PositionAtCapacityException();
+
+                return true;
+            }, ct);
+        }
+        catch (PositionAtCapacityException)
+        {
+            return Result<Unit>.Conflict("This position has reached its capacity.");
         }
 
         return Result<Unit>.Success(Unit.Value);
     }
+
+    private sealed class PositionAtCapacityException : Exception;
 }
