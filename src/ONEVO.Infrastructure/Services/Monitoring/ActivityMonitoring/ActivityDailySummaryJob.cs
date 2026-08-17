@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.AppUsage.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
 
@@ -73,6 +75,8 @@ public sealed class ActivityDailySummaryJob : BackgroundService
     {
         await using var scope = _services.CreateAsyncScope();
         var snapshots = scope.ServiceProvider.GetRequiredService<IActivitySnapshotRepository>();
+        var appUsage = scope.ServiceProvider.GetRequiredService<IAppUsageSnapshotRepository>();
+        var meetings = scope.ServiceProvider.GetRequiredService<IMeetingSignalRepository>();
         var summaries = scope.ServiceProvider.GetRequiredService<IActivityDailySummaryRepository>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
@@ -96,8 +100,13 @@ public sealed class ActivityDailySummaryJob : BackgroundService
             if (daySnapshots.Count == 0)
                 continue;
 
+            var dayAppUsage = await appUsage.GetAllByEmployeeDateAsync(tenantId, employeeId, date, ct);
+            var dayMeetings = await meetings.GetAllByEmployeeDateAsync(tenantId, employeeId, date, ct);
+
             var summary = ActivityDailySummaryAggregator.Aggregate(
-                tenantId, employeeId, date, daySnapshots, now);
+                tenantId, employeeId, date, daySnapshots, now,
+                appUsageSnapshots: dayAppUsage,
+                meetingSignals: dayMeetings);
 
             await summaries.UpsertAsync(summary, ct);
             processed++;

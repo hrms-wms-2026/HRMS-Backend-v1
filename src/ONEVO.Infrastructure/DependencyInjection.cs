@@ -262,6 +262,9 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces.IMeetingSignalRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Meetings.EfMeetingSignalRepository>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces.IProductivityReportRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Reports.EfProductivityReportRepository>();
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();
 
