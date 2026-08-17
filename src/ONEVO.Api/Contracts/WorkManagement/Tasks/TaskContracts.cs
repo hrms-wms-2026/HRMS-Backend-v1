@@ -1,3 +1,6 @@
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
+
 namespace ONEVO.Api.Contracts.WorkManagement.Tasks;
 
 public sealed record CreateTaskRequest(
@@ -7,6 +10,12 @@ public sealed record CreateTaskRequest(
 public sealed record EditTaskRequest(
     string Title, string? Description, string Priority,
     DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints);
+
+public sealed record CreateTaskEditRequestRequest(
+    string Title, string? Description, string Priority,
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints);
+
+public sealed record RejectTaskEditRequestRequest(string Comment);
 
 public sealed record MoveTaskStatusRequest(Guid NewStatusId);
 
@@ -18,6 +27,11 @@ public sealed record EditTaskStatusRequest(
 public sealed record CreateTaskStatusRequest(
     string Name, int DisplayOrder, string Visibility, bool MarksTaskComplete, bool RequiresApproval, Guid? ApproverId);
 
+public sealed record TaskStatusOrderUpdateRequest(
+    Guid StatusId, int DisplayOrder, string Visibility, bool MarksTaskComplete);
+
+public sealed record ReorderTaskStatusesRequest(List<TaskStatusOrderUpdateRequest> Updates);
+
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
     string TaskType, Guid StatusId, string Priority, int? StoryPoints,
@@ -27,6 +41,16 @@ public sealed record WorkTaskViewModel(
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,
     Guid? ApproverId, bool MarksTaskComplete, string Visibility);
+
+public sealed record TaskEditRequestViewModel(
+    Guid Id, Guid TaskId, string Status, TaskEditRequestPayload Payload,
+    string RequestedByName, DateTimeOffset CreatedAt);
+
+public static class TaskEditRequestViewModelMapper
+{
+    public static TaskEditRequestViewModel ToViewModel(this TaskEditRequestResponse dto) =>
+        new(dto.Id, dto.TaskId, dto.Status, dto.Payload, dto.RequestedByName, dto.CreatedAt);
+}
 
 public sealed record ObjectiveDeadlineViewModel(Guid ObjectiveId, string Title, DateOnly EndDate);
 
