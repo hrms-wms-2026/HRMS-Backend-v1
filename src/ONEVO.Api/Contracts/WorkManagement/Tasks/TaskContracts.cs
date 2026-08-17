@@ -15,6 +15,9 @@ public sealed record AssignTaskRequest(Guid EmployeeId);
 public sealed record EditTaskStatusRequest(
     string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, string Visibility);
 
+public sealed record CreateTaskStatusRequest(
+    string Name, int DisplayOrder, string Visibility, bool MarksTaskComplete, bool RequiresApproval, Guid? ApproverId);
+
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
     string TaskType, Guid StatusId, string Priority, int? StoryPoints,

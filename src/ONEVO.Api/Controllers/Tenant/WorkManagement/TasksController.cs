@@ -8,7 +8,9 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.AssignTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CancelTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCreationRequest;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.MoveTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.RejectTaskCreationRequest;
@@ -86,12 +88,36 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    [HttpPost("objectives/{objectiveId:guid}/task-statuses")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> CreateStatus(Guid objectiveId, [FromBody] CreateTaskStatusRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new CreateTaskStatusCommand(
+            objectiveId, request.Name, request.DisplayOrder, request.Visibility, request.MarksTaskComplete,
+            request.RequiresApproval, request.ApproverId), ct);
+
+        return result.IsSuccess
+            ? StatusCode(201, result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     [HttpPatch("objectives/{objectiveId:guid}/task-statuses/{id:guid}")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> EditStatus(Guid objectiveId, Guid id, [FromBody] EditTaskStatusRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new EditTaskStatusCommand(
             id, request.Name, request.DisplayOrder, request.RequiresApproval, request.ApproverId, request.Visibility), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpDelete("task-statuses/{id:guid}")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> DeleteStatus(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new DeleteTaskStatusCommand(id), ct);
 
         return result.IsSuccess
             ? NoContent()
