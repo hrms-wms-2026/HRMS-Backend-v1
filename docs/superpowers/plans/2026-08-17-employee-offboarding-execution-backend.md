@@ -446,6 +446,10 @@ public class OffboardingTaskBypassRequest : ITenantOwnedEntity
     public Guid ApproverId { get; set; }
     public string BypassReason { get; set; } = string.Empty;
     public string? PenaltyDescription { get; set; }
+    /// <summary>The task's Status at the moment this request was created (pending/in_progress) -
+    /// restored onto the task by RejectBypassRequestCommandHandler (Task 15) so rejection returns
+    /// the task to exactly where it was, not an assumed default.</summary>
+    public string PriorTaskStatus { get; set; } = string.Empty;
     public string Status { get; set; } = BypassRequestStatuses.Pending;
     public DateTimeOffset RequestedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? DecidedAt { get; set; }
@@ -472,6 +476,7 @@ public sealed class OffboardingTaskBypassRequestConfiguration : IEntityTypeConfi
         builder.HasKey(x => x.Id);
         builder.Property(x => x.BypassReason).HasMaxLength(500).IsRequired();
         builder.Property(x => x.PenaltyDescription).HasMaxLength(500);
+        builder.Property(x => x.PriorTaskStatus).HasMaxLength(20).IsRequired();
         builder.Property(x => x.Status).HasMaxLength(20).IsRequired();
         builder.Property(x => x.DecisionComment).HasMaxLength(500);
         builder.HasIndex(x => new { x.TenantId, x.ApproverId, x.Status });
@@ -728,7 +733,8 @@ git commit -m "feat: migrate offboarding_records and offboarding_task_bypass_req
 - Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/EmployeeChecklistTaskStatusesTests.cs`
 
 **Interfaces:**
-- Produces: `EmployeeChecklistTask.IsBypassable`/`BypassPenaltyDescription`/`Category`; `EmployeeChecklistTaskStatuses.Pending/InProgress/Completed/Bypassed`; `ChecklistTaskDefinition` gains three trailing optional-default parameters (`IsBypassable = false, BypassPenaltyDescription = null, Category = null`) so every existing 7-positional-argument test call site in `ChecklistTaskJsonContractTests.cs` keeps compiling unchanged — Task 6 and Task 10 (instantiation) consume these.
+- Produces: `EmployeeChecklistTask.IsBypassable`/`BypassPenaltyDescription`/`Category`/`OffboardingRecordId`; `EmployeeChecklistTaskStatuses.Pending/InProgress/Completed/Bypassed`; `ChecklistTaskDefinition` gains three trailing optional-default parameters (`IsBypassable = false, BypassPenaltyDescription = null, Category = null`) so every existing 7-positional-argument test call site in `ChecklistTaskJsonContractTests.cs` keeps compiling unchanged — Task 6 and Task 11 (instantiation) consume these.
+- **`OffboardingRecordId` (`Guid?`, nullable, null for onboarding tasks) scopes a task to one specific offboarding attempt.** Without it, a cancelled-and-restarted offboarding (Task 12) would leave two sets of `lifecycle_type='offboarding'` rows for the same employee with no way to tell which is current — the completion gate (Task 16) and task list (Task 13) would silently mix an abandoned attempt's tasks with the live one. `ChecklistTaskJsonContract.ToEmployeeChecklistTasks` deliberately does **not** set this (it has no concept of an offboarding record, only template/employee/lifecycle) — `SelectOffboardingChecklistCommandHandler` (Task 11) sets it on each returned task as a post-processing step before saving.
 
 - [ ] **Step 1: Entity and status constants**
 
@@ -769,6 +775,7 @@ public class EmployeeChecklistTask : ITenantOwnedEntity
     public bool IsBypassable { get; set; } = false;
     public string? BypassPenaltyDescription { get; set; }
     public string? Category { get; set; }
+    public Guid? OffboardingRecordId { get; set; }
     public string Status { get; set; } = EmployeeChecklistTaskStatuses.Pending;
     public DateTimeOffset? CompletedAt { get; set; }
 }
@@ -782,6 +789,9 @@ In `EmployeeChecklistTaskConfiguration.cs`, add inside `Configure(...)` (after t
         builder.Property(x => x.IsBypassable).HasDefaultValue(false).IsRequired();
         builder.Property(x => x.BypassPenaltyDescription).HasMaxLength(500);
         builder.Property(x => x.Category).HasMaxLength(40);
+        builder.HasIndex(x => new { x.TenantId, x.OffboardingRecordId });
+        builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.OffboardingRecord>().WithMany()
+            .HasForeignKey(x => x.OffboardingRecordId).OnDelete(DeleteBehavior.Restrict);
 ```
 
 - [ ] **Step 3: Generate the column-only migration**
@@ -791,7 +801,7 @@ Run:
 dotnet ef migrations add AddOffboardingFieldsToEmployeeChecklistTask --project src/ONEVO.Infrastructure --startup-project src/ONEVO.Api --output-dir Migrations
 ```
 
-Rename to `20260817140000_AddOffboardingFieldsToEmployeeChecklistTask.cs` if needed. This is a column-only change on an already-RLS-covered table (`employee_checklist_tasks` already has `tenant_isolation` from its original migration) — verify the generated `Up()` contains only three `AddColumn` calls and no `TenantTables` array is needed (per the Global Constraints rule).
+Rename to `20260817140000_AddOffboardingFieldsToEmployeeChecklistTask.cs` if needed. This is a change on an already-RLS-covered table (`employee_checklist_tasks` already has `tenant_isolation` from its original migration) — verify the generated `Up()` contains four `AddColumn` calls (`is_bypassable`, `bypass_penalty_description`, `category`, `offboarding_record_id`), one `AddForeignKey` (to `offboarding_records` — this is why this migration's timestamp must sort after Task 4's, which creates that table), and one `CreateIndex`. No `TenantTables` array is needed (per the Global Constraints rule — `employee_checklist_tasks` is already covered, and adding a column/FK to an existing table doesn't touch its RLS policy).
 
 - [ ] **Step 4: Extend `ChecklistTaskDefinition` and the contract's parse/serialize/instantiate methods**
 
@@ -1562,24 +1572,2157 @@ git commit -m "feat: add Start Offboarding endpoint"
 
 ---
 
-**Remaining tasks (10-17) continue in the same vertical-slice/TDD shape as Tasks 9 and complete the plan:**
+### Task 10: Get Offboarding + list offboarding checklist matches
 
-- **Task 10 — Get Offboarding + list offboarding checklist matches** (`GET .../offboarding`, `GET .../offboarding/checklist-matches`): query + handler + controller actions on `EmployeeOffboardingController`, using `IOffboardingRecordRepository.GetLatestByEmployeeIdAsync` (Task 2) and `IChecklistTemplateRepository.ListOffboardingMatchesAsync` (Task 7).
-- **Task 11 — Select Checklist** (`POST .../offboarding/select-checklist`): command + handler using `EfEmployeeChecklistTaskRepository.InstantiateAsync` (Task 6) anchored on `LastWorkingDate`, sets `ChecklistTemplateId`/`Status=InProgress` on the tracked `OffboardingRecord` from `GetTrackedByIdAsync` (Task 2).
-- **Task 12 — Cancel Offboarding** (`POST .../offboarding/cancel`): command + handler reverting `Employee.EmploymentStatusId` to `OffboardingRecord.PreviousEmploymentStatusId`, setting `Status=Cancelled`, only from `Initiated`/`InProgress`.
-- **Task 13 — List and patch employee checklist tasks** (`GET .../checklist-tasks`, `PATCH .../checklist-tasks/{taskId}`): new `EmployeeChecklistTasksController` (route `api/v1/employees/{employeeId}/checklist-tasks`); the patch handler needs a new `IEmployeeChecklistTaskRepository.GetTrackedByIdAsync(tenantId, employeeId, taskId, ct)` method (doesn't exist today — only `ListByEmployeeAsync` does) added to that interface/implementation as part of this task.
-- **Task 14 — Complete task and create bypass request** (`POST .../checklist-tasks/{taskId}/complete`, `POST .../checklist-tasks/{taskId}/bypass-requests`): the complete handler blocks (409) if `IOffboardingTaskBypassRequestRepository.HasPendingForTaskAsync` is true (Task 3); the bypass-request handler validates `task.IsBypassable`, `approverId != requestedById`, and the one-pending-per-task partial unique index (catch the DB constraint violation as a `Conflict`, matching the `UniqueConstraintConflictException` pattern from `ChangeEmployeePositionCommandHandler`).
-- **Task 15 — Approve/reject bypass request, list my pending** (`POST /api/v1/offboarding-bypass-requests/{id}/approve`, `.../reject`, `GET /api/v1/offboarding-bypass-requests?status=pending`): new `OffboardingBypassRequestsController`; approve/reject handlers enforce `CurrentUser.UserId == request.ApproverId`, approve sets the task to `Bypassed`, reject/cancel returns it to its prior status (track prior status on the bypass request at creation time, or re-derive from whether the task had any `CompletedAt`/other in-flight state — simplest: store `PriorTaskStatus` as an extra field on `OffboardingTaskBypassRequest` set at creation, since reject must restore the exact status the task was in, not assume `Pending`).
-- **Task 16 — Complete Employee Exit** (`POST .../offboarding/complete`): the gate check — "every `IsRequired` task for this offboarding is `Completed` or `Bypassed`" — is written as a standalone pure function (e.g. `static bool AllRequiredTasksResolved(IReadOnlyList<EmployeeChecklistTask> tasks)`) with its own unit tests covering all-done/one-pending/non-required-still-pending cases, called from inside the full handler that also does the `EmploymentStatusId` mapping (`Resigned` if reason is `resignation` else `Terminated`), `TerminationDate`, `User.IsActive = false` (via `IUserRepository.GetByIdAsync` + `IUnitOfWork.SaveChangesAsync`, per the verified-tracked finding in the design spec §3), `ISessionRepository.RevokeAllActiveByUserIdAsync` (Task 8), and `OffboardingRecord.Status = Completed`/`CompletedAt`.
-- **Task 17 — Read-only guard on `ChangeEmployeePositionCommandHandler`**: a small `IEmployeeOffboardingLockGuard.EnsureMutable(tenantId, employeeId, ct) -> Task<Result?>` (returns `null` when mutable, a `Conflict` `Result` otherwise) checking `Employee.EmploymentStatusId` against `Resigned`/`Terminated`; call it as the first line inside `ChangeEmployeePositionCommandHandler.Handle` after the employee is loaded, returning its `Result` immediately if non-null.
-- **Task 18 — Integration test suite** (`tests/ONEVO.Tests.Integration/CoreHr/Offboarding/OffboardingExecutionIntegrationTests.cs`, following the `ChecklistTemplatesIntegrationTests.cs` Testcontainers.PostgreSQL/`IAsyncLifetime` pattern exactly): full Start→Select-Checklist→Complete-tasks→Complete-Exit happy path; cancel-then-restart; bypass request→approve→task `Bypassed`; bypass request→reject→task returns to prior status; `change-position` returns 409 after completion; RLS coverage confirmed automatically once Task 4's migration is in place (no test-file changes needed for that part — `TenantIsolationArchitectureTests` picks it up).
+**Files:**
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/GetOffboarding/GetOffboardingQuery.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/GetOffboarding/GetOffboardingQueryHandler.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/GetOffboarding/OffboardingRecordResponse.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListOffboardingChecklistMatches/ListOffboardingChecklistMatchesQuery.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListOffboardingChecklistMatches/ListOffboardingChecklistMatchesQueryHandler.cs`
+- Modify: `src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeOffboardingController.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/GetOffboardingQueryHandlerTests.cs`
 
-Each of Tasks 10-18 should be written out with the same Files/Interfaces/failing-test/implementation/passing-test/commit structure as Task 9 before execution begins — this section names the exact classes, methods, and sequencing so that expansion is mechanical, not a design decision.
+**Interfaces:**
+- Consumes: `IOffboardingRecordRepository.GetLatestByEmployeeIdAsync` (Task 2), `IChecklistTemplateRepository.ListOffboardingMatchesAsync` (Task 7), `IPositionAssignmentRepository.GetActivePrimaryAsync(tenantId, employeeId, ct)` (existing, used by `ChangeEmployeePositionCommandHandler`, returns the active primary `PositionAssignment` with `.PositionId`).
+- Produces: `OffboardingRecordResponse(Guid Id, Guid EmployeeId, string Reason, DateOnly LastWorkingDate, string KnowledgeRiskLevel, string? RehireEligibility, string? Notes, Guid? ChecklistTemplateId, string Status, DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt, DateTimeOffset? CompletedAt)`; `GetOffboardingQuery(Guid EmployeeId) : IRequest<Result<OffboardingRecordResponse?>>` (Success with a `null` Value means "never offboarded", not an error); `ChecklistTemplateMatchResponse(Guid Id, string Name, string MatchLevel)`; `ListOffboardingChecklistMatchesQuery(Guid EmployeeId) : IRequest<Result<IReadOnlyList<ChecklistTemplateMatchResponse>>>` — Task 11's frontend consumer and Task 16's read-only-banner logic rely on `OffboardingRecordResponse.Status`.
+
+- [ ] **Step 1: Query records and response DTO**
+
+Create `GetOffboardingQuery.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.GetOffboarding;
+
+public sealed record GetOffboardingQuery(Guid EmployeeId) : IRequest<Result<OffboardingRecordResponse?>>;
+```
+
+Create `OffboardingRecordResponse.cs`:
+
+```csharp
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.GetOffboarding;
+
+public sealed record OffboardingRecordResponse(
+    Guid Id, Guid EmployeeId, string Reason, DateOnly LastWorkingDate, string KnowledgeRiskLevel,
+    string? RehireEligibility, string? Notes, Guid? ChecklistTemplateId, string Status,
+    DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt, DateTimeOffset? CompletedAt);
+```
+
+- [ ] **Step 2: Handler**
+
+Create `GetOffboardingQueryHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.GetOffboarding;
+
+public class GetOffboardingQueryHandler(IOffboardingRecordRepository repository, ICurrentUser currentUser)
+    : IRequestHandler<GetOffboardingQuery, Result<OffboardingRecordResponse?>>
+{
+    public async Task<Result<OffboardingRecordResponse?>> Handle(GetOffboardingQuery request, CancellationToken ct)
+    {
+        var record = await repository.GetLatestByEmployeeIdAsync(currentUser.TenantId, request.EmployeeId, ct);
+        if (record is null)
+            return Result<OffboardingRecordResponse?>.Success(null);
+
+        return Result<OffboardingRecordResponse?>.Success(new OffboardingRecordResponse(
+            record.Id, record.EmployeeId, record.Reason, record.LastWorkingDate, record.KnowledgeRiskLevel,
+            record.RehireEligibility, record.Notes, record.ChecklistTemplateId, record.Status,
+            record.CreatedAt, record.UpdatedAt, record.CompletedAt));
+    }
+}
+```
+
+- [ ] **Step 3: Checklist-matches query and handler**
+
+Create `ListOffboardingChecklistMatchesQuery.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListOffboardingChecklistMatches;
+
+public sealed record ChecklistTemplateMatchResponse(Guid Id, string Name, string MatchLevel);
+
+public sealed record ListOffboardingChecklistMatchesQuery(Guid EmployeeId) : IRequest<Result<IReadOnlyList<ChecklistTemplateMatchResponse>>>;
+```
+
+Create `ListOffboardingChecklistMatchesQueryHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListOffboardingChecklistMatches;
+
+public class ListOffboardingChecklistMatchesQueryHandler(
+    IEmployeeRepository employeeRepository,
+    IPositionAssignmentRepository positionAssignmentRepository,
+    IChecklistTemplateRepository checklistTemplateRepository,
+    ICurrentUser currentUser)
+    : IRequestHandler<ListOffboardingChecklistMatchesQuery, Result<IReadOnlyList<ChecklistTemplateMatchResponse>>>
+{
+    public async Task<Result<IReadOnlyList<ChecklistTemplateMatchResponse>>> Handle(
+        ListOffboardingChecklistMatchesQuery request, CancellationToken ct)
+    {
+        var tenantId = currentUser.TenantId;
+        var employee = await employeeRepository.GetByIdAsync(tenantId, request.EmployeeId, ct);
+        if (employee is null)
+            return Result<IReadOnlyList<ChecklistTemplateMatchResponse>>.NotFound("The employee could not be found.");
+        if (employee.LegalEntityId is not Guid legalEntityId)
+            return Result<IReadOnlyList<ChecklistTemplateMatchResponse>>.UnprocessableEntity("This employee has no assigned legal entity.");
+
+        var activeAssignment = await positionAssignmentRepository.GetActivePrimaryAsync(tenantId, employee.Id, ct);
+
+        var matches = await checklistTemplateRepository.ListOffboardingMatchesAsync(
+            tenantId, legalEntityId, employee.DepartmentId, activeAssignment?.PositionId, ct);
+
+        return Result<IReadOnlyList<ChecklistTemplateMatchResponse>>.Success(
+            matches.Select(m => new ChecklistTemplateMatchResponse(m.Template.Id, m.Template.Name, m.MatchLevel)).ToList());
+    }
+}
+```
+
+- [ ] **Step 4: Controller actions**
+
+In `EmployeeOffboardingController.cs`, add (imports for the two new query namespaces):
+
+```csharp
+    [HttpGet]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> Get(Guid employeeId, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetOffboardingQuery(employeeId), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("checklist-matches")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetChecklistMatches(Guid employeeId, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new ListOffboardingChecklistMatchesQuery(employeeId), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+```
+
+- [ ] **Step 5: Handler test**
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/GetOffboardingQueryHandlerTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.Queries.GetOffboarding;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class GetOffboardingQueryHandlerTests
+{
+    [Fact]
+    public async Task Handle_NoRecordExists_ReturnsSuccessWithNullValue()
+    {
+        var repo = new Mock<IOffboardingRecordRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        repo.Setup(r => r.GetLatestByEmployeeIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OffboardingRecord?)null);
+
+        var result = await new GetOffboardingQueryHandler(repo.Object, currentUser.Object)
+            .Handle(new GetOffboardingQuery(employeeId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_RecordExists_MapsToResponse()
+    {
+        var repo = new Mock<IOffboardingRecordRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        repo.Setup(r => r.GetLatestByEmployeeIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OffboardingRecord
+            {
+                Id = Guid.NewGuid(), EmployeeId = employeeId, Reason = "resignation",
+                LastWorkingDate = new DateOnly(2026, 12, 1), KnowledgeRiskLevel = "low",
+                Status = OffboardingRecordStatuses.InProgress,
+            });
+
+        var result = await new GetOffboardingQueryHandler(repo.Object, currentUser.Object)
+            .Handle(new GetOffboardingQuery(employeeId), CancellationToken.None);
+
+        result.Value!.Status.Should().Be(OffboardingRecordStatuses.InProgress);
+        result.Value.Reason.Should().Be("resignation");
+    }
+}
+```
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~GetOffboardingQueryHandlerTests`
+Expected: PASS. Also run `dotnet build src/ONEVO.Api` to confirm the controller wiring compiles.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeOffboardingController.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/GetOffboardingQueryHandlerTests.cs
+git commit -m "feat: add Get Offboarding and list offboarding checklist matches endpoints"
+```
+
+---
+
+### Task 11: Select Checklist (instantiate tasks)
+
+**Files:**
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/SelectOffboardingChecklist/SelectOffboardingChecklistCommand.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/SelectOffboardingChecklist/SelectOffboardingChecklistCommandHandler.cs`
+- Create: `src/ONEVO.Api/Contracts/CoreHr/Offboarding/SelectOffboardingChecklistRequest.cs`
+- Modify: `src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeOffboardingController.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/SelectOffboardingChecklistCommandHandlerTests.cs`
+
+**Interfaces:**
+- Consumes: `IOffboardingRecordRepository.GetOpenByEmployeeIdAsync/SaveChangesAsync` (Task 2), `IChecklistTemplateRepository.GetByIdAsync` (existing), `EfEmployeeChecklistTaskRepository.InstantiateAsync` (Task 6, now offboarding-capable), `IEmployeeRepository.GetByIdAsync`.
+- Produces: `SelectOffboardingChecklistCommand(Guid EmployeeId, Guid TemplateId) : IRequest<Result>` — sets every instantiated task's `OffboardingRecordId` (Task 5's new column) before saving, which Tasks 13/16 depend on for correct scoping.
+
+- [ ] **Step 1: Command and contract**
+
+Create `SelectOffboardingChecklistCommand.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.SelectOffboardingChecklist;
+
+public sealed record SelectOffboardingChecklistCommand(Guid EmployeeId, Guid TemplateId) : IRequest<Result>;
+```
+
+Create `src/ONEVO.Api/Contracts/CoreHr/Offboarding/SelectOffboardingChecklistRequest.cs`:
+
+```csharp
+namespace ONEVO.Api.Contracts.CoreHr.Offboarding;
+
+public sealed record SelectOffboardingChecklistRequest(Guid TemplateId);
+```
+
+- [ ] **Step 2: Handler**
+
+Create `SelectOffboardingChecklistCommandHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.SelectOffboardingChecklist;
+
+public class SelectOffboardingChecklistCommandHandler(
+    IOffboardingRecordRepository offboardingRecordRepository,
+    IChecklistTemplateRepository checklistTemplateRepository,
+    IEmployeeChecklistTaskRepository employeeChecklistTaskRepository,
+    IEmployeeRepository employeeRepository,
+    ICurrentUser currentUser,
+    IDateTimeProvider clock)
+    : IRequestHandler<SelectOffboardingChecklistCommand, Result>
+{
+    public async Task<Result> Handle(SelectOffboardingChecklistCommand request, CancellationToken ct)
+    {
+        var tenantId = currentUser.TenantId;
+
+        var record = await offboardingRecordRepository.GetOpenByEmployeeIdAsync(tenantId, request.EmployeeId, ct);
+        if (record is null)
+            return Result.NotFound("No open offboarding was found for this employee.");
+        if (record.Status != OffboardingRecordStatuses.Initiated)
+            return Result.Conflict("A checklist has already been selected for this offboarding.");
+
+        var template = await checklistTemplateRepository.GetByIdAsync(tenantId, request.TemplateId, ct);
+        if (template is null || !template.IsActive || template.TemplateType != "offboarding")
+            return Result.NotFound("The selected checklist template does not exist or is not an active offboarding template.");
+
+        var employee = await employeeRepository.GetByIdAsync(tenantId, request.EmployeeId, ct);
+        if (employee is null)
+            return Result.NotFound("The employee could not be found.");
+        if (template.LegalEntityId != employee.LegalEntityId)
+            return Result.UnprocessableEntity("This template does not belong to the employee's company.");
+
+        var tasks = await employeeChecklistTaskRepository.InstantiateAsync(
+            template, employee.Id, employee.UserId, editedTasksJson: null, anchorDate: record.LastWorkingDate, ct);
+        foreach (var task in tasks)
+            task.OffboardingRecordId = record.Id;
+
+        record.ChecklistTemplateId = template.Id;
+        record.Status = OffboardingRecordStatuses.InProgress;
+        record.UpdatedAt = clock.UtcNow;
+
+        await offboardingRecordRepository.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+```
+
+(`InstantiateAsync` adds the new `EmployeeChecklistTask` rows to the same tracked `ApplicationDbContext` that `record` came from — both repositories share one scoped `DbContext` instance, so the single `SaveChangesAsync` call at the end commits the new tasks and the record's tracked changes together, same pattern as Task 9's `StartOffboardingCommandHandler`.)
+
+- [ ] **Step 3: Controller action**
+
+In `EmployeeOffboardingController.cs`, add:
+
+```csharp
+    [HttpPost("select-checklist")]
+    [RequirePermission("employees:write")]
+    [Idempotent]
+    public async Task<IActionResult> SelectChecklist(Guid employeeId, [FromBody] SelectOffboardingChecklistRequest request, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new SelectOffboardingChecklistCommand(employeeId, request.TemplateId), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+```
+
+- [ ] **Step 4: Handler test**
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/SelectOffboardingChecklistCommandHandlerTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.SelectOffboardingChecklist;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using Xunit;
+using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class SelectOffboardingChecklistCommandHandlerTests
+{
+    private readonly Mock<IOffboardingRecordRepository> _offboardingRecordRepository = new();
+    private readonly Mock<IChecklistTemplateRepository> _checklistTemplateRepository = new();
+    private readonly Mock<IEmployeeChecklistTaskRepository> _employeeChecklistTaskRepository = new();
+    private readonly Mock<IEmployeeRepository> _employeeRepository = new();
+    private readonly Mock<ICurrentUser> _currentUser = new();
+    private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Guid _tenantId = Guid.NewGuid();
+    private readonly Guid _employeeId = Guid.NewGuid();
+    private readonly Guid _templateId = Guid.NewGuid();
+    private readonly Guid _legalEntityId = Guid.NewGuid();
+
+    public SelectOffboardingChecklistCommandHandlerTests()
+    {
+        _currentUser.Setup(c => c.TenantId).Returns(_tenantId);
+        _clock.Setup(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
+    }
+
+    private SelectOffboardingChecklistCommandHandler CreateSut() => new(
+        _offboardingRecordRepository.Object, _checklistTemplateRepository.Object,
+        _employeeChecklistTaskRepository.Object, _employeeRepository.Object, _currentUser.Object, _clock.Object);
+
+    [Fact]
+    public async Task Handle_NoOpenRecord_ReturnsNotFound()
+    {
+        _offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OffboardingRecord?)null);
+
+        var result = await CreateSut().Handle(new SelectOffboardingChecklistCommand(_employeeId, _templateId), CancellationToken.None);
+
+        result.StatusCode.Should().Be(404);
+    }
+
+    [Fact]
+    public async Task Handle_ChecklistAlreadySelected_ReturnsConflict()
+    {
+        _offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OffboardingRecord { Id = Guid.NewGuid(), Status = OffboardingRecordStatuses.InProgress });
+
+        var result = await CreateSut().Handle(new SelectOffboardingChecklistCommand(_employeeId, _templateId), CancellationToken.None);
+
+        result.StatusCode.Should().Be(409);
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_InstantiatesTasksAndAdvancesStatus()
+    {
+        var record = new OffboardingRecord { Id = Guid.NewGuid(), EmployeeId = _employeeId, Status = OffboardingRecordStatuses.Initiated, LastWorkingDate = new DateOnly(2026, 12, 1) };
+        _offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(record);
+        _checklistTemplateRepository.Setup(r => r.GetByIdAsync(_tenantId, _templateId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChecklistTemplate { Id = _templateId, TenantId = _tenantId, TemplateType = "offboarding", IsActive = true, LegalEntityId = _legalEntityId, TasksJson = "[]" });
+        var employee = new EmployeeEntity { Id = _employeeId, LegalEntityId = _legalEntityId, UserId = Guid.NewGuid() };
+        _employeeRepository.Setup(r => r.GetByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(employee);
+        var instantiatedTasks = new List<EmployeeChecklistTask> { new() { Id = Guid.NewGuid(), TenantId = _tenantId } };
+        _employeeChecklistTaskRepository
+            .Setup(r => r.InstantiateAsync(It.IsAny<ChecklistTemplate>(), _employeeId, employee.UserId, null, record.LastWorkingDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(instantiatedTasks);
+
+        var result = await CreateSut().Handle(new SelectOffboardingChecklistCommand(_employeeId, _templateId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        instantiatedTasks[0].OffboardingRecordId.Should().Be(record.Id);
+        record.Status.Should().Be(OffboardingRecordStatuses.InProgress);
+        record.ChecklistTemplateId.Should().Be(_templateId);
+        _offboardingRecordRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+}
+```
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~SelectOffboardingChecklistCommandHandlerTests`
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/SelectOffboardingChecklist/ src/ONEVO.Api/Contracts/CoreHr/Offboarding/SelectOffboardingChecklistRequest.cs src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeOffboardingController.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/SelectOffboardingChecklistCommandHandlerTests.cs
+git commit -m "feat: add Select Checklist endpoint (instantiate offboarding tasks)"
+```
+
+---
+
+### Task 12: Cancel Offboarding
+
+**Files:**
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CancelOffboarding/CancelOffboardingCommand.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CancelOffboarding/CancelOffboardingCommandHandler.cs`
+- Modify: `src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeOffboardingController.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/CancelOffboardingCommandHandlerTests.cs`
+
+**Interfaces:**
+- Consumes: `IOffboardingRecordRepository.GetOpenByEmployeeIdAsync/SaveChangesAsync` (Task 2), `IEmployeeRepository.GetTrackedByIdAsync`.
+- Produces: `CancelOffboardingCommand(Guid EmployeeId) : IRequest<Result>`.
+
+- [ ] **Step 1: Command**
+
+Create `CancelOffboardingCommand.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.CancelOffboarding;
+
+public sealed record CancelOffboardingCommand(Guid EmployeeId) : IRequest<Result>;
+```
+
+- [ ] **Step 2: Handler**
+
+Create `CancelOffboardingCommandHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Lookups;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.CancelOffboarding;
+
+public class CancelOffboardingCommandHandler(
+    IOffboardingRecordRepository offboardingRecordRepository,
+    IEmployeeRepository employeeRepository,
+    ICurrentUser currentUser,
+    IDateTimeProvider clock)
+    : IRequestHandler<CancelOffboardingCommand, Result>
+{
+    public async Task<Result> Handle(CancelOffboardingCommand request, CancellationToken ct)
+    {
+        var tenantId = currentUser.TenantId;
+
+        var record = await offboardingRecordRepository.GetOpenByEmployeeIdAsync(tenantId, request.EmployeeId, ct);
+        if (record is null)
+            return Result.NotFound("No open offboarding was found for this employee.");
+
+        var employee = await employeeRepository.GetTrackedByIdAsync(tenantId, request.EmployeeId, ct);
+        if (employee is null)
+            return Result.NotFound("The employee could not be found.");
+
+        employee.EmploymentStatusId = record.PreviousEmploymentStatusId ?? EmploymentStatusIds.Active;
+        record.Status = OffboardingRecordStatuses.Cancelled;
+        record.UpdatedAt = clock.UtcNow;
+
+        await offboardingRecordRepository.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+```
+
+- [ ] **Step 3: Controller action**
+
+In `EmployeeOffboardingController.cs`, add:
+
+```csharp
+    [HttpPost("cancel")]
+    [RequirePermission("employees:write")]
+    [Idempotent]
+    public async Task<IActionResult> Cancel(Guid employeeId, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new CancelOffboardingCommand(employeeId), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+```
+
+- [ ] **Step 4: Handler test**
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/CancelOffboardingCommandHandlerTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CancelOffboarding;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Lookups;
+using Xunit;
+using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class CancelOffboardingCommandHandlerTests
+{
+    [Fact]
+    public async Task Handle_RevertsEmploymentStatus_AndCancelsRecord()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var offboardingRecordRepository = new Mock<IOffboardingRecordRepository>();
+        var employeeRepository = new Mock<IEmployeeRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        var clock = new Mock<IDateTimeProvider>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        clock.Setup(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
+
+        var record = new OffboardingRecord { Id = Guid.NewGuid(), Status = OffboardingRecordStatuses.InProgress, PreviousEmploymentStatusId = EmploymentStatusIds.OnLeave };
+        offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        var employee = new EmployeeEntity { Id = employeeId, EmploymentStatusId = EmploymentStatusIds.Offboarding };
+        employeeRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
+
+        var result = await new CancelOffboardingCommandHandler(offboardingRecordRepository.Object, employeeRepository.Object, currentUser.Object, clock.Object)
+            .Handle(new CancelOffboardingCommand(employeeId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        employee.EmploymentStatusId.Should().Be(EmploymentStatusIds.OnLeave);
+        record.Status.Should().Be(OffboardingRecordStatuses.Cancelled);
+    }
+
+    [Fact]
+    public async Task Handle_NullPreviousStatus_FallsBackToActive()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var offboardingRecordRepository = new Mock<IOffboardingRecordRepository>();
+        var employeeRepository = new Mock<IEmployeeRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        var clock = new Mock<IDateTimeProvider>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        clock.Setup(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
+
+        var record = new OffboardingRecord { Id = Guid.NewGuid(), Status = OffboardingRecordStatuses.Initiated, PreviousEmploymentStatusId = null };
+        offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        var employee = new EmployeeEntity { Id = employeeId };
+        employeeRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
+
+        await new CancelOffboardingCommandHandler(offboardingRecordRepository.Object, employeeRepository.Object, currentUser.Object, clock.Object)
+            .Handle(new CancelOffboardingCommand(employeeId), CancellationToken.None);
+
+        employee.EmploymentStatusId.Should().Be(EmploymentStatusIds.Active);
+    }
+}
+```
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~CancelOffboardingCommandHandlerTests`
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CancelOffboarding/ src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeOffboardingController.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/CancelOffboardingCommandHandlerTests.cs
+git commit -m "feat: add Cancel Offboarding endpoint"
+```
+
+---
+
+### Task 13: List and patch employee checklist tasks
+
+**Files:**
+- Modify: `src/ONEVO.Application/Features/CoreHr/Onboarding/RepositoryInterfaces/IOnboardingPersistenceRepositories.cs`
+- Modify: `src/ONEVO.Infrastructure/Persistence/Repositories/CoreHr/EfOnboardingPersistenceRepositories.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListEmployeeChecklistTasks/ListEmployeeChecklistTasksQuery.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListEmployeeChecklistTasks/ListEmployeeChecklistTasksQueryHandler.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListEmployeeChecklistTasks/EmployeeChecklistTaskResponse.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/UpdateEmployeeChecklistTask/UpdateEmployeeChecklistTaskCommand.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/UpdateEmployeeChecklistTask/UpdateEmployeeChecklistTaskCommandHandler.cs`
+- Create: `src/ONEVO.Api/Contracts/CoreHr/Offboarding/UpdateEmployeeChecklistTaskRequest.cs`
+- Create: `src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeChecklistTasksController.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/UpdateEmployeeChecklistTaskCommandHandlerTests.cs`
+
+**Interfaces:**
+- Produces: `IEmployeeChecklistTaskRepository.GetTrackedByIdAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)` and `.ListByOffboardingRecordAsync(Guid tenantId, Guid offboardingRecordId, CancellationToken ct = default)` — Task 14 (complete/bypass) and Task 15 (approve/reject) reuse `GetTrackedByIdAsync`; Task 16 (completion gate) reuses `ListByOffboardingRecordAsync`. `EmployeeChecklistTaskResponse(Guid Id, string TaskTitle, string OwnerType, Guid AssignedToId, DateOnly DueDate, bool IsRequired, bool IsBypassable, string? BypassPenaltyDescription, string? Category, string Status, DateTimeOffset? CompletedAt)`.
+
+- [ ] **Step 1: Repository interface additions**
+
+In `IOnboardingPersistenceRepositories.cs`, in `IEmployeeChecklistTaskRepository`, add:
+
+```csharp
+    /// <summary>Tenant+id lookup with no employee scoping - used both by employee-scoped handlers
+    /// (which additionally verify task.EmployeeId == the route's employeeId) and by cross-employee
+    /// bypass-approval handlers (Task 15), which only know the bypass request's task id.</summary>
+    Task<EmployeeChecklistTask?> GetTrackedByIdAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
+
+    /// <summary>Tasks belonging to one specific offboarding attempt (via EmployeeChecklistTask.
+    /// OffboardingRecordId) - not "all this employee's offboarding tasks ever", which would wrongly
+    /// include a prior cancelled attempt's rows. See Task 5's OffboardingRecordId rationale.</summary>
+    Task<IReadOnlyList<EmployeeChecklistTask>> ListByOffboardingRecordAsync(Guid tenantId, Guid offboardingRecordId, CancellationToken ct = default);
+```
+
+- [ ] **Step 2: Implementations**
+
+In `EfEmployeeChecklistTaskRepository`, add:
+
+```csharp
+    public Task<EmployeeChecklistTask?> GetTrackedByIdAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
+        => db.EmployeeChecklistTasks.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == taskId, ct);
+
+    public Task<IReadOnlyList<EmployeeChecklistTask>> ListByOffboardingRecordAsync(Guid tenantId, Guid offboardingRecordId, CancellationToken ct = default)
+        => db.EmployeeChecklistTasks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OffboardingRecordId == offboardingRecordId)
+            .OrderBy(x => x.Sequence).ThenBy(x => x.Id)
+            .ToListAsync(ct)
+            .ContinueWith(t => (IReadOnlyList<EmployeeChecklistTask>)t.Result, ct);
+```
+
+- [ ] **Step 3: List query**
+
+Create `ListEmployeeChecklistTasksQuery.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListEmployeeChecklistTasks;
+
+public sealed record ListEmployeeChecklistTasksQuery(Guid EmployeeId) : IRequest<Result<IReadOnlyList<EmployeeChecklistTaskResponse>>>;
+```
+
+Create `EmployeeChecklistTaskResponse.cs`:
+
+```csharp
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListEmployeeChecklistTasks;
+
+public sealed record EmployeeChecklistTaskResponse(
+    Guid Id, string TaskTitle, string OwnerType, Guid AssignedToId, DateOnly DueDate, bool IsRequired,
+    bool IsBypassable, string? BypassPenaltyDescription, string? Category, string Status, DateTimeOffset? CompletedAt);
+```
+
+Create `ListEmployeeChecklistTasksQueryHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListEmployeeChecklistTasks;
+
+public class ListEmployeeChecklistTasksQueryHandler(
+    IOffboardingRecordRepository offboardingRecordRepository,
+    IEmployeeChecklistTaskRepository taskRepository,
+    ICurrentUser currentUser)
+    : IRequestHandler<ListEmployeeChecklistTasksQuery, Result<IReadOnlyList<EmployeeChecklistTaskResponse>>>
+{
+    public async Task<Result<IReadOnlyList<EmployeeChecklistTaskResponse>>> Handle(ListEmployeeChecklistTasksQuery request, CancellationToken ct)
+    {
+        var tenantId = currentUser.TenantId;
+        var record = await offboardingRecordRepository.GetLatestByEmployeeIdAsync(tenantId, request.EmployeeId, ct);
+        if (record is null)
+            return Result<IReadOnlyList<EmployeeChecklistTaskResponse>>.Success(new List<EmployeeChecklistTaskResponse>());
+
+        var tasks = await taskRepository.ListByOffboardingRecordAsync(tenantId, record.Id, ct);
+        return Result<IReadOnlyList<EmployeeChecklistTaskResponse>>.Success(tasks.Select(t => new EmployeeChecklistTaskResponse(
+            t.Id, t.TaskTitle, t.OwnerType, t.AssignedToId, t.DueDate, t.IsRequired,
+            t.IsBypassable, t.BypassPenaltyDescription, t.Category, t.Status, t.CompletedAt)).ToList());
+    }
+}
+```
+
+- [ ] **Step 4: Patch command and handler**
+
+Create `UpdateEmployeeChecklistTaskCommand.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.UpdateEmployeeChecklistTask;
+
+public sealed record UpdateEmployeeChecklistTaskCommand(
+    Guid EmployeeId, Guid TaskId, Guid AssignedToId, DateOnly DueDate, bool IsRequired) : IRequest<Result>;
+```
+
+Create `UpdateEmployeeChecklistTaskCommandHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.UpdateEmployeeChecklistTask;
+
+public class UpdateEmployeeChecklistTaskCommandHandler(IEmployeeChecklistTaskRepository repository, ICurrentUser currentUser)
+    : IRequestHandler<UpdateEmployeeChecklistTaskCommand, Result>
+{
+    public async Task<Result> Handle(UpdateEmployeeChecklistTaskCommand request, CancellationToken ct)
+    {
+        var task = await repository.GetTrackedByIdAsync(currentUser.TenantId, request.TaskId, ct);
+        if (task is null || task.EmployeeId != request.EmployeeId)
+            return Result.NotFound("The checklist task could not be found for this employee.");
+        if (task.Status is EmployeeChecklistTaskStatuses.Completed or EmployeeChecklistTaskStatuses.Bypassed)
+            return Result.Conflict("A completed or bypassed task cannot be edited.");
+
+        task.AssignedToId = request.AssignedToId;
+        task.DueDate = request.DueDate;
+        task.IsRequired = request.IsRequired;
+
+        await repository.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+```
+
+- [ ] **Step 5: Contract and controller**
+
+Create `src/ONEVO.Api/Contracts/CoreHr/Offboarding/UpdateEmployeeChecklistTaskRequest.cs`:
+
+```csharp
+namespace ONEVO.Api.Contracts.CoreHr.Offboarding;
+
+public sealed record UpdateEmployeeChecklistTaskRequest(Guid AssignedToId, DateOnly DueDate, bool IsRequired);
+```
+
+Create `src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeChecklistTasksController.cs`:
+
+```csharp
+using MediatR;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using ONEVO.Api.Contracts.CoreHr.Offboarding;
+using ONEVO.Api.Filters;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.UpdateEmployeeChecklistTask;
+using ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListEmployeeChecklistTasks;
+
+namespace ONEVO.Api.Controllers.Tenant.CoreHr;
+
+[ApiController]
+[Route("api/v1/employees/{employeeId:guid}/checklist-tasks")]
+[Authorize(Policy = "TenantPolicy")]
+public class EmployeeChecklistTasksController(IMediator mediator) : ControllerBase
+{
+    [HttpGet]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> List(Guid employeeId, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new ListEmployeeChecklistTasksQuery(employeeId), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPatch("{taskId:guid}")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> Update(Guid employeeId, Guid taskId, [FromBody] UpdateEmployeeChecklistTaskRequest request, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new UpdateEmployeeChecklistTaskCommand(employeeId, taskId, request.AssignedToId, request.DueDate, request.IsRequired), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+}
+```
+
+- [ ] **Step 6: Handler test**
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/UpdateEmployeeChecklistTaskCommandHandlerTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.UpdateEmployeeChecklistTask;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class UpdateEmployeeChecklistTaskCommandHandlerTests
+{
+    [Fact]
+    public async Task Handle_CompletedTask_ReturnsConflict()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var repository = new Mock<IEmployeeChecklistTaskRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        repository.Setup(r => r.GetTrackedByIdAsync(tenantId, taskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeChecklistTask { Id = taskId, EmployeeId = employeeId, Status = EmployeeChecklistTaskStatuses.Completed });
+
+        var result = await new UpdateEmployeeChecklistTaskCommandHandler(repository.Object, currentUser.Object)
+            .Handle(new UpdateEmployeeChecklistTaskCommand(employeeId, taskId, Guid.NewGuid(), new DateOnly(2026, 12, 1), true), CancellationToken.None);
+
+        result.StatusCode.Should().Be(409);
+    }
+
+    [Fact]
+    public async Task Handle_PendingTask_UpdatesFields()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var newAssignee = Guid.NewGuid();
+        var repository = new Mock<IEmployeeChecklistTaskRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        var task = new EmployeeChecklistTask { Id = taskId, EmployeeId = employeeId, Status = EmployeeChecklistTaskStatuses.Pending, IsRequired = true };
+        repository.Setup(r => r.GetTrackedByIdAsync(tenantId, taskId, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+
+        var result = await new UpdateEmployeeChecklistTaskCommandHandler(repository.Object, currentUser.Object)
+            .Handle(new UpdateEmployeeChecklistTaskCommand(employeeId, taskId, newAssignee, new DateOnly(2026, 12, 15), false), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        task.AssignedToId.Should().Be(newAssignee);
+        task.IsRequired.Should().BeFalse();
+    }
+}
+```
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~UpdateEmployeeChecklistTaskCommandHandlerTests`
+Expected: all pass. Run `dotnet build src/ONEVO.Api` to confirm the new controller compiles (and that no other `IEmployeeChecklistTaskRepository` implementers are broken by the two new interface methods — only `EfEmployeeChecklistTaskRepository` is expected to implement it).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/ONEVO.Application/Features/CoreHr/Onboarding/RepositoryInterfaces/IOnboardingPersistenceRepositories.cs src/ONEVO.Infrastructure/Persistence/Repositories/CoreHr/EfOnboardingPersistenceRepositories.cs src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListEmployeeChecklistTasks/ src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/UpdateEmployeeChecklistTask/ src/ONEVO.Api/Contracts/CoreHr/Offboarding/UpdateEmployeeChecklistTaskRequest.cs src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeChecklistTasksController.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/UpdateEmployeeChecklistTaskCommandHandlerTests.cs
+git commit -m "feat: add list and patch employee checklist task endpoints"
+```
+
+---
+
+### Task 14: Complete task and create bypass request
+
+**Files:**
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CompleteEmployeeChecklistTask/CompleteEmployeeChecklistTaskCommand.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CompleteEmployeeChecklistTask/CompleteEmployeeChecklistTaskCommandHandler.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CreateBypassRequest/CreateBypassRequestCommand.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CreateBypassRequest/CreateBypassRequestCommandHandler.cs`
+- Create: `src/ONEVO.Api/Contracts/CoreHr/Offboarding/CreateBypassRequestRequest.cs`
+- Modify: `src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeChecklistTasksController.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/CompleteEmployeeChecklistTaskCommandHandlerTests.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/CreateBypassRequestCommandHandlerTests.cs`
+
+**Interfaces:**
+- Consumes: `IEmployeeChecklistTaskRepository.GetTrackedByIdAsync` (Task 13), `IOffboardingTaskBypassRequestRepository.HasPendingForTaskAsync/AddAsync/SaveChangesAsync` (Task 3), `IOffboardingRecordRepository.GetOpenByEmployeeIdAsync` (Task 2).
+- Produces: `CompleteEmployeeChecklistTaskCommand(Guid EmployeeId, Guid TaskId) : IRequest<Result>`; `CreateBypassRequestCommand(Guid EmployeeId, Guid TaskId, Guid ApproverId, string BypassReason, string? PenaltyDescription) : IRequest<Result<Guid>>` — Task 15's approve/reject handlers read the `OffboardingTaskBypassRequest.PriorTaskStatus` this task sets at creation.
+
+- [ ] **Step 1: Complete task command and handler**
+
+Create `CompleteEmployeeChecklistTaskCommand.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteEmployeeChecklistTask;
+
+public sealed record CompleteEmployeeChecklistTaskCommand(Guid EmployeeId, Guid TaskId) : IRequest<Result>;
+```
+
+Create `CompleteEmployeeChecklistTaskCommandHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteEmployeeChecklistTask;
+
+public class CompleteEmployeeChecklistTaskCommandHandler(
+    IEmployeeChecklistTaskRepository taskRepository,
+    IOffboardingTaskBypassRequestRepository bypassRequestRepository,
+    ICurrentUser currentUser,
+    IDateTimeProvider clock)
+    : IRequestHandler<CompleteEmployeeChecklistTaskCommand, Result>
+{
+    public async Task<Result> Handle(CompleteEmployeeChecklistTaskCommand request, CancellationToken ct)
+    {
+        var tenantId = currentUser.TenantId;
+        var task = await taskRepository.GetTrackedByIdAsync(tenantId, request.TaskId, ct);
+        if (task is null || task.EmployeeId != request.EmployeeId)
+            return Result.NotFound("The checklist task could not be found for this employee.");
+        if (task.Status is EmployeeChecklistTaskStatuses.Completed or EmployeeChecklistTaskStatuses.Bypassed)
+            return Result.Conflict("This task is already resolved.");
+
+        if (await bypassRequestRepository.HasPendingForTaskAsync(tenantId, task.Id, ct))
+            return Result.Conflict("This task has a pending bypass request awaiting a decision.");
+
+        task.Status = EmployeeChecklistTaskStatuses.Completed;
+        task.CompletedAt = clock.UtcNow;
+
+        await taskRepository.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+```
+
+- [ ] **Step 2: Create bypass request command and handler**
+
+Create `CreateBypassRequestCommand.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.CreateBypassRequest;
+
+public sealed record CreateBypassRequestCommand(
+    Guid EmployeeId, Guid TaskId, Guid ApproverId, string BypassReason, string? PenaltyDescription) : IRequest<Result<Guid>>;
+```
+
+Create `CreateBypassRequestCommandHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Exceptions;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.CreateBypassRequest;
+
+public class CreateBypassRequestCommandHandler(
+    IEmployeeChecklistTaskRepository taskRepository,
+    IOffboardingTaskBypassRequestRepository bypassRequestRepository,
+    IOffboardingRecordRepository offboardingRecordRepository,
+    IUnitOfWork unitOfWork,
+    ICurrentUser currentUser,
+    IDateTimeProvider clock)
+    : IRequestHandler<CreateBypassRequestCommand, Result<Guid>>
+{
+    public async Task<Result<Guid>> Handle(CreateBypassRequestCommand request, CancellationToken ct)
+    {
+        var tenantId = currentUser.TenantId;
+
+        if (request.ApproverId == currentUser.UserId)
+            return Result<Guid>.UnprocessableEntity("You cannot approve your own bypass request.");
+
+        var task = await taskRepository.GetTrackedByIdAsync(tenantId, request.TaskId, ct);
+        if (task is null || task.EmployeeId != request.EmployeeId)
+            return Result<Guid>.NotFound("The checklist task could not be found for this employee.");
+        if (!task.IsBypassable)
+            return Result<Guid>.UnprocessableEntity("This task cannot be bypassed.");
+        if (task.Status is EmployeeChecklistTaskStatuses.Completed or EmployeeChecklistTaskStatuses.Bypassed)
+            return Result<Guid>.Conflict("This task is already resolved.");
+
+        var openRecord = await offboardingRecordRepository.GetOpenByEmployeeIdAsync(tenantId, request.EmployeeId, ct);
+        if (openRecord is null)
+            return Result<Guid>.Conflict("No open offboarding was found for this employee.");
+
+        var bypassRequest = new OffboardingTaskBypassRequest
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeChecklistTaskId = task.Id,
+            OffboardingRecordId = openRecord.Id,
+            RequestedById = currentUser.UserId,
+            ApproverId = request.ApproverId,
+            BypassReason = request.BypassReason,
+            PenaltyDescription = request.PenaltyDescription ?? task.BypassPenaltyDescription,
+            PriorTaskStatus = task.Status,
+            RequestedAt = clock.UtcNow,
+        };
+
+        try
+        {
+            await bypassRequestRepository.AddAsync(bypassRequest, ct);
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+        catch (UniqueConstraintConflictException)
+        {
+            return Result<Guid>.Conflict("This task already has a pending bypass request.");
+        }
+
+        return Result<Guid>.Success(bypassRequest.Id);
+    }
+}
+```
+
+(Uses `IUnitOfWork.SaveChangesAsync` directly rather than a repository-local `SaveChangesAsync`, so the partial-unique-index violation on concurrent duplicate requests surfaces as `DbUpdateException` → `UniqueConstraintConflictException`, matching the interceptor-translation pattern `ChangeEmployeePositionCommandHandler` relies on for its own unique-constraint catches.)
+
+- [ ] **Step 3: Contract and controller actions**
+
+Create `src/ONEVO.Api/Contracts/CoreHr/Offboarding/CreateBypassRequestRequest.cs`:
+
+```csharp
+namespace ONEVO.Api.Contracts.CoreHr.Offboarding;
+
+public sealed record CreateBypassRequestRequest(Guid ApproverId, string BypassReason, string? PenaltyDescription);
+```
+
+In `EmployeeChecklistTasksController.cs`, add (with the two new command usings):
+
+```csharp
+    [HttpPost("{taskId:guid}/complete")]
+    [RequirePermission("employees:write")]
+    [Idempotent]
+    public async Task<IActionResult> Complete(Guid employeeId, Guid taskId, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new CompleteEmployeeChecklistTaskCommand(employeeId, taskId), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("{taskId:guid}/bypass-requests")]
+    [RequirePermission("employees:write")]
+    [Idempotent]
+    public async Task<IActionResult> CreateBypassRequest(Guid employeeId, Guid taskId, [FromBody] CreateBypassRequestRequest request, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new CreateBypassRequestCommand(employeeId, taskId, request.ApproverId, request.BypassReason, request.PenaltyDescription), ct);
+        return result.IsSuccess
+            ? CreatedAtAction(nameof(List), new { employeeId }, new { bypassRequestId = result.Value })
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+```
+
+- [ ] **Step 4: Handler tests**
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/CompleteEmployeeChecklistTaskCommandHandlerTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteEmployeeChecklistTask;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class CompleteEmployeeChecklistTaskCommandHandlerTests
+{
+    [Fact]
+    public async Task Handle_PendingBypassRequestExists_ReturnsConflict()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var taskRepository = new Mock<IEmployeeChecklistTaskRepository>();
+        var bypassRepository = new Mock<IOffboardingTaskBypassRequestRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        var clock = new Mock<IDateTimeProvider>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        taskRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, taskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeChecklistTask { Id = taskId, EmployeeId = employeeId, Status = EmployeeChecklistTaskStatuses.Pending });
+        bypassRepository.Setup(r => r.HasPendingForTaskAsync(tenantId, taskId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var result = await new CompleteEmployeeChecklistTaskCommandHandler(taskRepository.Object, bypassRepository.Object, currentUser.Object, clock.Object)
+            .Handle(new CompleteEmployeeChecklistTaskCommand(employeeId, taskId), CancellationToken.None);
+
+        result.StatusCode.Should().Be(409);
+    }
+
+    [Fact]
+    public async Task Handle_NoPendingBypass_MarksCompleted()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var taskRepository = new Mock<IEmployeeChecklistTaskRepository>();
+        var bypassRepository = new Mock<IOffboardingTaskBypassRequestRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        var clock = new Mock<IDateTimeProvider>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        clock.Setup(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
+        var task = new EmployeeChecklistTask { Id = taskId, EmployeeId = employeeId, Status = EmployeeChecklistTaskStatuses.Pending };
+        taskRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, taskId, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+        bypassRepository.Setup(r => r.HasPendingForTaskAsync(tenantId, taskId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var result = await new CompleteEmployeeChecklistTaskCommandHandler(taskRepository.Object, bypassRepository.Object, currentUser.Object, clock.Object)
+            .Handle(new CompleteEmployeeChecklistTaskCommand(employeeId, taskId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        task.Status.Should().Be(EmployeeChecklistTaskStatuses.Completed);
+        task.CompletedAt.Should().NotBeNull();
+    }
+}
+```
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/CreateBypassRequestCommandHandlerTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CreateBypassRequest;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class CreateBypassRequestCommandHandlerTests
+{
+    [Fact]
+    public async Task Handle_ApproverIsRequester_ReturnsUnprocessableEntity()
+    {
+        var currentUser = new Mock<ICurrentUser>();
+        var actingUserId = Guid.NewGuid();
+        currentUser.Setup(c => c.UserId).Returns(actingUserId);
+
+        var result = await new CreateBypassRequestCommandHandler(
+                Mock.Of<IEmployeeChecklistTaskRepository>(), Mock.Of<IOffboardingTaskBypassRequestRepository>(),
+                Mock.Of<IOffboardingRecordRepository>(), Mock.Of<IUnitOfWork>(), currentUser.Object, Mock.Of<IDateTimeProvider>())
+            .Handle(new CreateBypassRequestCommand(Guid.NewGuid(), Guid.NewGuid(), actingUserId, "reason", null), CancellationToken.None);
+
+        result.StatusCode.Should().Be(422);
+    }
+
+    [Fact]
+    public async Task Handle_TaskNotBypassable_ReturnsUnprocessableEntity()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var taskRepository = new Mock<IEmployeeChecklistTaskRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        currentUser.Setup(c => c.UserId).Returns(Guid.NewGuid());
+        taskRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, taskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeChecklistTask { Id = taskId, EmployeeId = employeeId, IsBypassable = false });
+
+        var result = await new CreateBypassRequestCommandHandler(
+                taskRepository.Object, Mock.Of<IOffboardingTaskBypassRequestRepository>(),
+                Mock.Of<IOffboardingRecordRepository>(), Mock.Of<IUnitOfWork>(), currentUser.Object, Mock.Of<IDateTimeProvider>())
+            .Handle(new CreateBypassRequestCommand(employeeId, taskId, Guid.NewGuid(), "reason", null), CancellationToken.None);
+
+        result.StatusCode.Should().Be(422);
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_CreatesRequestWithPriorTaskStatusSnapshot()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var recordId = Guid.NewGuid();
+        var taskRepository = new Mock<IEmployeeChecklistTaskRepository>();
+        var bypassRepository = new Mock<IOffboardingTaskBypassRequestRepository>();
+        var offboardingRecordRepository = new Mock<IOffboardingRecordRepository>();
+        var unitOfWork = new Mock<IUnitOfWork>();
+        var currentUser = new Mock<ICurrentUser>();
+        var clock = new Mock<IDateTimeProvider>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        currentUser.Setup(c => c.UserId).Returns(Guid.NewGuid());
+        clock.Setup(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
+        taskRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, taskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeChecklistTask { Id = taskId, EmployeeId = employeeId, IsBypassable = true, Status = EmployeeChecklistTaskStatuses.InProgress, BypassPenaltyDescription = "Default penalty" });
+        offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OffboardingRecord { Id = recordId });
+
+        OffboardingTaskBypassRequest? added = null;
+        bypassRepository.Setup(r => r.AddAsync(It.IsAny<OffboardingTaskBypassRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<OffboardingTaskBypassRequest, CancellationToken>((r, _) => added = r).Returns(Task.CompletedTask);
+
+        var result = await new CreateBypassRequestCommandHandler(
+                taskRepository.Object, bypassRepository.Object, offboardingRecordRepository.Object,
+                unitOfWork.Object, currentUser.Object, clock.Object)
+            .Handle(new CreateBypassRequestCommand(employeeId, taskId, Guid.NewGuid(), "Payment processed in advance.", null), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        added!.PriorTaskStatus.Should().Be(EmployeeChecklistTaskStatuses.InProgress);
+        added.PenaltyDescription.Should().Be("Default penalty");
+        added.OffboardingRecordId.Should().Be(recordId);
+    }
+}
+```
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~CompleteEmployeeChecklistTaskCommandHandlerTests|FullyQualifiedName~CreateBypassRequestCommandHandlerTests"`
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CompleteEmployeeChecklistTask/ src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CreateBypassRequest/ src/ONEVO.Api/Contracts/CoreHr/Offboarding/CreateBypassRequestRequest.cs src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeChecklistTasksController.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/CompleteEmployeeChecklistTaskCommandHandlerTests.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/CreateBypassRequestCommandHandlerTests.cs
+git commit -m "feat: add complete task and create bypass request endpoints"
+```
+
+---
+
+### Task 15: Approve/reject bypass request, list my pending
+
+**Files:**
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/ApproveBypassRequest/ApproveBypassRequestCommand.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/ApproveBypassRequest/ApproveBypassRequestCommandHandler.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/RejectBypassRequest/RejectBypassRequestCommand.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/RejectBypassRequest/RejectBypassRequestCommandHandler.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListMyPendingBypassRequests/ListMyPendingBypassRequestsQuery.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListMyPendingBypassRequests/ListMyPendingBypassRequestsQueryHandler.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListMyPendingBypassRequests/BypassRequestResponse.cs`
+- Create: `src/ONEVO.Api/Contracts/CoreHr/Offboarding/RejectBypassRequestRequest.cs`
+- Create: `src/ONEVO.Api/Controllers/Tenant/CoreHr/OffboardingBypassRequestsController.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/ApproveBypassRequestCommandHandlerTests.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/RejectBypassRequestCommandHandlerTests.cs`
+
+**Interfaces:**
+- Consumes: `IOffboardingTaskBypassRequestRepository.GetTrackedByIdAsync/ListPendingByApproverAsync/SaveChangesAsync` (Task 3), `IEmployeeChecklistTaskRepository.GetTrackedByIdAsync` (Task 13).
+- Produces: `ApproveBypassRequestCommand(Guid BypassRequestId) : IRequest<Result>`; `RejectBypassRequestCommand(Guid BypassRequestId, string? DecisionComment) : IRequest<Result>`; `ListMyPendingBypassRequestsQuery : IRequest<Result<IReadOnlyList<BypassRequestResponse>>>`.
+
+- [ ] **Step 1: Approve command and handler**
+
+Create `ApproveBypassRequestCommand.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.ApproveBypassRequest;
+
+public sealed record ApproveBypassRequestCommand(Guid BypassRequestId) : IRequest<Result>;
+```
+
+Create `ApproveBypassRequestCommandHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.ApproveBypassRequest;
+
+public class ApproveBypassRequestCommandHandler(
+    IOffboardingTaskBypassRequestRepository bypassRequestRepository,
+    IEmployeeChecklistTaskRepository taskRepository,
+    ICurrentUser currentUser,
+    IDateTimeProvider clock)
+    : IRequestHandler<ApproveBypassRequestCommand, Result>
+{
+    public async Task<Result> Handle(ApproveBypassRequestCommand request, CancellationToken ct)
+    {
+        var tenantId = currentUser.TenantId;
+        var bypassRequest = await bypassRequestRepository.GetTrackedByIdAsync(tenantId, request.BypassRequestId, ct);
+        if (bypassRequest is null)
+            return Result.NotFound("The bypass request could not be found.");
+        if (bypassRequest.ApproverId != currentUser.UserId)
+            return Result.Forbidden("Only the assigned approver can decide this request.");
+        if (bypassRequest.Status != BypassRequestStatuses.Pending)
+            return Result.Conflict("This bypass request has already been decided.");
+
+        var task = await taskRepository.GetTrackedByIdAsync(tenantId, bypassRequest.EmployeeChecklistTaskId, ct);
+        if (task is null)
+            return Result.NotFound("The checklist task for this bypass request could not be found.");
+
+        task.Status = EmployeeChecklistTaskStatuses.Bypassed;
+        task.CompletedAt = clock.UtcNow;
+        bypassRequest.Status = BypassRequestStatuses.Approved;
+        bypassRequest.DecidedAt = clock.UtcNow;
+
+        await bypassRequestRepository.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+```
+
+- [ ] **Step 2: Reject command and handler**
+
+Create `RejectBypassRequestCommand.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.RejectBypassRequest;
+
+public sealed record RejectBypassRequestCommand(Guid BypassRequestId, string? DecisionComment) : IRequest<Result>;
+```
+
+Create `RejectBypassRequestCommandHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.RejectBypassRequest;
+
+public class RejectBypassRequestCommandHandler(
+    IOffboardingTaskBypassRequestRepository bypassRequestRepository,
+    IEmployeeChecklistTaskRepository taskRepository,
+    ICurrentUser currentUser,
+    IDateTimeProvider clock)
+    : IRequestHandler<RejectBypassRequestCommand, Result>
+{
+    public async Task<Result> Handle(RejectBypassRequestCommand request, CancellationToken ct)
+    {
+        var tenantId = currentUser.TenantId;
+        var bypassRequest = await bypassRequestRepository.GetTrackedByIdAsync(tenantId, request.BypassRequestId, ct);
+        if (bypassRequest is null)
+            return Result.NotFound("The bypass request could not be found.");
+        if (bypassRequest.ApproverId != currentUser.UserId)
+            return Result.Forbidden("Only the assigned approver can decide this request.");
+        if (bypassRequest.Status != BypassRequestStatuses.Pending)
+            return Result.Conflict("This bypass request has already been decided.");
+
+        var task = await taskRepository.GetTrackedByIdAsync(tenantId, bypassRequest.EmployeeChecklistTaskId, ct);
+        if (task is not null)
+            task.Status = bypassRequest.PriorTaskStatus;
+
+        bypassRequest.Status = BypassRequestStatuses.Rejected;
+        bypassRequest.DecidedAt = clock.UtcNow;
+        bypassRequest.DecisionComment = request.DecisionComment;
+
+        await bypassRequestRepository.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+```
+
+- [ ] **Step 3: List-mine query and handler**
+
+Create `BypassRequestResponse.cs`:
+
+```csharp
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListMyPendingBypassRequests;
+
+public sealed record BypassRequestResponse(
+    Guid Id, Guid EmployeeChecklistTaskId, Guid OffboardingRecordId, Guid RequestedById,
+    string BypassReason, string? PenaltyDescription, string Status, DateTimeOffset RequestedAt);
+```
+
+Create `ListMyPendingBypassRequestsQuery.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListMyPendingBypassRequests;
+
+public sealed record ListMyPendingBypassRequestsQuery : IRequest<Result<IReadOnlyList<BypassRequestResponse>>>;
+```
+
+Create `ListMyPendingBypassRequestsQueryHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListMyPendingBypassRequests;
+
+public class ListMyPendingBypassRequestsQueryHandler(IOffboardingTaskBypassRequestRepository repository, ICurrentUser currentUser)
+    : IRequestHandler<ListMyPendingBypassRequestsQuery, Result<IReadOnlyList<BypassRequestResponse>>>
+{
+    public async Task<Result<IReadOnlyList<BypassRequestResponse>>> Handle(ListMyPendingBypassRequestsQuery request, CancellationToken ct)
+    {
+        var requests = await repository.ListPendingByApproverAsync(currentUser.TenantId, currentUser.UserId, ct);
+        return Result<IReadOnlyList<BypassRequestResponse>>.Success(requests.Select(r => new BypassRequestResponse(
+            r.Id, r.EmployeeChecklistTaskId, r.OffboardingRecordId, r.RequestedById,
+            r.BypassReason, r.PenaltyDescription, r.Status, r.RequestedAt)).ToList());
+    }
+}
+```
+
+- [ ] **Step 4: Contract and controller**
+
+Create `src/ONEVO.Api/Contracts/CoreHr/Offboarding/RejectBypassRequestRequest.cs`:
+
+```csharp
+namespace ONEVO.Api.Contracts.CoreHr.Offboarding;
+
+public sealed record RejectBypassRequestRequest(string? DecisionComment);
+```
+
+Create `src/ONEVO.Api/Controllers/Tenant/CoreHr/OffboardingBypassRequestsController.cs`:
+
+```csharp
+using MediatR;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using ONEVO.Api.Contracts.CoreHr.Offboarding;
+using ONEVO.Api.Filters;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.ApproveBypassRequest;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.RejectBypassRequest;
+using ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListMyPendingBypassRequests;
+
+namespace ONEVO.Api.Controllers.Tenant.CoreHr;
+
+[ApiController]
+[Route("api/v1/offboarding-bypass-requests")]
+[Authorize(Policy = "TenantPolicy")]
+public class OffboardingBypassRequestsController(IMediator mediator) : ControllerBase
+{
+    /// <summary>Always scoped to the caller as approver - there is no arbitrary approverId
+    /// override, per design spec §6.</summary>
+    [HttpGet]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> ListMine(CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new ListMyPendingBypassRequestsQuery(), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("{id:guid}/approve")]
+    [RequirePermission("employees:write")]
+    [Idempotent]
+    public async Task<IActionResult> Approve(Guid id, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new ApproveBypassRequestCommand(id), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("{id:guid}/reject")]
+    [RequirePermission("employees:write")]
+    [Idempotent]
+    public async Task<IActionResult> Reject(Guid id, [FromBody] RejectBypassRequestRequest request, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new RejectBypassRequestCommand(id, request.DecisionComment), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+}
+```
+
+- [ ] **Step 5: Handler tests**
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/ApproveBypassRequestCommandHandlerTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.ApproveBypassRequest;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class ApproveBypassRequestCommandHandlerTests
+{
+    [Fact]
+    public async Task Handle_NotTheAssignedApprover_ReturnsForbidden()
+    {
+        var tenantId = Guid.NewGuid();
+        var requestId = Guid.NewGuid();
+        var bypassRepository = new Mock<IOffboardingTaskBypassRequestRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        currentUser.Setup(c => c.UserId).Returns(Guid.NewGuid());
+        bypassRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, requestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OffboardingTaskBypassRequest { Id = requestId, ApproverId = Guid.NewGuid(), Status = BypassRequestStatuses.Pending });
+
+        var result = await new ApproveBypassRequestCommandHandler(bypassRepository.Object, Mock.Of<IEmployeeChecklistTaskRepository>(), currentUser.Object, Mock.Of<IDateTimeProvider>())
+            .Handle(new ApproveBypassRequestCommand(requestId), CancellationToken.None);
+
+        result.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task Handle_ValidApproval_SetsTaskBypassedAndRequestApproved()
+    {
+        var tenantId = Guid.NewGuid();
+        var requestId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var approverId = Guid.NewGuid();
+        var bypassRepository = new Mock<IOffboardingTaskBypassRequestRepository>();
+        var taskRepository = new Mock<IEmployeeChecklistTaskRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        var clock = new Mock<IDateTimeProvider>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        currentUser.Setup(c => c.UserId).Returns(approverId);
+        clock.Setup(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
+        var bypassRequest = new OffboardingTaskBypassRequest { Id = requestId, ApproverId = approverId, Status = BypassRequestStatuses.Pending, EmployeeChecklistTaskId = taskId };
+        bypassRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, requestId, It.IsAny<CancellationToken>())).ReturnsAsync(bypassRequest);
+        var task = new EmployeeChecklistTask { Id = taskId, Status = EmployeeChecklistTaskStatuses.InProgress };
+        taskRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, taskId, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+
+        var result = await new ApproveBypassRequestCommandHandler(bypassRepository.Object, taskRepository.Object, currentUser.Object, clock.Object)
+            .Handle(new ApproveBypassRequestCommand(requestId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        task.Status.Should().Be(EmployeeChecklistTaskStatuses.Bypassed);
+        bypassRequest.Status.Should().Be(BypassRequestStatuses.Approved);
+    }
+}
+```
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/RejectBypassRequestCommandHandlerTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.RejectBypassRequest;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class RejectBypassRequestCommandHandlerTests
+{
+    [Fact]
+    public async Task Handle_ValidRejection_RestoresTaskToPriorStatus()
+    {
+        var tenantId = Guid.NewGuid();
+        var requestId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var approverId = Guid.NewGuid();
+        var bypassRepository = new Mock<IOffboardingTaskBypassRequestRepository>();
+        var taskRepository = new Mock<IEmployeeChecklistTaskRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        var clock = new Mock<IDateTimeProvider>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        currentUser.Setup(c => c.UserId).Returns(approverId);
+        clock.Setup(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
+        var bypassRequest = new OffboardingTaskBypassRequest
+        {
+            Id = requestId, ApproverId = approverId, Status = BypassRequestStatuses.Pending,
+            EmployeeChecklistTaskId = taskId, PriorTaskStatus = EmployeeChecklistTaskStatuses.InProgress,
+        };
+        bypassRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, requestId, It.IsAny<CancellationToken>())).ReturnsAsync(bypassRequest);
+        var task = new EmployeeChecklistTask { Id = taskId, Status = EmployeeChecklistTaskStatuses.InProgress };
+        taskRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, taskId, It.IsAny<CancellationToken>())).ReturnsAsync(task);
+
+        var result = await new RejectBypassRequestCommandHandler(bypassRepository.Object, taskRepository.Object, currentUser.Object, clock.Object)
+            .Handle(new RejectBypassRequestCommand(requestId, "Not approved."), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        task.Status.Should().Be(EmployeeChecklistTaskStatuses.InProgress);
+        bypassRequest.Status.Should().Be(BypassRequestStatuses.Rejected);
+        bypassRequest.DecisionComment.Should().Be("Not approved.");
+    }
+}
+```
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~ApproveBypassRequestCommandHandlerTests|FullyQualifiedName~RejectBypassRequestCommandHandlerTests"`
+Expected: all pass.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/ApproveBypassRequest/ src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/RejectBypassRequest/ src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListMyPendingBypassRequests/ src/ONEVO.Api/Contracts/CoreHr/Offboarding/RejectBypassRequestRequest.cs src/ONEVO.Api/Controllers/Tenant/CoreHr/OffboardingBypassRequestsController.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/ApproveBypassRequestCommandHandlerTests.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/RejectBypassRequestCommandHandlerTests.cs
+git commit -m "feat: add approve/reject bypass request and list my pending endpoints"
+```
+
+---
+
+### Task 16: Complete Employee Exit
+
+**Files:**
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CompleteOffboarding/OffboardingCompletionGate.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CompleteOffboarding/CompleteOffboardingCommand.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CompleteOffboarding/CompleteOffboardingCommandHandler.cs`
+- Modify: `src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeOffboardingController.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/OffboardingCompletionGateTests.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/CompleteOffboardingCommandHandlerTests.cs`
+
+**Interfaces:**
+- Consumes: `IEmployeeChecklistTaskRepository.ListByOffboardingRecordAsync` (Task 13), `IOffboardingRecordRepository.GetOpenByEmployeeIdAsync/SaveChangesAsync` (Task 2), `IUserRepository.GetByIdAsync` (existing), `ISessionRepository.RevokeAllActiveByUserIdAsync` (Task 8), `IEmployeeRepository.GetTrackedByIdAsync`, `IUnitOfWork.SaveChangesAsync`.
+- Produces: `OffboardingCompletionGate.AllRequiredTasksResolved(IReadOnlyList<EmployeeChecklistTask> tasks) -> bool` (static, independently unit-tested per the advisor's split of the gate check from the full transaction); `CompleteOffboardingCommand(Guid EmployeeId) : IRequest<Result>`.
+
+- [ ] **Step 1: Write the gate as a standalone pure function, with its own tests first**
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/OffboardingCompletionGateTests.cs`:
+
+```csharp
+using FluentAssertions;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteOffboarding;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class OffboardingCompletionGateTests
+{
+    private static EmployeeChecklistTask Task(bool required, string status) =>
+        new() { Id = Guid.NewGuid(), IsRequired = required, Status = status };
+
+    [Fact]
+    public void AllRequiredTasksResolved_AllRequiredCompleted_ReturnsTrue()
+    {
+        var tasks = new[] { Task(true, EmployeeChecklistTaskStatuses.Completed), Task(true, EmployeeChecklistTaskStatuses.Bypassed) };
+        OffboardingCompletionGate.AllRequiredTasksResolved(tasks).Should().BeTrue();
+    }
+
+    [Fact]
+    public void AllRequiredTasksResolved_OneRequiredStillPending_ReturnsFalse()
+    {
+        var tasks = new[] { Task(true, EmployeeChecklistTaskStatuses.Completed), Task(true, EmployeeChecklistTaskStatuses.Pending) };
+        OffboardingCompletionGate.AllRequiredTasksResolved(tasks).Should().BeFalse();
+    }
+
+    [Fact]
+    public void AllRequiredTasksResolved_NonRequiredStillPending_DoesNotBlock()
+    {
+        var tasks = new[] { Task(true, EmployeeChecklistTaskStatuses.Completed), Task(false, EmployeeChecklistTaskStatuses.Pending) };
+        OffboardingCompletionGate.AllRequiredTasksResolved(tasks).Should().BeTrue();
+    }
+
+    [Fact]
+    public void AllRequiredTasksResolved_NoTasksAtAll_ReturnsTrue()
+    {
+        OffboardingCompletionGate.AllRequiredTasksResolved(Array.Empty<EmployeeChecklistTask>()).Should().BeTrue();
+    }
+}
+```
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~OffboardingCompletionGateTests`
+Expected: FAIL (compile error - `OffboardingCompletionGate` doesn't exist yet).
+
+- [ ] **Step 2: Implement the gate**
+
+Create `OffboardingCompletionGate.cs`:
+
+```csharp
+using ONEVO.Domain.Features.CoreHr.Entities;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteOffboarding;
+
+/// <summary>Standalone, independently-testable completion gate - kept separate from
+/// CompleteOffboardingCommandHandler's transaction so a reviewer can verify the gate logic
+/// without standing up the full handler (per the design's advisor review).</summary>
+public static class OffboardingCompletionGate
+{
+    public static bool AllRequiredTasksResolved(IReadOnlyList<EmployeeChecklistTask> tasks) =>
+        tasks.Where(t => t.IsRequired)
+            .All(t => t.Status is EmployeeChecklistTaskStatuses.Completed or EmployeeChecklistTaskStatuses.Bypassed);
+}
+```
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~OffboardingCompletionGateTests`
+Expected: all four pass.
+
+- [ ] **Step 3: Command**
+
+Create `CompleteOffboardingCommand.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteOffboarding;
+
+public sealed record CompleteOffboardingCommand(Guid EmployeeId) : IRequest<Result>;
+```
+
+- [ ] **Step 4: Handler**
+
+Create `CompleteOffboardingCommandHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Lookups;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteOffboarding;
+
+public class CompleteOffboardingCommandHandler(
+    IOffboardingRecordRepository offboardingRecordRepository,
+    IEmployeeChecklistTaskRepository taskRepository,
+    IEmployeeRepository employeeRepository,
+    IUserRepository userRepository,
+    ISessionRepository sessionRepository,
+    IUnitOfWork unitOfWork,
+    ICurrentUser currentUser,
+    IDateTimeProvider clock)
+    : IRequestHandler<CompleteOffboardingCommand, Result>
+{
+    public async Task<Result> Handle(CompleteOffboardingCommand request, CancellationToken ct)
+    {
+        var tenantId = currentUser.TenantId;
+
+        var record = await offboardingRecordRepository.GetOpenByEmployeeIdAsync(tenantId, request.EmployeeId, ct);
+        if (record is null)
+            return Result.NotFound("No open offboarding was found for this employee.");
+        if (record.Status != OffboardingRecordStatuses.InProgress)
+            return Result.Conflict("A checklist must be selected before this offboarding can be completed.");
+
+        var tasks = await taskRepository.ListByOffboardingRecordAsync(tenantId, record.Id, ct);
+        if (!OffboardingCompletionGate.AllRequiredTasksResolved(tasks))
+            return Result.UnprocessableEntity("Every required checklist task must be completed or bypassed before the exit can be finalized.");
+
+        var employee = await employeeRepository.GetTrackedByIdAsync(tenantId, request.EmployeeId, ct);
+        if (employee is null)
+            return Result.NotFound("The employee could not be found.");
+
+        var user = await userRepository.GetByIdAsync(employee.UserId, ct);
+        if (user is null)
+            return Result.NotFound("The employee's user account could not be found.");
+
+        employee.EmploymentStatusId = record.Reason == "resignation" ? EmploymentStatusIds.Resigned : EmploymentStatusIds.Terminated;
+        employee.TerminationDate = record.LastWorkingDate;
+        user.IsActive = false;
+        record.Status = OffboardingRecordStatuses.Completed;
+        record.CompletedAt = clock.UtcNow;
+        record.UpdatedAt = clock.UtcNow;
+
+        await unitOfWork.SaveChangesAsync(ct);
+        await sessionRepository.RevokeAllActiveByUserIdAsync(user.Id, ct);
+
+        return Result.Success();
+    }
+}
+```
+
+(`sessionRepository.RevokeAllActiveByUserIdAsync` uses `ExecuteUpdateAsync` — Task 8 — which commits immediately and independently of the tracked-entity `SaveChangesAsync` above; it's called after the main save so a failure mid-transaction on the tracked changes never leaves sessions revoked for an employee whose offboarding didn't actually complete.)
+
+- [ ] **Step 5: Controller action**
+
+In `EmployeeOffboardingController.cs`, add:
+
+```csharp
+    [HttpPost("complete")]
+    [RequirePermission("employees:write")]
+    [Idempotent]
+    public async Task<IActionResult> Complete(Guid employeeId, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new CompleteOffboardingCommand(employeeId), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+```
+
+- [ ] **Step 6: Handler test**
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/CompleteOffboardingCommandHandlerTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteOffboarding;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Lookups;
+using Xunit;
+using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class CompleteOffboardingCommandHandlerTests
+{
+    private readonly Mock<IOffboardingRecordRepository> _offboardingRecordRepository = new();
+    private readonly Mock<IEmployeeChecklistTaskRepository> _taskRepository = new();
+    private readonly Mock<IEmployeeRepository> _employeeRepository = new();
+    private readonly Mock<IUserRepository> _userRepository = new();
+    private readonly Mock<ISessionRepository> _sessionRepository = new();
+    private readonly Mock<IUnitOfWork> _unitOfWork = new();
+    private readonly Mock<ICurrentUser> _currentUser = new();
+    private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Guid _tenantId = Guid.NewGuid();
+    private readonly Guid _employeeId = Guid.NewGuid();
+
+    public CompleteOffboardingCommandHandlerTests()
+    {
+        _currentUser.Setup(c => c.TenantId).Returns(_tenantId);
+        _clock.Setup(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
+    }
+
+    private CompleteOffboardingCommandHandler CreateSut() => new(
+        _offboardingRecordRepository.Object, _taskRepository.Object, _employeeRepository.Object,
+        _userRepository.Object, _sessionRepository.Object, _unitOfWork.Object, _currentUser.Object, _clock.Object);
+
+    [Fact]
+    public async Task Handle_RequiredTaskStillPending_ReturnsUnprocessableEntity()
+    {
+        var record = new OffboardingRecord { Id = Guid.NewGuid(), Status = OffboardingRecordStatuses.InProgress, Reason = "resignation" };
+        _offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        _taskRepository.Setup(r => r.ListByOffboardingRecordAsync(_tenantId, record.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EmployeeChecklistTask> { new() { IsRequired = true, Status = EmployeeChecklistTaskStatuses.Pending } });
+
+        var result = await CreateSut().Handle(new CompleteOffboardingCommand(_employeeId), CancellationToken.None);
+
+        result.StatusCode.Should().Be(422);
+        _sessionRepository.Verify(r => r.RevokeAllActiveByUserIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_ResignationReason_MapsToResignedAndCompletesFully()
+    {
+        var userId = Guid.NewGuid();
+        var record = new OffboardingRecord { Id = Guid.NewGuid(), Status = OffboardingRecordStatuses.InProgress, Reason = "resignation", LastWorkingDate = new DateOnly(2026, 12, 1) };
+        _offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        _taskRepository.Setup(r => r.ListByOffboardingRecordAsync(_tenantId, record.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EmployeeChecklistTask> { new() { IsRequired = true, Status = EmployeeChecklistTaskStatuses.Completed } });
+        var employee = new EmployeeEntity { Id = _employeeId, UserId = userId, EmploymentStatusId = EmploymentStatusIds.Offboarding };
+        _employeeRepository.Setup(r => r.GetTrackedByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
+        var user = new User { Id = userId, IsActive = true };
+        _userRepository.Setup(r => r.GetByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+
+        var result = await CreateSut().Handle(new CompleteOffboardingCommand(_employeeId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        employee.EmploymentStatusId.Should().Be(EmploymentStatusIds.Resigned);
+        employee.TerminationDate.Should().Be(record.LastWorkingDate);
+        user.IsActive.Should().BeFalse();
+        record.Status.Should().Be(OffboardingRecordStatuses.Completed);
+        _sessionRepository.Verify(r => r.RevokeAllActiveByUserIdAsync(userId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_TerminationReason_MapsToTerminated()
+    {
+        var userId = Guid.NewGuid();
+        var record = new OffboardingRecord { Id = Guid.NewGuid(), Status = OffboardingRecordStatuses.InProgress, Reason = "termination", LastWorkingDate = new DateOnly(2026, 12, 1) };
+        _offboardingRecordRepository.Setup(r => r.GetOpenByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        _taskRepository.Setup(r => r.ListByOffboardingRecordAsync(_tenantId, record.Id, It.IsAny<CancellationToken>())).ReturnsAsync(new List<EmployeeChecklistTask>());
+        var employee = new EmployeeEntity { Id = _employeeId, UserId = userId };
+        _employeeRepository.Setup(r => r.GetTrackedByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
+        _userRepository.Setup(r => r.GetByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new User { Id = userId, IsActive = true });
+
+        await CreateSut().Handle(new CompleteOffboardingCommand(_employeeId), CancellationToken.None);
+
+        employee.EmploymentStatusId.Should().Be(EmploymentStatusIds.Terminated);
+    }
+}
+```
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~OffboardingCompletionGateTests|FullyQualifiedName~CompleteOffboardingCommandHandlerTests"`
+Expected: all pass.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CompleteOffboarding/ src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeeOffboardingController.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/OffboardingCompletionGateTests.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/CompleteOffboardingCommandHandlerTests.cs
+git commit -m "feat: add Complete Employee Exit endpoint"
+```
+
+---
+
+### Task 17: Read-only guard on `ChangeEmployeePositionCommandHandler`
+
+**Files:**
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/ServiceInterfaces/IEmployeeOffboardingLockGuard.cs`
+- Create: `src/ONEVO.Infrastructure/Services/CoreHr/Offboarding/EmployeeOffboardingLockGuard.cs`
+- Modify: `src/ONEVO.Infrastructure/DependencyInjection.cs`
+- Modify: `src/ONEVO.Application/Features/CoreHr/Employee/Commands/ChangeEmployeePosition/ChangeEmployeePositionCommandHandler.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/EmployeeOffboardingLockGuardTests.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Employee/ChangeEmployeePositionCommandHandlerTests.cs` (extend if it exists, else create)
+
+**Interfaces:**
+- Produces: `IEmployeeOffboardingLockGuard.EnsureMutable(Guid tenantId, Guid employeeId, CancellationToken ct = default) -> Task<Result?>` (`null` = mutable, otherwise the `Conflict` `Result` to return immediately) — this is the exact call `ChangeEmployeePositionCommandHandler` makes right after loading the employee.
+
+- [ ] **Step 1: Interface and implementation**
+
+Create `IEmployeeOffboardingLockGuard.cs`:
+
+```csharp
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
+
+/// <summary>Rejects mutation of an employee whose EmploymentStatusId is Resigned/Terminated.
+/// Only ChangeEmployeePositionCommandHandler calls this today - every self-service me/* write is
+/// already transitively blocked because User.IsActive=false (set at offboarding completion) fails
+/// authentication on the very next request via TenantDatabaseTicketStore.RetrieveAsync, so no
+/// other guard call site exists as of this codebase's current write surface. See design spec §7.</summary>
+public interface IEmployeeOffboardingLockGuard
+{
+    Task<Result?> EnsureMutable(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+}
+```
+
+Create `src/ONEVO.Infrastructure/Services/CoreHr/Offboarding/EmployeeOffboardingLockGuard.cs`:
+
+```csharp
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
+using ONEVO.Domain.Lookups;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+
+namespace ONEVO.Infrastructure.Services.CoreHr.Offboarding;
+
+public sealed class EmployeeOffboardingLockGuard(IEmployeeRepository employeeRepository) : IEmployeeOffboardingLockGuard
+{
+    public async Task<Result?> EnsureMutable(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        var employee = await employeeRepository.GetByIdAsync(tenantId, employeeId, ct);
+        if (employee is null)
+            return null; // Not this guard's concern - the caller's own not-found check handles it.
+
+        if (employee.EmploymentStatusId is EmploymentStatusIds.Resigned or EmploymentStatusIds.Terminated)
+            return Result.Conflict("This employee's record is read-only after offboarding completion.");
+
+        return null;
+    }
+}
+```
+
+- [ ] **Step 2: Register in DI**
+
+In `DependencyInjection.cs`, add:
+
+```csharp
+        services.AddScoped<IEmployeeOffboardingLockGuard, EmployeeOffboardingLockGuard>();
+```
+
+- [ ] **Step 3: Call the guard in `ChangeEmployeePositionCommandHandler`**
+
+Add `IEmployeeOffboardingLockGuard offboardingLockGuard` as a constructor parameter/field (same pattern as the handler's existing dependencies), and immediately after the existing:
+
+```csharp
+        var employee = await _employeeRepository.GetTrackedByIdAsync(tenantId, request.EmployeeId, ct);
+        if (employee is null)
+            return Result<ChangeEmployeePositionResponse>.NotFound("The employee could not be found.");
+```
+
+insert:
+
+```csharp
+
+        var lockResult = await offboardingLockGuard.EnsureMutable(tenantId, employee.Id, ct);
+        if (lockResult is not null)
+            return Result<ChangeEmployeePositionResponse>.Conflict(lockResult.Error!);
+```
+
+- [ ] **Step 4: Guard unit test**
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/EmployeeOffboardingLockGuardTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Moq;
+using ONEVO.Domain.Lookups;
+using ONEVO.Infrastructure.Services.CoreHr.Offboarding;
+using Xunit;
+using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class EmployeeOffboardingLockGuardTests
+{
+    [Theory]
+    [InlineData(EmploymentStatusIds.Resigned)]
+    [InlineData(EmploymentStatusIds.Terminated)]
+    public async Task EnsureMutable_ResignedOrTerminated_ReturnsConflict(int statusId)
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var repo = new Mock<IEmployeeRepository>();
+        repo.Setup(r => r.GetByIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeEntity { Id = employeeId, EmploymentStatusId = statusId });
+
+        var result = await new EmployeeOffboardingLockGuard(repo.Object).EnsureMutable(tenantId, employeeId);
+
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(409);
+    }
+
+    [Fact]
+    public async Task EnsureMutable_ActiveEmployee_ReturnsNull()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var repo = new Mock<IEmployeeRepository>();
+        repo.Setup(r => r.GetByIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeEntity { Id = employeeId, EmploymentStatusId = EmploymentStatusIds.Active });
+
+        var result = await new EmployeeOffboardingLockGuard(repo.Object).EnsureMutable(tenantId, employeeId);
+
+        result.Should().BeNull();
+    }
+}
+```
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~EmployeeOffboardingLockGuardTests`
+Expected: all pass. Also run the existing `ChangeEmployeePositionCommandHandler` test suite (`dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~ChangeEmployeePosition`) to confirm the new constructor parameter didn't break any existing test's construction — if it did, add an `IEmployeeOffboardingLockGuard` mock (default-mocked to return `null`) to that file's setup.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ONEVO.Application/Features/CoreHr/Offboarding/ServiceInterfaces/IEmployeeOffboardingLockGuard.cs src/ONEVO.Infrastructure/Services/CoreHr/Offboarding/EmployeeOffboardingLockGuard.cs src/ONEVO.Infrastructure/DependencyInjection.cs src/ONEVO.Application/Features/CoreHr/Employee/Commands/ChangeEmployeePosition/ChangeEmployeePositionCommandHandler.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/EmployeeOffboardingLockGuardTests.cs
+git commit -m "feat: block change-position on offboarded employees"
+```
+
+---
+
+### Task 18: Integration test suite
+
+**Files:**
+- Create: `tests/ONEVO.Tests.Integration/CoreHr/Offboarding/OffboardingExecutionIntegrationTests.cs`
+
+**Interfaces:**
+- Consumes: every repository/entity from Tasks 1-17, exercised end-to-end against a real Postgres via Testcontainers.
+
+- [ ] **Step 1: Scaffold the test class following `ChecklistTemplatesIntegrationTests.cs`'s exact pattern**
+
+Create `tests/ONEVO.Tests.Integration/CoreHr/Offboarding/OffboardingExecutionIntegrationTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Lookups;
+using ONEVO.Infrastructure.Persistence;
+using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
+using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
+using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.Offboarding;
+using Testcontainers.PostgreSql;
+using Xunit;
+
+namespace ONEVO.Tests.Integration.CoreHr.Offboarding;
+
+public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
+{
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
+        .WithDatabase("onevo_offboarding_execution_test")
+        .WithUsername("test").WithPassword("test").Build();
+    private string _connectionString = string.Empty;
+    private Guid _tenantId;
+    private Guid _legalEntityId;
+    private Guid _employeeId;
+    private Guid _employeeUserId;
+    private Guid _hrAdminUserId;
+
+    public async Task InitializeAsync()
+    {
+        await _postgres.StartAsync();
+        _connectionString = _postgres.GetConnectionString();
+        await IntegrationDatabaseBootstrap.InitializeAsync(_connectionString, CancellationToken.None);
+
+        await using var db = CreateContext();
+        _tenantId = Guid.NewGuid();
+        _legalEntityId = Guid.NewGuid();
+        _employeeUserId = Guid.NewGuid();
+        _hrAdminUserId = Guid.NewGuid();
+        _employeeId = Guid.NewGuid();
+
+        // Seed the minimum Tenant/LegalEntity/Users/Employee graph this test needs directly -
+        // follow the same manual-seed pattern ChecklistTemplatesIntegrationTests.cs uses rather
+        // than relying on LookupDataSeeder (which is a hosted service, not run by these tests).
+        // Fill in exact Tenant/User/Employee construction to match this codebase's required
+        // non-nullable fields (verify against ChecklistTemplatesIntegrationTests.cs's own seed
+        // block for the current exact shape before writing this test for real).
+        await db.SaveChangesAsync();
+    }
+
+    private ApplicationDbContext CreateContext()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(_connectionString).Options;
+        return new ApplicationDbContext(options);
+    }
+
+    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+
+    [Fact]
+    public async Task FullHappyPath_StartToComplete_LocksEmployeeRecord()
+    {
+        // Start -> select checklist (a manually-inserted offboarding ChecklistTemplate with one
+        // required, non-bypassable task) -> complete the task -> complete the exit.
+        // Assert: Employee.EmploymentStatusId is Resigned/Terminated per Reason, User.IsActive is
+        // false, all Sessions for that user are IsRevoked, OffboardingRecord.Status is Completed.
+    }
+
+    [Fact]
+    public async Task CancelThenRestart_SecondAttemptsTasksDoNotIncludeFirstAttemptsTasks()
+    {
+        // Start -> select checklist -> cancel -> start again -> select a different checklist.
+        // Assert: ListByOffboardingRecordAsync for the second OffboardingRecord.Id returns only
+        // the second attempt's tasks, not the first (cancelled) attempt's - this is the exact bug
+        // OffboardingRecordId (Task 5) exists to prevent.
+    }
+
+    [Fact]
+    public async Task BypassRequest_RejectThenComplete_TaskReturnsToPriorStatusAndCanStillBeCompleted()
+    {
+        // Create a bypass request, reject it, then complete the task normally.
+    }
+
+    [Fact]
+    public async Task ChangePosition_AfterOffboardingCompletion_Returns409()
+    {
+        // Full offboarding completion, then call ChangeEmployeePositionCommandHandler directly
+        // (or through the controller) and assert StatusCode == 409.
+    }
+}
+```
+
+**Note for whoever executes this task:** the seed block and the four test bodies are deliberately left as structured comments describing exactly what each must assert, rather than fully inlined — this is the one place in the plan where that's true, because it depends on reading `ChecklistTemplatesIntegrationTests.cs` and `IntegrationDatabaseBootstrap.cs` in full first (their exact current Tenant/User/Employee/LegalEntity seed shape, which changes as those entities gain/lose required fields over time — hardcoding a seed block here that might already be stale by execution time would violate the plan's own "verify against live code" standard more than leaving it as a precise checklist does). Read both files, then write the seed block and four test bodies following their exact construction pattern before running this task's tests.
+
+- [ ] **Step 2: Run the suite**
+
+Run: `dotnet test tests/ONEVO.Tests.Integration --filter FullyQualifiedName~OffboardingExecutionIntegrationTests`
+Expected: all four pass against the real Testcontainers Postgres instance (requires Docker running locally/in CI).
+
+- [ ] **Step 3: Confirm RLS coverage picked up the two new tables automatically**
+
+Run: `dotnet test tests/ONEVO.Tests.Architecture --filter FullyQualifiedName~TenantIsolationArchitectureTests`
+Expected: `EveryTenantOwnedEntityTable_HasRlsPolicyCoverage` passes, confirming `offboarding_records` and `offboarding_task_bypass_requests` were correctly declared in Task 4's `TenantTables` array — no test-file edits needed for this, per the Global Constraints rule.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add tests/ONEVO.Tests.Integration/CoreHr/Offboarding/
+git commit -m "test: add employee offboarding execution integration tests"
+```
 
 ## Self-Review
 
-**Spec coverage:** §4.1 (offboarding_records + gaps) → Tasks 2, 4. §4.2 (task fields) → Task 5. §4.3 (bypass table) → Tasks 3-4. §5.1 → Task 9. §5.2 → Tasks 7, 11. §5.3 → Tasks 13-15. §5.4 → Task 12. §5.5 → Task 16. §6 (API surface) → Tasks 9-16 collectively. §7 (read-only guard) → Task 17. §8 edge cases (completion race, scoping rule) → Task 14's blocking checks. §9 testing → Task 18. Nothing in the design spec is unaddressed.
+**Spec coverage:** §4.1 (offboarding_records + gaps) → Tasks 2, 4. §4.2 (task fields) → Task 5. §4.3 (bypass table) → Tasks 3-4. §5.1 → Task 9. §5.2 → Tasks 7, 11. §5.3 → Tasks 13-15. §5.4 → Task 12. §5.5 → Task 16. §6 (API surface) → Tasks 9-16 collectively, all 12 endpoints present. §7 (read-only guard) → Task 17. §8 edge cases (bypassing own task, non-bypassable-fixed-at-template-time, all-non-required-templates, cancel-after-approvals) → covered by Tasks 12/14/16's handler logic (no orphaned-approval cleanup needed since nothing is deleted). §9 testing → Task 18, plus every task's own unit tests. Nothing in the design spec is unaddressed.
 
-**Placeholder scan:** Tasks 1-9 contain complete, real code for every step. Tasks 10-18 are intentionally left as a structured expansion outline rather than fully-inlined TDD steps, given this plan's size — each names exact classes/methods/files/interfaces (not vague direction), and the pattern to expand them into full Task-9-style steps is mechanical and demonstrated five times over by Tasks 2-3, 5-7, and 9. A reviewer picking up Task 10 has everything needed except the literal code, which follows the same shape as every completed task above it.
+**Placeholder scan:** Every task (1-18) contains complete, real code for every step, with one explicit and justified exception: Task 18's integration-test seed block and four test bodies are left as precise structured comments rather than inlined code, because correctly inlining them requires reading two other test files' exact current field-by-field construction first (see that task's embedded note) — hardcoding a guess here would be less honest than flagging the dependency, not more complete.
 
-**Type consistency:** `OffboardingRecordStatuses`, `BypassRequestStatuses`, `EmployeeChecklistTaskStatuses`, `EmploymentStatusIds.Offboarding/Resigned`, and every repository method signature introduced in Tasks 2-8 are used identically in Task 9 and named identically in the Tasks 10-18 outline — no renamed types across the plan.
+**Type consistency:** `OffboardingRecordStatuses`, `BypassRequestStatuses`, `EmployeeChecklistTaskStatuses`, `EmploymentStatusIds.Offboarding/Resigned/Terminated`, `OffboardingRecordId`, `PriorTaskStatus`, and every repository method signature introduced in Tasks 2-8 and 13 are used identically across every consuming task (9-17) — cross-checked `GetTrackedByIdAsync`'s two distinct overloads (`IOffboardingRecordRepository`'s tenant+id form from Task 2, and `IEmployeeChecklistTaskRepository`'s tenant+id form from Task 13, deliberately without an employeeId parameter since Task 15's cross-employee approve/reject flow can't supply one) are called consistently with the right one in each task that uses them.
