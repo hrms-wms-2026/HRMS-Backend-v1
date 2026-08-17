@@ -59,7 +59,7 @@ public sealed class EfConfigurationTemplateRepository : IConfigurationTemplateRe
         bool? activeOnly,
         string? industryProfileTag)
     {
-        var query = _db.ConfigurationTemplates.AsQueryable();
+        var query = _db.ConfigurationTemplates.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(templateType))
         {

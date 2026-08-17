@@ -20,6 +20,10 @@ public class InvitationTokenConfiguration : IEntityTypeConfiguration<InvitationT
         builder.Property(i => i.CompletionMethodsJson).HasColumnType("jsonb");
         builder.Property(i => i.AllowedEmailDomainsJson).HasColumnType("jsonb");
         builder.Property(i => i.PositionId);
+        builder.Property(i => i.Purpose).HasColumnName("purpose").HasMaxLength(50).IsRequired();
+        builder.Property(i => i.LegalEntityId).HasColumnName("legal_entity_id");
+        builder.Property(i => i.EmployeeId).HasColumnName("employee_id");
+        builder.Property(i => i.OnboardingDraftId).HasColumnName("onboarding_draft_id");
 
         builder.HasIndex(i => i.TokenHash).IsUnique();
         builder.HasIndex(i => new { i.TenantId, i.InvitedEmail });

@@ -24,8 +24,17 @@ using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 using ONEVO.Domain.Features.Monitoring.WorkSessions.Entities;
+using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
+using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
+using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities;
+using ONEVO.Domain.Features.WorkManagement.Versions.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 
@@ -162,6 +171,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<TenantProvisioningState> TenantProvisioningStates => Set<TenantProvisioningState>();
     public DbSet<TenantSetupSelection> TenantSetupSelections => Set<TenantSetupSelection>();
     public DbSet<TenantOneTimeCharge> TenantOneTimeCharges => Set<TenantOneTimeCharge>();
+    public DbSet<SubscriptionInvoice> SubscriptionInvoices => Set<SubscriptionInvoice>();
+    public DbSet<BillingAuditLog> BillingAuditLogs => Set<BillingAuditLog>();
 
     // System Config - Payment Gateway (Phase 1 canonical tables)
     public DbSet<PaymentGatewayConfig> PaymentGatewayConfigs => Set<PaymentGatewayConfig>();
@@ -190,6 +201,16 @@ public class ApplicationDbContext : DbContext
 
     // CoreHR
     public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<PositionAssignment> PositionAssignments => Set<PositionAssignment>();
+    public DbSet<EmployeeHierarchyClosure> EmployeeHierarchyClosures => Set<EmployeeHierarchyClosure>();
+    public DbSet<EmployeeAddress> EmployeeAddresses => Set<EmployeeAddress>();
+    public DbSet<EmployeeEmergencyContact> EmployeeEmergencyContacts => Set<EmployeeEmergencyContact>();
+    public DbSet<EmployeeDependent> EmployeeDependents => Set<EmployeeDependent>();
+    public DbSet<EmployeeBankDetail> EmployeeBankDetails => Set<EmployeeBankDetail>();
+    public DbSet<OnboardingDraft> OnboardingDrafts => Set<OnboardingDraft>();
+    public DbSet<ChecklistTemplate> ChecklistTemplates => Set<ChecklistTemplate>();
+    public DbSet<EmployeeChecklistTask> EmployeeChecklistTasks => Set<EmployeeChecklistTask>();
+    public DbSet<AccessGrantRequest> AccessGrantRequests => Set<AccessGrantRequest>();
 
     // Lookups
     public DbSet<EmploymentType> EmploymentTypes => Set<EmploymentType>();
@@ -201,6 +222,21 @@ public class ApplicationDbContext : DbContext
     // OrgStructure
     public DbSet<LegalEntity> LegalEntities => Set<LegalEntity>();
     public DbSet<Department> Departments => Set<Department>();
+
+    // Storage - EntityAssets (Phase 1 entity_assets, scoped to owner_type "project" for now)
+    public DbSet<EntityAsset> EntityAssets => Set<EntityAsset>();
+
+    // Work Management - Foundation slice
+    public DbSet<ProjectCategory> ProjectCategories => Set<ProjectCategory>();
+    public DbSet<Project> Projects => Set<Project>();
+    public DbSet<Objective> Objectives => Set<Objective>();
+    public DbSet<ObjectiveChangeRequest> ObjectiveChangeRequests => Set<ObjectiveChangeRequest>();
+    public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
+    public DbSet<ProjectMemberInvitation> ProjectMemberInvitations => Set<ProjectMemberInvitation>();
+    public DbSet<VersionStatus> VersionStatuses => Set<VersionStatus>();
+    public DbSet<ProjectVersion> ProjectVersions => Set<ProjectVersion>();
+    public DbSet<ReleaseCalendarEntry> ReleaseCalendarEntries => Set<ReleaseCalendarEntry>();
+    public DbSet<Label> Labels => Set<Label>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

@@ -29,4 +29,10 @@ public static class OutboxMessageTypes
     public const string PositionArchived = "position_archived";
     public const string PositionRestored = "position_restored";
     public const string PlatformManagerInviteEmail = "platform_manager_invite_email";
+    public const string EmployeeOnboardingInviteEmail = "employee_onboarding_invite_email";
+
+    // No IOutboxMessageHandler consumer beyond the registered no-op yet - see
+    // NoOpEmployeeSecurityOutboxHandler. Producer-side audit trail for now.
+    public const string EmployeeSecurityUpdated = "employee_security_updated";
+    public const string InvoiceEmail = "invoice_email";
 }

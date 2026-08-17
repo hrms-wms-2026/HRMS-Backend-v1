@@ -97,6 +97,26 @@ public class StorageQuotaServiceTests
         Assert.Equal("platform_default", result.Value!.Source);
     }
 
+    /// <summary>
+    /// Reproduces the local/dev "logo upload blocked by storage_not_entitled" bug: an active
+    /// subscription whose selected modules exist in the catalog but every one has an empty/
+    /// placeholder storage_reference (the real seeded state of module_catalog today - see
+    /// PHASE1_SUBSCRIPTION_MODULE_SEED_RECONCILIATION_REPORT.md), with no platform default
+    /// configured. This must deny, never silently grant storage.
+    /// </summary>
+    [Fact]
+    public async Task Limit_Denied_WhenSubscriptionModulesContributeZeroAndNoDefaultConfigured()
+    {
+        GiveTenantActiveSubscription(TenantA);
+        _catalog.Items[0].IsStorageConsuming = false;
+
+        var result = await CreateService(defaultLimitGb: null).GetTenantStorageLimitAsync(TenantA);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal(StorageQuotaErrorCodes.NotEntitled, result.Error);
+    }
+
     [Fact]
     public async Task Limit_Denied_WhenNothingResolves()
     {

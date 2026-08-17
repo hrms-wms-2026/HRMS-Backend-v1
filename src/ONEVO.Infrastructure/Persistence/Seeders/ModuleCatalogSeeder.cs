@@ -282,8 +282,7 @@ public class ModuleCatalogSeeder : IHostedService
 
             // work_management
             new { Module = "work_management", Perm = "projects:read" },
-            new { Module = "work_management", Perm = "projects:write" },
-            new { Module = "work_management", Perm = "projects:create" },
+            new { Module = "work_management", Perm = "projects:access" },
             new { Module = "work_management", Perm = "tasks:read" },
             new { Module = "work_management", Perm = "tasks:write" },
             new { Module = "work_management", Perm = "tasks:approve" },
@@ -321,7 +320,20 @@ public class ModuleCatalogSeeder : IHostedService
 
             if (existingByCode.TryGetValue(def.Perm, out var ownership))
             {
-                ownership.ModuleKey = def.Module;
+                // ModuleKey is part of the composite key — EF cannot re-key an existing row in
+                // place. When the canonical module for a permission changed since the last seed,
+                // drop the stale mapping and re-add it under the new module (PermissionCode has
+                // a unique index, so this is the only row for that permission).
+                if (ownership.ModuleKey != def.Module)
+                {
+                    db.ModulePermissionOwnerships.Remove(ownership);
+                    db.ModulePermissionOwnerships.Add(new ModulePermissionOwnership
+                    {
+                        ModuleKey = def.Module,
+                        PermissionCode = def.Perm,
+                        IsDefaultPermission = true
+                    });
+                }
             }
             else
             {

@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 using ONEVO.Application.Features.OrgStructure.Mappers;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure;
 
 namespace ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
 
@@ -33,10 +34,12 @@ public class UpdateLegalEntityGeneralSettingsCommandHandler
             return Result<LegalEntityGeneralSettingsResponse>.Forbidden("Tenant context missing.");
 
         // Fetch-then-mutate: never construct a detached LegalEntity and call
-        // Update() directly - GetByIdForTenantAsync loads the tracked-free
+        // Update() directly - GetAccessibleByIdAsync loads the tracked-free
         // instance we mutate below, exactly as Part 2A's repository doc
-        // mandates.
-        var entity = await _legalEntities.GetByIdForTenantAsync(tenantId, request.LegalEntityId, ct);
+        // mandates, scoped to what this caller may actually access.
+        var hasManagementAccess = LegalEntityAccessPolicy.HasManagementAccess(_currentUser);
+        var entity = await _legalEntities.GetAccessibleByIdAsync(
+            tenantId, request.LegalEntityId, _currentUser.UserId, hasManagementAccess, ct);
         if (entity is null)
             return Result<LegalEntityGeneralSettingsResponse>.NotFound("Company not found.");
 
@@ -80,6 +83,8 @@ public class UpdateLegalEntityGeneralSettingsCommandHandler
         entity.DefaultLanguage = request.DefaultLanguage.Trim();
         entity.DateFormat = request.DateFormat.Trim();
         entity.TimeFormat = request.TimeFormat.Trim();
+        entity.WorkStartTime = request.WorkStartTime;
+        entity.WorkEndTime = request.WorkEndTime;
         entity.IsActive = newIsActive;
         entity.UpdatedAt = _dateTimeProvider.UtcNow;
 

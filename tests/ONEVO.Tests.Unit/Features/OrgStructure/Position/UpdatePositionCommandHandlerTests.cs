@@ -44,7 +44,7 @@ public sealed class UpdatePositionCommandHandlerTests
             .ReturnsAsync(new PositionEntity
             {
                 Id = _positionId, TenantId = _tenantId, LegalEntityId = _legalEntityId, DepartmentId = _departmentId,
-                Name = "Old Name", Code = "OLD-CODE", PositionType = "unique", MaxOccupancy = 1, IsActive = true
+                Name = "Old Name", Code = "OLDCD", PositionType = "unique", MaxOccupancy = 1, IsActive = true
             });
         _positionsMock
             .Setup(p => p.ExistsByCodeAsync(_tenantId, _legalEntityId, It.IsAny<string>(), _positionId, It.IsAny<CancellationToken>()))
@@ -58,9 +58,9 @@ public sealed class UpdatePositionCommandHandlerTests
         => new(_positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
 
     private UpdatePositionCommand ValidCommand(
-        Guid? departmentId = null, string name = "New Name", string code = "NEW-CODE",
-        string positionType = "unique", int maxOccupancy = 1, Guid? reportsToPositionId = null)
-        => new(_legalEntityId, _positionId, departmentId ?? _departmentId, name, code, positionType, maxOccupancy, reportsToPositionId);
+        Guid? departmentId = null, string name = "New Name", string code = "NEWCD",
+        int maxOccupancy = 1, Guid? reportsToPositionId = null)
+        => new(_legalEntityId, _positionId, departmentId ?? _departmentId, name, code, maxOccupancy, reportsToPositionId);
 
     [Fact]
     public async Task Handle_PreservesTenantAndLegalEntityScope_WhenUpdatingFields()
@@ -70,7 +70,7 @@ public sealed class UpdatePositionCommandHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(_legalEntityId, result.Value!.LegalEntityId);
         Assert.Equal("New Name", result.Value.Name);
-        Assert.Equal("NEW-CODE", result.Value.Code);
+        Assert.Equal("NEWCD", result.Value.Code);
         _positionsMock.Verify(
             p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()),
             Times.Once);
@@ -133,7 +133,7 @@ public sealed class UpdatePositionCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ReturnsUnprocessableEntity_WhenReportsToPositionIsPooled()
+    public async Task Handle_AllowsPooledPositionAsReportsToTarget()
     {
         var reportsToId = Guid.NewGuid();
         _positionsMock
@@ -143,13 +143,20 @@ public sealed class UpdatePositionCommandHandlerTests
                 Id = reportsToId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Support Pool",
                 PositionType = PositionEntity.TypePooled, MaxOccupancy = 5, IsActive = true
             });
+        _positionsMock
+            .Setup(p => p.IsDescendantAsync(_tenantId, _legalEntityId, _positionId, reportsToId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _positionsMock
+            .Setup(p => p.CountActiveReportsToPositionAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
 
         var result = await CreateHandler().Handle(
             ValidCommand(reportsToPositionId: reportsToId), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(422, result.StatusCode);
-        _positionsMock.Verify(p => p.Update(It.IsAny<PositionEntity>()), Times.Never);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(reportsToId, result.Value!.ReportsToPositionId);
+        Assert.Equal("Support Pool", result.Value.ReportsToPositionName);
+        _positionsMock.Verify(p => p.Update(It.IsAny<PositionEntity>()), Times.Once);
     }
 
     [Fact]
@@ -181,7 +188,7 @@ public sealed class UpdatePositionCommandHandlerTests
             .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, missingPositionId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((PositionEntity?)null);
 
-        var command = new UpdatePositionCommand(_legalEntityId, missingPositionId, _departmentId, "Name", "CODE", "unique", 1, null);
+        var command = new UpdatePositionCommand(_legalEntityId, missingPositionId, _departmentId, "Name", "CODE", 1, null);
 
         var result = await CreateHandler().Handle(command, CancellationToken.None);
 
@@ -202,6 +209,56 @@ public sealed class UpdatePositionCommandHandlerTests
     }
 
     [Fact]
+    public void Validator_RejectsCodeLongerThanFiveCharacters()
+    {
+        var validator = new UpdatePositionCommandValidator();
+
+        var result = validator.Validate(ValidCommand(code: "ABCDEF"));
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public void Validator_AllowsCodeAtFiveCharacters()
+    {
+        var validator = new UpdatePositionCommandValidator();
+
+        var result = validator.Validate(ValidCommand(code: "ABCDE"));
+
+        Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Validator_RejectsMaxOccupancyBelowOne(int maxOccupancy)
+    {
+        var validator = new UpdatePositionCommandValidator();
+
+        var result = validator.Validate(ValidCommand(maxOccupancy: maxOccupancy));
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public async Task Handle_DerivesUniquePositionType_WhenMaxOccupancyIsOne()
+    {
+        var result = await CreateHandler().Handle(ValidCommand(maxOccupancy: 1), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PositionEntity.TypeUnique, result.Value!.PositionType);
+    }
+
+    [Fact]
+    public async Task Handle_DerivesPooledPositionType_WhenMaxOccupancyGreaterThanOne()
+    {
+        var result = await CreateHandler().Handle(ValidCommand(maxOccupancy: 3), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PositionEntity.TypePooled, result.Value!.PositionType);
+    }
+
+    [Fact]
     public async Task Handle_ReplacesLockedCoverageAndClosesHistory_WhenReportsToChangesAcrossDays()
     {
         var oldReportsToId = Guid.NewGuid();
@@ -211,7 +268,7 @@ public sealed class UpdatePositionCommandHandlerTests
             .ReturnsAsync(new PositionEntity
             {
                 Id = _positionId, TenantId = _tenantId, LegalEntityId = _legalEntityId, DepartmentId = _departmentId,
-                Name = "Old Name", Code = "OLD-CODE", PositionType = "unique", MaxOccupancy = 1, IsActive = true,
+                Name = "Old Name", Code = "OLDCD", PositionType = "unique", MaxOccupancy = 1, IsActive = true,
                 ReportsToPositionId = oldReportsToId
             });
         _positionsMock

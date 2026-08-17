@@ -93,7 +93,6 @@ public class PositionsController : ControllerBase
                 request.DepartmentId,
                 request.Name,
                 request.Code,
-                request.PositionType,
                 request.MaxOccupancy,
                 request.ReportsToPositionId),
             ct);
@@ -119,7 +118,6 @@ public class PositionsController : ControllerBase
                 request.DepartmentId,
                 request.Name,
                 request.Code,
-                request.PositionType,
                 request.MaxOccupancy,
                 request.ReportsToPositionId),
             ct);

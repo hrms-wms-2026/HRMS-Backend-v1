@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Auth;
 using ONEVO.Application.Features.Auth.Login.Commands.MfaConfirmSetup;
+using ONEVO.Application.Features.Auth.Login.Commands.MfaDisable;
 using ONEVO.Application.Features.Auth.Login.Commands.MfaEnable;
 using ONEVO.Application.Features.Auth.Login.Commands.MfaVerify;
 
@@ -66,5 +67,17 @@ public class AuthMfaController : ControllerBase
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
         return Ok(new { success = true });
+    }
+
+    /// <summary>Disable MFA for the currently authenticated user. Requires re-entering the
+    /// current password as a safety check before removing the second factor.</summary>
+    [HttpPost("mfa/disable")]
+    [Authorize(Policy = "TenantPolicy")]
+    public async Task<IActionResult> DisableMfa([FromBody] DisableMfaRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new DisableMfaCommand(request.CurrentPassword), ct);
+        return result.IsSuccess
+            ? Ok(new { success = true })
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }

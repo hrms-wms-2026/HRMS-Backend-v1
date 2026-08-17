@@ -100,6 +100,13 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
     private static readonly DateOnly SmokeEmployeeHireDate = new(2025, 1, 1);
 
+    // Local/dev-only seat policy for the smoke tenants. Not a production default: billing has
+    // not defined a real seat policy for these test tenants, so this is just enough headroom
+    // (Acme seeds 3 employees, Dapi seeds 1) for local onboarding finalization to proceed
+    // without SeatEntitlementService returning Undetermined.
+    private const int DevSmokeIncludedSeats = 25;
+    private const bool DevSmokeOverageAllowed = false;
+
     private const string GitHubProvider = "github";
     private const string GitHubIntegrationKey = "github";
     private const string GitHubAuthorizationUrl = "https://github.com/login/oauth/authorize";
@@ -777,6 +784,8 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 CalculatedMonthlyPrice = 0m,
                 CalculatedAnnualPrice = 0m,
                 BillingCurrency = "USD",
+                IncludedSeats = DevSmokeIncludedSeats,
+                OverageAllowed = DevSmokeOverageAllowed,
                 CreatedById = userId,
                 CreatedAt = now
             };
@@ -790,6 +799,11 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         // (e.g. from before the plan's module list was corrected) self-heals on the next
         // backend startup instead of being permanently stuck.
         subscription.SelectedModulesJson = plan.IncludedModulesJson ?? "[]";
+        // Only fill in a missing seat policy - never overwrite an explicit value someone (or a
+        // future seeder revision) already set, per the seeder's general "don't clobber owned
+        // records" pattern.
+        subscription.IncludedSeats ??= DevSmokeIncludedSeats;
+        subscription.OverageAllowed ??= DevSmokeOverageAllowed;
         subscription.UpdatedAt = now;
     }
 

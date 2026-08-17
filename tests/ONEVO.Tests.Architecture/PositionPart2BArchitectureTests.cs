@@ -112,8 +112,13 @@ public class PositionPart2BArchitectureTests
         // (ONEVO.Api.Controllers.Tenant.OrgStructure.PositionsController) - see
         // POSITION_FOUNDATION_PART2C_CONTROLLER_ENDPOINTS_REPORT.md. This guard now asserts
         // there is exactly one, not zero, so a stray duplicate controller cannot slip in later.
+        //
+        // Matches on the exact controller name rather than a "Name contains Position" scan: the
+        // later Position Template Packs feature legitimately adds a second, differently named
+        // OrgStructure controller (PositionTemplatePacksController) that must not trip this
+        // guard - see PositionPart2AArchitectureTests.PositionTemplatePacksController_IsASeparateControllerFromPositionsController.
         var controllers = ApiAssembly.GetTypes()
-            .Where(t => t.Name.Contains("Position", StringComparison.OrdinalIgnoreCase) && t.Name.EndsWith("Controller", StringComparison.Ordinal))
+            .Where(t => t.Name.Equals("PositionsController", StringComparison.Ordinal))
             .ToList();
 
         Assert.Single(controllers);

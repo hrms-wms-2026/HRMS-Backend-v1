@@ -26,8 +26,7 @@ public static class PlatformAccessMapper
             user.Id,
             user.Email,
             user.FullName,
-            null,
-            user.Status == PlatformUser.StatusActive,
+            user.Status,
             user.CreatedAt,
             user.LastLoginAt,
             mappedRoles);
@@ -76,11 +75,13 @@ public static class PlatformAccessMapper
             session.RevokedAt != null);
     }
 
-    public static PlatformAuthEventResponse Map(PlatformAuthEvent authEvent)
+    public static PlatformAuthEventResponse Map(PlatformAuthEvent authEvent, PlatformUser? user = null)
     {
         return new PlatformAuthEventResponse(
             authEvent.Id,
             authEvent.UserId,
+            user?.Email,
+            user?.FullName,
             authEvent.EventType,
             authEvent.SourceIp,
             authEvent.UserAgent,

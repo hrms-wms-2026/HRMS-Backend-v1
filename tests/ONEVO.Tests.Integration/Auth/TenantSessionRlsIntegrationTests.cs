@@ -267,6 +267,9 @@ public sealed class TenantSessionRlsIntegrationTests : IAsyncLifetime
         services.AddScoped<ITenantRepository, EfTenantRepository>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
         services.AddScoped<IPermissionResolver, NoOpPermissionResolver>();
+        services.AddScoped<
+            ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository>();
 
         return services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
     }
@@ -325,7 +328,7 @@ public sealed class TenantSessionRlsIntegrationTests : IAsyncLifetime
 
     private sealed class NoOpPermissionResolver : IPermissionResolver
     {
-        public Task<List<string>> ResolveAsync(Guid userId, Guid tenantId, CancellationToken ct = default) =>
+        public Task<List<string>> ResolveAsync(Guid userId, Guid tenantId, Guid? activeLegalEntityId, CancellationToken ct = default) =>
             Task.FromResult(new List<string>());
     }
 }

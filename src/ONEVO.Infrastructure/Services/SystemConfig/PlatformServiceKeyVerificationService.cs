@@ -1,27 +1,38 @@
+using System.Net.Http.Headers;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
+using ONEVO.Infrastructure.ExternalServices.Email;
 
 namespace ONEVO.Infrastructure.Services.SystemConfig;
 
 /// <summary>
 /// Platform service key verification.
 ///
-/// Phase 1 Foundation stub - validates key format only (non-empty, plausible shape per
-/// provider) with NO live external network call, matching the payment gateway
-/// verification pattern. Replace with real provider HTTP clients (Resend/SendGrid
-/// account endpoints, Cloudflare token verify) in a later delivery.
+/// Resend and SendGrid keys are verified with a lightweight live provider call that does
+/// not send email. Other supported services remain local format-only checks until their
+/// provider HTTP clients are wired.
 ///
 /// SECURITY: the plaintext key is inspected in memory only and is NEVER logged.
+/// Provider response bodies are never logged or returned.
 /// </summary>
 public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyVerificationService
 {
+    private const string ResendVerifyUrl = "https://api.resend.com/domains";
+    private const string SendGridVerifyUrl = "https://api.sendgrid.com/v3/scopes";
+
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<PlatformServiceKeyVerificationService> _logger;
 
-    public PlatformServiceKeyVerificationService(ILogger<PlatformServiceKeyVerificationService> logger)
-        => _logger = logger;
+    public PlatformServiceKeyVerificationService(
+        IHttpClientFactory httpClientFactory,
+        ILogger<PlatformServiceKeyVerificationService> logger)
+    {
+        _httpClientFactory = httpClientFactory;
+        _logger = logger;
+    }
 
-    public Task<PlatformServiceKeyVerificationResult> VerifyAsync(
+    public async Task<PlatformServiceKeyVerificationResult> VerifyAsync(
         string serviceKey,
         string apiKeyPlaintext,
         CancellationToken ct)
@@ -33,35 +44,120 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
 
         if (string.IsNullOrWhiteSpace(apiKeyPlaintext))
         {
-            return Task.FromResult(new PlatformServiceKeyVerificationResult
+            return new PlatformServiceKeyVerificationResult
             {
                 Success = false,
                 CheckedAt = checkedAt,
                 Message = "Stored API key is empty."
-            });
+            };
         }
 
-        var success = serviceKey switch
+        return serviceKey switch
         {
-            // Resend keys start with "re_", SendGrid with "SG." - accept any non-trivial
-            // key to avoid false negatives; format-only check, no live call in Phase 1.
-            PlatformServiceKeyCatalog.Resend => apiKeyPlaintext.Length >= 8,
-            PlatformServiceKeyCatalog.Sendgrid => apiKeyPlaintext.Length >= 8,
-            PlatformServiceKeyCatalog.Cloudflare => apiKeyPlaintext.Length >= 8,
-            PlatformServiceKeyCatalog.CloudflareR2 => apiKeyPlaintext.Length >= 8,
-            PlatformServiceKeyCatalog.AwsRekognition => apiKeyPlaintext.Length >= 8,
-            _ => false
+            PlatformServiceKeyCatalog.Resend => await VerifyLiveProviderAsync(
+                ResendEmailAdapter.HttpClientName,
+                ResendVerifyUrl,
+                "Resend",
+                apiKeyPlaintext,
+                checkedAt,
+                ct),
+            PlatformServiceKeyCatalog.Sendgrid => await VerifyLiveProviderAsync(
+                SendGridEmailAdapter.HttpClientName,
+                SendGridVerifyUrl,
+                "SendGrid",
+                apiKeyPlaintext,
+                checkedAt,
+                ct),
+            PlatformServiceKeyCatalog.Cloudflare => FormatOnlyResult(
+                serviceKey, apiKeyPlaintext, checkedAt),
+            PlatformServiceKeyCatalog.CloudflareR2 => FormatOnlyResult(
+                serviceKey, apiKeyPlaintext, checkedAt),
+            PlatformServiceKeyCatalog.AwsRekognition => FormatOnlyResult(
+                serviceKey, apiKeyPlaintext, checkedAt),
+            _ => new PlatformServiceKeyVerificationResult
+            {
+                Success = false,
+                CheckedAt = checkedAt,
+                Message = $"Service key '{serviceKey}' is not supported for verification."
+            }
         };
+    }
 
-        var message = success
-            ? "Key format accepted. Live provider verification is not yet wired (Phase 1 stub)."
-            : $"Key format check failed for service '{serviceKey}'.";
-
-        return Task.FromResult(new PlatformServiceKeyVerificationResult
+    private static PlatformServiceKeyVerificationResult FormatOnlyResult(
+        string serviceKey,
+        string apiKeyPlaintext,
+        DateTimeOffset checkedAt)
+    {
+        var success = apiKeyPlaintext.Length >= 8;
+        return new PlatformServiceKeyVerificationResult
         {
             Success = success,
             CheckedAt = checkedAt,
-            Message = message
-        });
+            Message = success
+                ? "Local format-only verification passed. Live provider check is not wired for this service."
+                : $"Local format-only verification failed for service '{serviceKey}'."
+        };
+    }
+
+    private async Task<PlatformServiceKeyVerificationResult> VerifyLiveProviderAsync(
+        string httpClientName,
+        string verifyUrl,
+        string providerDisplayName,
+        string apiKeyPlaintext,
+        DateTimeOffset checkedAt,
+        CancellationToken ct)
+    {
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Get, verifyUrl);
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKeyPlaintext);
+
+        HttpResponseMessage response;
+        try
+        {
+            var client = _httpClientFactory.CreateClient(httpClientName);
+            response = await client.SendAsync(httpRequest, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                "{Provider} key verification request failed before a response: {ExceptionType}.",
+                providerDisplayName,
+                ex.GetType().Name);
+            return new PlatformServiceKeyVerificationResult
+            {
+                Success = false,
+                CheckedAt = checkedAt,
+                Message = $"{providerDisplayName} verification request failed: {ex.GetType().Name}."
+            };
+        }
+
+        using (response)
+        {
+            if (response.IsSuccessStatusCode)
+            {
+                return new PlatformServiceKeyVerificationResult
+                {
+                    Success = true,
+                    CheckedAt = checkedAt,
+                    Message = $"{providerDisplayName} API key verified successfully."
+                };
+            }
+
+            _logger.LogWarning(
+                "{Provider} key verification returned {StatusCode}.",
+                providerDisplayName,
+                (int)response.StatusCode);
+
+            return new PlatformServiceKeyVerificationResult
+            {
+                Success = false,
+                CheckedAt = checkedAt,
+                Message =
+                    $"{providerDisplayName} API rejected the key ({(int)response.StatusCode} {response.StatusCode})."
+            };
+        }
     }
 }

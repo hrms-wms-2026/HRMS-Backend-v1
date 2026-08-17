@@ -8,4 +8,6 @@ public interface IEmailService
     Task SendAdminPasswordResetAsync(string to, string resetToken, CancellationToken ct = default);
     Task SendAdminPasswordChangedAsync(string to, CancellationToken ct = default);
     Task SendPlatformManagerInviteAsync(string to, string fullName, string inviteToken, CancellationToken ct = default);
+    Task SendEmployeeOnboardingInviteAsync(string to, string firstName, string lastName, string inviteToken, string? tenantSlug = null, CancellationToken ct = default);
+    Task SendInvoiceEmailAsync(string to, object templateData, CancellationToken ct = default);
 }

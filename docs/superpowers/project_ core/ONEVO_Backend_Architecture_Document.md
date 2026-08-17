@@ -94,6 +94,9 @@ ONEVO backend is organized into layers and feature/subfeature folders. New work 
 src/ONEVO.Api/
   Auth/
   Configuration/
+  Contracts/
+    {Feature}/
+      {SubFeature}/
   Controllers/
     Admin/
       {Feature}/
@@ -114,6 +117,7 @@ Folder purpose:
 |---|---|
 | `Auth/` | API authentication boundary helpers live here when the code is specific to HTTP authentication. |
 | `Configuration/` | API-specific configuration models and setup helpers live here. |
+| `Contracts/` | The API's own HTTP-boundary request and response models — see §2.1.1.1 View Model Convention below. |
 | `Controllers/Admin/` | Platform/admin endpoints live here. These endpoints use `/admin/v1/...` routes and admin policies. |
 | `Controllers/Customer/` | Tenant/customer endpoints should live here when the controller structure is migrated to customer/admin separation. These endpoints use `/api/v1/...` routes and tenant policies. |
 | `Extensions/` | Startup registrations are grouped here, such as authentication, authorization, CORS, and Swagger setup. This keeps `Program.cs` small. |
@@ -121,6 +125,16 @@ Folder purpose:
 | `Middleware/` | Request pipeline checks live here, such as exception handling, correlation ID, tenant resolution, CSRF, rate limiting, permission version checks, and tenant enforcement. |
 | `Properties/` | ASP.NET launch/runtime project properties live here. |
 | `Program.cs` | API host startup, middleware ordering, dependency registration, and endpoint mapping live here. |
+
+#### 2.1.1.1 View Model Convention
+
+`Contracts/` holds both request models (already established) and **response view models** (added 2026-08-03). A controller action must never serialize an Application-layer response DTO (anything from `ONEVO.Application.Features.*.DTOs.Responses`) directly to the client — it maps that DTO into a view model defined under `Contracts/{Feature}/{SubFeature}/` first.
+
+Rules:
+- View model type names end in `ViewModel` (e.g. `ProjectViewModel`, `AuthSessionViewModel`) — this is what disambiguates them from same-shaped Application DTOs that sometimes have a name ending in `Response`/`Dto` (e.g. `LegalEntityGeneralSettingsResponse`, `ProjectCreationResponse` are Application types despite the name, not Contracts types).
+- Mapping lives in a static `{Feature}ViewModelMapper` class under `Contracts/{Feature}/`, as extension methods named `ToViewModel()` — one overload per Application DTO being converted. Controllers call `result.Value.ToViewModel()`, never construct a view model inline.
+- **A retrofit must not change the JSON actually sent over the wire.** When adding a view model for an endpoint that previously serialized the Application DTO directly, the new view model must reproduce the exact same property names, `JsonPropertyName` values, casing, and nesting the endpoint already emits — this is a structural relocation (separating the API boundary's contract from the Application layer's internal shape), not a wire-format change. A deliberate wire-format change is a separate, explicitly-scoped decision.
+- This was retrofitted incrementally starting 2026-08-03 (Work Management's `ProjectsController` and the shared tenant Auth session-response path via `TenantAuthResponseWriter`) — most existing tenant controllers still return Application DTOs directly and are queued for the same treatment; see `docs/superpowers/plans/` for the tracking plan. Do not treat "some controllers already do this" as optional for new work — new controllers/actions always get a view model from the start.
 
 Current code note: the backend currently has `Controllers/Admin`, `Controllers/Auth`, `Controllers/DevPlatform`, and `Controllers/Webhooks`. Admin APIs are already separated under `Controllers/Admin`; tenant/customer APIs are still feature-grouped under folders such as `Auth` and `DevPlatform`.
 
@@ -525,6 +539,51 @@ Rules:
 - Tenant-owned entities must implement `ITenantOwnedEntity`.
 - Raw SQL must preserve tenant boundaries.
 
+#### 3.3.1 RLS Policy Coverage Convention (mandatory)
+
+Every migration that creates a table for an entity implementing `ITenantOwnedEntity` must enable PostgreSQL RLS for that table **in the same migration**, using the shared convention already established by `AddRlsPolicies`, `AddMissingRlsPolicies`, and `AddConfigurationTemplateApplicationsRlsPolicy`:
+
+```csharp
+private static readonly string[] TenantTables =
+[
+    "your_new_table"
+];
+
+protected override void Up(MigrationBuilder migrationBuilder)
+{
+    foreach (var table in TenantTables)
+    {
+        migrationBuilder.Sql($@"
+            ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE {table} FORCE ROW LEVEL SECURITY;
+            DROP POLICY IF EXISTS tenant_isolation ON {table};
+            CREATE POLICY tenant_isolation ON {table}
+                USING (
+                    current_setting('app.tenant_context_mode', true) = 'admin'
+                    OR (
+                        current_setting('app.tenant_context_mode', true) = 'tenant'
+                        AND tenant_id::text = current_setting('app.current_tenant_id', true)
+                    )
+                )
+                WITH CHECK (
+                    current_setting('app.tenant_context_mode', true) = 'admin'
+                    OR (
+                        current_setting('app.tenant_context_mode', true) = 'tenant'
+                        AND tenant_id::text = current_setting('app.current_tenant_id', true)
+                    )
+                );
+        ");
+    }
+}
+```
+
+Why this exact shape is mandatory, not just SQL correctness: `TenantIsolationArchitectureTests.EveryTenantOwnedEntityTable_HasRlsPolicyCoverage` proves RLS coverage without a live database — it scans migration **source text** for the literal pattern `TenantTables = [...]` inside a file that also contains `CREATE POLICY tenant_isolation`, and treats every table name found there as covered. It cannot see policies that exist only in the live database.
+
+- Writing the `CREATE POLICY`/`ENABLE ROW LEVEL SECURITY` SQL directly (without a `TenantTables` array + `foreach` loop) creates a table that is genuinely RLS-protected in Postgres but **invisible to the architecture test**, which will then fail with `EveryTenantOwnedEntityTable_HasRlsPolicyCoverage` listing your table as uncovered — even though the policy works.
+- This has happened twice: `tenant_configuration_template_applications` (fixed by `AddConfigurationTemplateApplicationsRlsPolicy`) and `objective_change_requests` (fixed by `AddObjectiveChangeRequestsRlsPolicyCoverage`, 2026-08-10) both had correct inline RLS SQL that the test couldn't parse.
+- If you inherit a migration that already has inline RLS SQL outside this convention, do not just delete/rewrite an already-applied migration — add a new, idempotent migration (the SQL above is safe to reissue: `DROP POLICY IF EXISTS` + `ENABLE ROW LEVEL SECURITY` are no-ops if already applied) that expresses the same table through the `TenantTables` convention, exactly like the two fixes above.
+- Before adding a migration for a new tenant-owned table, run `dotnet test tests/ONEVO.Tests.Architecture` locally — this test is the only signal that catches this class of gap; it is not caught by build, unit tests, or a working feature demo.
+
 ### 3.4 Authentication and Authorization
 
 #### Tenant User Authentication
@@ -863,7 +922,7 @@ Rules:
 7. Add mappers for repeated or non-trivial mapping.
 8. Add repository/service interfaces only when needed.
 9. Add Infrastructure implementations under matching feature/subfeature path.
-10. Add EF configurations and migrations for schema changes.
+10. Add EF configurations and migrations for schema changes. If the new/changed entity implements `ITenantOwnedEntity`, its table's RLS policy must be added in the same migration through the `TenantTables` array convention — see §3.3.1. Raw inline `CREATE POLICY` SQL will not satisfy `TenantIsolationArchitectureTests`.
 11. Add or update controller endpoints.
 12. Add authorization policy or permission filter.
 13. Check tenant context and tenant isolation.
@@ -1395,11 +1454,14 @@ Architecture tests must protect:
 - Dependency direction.
 - Clean Architecture boundaries.
 - Module boundaries.
-- Tenant-isolation rules.
+- Tenant-isolation rules, including RLS coverage — see §3.3.1 for the mandatory migration shape this depends on.
 - No controller-to-DbContext access.
 - No Application dependency on Infrastructure implementations.
+- Retirement of removed Domain fields (e.g. the legacy `Employee.ManagerId`/`JobTitleId` guard in `EmployeeLegacyFieldRetirementArchitectureTests`), so a retired field cannot silently come back through Application/Infrastructure code.
 
 Coverage target: at least 70% on business logic, with higher coverage expected for critical backend modules.
+
+**Writing source-text-scanning guard tests (e.g. retired-field or forbidden-API checks):** match on identifier word boundaries (`\bManagerId\b`), not `string.Contains`. A plain substring check also matches inside unrelated, legitimately-named identifiers that merely contain the same characters — e.g. a check for `ManagerId` (guarding the retired `Employee.ManagerId`) previously false-matched `Objective.ReportingManagerId`, an unrelated field with its own meaning. This blocked CI until the check was changed to `Regex.IsMatch(text, @"\b(ManagerId|JobTitleId)\b")`. When adding a new field, a name that happens to end with a retired/forbidden identifier's exact spelling (e.g. anything ending in `...ManagerId`) will still not trip a word-boundary check, but would trip a naive `Contains` one — keep guard tests on word boundaries so future field names aren't accidentally constrained by old substring collisions.
 
 ---
 

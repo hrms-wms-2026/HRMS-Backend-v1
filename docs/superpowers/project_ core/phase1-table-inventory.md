@@ -2,13 +2,17 @@
 
 Every **Phase 1** table documented in this vault, with its full column list. Compiled from the canonical files in `database/schemas/` and `developer-platform/database/schema.md` (Phase 2 tables excluded per each file's `**Phase:**` markers; retained Phase 2 catalog references are not table-creation permission).
 
-**Phase 1 total: 252 tables** (245 core + 7 Developer Platform Extensions - see below)
+**Phase 1 total: 250 tables** (243 core + 7 Developer Platform Extensions - see below)
+
+> **2026-08-03 revision:** Foundation + Projects + Objectives dropped from 17 to 14 tables — `workspaces`/`workspace_roles`/`workspace_members` removed (Workspace functionality is out of scope; see the Work Management implementation decisions) and `objective_participants` removed (Objective participation is represented only through `project_members`); `version_statuses` added (new global lookup, seeded `planned`/`released`/`archived`). Net -3 vs. the prior count. See the Foundation + Projects + Objectives section for the full column-level rework of `projects`, `project_members`, `project_member_invitations`, `versions`, `release_calendar`, `labels`, and `project_categories`.
+>
+> **2026-08-08 revision:** Foundation + Projects + Objectives moves from 14 to 15 tables — `objective_change_requests` (shipped 2026-08-04/05 with the milestone-hierarchy plan, extended 2026-08-08 with `achieve`/`unachieve` request types) had never been added to this inventory; documented now alongside `projects.is_achieved`/`achieved_at`, `objectives.is_achieved`/`achieved_at`, and `objectives.reporting_manager_id` (also undocumented since 2026-08-04/05 — see the Achieve workflow design, `specs/finished/2026-08-08/2026-08-06-work-management-milestone-membership-and-achieve-design.md`).
 
 | Group | Modules (tables) | Total |
 |:---|:---|---:|
 | Pillar 1 - HR Management | Infrastructure (13), Auth & Security (20), Org Structure (8), Core HR (14), Time Off (7), Calendar (5), Configuration (11) | 78 |
 | Pillar 2 - Monitoring | Activity Monitoring (8), Discrepancy Engine (3), Time & Attendance (18), Identity Verification (8), Productivity Analytics (5) | 42 |
-| Pillar 3 - Work Management | Foundation + Projects + Objectives (17), Task Management + Worklogs (15), Sprint Planning (5), Collaboration (5), GitHub Repository Integration (6) | 48 |
+| Pillar 3 - Work Management | Foundation + Projects + Objectives (15), Task Management + Worklogs (15), Sprint Planning (5), Collaboration (5), GitHub Repository Integration (6) | 46 |
 | Shared Foundation | Shared Platform (54), Agent Gateway (6), Reporting Engine (3) | 63 |
 | Developer Platform | Platform users/credentials/sessions/RBAC/auth events (9), System Config provider catalog/service keys (2), Platform OAuth app registration and secret rotation (2), Platform alerts (1) | 14 |
 | Developer Platform Extensions | Demo Profile/Request approval flow (4), Subscription plan modules/add-ons/pricing (3) | 7 |
@@ -194,7 +198,7 @@ Generic links from normal product entities to files. Only for owners with no ded
 | Column | Type | Notes |
 |:-------|:-----|:------|
 | `id` | `uuid` | PK |
-| `tenant_id` | `uuid` | FK -> tenants; nullable only for platform-level assets such as platform user avatars |
+| `tenant_id` | `uuid` | FK -> tenants; **required (not nullable) as first implemented** — the shared tenant query-filter builder in `ApplicationDbContext` reflects on a plain non-nullable `Guid TenantId` for every `ITenantOwnedEntity`, and this task never creates a platform-level row. Revisit as nullable only if/when a genuine platform-level (null-tenant) owner type is added. |
 | `owner_type` | `varchar(50)` | Backend-owned discriminator, e.g. `tenant_user`, `platform_user`, `project`, `support_ticket`, `support_ticket_message`, `document` |
 | `owner_id` | `uuid` | ID of the owning entity |
 | `asset_purpose` | `varchar(50)` | Backend-owned purpose, e.g. `profile_photo`, `avatar`, `project_cover`, `attachment` |
@@ -206,6 +210,8 @@ Generic links from normal product entities to files. Only for owners with no ded
 | `created_by_id` | `uuid` | Actor ID matching `created_by_type` |
 | `created_at` | `timestamptz` | |
 | `updated_at` | `timestamptz` | |
+
+**Implementation status (2026-08-03):** documented since Phase 1 planning but not yet built in code (no table, no `owner_type`/`asset_purpose` constants existed in `src/` as of the Work Management audit). First implemented as part of the Work Management feature, scoped initially to `owner_type = 'project'` / `asset_purpose = 'project_cover'` (Project logo/cover) via centralized constants — see `docs/superpowers/plans/` for the Work Management foundation plan. Other owner types remain documented here as future scope, not yet wired to any handler.
 
 ### `tenants`
 
@@ -2431,68 +2437,25 @@ Work Management-derived task productivity metrics per employee per period.
 
 > Excluded as Phase 2 per schema files: `workspace_teams_links`, `teams_member_sync_status`, `project_workspaces` (reference only), all of wms-chat, and only `task_automation_rules` from wms-integrations. Customize Dashboard is Phase 2 but has no committed tables. The five sprint-planning tables and six GitHub repository-integration tables are Phase 1.
 
-## Foundation + Projects + Objectives (17 tables)
+## Foundation + Projects + Objectives (15 tables)
 
-### `workspaces`
-
-Top-level Work Management containers per tenant that group projects and members (e.g., a team or department workspace).
-
-| Column | Type | Notes |
-|:-------|:-----|:------|
-| `id` | `uuid` | PK |
-| `tenant_id` | `uuid` | FK -> tenants |
-| `name` | `varchar(200)` | |
-| `slug` | `varchar(100)` | UNIQUE per tenant |
-| `description` | `text` | nullable |
-| `owner_id` | `uuid` | FK -> users |
-| `icon_url` | `varchar(500)` | nullable |
-| `is_active` | `boolean` | |
-| `timezone` | `varchar(50)` | default `UTC` |
-| `created_at` | `timestamptz` | |
-| `updated_at` | `timestamptz` | |
-
-### `workspace_roles`
-
-Seeded on workspace creation: Admin, Member, Viewer. Local access levels only - not tenant security roles.
-
-| Column | Type | Notes |
-|:-------|:-----|:------|
-| `id` | `uuid` | PK |
-| `workspace_id` | `uuid` | FK -> workspaces |
-| `name` | `varchar(50)` | Admin / Member / Viewer |
-| `is_system` | `boolean` | system roles cannot be deleted |
-
-### `workspace_members`
-
-Who belongs to a workspace and with what workspace role; stores both `user_id` and `employee_id` so HR state (offboarding) can deactivate membership.
-
-| Column | Type | Notes |
-|:-------|:-----|:------|
-| `id` | `uuid` | PK |
-| `workspace_id` | `uuid` | FK -> workspaces |
-| `user_id` | `uuid` | FK -> users |
-| `employee_id` | `uuid` | FK -> employees; required for tenant employees |
-| `workspace_role_id` | `uuid` | FK -> workspace_roles |
-| `invited_by_id` | `uuid` | FK -> users, nullable |
-| `is_active` | `boolean` | false when employee is offboarded or removed |
-| `joined_at` | `timestamptz` | |
-| `removed_at` | `timestamptz` | nullable |
-| `created_at` | `timestamptz` | |
-
-**Unique:** `(workspace_id, user_id)`
+> **Scope note (2026-08-03):** Workspaces are not part of Work Management Phase 1 — `workspaces`, `workspace_roles`, and `workspace_members` are removed below (previously documented here, never implemented in code). Project/Objective visibility, membership, and invitations are Objective-scoped, not workspace-scoped. `objective_participants` is also removed — Objective participation is represented only through `project_members`. `objective_categories`, `key_results`, and `okr_check_ins` remain documented below unchanged, but are **deferred**: not part of the current Objectives implementation (the `objectives` table below has no `category_id` for now). Project logo/cover attachment goes through the existing generic `entity_assets` table (see Infrastructure section above), not a `projects.logo_file_id` column.
+>
+> **Known follow-up (not resolved here):** removing `workspaces` leaves dangling `workspace_id` FK references documented on `key_results` (deferred, this section), and on `tasks`/`time_logs` (Task Management + Worklogs), `documents`/`wiki_pages` (Collaboration), and `repositories` (GitHub Repository Integration) further down this file. Those five tables belong to later, not-yet-scoped Work Management phases (Task Management, Sprint Planning, Collaboration, GitHub Integration) — resolving their workspace dependency is deferred to when each of those phases is actually planned, not fixed as part of this Projects/Objectives build.
 
 ### `project_categories`
 
-Tenant-scoped user-defined project categories.
+Tenant-scoped user-defined project categories, selected during Project creation.
 
 | Column | Type | Notes |
 |:-------|:-----|:------|
 | `id` | `uuid` | PK |
 | `tenant_id` | `uuid` | FK -> tenants |
 | `name` | `varchar(100)` | Trimmed user-visible name |
+| `is_active` | `boolean` | default true |
 | `created_by_id` | `uuid` | FK -> users |
 | `created_at` | `timestamptz` | |
-| `updated_at` | `timestamptz` | |
+| `updated_at` | `timestamptz` | nullable |
 
 **Unique:** normalized case-insensitive `(tenant_id, name)`
 
@@ -2500,68 +2463,83 @@ Tenant-scoped user-defined project categories.
 
 ### `projects`
 
-Work containers holding Objectives/Sub-objectives and tasks; each project belongs to exactly one workspace in Phase 1.
+Work containers holding Objectives and tasks. No workspace dependency in Phase 1 — visibility is membership-only through `project_members`.
 
 | Column | Type | Notes |
 |:-------|:-----|:------|
 | `id` | `uuid` | PK |
-| `tenant_id` | `uuid` | FK -> tenants |
-| `owning_legal_entity_id` | `uuid` | FK -> legal_entities; set from active legal entity context |
-| `workspace_id` | `uuid` | FK -> workspaces; one owning workspace for the project in Phase 1 |
-| `category_id` | `uuid` | FK -> project_categories |
+| `tenant_id` | `uuid` | FK -> tenants; trusted server-resolved, never frontend-supplied |
+| `owning_legal_entity_id` | `uuid` | FK -> legal_entities; set from active legal entity context, never frontend-supplied |
+| `category_id` | `uuid` | FK -> project_categories; must belong to current tenant |
 | `name` | `varchar(200)` | |
-| `identifier` | `varchar(20)` | Tenant-unique uppercase task key prefix, immutable after first task |
+| `identifier` | `varchar(20)` | Tenant-unique uppercase task key prefix; backend trims/uppercases/validates; immutable after first task exists |
 | `next_task_number` | `bigint` | default 1; atomically incremented when creating a task |
 | `description` | `text` | nullable |
-| `status` | `varchar(20)` | active / inactive / archived |
-| `lead_id` | `uuid` | FK -> users; required Project Owner/Lead |
-| `start_date` | `date` | nullable |
-| `target_date` | `date` | nullable |
-| `icon_url` | `varchar(500)` | nullable |
+| `lead_id` | `uuid` | FK -> users; Project Owner/Lead; equals the creator at creation time, never frontend-supplied; lead-transfer API is out of scope |
+| `start_date` | `date` | |
+| `target_date` | `date` | must not be earlier than start_date |
 | `color` | `varchar(20)` | nullable |
-| `is_private` | `boolean` | default false |
-| `actual_hours` | `numeric(18,2)` | nullable; expected hours entered for the project |
-| `allocated_hours` | `numeric(18,2)` | default 0; hours reserved by child Objectives, direct tasks, and linked child projects |
-| `completed_hours` | `numeric(18,2)` | default 0; credited Task time rolled up from Project Tasks; raw overlap excluded |
+| `actual_hours` | `numeric(18,2)` | nullable; non-negative when present |
+| `allocated_hours` | `numeric(18,2)` | default 0; hours reserved by child Objectives and tasks |
+| `completed_hours` | `numeric(18,2)` | default 0; credited Task time rolled up from Project Tasks |
+| `is_active` | `boolean` | default true |
+| `is_achieved` | `boolean` | default false; added 2026-08-08 (Achieve workflow). Lead-only, always-immediate completion state, independent of `is_active`. Requires every top-level milestone (direct child of the Default Objective) to already be Achieved |
+| `achieved_at` | `timestamptz` | nullable; set when `is_achieved` flips true, cleared on Unachieve |
+| `created_by_id` | `uuid` | FK -> users |
 | `created_at` | `timestamptz` | |
-| `updated_at` | `timestamptz` | |
+| `updated_at` | `timestamptz` | nullable |
 
-Project hour indicators are warning-only: planning over-allocation is `actual_hours IS NOT NULL AND allocated_hours > actual_hours`; execution overrun is `allocated_hours > 0 AND completed_hours > allocated_hours`.
+Optimistic concurrency via PostgreSQL `xmin` (no explicit column). Project hour indicators are warning-only: planning over-allocation is `actual_hours IS NOT NULL AND allocated_hours > actual_hours`; execution overrun is `allocated_hours > 0 AND completed_hours > allocated_hours`. Over-allocation never blocks creation or edits.
+
+**Forbidden:** `workspace_id`, `logo_file_id` (logo/cover goes through `entity_assets`, `owner_type = 'project'`), permanent public R2 URL, frontend-controlled `tenant_id`/`owning_legal_entity_id`/`lead_id` at creation, `is_private` (visibility is membership-only, not a flag), `icon_url` (superseded by the `entity_assets`-linked logo), free-form `status` string (superseded by `is_active`).
+
+**Unique:** `(tenant_id, identifier)` normalized. **Indexes:** `(tenant_id, owning_legal_entity_id, updated_at)`, `(tenant_id, category_id, is_active)`.
 
 ### `project_members`
 
-Source of truth for project visibility and access.
+Source of truth for Project visibility and access. Every membership is Objective-specific — there is no project-wide-only membership row.
 
 | Column | Type | Notes |
 |:-------|:-----|:------|
 | `id` | `uuid` | PK |
+| `tenant_id` | `uuid` | FK -> tenants |
 | `project_id` | `uuid` | FK -> projects |
+| `objective_id` | `uuid` | FK -> objectives; required, not null; must belong to `project_id` |
 | `user_id` | `uuid` | FK -> users |
-| `employee_id` | `uuid` | FK -> employees; required for tenant employees |
-| `role` | `varchar(20)` | admin / member / viewer |
-| `membership_source` | `varchar(20)` | `project_invite`, `system` |
-| `is_active` | `boolean` | false when employee is offboarded or removed |
+| `employee_id` | `uuid` | FK -> employees; must represent the same active tenant employee as `user_id` |
+| `membership_source` | `varchar(30)` | `system` (creator, at Project creation) or `objective_invitation` (via accepted invitation) |
+| `is_active` | `boolean` | false when removed, deactivated, or employee offboarded |
 | `joined_at` | `timestamptz` | |
-| `removed_at` | `timestamptz` | nullable |
+| `removed_at` | `timestamptz` | nullable; set on deactivation, cleared on reactivation |
+| `created_at` | `timestamptz` | |
+| `updated_at` | `timestamptz` | nullable |
 
-**Unique:** `(project_id, user_id)`
+**Forbidden:** `role` (no role column — permission/business-scope checks are separate from membership), direct employee addition to a new Objective outside the invitation flow.
+
+**Unique:** `(tenant_id, project_id, objective_id, user_id)`. **Indexes:** `(tenant_id, user_id, is_active, project_id)`, `(tenant_id, project_id, objective_id, is_active)`.
 
 ### `project_member_invitations`
 
-Invitations to join a project; acceptance is what creates the active `project_members` row.
+Invitations that target one specific Objective; acceptance creates or reactivates the Objective-specific `project_members` row.
 
 | Column | Type | Notes |
 |:-------|:-----|:------|
 | `id` | `uuid` | PK |
-| `project_id` | `uuid` | FK -> projects |
 | `tenant_id` | `uuid` | FK -> tenants |
-| `invited_user_id` | `uuid` | FK -> users |
-| `invited_employee_id` | `uuid` | FK -> employees |
-| `role` | `varchar(20)` | admin / member / viewer |
-| `status` | `varchar(20)` | pending / accepted / declined / expired / cancelled |
+| `project_id` | `uuid` | FK -> projects |
+| `objective_id` | `uuid` | FK -> objectives; required; must belong to `project_id` |
+| `invited_user_id` | `uuid` | FK -> users; resolved server-side from the selected Employee's linked user |
+| `invited_employee_id` | `uuid` | FK -> employees; must be active and in current tenant |
+| `status` | `varchar(20)` | `pending` / `accepted` / `declined` / `expired` / `cancelled` |
 | `invited_by_id` | `uuid` | FK -> users |
 | `decided_at` | `timestamptz` | nullable |
 | `expires_at` | `timestamptz` | nullable |
+| `created_at` | `timestamptz` | |
+| `updated_at` | `timestamptz` | nullable |
+
+**Forbidden:** `role` (no role concept on invitations either).
+
+**Indexes:** `(tenant_id, invited_user_id, status)`; partial unique — at most one `pending` invitation per `(tenant_id, project_id, objective_id, invited_user_id)`.
 
 ### `project_link_invitations`
 
@@ -2598,45 +2576,76 @@ Created either after a `project_link_invitations` row is accepted (`created_via 
 
 **Unique:** `(target_project_id) WHERE is_active = true` — a project can have at most one active parent link at a time.
 
+### `version_statuses`
+
+Global (not tenant-scoped) fixed lookup, seeded with exactly three rows at startup — same shape and seeding mechanism (`LookupDataSeeder`, `Id`/`Code`/`Label`) as `employment_types`/`severities`/etc. Version status moves only through the signed-movement API (`PATCH .../versions/{id}/status`), never a free-form string.
+
+| Column | Type | Notes |
+|:-------|:-----|:------|
+| `id` | `integer` | PK; fixed seed IDs, matches the repo's existing lookup-table convention (not `smallint` — no other lookup in this repo uses `smallint`) |
+| `code` | `varchar(20)` | unique; `planned` / `released` / `archived` |
+| `label` | `varchar(50)` | display name, e.g. `Planned` |
+
+**Seed rows:** `1 = planned/Planned`, `2 = released/Released`, `3 = archived/Archived`.
+
 ### `versions`
 
-Release versions of a project (planned/released/archived).
+Release versions of a project (planned/released/archived via `status_id`).
 
 | Column | Type | Notes |
 |:-------|:-----|:------|
 | `id` | `uuid` | PK |
+| `tenant_id` | `uuid` | FK -> tenants |
 | `project_id` | `uuid` | FK -> projects |
 | `name` | `varchar(100)` | |
 | `description` | `text` | nullable |
-| `release_date` | `date` | nullable |
-| `status` | `varchar(20)` | planned / released / archived |
+| `status_id` | `integer` | FK -> version_statuses; the Default Version created with a Project uses `1` (planned) |
+| `created_by_id` | `uuid` | FK -> users |
 | `created_at` | `timestamptz` | |
+| `updated_at` | `timestamptz` | nullable |
+
+Optimistic concurrency via PostgreSQL `xmin`. **Forbidden:** `release_date` (moved to `release_calendar.scheduled_date`), free-form `status` string (superseded by `status_id`).
+
+**Indexes:** `(tenant_id, project_id, status_id)`.
 
 ### `release_calendar`
 
-Scheduled release dates for versions, viewed at workspace level.
+Scheduled release reminder for a Version, owned by the Project creator only (not Project or Objective members in general).
 
 | Column | Type | Notes |
 |:-------|:-----|:------|
 | `id` | `uuid` | PK |
-| `version_id` | `uuid` | FK -> versions |
-| `workspace_id` | `uuid` | FK -> workspaces |
-| `scheduled_date` | `date` | |
+| `tenant_id` | `uuid` | FK -> tenants |
+| `project_id` | `uuid` | FK -> projects |
+| `version_id` | `uuid` | FK -> versions; must belong to `project_id` |
+| `recipient_user_id` | `uuid` | FK -> users; the Project creator |
+| `scheduled_date` | `date` | taken from the Project creation `releaseDate` field |
+| `reminder_type` | `varchar(30)` | default `project_release` |
 | `notes` | `text` | nullable |
+| `is_active` | `boolean` | default true |
+| `created_at` | `timestamptz` | |
+| `updated_at` | `timestamptz` | nullable |
+
+**Forbidden:** `workspace_id`.
+
+**Constraint:** at most one active `project_release` reminder per `(version_id, recipient_user_id)`. **Indexes:** `(tenant_id, recipient_user_id, scheduled_date, is_active)`.
 
 ### `labels`
 
-Project-scoped labels.
+Project-scoped labels, optionally set during Project creation.
 
 | Column | Type | Notes |
 |:-------|:-----|:------|
 | `id` | `uuid` | PK |
+| `tenant_id` | `uuid` | FK -> tenants |
 | `project_id` | `uuid` | FK -> projects |
-| `name` | `varchar(50)` | |
+| `name` | `varchar(50)` | trimmed; duplicates within the same creation request rejected before persistence |
 | `color` | `varchar(20)` | |
+| `created_by_id` | `uuid` | FK -> users |
 | `created_at` | `timestamptz` | |
+| `updated_at` | `timestamptz` | nullable |
 
-**Unique:** normalized case-insensitive `(project_id, name)`
+**Unique:** normalized case-insensitive `(tenant_id, project_id, name)`
 
 ---
 
@@ -2657,46 +2666,57 @@ Tenant-scoped user-defined Objective categories, independent from project catego
 
 ### `objectives`
 
-Unlimited-depth Objectives and Sub-objectives with progress and warning-only hour allocation.
+Objectives and child Objectives (frontend may label these "Milestones"; the database/backend name stays `objectives`). Exactly one Default Objective per Project is the root; child Objectives nest under any Objective in the same Project.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` | PK |
 | `tenant_id` | `uuid` | FK -> tenants |
-| `workspace_id` | `uuid` | FK -> workspaces |
-| `project_id` | `uuid` | FK -> projects; required for root Objectives; child Objectives inherit project through the root |
-| `parent_objective_id` | `uuid` | FK -> objectives, nullable; recursive nesting with no fixed depth limit |
-| `category_id` | `uuid` | FK -> objective_categories |
-| `title` | `varchar(255)` | |
-| `description` | `text` | nullable |
-| `owner_id` | `uuid` | FK -> users |
-| `status` | `varchar(20)` | active / archived |
-| `start_date` | `date` | nullable |
-| `end_date` | `date` | nullable |
-| `quarter` | `varchar(10)` | nullable; free-form, e.g. `2026-Q2` |
-| `progress` | `numeric(5,2)` | computed from key results or child Objectives |
-| `actual_hours` | `numeric(18,2)` | nullable; expected hours entered for the Objective |
-| `allocated_hours` | `numeric(18,2)` | default 0; child Objective and linked-task allocation |
-| `completed_hours` | `numeric(18,2)` | default 0; credited Task time rolled up through descendants; raw overlap excluded |
+| `project_id` | `uuid` | FK -> projects; the Default Objective's `project_id` equals its owning Project's ID; child Objectives use the same `project_id` |
+| `parent_objective_id` | `uuid` | FK -> objectives, nullable; self-reference to another Objective, never to a Project ID; null only for the Default Objective |
+| `is_default` | `boolean` | default false; at most one `true` row per `project_id` (partial unique index) |
+| `title` | `varchar(255)` | for the Default Objective, mirrors `projects.name` and stays in sync on Project edit |
+| `description` | `text` | nullable; for the Default Objective, mirrors `projects.description` |
+| `owner_id` | `uuid` | FK -> users; the Objective's current Head. For a non-default Objective this is reassigned by Transfer; for the Default Objective it equals the Project's `lead_id` and is never transferred |
+| `reporting_manager_id` | `uuid` | nullable; FK -> users; null only for the Default Objective. Documented as "frozen at creation" by the 2026-08-04 milestone-hierarchy plan, but the 2026-08-06 membership/Achieve plan made it dynamic — it tracks the *parent* Objective's *current* Head, cascaded to direct children only (one level) whenever a Transfer applies. Pending Delete/Edit/Transfer/Achieve/Unachieve requests on this Objective route to whoever holds this column at request-creation time |
+| `is_active` | `boolean` | default true; the Default Objective cannot be deactivated while the Project remains active |
+| `start_date` | `date` | for the Default Objective, mirrors `projects.start_date` |
+| `end_date` | `date` | must not be earlier than start_date; for the Default Objective, mirrors `projects.target_date` |
+| `progress` | `numeric(5,2)` | default 0 |
+| `actual_hours` | `numeric(18,2)` | nullable; non-negative; for the Default Objective, mirrors `projects.actual_hours` |
+| `allocated_hours` | `numeric(18,2)` | default 0; non-negative; Objective-specific, not mirrored from Project |
+| `completed_hours` | `numeric(18,2)` | default 0; non-negative; Objective-specific, not mirrored from Project |
+| `is_achieved` | `boolean` | default false; added 2026-08-08 (Achieve workflow). Requires every *direct* child Objective to already be Achieved (shallow check; transitively enforced bottom-up). Default Objective can never be Achieved directly — use the Project-level Achieve endpoint instead. Frozen for Edit/Transfer/member-add-remove while true (mirrors the existing `!is_active` freeze), but Delete is unaffected |
+| `achieved_at` | `timestamptz` | nullable; set when `is_achieved` flips true, cleared on Unachieve |
 | `created_at` | `timestamptz` | |
-| `updated_at` | `timestamptz` | |
+| `updated_at` | `timestamptz` | nullable |
 
-Objective hour indicators use the same distinct warning-only formulas: planning over-allocation compares allocated hours with the entered `actual_hours` expected-hours budget, while execution overrun compares credited completed hours with positive allocated hours.
+Optimistic concurrency via PostgreSQL `xmin`. Hour indicators are the same warning-only formulas as `projects` and never block creation or edits. **Deferred (not part of the current implementation):** `category_id` / `objective_categories` linkage, `quarter`. **Forbidden:** `workspace_id`.
 
-### `objective_participants`
+**Indexes:** `(tenant_id, project_id, parent_objective_id)`, `(tenant_id, owner_id, is_active)`, `(tenant_id, project_id, is_achieved)`, partial unique one `is_default = true` row per `project_id`.
 
-Employees with direct access to an Objective branch. Participation grants task operations, not Objective settings or audit access.
+**Removed (2026-08-03):** `objective_participants` — Objective participation is represented only through `project_members` (every membership row is Objective-specific); this table previously described a separate, now-unused participation model.
+
+### `objective_change_requests`
+
+Added 2026-08-04/05 (milestone-hierarchy plan), extended 2026-08-08 (membership/Achieve plan) — undocumented here until the 2026-08-08 pass. One pending/decided Delete, conflicting-Edit, Transfer, Achieve, or Unachieve request on an Objective a non-creator Head cannot apply unilaterally. The Objective's own creator never needs approval for their own creation (design rule, unchanged since 2026-08-04) — these rows exist only for the non-creator path. Project-level actions (Edit/Delete/Achieve/Unachieve on `projects` itself) never create a row here — the Project is the tree's root with no Reporting Manager to route to.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` | PK |
 | `tenant_id` | `uuid` | FK -> tenants |
-| `objective_id` | `uuid` | FK -> objectives |
-| `employee_id` | `uuid` | FK -> employees |
-| `added_by_id` | `uuid` | FK -> users |
+| `objective_id` | `uuid` | FK -> objectives; `ON DELETE RESTRICT` |
+| `request_type` | `varchar(20)` | `delete` / `edit` / `transfer` / `achieve` / `unachieve` (the last two added 2026-08-08) |
+| `requested_by_id` | `uuid` | FK -> users |
+| `reporting_manager_id` | `uuid` | FK -> users; snapshotted from `objectives.reporting_manager_id` at request-creation time — approving/rejecting never re-reads a possibly-since-changed live value |
+| `status` | `varchar(20)` | `pending` / `approved` / `rejected` |
+| `payload_json` | `jsonb` | nullable; proposed new field values for `edit`/`transfer`; null for `delete`/`achieve`/`unachieve` (state transitions carry no proposed values) |
+| `decided_at` | `timestamptz` | nullable |
+| `decided_by_id` | `uuid` | nullable; FK -> users |
 | `created_at` | `timestamptz` | |
+| `updated_at` | `timestamptz` | nullable |
 
-**Unique:** `(objective_id, employee_id)`
+**Indexes:** `(tenant_id, objective_id, status)`, `(tenant_id, reporting_manager_id, status)`. **Unique:** partial unique on `(tenant_id, objective_id) WHERE status = 'pending'` — at most one pending request per Objective, enforced at the DB level, not just in the handler.
 
 ### `key_results`
 

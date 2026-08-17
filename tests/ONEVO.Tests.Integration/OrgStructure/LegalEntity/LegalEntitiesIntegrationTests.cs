@@ -349,6 +349,80 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    [Fact]
+    public async Task GetGeneralSettings_ReturnsWorkStartAndEndTime_AsHhMmStrings()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Work Time Get Co", "WTGET1", "REG-WTGET1");
+        await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Work Time Get Co", "WTGET1", "REG-WTGET1", [1, 2, 3, 4, 5], "09:00", "17:30"),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        var response = await SendAsync(HttpMethod.Get, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            body: null, cookie: _tenantA.SessionCookie);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("workStartTime").GetString().Should().Be("09:00");
+        json.GetProperty("workEndTime").GetString().Should().Be("17:30");
+    }
+
+    [Fact]
+    public async Task Update_ValidWorkStartAndEndTime_Returns200_AndPersists()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Work Time Put Co", "WTPUT1", "REG-WTPUT1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Work Time Put Co", "WTPUT1", "REG-WTPUT1", [1, 2, 3, 4, 5], "09:00", "17:30"),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("workStartTime").GetString().Should().Be("09:00");
+        json.GetProperty("workEndTime").GetString().Should().Be("17:30");
+    }
+
+    [Fact]
+    public async Task Update_OnlyWorkStartTimeProvided_Returns400()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Work Time Only Start Co", "WTOS1", "REG-WTOS1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Work Time Only Start Co", "WTOS1", "REG-WTOS1", [1, 2, 3, 4, 5], "09:00", null),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Update_OnlyWorkEndTimeProvided_Returns400()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Work Time Only End Co", "WTOE1", "REG-WTOE1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Work Time Only End Co", "WTOE1", "REG-WTOE1", [1, 2, 3, 4, 5], null, "17:30"),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Update_WorkStartTimeNotBeforeEndTime_Returns400()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Work Time Bad Order Co", "WTBO1", "REG-WTBO1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Work Time Bad Order Co", "WTBO1", "REG-WTBO1", [1, 2, 3, 4, 5], "18:00", "09:00"),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     // ── 6. Delete ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -595,6 +669,46 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetGeneralSettings_RegularEmployeeAnotherCompany_Returns403_ViaPermissionGate()
+    {
+        // The RequirePermission("legal_entity:update") attribute on this route rejects a
+        // caller without that permission before GetAccessibleByIdAsync's own
+        // accessible-company filter is ever reached - under the current flat RBAC model,
+        // holding legal_entity:update already implies management access
+        // (LegalEntityAccessPolicy.HasManagementAccess), so no HTTP-reachable caller can
+        // exercise the filter's non-management branch. This test documents that the
+        // required "regular user cannot GET another company" behavior still holds today;
+        // GetLegalEntityGeneralSettingsQueryHandlerTests covers the filter itself in
+        // isolation. See LEGAL_ENTITY_CREATE_ACCESS_REPORT.md.
+        var response = await SendAsync(HttpMethod.Get, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{_tenantAPrimaryLegalEntityId}/general-settings",
+            body: null, cookie: _tenantARegularEmployee.SessionCookie);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task UpdateGeneralSettings_RegularEmployeeAnotherCompany_Returns403_ViaPermissionGate()
+    {
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{_tenantAPrimaryLegalEntityId}/general-settings",
+            UpdateBody("Should Not Apply", "XXX", "REG-XXX", [1, 2, 3, 4, 5]),
+            cookie: _tenantARegularEmployee.SessionCookie, csrfToken: _tenantARegularEmployee.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task GetGeneralSettings_ManagerWithLegalEntityUpdate_AnotherCompanyInTenant_Returns200()
+    {
+        var response = await SendAsync(HttpMethod.Get, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{_tenantASecondLegalEntityId}/general-settings",
+            body: null, cookie: _tenantAManager.SessionCookie);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task ManagerWithLegalEntityUpdate_CanUpdate_ButCreateStillRequiresLegalEntityCreate()
     {
         // _tenantAManager was seeded with legal_entity:update and legal_entity:delete but
@@ -834,7 +948,9 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
         currencyCode = "LKR"
     };
 
-    private static object UpdateBody(string name, string companyCode, string registrationNumber, IEnumerable<int> workingDays) => new
+    private static object UpdateBody(
+        string name, string companyCode, string registrationNumber, IEnumerable<int> workingDays,
+        string? workStartTime = null, string? workEndTime = null) => new
     {
         name,
         companyCode,
@@ -848,7 +964,9 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
         defaultLanguage = "en-US",
         dateFormat = "DD MMM YYYY",
         timeFormat = "12h",
-        status = "active"
+        status = "active",
+        workStartTime,
+        workEndTime
     };
 
     private async Task<string?> WaitForInviteTokenForAsync(string email)
