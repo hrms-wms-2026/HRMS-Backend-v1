@@ -1,0 +1,76 @@
+using Moq;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
+using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.WorkManagement.Tasks;
+
+public class DeleteTaskStatusCommandHandlerTests
+{
+    private static readonly Guid TenantId = Guid.NewGuid();
+    private static readonly Guid UserId = Guid.NewGuid();
+    private static readonly Guid OwnerEmployeeId = Guid.NewGuid();
+    private static readonly Guid ObjectiveId = Guid.NewGuid();
+    private static readonly Guid StatusId = Guid.NewGuid();
+
+    private (DeleteTaskStatusCommandHandler Handler, Mock<ITaskStatusRepository> Statuses) Build(bool anyTasksInStatus)
+    {
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
+        currentUser.SetupGet(x => x.UserId).Returns(UserId);
+
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OwnerEmployeeId);
+
+        var status = new TaskStatusEntity { Id = StatusId, TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "Blocked", CreatedAt = DateTimeOffset.UtcNow };
+        var statuses = new Mock<ITaskStatusRepository>();
+        statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, StatusId, It.IsAny<CancellationToken>())).ReturnsAsync(status);
+
+        var objective = new Objective { Id = ObjectiveId, TenantId = TenantId, OwnerId = OwnerEmployeeId, IsActive = true, Title = "Obj", CreatedAt = DateTimeOffset.UtcNow };
+        var objectives = new Mock<IObjectiveRepository>();
+        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
+
+        var tasks = new Mock<IWorkTaskRepository>();
+        tasks.Setup(x => x.AnyActiveByStatusIdAsync(TenantId, StatusId, It.IsAny<CancellationToken>())).ReturnsAsync(anyTasksInStatus);
+
+        var unitOfWork = new Mock<IUnitOfWork>();
+        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<Result>> op, CancellationToken ct) => op(ct));
+        unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        var handler = new DeleteTaskStatusCommandHandler(currentUser.Object, identity.Object, objectives.Object, statuses.Object, tasks.Object, unitOfWork.Object);
+        return (handler, statuses);
+    }
+
+    [Fact]
+    public async Task Handle_NoTasksInStatus_RemovesIt()
+    {
+        var (handler, statuses) = Build(anyTasksInStatus: false);
+
+        var result = await handler.Handle(new DeleteTaskStatusCommand(StatusId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        statuses.Verify(x => x.Remove(It.Is<TaskStatusEntity>(s => s.Id == StatusId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_TasksStillInStatus_ReturnsConflict()
+    {
+        var (handler, statuses) = Build(anyTasksInStatus: true);
+
+        var result = await handler.Handle(new DeleteTaskStatusCommand(StatusId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        statuses.Verify(x => x.Remove(It.IsAny<TaskStatusEntity>()), Times.Never);
+    }
+}

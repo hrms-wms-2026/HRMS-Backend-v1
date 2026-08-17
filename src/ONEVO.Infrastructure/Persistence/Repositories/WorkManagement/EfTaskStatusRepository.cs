@@ -32,4 +32,5 @@ public class EfTaskStatusRepository : ITaskStatusRepository
         => await _db.TaskStatuses.FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == id, ct);
 
     public void Update(TaskStatusEntity status) => _db.TaskStatuses.Update(status);
+    public void Remove(TaskStatusEntity status) => _db.TaskStatuses.Remove(status);
 }

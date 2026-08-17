@@ -18,5 +18,9 @@ public interface IWorkTaskRepository
     /// my-deadlines endpoint (spec §7) - not used by any other query.</summary>
     Task<IReadOnlyList<WorkTask>> GetAssignedToEmployeeWithinRangeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
 
+    /// <summary>True if any active WorkTask currently has this StatusId - used to block deleting a
+    /// status that's still in use rather than silently orphaning tasks' FK.</summary>
+    Task<bool> AnyActiveByStatusIdAsync(Guid tenantId, Guid statusId, CancellationToken ct = default);
+
     void Update(WorkTask task);
 }

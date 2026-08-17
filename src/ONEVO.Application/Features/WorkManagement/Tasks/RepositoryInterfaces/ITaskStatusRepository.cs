@@ -17,4 +17,5 @@ public interface ITaskStatusRepository
     Task<TaskStatusEntity?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     void Update(TaskStatusEntity status);
+    void Remove(TaskStatusEntity status);
 }
