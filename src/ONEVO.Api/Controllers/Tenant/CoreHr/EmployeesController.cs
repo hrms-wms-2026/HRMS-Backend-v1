@@ -16,6 +16,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
@@ -62,6 +63,19 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Full section-by-section detail read for one employee. Payroll is included only
+    /// when the caller holds employees:read:sensitive - omitted (not a 403) otherwise.</summary>
+    [HttpGet("{id:guid}/detail")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetDetail(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeDetailQuery(id), ct);
 
         return result.IsSuccess
             ? Ok(result.Value)
