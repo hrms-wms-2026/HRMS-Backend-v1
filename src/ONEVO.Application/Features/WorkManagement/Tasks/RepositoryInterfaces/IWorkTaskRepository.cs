@@ -18,6 +18,8 @@ public interface IWorkTaskRepository
     /// my-deadlines endpoint (spec §7) - not used by any other query.</summary>
     Task<IReadOnlyList<WorkTask>> GetAssignedToEmployeeWithinRangeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
 
+    Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default);
+
     /// <summary>True if any physical WorkTask row, including a soft-deleted row, has this StatusId
     /// within the tenant - used to block deleting a status while a restricted FK still references it.</summary>
     Task<bool> AnyActiveByStatusIdAsync(Guid tenantId, Guid statusId, CancellationToken ct = default);
