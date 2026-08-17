@@ -44,7 +44,7 @@ public class GetObjectiveSubtreeQueryHandler : IRequestHandler<GetObjectiveSubtr
         if (objective is null)
             return Result<ObjectiveSubtreeResponse>.NotFound("Objective not found.");
 
-        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, ct);
+        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
         var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
 
         if (!hasReadPermission)

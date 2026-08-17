@@ -6,12 +6,13 @@
 
 This folder absorbed the former top-level `docs/superpowers/next-plan/` folder on 2026-08-06 as part of the `plans/` restructure into `finished/` and `next/` — see `FILE_CREATION_RULES.md` in `docs/superpowers/rules/`.
 
-**Last updated:** 2026-08-12
+**Last updated:** 2026-08-16
 
 ## Files
 
 - `2026-08-12-milestone-to-module-display-rename.md` — status: pending, not started. Single-task plan: one new EF migration renaming `module_catalog.name` for `module_key = 'objectives_milestones'` from "Objectives & Milestones" to "Objectives & Modules". Design: `specs/next/2026-08-12-milestone-to-module-display-rename-design.md`. Companion to the frontend repo's same-named plan.
 - `2026-08-12-objective-viewmodel-owner-fields-fix.md` — status: pending, not started. Single-task plan: add `OwnerName`/`ReportingManagerName`/`IsOwner` (+ `IsAchieved`/`AchievedAt` on the subtree node) to `ObjectiveDetailViewModel`/`ObjectiveSubtreeNodeViewModel` and forward them in `ObjectiveViewModelMapper` — fields the Application layer already computes but the wire contract drops. Design: `specs/next/2026-08-12-objective-viewmodel-owner-fields-fix-design.md`. Blocks the frontend repo's `2026-08-12-milestone-tree-mockup-redesign.md`.
+- `2026-08-16-employee-detail-screen-backend.md` — status: pending, not started. Built from `specs/next/2026-08-16-employee-detail-screen-backend-design.md`. Sub-project 2 of 2 in the decomposed employee-detail/invitation/cross-entity feature request; depends on the finished `2026-08-16-multi-legal-entity-employment-foundation` plan.
 - `Project Management.md` — two future features, both raw context, not designs:
   1. Milestone (Objective) In-Charge Role & Permission System — **superseded**, see the file's own header: fully brainstormed and designed in `specs/2026-08-04-work-management-milestone-hierarchy-design.md`.
   2. Project Lifecycle Workflow, Approval Pipeline, Archive/Restore, and Progress Calculation — not started. Backend-relevant subset of a manager corrections doc on the Project Management user journey (2026-08-04). Blocked on Objective/Task CRUD existing first; conflicts with the schema's current "forbidden: free-form status" note on `projects`.
@@ -30,3 +31,4 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 - `2026-08-08-work-management-my-project-milestones.md` also moved to `plans/finished/2026-08-08/` the same day (all 5 tasks done) — see `plans/SUMMARY.md`.
 - `2026-08-07-work-management-objective-subtree.md`'s finished/next status needs syncing (see "Known drift" above) — separate follow-up, not part of the 2026-08-08 work.
 - `2026-08-08-work-management-frontend-blocking-endpoints.md` moved to `plans/finished/2026-08-09/` on 2026-08-09 — both requested items (List Project Categories endpoint, `isAchieved`/`achievedAt` on List Projects) shipped same day. See `plans/SUMMARY.md`.
+- `2026-08-16-multi-legal-entity-employment-foundation/` moved to `plans/finished/2026-08-16/` on 2026-08-16 — all 3 parts executed; unit suite 2110/2110. See `plans/SUMMARY.md`.

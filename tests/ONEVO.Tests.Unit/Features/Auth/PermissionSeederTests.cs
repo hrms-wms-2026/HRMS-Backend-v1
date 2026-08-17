@@ -69,5 +69,7 @@ public class PermissionSeederTests
         // notifications:manage is the single canonical Phase 1 notification-management permission.
         codes.Should().NotContain("settings:notifications");
         codes.Should().Contain("notifications:manage");
+        codes.Should().Contain("invitations:manage");
+        codes.Should().Contain("employees:read:sensitive");
     }
 }

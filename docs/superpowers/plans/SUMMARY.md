@@ -2,7 +2,7 @@
 
 **Purpose:** Dated implementation plans, one per feature/fix, following the header format in the `writing-plans` skill (Goal / Architecture / Tech Stack / Global Constraints / numbered tasks with checkboxes). Restructured on 2026-08-06 into `finished/` and `next/` — see `docs/superpowers/rules/FILE_CREATION_RULES.md` for the full file-creation/organization rule this follows.
 
-**Last updated:** 2026-08-10
+**Last updated:** 2026-08-16
 
 ## Layout
 
@@ -44,8 +44,10 @@
 | `2026-08-10-milestone-ownership-and-subtree-access.md` | `finished/2026-08-10/` | finished (2/2 tasks) |
 | `2026-08-10-project-detail-milestone-tree-view-backend.md` | `finished/2026-08-10/` | finished (3/3 tasks) |
 | `2026-08-12-milestone-to-module-display-rename.md` | `next/` | pending (not started) |
+| `2026-08-16-multi-legal-entity-employment-foundation/` (3 parts) | `finished/2026-08-16/` | finished |
+| `2026-08-16-employee-detail-screen-backend.md` | `next/` | pending (not started) |
 
-See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all 45 files in that folder (kept short here to avoid duplicating the same list twice).
+See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all files in that folder (kept short here to avoid duplicating the same list twice).
 
 ## Notable finished plans (kept from the pre-restructure summary)
 
@@ -56,8 +58,11 @@ See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder
 - `finished/2026-08-08/2026-08-08-work-management-my-project-milestones.md` — new read endpoint, `GET /api/v1/work/projects/{projectId}/objectives/mine` — every milestone the caller has ever had a `project_members` row for in a given project (any status, frontend filters), with owner/reporting-manager names resolved server-side. Brainstormed and planned 2026-08-08 immediately after the membership/Achieve plan finished; built from `specs/finished/2026-08-08/2026-08-08-work-management-my-project-milestones-design.md`. **Executed 2026-08-08**: all 5 tasks, full unit suite green (1629/1629) after every task, one commit per task.
 - `finished/2026-08-09/2026-08-08-work-management-frontend-blocking-endpoints.md` — new `GET /api/v1/work/project-categories` endpoint plus `isAchieved`/`achievedAt` added to `GET /work/projects/mine`'s response, both requested by the frontend team while brainstorming the Work Management Projects UI. **Executed 2026-08-09** same-session on direct user request (no separate brainstorm/spec — both items were already fully specified in the request doc itself): `dotnet build` clean, new `ListProjectCategoriesQueryHandlerTests.cs` added, 160/160 WorkManagement unit tests passing.
 
+- `finished/2026-08-16/2026-08-16-multi-legal-entity-employment-foundation/` — invitation capacity reservation, cross-legal-entity invitation (same person, two `Employee` rows, one `User`), and session active-company permission recompute. Built from `specs/finished/2026-08-16/2026-08-16-multi-legal-entity-employment-foundation-design.md`. **Executed 2026-08-16**: all 3 parts; unit suite 2110/2110; `employees.user_id` unique index replaced with `(user_id, legal_entity_id)`. Frontend company-selector in the sibling web repo posts `POST /api/v1/session/active-company` then refreshes `/auth/me`.
+
 ## Next up
 
+- The multi-legal-entity employment foundation shipped 2026-08-16. Sub-project 2 (Employee Detail screen, `employees:read:sensitive`, Change Position) has both a design and a plan (`next/2026-08-16-employee-detail-screen-backend.md`) but hasn't started implementation yet.
 - Nothing currently in flight for Work Management backend. The only remaining `next/` items are the two raw, not-yet-brainstormed `Project Management.md` entries (see `next/SUMMARY.md`), plus the still-unsynced `2026-08-07-work-management-objective-subtree.md` drift noted below.
 - `2026-08-10-milestone-ownership-and-subtree-access.md` (finished 2026-08-10) unblocks the frontend's Milestone Cards + Tree View feature — see `Hrms--Web-application---front-end---v1/docs/superpowers/plans/finished/2026-08-10/2026-08-10-milestone-cards-and-tree-view/`.
 - A separate, smaller plan — `docs/superpowers/plans/next/2026-08-07-work-management-objective-subtree.md` (`GET /api/v1/work/objectives/{id}/tree`) — is not reflected in this SUMMARY's status table at all, though its git commits (`2a77bbc`..`b900ec5`, 2026-08-07) show it already shipped. This predates the current session and wasn't touched during this pass; worth a status-sync check next time `plans/` is audited.

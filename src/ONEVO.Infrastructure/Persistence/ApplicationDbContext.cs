@@ -200,6 +200,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<PositionAssignment> PositionAssignments => Set<PositionAssignment>();
     public DbSet<EmployeeHierarchyClosure> EmployeeHierarchyClosures => Set<EmployeeHierarchyClosure>();
+    public DbSet<EmployeeAddress> EmployeeAddresses => Set<EmployeeAddress>();
+    public DbSet<EmployeeEmergencyContact> EmployeeEmergencyContacts => Set<EmployeeEmergencyContact>();
+    public DbSet<EmployeeDependent> EmployeeDependents => Set<EmployeeDependent>();
+    public DbSet<EmployeeBankDetail> EmployeeBankDetails => Set<EmployeeBankDetail>();
     public DbSet<OnboardingDraft> OnboardingDrafts => Set<OnboardingDraft>();
     public DbSet<ChecklistTemplate> ChecklistTemplates => Set<ChecklistTemplate>();
     public DbSet<EmployeeChecklistTask> EmployeeChecklistTasks => Set<EmployeeChecklistTask>();

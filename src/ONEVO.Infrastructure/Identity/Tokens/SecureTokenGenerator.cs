@@ -13,6 +13,16 @@ public class SecureTokenGenerator : ISecureTokenGenerator
         return Convert.ToBase64String(bytes);
     }
 
+    public string GenerateUrlSafeOpaqueToken()
+    {
+        var bytes = new byte[64];
+        RandomNumberGenerator.Fill(bytes);
+        return Convert.ToBase64String(bytes)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
+
     public string GenerateCsrfToken()
     {
         // Hex, not Base64: the token is issued as a cookie value and echoed back in the

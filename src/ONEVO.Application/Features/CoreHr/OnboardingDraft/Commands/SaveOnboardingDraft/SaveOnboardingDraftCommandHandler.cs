@@ -70,9 +70,9 @@ public class SaveOnboardingDraftCommandHandler : IRequestHandler<SaveOnboardingD
                 return Result<OnboardingDraftResponse>.Failure("The selected position does not exist, is inactive, or does not match the selected legal entity and department.");
         }
 
-        if (await _employeeRepository.EmailExistsAsync(_currentUser.TenantId, request.WorkEmail, excludeId: null, ct))
+        if (await _employeeRepository.EmployeeExistsInLegalEntityAsync(_currentUser.TenantId, request.LegalEntityId, request.WorkEmail, excludeId: null, ct))
         {
-            return Result<OnboardingDraftResponse>.Conflict("This work email is already in use.");
+            return Result<OnboardingDraftResponse>.Conflict("An employee with this work email already exists in this company.");
         }
 
         if (request.EmployeeNumber is not null

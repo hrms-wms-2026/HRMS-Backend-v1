@@ -159,6 +159,109 @@ public sealed class EmailTemplateRendererTests
     }
 
     [Fact]
+    public void RenderEmployeeOnboardingInvite_UsesAppBaseUrl()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AppBaseUrl = "http://localhost:5173"
+        }));
+
+        var rendered = renderer.Render("employee_onboarding_invite", new
+        {
+            first_name = "Ada",
+            last_name = "Lovelace",
+            invite_token = "tok-xyz"
+        });
+
+        rendered.HtmlBody.Should().Contain("http://localhost:5173/auth/invitations/tok-xyz");
+        rendered.TextBody.Should().Contain("http://localhost:5173/auth/invitations/tok-xyz");
+        rendered.TextBody.Should().Contain("Ada");
+        rendered.Subject.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void RenderEmployeeOnboardingInvite_WithTenantSlug_PrefixesSlugOntoAppBaseUrlHost()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AppBaseUrl = "https://localhost:4200"
+        }));
+
+        var rendered = renderer.Render("employee_onboarding_invite", new
+        {
+            first_name = "Ada",
+            last_name = "Lovelace",
+            invite_token = "tok-xyz",
+            tenant_slug = "dapi"
+        });
+
+        rendered.HtmlBody.Should().Contain("https://dapi.localhost:4200/auth/invitations/tok-xyz");
+        rendered.TextBody.Should().Contain("https://dapi.localhost:4200/auth/invitations/tok-xyz");
+    }
+
+    [Fact]
+    public void RenderEmployeeOnboardingInvite_StatesA24HourValidityWindow()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AppBaseUrl = "http://localhost:5173"
+        }));
+
+        var rendered = renderer.Render("employee_onboarding_invite", new
+        {
+            first_name = "Ada",
+            last_name = "Lovelace",
+            invite_token = "tok-xyz"
+        });
+
+        rendered.HtmlBody.Should().Contain("24 hours");
+        rendered.TextBody.Should().Contain("24 hours");
+        rendered.HtmlBody.Should().NotContain("72 hours");
+        rendered.TextBody.Should().NotContain("72 hours");
+    }
+
+    [Fact]
+    public void RenderEmployeeOnboardingInvite_WithEmptyAppBaseUrl_FallsBackToPlaceholder()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AppBaseUrl = string.Empty
+        }));
+
+        var rendered = renderer.Render("employee_onboarding_invite", new
+        {
+            first_name = "Ada",
+            last_name = "Lovelace",
+            invite_token = "tok-xyz"
+        });
+
+        rendered.TextBody.Should().Contain("token=tok-xyz");
+        rendered.TextBody.Should().Contain("placeholder");
+    }
+
+    [Fact]
+    public void RenderEmployeeOnboardingInvite_WithBase64TokenContainingUrlUnsafeCharacters_EscapesToken()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AppBaseUrl = "http://localhost:5173"
+        }));
+
+        var rendered = renderer.Render("employee_onboarding_invite", new
+        {
+            first_name = "Ada",
+            last_name = "Lovelace",
+            invite_token = "ab+c/d=="
+        });
+
+        // employee_onboarding_invite embeds the token as a URL path segment
+        // (/auth/invitations/{token}), not a query string, so a legacy Base64 token still
+        // percent-encodes safely here rather than breaking the route.
+        rendered.TextBody.Should().Contain("http://localhost:5173/auth/invitations/ab%2Bc%2Fd%3D%3D");
+        rendered.TextBody.Should().NotContain("ab+c/d==");
+    }
+
+    [Fact]
     public void RenderAdminPasswordChanged_ProducesSecurityNoticeCopy()
     {
         var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));

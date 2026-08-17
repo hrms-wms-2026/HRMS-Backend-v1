@@ -13,6 +13,7 @@ using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -20,7 +21,6 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
-using PositionAssignmentEntity = ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment;
 
 namespace ONEVO.Application.Features.CoreHr.Onboarding.Commands.ApproveAccessGrantRequest;
 
@@ -41,7 +41,7 @@ namespace ONEVO.Application.Features.CoreHr.Onboarding.Commands.ApproveAccessGra
 public class ApproveAccessGrantRequestCommandHandler
     : IRequestHandler<ApproveAccessGrantRequestCommand, Result<ApproveAccessGrantRequestResponse>>
 {
-    private const int InvitationValidityHours = 72;
+    private const int InvitationValidityHours = 24;
 
     private readonly IAccessGrantRequestRepository _accessGrantRequestRepository;
     private readonly IOnboardingDraftRepository _draftRepository;
@@ -58,6 +58,7 @@ public class ApproveAccessGrantRequestCommandHandler
     private readonly IChecklistTemplateRepository _checklistTemplateRepository;
     private readonly IEmployeeChecklistTaskRepository _checklistTaskRepository;
     private readonly IInvitationTokenRepository _invitationTokenRepository;
+    private readonly ITenantRepository _tenantRepository;
     private readonly IOutboxWriter _outboxWriter;
     private readonly ISecureTokenGenerator _tokenGenerator;
     private readonly ICurrentUser _currentUser;
@@ -79,6 +80,7 @@ public class ApproveAccessGrantRequestCommandHandler
         IChecklistTemplateRepository checklistTemplateRepository,
         IEmployeeChecklistTaskRepository checklistTaskRepository,
         IInvitationTokenRepository invitationTokenRepository,
+        ITenantRepository tenantRepository,
         IOutboxWriter outboxWriter,
         ISecureTokenGenerator tokenGenerator,
         ICurrentUser currentUser,
@@ -99,6 +101,7 @@ public class ApproveAccessGrantRequestCommandHandler
         _checklistTemplateRepository = checklistTemplateRepository;
         _checklistTaskRepository = checklistTaskRepository;
         _invitationTokenRepository = invitationTokenRepository;
+        _tenantRepository = tenantRepository;
         _outboxWriter = outboxWriter;
         _tokenGenerator = tokenGenerator;
         _currentUser = currentUser;
@@ -172,8 +175,8 @@ public class ApproveAccessGrantRequestCommandHandler
         if (employmentTypeId is null)
             return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity("The selected employment type does not exist.");
 
-        if (await _employeeRepository.EmailExistsAsync(tenantId, draft.WorkEmail, excludeId: null, ct))
-            return Result<ApproveAccessGrantRequestResponse>.Conflict("An employee with this work email already exists.");
+        if (await _employeeRepository.EmployeeExistsInLegalEntityAsync(tenantId, draft.LegalEntityId, draft.WorkEmail, excludeId: null, ct))
+            return Result<ApproveAccessGrantRequestResponse>.Conflict("An employee with this work email already exists in this company.");
 
         if (string.IsNullOrWhiteSpace(draft.EmployeeNumber))
             return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity(
@@ -193,11 +196,6 @@ public class ApproveAccessGrantRequestCommandHandler
         if (accessTemplate.RoleId != grantRequest.RequestedRoleId)
             return Result<ApproveAccessGrantRequestResponse>.Conflict(
                 "The position's access role has changed since this request was submitted.");
-
-        // Capacity, same signal FinalizeOnboardingDraftCommandHandler uses.
-        var activeAssignmentCount = await _positionAssignmentRepository.CountActiveAsync(tenantId, position.Id, ct);
-        if (activeAssignmentCount >= position.MaxOccupancy)
-            return Result<ApproveAccessGrantRequestResponse>.Conflict("This position has reached its capacity.");
 
         // ---- Seat recheck. Blocked/Undetermined create nothing and leave the request pending -
         // approving again later (once seats/billing are resolved) must still be possible. ----
@@ -279,18 +277,10 @@ public class ApproveAccessGrantRequestCommandHandler
         };
         await _employeeRepository.AddAsync(employee, ct);
 
-        var assignment = new PositionAssignmentEntity
-        {
-            Id = Guid.NewGuid(),
-            TenantId = draft.TenantId,
-            EmployeeId = employeeId,
-            PositionId = position.Id,
-            AssignmentKind = PositionAssignmentKind.PrimaryEmployment,
-            EffectiveFrom = draft.StartDate,
-            AssignmentStatus = PositionAssignmentStatus.Active,
-            CreatedById = _currentUser.UserId,
-        };
-        await _positionAssignmentRepository.AddAsync(assignment, ct);
+        var reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
+            draft.TenantId, employeeId, position.Id, draft.StartDate, _currentUser.UserId, ct);
+        if (reservedAssignmentId is null)
+            return Result<ApproveAccessGrantRequestResponse>.Conflict("This position has reached its capacity.");
 
         // UserRole's key is (UserId, RoleId), not scoped by position/tenant - if the matched
         // existing user already holds the requested role (e.g. from an earlier grant), adding it
@@ -312,7 +302,7 @@ public class ApproveAccessGrantRequestCommandHandler
             await _userRoleRepository.AddAsync(userRole, ct);
         }
 
-        var rawToken = _tokenGenerator.GenerateOpaqueToken();
+        var rawToken = _tokenGenerator.GenerateUrlSafeOpaqueToken();
         var tokenHash = InvitationTokenHasher.Hash(rawToken);
         var expiresAt = _clock.UtcNow.AddHours(InvitationValidityHours);
         var fullName = $"{draft.FirstName.Trim()} {draft.LastName.Trim()}".Trim();
@@ -324,6 +314,7 @@ public class ApproveAccessGrantRequestCommandHandler
             UserId = user.Id,
             RoleId = null,
             PositionId = draft.PositionId,
+            PositionAssignmentId = reservedAssignmentId,
             Purpose = InvitationToken.EmployeeOnboardingPurpose,
             LegalEntityId = draft.LegalEntityId,
             EmployeeId = employeeId,
@@ -337,11 +328,13 @@ public class ApproveAccessGrantRequestCommandHandler
         };
         await _invitationTokenRepository.AddAsync(invitation, ct);
 
+        var tenant = await _tenantRepository.GetByIdAsync(draft.TenantId, ct);
         await _outboxWriter.EnqueueAsync(
             OutboxMessageTypes.EmployeeOnboardingInviteEmail,
             new EmployeeOnboardingInviteEmailPayload(
                 draft.TenantId, draft.LegalEntityId, employeeId, invitation.Id,
-                draft.WorkEmail.Trim(), draft.FirstName.Trim(), draft.LastName.Trim(), rawToken, expiresAt),
+                draft.WorkEmail.Trim(), draft.FirstName.Trim(), draft.LastName.Trim(), rawToken, expiresAt,
+                tenant?.Slug),
             draft.TenantId,
             ct);
 
