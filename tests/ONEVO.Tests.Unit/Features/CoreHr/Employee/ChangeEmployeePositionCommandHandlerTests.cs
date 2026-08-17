@@ -9,10 +9,12 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
+using ONEVO.Application.Features.CoreHr.Onboarding.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Tests.Unit.Fakes;
 using Xunit;
@@ -328,5 +330,49 @@ public class ChangeEmployeePositionCommandHandlerTests
             It.IsAny<CancellationToken>()), Times.Once);
         _assignments.Verify(a => a.EndActiveAsync(
             It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_SensitivePosition_EnqueuesApprovalEmail_BeforeSaveChanges()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var positionId = Guid.NewGuid();
+        var approverUserId = Guid.NewGuid();
+        SetupNonSelfCaller(tenantId, employeeId);
+        _positions.Setup(p => p.GetByIdForLegalEntityAsync(tenantId, It.IsAny<Guid>(), positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = positionId, TenantId = tenantId, IsActive = true, DepartmentId = Guid.NewGuid(), Name = "CFO" });
+        _positions.Setup(p => p.GetAccessTemplateByPositionAsync(tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionAccessTemplate { Id = Guid.NewGuid(), RequiresApproval = true, RoleId = Guid.NewGuid() });
+        _permissionRepository.Setup(p => p.ListUserIdsWithPermissionCodeAsync(tenantId, "roles:manage", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Guid> { approverUserId });
+        _assignments
+            .Setup(a => a.TryReservePositionAssignmentAsync(tenantId, employeeId, positionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
+        _userRepository.Setup(u => u.GetByIdAsync(approverUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new User { Email = "approver@test.dev" });
+
+        var saveCountAtEnqueue = int.MaxValue;
+        _outboxWriter
+            .Setup(w => w.EnqueueAsync(
+                OutboxMessageTypes.PositionChangeApprovalRequestEmail,
+                It.IsAny<PositionChangeApprovalRequestEmailPayload>(),
+                tenantId,
+                It.IsAny<CancellationToken>()))
+            .Callback(() => saveCountAtEnqueue = ((FakeUnitOfWork)_unitOfWork).SaveCallCount)
+            .Returns(Task.CompletedTask);
+
+        var result = await CreateHandler().Handle(
+            new ChangeEmployeePositionCommand(employeeId, positionId, DateOnly.FromDateTime(DateTime.UtcNow), "Promotion"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, saveCountAtEnqueue);
+        Assert.Equal(1, ((FakeUnitOfWork)_unitOfWork).SaveCallCount);
+        _outboxWriter.Verify(w => w.EnqueueAsync(
+            OutboxMessageTypes.PositionChangeApprovalRequestEmail,
+            It.IsAny<PositionChangeApprovalRequestEmailPayload>(),
+            tenantId,
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

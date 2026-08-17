@@ -115,10 +115,11 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
                 ChangeReason = request.ChangeReason,
             };
             await _accessGrantRequestRepository.AddAsync(grantRequest, ct);
-            await _unitOfWork.SaveChangesAsync(ct);
 
             foreach (var approverUserId in approverUserIds)
                 await EnqueuePositionChangeApprovalEmailAsync(tenantId, approverUserId, grantRequest, employee, position, ct);
+
+            await _unitOfWork.SaveChangesAsync(ct);
 
             return Result<ChangeEmployeePositionResponse>.Success(new ChangeEmployeePositionResponse(PendingApproval: true));
         }
