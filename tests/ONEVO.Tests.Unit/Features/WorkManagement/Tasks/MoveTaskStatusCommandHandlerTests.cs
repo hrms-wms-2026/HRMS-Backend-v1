@@ -200,12 +200,39 @@ public class MoveTaskStatusCommandHandlerTests
             callerIsMember: false,
             newStatus,
             estimatedHours: 8m);
+        objective.CompletedHours = 13m;
 
         var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(8m, task.CompletedHours);
-        Assert.Equal(8m, objective.CompletedHours);
+        Assert.Equal(21m, objective.CompletedHours);
+    }
+
+    [Fact]
+    public async Task Handle_MovingIntoCompleteStatus_WithNullEstimate_RollsUpZeroHours()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId,
+            TenantId = TenantId,
+            Name = "Done",
+            MarksTaskComplete = true,
+            Visibility = TaskStatusVisibilities.Private,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, objective, task, _) = Build(
+            OwnerEmployeeId,
+            callerIsMember: false,
+            newStatus,
+            estimatedHours: null);
+        objective.CompletedHours = 13m;
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0m, task.CompletedHours);
+        Assert.Equal(13m, objective.CompletedHours);
     }
 
     [Fact]
@@ -226,7 +253,7 @@ public class MoveTaskStatusCommandHandlerTests
             newStatus,
             estimatedHours: 8m);
         task.CompletedHours = 8m;
-        objective.CompletedHours = 8m;
+        objective.CompletedHours = 21m;
         var oldStatusComplete = new TaskStatusEntity
         {
             Id = OldStatusId,
@@ -243,6 +270,44 @@ public class MoveTaskStatusCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0m, task.CompletedHours);
-        Assert.Equal(0m, objective.CompletedHours);
+        Assert.Equal(13m, objective.CompletedHours);
+    }
+
+    [Fact]
+    public async Task Handle_MovingBetweenCompleteStatuses_LeavesCompletedHoursUnchanged()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId,
+            TenantId = TenantId,
+            Name = "Verified",
+            MarksTaskComplete = true,
+            Visibility = TaskStatusVisibilities.Private,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, objective, task, statuses) = Build(
+            OwnerEmployeeId,
+            callerIsMember: false,
+            newStatus,
+            estimatedHours: 8m);
+        task.CompletedHours = 8m;
+        objective.CompletedHours = 21m;
+        var oldStatusComplete = new TaskStatusEntity
+        {
+            Id = OldStatusId,
+            TenantId = TenantId,
+            Name = "Done",
+            MarksTaskComplete = true,
+            Visibility = TaskStatusVisibilities.Private,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, OldStatusId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(oldStatusComplete);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(8m, task.CompletedHours);
+        Assert.Equal(21m, objective.CompletedHours);
     }
 }
