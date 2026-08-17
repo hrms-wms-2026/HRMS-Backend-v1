@@ -64,10 +64,11 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         var codes = await assert.NotificationTemplates.Select(t => t.Code).ToListAsync();
 
         Assert.Contains("work_task_creation_request_created", codes);
+        Assert.Contains("work_task_edit_request_decided", codes);
         Assert.Contains("work_sprint_completed", codes);
         Assert.Contains("work_sprint_incomplete", codes);
         Assert.Contains("work_sprint_achieved", codes);
-        Assert.Equal(7, codes.Count);
+        Assert.Equal(8, codes.Count);
     }
 
     private ApplicationDbContext CreateContext()
