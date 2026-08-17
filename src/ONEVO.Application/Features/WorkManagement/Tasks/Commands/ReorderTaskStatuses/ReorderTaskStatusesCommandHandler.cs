@@ -53,6 +53,9 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
         if (request.Updates.Count(u => u.MarksTaskComplete) != 1)
             return Result<IReadOnlyList<TaskStatusResponse>>.Failure("Exactly one status must be marked as the complete status.", 422);
 
+        if (request.Updates.Select(u => u.StatusId).Distinct().Count() != request.Updates.Count)
+            return Result<IReadOnlyList<TaskStatusResponse>>.Failure("Updates must not contain duplicate status IDs.", 422);
+
         var existing = await _statuses.GetByObjectiveIdAsync(tenantId, objective.Id, ct);
         var byId = existing.ToDictionary(s => s.Id);
 
@@ -66,6 +69,9 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
             status.MarksTaskComplete = update.MarksTaskComplete;
             status.UpdatedAt = DateTimeOffset.UtcNow;
         }
+
+        if (existing.Count(s => s.MarksTaskComplete) != 1)
+            return Result<IReadOnlyList<TaskStatusResponse>>.Failure("Exactly one status must be marked as the complete status.", 422);
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {

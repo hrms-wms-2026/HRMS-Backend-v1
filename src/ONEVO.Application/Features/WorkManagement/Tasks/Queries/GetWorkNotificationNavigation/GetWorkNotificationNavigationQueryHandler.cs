@@ -14,6 +14,7 @@ public class GetWorkNotificationNavigationQueryHandler
     private readonly ICurrentUser _currentUser;
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskCreationRequestRepository _taskRequests;
+    private readonly ITaskEditRequestRepository _taskEditRequests;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IObjectiveRepository _objectives;
 
@@ -21,12 +22,14 @@ public class GetWorkNotificationNavigationQueryHandler
         ICurrentUser currentUser,
         IWorkTaskRepository tasks,
         ITaskCreationRequestRepository taskRequests,
+        ITaskEditRequestRepository taskEditRequests,
         IObjectiveChangeRequestRepository changeRequests,
         IObjectiveRepository objectives)
     {
         _currentUser = currentUser;
         _tasks = tasks;
         _taskRequests = taskRequests;
+        _taskEditRequests = taskEditRequests;
         _changeRequests = changeRequests;
         _objectives = objectives;
     }
@@ -44,6 +47,7 @@ public class GetWorkNotificationNavigationQueryHandler
         {
             "task" => await FromTaskAsync(tenantId, request.RelatedEntityId, ct),
             "task_creation_request" => await FromTaskCreationRequestAsync(tenantId, request.RelatedEntityId, ct),
+            "task_edit_request" => await FromTaskEditRequestAsync(tenantId, request.RelatedEntityId, ct),
             "objective_change_request" or "allocation_extend" =>
                 await FromChangeRequestAsync(tenantId, request.RelatedEntityId, ct),
             _ => Result<WorkNotificationNavigationResponse>.Failure(
@@ -79,6 +83,16 @@ public class GetWorkNotificationNavigationQueryHandler
 
         return Result<WorkNotificationNavigationResponse>.Success(new(
             objective.ProjectId, objective.Id, pending.CreatedTaskId, "board"));
+    }
+
+    private async Task<Result<WorkNotificationNavigationResponse>> FromTaskEditRequestAsync(
+        Guid tenantId, Guid requestId, CancellationToken ct)
+    {
+        var pending = await _taskEditRequests.GetByIdForTenantAsync(tenantId, requestId, ct);
+        if (pending is null)
+            return Result<WorkNotificationNavigationResponse>.NotFound("Task edit request not found.");
+
+        return await FromTaskAsync(tenantId, pending.TaskId, ct);
     }
 
     private async Task<Result<WorkNotificationNavigationResponse>> FromChangeRequestAsync(

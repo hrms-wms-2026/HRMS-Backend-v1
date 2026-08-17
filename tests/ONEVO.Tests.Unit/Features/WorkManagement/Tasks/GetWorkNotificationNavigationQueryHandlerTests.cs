@@ -43,10 +43,48 @@ public class GetWorkNotificationNavigationQueryHandlerTests
 
         var handler = new GetWorkNotificationNavigationQueryHandler(
             AuthUser().Object, new Mock<IWorkTaskRepository>().Object, requests.Object,
+            new Mock<ITaskEditRequestRepository>().Object,
             new Mock<IObjectiveChangeRequestRepository>().Object, objectives.Object);
 
         var result = await handler.Handle(
             new GetWorkNotificationNavigationQuery("task_creation_request", requestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ProjectId, result.Value!.ProjectId);
+        Assert.Equal(ObjectiveId, result.Value.ObjectiveId);
+        Assert.Equal(taskId, result.Value.TaskId);
+        Assert.Equal("board", result.Value.TargetTab);
+    }
+
+    [Fact]
+    public async Task Handle_TaskEditRequest_ReturnsBoardTab()
+    {
+        var requestId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var requests = new Mock<ITaskEditRequestRepository>();
+        requests.Setup(x => x.GetByIdForTenantAsync(TenantId, requestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TaskEditRequest
+            {
+                Id = requestId, TenantId = TenantId, TaskId = taskId
+            });
+
+        var tasks = new Mock<IWorkTaskRepository>();
+        tasks.Setup(x => x.GetByIdForTenantAsync(TenantId, taskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkTask
+            {
+                Id = taskId, TenantId = TenantId, ObjectiveId = ObjectiveId, Title = "Task"
+            });
+
+        var objectives = new Mock<IObjectiveRepository>();
+        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Objective { Id = ObjectiveId, ProjectId = ProjectId, Title = "M1" });
+
+        var handler = new GetWorkNotificationNavigationQueryHandler(
+            AuthUser().Object, tasks.Object, new Mock<ITaskCreationRequestRepository>().Object,
+            requests.Object, new Mock<IObjectiveChangeRequestRepository>().Object, objectives.Object);
+
+        var result = await handler.Handle(
+            new GetWorkNotificationNavigationQuery("task_edit_request", requestId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ProjectId, result.Value!.ProjectId);
@@ -72,7 +110,7 @@ public class GetWorkNotificationNavigationQueryHandlerTests
 
         var handler = new GetWorkNotificationNavigationQueryHandler(
             AuthUser().Object, new Mock<IWorkTaskRepository>().Object, new Mock<ITaskCreationRequestRepository>().Object,
-            changes.Object, objectives.Object);
+            new Mock<ITaskEditRequestRepository>().Object, changes.Object, objectives.Object);
 
         var result = await handler.Handle(
             new GetWorkNotificationNavigationQuery("allocation_extend", changeId), CancellationToken.None);

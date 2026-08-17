@@ -108,6 +108,37 @@ public class ReorderTaskStatusesCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_PartialUpdateLeavesTwoCompleteStatuses_ReturnsFailure()
+    {
+        var (handler, _) = Build(OwnerEmployeeId);
+        var command = new ReorderTaskStatusesCommand(ObjectiveId, new List<TaskStatusOrderUpdate>
+        {
+            new(Status1, 0, TaskStatusVisibilities.Public, MarksTaskComplete: true)
+        });
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(422, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_DuplicateStatusIds_ReturnsFailure()
+    {
+        var (handler, _) = Build(OwnerEmployeeId);
+        var command = new ReorderTaskStatusesCommand(ObjectiveId, new List<TaskStatusOrderUpdate>
+        {
+            new(Status2, 0, TaskStatusVisibilities.Public, MarksTaskComplete: true),
+            new(Status2, 1, TaskStatusVisibilities.Public, MarksTaskComplete: false)
+        });
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(422, result.StatusCode);
+    }
+
+    [Fact]
     public async Task Handle_NullUpdates_ReturnsFailure()
     {
         var (handler, _) = Build(OwnerEmployeeId);
