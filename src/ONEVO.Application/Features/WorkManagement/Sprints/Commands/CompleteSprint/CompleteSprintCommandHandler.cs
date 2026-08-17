@@ -4,6 +4,8 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
@@ -19,11 +21,16 @@ public class CompleteSprintCommandHandler : IRequestHandler<CompleteSprintComman
     private readonly ISprintRepository _sprints;
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskStatusRepository _statuses;
+    private readonly IProjectMemberRepository _members;
+    private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
 
     public CompleteSprintCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        ISprintRepository sprints, IWorkTaskRepository tasks, ITaskStatusRepository statuses, IUnitOfWork unitOfWork)
+        ISprintRepository sprints, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
+        IProjectMemberRepository members, IMilestoneMembershipCoordinator membership,
+        INotificationDispatcher notifications, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -31,6 +38,9 @@ public class CompleteSprintCommandHandler : IRequestHandler<CompleteSprintComman
         _sprints = sprints;
         _tasks = tasks;
         _statuses = statuses;
+        _members = members;
+        _membership = membership;
+        _notifications = notifications;
         _unitOfWork = unitOfWork;
     }
 
@@ -69,6 +79,18 @@ public class CompleteSprintCommandHandler : IRequestHandler<CompleteSprintComman
             sprint.Status = SprintStatuses.Complete;
             sprint.CompletedAt = DateTimeOffset.UtcNow;
             sprint.UpdatedAt = DateTimeOffset.UtcNow;
+
+            var members = await _members.ListActiveForObjectiveAsync(tenantId, objective.Id, innerCt);
+            foreach (var member in members)
+            {
+                var assignee = await _membership.GetActiveAssigneeAsync(tenantId, member.EmployeeId, innerCt);
+                if (assignee is null) continue;
+
+                await _notifications.SendTemplatedAsync(
+                    tenantId, assignee.UserId, "work_sprint_completed",
+                    new Dictionary<string, string> { ["sprintName"] = sprint.Name, ["objectiveName"] = objective.Title },
+                    "sprint", sprint.Id, innerCt);
+            }
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 

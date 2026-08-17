@@ -4,10 +4,14 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.AchieveSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using Xunit;
 
@@ -20,12 +24,10 @@ public class AchieveSprintCommandHandlerTests
     private static readonly Guid OwnerEmployeeId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid SprintId = Guid.NewGuid();
+    private static readonly Guid MemberEmployeeId = Guid.NewGuid();
+    private static readonly Guid MemberUserId = Guid.NewGuid();
 
-    [Theory]
-    [InlineData(SprintStatuses.Future)]
-    [InlineData(SprintStatuses.Active)]
-    [InlineData(SprintStatuses.Incomplete)]
-    public async Task Handle_AnyNonTerminalStatus_MovesToAchieved(string startingStatus)
+    private (AchieveSprintCommandHandler Handler, Sprint Sprint, Mock<INotificationDispatcher> Notifications) Build(string startingStatus)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -43,17 +45,58 @@ public class AchieveSprintCommandHandlerTests
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
 
+        var members = new Mock<IProjectMemberRepository>();
+        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectMember>
+            {
+                new() { EmployeeId = MemberEmployeeId, ObjectiveId = ObjectiveId, IsActive = true }
+            });
+
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, MemberEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = MemberEmployeeId, TenantId = TenantId, UserId = MemberUserId });
+
+        var notifications = new Mock<INotificationDispatcher>();
+
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<SprintResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<SprintResponse>>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var handler = new AchieveSprintCommandHandler(currentUser.Object, identity.Object, objectives.Object, sprints.Object, unitOfWork.Object);
+        var handler = new AchieveSprintCommandHandler(
+            currentUser.Object, identity.Object, objectives.Object, sprints.Object,
+            members.Object, membership.Object, notifications.Object, unitOfWork.Object);
+        return (handler, sprint, notifications);
+    }
+
+    [Theory]
+    [InlineData(SprintStatuses.Future)]
+    [InlineData(SprintStatuses.Active)]
+    [InlineData(SprintStatuses.Incomplete)]
+    public async Task Handle_AnyNonTerminalStatus_MovesToAchieved(string startingStatus)
+    {
+        var (handler, sprint, _) = Build(startingStatus);
 
         var result = await handler.Handle(new AchieveSprintCommand(SprintId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(SprintStatuses.Achieved, sprint.Status);
         Assert.NotNull(sprint.AchievedAt);
+    }
+
+    [Fact]
+    public async Task Handle_Achieve_NotifiesObjectiveMembers()
+    {
+        var (handler, _, notifications) = Build(SprintStatuses.Complete);
+
+        var result = await handler.Handle(new AchieveSprintCommand(SprintId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        notifications.Verify(
+            x => x.SendTemplatedAsync(
+                TenantId, MemberUserId, "work_sprint_achieved",
+                It.Is<IReadOnlyDictionary<string, string>>(p => p["sprintName"] == "S1" && p["objectiveName"] == "Obj"),
+                "sprint", SprintId, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 }

@@ -1,6 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
@@ -71,6 +75,30 @@ public sealed class SprintLifecycleJob : BackgroundService
                     sprint.UpdatedAt = DateTimeOffset.UtcNow;
                     sprints.Update(sprint);
                     advancedCount++;
+
+                    if (next == SprintStatuses.Incomplete)
+                    {
+                        var members = scope.ServiceProvider.GetRequiredService<IProjectMemberRepository>();
+                        var membership = scope.ServiceProvider.GetRequiredService<IMilestoneMembershipCoordinator>();
+                        var notifications = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
+                        var objectives = scope.ServiceProvider.GetRequiredService<IObjectiveRepository>();
+
+                        var objective = await objectives.GetByIdForTenantAsync(sprint.TenantId, sprint.ObjectiveId, stoppingToken);
+                        if (objective is not null)
+                        {
+                            var activeMembers = await members.ListActiveForObjectiveAsync(sprint.TenantId, sprint.ObjectiveId, stoppingToken);
+                            foreach (var member in activeMembers)
+                            {
+                                var assignee = await membership.GetActiveAssigneeAsync(sprint.TenantId, member.EmployeeId, stoppingToken);
+                                if (assignee is null) continue;
+
+                                await notifications.SendTemplatedAsync(
+                                    sprint.TenantId, assignee.UserId, "work_sprint_incomplete",
+                                    new Dictionary<string, string> { ["sprintName"] = sprint.Name, ["objectiveName"] = objective.Title },
+                                    "sprint", sprint.Id, stoppingToken);
+                            }
+                        }
+                    }
                 }
 
                 if (advancedCount > 0)

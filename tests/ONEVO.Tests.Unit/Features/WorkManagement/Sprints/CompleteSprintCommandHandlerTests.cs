@@ -4,11 +4,15 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.CompleteSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
@@ -25,8 +29,10 @@ public class CompleteSprintCommandHandlerTests
     private static readonly Guid SprintId = Guid.NewGuid();
     private static readonly Guid DoneStatusId = Guid.NewGuid();
     private static readonly Guid InProcessStatusId = Guid.NewGuid();
+    private static readonly Guid MemberEmployeeId = Guid.NewGuid();
+    private static readonly Guid MemberUserId = Guid.NewGuid();
 
-    private (CompleteSprintCommandHandler Handler, Sprint Sprint) Build(IReadOnlyList<WorkTask> tasksInSprint)
+    private (CompleteSprintCommandHandler Handler, Sprint Sprint, Mock<INotificationDispatcher> Notifications) Build(IReadOnlyList<WorkTask> tasksInSprint)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -53,20 +59,35 @@ public class CompleteSprintCommandHandlerTests
         statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, DoneStatusId, It.IsAny<CancellationToken>())).ReturnsAsync(doneStatus);
         statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, InProcessStatusId, It.IsAny<CancellationToken>())).ReturnsAsync(inProcessStatus);
 
+        var members = new Mock<IProjectMemberRepository>();
+        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectMember>
+            {
+                new() { EmployeeId = MemberEmployeeId, ObjectiveId = ObjectiveId, IsActive = true }
+            });
+
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, MemberEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = MemberEmployeeId, TenantId = TenantId, UserId = MemberUserId });
+
+        var notifications = new Mock<INotificationDispatcher>();
+
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<SprintResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<SprintResponse>>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var handler = new CompleteSprintCommandHandler(currentUser.Object, identity.Object, objectives.Object, sprints.Object, tasks.Object, statuses.Object, unitOfWork.Object);
-        return (handler, sprint);
+        var handler = new CompleteSprintCommandHandler(
+            currentUser.Object, identity.Object, objectives.Object, sprints.Object, tasks.Object, statuses.Object,
+            members.Object, membership.Object, notifications.Object, unitOfWork.Object);
+        return (handler, sprint, notifications);
     }
 
     [Fact]
     public async Task Handle_AllTasksComplete_MarksSprintComplete()
     {
         var tasksInSprint = new List<WorkTask> { new() { Id = Guid.NewGuid(), TenantId = TenantId, StatusId = DoneStatusId, Title = "A", ShortId = "T-1", CreatedAt = DateTimeOffset.UtcNow } };
-        var (handler, sprint) = Build(tasksInSprint);
+        var (handler, sprint, _) = Build(tasksInSprint);
 
         var result = await handler.Handle(new CompleteSprintCommand(SprintId), CancellationToken.None);
 
@@ -83,12 +104,32 @@ public class CompleteSprintCommandHandlerTests
             new() { Id = Guid.NewGuid(), TenantId = TenantId, StatusId = DoneStatusId, Title = "A", ShortId = "T-1", CreatedAt = DateTimeOffset.UtcNow },
             new() { Id = Guid.NewGuid(), TenantId = TenantId, StatusId = InProcessStatusId, Title = "B", ShortId = "T-2", CreatedAt = DateTimeOffset.UtcNow }
         };
-        var (handler, sprint) = Build(tasksInSprint);
+        var (handler, sprint, notifications) = Build(tasksInSprint);
 
         var result = await handler.Handle(new CompleteSprintCommand(SprintId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(422, result.StatusCode);
         Assert.Equal(SprintStatuses.Active, sprint.Status);
+        notifications.Verify(
+            x => x.SendTemplatedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<string?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_Complete_NotifiesObjectiveMembers()
+    {
+        var tasksInSprint = new List<WorkTask> { new() { Id = Guid.NewGuid(), TenantId = TenantId, StatusId = DoneStatusId, Title = "A", ShortId = "T-1", CreatedAt = DateTimeOffset.UtcNow } };
+        var (handler, _, notifications) = Build(tasksInSprint);
+
+        var result = await handler.Handle(new CompleteSprintCommand(SprintId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        notifications.Verify(
+            x => x.SendTemplatedAsync(
+                TenantId, MemberUserId, "work_sprint_completed",
+                It.Is<IReadOnlyDictionary<string, string>>(p => p["sprintName"] == "S1" && p["objectiveName"] == "Obj"),
+                "sprint", SprintId, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 }

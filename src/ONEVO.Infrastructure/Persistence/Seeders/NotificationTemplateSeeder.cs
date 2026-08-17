@@ -40,12 +40,6 @@ public class NotificationTemplateSeeder : IHostedService
 
     private async Task SeedAsync(INotificationRepository notifications, ApplicationDbContext db, CancellationToken ct)
     {
-        if (await notifications.AnyTemplatesExistAsync(ct))
-        {
-            _logger.LogInformation("Notification templates already seeded — skipping.");
-            return;
-        }
-
         var templates = new List<NotificationTemplate>
         {
             new()
@@ -71,11 +65,46 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "work_allocation_extend_request_decided",
                 InAppTitleTemplate = "Allocation request {{decision}}",
                 InAppBodyTemplate = "Your allocation extension request for {{objectiveName}} was {{decision}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_sprint_completed",
+                InAppTitleTemplate = "Sprint completed",
+                InAppBodyTemplate = "\"{{sprintName}}\" on {{objectiveName}} was marked Complete."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_sprint_incomplete",
+                InAppTitleTemplate = "Sprint ended incomplete",
+                InAppBodyTemplate = "\"{{sprintName}}\" on {{objectiveName}} ended with unfinished tasks and is now Incomplete."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_sprint_achieved",
+                InAppTitleTemplate = "Sprint achieved",
+                InAppBodyTemplate = "\"{{sprintName}}\" on {{objectiveName}} was achieved and its tasks are now frozen."
             }
         };
 
-        await notifications.AddTemplateRangeAsync(templates, ct);
-        await db.SaveChangesAsync(ct);
-        _logger.LogInformation("Seeded {Count} notification templates.", templates.Count);
+        var addedCount = 0;
+        foreach (var template in templates)
+        {
+            var existing = await notifications.GetTemplateByCodeAsync(template.Code, ct);
+            if (existing is not null)
+                continue;
+
+            await notifications.AddTemplateRangeAsync(new[] { template }, ct);
+            addedCount++;
+        }
+
+        if (addedCount > 0)
+        {
+            await db.SaveChangesAsync(ct);
+            _logger.LogInformation("Seeded {Count} new notification templates.", addedCount);
+        }
+        else
+        {
+            _logger.LogInformation("Notification templates already up to date — nothing to seed.");
+        }
     }
 }
