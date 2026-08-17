@@ -199,6 +199,8 @@ public static class DependencyInjection
         services.AddScoped<ITaskAssignmentRepository>(sp => sp.GetRequiredService<EfTaskAssignmentRepository>());
         services.AddScoped<EfTaskCreationRequestRepository>();
         services.AddScoped<ITaskCreationRequestRepository>(sp => sp.GetRequiredService<EfTaskCreationRequestRepository>());
+        services.AddScoped<EfTaskEditRequestRepository>();
+        services.AddScoped<ITaskEditRequestRepository>(sp => sp.GetRequiredService<EfTaskEditRequestRepository>());
         services.AddScoped<EfNotificationRepository>();
         services.AddScoped<INotificationRepository>(sp => sp.GetRequiredService<EfNotificationRepository>());
         services.AddScoped<EfObjectiveChangeRequestRepository>();
