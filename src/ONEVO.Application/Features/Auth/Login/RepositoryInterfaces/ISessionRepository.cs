@@ -7,6 +7,7 @@ public interface ISessionRepository
     Task<Session?> GetLatestActiveByUserIdAsync(Guid userId, CancellationToken ct = default);
     Task<Session?> GetByIdAsync(Guid sessionId, CancellationToken ct = default);
     Task<Session?> GetByKeyHashAsync(string keyHash, CancellationToken ct = default);
+    Task<IReadOnlyList<Session>> ListActiveByTenantIdAsync(Guid tenantId, DateTimeOffset now, CancellationToken ct = default);
 
     /// <summary>
     /// The only lookup permitted to find a session before its tenant is known: satisfies the
