@@ -3,11 +3,13 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using Xunit;
 
@@ -20,13 +22,18 @@ public class EditTaskCommandHandlerTests
     private static readonly Guid TaskId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
 
-    private (EditTaskCommandHandler Handler, Mock<IWorkTaskRepository> Tasks) Build(decimal allocatedHours, decimal existingSumExcludingThisTask)
+    private (EditTaskCommandHandler Handler, Mock<IWorkTaskRepository> Tasks) Build(
+        decimal allocatedHours, decimal existingSumExcludingThisTask, Sprint? sprint = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
 
-        var task = new WorkTask { Id = TaskId, TenantId = TenantId, ObjectiveId = ObjectiveId, Title = "Old", ShortId = "T-1", EstimatedHours = 10m, CreatedAt = DateTimeOffset.UtcNow };
+        var task = new WorkTask
+        {
+            Id = TaskId, TenantId = TenantId, ObjectiveId = ObjectiveId, Title = "Old", ShortId = "T-1",
+            EstimatedHours = 10m, SprintId = sprint?.Id, CreatedAt = DateTimeOffset.UtcNow
+        };
 
         var tasks = new Mock<IWorkTaskRepository>();
         tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, TaskId, It.IsAny<CancellationToken>())).ReturnsAsync(task);
@@ -41,11 +48,18 @@ public class EditTaskCommandHandlerTests
 
         var slack = new ObjectiveAllocationSlackCalculator(objectives.Object, tasks.Object);
 
+        var sprints = new Mock<ISprintRepository>();
+        if (sprint is not null)
+        {
+            sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, sprint.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(sprint);
+        }
+
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<WorkTaskResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<WorkTaskResponse>>> op, CancellationToken ct) => op(ct));
 
-        var handler = new EditTaskCommandHandler(currentUser.Object, tasks.Object, objectives.Object, slack, unitOfWork.Object);
+        var handler = new EditTaskCommandHandler(currentUser.Object, tasks.Object, objectives.Object, slack, unitOfWork.Object, sprints.Object);
         return (handler, tasks);
     }
 
@@ -69,5 +83,20 @@ public class EditTaskCommandHandlerTests
         Assert.Equal(409, result.StatusCode);
         Assert.Contains("\"availableSlackHours\"", result.Error);
         Assert.DoesNotContain("\"AvailableSlackHours\"", result.Error);
+    }
+
+    [Fact]
+    public async Task Handle_TaskInAchievedSprint_ReturnsForbidden()
+    {
+        var achieved = new Sprint
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "S1",
+            Status = SprintStatuses.Achieved, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, sprint: achieved);
+        var result = await handler.Handle(new EditTaskCommand(TaskId, "New Title", null, "medium", null, EstimatedHours: 10m, StoryPoints: null), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
     }
 }

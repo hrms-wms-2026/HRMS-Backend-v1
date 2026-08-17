@@ -5,9 +5,11 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.MoveTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 using Xunit;
@@ -28,7 +30,7 @@ public class MoveTaskStatusCommandHandlerTests
 
     private (MoveTaskStatusCommandHandler Handler, Objective Objective, WorkTask Task, Mock<ITaskStatusRepository> Statuses) Build(
         Guid callerEmployeeId, bool callerIsMember, TaskStatusEntity newStatus, decimal? estimatedHours = 8m,
-        bool preserveNullStatusObjectiveId = false)
+        bool preserveNullStatusObjectiveId = false, Sprint? sprint = null)
     {
         if (!preserveNullStatusObjectiveId && newStatus.ObjectiveId is null)
             newStatus.ObjectiveId = ObjectiveId;
@@ -51,6 +53,7 @@ public class MoveTaskStatusCommandHandlerTests
             ShortId = "T-1",
             StatusId = OldStatusId,
             EstimatedHours = estimatedHours,
+            SprintId = sprint?.Id,
             CreatedAt = DateTimeOffset.UtcNow
         };
         var tasks = new Mock<IWorkTaskRepository>();
@@ -95,6 +98,13 @@ public class MoveTaskStatusCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
+        var sprints = new Mock<ISprintRepository>();
+        if (sprint is not null)
+        {
+            sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, sprint.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(sprint);
+        }
+
         var handler = new MoveTaskStatusCommandHandler(
             currentUser.Object,
             identity.Object,
@@ -102,7 +112,8 @@ public class MoveTaskStatusCommandHandlerTests
             statuses.Object,
             objectives.Object,
             membership.Object,
-            unitOfWork.Object);
+            unitOfWork.Object,
+            sprints.Object);
 
         return (handler, objective, task, statuses);
     }
@@ -361,5 +372,34 @@ public class MoveTaskStatusCommandHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(8m, task.CompletedHours);
         Assert.Equal(21m, objective.CompletedHours);
+    }
+
+    [Fact]
+    public async Task Handle_TaskInAchievedSprint_ReturnsForbidden()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId,
+            TenantId = TenantId,
+            Name = "In Process",
+            MarksTaskComplete = false,
+            Visibility = TaskStatusVisibilities.Public,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var achieved = new Sprint
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            ObjectiveId = ObjectiveId,
+            Name = "S1",
+            Status = SprintStatuses.Achieved,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, _, _) = Build(OwnerEmployeeId, callerIsMember: false, newStatus, sprint: achieved);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
     }
 }

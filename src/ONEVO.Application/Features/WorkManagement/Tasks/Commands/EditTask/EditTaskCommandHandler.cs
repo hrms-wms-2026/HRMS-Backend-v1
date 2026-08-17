@@ -3,9 +3,11 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
 
@@ -15,17 +17,19 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
     private readonly IWorkTaskRepository _tasks;
     private readonly IObjectiveRepository _objectives;
     private readonly IObjectiveAllocationSlackCalculator _slack;
+    private readonly ISprintRepository _sprints;
     private readonly IUnitOfWork _unitOfWork;
 
     public EditTaskCommandHandler(
         ICurrentUser currentUser, IWorkTaskRepository tasks, IObjectiveRepository objectives,
-        IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork)
+        IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork, ISprintRepository sprints)
     {
         _currentUser = currentUser;
         _tasks = tasks;
         _objectives = objectives;
         _slack = slack;
         _unitOfWork = unitOfWork;
+        _sprints = sprints;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(EditTaskCommand request, CancellationToken ct)
@@ -37,6 +41,13 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         var task = await _tasks.GetTrackedByIdForTenantAsync(tenantId, request.TaskId, ct);
         if (task is null)
             return Result<WorkTaskResponse>.NotFound("Task not found.");
+
+        if (task.SprintId.HasValue)
+        {
+            var sprint = await _sprints.GetByIdForTenantAsync(tenantId, task.SprintId.Value, ct);
+            if (sprint is not null && sprint.Status == SprintStatuses.Achieved)
+                return Result<WorkTaskResponse>.Forbidden("This task's sprint has been achieved and is now frozen.");
+        }
 
         if (request.EstimatedHours.HasValue && request.EstimatedHours.Value != task.EstimatedHours)
         {

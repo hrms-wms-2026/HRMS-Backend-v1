@@ -5,7 +5,9 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.MoveTaskStatus;
@@ -18,6 +20,7 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
     private readonly ITaskStatusRepository _statuses;
     private readonly IObjectiveRepository _objectives;
     private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly ISprintRepository _sprints;
     private readonly IUnitOfWork _unitOfWork;
 
     public MoveTaskStatusCommandHandler(
@@ -27,7 +30,8 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         ITaskStatusRepository statuses,
         IObjectiveRepository objectives,
         IMilestoneMembershipCoordinator membership,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        ISprintRepository sprints)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -36,6 +40,7 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         _objectives = objectives;
         _membership = membership;
         _unitOfWork = unitOfWork;
+        _sprints = sprints;
     }
 
     public async Task<Result> Handle(MoveTaskStatusCommand request, CancellationToken ct)
@@ -74,6 +79,13 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
                 return Result.Forbidden("Only active milestone members can move tasks.");
             if (newStatus.Visibility == TaskStatusVisibilities.Private)
                 return Result.Forbidden("Only the milestone owner can move a task into this status.");
+        }
+
+        if (task.SprintId.HasValue)
+        {
+            var sprint = await _sprints.GetByIdForTenantAsync(tenantId, task.SprintId.Value, ct);
+            if (sprint is not null && sprint.Status == SprintStatuses.Achieved)
+                return Result.Forbidden("This task's sprint has been achieved and is now frozen.");
         }
 
         var oldStatus = await _statuses.GetByIdForTenantAsync(tenantId, task.StatusId, ct);
