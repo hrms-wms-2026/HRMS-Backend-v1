@@ -56,6 +56,7 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
             status.DisplayOrder = request.DisplayOrder;
             status.RequiresApproval = request.RequiresApproval;
             status.ApproverId = request.ApproverId;
+            status.Visibility = request.Visibility;
             status.UpdatedAt = DateTimeOffset.UtcNow;
             _statuses.Update(status);
             await _unitOfWork.SaveChangesAsync(innerCt);

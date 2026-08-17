@@ -13,7 +13,7 @@ public sealed record MoveTaskStatusRequest(Guid NewStatusId);
 public sealed record AssignTaskRequest(Guid EmployeeId);
 
 public sealed record EditTaskStatusRequest(
-    string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId);
+    string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, string Visibility);
 
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,

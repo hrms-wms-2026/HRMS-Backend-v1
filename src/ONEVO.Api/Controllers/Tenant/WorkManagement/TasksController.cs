@@ -90,7 +90,8 @@ public class TasksController : ControllerBase
     [RequirePermission("projects:access")]
     public async Task<IActionResult> EditStatus(Guid objectiveId, Guid id, [FromBody] EditTaskStatusRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new EditTaskStatusCommand(id, request.Name, request.DisplayOrder, request.RequiresApproval, request.ApproverId), ct);
+        var result = await _mediator.Send(new EditTaskStatusCommand(
+            id, request.Name, request.DisplayOrder, request.RequiresApproval, request.ApproverId, request.Visibility), ct);
 
         return result.IsSuccess
             ? NoContent()
