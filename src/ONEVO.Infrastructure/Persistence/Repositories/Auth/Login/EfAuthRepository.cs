@@ -427,6 +427,22 @@ public sealed class EfAuthRepository :
         return userIds;
     }
 
+    public async Task<IReadOnlyList<Guid>> ListUserIdsWithPermissionCodeAsync(
+        Guid tenantId, string permissionCode, DateTimeOffset now, CancellationToken ct = default)
+    {
+        // UserRole carries TenantId (ITenantOwnedEntity) — filter directly instead of joining Users.
+        var query = _db.UserRoles
+            .AsNoTracking()
+            .Where(ur => ur.TenantId == tenantId && (ur.ExpiresAt == null || ur.ExpiresAt > now))
+            .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => new { ur, rp })
+            .Join(_db.Permissions, x => x.rp.PermissionId, p => p.Id, (x, p) => new { x.ur, p })
+            .Where(x => x.p.Code == permissionCode)
+            .Select(x => x.ur.UserId)
+            .Distinct();
+
+        return await query.ToListAsync(ct);
+    }
+
     public Task AddAsync(UserRole userRole, CancellationToken ct = default)
     {
         var addTask = _db.UserRoles.AddAsync(userRole, ct).AsTask();
