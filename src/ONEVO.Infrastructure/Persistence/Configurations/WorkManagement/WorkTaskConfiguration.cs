@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 
@@ -25,5 +26,6 @@ public class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
             .HasDatabaseName("ix_tasks_one_short_id_per_tenant");
 
         builder.HasOne<TaskStatusEntity>().WithMany().HasForeignKey(t => t.StatusId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Sprint>().WithMany().HasForeignKey(t => t.SprintId).OnDelete(DeleteBehavior.Restrict);
     }
 }

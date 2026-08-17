@@ -2,7 +2,7 @@ namespace ONEVO.Api.Contracts.WorkManagement.Tasks;
 
 public sealed record CreateTaskRequest(
     string Title, string? Description, string TaskType, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints);
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid SprintId);
 
 public sealed record EditTaskRequest(
     string Title, string? Description, string Priority,
@@ -21,7 +21,8 @@ public sealed record CreateTaskStatusRequest(
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
     string TaskType, Guid StatusId, string Priority, int? StoryPoints,
-    DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent);
+    DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent,
+    Guid? SprintId);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,

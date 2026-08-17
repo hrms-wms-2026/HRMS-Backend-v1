@@ -27,6 +27,7 @@ public class WorkTask : BaseEntity
     public Guid ProjectId { get; set; }
     public Guid? ParentTaskId { get; set; }
     public Guid ObjectiveId { get; set; }
+    public Guid? SprintId { get; set; }
     public string ShortId { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }

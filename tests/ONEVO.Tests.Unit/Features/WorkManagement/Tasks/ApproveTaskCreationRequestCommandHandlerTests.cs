@@ -6,6 +6,7 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ApproveTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CancelTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.RejectTaskCreationRequest;
@@ -14,6 +15,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 using Xunit;
@@ -31,6 +33,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
     private static readonly Guid RequestId = Guid.NewGuid();
     private static readonly Guid DefaultStatusId = Guid.NewGuid();
     private static readonly Guid RequesterEmployeeId = Guid.NewGuid();
+    private static readonly Guid SprintId = Guid.NewGuid();
 
     private static TaskCreationRequest PendingRequest(decimal requestedHours) => new()
     {
@@ -38,7 +41,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
         RequestedByEmployeeId = RequesterEmployeeId,
         PayloadJson = System.Text.Json.JsonSerializer.Serialize(
             new ONEVO.Application.Features.WorkManagement.Tasks.DTOs.TaskCreationRequestPayload(
-                "Title", null, "task", "medium", null, requestedHours, null)),
+                "Title", null, "task", "medium", null, requestedHours, null, SprintId)),
         Status = TaskCreationRequestStatuses.Pending,
         CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow
     };
@@ -90,6 +93,13 @@ public class ApproveTaskCreationRequestCommandHandlerTests
         var slack = new ObjectiveAllocationSlackCalculator(objectives.Object, tasks.Object);
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         var notifications = new Mock<INotificationDispatcher>();
+        var sprints = new Mock<ISprintRepository>();
+        sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Sprint
+            {
+                Id = SprintId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId,
+                Name = "Sprint 1", Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
+            });
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<WorkTaskResponse>>>>(), It.IsAny<CancellationToken>()))
@@ -97,7 +107,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
 
         var handler = new ApproveTaskCreationRequestCommandHandler(
             currentUser.Object, identity.Object, requests.Object, objectives.Object, projects.Object,
-            tasks.Object, statuses.Object, slack, membership.Object, notifications.Object, unitOfWork.Object);
+            tasks.Object, statuses.Object, slack, membership.Object, notifications.Object, unitOfWork.Object, sprints.Object);
         return (handler, tasks, requests);
     }
 

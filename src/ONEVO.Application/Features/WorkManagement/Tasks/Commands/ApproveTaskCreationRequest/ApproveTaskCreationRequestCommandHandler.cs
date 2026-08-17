@@ -7,10 +7,12 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.ApproveTaskCreationRequest;
@@ -24,6 +26,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
     private readonly IProjectRepository _projects;
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskStatusRepository _statuses;
+    private readonly ISprintRepository _sprints;
     private readonly IObjectiveAllocationSlackCalculator _slack;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly INotificationDispatcher _notifications;
@@ -33,7 +36,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
         ICurrentUser currentUser, ICallerIdentityResolver identity, ITaskCreationRequestRepository requests,
         IObjectiveRepository objectives, IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
         IObjectiveAllocationSlackCalculator slack, IMilestoneMembershipCoordinator membership,
-        INotificationDispatcher notifications, IUnitOfWork unitOfWork)
+        INotificationDispatcher notifications, IUnitOfWork unitOfWork, ISprintRepository sprints)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -42,6 +45,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
         _projects = projects;
         _tasks = tasks;
         _statuses = statuses;
+        _sprints = sprints;
         _slack = slack;
         _membership = membership;
         _notifications = notifications;
@@ -74,6 +78,12 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
 
         var payload = JsonSerializer.Deserialize<TaskCreationRequestPayload>(pending.PayloadJson)!;
 
+        var sprint = await _sprints.GetByIdForTenantAsync(tenantId, payload.SprintId, ct);
+        if (sprint is null || sprint.ObjectiveId != objective.Id)
+            return Result<WorkTaskResponse>.NotFound("Sprint not found.");
+        if (sprint.Status == SprintStatuses.Achieved)
+            return Result<WorkTaskResponse>.Conflict("This sprint has been achieved and is frozen.");
+
         if (payload.EstimatedHours.HasValue)
         {
             var slack = await _slack.CalculateAsync(tenantId, objective, ct: ct);
@@ -102,6 +112,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
                 Title = payload.Title, Description = payload.Description, TaskType = payload.TaskType,
                 Priority = payload.Priority, DueDate = payload.DueDate, EstimatedHours = payload.EstimatedHours,
                 StoryPoints = payload.StoryPoints, StatusId = defaultStatus.Id, CompletedHours = 0m,
+                SprintId = payload.SprintId,
                 ProgressPercent = 0, CreatedById = _currentUser.UserId, CreatedAt = now
             };
 
@@ -133,7 +144,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
                 task.TaskType, task.StatusId, task.Priority, task.StoryPoints,
-                task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent));
+                task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId));
         }, ct);
     }
 }

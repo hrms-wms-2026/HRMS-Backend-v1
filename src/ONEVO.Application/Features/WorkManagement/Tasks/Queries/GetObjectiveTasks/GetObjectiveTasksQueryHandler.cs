@@ -25,7 +25,7 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
         var items = await _tasks.GetByObjectiveIdAsync(_currentUser.TenantId, request.ObjectiveId, ct);
         var responses = items.Select(t => new WorkTaskResponse(
             t.Id, t.ObjectiveId, t.ShortId, t.Title, t.Description, t.TaskType, t.StatusId,
-            t.Priority, t.StoryPoints, t.DueDate, t.EstimatedHours, t.CompletedHours, t.ProgressPercent)).ToList();
+            t.Priority, t.StoryPoints, t.DueDate, t.EstimatedHours, t.CompletedHours, t.ProgressPercent, t.SprintId)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

@@ -27,7 +27,7 @@ public class GetMyTaskCreationRequestsQueryHandlerTests
             .ReturnsAsync(OwnerEmployeeId);
 
         var payload = new ONEVO.Application.Features.WorkManagement.Tasks.DTOs.TaskCreationRequestPayload(
-            "New task", null, "task", "medium", null, 5m, null);
+            "New task", null, "task", "medium", null, 5m, null, Guid.NewGuid());
         var pending = new List<TaskCreationRequest>
         {
             new()

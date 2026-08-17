@@ -275,7 +275,8 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 spec.Priority,
                 DueDate: null,
                 EstimatedHours: spec.EstimatedHours,
-                StoryPoints: null);
+                StoryPoints: null,
+                SprintId: Guid.Empty);
 
             db.TaskCreationRequests.Add(new TaskCreationRequest
             {

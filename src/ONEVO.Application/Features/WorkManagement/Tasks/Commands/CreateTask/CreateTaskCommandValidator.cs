@@ -15,5 +15,6 @@ public class CreateTaskCommandValidator : AbstractValidator<CreateTaskCommand>
             .WithMessage("Priority must be low, medium, high, or critical.");
         RuleFor(x => x.EstimatedHours).GreaterThanOrEqualTo(0).When(x => x.EstimatedHours.HasValue)
             .WithMessage("Estimated hours must not be negative.");
+        RuleFor(x => x.SprintId).NotEqual(Guid.Empty).WithMessage("Sprint is required.");
     }
 }

@@ -61,7 +61,7 @@ public class TasksController : ControllerBase
     {
         var result = await _mediator.Send(new CreateTaskCommand(
             objectiveId, request.Title, request.Description, request.TaskType, request.Priority,
-            request.DueDate, request.EstimatedHours, request.StoryPoints), ct);
+            request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId), ct);
 
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())
@@ -173,7 +173,7 @@ public class TasksController : ControllerBase
     {
         var result = await _mediator.Send(new CreateTaskCreationRequestCommand(
             objectiveId, request.Title, request.Description, request.TaskType, request.Priority,
-            request.DueDate, request.EstimatedHours, request.StoryPoints), ct);
+            request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId), ct);
 
         return result.IsSuccess
             ? StatusCode(202, result.Value!.ToViewModel())

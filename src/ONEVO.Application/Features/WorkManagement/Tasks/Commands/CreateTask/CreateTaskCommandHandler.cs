@@ -5,9 +5,11 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTask;
@@ -20,13 +22,14 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
     private readonly IProjectRepository _projects;
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskStatusRepository _statuses;
+    private readonly ISprintRepository _sprints;
     private readonly IObjectiveAllocationSlackCalculator _slack;
     private readonly IUnitOfWork _unitOfWork;
 
     public CreateTaskCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
         IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
-        IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork)
+        ISprintRepository sprints, IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -34,6 +37,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         _projects = projects;
         _tasks = tasks;
         _statuses = statuses;
+        _sprints = sprints;
         _slack = slack;
         _unitOfWork = unitOfWork;
     }
@@ -66,6 +70,12 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         if (defaultStatus is null)
             return Result<WorkTaskResponse>.Failure("No task statuses configured for this milestone yet.", 422);
 
+        var sprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId, ct);
+        if (sprint is null || sprint.ObjectiveId != objective.Id)
+            return Result<WorkTaskResponse>.NotFound("Sprint not found.");
+        if (sprint.Status == SprintStatuses.Achieved)
+            return Result<WorkTaskResponse>.Conflict("This sprint has been achieved and is frozen.");
+
         if (request.EstimatedHours.HasValue)
         {
             var slack = await _slack.CalculateAsync(tenantId, objective, ct: ct);
@@ -86,6 +96,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
                 Title = request.Title.Trim(), Description = request.Description?.Trim(),
                 TaskType = request.TaskType, Priority = request.Priority, DueDate = request.DueDate,
                 EstimatedHours = request.EstimatedHours, StoryPoints = request.StoryPoints,
+                SprintId = request.SprintId,
                 CompletedHours = 0m, ProgressPercent = 0, CreatedById = userId, CreatedAt = now
             };
 
@@ -95,7 +106,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
                 task.TaskType, task.StatusId, task.Priority, task.StoryPoints,
-                task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent));
+                task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId));
         }, ct);
     }
 }

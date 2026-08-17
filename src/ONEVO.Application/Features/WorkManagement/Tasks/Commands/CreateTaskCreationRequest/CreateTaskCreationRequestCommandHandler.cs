@@ -6,9 +6,11 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCreationRequest;
@@ -19,19 +21,21 @@ public class CreateTaskCreationRequestCommandHandler : IRequestHandler<CreateTas
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
     private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly ISprintRepository _sprints;
     private readonly ITaskCreationRequestRepository _requests;
     private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
 
     public CreateTaskCreationRequestCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IMilestoneMembershipCoordinator membership, ITaskCreationRequestRepository requests,
+        IMilestoneMembershipCoordinator membership, ISprintRepository sprints, ITaskCreationRequestRepository requests,
         INotificationDispatcher notifications, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _membership = membership;
+        _sprints = sprints;
         _requests = requests;
         _notifications = notifications;
         _unitOfWork = unitOfWork;
@@ -58,9 +62,15 @@ public class CreateTaskCreationRequestCommandHandler : IRequestHandler<CreateTas
         if (!isMember)
             return Result<TaskCreationRequestResponse>.Forbidden("Only active milestone members can request tasks.");
 
+        var sprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId, ct);
+        if (sprint is null || sprint.ObjectiveId != objective.Id)
+            return Result<TaskCreationRequestResponse>.NotFound("Sprint not found.");
+        if (sprint.Status == SprintStatuses.Achieved)
+            return Result<TaskCreationRequestResponse>.Conflict("This sprint has been achieved and is frozen.");
+
         var payload = new TaskCreationRequestPayload(
             request.Title.Trim(), request.Description?.Trim(), request.TaskType, request.Priority,
-            request.DueDate, request.EstimatedHours, request.StoryPoints);
+            request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId);
 
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [callerEmployeeId.Value], ct);
         var requesterDisplayName = names.GetValueOrDefault(callerEmployeeId.Value) ?? "A teammate";
