@@ -865,6 +865,121 @@ git commit -m "test: add end-to-end coverage for sensitive position change appro
 
 ---
 
+### Task 10: `GET /api/v1/employees/{id}/position-history` (Job Journey)
+
+**Files:**
+- Create: `src/ONEVO.Application/Features/CoreHr/Employee/Queries/GetEmployeePositionHistory/` (Query + Handler + Response)
+- Modify: `src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeesController.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Employee/GetEmployeePositionHistoryQueryHandlerTests.cs`
+
+**Interfaces:**
+- Produces: `GetEmployeePositionHistoryQuery(Guid EmployeeId) : IRequest<Result<IReadOnlyList<PositionHistoryEntryResponse>>>`, `GET /api/v1/employees/{id}/position-history`, `[RequirePermission("employees:read")]`.
+
+- [ ] **Step 1: Write the failing unit test**
+
+```csharp
+[Fact]
+public async Task Handle_ReturnsEntriesOldestFirst_WithApprovedByOnlyWhenApprovalRequestExists()
+{
+    // Arrange: two PositionAssignment rows for the employee (one Ended with EffectiveTo set,
+    // one Active with EffectiveTo null), the newer one carrying ChangeReason = "Promotion" and
+    // CreatedById = requesterId. Arrange one AccessGrantRequest with
+    // ReservedPositionAssignmentId pointing at the newer assignment, ApprovalStatus =
+    // "Approved", DecidedByUserId = approverId. Assert the response has 2 entries ordered by
+    // EffectiveFrom ascending, the first (hire) entry has ChangeReason null and ApprovedByName
+    // null, the second has ChangeReason "Promotion", InitiatedByName resolved from
+    // requesterId, ApprovedByName resolved from approverId.
+
+    // Also assert visibility: caller outside the employee's EmployeeVisibilityScope gets 403,
+    // matching GetEmployeeDetailQueryHandler's existing behavior - mock
+    // IEmployeeVisibilityScopeResolver/GetVisibleByIdAsync the same way that handler's own
+    // tests already do, and copy that setup here.
+}
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~GetEmployeePositionHistoryQueryHandlerTests"`
+Expected: FAIL
+
+- [ ] **Step 3: Add `IPositionAssignmentRepository.ListHistoryForEmployeeAsync`**
+
+```csharp
+Task<IReadOnlyList<PositionAssignment>> ListHistoryForEmployeeAsync(
+    Guid tenantId, Guid employeeId, CancellationToken ct = default);
+```
+
+Implementation: every `PrimaryEmployment` assignment for the employee (both `Active` and `Ended` — not `Planned`, a pending sensitive request isn't history yet), ordered by `EffectiveFrom` ascending.
+
+- [ ] **Step 4: Create the response, query, and handler**
+
+```csharp
+public sealed record PositionHistoryEntryResponse(
+    string PositionName, string? DepartmentName, DateOnly EffectiveFrom, DateOnly? EffectiveTo,
+    string? ChangeReason, string InitiatedByName, string? ApprovedByName);
+
+public sealed record GetEmployeePositionHistoryQuery(Guid EmployeeId)
+    : IRequest<Result<IReadOnlyList<PositionHistoryEntryResponse>>>;
+```
+
+Handler: reuse `GetEmployeeDetailQueryHandler`'s exact visibility-check shape (`GetByIdAsync` 404-if-null, then `org:manage`-bypass-or-`EmployeeVisibilityScopeResolver` + `GetVisibleByIdAsync` 403-if-null — copy this block verbatim, don't re-derive it). Then:
+
+```csharp
+        var history = await _positionAssignmentRepository.ListHistoryForEmployeeAsync(tenantId, request.EmployeeId, ct);
+        var positionIds = history.Select(h => h.PositionId).Distinct().ToList();
+        var positions = await _positionRepository.GetByIdsAsync(tenantId, positionIds, ct); // add this batch method if it doesn't already exist, matching GetByIdForLegalEntityAsync's existing conventions
+        var positionsById = positions.ToDictionary(p => p.Id);
+
+        var userIds = history.Select(h => h.CreatedById).Distinct().ToList();
+        var approvedByUserIds = await _accessGrantRequestRepository.GetApprovedByUserIdsForAssignmentsAsync(
+            tenantId, history.Select(h => h.Id).ToList(), ct); // new repository method: Task<IReadOnlyDictionary<Guid, Guid>> keyed by ReservedPositionAssignmentId -> DecidedByUserId, filtered to ApprovalStatus == "Approved"
+        userIds.AddRange(approvedByUserIds.Values);
+        var users = await _userRepository.GetByIdsAsync(userIds.Distinct().ToList(), ct); // add this batch method if it doesn't already exist
+        var usersById = users.ToDictionary(u => u.Id);
+
+        var entries = history.Select(h =>
+        {
+            var position = positionsById.GetValueOrDefault(h.PositionId);
+            var approvedByUserId = approvedByUserIds.GetValueOrDefault(h.Id);
+            return new PositionHistoryEntryResponse(
+                position?.Name ?? "Unknown position",
+                position?.DepartmentId is Guid deptId ? departmentsById.GetValueOrDefault(deptId)?.Name : null, // resolve departments the same batched way if department names are wanted - or omit DepartmentName entirely and let the frontend show position name only, implementer's call given this is a minor display detail not central to the feature
+                h.EffectiveFrom, h.EffectiveTo, h.ChangeReason,
+                usersById.GetValueOrDefault(h.CreatedById)?.FullName ?? "Unknown",
+                approvedByUserId != Guid.Empty ? usersById.GetValueOrDefault(approvedByUserId)?.FullName : null);
+        }).ToList();
+
+        return Result<IReadOnlyList<PositionHistoryEntryResponse>>.Success(entries);
+```
+
+Adjust `User`'s actual name-field shape (`FullName` vs separate `FirstName`/`LastName`) to match the real entity — this plan's earlier research read `User { FirstName, LastName }` on `ApproveAccessGrantRequestCommandHandler`'s user-creation path, not a single `FullName` — use `$"{u.FirstName} {u.LastName}".Trim()` instead if that's what the entity actually has.
+
+- [ ] **Step 5: Wire the endpoint**
+
+```csharp
+    [HttpGet("{id:guid}/position-history")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetPositionHistory(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeePositionHistoryQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+```
+
+- [ ] **Step 6: Run the test to verify it passes, then the full suite**
+
+Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj`
+Expected: PASS
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/ONEVO.Application/Features/CoreHr/Employee/Queries/GetEmployeePositionHistory/ src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeesController.cs tests/
+git commit -m "feat: add GET /api/v1/employees/{id}/position-history (Job Journey)"
+```
+
+---
+
 ## Done — hands off to the frontend plan
 
-`Hrms--Web-application---front-end---v1/docs/superpowers/plans/2026-08-17-sensitive-position-approval-frontend.md` consumes `ChangeEmployeePositionResponse.PendingApproval`, `PositionListItemResponse.RequiresApproval`, and `GET .../pending-for-me` built here.
+`Hrms--Web-application---front-end---v1/docs/superpowers/plans/2026-08-17-sensitive-position-approval-frontend.md` consumes `ChangeEmployeePositionResponse.PendingApproval`, `PositionListItemResponse.RequiresApproval`, `GET .../pending-for-me`, and `GET .../position-history` built here.
