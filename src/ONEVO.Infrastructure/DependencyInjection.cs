@@ -160,6 +160,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository,
             ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeProfileRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeProfileRepository>();
         services.AddScoped<IEmployeeVisibilityScopeResolver, EmployeeVisibilityScopeResolver>();
         services.AddScoped<ISeatEntitlementService, SeatEntitlementService>();
         services.AddScoped<IOnboardingDraftRepository, EfOnboardingDraftRepository>();

@@ -12,7 +12,8 @@ internal static class InviteMapper
         Tenant tenant,
         Role? role,
         TenantAuthPolicy? policy,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        bool requiresPassword)
     {
         var status = ComputeStatus(inv, now);
         var methods = ParseMethods(inv.CompletionMethodsJson);
@@ -39,7 +40,8 @@ internal static class InviteMapper
             PasswordSetupEnabled: passwordOk,
             GoogleSignInEnabled: googleOk,
             AllowGoogleEmailMismatch: allowMismatch,
-            AllowedEmailDomains: domains);
+            AllowedEmailDomains: domains,
+            RequiresPassword: requiresPassword);
     }
 
     private static string ComputeStatus(InvitationToken inv, DateTimeOffset now)

@@ -75,7 +75,7 @@ public class GetProjectByIdQueryHandlerTests
         SetupEmptyMemberLists(members);
 
         var permissionResolver = new Mock<IPermissionResolver>();
-        permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
+        permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(permissions);
 
         var entityAssets = BuildEmptyEntityAssets();
         var labels = BuildEmptyLabels();
@@ -153,7 +153,7 @@ public class GetProjectByIdQueryHandlerTests
         var members = new Mock<IProjectMemberRepository>();
         SetupEmptyMemberLists(members);
         var permissionResolver = new Mock<IPermissionResolver>();
-        permissionResolver.Setup(x => x.ResolveAsync(LeadId, TenantId, It.IsAny<CancellationToken>())).ReturnsAsync(["projects:read"]);
+        permissionResolver.Setup(x => x.ResolveAsync(LeadId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(["projects:read"]);
         var entityAssets = BuildEmptyEntityAssets();
         var labels = BuildEmptyLabels();
         var employees = BuildEmptyEmployees();

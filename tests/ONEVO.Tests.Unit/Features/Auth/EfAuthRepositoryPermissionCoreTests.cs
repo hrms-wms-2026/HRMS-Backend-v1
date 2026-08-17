@@ -312,7 +312,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
         await SeedAsync(NewRolePermission(tenantId, role.Id, permission.Id));
         await SeedAsync(NewUserRole(tenantId, userId, role.Id, expiresAt: null));
 
-        var pairs = await repo.ListRolePermissionCodesWithModulesAsync(userId, _clock.UtcNow);
+        var pairs = await repo.ListRolePermissionCodesWithModulesAsync(userId, _clock.UtcNow, null);
 
         pairs.Should().ContainSingle();
         pairs[0].Code.Should().Be("employees.read");
@@ -338,7 +338,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
             NewUserRole(tenantId, userId, roleA.Id, expiresAt: null),
             NewUserRole(tenantId, userId, roleB.Id, expiresAt: null));
 
-        var pairs = await repo.ListRolePermissionCodesWithModulesAsync(userId, _clock.UtcNow);
+        var pairs = await repo.ListRolePermissionCodesWithModulesAsync(userId, _clock.UtcNow, null);
 
         pairs.Should().ContainSingle();
     }
@@ -357,7 +357,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
         await SeedAsync(NewRolePermission(tenantId, role.Id, permission.Id));
         await SeedAsync(NewUserRole(tenantId, userId, role.Id, expiresAt: _clock.UtcNow.AddDays(-1)));
 
-        var pairs = await repo.ListRolePermissionCodesWithModulesAsync(userId, _clock.UtcNow);
+        var pairs = await repo.ListRolePermissionCodesWithModulesAsync(userId, _clock.UtcNow, null);
 
         pairs.Should().BeEmpty();
     }

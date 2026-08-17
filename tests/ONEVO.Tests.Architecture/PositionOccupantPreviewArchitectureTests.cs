@@ -58,11 +58,16 @@ public class PositionOccupantPreviewArchitectureTests
     }
 
     // Capacity enforcement and the occupant preview must use the same "is this a seat" rule
-    // (active PrimaryEmployment assignments only - see IPositionAssignmentRepository.CountActiveAsync).
-    // Both handlers below are the only max_occupancy enforcement call sites; this guards against
-    // either one growing a second, divergent way of counting assignments (e.g. querying
-    // PositionAssignments directly, or a local AssignmentStatus-only check) instead of going
-    // through the single shared CountActiveAsync method.
+    // (active + planned PrimaryEmployment assignments only - see
+    // IPositionAssignmentRepository.TryReservePositionAssignmentAsync). Both handlers below are
+    // the only max_occupancy enforcement call sites for onboarding invitations; this guards
+    // against either one growing a second, divergent way of counting/reserving assignments (e.g.
+    // querying PositionAssignments directly, or a non-atomic count-then-insert) instead of going
+    // through the single shared atomic reservation method. Updated 2026-08-16 (multi-legal-entity
+    // employment foundation, part-1): capacity enforcement moved from a non-atomic
+    // CountActiveAsync-then-AddAsync pair (a real race between two concurrent invites for the
+    // last vacancy) to one atomic INSERT-guarded-by-capacity-subquery call - the assertion below
+    // was re-pointed at the new method name, not weakened.
     [Theory]
     [InlineData(
         "src", "ONEVO.Application", "Features", "CoreHr", "OnboardingDraft", "Commands",
@@ -70,12 +75,12 @@ public class PositionOccupantPreviewArchitectureTests
     [InlineData(
         "src", "ONEVO.Application", "Features", "CoreHr", "Onboarding", "Commands",
         "ApproveAccessGrantRequest", "ApproveAccessGrantRequestCommandHandler.cs")]
-    public void CapacityEnforcingHandler_OnlyCountsAssignmentsThrough_CountActiveAsync(params string[] relativeSegments)
+    public void CapacityEnforcingHandler_OnlyReservesAssignmentsThrough_TryReservePositionAssignmentAsync(params string[] relativeSegments)
     {
         var path = FindFileUnderRepoRoot(relativeSegments);
         var text = File.ReadAllText(path);
 
-        Assert.Contains("_positionAssignmentRepository.CountActiveAsync(", text, StringComparison.Ordinal);
+        Assert.Contains("_positionAssignmentRepository.TryReservePositionAssignmentAsync(", text, StringComparison.Ordinal);
         Assert.DoesNotContain("PositionAssignments", text, StringComparison.Ordinal);
     }
 

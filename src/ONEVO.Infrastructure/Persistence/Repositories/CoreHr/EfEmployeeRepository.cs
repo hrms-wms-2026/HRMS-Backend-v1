@@ -196,11 +196,79 @@ public class EfEmployeeRepository : IEmployeeRepository
         => await _db.Employees.AsNoTracking()
             .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
 
+    public async Task<EmployeeEntity?> GetDefaultForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
+    {
+        var employees = await _db.Employees.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.UserId == userId)
+            .ToListAsync(ct);
+
+        if (employees.Count <= 1)
+            return employees.FirstOrDefault();
+
+        var employeeIds = employees.Select(e => e.Id).ToList();
+        var latestEmployeeId = await _db.PositionAssignments.AsNoTracking()
+            .Where(pa => pa.TenantId == tenantId
+                && employeeIds.Contains(pa.EmployeeId)
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active)
+            .OrderByDescending(pa => pa.EffectiveFrom)
+            .Select(pa => pa.EmployeeId)
+            .FirstOrDefaultAsync(ct);
+
+        if (latestEmployeeId != Guid.Empty)
+            return employees.FirstOrDefault(e => e.Id == latestEmployeeId);
+
+        return employees[0];
+    }
+
+    public async Task<EmployeeEntity?> GetByUserAndLegalEntityAsync(
+        Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default)
+        => await _db.Employees.AsNoTracking()
+            .FirstOrDefaultAsync(
+                e => e.TenantId == tenantId && e.UserId == userId && e.LegalEntityId == legalEntityId,
+                ct);
+
+    public async Task<EmployeeEntity?> GetTrackedByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => await _db.Employees.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
+
+    public async Task<uint?> GetVersionTokenAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => await _db.Employees.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.Id == employeeId)
+            .Select(e => EF.Property<uint?>(e, "xmin"))
+            .FirstOrDefaultAsync(ct);
+
+    public void SetExpectedVersion(EmployeeEntity employee, string expectedVersion)
+    {
+        if (!uint.TryParse(expectedVersion, out var expectedXmin))
+        {
+            return;
+        }
+
+        _db.Entry(employee).Property("xmin").OriginalValue = expectedXmin;
+    }
+
     public async Task<bool> EmailExistsAsync(Guid tenantId, string email, Guid? excludeId, CancellationToken ct = default)
     {
         var normalized = email.Trim().ToLower();
         var query = _db.Employees.AsNoTracking()
             .Where(e => e.TenantId == tenantId && e.Email.ToLower() == normalized);
+
+        if (excludeId is not null)
+        {
+            query = query.Where(e => e.Id != excludeId.Value);
+        }
+
+        return await query.AnyAsync(ct);
+    }
+
+    public async Task<bool> EmployeeExistsInLegalEntityAsync(
+        Guid tenantId, Guid legalEntityId, string email, Guid? excludeId, CancellationToken ct = default)
+    {
+        var normalized = email.Trim().ToLower();
+        var query = _db.Employees.AsNoTracking()
+            .Where(e => e.TenantId == tenantId
+                && e.LegalEntityId == legalEntityId
+                && e.Email.ToLower() == normalized);
 
         if (excludeId is not null)
         {

@@ -20,7 +20,7 @@ public class PermissionAutoGrantService : IPermissionAutoGrantService
 
     public async Task EnsureGrantedAsync(Guid tenantId, Guid userId, Guid grantedByUserId, string permissionCode, CancellationToken ct = default)
     {
-        var effective = await _permissionResolver.ResolveAsync(userId, tenantId, ct);
+        var effective = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
         if (effective.Contains(permissionCode) || effective.Contains("*"))
             return;
 

@@ -19,6 +19,7 @@ public class InvitationToken : ITenantOwnedEntity
     public string Purpose { get; set; } = "general";
     public Guid? LegalEntityId { get; set; }
     public Guid? EmployeeId { get; set; }
+    public Guid? PositionAssignmentId { get; set; }
     public Guid? OnboardingDraftId { get; set; }
 
     public string InvitedEmail { get; set; } = string.Empty;

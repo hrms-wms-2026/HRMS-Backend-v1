@@ -353,10 +353,22 @@ public sealed class EfAuthRepository :
     public async Task<IReadOnlyList<PermissionCodeWithModule>> ListRolePermissionCodesWithModulesAsync(
         Guid userId,
         DateTimeOffset now,
+        Guid? activeLegalEntityId,
         CancellationToken ct = default)
     {
-        var query = _db.UserRoles
-            .Where(ur => ur.UserId == userId && (ur.ExpiresAt == null || ur.ExpiresAt > now))
+        var userRoles = _db.UserRoles
+            .Where(ur => ur.UserId == userId && (ur.ExpiresAt == null || ur.ExpiresAt > now));
+
+        if (activeLegalEntityId is Guid legalEntityId)
+        {
+            var entityPositionIds = _db.Positions
+                .Where(p => p.LegalEntityId == legalEntityId)
+                .Select(p => p.Id);
+            userRoles = userRoles.Where(ur =>
+                ur.SourcePositionId == null || entityPositionIds.Contains(ur.SourcePositionId!.Value));
+        }
+
+        var query = userRoles
             .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp)
             .Join(_db.Permissions, rp => rp.PermissionId, p => p.Id, (rp, p) => new { p.Code, p.Module })
             .Distinct();
