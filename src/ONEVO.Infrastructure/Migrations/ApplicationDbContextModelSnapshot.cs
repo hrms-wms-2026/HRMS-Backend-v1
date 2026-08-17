@@ -3222,6 +3222,51 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("device_state_snapshots", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Meetings.Entities.MeetingSignal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AgentDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agent_device_id");
+
+                    b.Property<DateTimeOffset>("CapturedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("captured_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<bool>("IsMeetingAppRunning")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_meeting_app_running");
+
+                    b.Property<string>("ProcessName")
+                        .HasColumnType("text")
+                        .HasColumnName("process_name");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_meeting_signals");
+
+                    b.HasIndex("TenantId", "EmployeeId", "CapturedAt")
+                        .IsDescending(false, false, true)
+                        .HasDatabaseName("ix_meeting_signals_tenant_employee_captured");
+
+                    b.ToTable("meeting_signals", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.AgentCommand", b =>
                 {
                     b.Property<Guid>("Id")
