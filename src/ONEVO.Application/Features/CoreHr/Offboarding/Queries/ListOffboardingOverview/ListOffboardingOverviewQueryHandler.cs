@@ -26,8 +26,14 @@ public class ListOffboardingOverviewQueryHandler(
         // Deliberately never EmployeeVisibilityScope.Unrestricted() - see design spec §11.
         var scope = await scopeResolver.ResolveAsync(tenantId, currentUser.UserId, ct);
 
-        var (items, _) = await employeeRepository.ListVisibleAsync(
+        var (allItems, _) = await employeeRepository.ListVisibleAsync(
             tenantId, scope, new EmployeeListFilter(null, null, null), request.Page, request.PageSize, ct);
+
+        // ListVisibleAsync always includes the caller's own employee row (self-visibility is
+        // correct for the general Employees list) - this screen is specifically "who can I
+        // offboard", and nobody can offboard themselves, so the caller's own row must never
+        // appear here regardless of what coverage rows they happen to also hold.
+        var items = allItems.Where(i => i.Id != scope.OwnEmployeeId).ToList();
 
         var employeeIds = items.Select(i => i.Id).ToList();
         var statuses = await offboardingRecordRepository.GetLatestStatusesByEmployeeIdsAsync(tenantId, employeeIds, ct);
