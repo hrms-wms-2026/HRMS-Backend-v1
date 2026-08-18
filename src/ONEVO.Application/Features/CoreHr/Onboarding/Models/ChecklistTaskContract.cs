@@ -35,7 +35,10 @@ public sealed record ChecklistTaskDefinition(
     int? DueOffsetDays,
     DateOnly? DueDate,
     int? Sequence,
-    bool IsRequired);
+    bool IsRequired,
+    bool IsBypassable = false,
+    string? BypassPenaltyDescription = null,
+    string? Category = null);
 
 /// <summary>The single strict parser/serializer for checklist task definitions, shared by
 /// template CRUD, draft edit validation, and instantiation so there is exactly one definition
@@ -74,6 +77,18 @@ public static class ChecklistTaskJsonContract
 
         var title = titleEl.GetString()!;
         var isRequired = isRequiredEl.GetBoolean();
+
+        var isBypassable = item.TryGetProperty("isBypassable", out var isBypassableEl)
+            && isBypassableEl.ValueKind is JsonValueKind.True or JsonValueKind.False
+            && isBypassableEl.GetBoolean();
+
+        string? bypassPenaltyDescription = item.TryGetProperty("bypassPenaltyDescription", out var penaltyEl) && penaltyEl.ValueKind != JsonValueKind.Null
+            ? penaltyEl.GetString()
+            : null;
+
+        string? category = item.TryGetProperty("category", out var categoryEl) && categoryEl.ValueKind != JsonValueKind.Null
+            ? categoryEl.GetString()
+            : null;
 
         Guid? assignedToId = null;
         var hasAssignedTo = item.TryGetProperty("assignedToId", out var assignedToEl) && assignedToEl.ValueKind != JsonValueKind.Null;
@@ -117,7 +132,9 @@ public static class ChecklistTaskJsonContract
             dueDate = parsedDueDate;
         }
 
-        return new ChecklistTaskDefinition(title, ownerType, assignedToId, dueOffsetDays, dueDate, sequence, isRequired);
+        return new ChecklistTaskDefinition(
+            title, ownerType, assignedToId, dueOffsetDays, dueDate, sequence, isRequired,
+            isBypassable, bypassPenaltyDescription, category);
     }
 
     public static string SerializeTemplateTasks(IReadOnlyList<ChecklistTaskDefinition> tasks)
@@ -130,6 +147,9 @@ public static class ChecklistTaskJsonContract
             dueOffsetDays = t.DueOffsetDays,
             sequence = t.Sequence,
             isRequired = t.IsRequired,
+            isBypassable = t.IsBypassable,
+            bypassPenaltyDescription = t.BypassPenaltyDescription,
+            category = t.Category,
         });
         return JsonSerializer.Serialize(payload);
     }
@@ -162,6 +182,9 @@ public static class ChecklistTaskJsonContract
                 : definition.DueDate!.Value,
             Sequence = definition.Sequence,
             IsRequired = definition.IsRequired,
+            IsBypassable = definition.IsBypassable,
+            BypassPenaltyDescription = definition.BypassPenaltyDescription,
+            Category = definition.Category,
             Status = "pending",
         }).ToList();
     }
