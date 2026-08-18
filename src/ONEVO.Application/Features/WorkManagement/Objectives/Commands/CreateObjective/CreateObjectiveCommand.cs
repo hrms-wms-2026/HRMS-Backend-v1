@@ -11,5 +11,6 @@ public sealed record CreateObjectiveCommand(
     DateOnly StartDate,
     DateOnly EndDate,
     decimal AllocatedHours,
-    Guid? HeadUserId
+    Guid? HeadEmployeeId,
+    IReadOnlyList<(Guid EmployeeId, string Type)>? MemberInvitations
 ) : IRequest<Result<ObjectiveDetailResponse>>;

@@ -7,7 +7,7 @@
 
 ## Description
 
-Gets a single Project. A soft-deleted project (`is_active = false`) is treated as not found. `isLead` is always computed directly as `project.leadId == callerId`, independent of which access path (permission vs. membership) was used.
+Gets a single Project. A soft-deleted project (`is_active = false`) is treated as not found. `isLead` is always computed directly as `project.leadId == callerEmployeeId`, independent of which access path (permission vs. membership) was used.
 
 ## Response
 
@@ -22,6 +22,8 @@ Gets a single Project. A soft-deleted project (`is_active = false`) is treated a
   "createdAt": "datetime", "updatedAt": "datetime|null", "isLead": true
 }
 ```
+
+**Breaking change (2026-08-14):** `leadId` now carries an `employees.id` value, not a `users.id`. The field name is unchanged. Clients that were caching or comparing against the old UserId-space value must re-fetch.
 
 Doc corrected 2026-08-09: `isAchieved`/`achievedAt` were already returned by `ProjectDetailViewModel` but missing from this doc — see `docs/superpowers/plans/finished/2026-08-09/2026-08-08-work-management-frontend-blocking-endpoints.md`.
 

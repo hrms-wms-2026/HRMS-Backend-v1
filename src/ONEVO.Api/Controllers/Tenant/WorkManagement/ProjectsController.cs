@@ -64,14 +64,15 @@ public class ProjectsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Updates a Project's editable fields (name, description, category, dates, color, actual hours). Cascades the same title/description/dates onto the Project's Default Objective in the same transaction. Identifier is immutable.</summary>
+    /// <summary>Updates a Project's editable fields (name, description, category, dates, color, actual hours, optional allocated hours). Cascades title/description/dates onto the Default Objective; allocated hours also cascade when provided.</summary>
     [HttpPut("{id:guid}")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditProjectRequest request, CancellationToken ct)
     {
         var command = new EditProjectCommand(
             id, request.Name, request.Description, request.CategoryId,
-            request.StartDate, request.TargetDate, request.Color, request.ActualHours, request.Identifier);
+            request.StartDate, request.TargetDate, request.Color, request.ActualHours, request.Identifier,
+            request.AllocatedHours);
 
         var result = await _mediator.Send(command, ct);
 
@@ -150,12 +151,12 @@ public class ProjectsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Any given user's projects (admin/company-owner path). If userId doesn't resolve to a user with any active membership, returns an empty page, not 404 — list semantics. projects:read is unchanged by the 2026-08-04 permission-model update (it stays the sole "view others" gate); role configuration is expected to grant projects:access alongside it, not enforced here as a second attribute check.</summary>
+    /// <summary>Any given employee's projects (admin/company-owner path). If employeeId doesn't resolve to an employee with any active membership, returns an empty page, not 404 — list semantics. projects:read is unchanged by the 2026-08-04 permission-model update (it stays the sole "view others" gate); role configuration is expected to grant projects:access alongside it, not enforced here as a second attribute check.</summary>
     [HttpGet]
     [RequirePermission("projects:read")]
-    public async Task<IActionResult> ListByUser([FromQuery] Guid userId, [FromQuery] PagedRequest paging, CancellationToken ct)
+    public async Task<IActionResult> ListByUser([FromQuery] Guid employeeId, [FromQuery] PagedRequest paging, CancellationToken ct)
     {
-        var result = await _mediator.Send(new ListProjectsQuery(userId, paging), ct);
+        var result = await _mediator.Send(new ListProjectsQuery(employeeId, paging), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())

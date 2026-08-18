@@ -1,5 +1,6 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Queries.ListMyObjectiveChangeRequests;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
@@ -10,6 +11,7 @@ namespace ONEVO.Tests.Unit.Features.WorkManagement;
 public class ListMyObjectiveChangeRequestsQueryHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
+    private static readonly Guid ManagerUserId = Guid.NewGuid();
     private static readonly Guid ManagerId = Guid.NewGuid();
 
     [Fact]
@@ -18,7 +20,10 @@ public class ListMyObjectiveChangeRequestsQueryHandlerTests
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(ManagerId);
+        currentUser.SetupGet(x => x.UserId).Returns(ManagerUserId);
+
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, ManagerUserId, It.IsAny<CancellationToken>())).ReturnsAsync(ManagerId);
 
         var pending = new List<ObjectiveChangeRequest>
         {
@@ -28,7 +33,7 @@ public class ListMyObjectiveChangeRequestsQueryHandlerTests
         var requests = new Mock<IObjectiveChangeRequestRepository>();
         requests.Setup(x => x.ListPendingForApproverAsync(TenantId, ManagerId, It.IsAny<CancellationToken>())).ReturnsAsync(pending);
 
-        var handler = new ListMyObjectiveChangeRequestsQueryHandler(currentUser.Object, requests.Object);
+        var handler = new ListMyObjectiveChangeRequestsQueryHandler(currentUser.Object, identity.Object, requests.Object);
 
         var result = await handler.Handle(new ListMyObjectiveChangeRequestsQuery(), CancellationToken.None);
 
@@ -42,8 +47,9 @@ public class ListMyObjectiveChangeRequestsQueryHandlerTests
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(false);
 
+        var identity = new Mock<ICallerIdentityResolver>();
         var requests = new Mock<IObjectiveChangeRequestRepository>();
-        var handler = new ListMyObjectiveChangeRequestsQueryHandler(currentUser.Object, requests.Object);
+        var handler = new ListMyObjectiveChangeRequestsQueryHandler(currentUser.Object, identity.Object, requests.Object);
 
         var result = await handler.Handle(new ListMyObjectiveChangeRequestsQuery(), CancellationToken.None);
 

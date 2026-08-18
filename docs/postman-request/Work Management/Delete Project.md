@@ -3,7 +3,7 @@
 **DELETE** `/api/v1/work/projects/{id}`
 
 **Auth:** Tenant session cookie (`onevo_session`) + CSRF header. Policy: `TenantPolicy`.
-**Permission:** `projects:access` **and** caller must be the project's `leadId`.
+**Permission:** `projects:access` **and** caller must be the project's `leadId` (compared as the caller's Employee id as of 2026-08-14).
 **Idempotent:** No — a second call against an already-deleted project returns `409`, not a silent `204`.
 
 ## Description

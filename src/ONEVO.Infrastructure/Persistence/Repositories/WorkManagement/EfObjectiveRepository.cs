@@ -37,6 +37,12 @@ public class EfObjectiveRepository : IObjectiveRepository
             .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.Id == id, ct);
     }
 
+    public async Task<Objective?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        return await _db.Objectives
+            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.Id == id, ct);
+    }
+
     public async Task<IReadOnlyList<Objective>> GetTreeByProjectIdAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
     {
         return await _db.Objectives
@@ -59,6 +65,11 @@ public class EfObjectiveRepository : IObjectiveRepository
             .Where(o => o.TenantId == tenantId && o.ParentObjectiveId == parentObjectiveId && o.IsActive)
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<Objective>> GetOwnedByEmployeeIdWithinRangeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default)
+        => await _db.Objectives.AsNoTracking()
+            .Where(o => o.TenantId == tenantId && o.OwnerId == employeeId && o.IsActive && o.EndDate >= from && o.EndDate <= to)
+            .ToListAsync(ct);
 
     public void Update(Objective objective)
     {

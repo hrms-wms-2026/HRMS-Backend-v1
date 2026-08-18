@@ -9,6 +9,7 @@ public static class ObjectiveChangeRequestTypes
     public const string Transfer = "transfer";
     public const string Achieve = "achieve";
     public const string Unachieve = "unachieve";
+    public const string ExtendAllocation = "extend_allocation";
 }
 
 public static class ObjectiveChangeRequestStatuses

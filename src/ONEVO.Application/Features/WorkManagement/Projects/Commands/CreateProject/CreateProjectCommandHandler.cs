@@ -17,6 +17,8 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.ReleaseCalendar.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
@@ -39,6 +41,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
     private readonly IProjectVersionRepository _versions;
     private readonly IReleaseCalendarRepository _releaseCalendar;
     private readonly ILabelRepository _labels;
+    private readonly ITaskStatusRepository _taskStatuses;
     private readonly IEntityAssetRepository _entityAssets;
     private readonly IEmployeeRepository _employees;
     private readonly ILegalEntityRepository _legalEntities;
@@ -56,6 +59,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
         IProjectVersionRepository versions,
         IReleaseCalendarRepository releaseCalendar,
         ILabelRepository labels,
+        ITaskStatusRepository taskStatuses,
         IEntityAssetRepository entityAssets,
         IEmployeeRepository employees,
         ILegalEntityRepository legalEntities,
@@ -72,6 +76,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
         _versions = versions;
         _releaseCalendar = releaseCalendar;
         _labels = labels;
+        _taskStatuses = taskStatuses;
         _entityAssets = entityAssets;
         _employees = employees;
         _legalEntities = legalEntities;
@@ -94,6 +99,8 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
         var employee = await _employees.GetByUserIdAsync(tenantId, userId, ct);
         if (employee is null || employee.EmploymentStatusId != EmploymentStatusIds.Active)
             return Result<ProjectCreationResponse>.Forbidden("No employee record for the current user.");
+
+        var employeeId = employee.Id;
 
         var legalEntity = await _legalEntities.GetPrimaryByTenantIdAsync(tenantId, ct);
         if (legalEntity is null)
@@ -139,7 +146,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 Name = request.Name.Trim(),
                 Identifier = identifier,
                 Description = request.Description?.Trim(),
-                LeadId = userId,
+                LeadId = employeeId,
                 StartDate = request.StartDate,
                 TargetDate = request.TargetDate,
                 Color = request.Color,
@@ -160,7 +167,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 IsDefault = true,
                 Title = project.Name,
                 Description = project.Description,
-                OwnerId = userId,
+                OwnerId = employeeId,
                 IsActive = true,
                 StartDate = project.StartDate,
                 EndDate = project.TargetDate,
@@ -178,8 +185,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 TenantId = tenantId,
                 ProjectId = project.Id,
                 ObjectiveId = defaultObjective.Id,
-                UserId = userId,
-                EmployeeId = employee.Id,
+                EmployeeId = employeeId,
                 MembershipSource = ProjectMembershipSources.System,
                 IsActive = true,
                 JoinedAt = now,
@@ -243,6 +249,10 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
 
             await _projects.AddAsync(project, ct);
             await _objectives.AddAsync(defaultObjective, ct);
+            await _taskStatuses.AddRangeAsync(
+                DefaultTaskStatusTemplate.BuildRows(tenantId, project.Id, objectiveId: null, userId, now), ct);
+            await _taskStatuses.AddRangeAsync(
+                DefaultTaskStatusTemplate.BuildRows(tenantId, project.Id, objectiveId: defaultObjective.Id, userId, now), ct);
             await _members.AddAsync(creatorMembership, ct);
             await _versions.AddAsync(defaultVersion, ct);
             await _releaseCalendar.AddAsync(releaseReminder, ct);

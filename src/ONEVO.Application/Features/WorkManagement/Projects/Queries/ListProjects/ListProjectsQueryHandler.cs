@@ -4,6 +4,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.Helpers;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Projects.Helpers;
@@ -23,22 +24,22 @@ public class ListProjectsQueryHandler : IRequestHandler<ListProjectsQuery, Resul
     private const int MaxMembersPerProject = 20;
 
     private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
     private readonly IProjectRepository _projects;
     private readonly IEntityAssetRepository _entityAssets;
     private readonly ILabelRepository _labels;
     private readonly IProjectMemberRepository _members;
-    private readonly IEmployeeRepository _employees;
 
     public ListProjectsQueryHandler(
-        ICurrentUser currentUser, IProjectRepository projects, IEntityAssetRepository entityAssets,
-        ILabelRepository labels, IProjectMemberRepository members, IEmployeeRepository employees)
+        ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectRepository projects,
+        IEntityAssetRepository entityAssets, ILabelRepository labels, IProjectMemberRepository members)
     {
         _currentUser = currentUser;
+        _identity = identity;
         _projects = projects;
         _entityAssets = entityAssets;
         _labels = labels;
         _members = members;
-        _employees = employees;
     }
 
     public async Task<Result<PagedResult<ProjectListItemResponse>>> Handle(ListProjectsQuery request, CancellationToken ct)
@@ -47,15 +48,20 @@ public class ListProjectsQueryHandler : IRequestHandler<ListProjectsQuery, Resul
             return Result<PagedResult<ProjectListItemResponse>>.Forbidden("Authentication required.");
 
         var tenantId = _currentUser.TenantId;
+        var userId = _currentUser.UserId;
         if (tenantId == Guid.Empty)
             return Result<PagedResult<ProjectListItemResponse>>.Forbidden("Tenant context missing.");
 
-        var targetUserId = request.TargetUserId ?? _currentUser.UserId;
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
+        if (callerEmployeeId is null)
+            return Result<PagedResult<ProjectListItemResponse>>.Forbidden("No employee record for the current user.");
+
+        var targetEmployeeId = request.TargetEmployeeId ?? callerEmployeeId.Value;
         var pageNumber = request.Paging.PageNumber < 1 ? 1 : request.Paging.PageNumber;
         var skip = (pageNumber - 1) * request.Paging.PageSize;
 
         var (items, total) = await _projects.ListForMemberAsync(
-            tenantId, targetUserId, skip, request.Paging.PageSize, request.Paging.SortBy, request.Paging.SortDirection, ct);
+            tenantId, targetEmployeeId, skip, request.Paging.PageSize, request.Paging.SortBy, request.Paging.SortDirection, ct);
 
         var projectIds = items.Select(p => p.Id).ToList();
 
@@ -63,16 +69,16 @@ public class ListProjectsQueryHandler : IRequestHandler<ListProjectsQuery, Resul
             tenantId, EntityAssetOwnerTypes.Project, projectIds, UploadPurposeCatalog.ProjectCover, ct);
         var labels = await _labels.GetByProjectIdsAsync(tenantId, projectIds, MaxLabelsPerProject, ct);
 
-        var memberUserIdsByProject = await _members.ListDistinctActiveMemberUserIdsAsync(tenantId, projectIds, MaxMembersPerProject, ct);
+        var memberEmployeeIdsByProject = await _members.ListDistinctActiveMemberEmployeeIdsAsync(tenantId, projectIds, MaxMembersPerProject, ct);
         var memberCounts = await _members.CountDistinctActiveMembersAsync(tenantId, projectIds, ct);
-        var displayNames = await ProjectMemberAvatarResolver.ResolveDisplayNamesAsync(_employees, tenantId, memberUserIdsByProject, ct);
+        var displayNames = await ProjectMemberAvatarResolver.ResolveDisplayNamesAsync(_identity, tenantId, memberEmployeeIdsByProject, ct);
 
         var dtoItems = items
             .Select(p => ProjectMapper.ToListItem(
-                p, p.LeadId == targetUserId,
+                p, p.LeadId == targetEmployeeId,
                 logos.TryGetValue(p.Id, out var fileId) ? fileId : null,
                 labels.TryGetValue(p.Id, out var projectLabels) ? projectLabels : null,
-                ProjectMemberAvatarResolver.BuildAvatars(p.Id, memberUserIdsByProject, displayNames),
+                ProjectMemberAvatarResolver.BuildAvatars(p.Id, memberEmployeeIdsByProject, displayNames),
                 memberCounts.TryGetValue(p.Id, out var count) ? count : 0))
             .ToList();
 
