@@ -12,6 +12,7 @@ using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
@@ -42,6 +43,7 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
     private readonly IOutboxWriter _outboxWriter;
     private readonly IUserRepository _userRepository;
     private readonly ITenantRepository _tenantRepository;
+    private readonly IEmployeeOffboardingLockGuard _offboardingLockGuard;
 
     public ChangeEmployeePositionCommandHandler(
         IEmployeeRepository employeeRepository,
@@ -54,7 +56,8 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         IDateTimeProvider clock,
         IOutboxWriter outboxWriter,
         IUserRepository userRepository,
-        ITenantRepository tenantRepository)
+        ITenantRepository tenantRepository,
+        IEmployeeOffboardingLockGuard offboardingLockGuard)
     {
         _employeeRepository = employeeRepository;
         _positionRepository = positionRepository;
@@ -67,6 +70,7 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         _outboxWriter = outboxWriter;
         _userRepository = userRepository;
         _tenantRepository = tenantRepository;
+        _offboardingLockGuard = offboardingLockGuard;
     }
 
     public async Task<Result<ChangeEmployeePositionResponse>> Handle(ChangeEmployeePositionCommand request, CancellationToken ct)
@@ -76,6 +80,10 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         var employee = await _employeeRepository.GetTrackedByIdAsync(tenantId, request.EmployeeId, ct);
         if (employee is null)
             return Result<ChangeEmployeePositionResponse>.NotFound("The employee could not be found.");
+
+        var lockResult = await _offboardingLockGuard.EnsureMutable(tenantId, employee.Id, ct);
+        if (lockResult is not null)
+            return Result<ChangeEmployeePositionResponse>.Conflict(lockResult.Error!);
 
         if (employee.UserId == _currentUser.UserId)
             return Result<ChangeEmployeePositionResponse>.Forbidden("You cannot change your own position.");

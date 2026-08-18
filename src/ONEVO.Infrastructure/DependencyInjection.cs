@@ -12,6 +12,7 @@ using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInter
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
@@ -173,6 +174,7 @@ public static class DependencyInjection
         services.AddScoped<IEmployeeChecklistTaskRepository, EfEmployeeChecklistTaskRepository>();
         services.AddScoped<IOffboardingRecordRepository, EfOffboardingRecordRepository>();
         services.AddScoped<IOffboardingTaskBypassRequestRepository, EfOffboardingTaskBypassRequestRepository>();
+        services.AddScoped<IEmployeeOffboardingLockGuard, ONEVO.Infrastructure.Services.CoreHr.Offboarding.EmployeeOffboardingLockGuard>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.ServiceInterfaces.IChecklistTemplateAssigneeResolver, ONEVO.Infrastructure.Services.CoreHr.Onboarding.ChecklistTemplateAssigneeResolver>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.Services.ChecklistTemplateTaskInputResolver>();
         services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();

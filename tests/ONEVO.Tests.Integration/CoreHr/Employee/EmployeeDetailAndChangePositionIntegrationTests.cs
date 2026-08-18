@@ -19,6 +19,7 @@ using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Infrastructure.Security;
+using ONEVO.Infrastructure.Services.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
@@ -296,8 +297,9 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
     private ChangeEmployeePositionCommandHandler BuildChangePositionHandler(Guid userId)
     {
         var db = CreateContext(_tenantId, TenantSlug);
+        var employees = new EfEmployeeRepository(db);
         return new ChangeEmployeePositionCommandHandler(
-            new EfEmployeeRepository(db),
+            employees,
             new EfPositionRepository(db),
             new EfPositionAssignmentRepository(db),
             new UnitOfWork(db),
@@ -307,7 +309,8 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
             _clock,
             new OutboxWriter(db, _encryption, _clock),
             new EfAuthRepository(db),
-            new EfTenantRepository(db));
+            new EfTenantRepository(db),
+            new EmployeeOffboardingLockGuard(employees));
     }
 
     private Position NewPosition(Guid id, string name) => new()

@@ -9,6 +9,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
@@ -39,6 +40,7 @@ public class ChangeEmployeePositionCommandHandlerTests
     private readonly Mock<IOutboxWriter> _outboxWriter = new();
     private readonly Mock<IUserRepository> _userRepository = new();
     private readonly Mock<ITenantRepository> _tenantRepository = new();
+    private readonly Mock<IEmployeeOffboardingLockGuard> _offboardingLockGuard = new();
 
     private ChangeEmployeePositionCommandHandler CreateHandler() =>
         new(
@@ -52,7 +54,8 @@ public class ChangeEmployeePositionCommandHandlerTests
             _clock.Object,
             _outboxWriter.Object,
             _userRepository.Object,
-            _tenantRepository.Object);
+            _tenantRepository.Object,
+            _offboardingLockGuard.Object);
 
     private void SetupNonSelfCaller(Guid tenantId, Guid employeeId)
     {
@@ -71,8 +74,26 @@ public class ChangeEmployeePositionCommandHandlerTests
             });
     }
 
-    [Fact]
-    public async Task Handle_PositionAtCapacity_ReturnsConflict_AfterAttemptingCreate()
+        [Fact]
+        public async Task Handle_OffboardedEmployee_ReturnsConflict()
+        {
+            var tenantId = Guid.NewGuid();
+            var employeeId = Guid.NewGuid();
+            SetupNonSelfCaller(tenantId, employeeId);
+            _offboardingLockGuard
+                .Setup(g => g.EnsureMutable(tenantId, employeeId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ONEVO.Application.Common.Models.Result.Conflict("This employee's record is read-only after offboarding completion."));
+
+            var result = await CreateHandler().Handle(
+                new ChangeEmployeePositionCommand(employeeId, Guid.NewGuid(), DateOnly.FromDateTime(DateTime.UtcNow), "Promotion"),
+                CancellationToken.None);
+
+            Assert.False(result.IsSuccess);
+            Assert.Equal(409, result.StatusCode);
+        }
+
+        [Fact]
+        public async Task Handle_PositionAtCapacity_ReturnsConflict_AfterAttemptingCreate()
     {
         var tenantId = Guid.NewGuid();
         var employeeId = Guid.NewGuid();
