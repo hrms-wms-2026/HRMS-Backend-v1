@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.BulkOnboarding;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.PreviewBulkOnboardingMapping;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.UploadBulkOnboardingBatch;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
@@ -34,5 +35,19 @@ public class BulkOnboardingController : ControllerBase
         return Ok(new BulkOnboardingBatchViewModel(
             response.Id, response.Status, response.TotalRows, response.ValidRows, response.InvalidRows,
             response.DetectedColumns, response.SuggestedMapping));
+    }
+
+    [HttpPost("{id:guid}/preview")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> Preview(Guid id, [FromBody] PreviewBulkOnboardingMappingRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new PreviewBulkOnboardingMappingCommand(id, request.Mapping), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        var r = result.Value!;
+        return Ok(new BulkOnboardingRowPreviewViewModel(
+            r.FirstName, r.LastName, r.WorkEmail, r.StartDate, r.EmploymentType,
+            r.WorkModeName, r.DepartmentName, r.PositionName, r.ChecklistTemplateName, r.EmployeeNumber));
     }
 }
