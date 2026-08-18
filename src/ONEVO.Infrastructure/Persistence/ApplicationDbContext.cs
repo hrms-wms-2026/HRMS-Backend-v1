@@ -205,6 +205,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<EmployeeDependent> EmployeeDependents => Set<EmployeeDependent>();
     public DbSet<EmployeeBankDetail> EmployeeBankDetails => Set<EmployeeBankDetail>();
     public DbSet<OnboardingDraft> OnboardingDrafts => Set<OnboardingDraft>();
+    public DbSet<BulkOnboardingBatch> BulkOnboardingBatches => Set<BulkOnboardingBatch>();
+    public DbSet<BulkOnboardingBatchRow> BulkOnboardingBatchRows => Set<BulkOnboardingBatchRow>();
     public DbSet<ChecklistTemplate> ChecklistTemplates => Set<ChecklistTemplate>();
     public DbSet<EmployeeChecklistTask> EmployeeChecklistTasks => Set<EmployeeChecklistTask>();
     public DbSet<AccessGrantRequest> AccessGrantRequests => Set<AccessGrantRequest>();
