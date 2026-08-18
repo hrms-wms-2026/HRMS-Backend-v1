@@ -65,7 +65,7 @@ public class GetObjectiveMembersQueryHandlerTests
             });
 
         var permissionResolver = new Mock<IPermissionResolver>();
-        permissionResolver.Setup(x => x.ResolveAsync(It.IsAny<Guid>(), TenantId, It.IsAny<CancellationToken>()))
+        permissionResolver.Setup(x => x.ResolveAsync(It.IsAny<Guid>(), TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(permissions ?? ["projects:read"]);
 
         return new GetObjectiveMembersQueryHandler(
