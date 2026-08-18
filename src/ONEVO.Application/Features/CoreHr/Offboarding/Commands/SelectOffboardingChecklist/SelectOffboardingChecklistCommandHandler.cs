@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
@@ -13,6 +14,7 @@ public class SelectOffboardingChecklistCommandHandler(
     IChecklistTemplateRepository checklistTemplateRepository,
     IEmployeeChecklistTaskRepository employeeChecklistTaskRepository,
     IEmployeeRepository employeeRepository,
+    IEmployeeOffboardingCoverageGuard coverageGuard,
     ICurrentUser currentUser,
     IDateTimeProvider clock)
     : IRequestHandler<SelectOffboardingChecklistCommand, Result>
@@ -24,6 +26,10 @@ public class SelectOffboardingChecklistCommandHandler(
         var record = await offboardingRecordRepository.GetOpenByEmployeeIdAsync(tenantId, request.EmployeeId, ct);
         if (record is null)
             return Result.NotFound("No open offboarding was found for this employee.");
+
+        var coverageResult = await coverageGuard.EnsureCovered(tenantId, currentUser.UserId, request.EmployeeId, ct);
+        if (coverageResult is not null)
+            return Result.Forbidden(coverageResult.Error!);
         if (record.Status != OffboardingRecordStatuses.Initiated)
             return Result.Conflict("A checklist has already been selected for this offboarding.");
 

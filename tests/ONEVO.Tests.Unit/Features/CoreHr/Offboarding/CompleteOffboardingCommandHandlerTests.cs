@@ -5,6 +5,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteOffboarding;
 using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -22,6 +23,7 @@ public class CompleteOffboardingCommandHandlerTests
     private readonly Mock<IUserRepository> _userRepository = new();
     private readonly Mock<ISessionRepository> _sessionRepository = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
+    private readonly Mock<IEmployeeOffboardingCoverageGuard> _coverageGuard = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -35,7 +37,7 @@ public class CompleteOffboardingCommandHandlerTests
 
     private CompleteOffboardingCommandHandler CreateSut() => new(
         _offboardingRecordRepository.Object, _taskRepository.Object, _employeeRepository.Object,
-        _userRepository.Object, _sessionRepository.Object, _unitOfWork.Object, _currentUser.Object, _clock.Object);
+        _userRepository.Object, _sessionRepository.Object, _unitOfWork.Object, _coverageGuard.Object, _currentUser.Object, _clock.Object);
 
     [Fact]
     public async Task Handle_RequiredTaskStillPending_ReturnsUnprocessableEntity()

@@ -3,6 +3,7 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.StartOffboarding;
 using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Lookups;
 using Xunit;
@@ -15,6 +16,7 @@ public class StartOffboardingCommandHandlerTests
 {
     private readonly Mock<IEmployeeRepository> _employeeRepository = new();
     private readonly Mock<IOffboardingRecordRepository> _offboardingRecordRepository = new();
+    private readonly Mock<IEmployeeOffboardingCoverageGuard> _coverageGuard = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -29,7 +31,7 @@ public class StartOffboardingCommandHandlerTests
     }
 
     private StartOffboardingCommandHandler CreateSut() =>
-        new(_employeeRepository.Object, _offboardingRecordRepository.Object, _currentUser.Object, _clock.Object);
+        new(_employeeRepository.Object, _offboardingRecordRepository.Object, _coverageGuard.Object, _currentUser.Object, _clock.Object);
 
     private StartOffboardingCommand CreateCommand() =>
         new(_employeeId, "resignation", new DateOnly(2026, 12, 1), "medium", "eligible", "Notice period completed.");

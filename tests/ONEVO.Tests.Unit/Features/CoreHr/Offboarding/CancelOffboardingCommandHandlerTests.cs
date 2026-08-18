@@ -3,6 +3,7 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CancelOffboarding;
 using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Lookups;
 using Xunit;
@@ -30,7 +31,7 @@ public class CancelOffboardingCommandHandlerTests
         var employee = new EmployeeEntity { Id = employeeId, EmploymentStatusId = EmploymentStatusIds.Offboarding };
         employeeRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
 
-        var result = await new CancelOffboardingCommandHandler(offboardingRecordRepository.Object, employeeRepository.Object, currentUser.Object, clock.Object)
+        var result = await new CancelOffboardingCommandHandler(offboardingRecordRepository.Object, employeeRepository.Object, Mock.Of<IEmployeeOffboardingCoverageGuard>(), currentUser.Object, clock.Object)
             .Handle(new CancelOffboardingCommand(employeeId), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -55,7 +56,7 @@ public class CancelOffboardingCommandHandlerTests
         var employee = new EmployeeEntity { Id = employeeId };
         employeeRepository.Setup(r => r.GetTrackedByIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
 
-        await new CancelOffboardingCommandHandler(offboardingRecordRepository.Object, employeeRepository.Object, currentUser.Object, clock.Object)
+        await new CancelOffboardingCommandHandler(offboardingRecordRepository.Object, employeeRepository.Object, Mock.Of<IEmployeeOffboardingCoverageGuard>(), currentUser.Object, clock.Object)
             .Handle(new CancelOffboardingCommand(employeeId), CancellationToken.None);
 
         employee.EmploymentStatusId.Should().Be(EmploymentStatusIds.Active);

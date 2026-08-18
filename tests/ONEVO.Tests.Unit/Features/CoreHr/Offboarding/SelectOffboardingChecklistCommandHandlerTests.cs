@@ -3,6 +3,7 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.SelectOffboardingChecklist;
 using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using Xunit;
@@ -17,6 +18,7 @@ public class SelectOffboardingChecklistCommandHandlerTests
     private readonly Mock<IChecklistTemplateRepository> _checklistTemplateRepository = new();
     private readonly Mock<IEmployeeChecklistTaskRepository> _employeeChecklistTaskRepository = new();
     private readonly Mock<IEmployeeRepository> _employeeRepository = new();
+    private readonly Mock<IEmployeeOffboardingCoverageGuard> _coverageGuard = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -32,7 +34,7 @@ public class SelectOffboardingChecklistCommandHandlerTests
 
     private SelectOffboardingChecklistCommandHandler CreateSut() => new(
         _offboardingRecordRepository.Object, _checklistTemplateRepository.Object,
-        _employeeChecklistTaskRepository.Object, _employeeRepository.Object, _currentUser.Object, _clock.Object);
+        _employeeChecklistTaskRepository.Object, _employeeRepository.Object, _coverageGuard.Object, _currentUser.Object, _clock.Object);
 
     [Fact]
     public async Task Handle_NoOpenRecord_ReturnsNotFound()

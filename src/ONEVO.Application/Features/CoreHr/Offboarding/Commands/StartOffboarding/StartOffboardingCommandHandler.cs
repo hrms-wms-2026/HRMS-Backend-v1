@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 
@@ -10,6 +11,7 @@ namespace ONEVO.Application.Features.CoreHr.Offboarding.Commands.StartOffboardin
 public class StartOffboardingCommandHandler(
     IEmployeeRepository employeeRepository,
     IOffboardingRecordRepository offboardingRecordRepository,
+    IEmployeeOffboardingCoverageGuard coverageGuard,
     ICurrentUser currentUser,
     IDateTimeProvider clock)
     : IRequestHandler<StartOffboardingCommand, Result<Guid>>
@@ -24,6 +26,10 @@ public class StartOffboardingCommandHandler(
 
         if (employee.UserId == currentUser.UserId)
             return Result<Guid>.Forbidden("You cannot start offboarding on your own record.");
+
+        var coverageResult = await coverageGuard.EnsureCovered(tenantId, currentUser.UserId, employee.Id, ct);
+        if (coverageResult is not null)
+            return Result<Guid>.Forbidden(coverageResult.Error!);
 
         var existingOpen = await offboardingRecordRepository.GetOpenByEmployeeIdAsync(tenantId, employee.Id, ct);
         if (existingOpen is not null)

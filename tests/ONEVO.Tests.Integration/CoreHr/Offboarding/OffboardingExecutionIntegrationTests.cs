@@ -10,6 +10,7 @@ using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CreateBypassRequest
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.RejectBypassRequest;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.SelectOffboardingChecklist;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.StartOffboarding;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -338,14 +339,14 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
     }
 
     private StartOffboardingCommandHandler StartHandler(ApplicationDbContext db, ICurrentUser user) =>
-        new(new EfEmployeeRepository(db), new EfOffboardingRecordRepository(db), user, _clock);
+        new(new EfEmployeeRepository(db), new EfOffboardingRecordRepository(db), AllowAllCoverage, user, _clock);
 
     private SelectOffboardingChecklistCommandHandler SelectHandler(ApplicationDbContext db, ICurrentUser user) =>
         new(new EfOffboardingRecordRepository(db), new EfChecklistTemplateRepository(db),
-            new EfEmployeeChecklistTaskRepository(db), new EfEmployeeRepository(db), user, _clock);
+            new EfEmployeeChecklistTaskRepository(db), new EfEmployeeRepository(db), AllowAllCoverage, user, _clock);
 
     private CancelOffboardingCommandHandler CancelHandler(ApplicationDbContext db, ICurrentUser user) =>
-        new(new EfOffboardingRecordRepository(db), new EfEmployeeRepository(db), user, _clock);
+        new(new EfOffboardingRecordRepository(db), new EfEmployeeRepository(db), AllowAllCoverage, user, _clock);
 
     private CompleteEmployeeChecklistTaskCommandHandler CompleteTaskHandler(ApplicationDbContext db, ICurrentUser user) =>
         new(new EfEmployeeChecklistTaskRepository(db), new EfOffboardingTaskBypassRequestRepository(db), user, _clock);
@@ -359,7 +360,16 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
         var auth = new EfAuthRepository(db);
         return new CompleteOffboardingCommandHandler(
             new EfOffboardingRecordRepository(db), new EfEmployeeChecklistTaskRepository(db),
-            new EfEmployeeRepository(db), auth, auth, new UnitOfWork(db), user, _clock);
+            new EfEmployeeRepository(db), auth, auth, new UnitOfWork(db), AllowAllCoverage, user, _clock);
+    }
+
+    private static readonly IEmployeeOffboardingCoverageGuard AllowAllCoverage = new AllowAllCoverageGuard();
+
+    private sealed class AllowAllCoverageGuard : IEmployeeOffboardingCoverageGuard
+    {
+        public Task<ONEVO.Application.Common.Models.Result?> EnsureCovered(
+            Guid tenantId, Guid actingUserId, Guid targetEmployeeId, CancellationToken ct = default)
+            => Task.FromResult<ONEVO.Application.Common.Models.Result?>(null);
     }
 
     private sealed class StubCurrentUser : ICurrentUser
