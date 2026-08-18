@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.UnachieveProject;
@@ -9,12 +10,15 @@ namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.UnachieveP
 public class UnachieveProjectCommandHandler : IRequestHandler<UnachieveProjectCommand, Result>
 {
     private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
     private readonly IProjectRepository _projects;
     private readonly IUnitOfWork _unitOfWork;
 
-    public UnachieveProjectCommandHandler(ICurrentUser currentUser, IProjectRepository projects, IUnitOfWork unitOfWork)
+    public UnachieveProjectCommandHandler(
+        ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectRepository projects, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
+        _identity = identity;
         _projects = projects;
         _unitOfWork = unitOfWork;
     }
@@ -29,11 +33,15 @@ public class UnachieveProjectCommandHandler : IRequestHandler<UnachieveProjectCo
         if (tenantId == Guid.Empty)
             return Result.Forbidden("Tenant context missing.");
 
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
+        if (callerEmployeeId is null)
+            return Result.Forbidden("No employee record for the current user.");
+
         var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null)
             return Result.NotFound("Project not found.");
 
-        if (project.LeadId != userId)
+        if (project.LeadId != callerEmployeeId.Value)
             return Result.Forbidden("Only the project lead can un-achieve this project.");
 
         if (!project.IsAchieved)

@@ -29,7 +29,7 @@ public static class ProjectMapper
     public static LabelSummaryDto ToSummary(Label label) => new(label.Id, label.Name, label.Color);
 
     public static ProjectMembershipSummaryDto ToSummary(ProjectMember member) => new(
-        member.Id, member.ObjectiveId, member.UserId, member.MembershipSource);
+        member.Id, member.ObjectiveId, member.EmployeeId, member.MembershipSource);
 
     public static ProjectDetailResponse ToDetail(
         Project project, bool isLead, Guid? logoFileId = null, IReadOnlyList<Label>? labels = null,

@@ -629,7 +629,7 @@ public class CreateProjectEndpointTests : IAsyncLifetime
         var subObjective = new ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective
         {
             Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, ParentObjectiveId = defaultObjectiveId,
-            IsDefault = false, Title = "Sub Objective", OwnerId = userId, IsActive = true,
+            IsDefault = false, Title = "Sub Objective", OwnerId = employee.Id, IsActive = true,
             StartDate = DateOnly.FromDateTime(DateTime.UtcNow), EndDate = DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(1)),
             CreatedById = userId, CreatedAt = DateTimeOffset.UtcNow
         };
@@ -638,7 +638,7 @@ public class CreateProjectEndpointTests : IAsyncLifetime
         db.ProjectMembers.Add(new ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities.ProjectMember
         {
             Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, ObjectiveId = subObjective.Id,
-            UserId = userId, EmployeeId = employee.Id,
+            EmployeeId = employee.Id,
             MembershipSource = ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities.ProjectMembershipSources.ObjectiveInvitation,
             IsActive = true, JoinedAt = DateTimeOffset.UtcNow, CreatedById = userId, CreatedAt = DateTimeOffset.UtcNow
         });

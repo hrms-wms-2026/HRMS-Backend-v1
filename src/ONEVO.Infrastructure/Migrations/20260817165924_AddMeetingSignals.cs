@@ -8,6 +8,8 @@ namespace ONEVO.Infrastructure.Migrations
     /// <inheritdoc />
     public partial class AddMeetingSignals : Migration
     {
+        private static readonly string[] TenantTables = ["meeting_signals"];
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -35,35 +37,41 @@ namespace ONEVO.Infrastructure.Migrations
                 columns: new[] { "tenant_id", "employee_id", "captured_at" },
                 descending: new[] { false, false, true });
 
-            migrationBuilder.Sql(@"
-                ALTER TABLE meeting_signals ENABLE ROW LEVEL SECURITY;
-                ALTER TABLE meeting_signals FORCE ROW LEVEL SECURITY;
-                DROP POLICY IF EXISTS tenant_isolation ON meeting_signals;
-                CREATE POLICY tenant_isolation ON meeting_signals
-                    USING (
-                        current_setting('app.tenant_context_mode', true) = 'admin'
-                        OR (
-                            current_setting('app.tenant_context_mode', true) = 'tenant'
-                            AND tenant_id::text = current_setting('app.current_tenant_id', true)
+            foreach (var table in TenantTables)
+            {
+                migrationBuilder.Sql($@"
+                    ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE {table} FORCE ROW LEVEL SECURITY;
+                    DROP POLICY IF EXISTS tenant_isolation ON {table};
+                    CREATE POLICY tenant_isolation ON {table}
+                        USING (
+                            current_setting('app.tenant_context_mode', true) = 'admin'
+                            OR (
+                                current_setting('app.tenant_context_mode', true) = 'tenant'
+                                AND tenant_id::text = current_setting('app.current_tenant_id', true)
+                            )
                         )
-                    )
-                    WITH CHECK (
-                        current_setting('app.tenant_context_mode', true) = 'admin'
-                        OR (
-                            current_setting('app.tenant_context_mode', true) = 'tenant'
-                            AND tenant_id::text = current_setting('app.current_tenant_id', true)
-                        )
-                    );
-            ");
+                        WITH CHECK (
+                            current_setting('app.tenant_context_mode', true) = 'admin'
+                            OR (
+                                current_setting('app.tenant_context_mode', true) = 'tenant'
+                                AND tenant_id::text = current_setting('app.current_tenant_id', true)
+                            )
+                        );
+                ");
+            }
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.Sql(@"
-                DROP POLICY IF EXISTS tenant_isolation ON meeting_signals;
-                ALTER TABLE meeting_signals DISABLE ROW LEVEL SECURITY;
-            ");
+            foreach (var table in TenantTables)
+            {
+                migrationBuilder.Sql($@"
+                    DROP POLICY IF EXISTS tenant_isolation ON {table};
+                    ALTER TABLE {table} DISABLE ROW LEVEL SECURITY;
+                ");
+            }
 
             migrationBuilder.DropTable(
                 name: "meeting_signals");
