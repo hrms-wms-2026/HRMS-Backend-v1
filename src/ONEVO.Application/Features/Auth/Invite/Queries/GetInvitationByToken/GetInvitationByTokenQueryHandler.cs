@@ -18,6 +18,7 @@ public sealed class GetInvitationByTokenQueryHandler
     private readonly ITenantRepository _tenants;
     private readonly IRoleRepository _roles;
     private readonly ITenantAuthPolicyRepository _policies;
+    private readonly IUserRepository _users;
     private readonly IDateTimeProvider _clock;
 
     public GetInvitationByTokenQueryHandler(
@@ -25,12 +26,14 @@ public sealed class GetInvitationByTokenQueryHandler
         ITenantRepository tenants,
         IRoleRepository roles,
         ITenantAuthPolicyRepository policies,
+        IUserRepository users,
         IDateTimeProvider clock)
     {
         _invitations = invitations;
         _tenants = tenants;
         _roles = roles;
         _policies = policies;
+        _users = users;
         _clock = clock;
     }
 
@@ -52,7 +55,11 @@ public sealed class GetInvitationByTokenQueryHandler
             : null;
         var policy = await _policies.GetByTenantIdAsync(inv.TenantId, ct);
 
+        var linkedUser = await _users.GetByIdAsync(inv.UserId, ct);
+        var requiresPassword = linkedUser is null
+            || !(linkedUser.IsActive && !string.IsNullOrEmpty(linkedUser.PasswordHash));
+
         return Result<InvitationDetailDto>.Success(
-            InviteMapper.ToDto(inv, tenant, role, policy, _clock.UtcNow));
+            InviteMapper.ToDto(inv, tenant, role, policy, _clock.UtcNow, requiresPassword));
     }
 }

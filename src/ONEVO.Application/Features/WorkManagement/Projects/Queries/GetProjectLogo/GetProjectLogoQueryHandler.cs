@@ -60,7 +60,7 @@ public class GetProjectLogoQueryHandler : IRequestHandler<GetProjectLogoQuery, R
         if (project is null)
             return Result<FileStreamDto>.NotFound("Project not found.");
 
-        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, ct);
+        var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
         var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
 
         if (!hasReadPermission)

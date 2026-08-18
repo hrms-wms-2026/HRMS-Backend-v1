@@ -172,6 +172,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<TenantProvisioningState> TenantProvisioningStates => Set<TenantProvisioningState>();
     public DbSet<TenantSetupSelection> TenantSetupSelections => Set<TenantSetupSelection>();
     public DbSet<TenantOneTimeCharge> TenantOneTimeCharges => Set<TenantOneTimeCharge>();
+    public DbSet<SubscriptionInvoice> SubscriptionInvoices => Set<SubscriptionInvoice>();
+    public DbSet<BillingAuditLog> BillingAuditLogs => Set<BillingAuditLog>();
 
     // System Config - Payment Gateway (Phase 1 canonical tables)
     public DbSet<PaymentGatewayConfig> PaymentGatewayConfigs => Set<PaymentGatewayConfig>();
@@ -202,6 +204,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<PositionAssignment> PositionAssignments => Set<PositionAssignment>();
     public DbSet<EmployeeHierarchyClosure> EmployeeHierarchyClosures => Set<EmployeeHierarchyClosure>();
+    public DbSet<EmployeeAddress> EmployeeAddresses => Set<EmployeeAddress>();
+    public DbSet<EmployeeEmergencyContact> EmployeeEmergencyContacts => Set<EmployeeEmergencyContact>();
+    public DbSet<EmployeeDependent> EmployeeDependents => Set<EmployeeDependent>();
+    public DbSet<EmployeeBankDetail> EmployeeBankDetails => Set<EmployeeBankDetail>();
     public DbSet<OnboardingDraft> OnboardingDrafts => Set<OnboardingDraft>();
     public DbSet<ChecklistTemplate> ChecklistTemplates => Set<ChecklistTemplate>();
     public DbSet<EmployeeChecklistTask> EmployeeChecklistTasks => Set<EmployeeChecklistTask>();

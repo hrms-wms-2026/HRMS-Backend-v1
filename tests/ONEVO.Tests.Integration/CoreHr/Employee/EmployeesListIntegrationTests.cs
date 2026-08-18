@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.Auth.Invite;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -217,7 +218,12 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
         var scopeResolver = new EmployeeVisibilityScopeResolver(db);
         var currentUser = BuildCurrentUser(tenantId, orgManage, callerOwnEmployeeId);
 
-        return new GetEmployeeQueryHandler(employeeRepository, scopeResolver, currentUser);
+        return new GetEmployeeQueryHandler(
+            employeeRepository,
+            scopeResolver,
+            new EfInvitationTokenRepository(db),
+            currentUser,
+            _clock);
     }
 
     private static ICurrentUser BuildCurrentUser(Guid tenantId, bool orgManage, Guid? callerOwnEmployeeId)
@@ -275,7 +281,7 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
             grantTables.CommandText = $@"
                 GRANT SELECT ON employees, position_assignments, employee_hierarchy_closure,
                     departments, legal_entities, positions, employment_types, employment_statuses,
-                    management_coverage_records, tenants
+                    management_coverage_records, tenants, invitation_tokens
                     TO {RestrictedRoleName};
             ";
             await grantTables.ExecuteNonQueryAsync();

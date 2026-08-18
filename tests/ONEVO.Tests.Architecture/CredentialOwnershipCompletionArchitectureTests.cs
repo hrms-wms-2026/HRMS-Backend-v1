@@ -179,6 +179,7 @@ public sealed class CredentialOwnershipCompletionArchitectureTests
                     "payment_gateway",
                     StringComparison.Ordinal))
             .Select(path => Path.GetFileName(path)!)
+            .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
         Assert.Equal(

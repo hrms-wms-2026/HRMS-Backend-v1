@@ -6,7 +6,8 @@ namespace ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 /// <summary>Employee-only email contract. It deliberately carries no role or permission data.</summary>
 public sealed record EmployeeOnboardingInviteEmailPayload(
     Guid TenantId, Guid LegalEntityId, Guid EmployeeId, Guid InvitationTokenId,
-    string Email, string FirstName, string LastName, string RawToken, DateTimeOffset ExpiresAt);
+    string Email, string FirstName, string LastName, string RawToken, DateTimeOffset ExpiresAt,
+    string? TenantSlug = null);
 
 public sealed class EmployeeOnboardingInviteEmailOutboxHandler : IOutboxMessageHandler
 {
@@ -18,6 +19,6 @@ public sealed class EmployeeOnboardingInviteEmailOutboxHandler : IOutboxMessageH
     {
         var payload = JsonSerializer.Deserialize<EmployeeOnboardingInviteEmailPayload>(payloadJson)
             ?? throw new InvalidOperationException("employee_onboarding_invite_email payload is empty.");
-        return _emailService.SendEmployeeOnboardingInviteAsync(payload.Email, payload.FirstName, payload.LastName, payload.RawToken, ct);
+        return _emailService.SendEmployeeOnboardingInviteAsync(payload.Email, payload.FirstName, payload.LastName, payload.RawToken, payload.TenantSlug, ct);
     }
 }

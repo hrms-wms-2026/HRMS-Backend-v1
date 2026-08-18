@@ -36,7 +36,8 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
         _currentUser.SetupGet(u => u.UserId).Returns(_userId);
         _clock.SetupGet(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
         _employeeRepository
-            .Setup(r => r.EmailExistsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .Setup(r => r.EmployeeExistsInLegalEntityAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         _employeeRepository
             .Setup(r => r.EmployeeNumberExistsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
@@ -139,7 +140,7 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
     public async Task Handle_ReturnsConflict_WhenWorkEmailAlreadyBelongsToAnExistingEmployee()
     {
         _employeeRepository
-            .Setup(r => r.EmailExistsAsync(_tenantId, "ada@test.dev", null, It.IsAny<CancellationToken>()))
+            .Setup(r => r.EmployeeExistsInLegalEntityAsync(_tenantId, It.IsAny<Guid>(), "ada@test.dev", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         var result = await CreateHandler().Handle(ValidCommand(), CancellationToken.None);
@@ -241,5 +242,37 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
         await CreateHandler().Handle(ValidCommand(draftId: draftId, ifMatch: "42"), CancellationToken.None);
 
         _draftRepository.Verify(r => r.SetExpectedVersion(existing, "42"), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_EmployeeExistsInDifferentLegalEntity_DoesNotBlock()
+    {
+        _employeeRepository
+            .Setup(r => r.EmployeeExistsInLegalEntityAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _draftRepository.Setup(r => r.AddAsync(It.IsAny<OnboardingDraftEntity>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await CreateHandler().Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _employeeRepository.Verify(
+            r => r.EmailExistsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_EmployeeExistsInSameLegalEntity_ReturnsConflict()
+    {
+        _employeeRepository
+            .Setup(r => r.EmployeeExistsInLegalEntityAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await CreateHandler().Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
     }
 }

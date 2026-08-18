@@ -32,6 +32,8 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             "admin_password_reset" => RenderAdminPasswordReset(fields),
             "admin_password_changed" => RenderAdminPasswordChanged(),
             "platform_manager_invite" => RenderPlatformManagerInvite(fields),
+            "employee_onboarding_invite" => RenderEmployeeOnboardingInvite(fields),
+            "invoice_email" => RenderInvoiceEmail(fields),
             _ => throw new InvalidOperationException(
                 $"Unknown email template '{templateId}'. Add a case in EmailTemplateRenderer.")
         };
@@ -158,6 +160,122 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             </body></html>
             """;
         var text = $"Hi {fullName},\n\nYou've been invited to join ONEXSO Platform Administration.\nAccept: {inviteUrl}\nThis link expires in 72 hours.";
+        return new RenderedEmail(subject, html, text);
+    }
+
+    private RenderedEmail RenderEmployeeOnboardingInvite(IReadOnlyDictionary<string, object?> f)
+    {
+        var firstName = Get(f, "first_name");
+        var token = Get(f, "invite_token");
+        var tenantSlug = Get(f, "tenant_slug");
+        var appBaseUrl = string.IsNullOrWhiteSpace(_options.AppBaseUrl)
+            ? Get(f, "app_base_url", fallback: string.Empty)
+            : _options.AppBaseUrl;
+        appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
+        var inviteUrl = string.IsNullOrWhiteSpace(appBaseUrl)
+            ? $"[invite_url placeholder - set Email:AppBaseUrl] token={token}"
+            : $"{appBaseUrl.TrimEnd('/')}/auth/invitations/{Uri.EscapeDataString(token)}";
+
+        var subject = "You're invited to ONEVO — set up your account";
+
+        var html = $"""
+            <!doctype html>
+            <html>
+              <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height:1.5; color:#0f172a;">
+                <h2 style="margin:0 0 12px;">Welcome to ONEVO</h2>
+                <p>Hi {Escape(firstName)},</p>
+                <p>An account has been set up for you. Click the link below to finish setting up your account and sign in:</p>
+                <p><a href="{Escape(inviteUrl)}" style="display:inline-block; padding:10px 16px; background:#0f172a; color:#fff; text-decoration:none; border-radius:6px;">Set up your account</a></p>
+                <p>If the button doesn't work, copy this link into your browser:</p>
+                <p><code style="word-break:break-all;">{Escape(inviteUrl)}</code></p>
+                <hr style="border:none; border-top:1px solid #e2e8f0;" />
+                <p style="font-size:12px; color:#64748b;">This link expires in 24 hours. If you didn't expect this email, you can safely ignore it.</p>
+              </body>
+            </html>
+            """;
+
+        var text = $"""
+            Hi {firstName},
+
+            An account has been set up for you on ONEVO.
+
+            Set up your account and sign in:
+            {inviteUrl}
+
+            This link expires in 24 hours. If you didn't expect this email, you can safely ignore it.
+            """;
+
+        return new RenderedEmail(subject, html, text);
+    }
+
+    private RenderedEmail RenderInvoiceEmail(IReadOnlyDictionary<string, object?> f)
+    {
+        var tenantName = Get(f, "tenant_name");
+        var invoiceNumber = Get(f, "invoice_number");
+        var status = Get(f, "status");
+        var currency = Get(f, "currency");
+        var subtotal = Get(f, "subtotal_amount");
+        var tax = Get(f, "tax_amount");
+        var discount = Get(f, "discount_amount");
+        var total = Get(f, "total_amount");
+        var periodStart = Get(f, "period_start");
+        var periodEnd = Get(f, "period_end");
+        var dueAt = Get(f, "due_at");
+        var paidAt = Get(f, "paid_at");
+        var isReceipt = f.TryGetValue("is_receipt", out var receiptFlag) && receiptFlag is true;
+
+        var subject = isReceipt
+            ? $"Payment receipt for invoice {invoiceNumber} - {tenantName}"
+            : $"Invoice {invoiceNumber} for {tenantName}";
+
+        var periodLine = string.IsNullOrWhiteSpace(periodStart) || string.IsNullOrWhiteSpace(periodEnd)
+            ? string.Empty
+            : $"<tr><td style=\"padding:4px 0;\">Billing period</td><td style=\"padding:4px 0;\">{Escape(periodStart)} to {Escape(periodEnd)}</td></tr>";
+
+        var dueLine = !isReceipt && !string.IsNullOrWhiteSpace(dueAt)
+            ? $"<tr><td style=\"padding:4px 0;\">Due date</td><td style=\"padding:4px 0;\">{Escape(dueAt)}</td></tr>"
+            : string.Empty;
+
+        var paidLine = isReceipt && !string.IsNullOrWhiteSpace(paidAt)
+            ? $"<tr><td style=\"padding:4px 0;\">Paid on</td><td style=\"padding:4px 0;\">{Escape(paidAt)}</td></tr>"
+            : string.Empty;
+
+        var discountRow = decimal.TryParse(discount, out var discountAmount) && discountAmount > 0
+            ? $"<tr><td style=\"padding:4px 8px;\">Discount</td><td style=\"padding:4px 8px; text-align:right;\">-{Escape(currency)} {Escape(discount)}</td></tr>"
+            : string.Empty;
+
+        var html = $"""
+            <!doctype html>
+            <html>
+              <body style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height:1.5; color:#0f172a;">
+                <h2 style="margin:0 0 12px;">{(isReceipt ? "Payment receipt" : "Invoice")}</h2>
+                <p>Hello,</p>
+                <p>This email is for <strong>{Escape(tenantName)}</strong>.</p>
+                <table style="border-collapse:collapse; margin:16px 0;">
+                  <tr><td style="padding:4px 0;">Invoice number</td><td style="padding:4px 0;"><strong>{Escape(invoiceNumber)}</strong></td></tr>
+                  <tr><td style="padding:4px 0;">Status</td><td style="padding:4px 0;">{Escape(status)}</td></tr>
+                  {periodLine}
+                  {dueLine}
+                  {paidLine}
+                </table>
+                <table style="border-collapse:collapse; width:100%; max-width:480px; border-top:1px solid #e2e8f0;">
+                  <tr><td style="padding:4px 8px;">Subtotal</td><td style="padding:4px 8px; text-align:right;">{Escape(currency)} {Escape(subtotal)}</td></tr>
+                  <tr><td style="padding:4px 8px;">Tax</td><td style="padding:4px 8px; text-align:right;">{Escape(currency)} {Escape(tax)}</td></tr>
+                  {discountRow}
+                  <tr><td style="padding:8px 8px; font-weight:600;">Total</td><td style="padding:8px 8px; text-align:right; font-weight:600;">{Escape(currency)} {Escape(total)}</td></tr>
+                </table>
+                <p style="font-size:12px; color:#64748b;">If you have questions about this invoice, contact your platform administrator.</p>
+              </body>
+            </html>
+            """;
+
+        var text = $"""
+            {(isReceipt ? "Payment receipt" : "Invoice")} for {tenantName}
+            Invoice number: {invoiceNumber}
+            Status: {status}
+            Total: {currency} {total}
+            """;
+
         return new RenderedEmail(subject, html, text);
     }
 

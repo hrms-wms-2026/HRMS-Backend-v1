@@ -22,4 +22,5 @@ public interface IInvitationTokenRepository
         CancellationToken ct = default);
     Task AddAsync(InvitationToken invitation, CancellationToken ct = default);
     Task<InvitationToken?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default);
+    Task<InvitationToken?> GetLatestByEmployeeIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 }

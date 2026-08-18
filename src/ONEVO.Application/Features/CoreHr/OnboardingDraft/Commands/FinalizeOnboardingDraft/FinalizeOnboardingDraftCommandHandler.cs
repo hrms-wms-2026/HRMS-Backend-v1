@@ -13,6 +13,7 @@ using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -20,7 +21,6 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
-using PositionAssignmentEntity = ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment;
 
 namespace ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboardingDraft;
 
@@ -39,7 +39,7 @@ namespace ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOn
 public class FinalizeOnboardingDraftCommandHandler
     : IRequestHandler<FinalizeOnboardingDraftCommand, Result<FinalizeOnboardingDraftResponse>>
 {
-    private const int InvitationValidityHours = 72;
+    private const int InvitationValidityHours = 24;
 
     private readonly IOnboardingDraftRepository _draftRepository;
     private readonly IEmployeeRepository _employeeRepository;
@@ -56,6 +56,7 @@ public class FinalizeOnboardingDraftCommandHandler
     private readonly IChecklistTemplateRepository _checklistTemplateRepository;
     private readonly IEmployeeChecklistTaskRepository _checklistTaskRepository;
     private readonly IInvitationTokenRepository _invitationTokenRepository;
+    private readonly ITenantRepository _tenantRepository;
     private readonly IOutboxWriter _outboxWriter;
     private readonly ISecureTokenGenerator _tokenGenerator;
     private readonly ICurrentUser _currentUser;
@@ -77,6 +78,7 @@ public class FinalizeOnboardingDraftCommandHandler
         IChecklistTemplateRepository checklistTemplateRepository,
         IEmployeeChecklistTaskRepository checklistTaskRepository,
         IInvitationTokenRepository invitationTokenRepository,
+        ITenantRepository tenantRepository,
         IOutboxWriter outboxWriter,
         ISecureTokenGenerator tokenGenerator,
         ICurrentUser currentUser,
@@ -97,6 +99,7 @@ public class FinalizeOnboardingDraftCommandHandler
         _checklistTemplateRepository = checklistTemplateRepository;
         _checklistTaskRepository = checklistTaskRepository;
         _invitationTokenRepository = invitationTokenRepository;
+        _tenantRepository = tenantRepository;
         _outboxWriter = outboxWriter;
         _tokenGenerator = tokenGenerator;
         _currentUser = currentUser;
@@ -177,8 +180,8 @@ public class FinalizeOnboardingDraftCommandHandler
         if (employmentTypeId is null)
             return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("The selected employment type does not exist.");
 
-        if (await _employeeRepository.EmailExistsAsync(tenantId, draft.WorkEmail, excludeId: null, ct))
-            return Result<FinalizeOnboardingDraftResponse>.Conflict("An employee with this work email already exists.");
+        if (await _employeeRepository.EmployeeExistsInLegalEntityAsync(tenantId, draft.LegalEntityId, draft.WorkEmail, excludeId: null, ct))
+            return Result<FinalizeOnboardingDraftResponse>.Conflict("An employee with this work email already exists in this company.");
 
         // EmployeeNumber is "conditional" per product docs (required when not auto-generated),
         // but no auto-generation policy exists in this codebase, and Employee.EmployeeNumber is
@@ -196,17 +199,6 @@ public class FinalizeOnboardingDraftCommandHandler
             accessTemplate = await _positionRepository.GetAccessTemplateByPositionAsync(tenantId, draft.PositionId.Value, ct);
         }
         var requiresApproval = accessTemplate is { IsActive: true, RequiresApproval: true };
-
-        // Position capacity is a pre-invite validation (per the userflow doc's error-scenario
-        // table), so it applies before either branch below, using PositionAssignment's active
-        // count against Position.MaxOccupancy - the only capacity signal this repository layer
-        // exposes.
-        if (position is not null)
-        {
-            var activeAssignmentCount = await _positionAssignmentRepository.CountActiveAsync(tenantId, position.Id, ct);
-            if (activeAssignmentCount >= position.MaxOccupancy)
-                return Result<FinalizeOnboardingDraftResponse>.Conflict("This position has reached its capacity.");
-        }
 
         if (requiresApproval)
         {
@@ -358,20 +350,13 @@ public class FinalizeOnboardingDraftCommandHandler
         };
         await _employeeRepository.AddAsync(employee, ct);
 
+        Guid? reservedAssignmentId = null;
         if (position is not null)
         {
-            var assignment = new PositionAssignmentEntity
-            {
-                Id = Guid.NewGuid(),
-                TenantId = draft.TenantId,
-                EmployeeId = employeeId,
-                PositionId = position.Id,
-                AssignmentKind = PositionAssignmentKind.PrimaryEmployment,
-                EffectiveFrom = draft.StartDate,
-                AssignmentStatus = PositionAssignmentStatus.Active,
-                CreatedById = _currentUser.UserId,
-            };
-            await _positionAssignmentRepository.AddAsync(assignment, ct);
+            reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
+                draft.TenantId, employeeId, position.Id, draft.StartDate, _currentUser.UserId, ct);
+            if (reservedAssignmentId is null)
+                return Result<FinalizeOnboardingDraftResponse>.Conflict("This position has reached its capacity.");
         }
 
         // The only role ever assigned here is the position access template's own RoleId - never
@@ -391,7 +376,7 @@ public class FinalizeOnboardingDraftCommandHandler
             await _userRoleRepository.AddAsync(userRole, ct);
         }
 
-        var rawToken = _tokenGenerator.GenerateOpaqueToken();
+        var rawToken = _tokenGenerator.GenerateUrlSafeOpaqueToken();
         var tokenHash = InvitationTokenHasher.Hash(rawToken);
         var expiresAt = _clock.UtcNow.AddHours(InvitationValidityHours);
         var fullName = $"{draft.FirstName.Trim()} {draft.LastName.Trim()}".Trim();
@@ -403,6 +388,7 @@ public class FinalizeOnboardingDraftCommandHandler
             UserId = user.Id,
             RoleId = null,
             PositionId = draft.PositionId,
+            PositionAssignmentId = reservedAssignmentId,
             Purpose = InvitationToken.EmployeeOnboardingPurpose,
             LegalEntityId = draft.LegalEntityId,
             EmployeeId = employeeId,
@@ -416,11 +402,13 @@ public class FinalizeOnboardingDraftCommandHandler
         };
         await _invitationTokenRepository.AddAsync(invitation, ct);
 
+        var tenant = await _tenantRepository.GetByIdAsync(draft.TenantId, ct);
         await _outboxWriter.EnqueueAsync(
             OutboxMessageTypes.EmployeeOnboardingInviteEmail,
             new EmployeeOnboardingInviteEmailPayload(
                 draft.TenantId, draft.LegalEntityId, employeeId, invitation.Id,
-                draft.WorkEmail.Trim(), draft.FirstName.Trim(), draft.LastName.Trim(), rawToken, expiresAt),
+                draft.WorkEmail.Trim(), draft.FirstName.Trim(), draft.LastName.Trim(), rawToken, expiresAt,
+                tenant?.Slug),
             draft.TenantId,
             ct);
 

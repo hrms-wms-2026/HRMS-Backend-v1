@@ -29,6 +29,39 @@ public interface IPositionAssignmentRepository
     Task<bool> HasActivePrimaryInLegalEntityAsync(
         Guid tenantId, Guid employeeId, Guid legalEntityId, CancellationToken ct = default);
 
+    /// <summary>Atomically reserves a seat for the given position by inserting a "planned"
+    /// PositionAssignment row, guarded by a capacity subquery in the same SQL statement (counts
+    /// both active and planned occupants against Position.MaxOccupancy). Returns the new row's
+    /// Id on success, or null if the position was already at capacity - no separate count-then-
+    /// insert round trip, so two concurrent callers targeting the last vacancy cannot both
+    /// succeed.</summary>
+    Task<Guid?> TryReservePositionAssignmentAsync(
+        Guid tenantId,
+        Guid employeeId,
+        Guid positionId,
+        DateOnly effectiveFrom,
+        Guid createdById,
+        CancellationToken ct = default);
+
+    /// <summary>Flips a "planned" PositionAssignment row to "active" (on invite accept). No-op
+    /// (returns false) if the row doesn't exist or isn't currently "planned".</summary>
+    Task<bool> ActivatePlannedAsync(Guid tenantId, Guid positionAssignmentId, CancellationToken ct = default);
+
+    /// <summary>Flips a "planned" PositionAssignment row to "cancelled" (on invite revoke),
+    /// freeing the seat. No-op (returns false) if the row doesn't exist or isn't currently
+    /// "planned".</summary>
+    Task<bool> CancelPlannedAsync(Guid tenantId, Guid positionAssignmentId, CancellationToken ct = default);
+
+    /// <summary>Same atomic capacity-guarded INSERT as TryReservePositionAssignmentAsync, but
+    /// inserts the row as "active" directly - used for immediate, non-invitation position
+    /// changes (Change Position action) rather than an invitation's reserve-then-activate
+    /// lifecycle.</summary>
+    Task<Guid?> TryCreateActiveAssignmentAsync(
+        Guid tenantId, Guid employeeId, Guid positionId, DateOnly effectiveFrom, Guid createdById,
+        CancellationToken ct = default);
+
+    Task<bool> EndActiveAsync(Guid tenantId, Guid positionAssignmentId, DateOnly effectiveTo, CancellationToken ct = default);
+
     Task AddAsync(ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment assignment, CancellationToken ct = default);
 
     Task<ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment?> GetTrackedAsync(

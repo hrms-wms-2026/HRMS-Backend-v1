@@ -159,6 +159,109 @@ public sealed class EmailTemplateRendererTests
     }
 
     [Fact]
+    public void RenderEmployeeOnboardingInvite_UsesAppBaseUrl()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AppBaseUrl = "http://localhost:5173"
+        }));
+
+        var rendered = renderer.Render("employee_onboarding_invite", new
+        {
+            first_name = "Ada",
+            last_name = "Lovelace",
+            invite_token = "tok-xyz"
+        });
+
+        rendered.HtmlBody.Should().Contain("http://localhost:5173/auth/invitations/tok-xyz");
+        rendered.TextBody.Should().Contain("http://localhost:5173/auth/invitations/tok-xyz");
+        rendered.TextBody.Should().Contain("Ada");
+        rendered.Subject.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void RenderEmployeeOnboardingInvite_WithTenantSlug_PrefixesSlugOntoAppBaseUrlHost()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AppBaseUrl = "https://localhost:4200"
+        }));
+
+        var rendered = renderer.Render("employee_onboarding_invite", new
+        {
+            first_name = "Ada",
+            last_name = "Lovelace",
+            invite_token = "tok-xyz",
+            tenant_slug = "dapi"
+        });
+
+        rendered.HtmlBody.Should().Contain("https://dapi.localhost:4200/auth/invitations/tok-xyz");
+        rendered.TextBody.Should().Contain("https://dapi.localhost:4200/auth/invitations/tok-xyz");
+    }
+
+    [Fact]
+    public void RenderEmployeeOnboardingInvite_StatesA24HourValidityWindow()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AppBaseUrl = "http://localhost:5173"
+        }));
+
+        var rendered = renderer.Render("employee_onboarding_invite", new
+        {
+            first_name = "Ada",
+            last_name = "Lovelace",
+            invite_token = "tok-xyz"
+        });
+
+        rendered.HtmlBody.Should().Contain("24 hours");
+        rendered.TextBody.Should().Contain("24 hours");
+        rendered.HtmlBody.Should().NotContain("72 hours");
+        rendered.TextBody.Should().NotContain("72 hours");
+    }
+
+    [Fact]
+    public void RenderEmployeeOnboardingInvite_WithEmptyAppBaseUrl_FallsBackToPlaceholder()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AppBaseUrl = string.Empty
+        }));
+
+        var rendered = renderer.Render("employee_onboarding_invite", new
+        {
+            first_name = "Ada",
+            last_name = "Lovelace",
+            invite_token = "tok-xyz"
+        });
+
+        rendered.TextBody.Should().Contain("token=tok-xyz");
+        rendered.TextBody.Should().Contain("placeholder");
+    }
+
+    [Fact]
+    public void RenderEmployeeOnboardingInvite_WithBase64TokenContainingUrlUnsafeCharacters_EscapesToken()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions
+        {
+            AppBaseUrl = "http://localhost:5173"
+        }));
+
+        var rendered = renderer.Render("employee_onboarding_invite", new
+        {
+            first_name = "Ada",
+            last_name = "Lovelace",
+            invite_token = "ab+c/d=="
+        });
+
+        // employee_onboarding_invite embeds the token as a URL path segment
+        // (/auth/invitations/{token}), not a query string, so a legacy Base64 token still
+        // percent-encodes safely here rather than breaking the route.
+        rendered.TextBody.Should().Contain("http://localhost:5173/auth/invitations/ab%2Bc%2Fd%3D%3D");
+        rendered.TextBody.Should().NotContain("ab+c/d==");
+    }
+
+    [Fact]
     public void RenderAdminPasswordChanged_ProducesSecurityNoticeCopy()
     {
         var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
@@ -167,5 +270,62 @@ public sealed class EmailTemplateRendererTests
 
         rendered.HtmlBody.Should().Contain("password was changed");
         rendered.TextBody.Should().Contain("If this wasn't you", "must tell the recipient how to react if this wasn't them");
+    }
+
+    [Fact]
+    public void RenderInvoiceEmail_IncludesInvoiceNumberTenantNameAmountAndDueDate()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("invoice_email", new
+        {
+            tenant_name = "Acme Co",
+            invoice_number = "INV-1001",
+            status = "open",
+            currency = "USD",
+            subtotal_amount = 100m,
+            tax_amount = 10m,
+            discount_amount = 0m,
+            total_amount = 110m,
+            period_start = "2026-08-01",
+            period_end = "2026-08-31",
+            due_at = "2026-08-20 00:00:00Z",
+            paid_at = (string?)null,
+            is_receipt = false
+        });
+
+        rendered.Subject.Should().Contain("INV-1001");
+        rendered.Subject.Should().Contain("Acme Co");
+        rendered.HtmlBody.Should().Contain("INV-1001");
+        rendered.HtmlBody.Should().Contain("Acme Co");
+        rendered.HtmlBody.Should().Contain("USD");
+        rendered.HtmlBody.Should().Contain("110");
+        rendered.HtmlBody.Should().Contain("2026-08-20 00:00:00Z");
+    }
+
+    [Fact]
+    public void RenderInvoiceEmail_PaidStatus_UsesReceiptSubject()
+    {
+        var renderer = new EmailTemplateRenderer(Options.Create(new EmailOptions()));
+
+        var rendered = renderer.Render("invoice_email", new
+        {
+            tenant_name = "Acme Co",
+            invoice_number = "INV-2002",
+            status = "paid",
+            currency = "USD",
+            subtotal_amount = 50m,
+            tax_amount = 0m,
+            discount_amount = 0m,
+            total_amount = 50m,
+            period_start = "2026-08-01",
+            period_end = "2026-08-31",
+            due_at = (string?)null,
+            paid_at = "2026-08-13 12:00:00Z",
+            is_receipt = true
+        });
+
+        rendered.Subject.Should().Contain("Payment receipt");
+        rendered.HtmlBody.Should().Contain("Paid on");
     }
 }

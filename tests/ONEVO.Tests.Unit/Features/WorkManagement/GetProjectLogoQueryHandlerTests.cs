@@ -68,7 +68,7 @@ public class GetProjectLogoQueryHandlerTests
         var project = MakeProject(Guid.NewGuid());
         _projects.Setup(r => r.GetByIdForTenantAsync(TenantId, project.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(project);
-        _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+        _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<string>());
         _members.Setup(r => r.HasActiveMembershipAsync(TenantId, project.Id, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
@@ -87,7 +87,7 @@ public class GetProjectLogoQueryHandlerTests
         var project = MakeProject(Guid.NewGuid());
         _projects.Setup(r => r.GetByIdForTenantAsync(TenantId, project.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(project);
-        _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+        _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<string> { "projects:read" });
         _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
                 TenantId, "project", It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(project.Id)), "project_cover", It.IsAny<CancellationToken>()))
@@ -107,7 +107,7 @@ public class GetProjectLogoQueryHandlerTests
         var fileId = Guid.NewGuid();
         _projects.Setup(r => r.GetByIdForTenantAsync(TenantId, project.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(project);
-        _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+        _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<string> { "projects:read" });
         _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
                 TenantId, "project", It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(project.Id)), "project_cover", It.IsAny<CancellationToken>()))
@@ -131,7 +131,7 @@ public class GetProjectLogoQueryHandlerTests
         var fileId = Guid.NewGuid();
         _projects.Setup(r => r.GetByIdForTenantAsync(TenantId, project.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(project);
-        _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+        _permissionResolver.Setup(r => r.ResolveAsync(UserId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<string>());
         _members.Setup(r => r.HasActiveMembershipAsync(TenantId, project.Id, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
