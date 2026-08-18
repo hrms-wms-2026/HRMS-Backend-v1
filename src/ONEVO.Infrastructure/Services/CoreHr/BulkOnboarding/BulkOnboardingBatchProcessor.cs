@@ -146,7 +146,13 @@ public sealed class BulkOnboardingBatchProcessor : BackgroundService
             var result = await writeService.FinalizeAsync(batch.TenantId, batch.CreatedByUserId, row.OnboardingDraftId!.Value, ct);
             if (!result.IsSuccess)
             {
-                row.Status = BulkOnboardingBatchRowStatus.FinalizeFailed;
+                // FinalizeAsync persists WaitingForSeat on the draft then returns 409 Conflict
+                // when seats are blocked - map that onto the batch row instead of finalize_failed.
+                row.Status = result.StatusCode == 409
+                    && result.Error is not null
+                    && result.Error.Contains("seat", StringComparison.OrdinalIgnoreCase)
+                    ? BulkOnboardingBatchRowStatus.WaitingForSeat
+                    : BulkOnboardingBatchRowStatus.FinalizeFailed;
                 row.ErrorMessage = result.Error;
                 continue;
             }

@@ -57,6 +57,7 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
 
         await using var db = CreateContext(new TenantContextAccessor());
         db.WorkModes.Add(new WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true });
+        db.EmploymentTypes.Add(new EmploymentType { Id = 1, Code = "full_time", Label = "Full-Time" });
 
         var tenantA = new Tenant
         {
@@ -163,10 +164,28 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
         Assert.All(rows, r => Assert.Contains(r.Status, allowed));
     }
 
-    private async Task<(BulkOnboardingBatch Batch, List<Guid> DraftIds)> SeedFinalizePendingBatchAsync()
+    [Fact]
+    public async Task ProcessOnce_FinalizeWithNoSeatsAvailable_MarksRowWaitingForSeat()
     {
-        var batch = await SeedValidatedBatchWithTwoValidRowsAsync(_tenantA, _legalEntityA, _userA);
-        var processor = CreateProcessor();
+        var blockedSeats = new BlockedSeatService();
+        var (batch, draftIds) = await SeedFinalizePendingBatchAsync(
+            includeEmployeeNumbers: true, seats: blockedSeats);
+
+        var processor = CreateProcessor(blockedSeats);
+        await processor.ProcessOnceAsync(CancellationToken.None);
+
+        await using var db = CreateContext(new TenantContextAccessor());
+        var rows = await db.Set<BulkOnboardingBatchRow>().AsNoTracking()
+            .Where(r => r.BatchId == batch.Id && draftIds.Contains(r.OnboardingDraftId!.Value)).ToListAsync();
+        Assert.All(rows, r => Assert.Equal(BulkOnboardingBatchRowStatus.WaitingForSeat, r.Status));
+    }
+
+    private async Task<(BulkOnboardingBatch Batch, List<Guid> DraftIds)> SeedFinalizePendingBatchAsync(
+        bool includeEmployeeNumbers = false, ISeatEntitlementService? seats = null)
+    {
+        var batch = await SeedValidatedBatchWithTwoValidRowsAsync(
+            _tenantA, _legalEntityA, _userA, includeEmployeeNumbers: includeEmployeeNumbers);
+        var processor = CreateProcessor(seats);
         await processor.ProcessOnceAsync(CancellationToken.None);
 
         await using var db = CreateContext(new TenantContextAccessor());
@@ -180,7 +199,8 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
     }
 
     private async Task<BulkOnboardingBatch> SeedValidatedBatchWithTwoValidRowsAsync(
-        Guid tenantId, Guid legalEntityId, Guid createdByUserId, DateTimeOffset? createdAt = null)
+        Guid tenantId, Guid legalEntityId, Guid createdByUserId, DateTimeOffset? createdAt = null,
+        bool includeEmployeeNumbers = false)
     {
         await using var db = CreateContext(new TenantContextAccessor());
         var mapping = new Dictionary<string, string?>
@@ -191,6 +211,8 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
             ["startDate"] = "Start",
             ["employmentType"] = "Type",
         };
+        if (includeEmployeeNumbers)
+            mapping["employeeNumber"] = "EmpNo";
         var batch = new BulkOnboardingBatch
         {
             Id = Guid.NewGuid(),
@@ -210,8 +232,8 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var rows = new[]
         {
-            NewValidRow(batch, tenantId, 1, "Jane", "Doe", $"jane-{suffix}@acme.com"),
-            NewValidRow(batch, tenantId, 2, "John", "Smith", $"john-{suffix}@acme.com"),
+            NewValidRow(batch, tenantId, 1, "Jane", "Doe", $"jane-{suffix}@acme.com", includeEmployeeNumbers ? $"EMP-{suffix}-1" : null),
+            NewValidRow(batch, tenantId, 2, "John", "Smith", $"john-{suffix}@acme.com", includeEmployeeNumbers ? $"EMP-{suffix}-2" : null),
         };
         db.Set<BulkOnboardingBatch>().Add(batch);
         db.Set<BulkOnboardingBatchRow>().AddRange(rows);
@@ -220,7 +242,8 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
     }
 
     private static BulkOnboardingBatchRow NewValidRow(
-        BulkOnboardingBatch batch, Guid tenantId, int rowNumber, string first, string last, string email)
+        BulkOnboardingBatch batch, Guid tenantId, int rowNumber, string first, string last, string email,
+        string? employeeNumber = null)
     {
         var raw = new Dictionary<string, string>
         {
@@ -230,6 +253,8 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
             ["Start"] = "2026-09-01",
             ["Type"] = "full_time",
         };
+        if (employeeNumber is not null)
+            raw["EmpNo"] = employeeNumber;
         return new BulkOnboardingBatchRow
         {
             Id = Guid.NewGuid(),
@@ -241,7 +266,7 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
         };
     }
 
-    private BulkOnboardingBatchProcessor CreateProcessor()
+    private BulkOnboardingBatchProcessor CreateProcessor(ISeatEntitlementService? seats = null)
     {
         var services = new ServiceCollection();
         services.AddScoped(_ => new TenantContextAccessor());
@@ -257,7 +282,10 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
         services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
         services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();
         services.AddScoped<IEmploymentTypeRepository, EfEmploymentTypeRepository>();
-        services.AddScoped<ISeatEntitlementService, SeatEntitlementService>();
+        if (seats is null)
+            services.AddScoped<ISeatEntitlementService, SeatEntitlementService>();
+        else
+            services.AddSingleton(seats);
         services.AddScoped<ICurrentUser>(_ => new StubCurrentUser());
         services.AddScoped<IDateTimeProvider>(_ => _clock);
         services.AddScoped<IOnboardingDraftWriteService>(sp => new OnboardingDraftWriteService(
@@ -302,5 +330,11 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
         public IReadOnlyList<string> Permissions => [];
         public bool HasPermission(string permission) => false;
         public bool IsAuthenticated => false;
+    }
+
+    private sealed class BlockedSeatService : ISeatEntitlementService
+    {
+        public Task<SeatDecision> EvaluateAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult(new SeatDecision(SeatDecisionStatus.Blocked, 0, 0, 0, 0, false, true, "no seats"));
     }
 }
