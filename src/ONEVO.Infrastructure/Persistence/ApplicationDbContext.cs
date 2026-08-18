@@ -209,6 +209,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<EmployeeChecklistTask> EmployeeChecklistTasks => Set<EmployeeChecklistTask>();
     public DbSet<AccessGrantRequest> AccessGrantRequests => Set<AccessGrantRequest>();
     public DbSet<OffboardingRecord> OffboardingRecords => Set<OffboardingRecord>();
+    public DbSet<OffboardingTaskBypassRequest> OffboardingTaskBypassRequests => Set<OffboardingTaskBypassRequest>();
 
     // Lookups
     public DbSet<EmploymentType> EmploymentTypes => Set<EmploymentType>();

@@ -172,6 +172,7 @@ public static class DependencyInjection
         services.AddScoped<IChecklistTemplateRepository, EfChecklistTemplateRepository>();
         services.AddScoped<IEmployeeChecklistTaskRepository, EfEmployeeChecklistTaskRepository>();
         services.AddScoped<IOffboardingRecordRepository, EfOffboardingRecordRepository>();
+        services.AddScoped<IOffboardingTaskBypassRequestRepository, EfOffboardingTaskBypassRequestRepository>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.ServiceInterfaces.IChecklistTemplateAssigneeResolver, ONEVO.Infrastructure.Services.CoreHr.Onboarding.ChecklistTemplateAssigneeResolver>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.Services.ChecklistTemplateTaskInputResolver>();
         services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();
