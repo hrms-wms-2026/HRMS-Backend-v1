@@ -299,6 +299,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxWriter, Services.SharedPlatform.Outbox.OutboxWriter>();
         services.AddScoped<IIdempotencyStore, Persistence.Repositories.SharedPlatform.Idempotency.EfIdempotencyStore>();
         services.AddHostedService<Services.SharedPlatform.Outbox.OutboxProcessor>();
+        services.AddHostedService<Services.CoreHr.BulkOnboarding.BulkOnboardingBatchProcessor>();
         services.AddHostedService<Services.Auth.Login.LoginWorkspaceSelectionChallengeCleanupService>();
 
         // Provisioning services
