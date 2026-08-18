@@ -264,6 +264,32 @@ public sealed class EfChecklistTemplateRepository(ApplicationDbContext db) : ICh
             .ToList();
     }
 
+    public async Task<IReadOnlyList<ChecklistTemplateMatch>> ListOffboardingMatchesAsync(
+        Guid tenantId, Guid legalEntityId, Guid? departmentId, Guid? positionId, CancellationToken ct = default)
+    {
+        var candidates = await db.ChecklistTemplates.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.IsActive && x.TemplateType == "offboarding" && x.LegalEntityId == legalEntityId
+                && (
+                    (positionId != null && x.PositionId == positionId)
+                    || (departmentId != null && x.PositionId == null && x.DepartmentId == departmentId)
+                    || (x.PositionId == null && x.DepartmentId == null)
+                ))
+            .ToListAsync(ct);
+
+        return candidates
+            .Select(t => new ChecklistTemplateMatch(t, t.PositionId is not null
+                ? ChecklistTemplateMatchLevels.Position
+                : t.DepartmentId is not null ? ChecklistTemplateMatchLevels.Department : ChecklistTemplateMatchLevels.Company))
+            .OrderBy(m => m.MatchLevel switch
+            {
+                ChecklistTemplateMatchLevels.Position => 0,
+                ChecklistTemplateMatchLevels.Department => 1,
+                _ => 2,
+            })
+            .ThenBy(m => m.Template.Name)
+            .ToList();
+    }
+
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }
 
@@ -272,8 +298,8 @@ public sealed class EfEmployeeChecklistTaskRepository(ApplicationDbContext db) :
     public async Task<IReadOnlyList<EmployeeChecklistTask>> InstantiateAsync(
         ChecklistTemplate template, Guid employeeId, Guid newHireUserId, string? editedTasksJson, DateOnly anchorDate, CancellationToken ct = default)
     {
-        if (!template.IsActive || template.TemplateType != "onboarding")
-            throw new ArgumentException("Only active onboarding templates can be instantiated.", nameof(template));
+        if (!template.IsActive || (template.TemplateType != "onboarding" && template.TemplateType != "offboarding"))
+            throw new ArgumentException("Only active onboarding or offboarding templates can be instantiated.", nameof(template));
 
         var mode = editedTasksJson is not null ? ChecklistTaskDueRuleMode.AbsoluteDate : ChecklistTaskDueRuleMode.OffsetDays;
         var definitions = ChecklistTaskJsonContract.Parse(editedTasksJson ?? template.TasksJson, mode);

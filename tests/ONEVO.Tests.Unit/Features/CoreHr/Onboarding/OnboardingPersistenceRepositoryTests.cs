@@ -506,6 +506,64 @@ public sealed class OnboardingPersistenceRepositoryTests
         template.TasksJson.Should().Be(originalTasksJson);
     }
 
+    [Fact]
+    public async Task InstantiateAsync_OffboardingTemplate_Succeeds()
+    {
+        await using var db = BuildDb();
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var template = new ChecklistTemplate
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, Name = "Standard Offboarding",
+            TemplateType = "offboarding", IsActive = true,
+            TasksJson = "[{\"title\":\"Return laptop\",\"ownerType\":\"employee\",\"dueOffsetDays\":0,\"isRequired\":true,\"isBypassable\":true,\"bypassPenaltyDescription\":\"None\",\"category\":\"asset_return\"}]",
+        };
+
+        var repo = new EfEmployeeChecklistTaskRepository(db);
+        var tasks = await repo.InstantiateAsync(template, employeeId, userId, editedTasksJson: null, anchorDate: new DateOnly(2026, 9, 1));
+
+        tasks.Should().ContainSingle();
+        tasks[0].LifecycleType.Should().Be("offboarding");
+        tasks[0].IsBypassable.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task InstantiateAsync_InactiveOffboardingTemplate_StillThrows()
+    {
+        await using var db = BuildDb();
+        var template = new ChecklistTemplate
+        {
+            Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), Name = "Inactive",
+            TemplateType = "offboarding", IsActive = false, TasksJson = "[]",
+        };
+
+        var repo = new EfEmployeeChecklistTaskRepository(db);
+        var act = async () => await repo.InstantiateAsync(template, Guid.NewGuid(), Guid.NewGuid(), null, new DateOnly(2026, 1, 1));
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task InstantiateAsync_OnboardingTemplate_StillSucceeds_RegressionCheck()
+    {
+        await using var db = BuildDb();
+        var tenantId = Guid.NewGuid();
+        var template = new ChecklistTemplate
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, Name = "Standard Onboarding",
+            TemplateType = "onboarding", IsActive = true,
+            TasksJson = "[{\"title\":\"Sign NDA\",\"ownerType\":\"employee\",\"dueOffsetDays\":0,\"isRequired\":true}]",
+        };
+
+        var repo = new EfEmployeeChecklistTaskRepository(db);
+        var tasks = await repo.InstantiateAsync(template, Guid.NewGuid(), Guid.NewGuid(), null, new DateOnly(2026, 1, 1));
+
+        tasks.Should().ContainSingle();
+        tasks[0].LifecycleType.Should().Be("onboarding");
+        tasks[0].IsBypassable.Should().BeFalse();
+    }
+
     private static ApplicationDbContext BuildDb()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
