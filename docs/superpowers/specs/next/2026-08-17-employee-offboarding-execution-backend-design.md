@@ -130,20 +130,23 @@ All under `/api/v1/employees/{employeeId}` (matching `EmployeesController`'s act
 
 | Method | Route | Permission | Purpose |
 |---|---|---|---|
-| POST | `offboarding` | `employees:write` | Step 1 — start |
+| POST | `offboarding` | `employees:offboard` **+ coverage** | Step 1 — start |
 | GET | `offboarding` | `employees:read` | Current/latest record + task summary (drives resume + read-only banner) |
-| POST | `offboarding/select-checklist` | `employees:write` | Step 2 — instantiate tasks from a template |
-| POST | `offboarding/cancel` | `employees:write` | §5.4 |
+| POST | `offboarding/select-checklist` | `employees:offboard` **+ coverage** | Step 2 — instantiate tasks from a template |
+| POST | `offboarding/cancel` | `employees:offboard` **+ coverage** | §5.4 |
 | GET | `checklist-tasks?lifecycleType=offboarding` | `employees:read` | Steps 3-4 — list/track |
 | PATCH | `checklist-tasks/{taskId}` | `employees:write` | Step 3 — owner/due date/required edits |
 | POST | `checklist-tasks/{taskId}/complete` | `employees:write` | Step 5 — mark done |
 | POST | `checklist-tasks/{taskId}/bypass-requests` | `employees:write` | Step 5 — request bypass |
-| POST | `offboarding/complete` | `employees:write` | Step 6 |
+| POST | `offboarding/complete` | `employees:offboard` **+ coverage** | Step 6 |
+
+"+ coverage" means `employees:offboard` alone is not sufficient — see §11. Task-level actions (patch/complete/bypass) stay at `employees:write`, uncoverage-gated: once an offboarding is properly opened by a covered, permitted actor, ordinary task administration is routine HR write work, not a repeat of the "can this person offboard this employee" decision.
 
 Cross-employee (not nested under one employee):
 
 | Method | Route | Permission | Purpose |
 |---|---|---|---|
+| GET | `/api/v1/employees/offboarding-overview` | `employees:read` | §11 — the new sidebar screen's list, coverage-scoped |
 | GET | `/api/v1/offboarding-bypass-requests?status=pending` | `employees:read` | Approval Inbox — always implicitly scoped to `approverId = current user`; no arbitrary `approverId` override. |
 | POST | `/api/v1/offboarding-bypass-requests/{id}/approve` | `employees:write` | Only if `CurrentUser.Id == request.ApproverId` |
 | POST | `/api/v1/offboarding-bypass-requests/{id}/reject` | `employees:write` | Same restriction |
@@ -166,3 +169,17 @@ Unit: `ChecklistTaskJsonContract` extended-field parsing (new fields optional/de
 ## 10. Resolved during implementation-plan research (kept here for traceability)
 
 - `IEmployeeChecklistTaskRepository`/`IChecklistTemplateRepository`'s exact current shape, `ListOnboardingMatchesAsync`'s signature, the `TenantTables` RLS-registration mechanism, and the six candidate read-only-guard handlers were all re-verified directly against the live code (not the 2026-08-13 plan document) before the implementation plan was written — see `docs/superpowers/plans/2026-08-17-employee-offboarding-execution-backend.md` for the resulting exact file paths and signatures.
+
+## 11. Coverage-scoped access and sidebar screen (added 2026-08-18, post-plan user request)
+
+The original design only wired entry via the employee-detail action button and gated every offboarding write on plain `employees:write`. The user asked for a second entry point — a dedicated People-sidebar screen showing employees the caller is management-coverage owner of — with a distinct permission for *starting* offboarding, and strict enforcement that a caller can only offboard employees within their own coverage.
+
+**Existing mechanism reused, not reinvented.** This codebase already has exactly this concept: `IEmployeeVisibilityScopeResolver.ResolveAsync(tenantId, userId, ct) -> EmployeeVisibilityScope` (`src/ONEVO.Infrastructure/Persistence/Repositories/CoreHr/EmployeeVisibilityScopeResolver.cs`) resolves a caller's `CoveredPositionIds`/`CoveredDepartmentIds`/`CompanyWideLegalEntityIds` from `management_coverage_records`, keyed off the caller's own active-primary position. `EfEmployeeRepository.ListVisibleAsync`/`GetVisibleByIdAsync` (lines ~70-82) already filter employees by exactly this: `employee's active-primary position ∈ CoveredPositionIds OR employee.DepartmentId ∈ CoveredDepartmentIds OR employee.LegalEntityId ∈ CompanyWideLegalEntityIds` (plus a self-match this feature doesn't need). **Per explicit user decision, this feature never substitutes `EmployeeVisibilityScope.Unrestricted()`** — every caller, including org:manage-style admins, is scoped by their literal coverage rows here, stricter than the existing Employees list screen's behavior (which does apply an unrestricted bypass elsewhere in the app — that bypass is simply never reached from this feature's code paths).
+
+**New permission: `employees:offboard`.** Seeded alongside the existing `employees:*` permissions in `PermissionSeeder.cs`, same `core_hr` module ownership. Gates the four offboarding-**record**-lifecycle mutations (Start/SelectChecklist/Cancel/Complete — see §6's revised table); task-level actions remain `employees:write`.
+
+**New reusable guard: `IEmployeeOffboardingCoverageGuard.EnsureCovered(Guid tenantId, Guid actingUserId, Guid targetEmployeeId, CancellationToken ct) -> Task<Result?>`** (`null` = covered, otherwise a `403 Forbidden` `Result` to return immediately) — mirrors §7's `IEmployeeOffboardingLockGuard` shape exactly. Implementation: resolve the caller's `EmployeeVisibilityScope` via the existing resolver, fetch the target employee's active-primary position (`IPositionAssignmentRepository.GetActivePrimaryAsync`, already used elsewhere in this plan), and check the same three-way membership test `ListVisibleAsync` uses (minus the self-match, which is irrelevant here — self-offboarding is already forbidden). Called from all four record-lifecycle handlers: `StartOffboardingCommandHandler`, `SelectOffboardingChecklistCommandHandler`, `CancelOffboardingCommandHandler`, `CompleteOffboardingCommandHandler` — right after the `employees:offboard` permission check has already passed at the controller layer, since permission answers "can this person offboard *anyone*" and coverage answers "can this person offboard *this* employee," two independent questions.
+
+**New endpoint: `GET /api/v1/employees/offboarding-overview`** (`employees:read`, no coverage guard needed on the read itself — the query is inherently coverage-scoped by construction, same principle as `ListVisibleAsync`). Returns, for every employee within the caller's coverage: `employeeId`, `employeeName`, `departmentName`, `positionName`, `currentOffboardingStatus` (nullable — `initiated`/`in_progress`/`completed`/`cancelled`/absent), `canStartOffboarding` (`true` when no open — `initiated`/`in_progress` — record exists). Backs the new sidebar screen (frontend spec §9). Implementation: call the existing `IChecklistTemplateRepository`-sibling pattern — reuse `IEmployeeRepository.ListVisibleAsync(tenantId, scope, filter, page, pageSize, ct)` with the resolver's raw (never-`Unrestricted()`) scope, then batch-fetch each returned employee's latest `OffboardingRecord` via a new `IOffboardingRecordRepository.GetLatestStatusesByEmployeeIdsAsync(tenantId, employeeIds, ct) -> IReadOnlyDictionary<Guid, string>` (one query, not N+1).
+
+**Sidebar entry:** a new "Offboarding" child under the existing "People" nav section (`nav-items.config.ts`), alongside the existing "Employees"/"Checklists"/"Approvals" children, gated `requiredPermissions: ['employees:read']` (viewing the coverage-scoped list needs only read access; the Start action inside the screen is separately gated on `employees:offboard`, mirroring how "Checklists" is nav-gated on `employees:read` while its own write actions require `employees:write`).
