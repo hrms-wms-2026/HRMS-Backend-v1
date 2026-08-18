@@ -16,6 +16,9 @@ public class EfTaskAssignmentRepository : ITaskAssignmentRepository
     public async Task<IReadOnlyList<TaskAssignment>> GetByTaskIdAsync(Guid taskId, CancellationToken ct = default)
         => await _db.TaskAssignments.AsNoTracking().Where(a => a.TaskId == taskId).ToListAsync(ct);
 
+    public async Task<IReadOnlyList<TaskAssignment>> GetByTaskIdsAsync(IReadOnlyList<Guid> taskIds, CancellationToken ct = default)
+        => await _db.TaskAssignments.AsNoTracking().Where(a => taskIds.Contains(a.TaskId)).ToListAsync(ct);
+
     public async Task<TaskAssignment?> GetByTaskAndEmployeeAsync(Guid taskId, Guid employeeId, CancellationToken ct = default)
         => await _db.TaskAssignments.FirstOrDefaultAsync(a => a.TaskId == taskId && a.EmployeeId == employeeId, ct);
 

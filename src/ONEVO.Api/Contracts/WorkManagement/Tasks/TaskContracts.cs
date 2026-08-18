@@ -36,7 +36,7 @@ public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
     string TaskType, Guid StatusId, string Priority, int? StoryPoints,
     DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent,
-    Guid? SprintId);
+    Guid? SprintId, IReadOnlyList<Guid> AssigneeEmployeeIds);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,
