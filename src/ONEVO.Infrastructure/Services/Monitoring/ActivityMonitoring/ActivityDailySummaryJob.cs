@@ -80,7 +80,8 @@ public sealed class ActivityDailySummaryJob : BackgroundService
         var appUsage = scope.ServiceProvider.GetRequiredService<IAppUsageSnapshotRepository>();
         var meetings = scope.ServiceProvider.GetRequiredService<IMeetingSignalRepository>();
         var summaries = scope.ServiceProvider.GetRequiredService<IActivityDailySummaryRepository>();
-        var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+        var notifications = scope.ServiceProvider
+            .GetRequiredService<ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces.INotificationRepository>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
 

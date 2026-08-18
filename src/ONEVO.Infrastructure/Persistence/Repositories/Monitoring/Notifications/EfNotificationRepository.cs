@@ -11,16 +11,16 @@ public class EfNotificationRepository : INotificationRepository
     public EfNotificationRepository(ApplicationDbContext db) => _db = db;
 
     public async Task AddAsync(Notification notification, CancellationToken ct)
-        => await _db.Notifications.AddAsync(notification, ct);
+        => await _db.MonitoringNotifications.AddAsync(notification, ct);
 
     public async Task<bool> ExistsRecentAsync(
         Guid tenantId, Guid employeeId, NotificationType type, DateTimeOffset sinceUtc, CancellationToken ct) =>
-        await _db.Notifications.AsNoTracking().AnyAsync(
+        await _db.MonitoringNotifications.AsNoTracking().AnyAsync(
             n => n.TenantId == tenantId && n.EmployeeId == employeeId && n.Type == type && n.CreatedAt >= sinceUtc, ct);
 
     public async Task<IReadOnlyList<Notification>> GetPendingForTrayAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct) =>
-        await _db.Notifications
+        await _db.MonitoringNotifications
             .AsNoTracking()
             .Where(n => n.TenantId == tenantId && n.EmployeeId == employeeId
                         && n.DeliveredToTrayAt == null
@@ -29,11 +29,11 @@ public class EfNotificationRepository : INotificationRepository
             .ToListAsync(ct);
 
     public async Task<Notification?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct) =>
-        await _db.Notifications.FirstOrDefaultAsync(n => n.TenantId == tenantId && n.Id == id, ct);
+        await _db.MonitoringNotifications.FirstOrDefaultAsync(n => n.TenantId == tenantId && n.Id == id, ct);
 
     public async Task<IReadOnlyList<Notification>> GetInboxAsync(
         Guid tenantId, Guid employeeId, int page, int pageSize, CancellationToken ct) =>
-        await _db.Notifications
+        await _db.MonitoringNotifications
             .AsNoTracking()
             .Where(n => n.TenantId == tenantId && n.EmployeeId == employeeId)
             .OrderByDescending(n => n.CreatedAt)
@@ -42,10 +42,10 @@ public class EfNotificationRepository : INotificationRepository
             .ToListAsync(ct);
 
     public async Task<int> GetInboxTotalCountAsync(Guid tenantId, Guid employeeId, CancellationToken ct) =>
-        await _db.Notifications.AsNoTracking()
+        await _db.MonitoringNotifications.AsNoTracking()
             .CountAsync(n => n.TenantId == tenantId && n.EmployeeId == employeeId, ct);
 
-    public void Update(Notification notification) => _db.Notifications.Update(notification);
+    public void Update(Notification notification) => _db.MonitoringNotifications.Update(notification);
 
     public async Task<int> SaveChangesAsync(CancellationToken ct) => await _db.SaveChangesAsync(ct);
 }

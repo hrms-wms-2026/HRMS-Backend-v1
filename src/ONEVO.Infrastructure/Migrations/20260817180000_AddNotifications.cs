@@ -8,13 +8,13 @@ namespace ONEVO.Infrastructure.Migrations
     /// <inheritdoc />
     public partial class AddNotifications : Migration
     {
-        private static readonly string[] TenantTables = ["notifications"];
+        private static readonly string[] TenantTables = ["monitoring_notifications"];
 
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
-                name: "notifications",
+                name: "monitoring_notifications",
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -30,18 +30,18 @@ namespace ONEVO.Infrastructure.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("pk_notifications", x => x.id);
+                    table.PrimaryKey("pk_monitoring_notifications", x => x.id);
                 });
 
             migrationBuilder.CreateIndex(
-                name: "ix_notifications_tenant_employee_created",
-                table: "notifications",
+                name: "ix_monitoring_notifications_tenant_employee_created",
+                table: "monitoring_notifications",
                 columns: new[] { "tenant_id", "employee_id", "created_at" },
                 descending: new[] { false, false, true });
 
             migrationBuilder.CreateIndex(
-                name: "ix_notifications_tenant_employee_type_created",
-                table: "notifications",
+                name: "ix_monitoring_notifications_tenant_employee_type_created",
+                table: "monitoring_notifications",
                 columns: new[] { "tenant_id", "employee_id", "type", "created_at" },
                 descending: new[] { false, false, false, true });
 
@@ -82,7 +82,7 @@ namespace ONEVO.Infrastructure.Migrations
             }
 
             migrationBuilder.DropTable(
-                name: "notifications");
+                name: "monitoring_notifications");
         }
     }
 }
