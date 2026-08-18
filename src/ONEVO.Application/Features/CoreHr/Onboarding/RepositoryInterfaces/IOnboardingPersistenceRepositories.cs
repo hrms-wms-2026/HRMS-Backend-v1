@@ -96,6 +96,11 @@ public interface IChecklistTemplateRepository
     Task<IReadOnlyList<ChecklistTemplateMatch>> ListOnboardingMatchesAsync(
         Guid tenantId, Guid legalEntityId, Guid? departmentId, Guid? positionId, CancellationToken ct = default);
 
+    /// <summary>Same match-level ordering as ListOnboardingMatchesAsync (position, then
+    /// department, then company/default) but for active offboarding templates.</summary>
+    Task<IReadOnlyList<ChecklistTemplateMatch>> ListOffboardingMatchesAsync(
+        Guid tenantId, Guid legalEntityId, Guid? departmentId, Guid? positionId, CancellationToken ct = default);
+
     Task AddAsync(ChecklistTemplate template, CancellationToken ct = default);
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }
