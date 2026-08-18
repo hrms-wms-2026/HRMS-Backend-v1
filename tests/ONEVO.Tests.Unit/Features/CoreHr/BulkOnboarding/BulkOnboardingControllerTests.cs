@@ -57,4 +57,15 @@ public sealed class BulkOnboardingControllerTests
         var method = typeof(BulkOnboardingController).GetMethod(nameof(BulkOnboardingController.Finalize))!;
         Assert.NotNull(method.GetCustomAttribute<IdempotentAttribute>());
     }
+
+    [Fact]
+    public void GetById_RequiresEmployeesReadPermission()
+    {
+        var method = typeof(BulkOnboardingController).GetMethod(nameof(BulkOnboardingController.GetById))!;
+        var attribute = method.GetCustomAttribute<RequirePermissionAttribute>();
+        Assert.NotNull(attribute);
+
+        var field = typeof(RequirePermissionAttribute).GetField("_permission", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.Equal("employees:read", (string)field!.GetValue(attribute)!);
+    }
 }

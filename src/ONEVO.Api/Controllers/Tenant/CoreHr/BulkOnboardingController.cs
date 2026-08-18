@@ -8,6 +8,7 @@ using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.RequestBulkOnboa
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.RequestBulkOnboardingFinalize;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.UploadBulkOnboardingBatch;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch;
+using ONEVO.Application.Features.CoreHr.BulkOnboarding.Queries.GetBulkOnboardingBatch;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 
@@ -95,5 +96,20 @@ public class BulkOnboardingController : ControllerBase
         return Ok(new BulkOnboardingBatchViewModel(
             response.Id, response.Status, response.TotalRows, response.ValidRows, response.InvalidRows,
             response.DetectedColumns, response.SuggestedMapping));
+    }
+
+    [HttpGet("{id:guid}")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetBulkOnboardingBatchQuery(id), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        var r = result.Value!;
+        return Ok(new BulkOnboardingBatchDetailViewModel(
+            r.Id, r.Status, r.TotalRows, r.ValidRows, r.InvalidRows,
+            r.Rows.Select(row => new BulkOnboardingBatchRowDetailViewModel(
+                row.RowNumber, row.Status, row.ErrorMessage, row.OnboardingDraftId)).ToList()));
     }
 }
