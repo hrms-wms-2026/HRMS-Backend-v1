@@ -1,10 +1,18 @@
 using Moq;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
+using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
+using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -57,9 +65,19 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
                     OnboardingWizardStep.EmployeeDetails, _userId, "1"));
     }
 
-    private SaveOnboardingDraftCommandHandler CreateHandler() => new(
-        _draftRepository.Object, _employeeRepository.Object, _positionRepository.Object, _legalEntityRepository.Object, _departmentRepository.Object,
-        _seatEntitlementService.Object, _workModeRepository.Object, _currentUser.Object, _clock.Object);
+    private SaveOnboardingDraftCommandHandler CreateHandler() => new(CreateWriteService(), _currentUser.Object);
+
+    private OnboardingDraftWriteService CreateWriteService() => new(
+        _draftRepository.Object, _employeeRepository.Object,
+        Mock.Of<IUserRepository>(), Mock.Of<IUserRoleRepository>(),
+        _positionRepository.Object, Mock.Of<IPositionAssignmentRepository>(),
+        _legalEntityRepository.Object, _departmentRepository.Object,
+        Mock.Of<IEmploymentTypeRepository>(), _workModeRepository.Object,
+        _seatEntitlementService.Object, Mock.Of<IAccessGrantRequestRepository>(),
+        Mock.Of<IPermissionRepository>(), Mock.Of<IChecklistTemplateRepository>(),
+        Mock.Of<IEmployeeChecklistTaskRepository>(), Mock.Of<IInvitationTokenRepository>(),
+        Mock.Of<ITenantRepository>(), Mock.Of<IOutboxWriter>(),
+        Mock.Of<ISecureTokenGenerator>(), _currentUser.Object, _clock.Object);
 
     private SaveOnboardingDraftCommand ValidCommand(Guid? draftId = null, Guid? positionId = null, string? ifMatch = null) => new(
         draftId, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, positionId,

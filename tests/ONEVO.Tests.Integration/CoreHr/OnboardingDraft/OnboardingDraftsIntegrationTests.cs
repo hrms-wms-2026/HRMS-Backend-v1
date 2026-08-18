@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
@@ -159,9 +160,19 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
         var seatEntitlementService = new SeatEntitlementService(db);
         var workModeRepository = new EfWorkModeRepository(db);
         var currentUser = new StubCurrentUser(_tenantId, _userId);
+        var writeService = new OnboardingDraftWriteService(
+            draftRepository, employeeRepository,
+            null!, null!,
+            positionRepository, null!,
+            legalEntityRepository, departmentRepository,
+            null!, workModeRepository,
+            seatEntitlementService, null!,
+            null!, null!,
+            null!, null!,
+            null!, null!,
+            null!, currentUser, _clock);
 
-        return new SaveOnboardingDraftCommandHandler(
-            draftRepository, employeeRepository, positionRepository, legalEntityRepository, departmentRepository, seatEntitlementService, workModeRepository, currentUser, _clock);
+        return new SaveOnboardingDraftCommandHandler(writeService, currentUser);
     }
 
     private SaveOnboardingDraftCommand NewCommand(

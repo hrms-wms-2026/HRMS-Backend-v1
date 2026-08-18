@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
@@ -104,7 +105,9 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         _draftRepository.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
     }
 
-    private FinalizeOnboardingDraftCommandHandler CreateHandler() => new(
+    private FinalizeOnboardingDraftCommandHandler CreateHandler() => new(CreateWriteService(), _currentUser.Object);
+
+    private OnboardingDraftWriteService CreateWriteService() => new(
         _draftRepository.Object, _employeeRepository.Object, _userRepository.Object, _userRoleRepository.Object,
         _positionRepository.Object, _positionAssignmentRepository.Object, _legalEntityRepository.Object,
         _departmentRepository.Object, _employmentTypeRepository.Object, _workModeRepository.Object,

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -129,16 +130,21 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
     private SaveOnboardingDraftCommandHandler BuildSaveHandler(ApplicationDbContext db)
     {
         var currentUser = new StubCurrentUser(_tenantId, _userId);
-        return new SaveOnboardingDraftCommandHandler(
+        var writeService = new OnboardingDraftWriteService(
             new EfOnboardingDraftRepository(db),
             new EfEmployeeRepository(db),
+            null!, null!,
             new EfPositionRepository(db),
+            null!,
             new EfLegalEntityRepository(db),
             new EfDepartmentRepository(db),
-            new SeatEntitlementService(db),
+            null!,
             new EfWorkModeRepository(db),
+            new SeatEntitlementService(db),
+            null!, null!, null!, null!, null!, null!, null!, null!,
             currentUser,
             _clock);
+        return new SaveOnboardingDraftCommandHandler(writeService, currentUser);
     }
 
     private ApplicationDbContext CreateContext(Guid? tenantId = null, string? slug = null)

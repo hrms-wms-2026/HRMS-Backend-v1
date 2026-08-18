@@ -11,6 +11,7 @@ using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
@@ -171,6 +172,7 @@ public static class DependencyInjection
         services.AddScoped<IEmployeeVisibilityScopeResolver, EmployeeVisibilityScopeResolver>();
         services.AddScoped<ISeatEntitlementService, SeatEntitlementService>();
         services.AddScoped<IOnboardingDraftRepository, EfOnboardingDraftRepository>();
+        services.AddScoped<IOnboardingDraftWriteService, OnboardingDraftWriteService>();
         services.AddScoped<IBulkOnboardingBatchRepository, EfBulkOnboardingBatchRepository>();
         services.AddScoped<IAccessGrantRequestRepository, EfAccessGrantRequestRepository>();
         services.AddScoped<IChecklistTemplateRepository, EfChecklistTemplateRepository>();
