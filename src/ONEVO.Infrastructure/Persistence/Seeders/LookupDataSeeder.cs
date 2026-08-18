@@ -80,10 +80,12 @@ public class LookupDataSeeder : IHostedService
 
     private static EmploymentStatus[] EmploymentStatuses() =>
     [
-        new() { Id = 1, Code = "active",     Label = "Active"     },
-        new() { Id = 2, Code = "on_leave",   Label = "On Leave"   },
-        new() { Id = 3, Code = "suspended",  Label = "Suspended"  },
-        new() { Id = 4, Code = "terminated", Label = "Terminated" },
+        new() { Id = 1, Code = "active",      Label = "Active"      },
+        new() { Id = 2, Code = "on_leave",    Label = "On Leave"    },
+        new() { Id = 3, Code = "suspended",   Label = "Suspended"   },
+        new() { Id = 4, Code = "terminated",  Label = "Terminated"  },
+        new() { Id = 5, Code = "offboarding", Label = "Offboarding" },
+        new() { Id = 6, Code = "resigned",    Label = "Resigned"    },
     ];
 
     private static WorkMode[] WorkModes() =>
