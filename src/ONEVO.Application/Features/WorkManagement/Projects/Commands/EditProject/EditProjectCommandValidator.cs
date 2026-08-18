@@ -23,5 +23,9 @@ public class EditProjectCommandValidator : AbstractValidator<EditProjectCommand>
         RuleFor(x => x.ActualHours)
             .GreaterThanOrEqualTo(0).WithMessage("Actual hours must not be negative.")
             .When(x => x.ActualHours is not null);
+
+        RuleFor(x => x.AllocatedHours)
+            .GreaterThanOrEqualTo(0).WithMessage("Allocated hours must not be negative.")
+            .When(x => x.AllocatedHours is not null);
     }
 }

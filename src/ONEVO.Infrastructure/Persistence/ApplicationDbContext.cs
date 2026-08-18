@@ -34,6 +34,10 @@ using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.SharedPlatform.Notifications.Entities;
+using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 using ONEVO.Domain.Features.WorkManagement.Versions.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence.Interceptors;
@@ -235,6 +239,14 @@ public class ApplicationDbContext : DbContext
     public DbSet<ProjectVersion> ProjectVersions => Set<ProjectVersion>();
     public DbSet<ReleaseCalendarEntry> ReleaseCalendarEntries => Set<ReleaseCalendarEntry>();
     public DbSet<Label> Labels => Set<Label>();
+    public DbSet<TaskStatusEntity> TaskStatuses => Set<TaskStatusEntity>();
+    public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
+    public DbSet<Sprint> Sprints => Set<Sprint>();
+    public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
+    public DbSet<TaskCreationRequest> TaskCreationRequests => Set<TaskCreationRequest>();
+    public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();
+    public DbSet<NotificationTemplate> NotificationTemplates => Set<NotificationTemplate>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

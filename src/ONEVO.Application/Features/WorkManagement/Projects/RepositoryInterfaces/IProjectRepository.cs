@@ -25,13 +25,20 @@ public interface IProjectRepository
     void Update(Project project);
 
     /// <summary>
-    /// Projects where the given user has at least one active project_members row, joined and
-    /// distinct on project_id (a user can be a member of the same project via more than one
+    /// Projects where the given employee has at least one active project_members row, joined and
+    /// distinct on project_id (an employee can be a member of the same project via more than one
     /// Objective, since project_members' uniqueness is (tenant_id, project_id, objective_id,
-    /// user_id), not (tenant_id, project_id, user_id) — this must never return the same project
-    /// twice). Both the project and the membership row must be active.
+    /// employee_id), not (tenant_id, project_id, employee_id) — this must never return the same
+    /// project twice). Both the project and the membership row must be active.
     /// </summary>
     Task<(IReadOnlyList<Project> Items, int TotalCount)> ListForMemberAsync(
-        Guid tenantId, Guid targetUserId, int skip, int take, string? sortBy, string sortDirection,
+        Guid tenantId, Guid targetEmployeeId, int skip, int take, string? sortBy, string sortDirection,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Atomically increments projects.next_task_number and returns the value to stamp on the new
+    /// task's ShortId (the pre-increment number). Uses a single UPDATE ... RETURNING so concurrent
+    /// task creates cannot collide.
+    /// </summary>
+    Task<long> IncrementAndGetNextTaskNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 }

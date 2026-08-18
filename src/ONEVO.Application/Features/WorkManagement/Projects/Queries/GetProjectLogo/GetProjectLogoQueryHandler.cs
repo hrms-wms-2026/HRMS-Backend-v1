@@ -7,6 +7,7 @@ using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
 using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 
@@ -20,6 +21,7 @@ public class GetProjectLogoQueryHandler : IRequestHandler<GetProjectLogoQuery, R
     private readonly IProjectMemberRepository _members;
     private readonly IPermissionResolver _permissionResolver;
     private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
     private readonly IFileStorageService _fileStorage;
 
     public GetProjectLogoQueryHandler(
@@ -28,6 +30,7 @@ public class GetProjectLogoQueryHandler : IRequestHandler<GetProjectLogoQuery, R
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
         ICurrentUser currentUser,
+        ICallerIdentityResolver identity,
         IFileStorageService fileStorage)
     {
         _projects = projects;
@@ -35,6 +38,7 @@ public class GetProjectLogoQueryHandler : IRequestHandler<GetProjectLogoQuery, R
         _members = members;
         _permissionResolver = permissionResolver;
         _currentUser = currentUser;
+        _identity = identity;
         _fileStorage = fileStorage;
     }
 
@@ -48,6 +52,10 @@ public class GetProjectLogoQueryHandler : IRequestHandler<GetProjectLogoQuery, R
         if (tenantId == Guid.Empty)
             return Result<FileStreamDto>.Forbidden("Tenant context missing.");
 
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
+        if (callerEmployeeId is null)
+            return Result<FileStreamDto>.Forbidden("No employee record for the current user.");
+
         var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null)
             return Result<FileStreamDto>.NotFound("Project not found.");
@@ -57,7 +65,7 @@ public class GetProjectLogoQueryHandler : IRequestHandler<GetProjectLogoQuery, R
 
         if (!hasReadPermission)
         {
-            var isMember = await _members.HasActiveMembershipAsync(tenantId, project.Id, userId, ct);
+            var isMember = await _members.HasActiveMembershipAsync(tenantId, project.Id, callerEmployeeId.Value, ct);
             if (!isMember)
                 return Result<FileStreamDto>.Forbidden("You do not have access to this project.");
         }

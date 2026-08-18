@@ -8,7 +8,7 @@
 
 ## Description
 
-Updates a Project's editable fields and cascades the same `name`/`description`/`startDate`/`targetDate` onto its Default Objective, in one transaction. `identifier` is immutable — if the request body includes one that differs from the project's current value, the request is rejected with `400`. Only the project's lead may edit it — matches Delete's existing lead-only rule (a Project is the tree's root node; only its own Head has unrestricted control over it, per `docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md` §4).
+Updates a Project's editable fields and cascades the same `name`/`description`/`startDate`/`targetDate` onto its Default Objective, in one transaction. When `allocatedHours` is sent, it updates both the Project and the Default Objective (the root-case extend-allocation path from Task Foundation Part 3). `identifier` is immutable — if the request body includes one that differs from the project's current value, the request is rejected with `400`. Only the project's lead may edit it — matches Delete's existing lead-only rule (a Project is the tree's root node; only its own Head has unrestricted control over it, per `docs/superpowers/specs/2026-08-04-work-management-milestone-hierarchy-design.md` §4).
 
 ## Request
 
@@ -23,6 +23,7 @@ Content type: `application/json`.
   "targetDate": "2027-01-01",
   "color": "#2563EB (optional, <= 20 chars)",
   "actualHours": "12 (optional, >= 0)",
+  "allocatedHours": "80 (optional, >= 0 — also updates the Default Objective; root-case extend-allocation)",
   "identifier": "WEB (optional — only send if you want the immutability check to run; omit to skip it entirely)"
 }
 ```
@@ -39,6 +40,8 @@ Content type: `application/json`.
   "isActive": true, "createdAt": "datetime", "updatedAt": "datetime|null", "isLead": true
 }
 ```
+
+**Breaking change (2026-08-14):** `leadId` now carries an `employees.id` value, not a `users.id`. The field name is unchanged. Clients that were caching or comparing against the old UserId-space value must re-fetch.
 
 ## Errors
 

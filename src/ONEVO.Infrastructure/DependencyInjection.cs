@@ -18,10 +18,14 @@ using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ReleaseCalendar.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
 using ONEVO.Infrastructure.Persistence.Repositories;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
@@ -75,6 +79,7 @@ using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.RepositoryInt
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.ServiceInterfaces;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
@@ -193,10 +198,26 @@ public static class DependencyInjection
         services.AddScoped<IProjectRepository>(sp => sp.GetRequiredService<EfProjectRepository>());
         services.AddScoped<EfObjectiveRepository>();
         services.AddScoped<IObjectiveRepository>(sp => sp.GetRequiredService<EfObjectiveRepository>());
+        services.AddScoped<EfTaskStatusRepository>();
+        services.AddScoped<ITaskStatusRepository>(sp => sp.GetRequiredService<EfTaskStatusRepository>());
+        services.AddScoped<EfWorkTaskRepository>();
+        services.AddScoped<IWorkTaskRepository>(sp => sp.GetRequiredService<EfWorkTaskRepository>());
+        services.AddScoped<EfSprintRepository>();
+        services.AddScoped<ISprintRepository>(sp => sp.GetRequiredService<EfSprintRepository>());
+        services.AddScoped<EfTaskAssignmentRepository>();
+        services.AddScoped<ITaskAssignmentRepository>(sp => sp.GetRequiredService<EfTaskAssignmentRepository>());
+        services.AddScoped<EfTaskCreationRequestRepository>();
+        services.AddScoped<ITaskCreationRequestRepository>(sp => sp.GetRequiredService<EfTaskCreationRequestRepository>());
+        services.AddScoped<EfTaskEditRequestRepository>();
+        services.AddScoped<ITaskEditRequestRepository>(sp => sp.GetRequiredService<EfTaskEditRequestRepository>());
+        services.AddScoped<EfNotificationRepository>();
+        services.AddScoped<INotificationRepository>(sp => sp.GetRequiredService<EfNotificationRepository>());
         services.AddScoped<EfObjectiveChangeRequestRepository>();
         services.AddScoped<IObjectiveChangeRequestRepository>(sp => sp.GetRequiredService<EfObjectiveChangeRequestRepository>());
         services.AddScoped<EfProjectMemberRepository>();
         services.AddScoped<IProjectMemberRepository>(sp => sp.GetRequiredService<EfProjectMemberRepository>());
+        services.AddScoped<EfProjectMemberInvitationRepository>();
+        services.AddScoped<IProjectMemberInvitationRepository>(sp => sp.GetRequiredService<EfProjectMemberInvitationRepository>());
         services.AddScoped<EfProjectVersionRepository>();
         services.AddScoped<IProjectVersionRepository>(sp => sp.GetRequiredService<EfProjectVersionRepository>());
         services.AddScoped<EfReleaseCalendarRepository>();
@@ -212,6 +233,8 @@ public static class DependencyInjection
         // Work Management - Milestone & Achievement services
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();
         services.AddScoped<IPermissionAutoGrantService, PermissionAutoGrantService>();
+        services.AddScoped<ICallerIdentityResolver, CallerIdentityResolver>();
+        services.AddScoped<IObjectiveAllocationSlackCalculator, ObjectiveAllocationSlackCalculator>();
 
         // Auth: global email directory
         services.AddScoped<IGlobalEmailDirectoryRepository, EfGlobalEmailDirectoryRepository>();
@@ -283,6 +306,7 @@ public static class DependencyInjection
 
         // Transactional outbox + idempotency
         services.AddScoped<IOutboxWriter, Services.SharedPlatform.Outbox.OutboxWriter>();
+        services.AddScoped<INotificationDispatcher, Services.SharedPlatform.Notifications.NotificationDispatcher>();
         services.AddScoped<IIdempotencyStore, Persistence.Repositories.SharedPlatform.Idempotency.EfIdempotencyStore>();
         services.AddHostedService<Services.SharedPlatform.Outbox.OutboxProcessor>();
         services.AddHostedService<Services.Auth.Login.LoginWorkspaceSelectionChallengeCleanupService>();
@@ -347,6 +371,7 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IAgentCommandRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfAgentCommandRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
+        services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
@@ -420,6 +445,7 @@ public static class DependencyInjection
         services.AddHostedService<PermissionSeeder>();
         services.AddHostedService<RoleTemplateSeeder>();
         services.AddHostedService<LookupDataSeeder>();
+        services.AddHostedService<NotificationTemplateSeeder>();
         services.AddHostedService<PlatformAccessSeeder>();
         services.AddHostedService<PositionTemplatePackSeeder>();
         services.AddHostedService<ModuleCatalogSeeder>();
