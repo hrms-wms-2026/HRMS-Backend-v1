@@ -327,6 +327,9 @@ public static class DependencyInjection
         services.AddScoped<IActivityRawBufferRepository, EfActivityRawBufferRepository>();
         services.AddScoped<IAppUsageSnapshotRepository, EfAppUsageSnapshotRepository>();
         services.AddScoped<IDeviceStateSnapshotRepository, EfDeviceStateSnapshotRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces.IMeetingSignalRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Meetings.EfMeetingSignalRepository>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();

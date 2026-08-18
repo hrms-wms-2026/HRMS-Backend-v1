@@ -34,6 +34,10 @@ public static class MonitoringErrors
     public const string DeviceTrackingDisabled =
         "Device state tracking is not enabled for this employee.";
 
+    public const string MeetingDetectionDisabledCode = "monitoring.meeting_detection_disabled";
+    public const string MeetingDetectionDisabled =
+        "Meeting detection is not enabled for this employee.";
+
     public const string AgentDeviceNotFound =
         "Agent device not found.";
 
