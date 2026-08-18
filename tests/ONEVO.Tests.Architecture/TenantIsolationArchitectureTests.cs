@@ -365,7 +365,12 @@ public class TenantIsolationArchitectureTests
         // future platform/admin read path legitimately needs one, add its
         // exact file name here together with a comment at the call site
         // explaining why tenant scoping is correctly bypassed there.
-        var allowlistedFileNames = Array.Empty<string>();
+        var allowlistedFileNames = new[]
+        {
+            // Cross-tenant worker scan: GetOldestPendingAsync. Tenant isolation is enforced by
+            // the mode-aware RLS policy plus SetAdminMode() in BulkOnboardingBatchProcessor.
+            "EfBulkOnboardingBatchRepository.cs",
+        };
 
         var srcDirectory = FindSrcDirectory();
         var offenders = Directory.GetFiles(srcDirectory, "*.cs", SearchOption.AllDirectories)
