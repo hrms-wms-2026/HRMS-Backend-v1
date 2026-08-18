@@ -38,6 +38,11 @@ public interface IPositionRepository
     Task<int> CountActiveByDepartmentAsync(
         Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default);
 
+    // Batched variant of CountActiveByDepartmentAsync: single grouped query for a page/tree of
+    // departments instead of one query per department. Missing keys mean zero active positions.
+    Task<IReadOnlyDictionary<Guid, int>> CountActiveByDepartmentIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default);
+
     Task<int> CountActiveReportsToPositionAsync(
         Guid tenantId, Guid legalEntityId, Guid positionId, CancellationToken ct = default);
 
@@ -92,6 +97,20 @@ public interface IPositionRepository
         Guid? coveredPositionId,
         Guid? coveredDepartmentId,
         int ownerOrder,
+        Guid? excludingRecordId = null,
+        CancellationToken ct = default);
+
+    // Every active coverage record for a specific covered target, regardless of owner - lets a
+    // caller (e.g. the "add coverage" UI) see which responsibility levels are already claimed by
+    // OTHER owner positions before submitting, rather than only being told after a 409 from
+    // HasActiveCoverageConflictAsync. excludingRecordId lets an edit-in-place flow exclude its own
+    // row from the occupied set.
+    Task<IReadOnlyList<ManagementCoverageRecord>> ListActiveCoverageByCoveredTargetAsync(
+        Guid tenantId,
+        Guid legalEntityId,
+        string coveredTargetType,
+        Guid? coveredPositionId,
+        Guid? coveredDepartmentId,
         Guid? excludingRecordId = null,
         CancellationToken ct = default);
 

@@ -199,6 +199,27 @@ public class EfPositionRepository : IPositionRepository
         return count;
     }
 
+    public async Task<IReadOnlyDictionary<Guid, int>> CountActiveByDepartmentIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
+    {
+        if (departmentIds.Count == 0)
+            return new Dictionary<Guid, int>();
+
+        var counts = await _db.Positions
+            .AsNoTracking()
+            .Where(position =>
+                position.TenantId == tenantId
+                && position.LegalEntityId == legalEntityId
+                && position.DepartmentId != null
+                && departmentIds.Contains(position.DepartmentId!.Value)
+                && position.IsActive)
+            .GroupBy(position => position.DepartmentId!.Value)
+            .Select(group => new { DepartmentId = group.Key, Count = group.Count() })
+            .ToListAsync(ct);
+
+        return counts.ToDictionary(row => row.DepartmentId, row => row.Count);
+    }
+
     public async Task<int> CountActiveReportsToPositionAsync(
         Guid tenantId, Guid legalEntityId, Guid positionId, CancellationToken ct = default)
     {
@@ -420,6 +441,34 @@ public class EfPositionRepository : IPositionRepository
 
         var exists = await query.AnyAsync(ct);
         return exists;
+    }
+
+    public async Task<IReadOnlyList<ManagementCoverageRecord>> ListActiveCoverageByCoveredTargetAsync(
+        Guid tenantId,
+        Guid legalEntityId,
+        string coveredTargetType,
+        Guid? coveredPositionId,
+        Guid? coveredDepartmentId,
+        Guid? excludingRecordId = null,
+        CancellationToken ct = default)
+    {
+        var query = _db.ManagementCoverageRecords
+            .AsNoTracking()
+            .Where(m =>
+                m.TenantId == tenantId
+                && m.LegalEntityId == legalEntityId
+                && m.CoveredTargetType == coveredTargetType
+                && m.CoveredPositionId == coveredPositionId
+                && m.CoveredDepartmentId == coveredDepartmentId
+                && m.Status == ManagementCoverageRecord.StatusActive);
+
+        if (excludingRecordId is { } excludeId)
+        {
+            query = query.Where(m => m.Id != excludeId);
+        }
+
+        var results = await query.OrderBy(m => m.OwnerOrder).ToListAsync(ct);
+        return results;
     }
 
     public async Task<PositionAccessTemplate?> GetAccessTemplateByPositionAsync(

@@ -205,6 +205,29 @@ public class PositionsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Gets every active coverage record for one covered target (position/department/
+    /// company), regardless of which position owns each rule - lets the "add coverage" UI show
+    /// which responsibility levels are already claimed by OTHER owners before submit.</summary>
+    [HttpGet("coverage/by-target")]
+    [RequirePermission("org:read")]
+    public async Task<IActionResult> GetCoverageByTarget(
+        Guid legalEntityId,
+        [FromQuery] string coveredTargetType,
+        [FromQuery] Guid? coveredPositionId = null,
+        [FromQuery] Guid? coveredDepartmentId = null,
+        [FromQuery] Guid? excludingRecordId = null,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new ONEVO.Application.Features.OrgStructure.Queries.GetCoverageByTarget.GetCoverageByTargetQuery(
+                legalEntityId, coveredTargetType, coveredPositionId, coveredDepartmentId, excludingRecordId),
+            ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Gets management coverage records where this position is the owner/manager.</summary>
     [HttpGet("{positionId:guid}/coverage")]
     [RequirePermission("org:read")]
