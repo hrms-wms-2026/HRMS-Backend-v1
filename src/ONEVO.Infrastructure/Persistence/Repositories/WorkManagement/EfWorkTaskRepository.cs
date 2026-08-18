@@ -43,6 +43,9 @@ public class EfWorkTaskRepository : IWorkTaskRepository
     public async Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking().Where(t => t.TenantId == tenantId && t.SprintId == sprintId).ToListAsync(ct);
 
+    // IgnoreQueryFilters() bypasses the soft-delete half of the composed query filter on
+    // purpose: a status must stay undeletable if a soft-deleted task still references it, not
+    // just active ones. Tenant scoping is preserved manually via the TenantId equality below.
     public async Task<bool> AnyActiveByStatusIdAsync(Guid tenantId, Guid statusId, CancellationToken ct = default)
         => await _db.WorkTasks.IgnoreQueryFilters()
             .AnyAsync(t => t.TenantId == tenantId && t.StatusId == statusId, ct);

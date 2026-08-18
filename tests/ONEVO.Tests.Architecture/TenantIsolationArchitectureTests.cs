@@ -361,11 +361,10 @@ public class TenantIsolationArchitectureTests
     [Fact]
     public void IgnoreQueryFilters_UsageIsExplicitlyAllowlisted()
     {
-        // No file in this codebase may call .IgnoreQueryFilters() today. If a
-        // future platform/admin read path legitimately needs one, add its
-        // exact file name here together with a comment at the call site
-        // explaining why tenant scoping is correctly bypassed there.
-        var allowlistedFileNames = Array.Empty<string>();
+        // Files that legitimately call .IgnoreQueryFilters() - each must reproduce tenant
+        // scoping manually and carry a comment at the call site explaining why the
+        // soft-delete/tenant filter is correctly bypassed there.
+        var allowlistedFileNames = new[] { "EfWorkTaskRepository.cs" };
 
         var srcDirectory = FindSrcDirectory();
         var offenders = Directory.GetFiles(srcDirectory, "*.cs", SearchOption.AllDirectories)
