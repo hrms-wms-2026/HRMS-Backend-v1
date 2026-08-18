@@ -5,7 +5,7 @@
 > (`- [ ]`) syntax for tracking. This plan was written after live root-cause investigation (browser
 > repro against the running dev servers) — the diagnosis below is confirmed, not speculative.
 
-**Goal:** Fix two independently-confirmed bugs surfaced while manually testing the Task Foundation
+**Goal:** Fix three independently-confirmed bugs surfaced while manually testing the Task Foundation
 feature against the `dapi` demo tenant: (1) the dapi demo Objective trees are internally
 over-committed — sibling Objectives' `AllocatedHours` sum to far more than their parent's, driving
 `IObjectiveAllocationSlackCalculator` deeply negative (confirmed: **-3930h** on the HWPORTAL project
@@ -13,7 +13,12 @@ root) and blocking task creation/allocation-extension approval anywhere it's hit
 "insufficient allocation" 409 error body is serialized with default PascalCase casing in three
 places, but the frontend's `tryParseInsufficientAllocation` expects camelCase, so the intended
 friendly "Not enough allocation... Request more allocation" UI never fires — the user just sees raw
-JSON text.
+JSON text; (3) **approving any `extend_allocation` change request crashes with a 500** —
+`ApproveObjectiveChangeRequestCommandHandler` throws an EF Core `InvalidOperationException`
+("cannot be tracked because another instance with the same key... is already being tracked") every
+single time, in any tenant, not just this demo data — this is a universal bug, not a seed-data
+artifact, and it blocks this plan's own manual-verification step, so it must be fixed in this same
+pass.
 
 **Scope discipline — read before touching anything:**
 - **`ObjectiveParentConstraintChecker` is NOT to be changed.** Its own doc comment states this is
@@ -84,6 +89,45 @@ already correct, no change needed): `tryParseInsufficientAllocation` does
 `AvailableSlackHours`/`SuggestedAction`, both checks fail, `tryParseInsufficientAllocation` returns
 `null`, and the code falls through to the generic error path, which is exactly the raw-JSON-dump
 behavior observed in the browser.
+
+**Root cause of the approve-500 (confirmed via full server-side stack trace, not inferred):**
+
+```
+System.InvalidOperationException: The instance of entity type 'Objective' cannot be tracked because
+another instance with the same key value for {'Id'} is already being tracked.
+   at ...EfObjectiveRepository.Update(Objective objective) ...EfObjectiveRepository.cs:line 70
+   at ...ApproveObjectiveChangeRequestCommandHandler...Handle...ApproveObjectiveChangeRequestCommandHandler.cs:line 164
+```
+
+`EfObjectiveRepository.GetByIdForTenantAsync` (`EfObjectiveRepository.cs:33-38`) uses
+`.AsNoTracking()` — so `objective` (the Objective being extended, fetched at
+`ApproveObjectiveChangeRequestCommandHandler.cs:66`) is a **detached** instance. But
+`GetTrackedActiveDirectChildrenAsync` (`EfObjectiveRepository.cs:56-61`) has no `.AsNoTracking()` —
+it's a **tracking** query. The `ExtendAllocation` branch's slack check
+(`ApproveObjectiveChangeRequestCommandHandler.cs:141`) calls it on the *approver's own objective*
+(line 137, resolved as `objective.ParentObjectiveId`) to sum that objective's children's hours — and
+since `objective` is, by definition, one of its own parent's direct children, this pulls a **second,
+separately-tracked instance of the exact same row** into the DbContext's change tracker. When the
+handler later calls `_objectives.Update(objective)` (line 164) on the original *detached* instance,
+EF's identity map already holds that other tracked instance for the same key, and the attach fails.
+
+**This is not demo-data-specific — it is structurally guaranteed to happen on every single
+`extend_allocation` approval, in any tenant.** The objective being approved is *always* a direct
+child of "the approver's own objective" (that's literally how `objective.ParentObjectiveId` is used
+to resolve the approver's objective at line 137), so the slack-check's
+`GetTrackedActiveDirectChildrenAsync` call will *always* re-fetch the same row as a second tracked
+instance. Confirm this is why the existing unit tests never caught it:
+`tests/ONEVO.Tests.Unit/Features/WorkManagement/ApproveObjectiveChangeRequestCommandHandlerTests.cs`
+mocks `IObjectiveRepository` entirely (Moq) — a mock has no change tracker, so the exact mechanism
+that crashes in production is invisible to these tests. A regression test for this needs a real
+`SqliteTestApplicationDbContext` + real `EfObjectiveRepository`, not mocks (see Task 3, Step 1).
+
+The interface docs for `IObjectiveRepository.GetTrackedActiveDirectChildrenAsync`
+(`IObjectiveRepository.cs:29-36`) already reference a `GetTrackedByIdForTenantAsync` method by name
+in a comment ("same AsNoTracking-vs-tracked distinction as GetTrackedByIdForTenantAsync") — but no
+such method actually exists on `IObjectiveRepository` today. It **does** already exist on
+`IWorkTaskRepository` (used by `EditTaskCommandHandler.cs:37`) — this is an established,
+already-idiomatic pattern in this codebase, just missing for Objectives. Adding it is the fix.
 
 ## Global Constraints
 
@@ -343,7 +387,123 @@ git commit -m "fix(work): serialize InsufficientAllocationResponse as camelCase 
 
 ---
 
-### Task 3: Reset the dev database so the fixed seeder actually re-runs clean
+### Task 3: Fix the EF Core duplicate-tracking crash on `extend_allocation` approval
+
+**Files:**
+- Modify: `src/ONEVO.Application/Features/WorkManagement/Objectives/RepositoryInterfaces/IObjectiveRepository.cs`
+- Modify: `src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfObjectiveRepository.cs`
+- Modify: `src/ONEVO.Application/Features/WorkManagement/ObjectiveChangeRequests/Commands/ApproveObjectiveChangeRequest/ApproveObjectiveChangeRequestCommandHandler.cs`
+- Test: new integration-style test using the real SQLite DbContext (mocks cannot catch this class of
+  bug — see Background)
+
+- [ ] **Step 1: Write the failing integration test**
+
+Create `tests/ONEVO.Tests.Unit/Features/WorkManagement/ApproveObjectiveChangeRequestCommandHandlerIntegrationTests.cs`,
+following the same `SqliteTestApplicationDbContext` harness pattern used in
+`WorkManagementDapiDemoSeederTests.cs` (or wherever this repo's other real-DbContext integration
+tests live — check `tests/ONEVO.Tests.Unit/Features/DevPlatform/Tenancy/` for the exact setup
+helpers/fakes to reuse, e.g. `FakeWritableTenantContext`). Seed: a tenant, a parent Objective (the
+"approver's own" one, owned by the approving employee, with enough `AllocatedHours` and no other
+children), a child Objective of it (the one being extended, owned by someone else, with
+`ReportingManagerId` set to the approver's employee id), and a pending `ObjectiveChangeRequest` of
+type `extend_allocation` targeting the child. Use the real `EfObjectiveRepository`,
+`EfObjectiveChangeRequestRepository`, `ObjectiveAllocationSlackCalculator`, and
+`ApproveObjectiveChangeRequestCommandHandler` wired together against the real DbContext — no mocks
+for the repository layer. Then:
+
+```csharp
+    [Fact]
+    public async Task Handle_ExtendAllocation_DoesNotThrowDuplicateTrackingException()
+    {
+        // Arrange: real SqliteTestApplicationDbContext, real EfObjectiveRepository, a parent
+        // Objective owned by the approver with slack, one child Objective (the one being extended)
+        // that is a direct child of the parent, and a pending extend_allocation
+        // ObjectiveChangeRequest on that child routed to the approver. This exact shape - the
+        // extended objective being a direct child of the approver's own objective - is what
+        // triggers the duplicate-tracking bug in production; do not simplify it away.
+
+        var result = await handler.Handle(new ApproveObjectiveChangeRequestCommand(requestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var updatedChild = await db.Objectives.AsNoTracking().SingleAsync(o => o.Id == childObjectiveId);
+        Assert.Equal(expectedNewAllocatedHours, updatedChild.AllocatedHours);
+    }
+```
+
+- [ ] **Step 2: Run to verify it fails with the exact production exception**
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~ApproveObjectiveChangeRequestCommandHandlerIntegrationTests`
+Expected: FAIL with `System.InvalidOperationException: The instance of entity type 'Objective' cannot
+be tracked...` — the same exception confirmed live in production. If it does *not* fail this way,
+the test arrangement doesn't match the real bug shape — fix the arrangement, don't proceed.
+
+- [ ] **Step 3: Add `GetTrackedByIdForTenantAsync` to `IObjectiveRepository`**
+
+In `IObjectiveRepository.cs`, add (mirroring the existing `GetTrackedDefaultByProjectIdAsync` doc
+style, and matching `IWorkTaskRepository`'s already-existing method of the same name):
+
+```csharp
+    /// <summary>
+    /// Same lookup as <see cref="GetByIdForTenantAsync"/>, but returns the entity tracked by the
+    /// DbContext's change tracker instead of AsNoTracking. Use on write paths that later call
+    /// <see cref="Update"/> or mutate the entity directly - tracking it from the start lets EF's
+    /// identity map correctly deduplicate against any other tracked query that touches the same
+    /// row later in the same request (see ApproveObjectiveChangeRequestCommandHandler's
+    /// extend_allocation branch for why this matters - GetTrackedActiveDirectChildrenAsync can
+    /// re-fetch this same row as part of a sibling-sum check).
+    /// </summary>
+    Task<Objective?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+```
+
+- [ ] **Step 4: Implement it in `EfObjectiveRepository`**
+
+```csharp
+    public async Task<Objective?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        return await _db.Objectives
+            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.Id == id, ct);
+    }
+```
+
+- [ ] **Step 5: Use it in the handler**
+
+In `ApproveObjectiveChangeRequestCommandHandler.cs:66`, change:
+
+```csharp
+        var objective = await _objectives.GetByIdForTenantAsync(tenantId, changeRequest.ObjectiveId, ct);
+```
+
+to:
+
+```csharp
+        var objective = await _objectives.GetTrackedByIdForTenantAsync(tenantId, changeRequest.ObjectiveId, ct);
+```
+
+**Do not remove the later `_objectives.Update(objective)` call at line 164.** Once `objective` is
+tracked from the start, EF's identity map will correctly resolve any later
+`GetTrackedActiveDirectChildrenAsync` hit on the same row to this same tracked instance (no
+duplicate), so `Update()` on it is safe — just slightly more than strictly necessary (marks every
+property Modified rather than only the changed ones, per the interface's own efficiency note on
+`GetTrackedDefaultByProjectIdAsync`). Leaving it in place keeps the existing mocked unit tests in
+`ApproveObjectiveChangeRequestCommandHandlerTests.cs` green without modification, since those assert
+`Update()` was called.
+
+- [ ] **Step 6: Run both test suites to verify**
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~ApproveObjectiveChangeRequestCommandHandler`
+Expected: the new integration test PASSes (no more `InvalidOperationException`), and all existing
+mocked tests in `ApproveObjectiveChangeRequestCommandHandlerTests.cs` still PASS unchanged.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/ONEVO.Application/Features/WorkManagement/Objectives/RepositoryInterfaces/IObjectiveRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfObjectiveRepository.cs src/ONEVO.Application/Features/WorkManagement/ObjectiveChangeRequests/Commands/ApproveObjectiveChangeRequest/ApproveObjectiveChangeRequestCommandHandler.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/ApproveObjectiveChangeRequestCommandHandlerIntegrationTests.cs
+git commit -m "fix(work): fetch the objective being extended as tracked, fixing a 500 on every extend_allocation approval"
+```
+
+---
+
+### Task 4: Reset the dev database so the fixed seeder actually re-runs clean
 
 **This is a manual operational step, not code — flag it clearly to the user rather than scripting it
 silently, since dropping a database is destructive.**
@@ -369,7 +529,7 @@ these rows don't exist yet.
 
 ---
 
-### Task 4: Manual verification — repeat the original repro, confirm it's fixed
+### Task 5: Manual verification — repeat the original repro, confirm it's fixed
 
 - [ ] Log into `https://dapi.localhost:4200` as `dapiyshanth1908@gmail.com` / `Password123!`.
 - [ ] Open HWPORTAL's project root Objective → Board tab → Create task, fill in a small positive
@@ -386,7 +546,7 @@ these rows don't exist yet.
 
 ---
 
-### Task 5: Full regression run before calling this done
+### Task 6: Full regression run before calling this done
 
 - [ ] Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~WorkManagement` (broad —
   this plan touches core Objective-tree generation, worth checking nothing else in Work Management

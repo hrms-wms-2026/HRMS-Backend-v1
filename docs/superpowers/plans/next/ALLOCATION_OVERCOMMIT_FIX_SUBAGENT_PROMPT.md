@@ -13,7 +13,7 @@ root-cause investigation (browser repro against the running dev servers, full co
 bugs), not speculation, so you should not need to re-derive the diagnosis. Read the plan's
 "Background" section first for the confirmed root causes before starting Task 1.
 
-**Two bugs, two independent fixes:**
+**Three bugs, three independent fixes:**
 1. The dapi demo seeder's `ComputeChildHours` lets sibling Objectives collectively overcommit their
    parent (confirmed: HWPORTAL's root ends up at -3930h of "available slack"), which blocks task
    creation and allocation-extension approval anywhere it's hit. Fix: normalize the hours-distribution
@@ -22,12 +22,23 @@ bugs), not speculation, so you should not need to re-derive the diagnosis. Read 
 2. Three handlers serialize the "insufficient allocation" 409 error body with default PascalCase
    casing, but the frontend expects camelCase, so the intended friendly error UI never triggers. Fix:
    a shared camelCase serialization helper, swapped in at all three call sites (Task 2 in the plan).
+3. **Approving any `extend_allocation` change request crashes with a 500** — confirmed via the real
+   production stack trace (`InvalidOperationException`, EF Core duplicate entity tracking). This is
+   NOT demo-data-specific — it is structurally guaranteed to fire on every single extend_allocation
+   approval in any tenant, because the objective being approved is always a direct child of the
+   objective whose slack gets re-checked, and the two are fetched with inconsistent tracking modes.
+   This blocks Task 5's own verification step, so it must be fixed in this same pass, not deferred.
+   Fix: add a `GetTrackedByIdForTenantAsync` method to `IObjectiveRepository` (mirroring the existing
+   `IWorkTaskRepository` method of the same name) and use it in
+   `ApproveObjectiveChangeRequestCommandHandler` (Task 3 in the plan). Note: the existing unit tests
+   for this handler mock the repository entirely and cannot catch this bug class — Task 3 requires a
+   new integration-style test against a real `SqliteTestApplicationDbContext`, not more mocks.
 
 **Explicitly out of scope — do not touch:** `ObjectiveParentConstraintChecker`. The plan's Global
 Constraints section explains why: its current per-child-vs-parent-only check is deliberate,
 pre-existing, documented design, not a bug. Only the seed data's hours-distribution formula is broken.
 
-**Task 3 (DB reset) requires the user's explicit go-ahead before you run it** — it's a destructive
+**Task 4 (DB reset) requires the user's explicit go-ahead before you run it** — it's a destructive
 step (drop/recreate the local dev database) and will also wipe any manually-created test data outside
 the deterministic dapi-demo dataset (the plan calls out a specific example: a hand-created "hi" test
 Objective). Stop and ask before doing this step; don't just run it because it's next on the checklist.
