@@ -29,7 +29,8 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
         var page = Math.Max(request.Page, 1);
         var pageSize = Math.Clamp(request.PageSize, 1, 100);
 
-        var scope = _currentUser.HasPermission("org:manage")
+        var isUnrestricted = _currentUser.HasPermission("org:manage");
+        var scope = isUnrestricted
             ? EmployeeVisibilityScope.Unrestricted()
             : await _visibilityScopeResolver.ResolveAsync(_currentUser.TenantId, _currentUser.UserId, ct);
 
@@ -40,6 +41,26 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
             page,
             pageSize,
             ct);
+
+        if (!isUnrestricted)
+        {
+            // A brand-new invitee has no active position assignment yet, so pure coverage
+            // visibility never includes them - but the person who invited them still needs to
+            // see/track/resend that invitation until it's accepted. Merge in anyone this caller
+            // invited who hasn't accepted yet and isn't already in the coverage-scoped page.
+            // Deliberately not folded into ListVisibleAsync/EmployeeVisibilityScope itself - the
+            // offboarding feature reuses those for a strictly-coverage-only guarantee that must
+            // not gain this exception (see IEmployeeRepository.ListInvitedPendingByInviterAsync).
+            var pendingInvited = await _employeeRepository.ListInvitedPendingByInviterAsync(
+                _currentUser.TenantId, _currentUser.UserId, ct);
+            var existingIds = items.Select(i => i.Id).ToHashSet();
+            var toAdd = pendingInvited.Where(i => !existingIds.Contains(i.Id)).ToList();
+            if (toAdd.Count > 0)
+            {
+                items = items.Concat(toAdd).ToList();
+                totalCount += toAdd.Count;
+            }
+        }
 
         return Result<EmployeeListPageResponse>.Success(
             new EmployeeListPageResponse(items, totalCount, page, pageSize));
