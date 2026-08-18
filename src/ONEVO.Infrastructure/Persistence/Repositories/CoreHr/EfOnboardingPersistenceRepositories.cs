@@ -314,5 +314,15 @@ public sealed class EfEmployeeChecklistTaskRepository(ApplicationDbContext db) :
         => await db.EmployeeChecklistTasks.AsNoTracking().Where(x => x.TenantId == tenantId && x.EmployeeId == employeeId)
             .OrderBy(x => x.Sequence).ThenBy(x => x.Id).ToListAsync(ct);
 
+    public Task<EmployeeChecklistTask?> GetTrackedByIdAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
+        => db.EmployeeChecklistTasks.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == taskId, ct);
+
+    public Task<IReadOnlyList<EmployeeChecklistTask>> ListByOffboardingRecordAsync(Guid tenantId, Guid offboardingRecordId, CancellationToken ct = default)
+        => db.EmployeeChecklistTasks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OffboardingRecordId == offboardingRecordId)
+            .OrderBy(x => x.Sequence).ThenBy(x => x.Id)
+            .ToListAsync(ct)
+            .ContinueWith(t => (IReadOnlyList<EmployeeChecklistTask>)t.Result, ct);
+
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }
