@@ -156,6 +156,11 @@ public sealed class EfAuthRepository :
         // Caller must call IUnitOfWork.SaveChangesAsync
     }
 
+    async Task<int> ISessionRepository.RevokeAllActiveByUserIdAsync(Guid userId, CancellationToken ct)
+        => await _db.Sessions
+            .Where(s => s.UserId == userId && !s.IsRevoked)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.IsRevoked, true), ct);
+
     public Task AddAsync(Session session, CancellationToken ct = default)
     {
         var addTask = _db.Sessions.AddAsync(session, ct).AsTask();
