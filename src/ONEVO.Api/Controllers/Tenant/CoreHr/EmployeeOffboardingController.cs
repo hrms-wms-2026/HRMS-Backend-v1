@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Offboarding;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.StartOffboarding;
+using ONEVO.Application.Features.CoreHr.Offboarding.Queries.GetOffboarding;
+using ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListOffboardingChecklistMatches;
 
 namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 
@@ -24,5 +26,21 @@ public class EmployeeOffboardingController(IMediator mediator) : ControllerBase
         return result.IsSuccess
             ? CreatedAtAction(nameof(Start), new { employeeId }, new { offboardingRecordId = result.Value })
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> Get(Guid employeeId, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetOffboardingQuery(employeeId), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("checklist-matches")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetChecklistMatches(Guid employeeId, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new ListOffboardingChecklistMatchesQuery(employeeId), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }
