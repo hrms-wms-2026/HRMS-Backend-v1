@@ -20,6 +20,9 @@ public sealed class ListEmployeesQueryHandlerTests
     {
         _currentUser.SetupGet(u => u.TenantId).Returns(_tenantId);
         _currentUser.SetupGet(u => u.UserId).Returns(_userId);
+        _scopeResolver
+            .Setup(r => r.ResolveAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeVisibilityScope(false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>()));
         _employeeRepository
             .Setup(r => r.ListVisibleAsync(
                 It.IsAny<Guid>(), It.IsAny<EmployeeVisibilityScope>(), It.IsAny<EmployeeListFilter>(),
@@ -38,19 +41,24 @@ public sealed class ListEmployeesQueryHandlerTests
         new(_employeeRepository.Object, _scopeResolver.Object, _currentUser.Object);
 
     [Fact]
-    public async Task Handle_UsesUnrestrictedScope_AndSkipsResolver_WhenCallerHasOrgManage()
+    public async Task Handle_AlwaysCallsResolver_EvenWhenCallerHasOrgManage()
     {
+        // 2026-08-18 product decision: org:manage stays unrestricted for Org Structure
+        // (Departments/Positions) but never bypasses coverage on the Employees directory.
         _currentUser.Setup(u => u.HasPermission("org:manage")).Returns(true);
+        var resolvedScope = new EmployeeVisibilityScope(
+            false, Guid.NewGuid(), new HashSet<Guid> { Guid.NewGuid() }, new HashSet<Guid>(), new HashSet<Guid>());
+        _scopeResolver
+            .Setup(r => r.ResolveAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(resolvedScope);
 
         var result = await CreateHandler().Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         _scopeResolver.Verify(
-            r => r.ResolveAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+            r => r.ResolveAsync(_tenantId, _userId, It.IsAny<CancellationToken>()), Times.Once);
         _employeeRepository.Verify(r => r.ListVisibleAsync(
-            _tenantId,
-            It.Is<EmployeeVisibilityScope>(s => s.CanViewAllTenantEmployees),
-            It.IsAny<EmployeeListFilter>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()));
+            _tenantId, resolvedScope, It.IsAny<EmployeeListFilter>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()));
     }
 
     [Fact]
@@ -76,8 +84,6 @@ public sealed class ListEmployeesQueryHandlerTests
     [InlineData(2, 500, 2, 100)]
     public async Task Handle_ClampsPageAndPageSize(int requestedPage, int requestedPageSize, int expectedPage, int expectedPageSize)
     {
-        _currentUser.Setup(u => u.HasPermission("org:manage")).Returns(true);
-
         var result = await CreateHandler().Handle(
             new ListEmployeesQuery(null, null, null, requestedPage, requestedPageSize), CancellationToken.None);
 
@@ -130,13 +136,16 @@ public sealed class ListEmployeesQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_OrgManage_NeverCallsListInvitedPendingByInviterAsync()
+    public async Task Handle_AlwaysCallsListInvitedPendingByInviterAsync_RegardlessOfOrgManage()
     {
+        // The invite exception applies to every caller now, not just non-org:manage ones - even
+        // an org:manage holder who invites someone outside their own coverage still needs to see
+        // that pending invitee until it's accepted.
         _currentUser.Setup(u => u.HasPermission("org:manage")).Returns(true);
 
         await CreateHandler().Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
         _employeeRepository.Verify(
-            r => r.ListInvitedPendingByInviterAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+            r => r.ListInvitedPendingByInviterAsync(_tenantId, _userId, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

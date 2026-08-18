@@ -41,9 +41,11 @@ public class GetEmployeeQueryHandler : IRequestHandler<GetEmployeeQuery, Result<
                 "The employee or selected organization record could not be found.");
         }
 
-        var scope = _currentUser.HasPermission("org:manage")
-            ? EmployeeVisibilityScope.Unrestricted()
-            : await _visibilityScopeResolver.ResolveAsync(_currentUser.TenantId, _currentUser.UserId, ct);
+        // org:manage stays unrestricted for Org Structure (Departments/Positions), but the
+        // Employees directory is always coverage-scoped, org:manage included - per explicit
+        // 2026-08-18 product decision. EmployeeVisibilityScope.Unrestricted() below is used only
+        // for the invite exception's targeted, per-record re-fetch, never as a permission bypass.
+        var scope = await _visibilityScopeResolver.ResolveAsync(_currentUser.TenantId, _currentUser.UserId, ct);
 
         var visible = await _employeeRepository.GetVisibleByIdAsync(
             _currentUser.TenantId, scope, request.EmployeeId, ct);
