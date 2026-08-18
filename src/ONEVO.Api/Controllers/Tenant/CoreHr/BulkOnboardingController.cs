@@ -5,6 +5,7 @@ using ONEVO.Api.Contracts.CoreHr.BulkOnboarding;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.PreviewBulkOnboardingMapping;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.RequestBulkOnboardingDraftCreation;
+using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.RequestBulkOnboardingFinalize;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.UploadBulkOnboardingBatch;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch;
 
@@ -72,6 +73,21 @@ public class BulkOnboardingController : ControllerBase
     public async Task<IActionResult> CreateDrafts(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new RequestBulkOnboardingDraftCreationCommand(id), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        var response = result.Value!;
+        return Ok(new BulkOnboardingBatchViewModel(
+            response.Id, response.Status, response.TotalRows, response.ValidRows, response.InvalidRows,
+            response.DetectedColumns, response.SuggestedMapping));
+    }
+
+    [HttpPost("{id:guid}/finalize")]
+    [RequirePermission("employees:write")]
+    [Idempotent]
+    public async Task<IActionResult> Finalize(Guid id, [FromBody] FinalizeBulkOnboardingBatchRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new RequestBulkOnboardingFinalizeCommand(id, request.OnboardingDraftIds), ct);
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 

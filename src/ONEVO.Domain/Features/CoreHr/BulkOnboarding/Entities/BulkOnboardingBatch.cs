@@ -9,6 +9,7 @@ public class BulkOnboardingBatch : BaseEntity
     public int? DefaultWorkModeId { get; set; }
     public Guid? DefaultChecklistTemplateId { get; set; }
     public string? ColumnMappingJson { get; set; }
+    public string? SelectedDraftIdsJson { get; set; }
     public string OriginalFileName { get; set; } = string.Empty;
     public string Status { get; set; } = BulkOnboardingBatchStatus.MappingPending;
     public int TotalRows { get; set; }
