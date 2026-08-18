@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Offboarding;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CompleteEmployeeChecklistTask;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CreateBypassRequest;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.UpdateEmployeeChecklistTask;
 using ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListEmployeeChecklistTasks;
 
@@ -27,5 +29,25 @@ public class EmployeeChecklistTasksController(IMediator mediator) : ControllerBa
     {
         var result = await mediator.Send(new UpdateEmployeeChecklistTaskCommand(employeeId, taskId, request.AssignedToId, request.DueDate, request.IsRequired), ct);
         return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("{taskId:guid}/complete")]
+    [RequirePermission("employees:write")]
+    [Idempotent]
+    public async Task<IActionResult> Complete(Guid employeeId, Guid taskId, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new CompleteEmployeeChecklistTaskCommand(employeeId, taskId), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("{taskId:guid}/bypass-requests")]
+    [RequirePermission("employees:write")]
+    [Idempotent]
+    public async Task<IActionResult> CreateBypassRequest(Guid employeeId, Guid taskId, [FromBody] CreateBypassRequestRequest request, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new CreateBypassRequestCommand(employeeId, taskId, request.ApproverId, request.BypassReason, request.PenaltyDescription), ct);
+        return result.IsSuccess
+            ? CreatedAtAction(nameof(List), new { employeeId }, new { bypassRequestId = result.Value })
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }
