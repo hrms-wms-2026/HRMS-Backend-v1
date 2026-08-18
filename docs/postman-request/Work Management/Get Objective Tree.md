@@ -12,6 +12,8 @@ Every active Objective for a Project, flat (client builds the tree from `parentO
 
 `200 OK` — a JSON array: `[{ "id": "guid", "parentObjectiveId": "guid|null", "isDefault": true, "title": "string", "ownerId": "guid", "startDate": "date", "endDate": "date", "allocatedHours": 40, "completedHours": 0, "isActive": true }]`
 
+**Breaking change (2026-08-14):** `ownerId` now carries an `employees.id` value, not a `users.id`. The field name is unchanged. Clients that were caching or comparing against the old UserId-space value must re-fetch.
+
 ## Errors
 
 | Status | Cause |

@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 
@@ -10,14 +11,17 @@ namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.AchievePro
 public class AchieveProjectCommandHandler : IRequestHandler<AchieveProjectCommand, Result>
 {
     private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
     private readonly IProjectRepository _projects;
     private readonly IObjectiveRepository _objectives;
     private readonly IUnitOfWork _unitOfWork;
 
     public AchieveProjectCommandHandler(
-        ICurrentUser currentUser, IProjectRepository projects, IObjectiveRepository objectives, IUnitOfWork unitOfWork)
+        ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectRepository projects,
+        IObjectiveRepository objectives, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
+        _identity = identity;
         _projects = projects;
         _objectives = objectives;
         _unitOfWork = unitOfWork;
@@ -33,11 +37,15 @@ public class AchieveProjectCommandHandler : IRequestHandler<AchieveProjectComman
         if (tenantId == Guid.Empty)
             return Result.Forbidden("Tenant context missing.");
 
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
+        if (callerEmployeeId is null)
+            return Result.Forbidden("No employee record for the current user.");
+
         var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
         if (project is null)
             return Result.NotFound("Project not found.");
 
-        if (project.LeadId != userId)
+        if (project.LeadId != callerEmployeeId.Value)
             return Result.Forbidden("Only the project lead can achieve this project.");
 
         if (project.IsAchieved)

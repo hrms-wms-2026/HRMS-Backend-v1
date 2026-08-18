@@ -14,11 +14,11 @@ public class ProjectMemberConfiguration : IEntityTypeConfiguration<ProjectMember
         builder.HasKey(m => m.Id);
         builder.Property(m => m.MembershipSource).HasMaxLength(30).IsRequired();
 
-        builder.HasIndex(m => new { m.TenantId, m.ProjectId, m.ObjectiveId, m.UserId })
+        builder.HasIndex(m => new { m.TenantId, m.ProjectId, m.ObjectiveId, m.EmployeeId })
             .IsUnique()
-            .HasDatabaseName("ix_project_members_tenant_project_objective_user");
-        builder.HasIndex(m => new { m.TenantId, m.UserId, m.IsActive, m.ProjectId })
-            .HasDatabaseName("ix_project_members_tenant_user_active_project");
+            .HasDatabaseName("ix_project_members_tenant_project_objective_employee");
+        builder.HasIndex(m => new { m.TenantId, m.EmployeeId, m.IsActive, m.ProjectId })
+            .HasDatabaseName("ix_project_members_tenant_employee_active_project");
         builder.HasIndex(m => new { m.TenantId, m.ProjectId, m.ObjectiveId, m.IsActive })
             .HasDatabaseName("ix_project_members_tenant_project_objective_active");
 

@@ -1,32 +1,31 @@
-using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.DTOs.Responses;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Helpers;
 
-/// <summary>Shared by ListProjectsQueryHandler and GetProjectByIdQueryHandler: turns a per-project capped list of active member user ids into avatar DTOs with resolved display names, batching the employee lookup across every project on the page in one call.</summary>
+/// <summary>Shared by ListProjectsQueryHandler and GetProjectByIdQueryHandler: turns a per-project capped list of active member employee ids into avatar DTOs with resolved display names, batching the employee lookup across every project on the page in one call. EmployeeId-keyed (Phase 2, 2026-08-14) - resolves names via ICallerIdentityResolver.ResolveDisplayNamesByEmployeeIdAsync rather than a direct UserId-keyed repository call.</summary>
 public static class ProjectMemberAvatarResolver
 {
     public static async Task<IReadOnlyDictionary<Guid, string>> ResolveDisplayNamesAsync(
-        IEmployeeRepository employees, Guid tenantId,
-        IReadOnlyDictionary<Guid, IReadOnlyList<Guid>> memberUserIdsByProject, CancellationToken ct)
+        ICallerIdentityResolver identity, Guid tenantId,
+        IReadOnlyDictionary<Guid, IReadOnlyList<Guid>> memberEmployeeIdsByProject, CancellationToken ct)
     {
-        var allUserIds = memberUserIdsByProject.Values.SelectMany(ids => ids).Distinct().ToList();
-        if (allUserIds.Count == 0)
+        var allEmployeeIds = memberEmployeeIdsByProject.Values.SelectMany(ids => ids).Distinct().ToList();
+        if (allEmployeeIds.Count == 0)
             return new Dictionary<Guid, string>();
 
-        var records = await employees.GetByUserIdsAsync(tenantId, allUserIds, ct);
-        return records.ToDictionary(e => e.UserId, e => $"{e.FirstName} {e.LastName}".Trim());
+        return await identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, allEmployeeIds, ct);
     }
 
     public static IReadOnlyList<ProjectMemberAvatarDto> BuildAvatars(
-        Guid projectId, IReadOnlyDictionary<Guid, IReadOnlyList<Guid>> memberUserIdsByProject,
+        Guid projectId, IReadOnlyDictionary<Guid, IReadOnlyList<Guid>> memberEmployeeIdsByProject,
         IReadOnlyDictionary<Guid, string> displayNames)
     {
-        if (!memberUserIdsByProject.TryGetValue(projectId, out var userIds))
+        if (!memberEmployeeIdsByProject.TryGetValue(projectId, out var employeeIds))
             return [];
 
-        return userIds
-            .Select(userId => new ProjectMemberAvatarDto(userId, displayNames.TryGetValue(userId, out var name) ? name : "Unknown"))
+        return employeeIds
+            .Select(employeeId => new ProjectMemberAvatarDto(employeeId, displayNames.TryGetValue(employeeId, out var name) ? name : "Unknown"))
             .ToList();
     }
 }

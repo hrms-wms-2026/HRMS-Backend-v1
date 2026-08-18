@@ -6,7 +6,7 @@ public class TransferObjectiveHeadCommandValidator : AbstractValidator<TransferO
 {
     public TransferObjectiveHeadCommandValidator()
     {
-        RuleFor(x => x.NewHeadUserId)
-            .NotEqual(Guid.Empty).WithMessage("A new head user id is required.");
+        RuleFor(x => x.NewHeadEmployeeId)
+            .NotEqual(Guid.Empty).WithMessage("A new head employee id is required.");
     }
 }

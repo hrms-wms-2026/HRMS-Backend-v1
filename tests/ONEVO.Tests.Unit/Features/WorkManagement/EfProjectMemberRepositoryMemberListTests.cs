@@ -15,35 +15,35 @@ public sealed class EfProjectMemberRepositoryMemberListTests
     private static readonly Guid TenantId = Guid.NewGuid();
 
     private static ProjectMember MakeMember(
-        Guid projectId, Guid userId, Guid? objectiveId = null, bool isActive = true,
+        Guid projectId, Guid employeeId, Guid? objectiveId = null, bool isActive = true,
         Guid? tenantId = null, DateTimeOffset? joinedAt = null) => new()
     {
         Id = Guid.NewGuid(), TenantId = tenantId ?? TenantId, ProjectId = projectId,
-        ObjectiveId = objectiveId ?? Guid.NewGuid(), UserId = userId, EmployeeId = Guid.NewGuid(),
+        ObjectiveId = objectiveId ?? Guid.NewGuid(), EmployeeId = employeeId,
         IsActive = isActive, JoinedAt = joinedAt ?? DateTimeOffset.UtcNow
     };
 
     [Fact]
-    public async Task ListDistinctActiveMemberUserIdsAsync_DeduplicatesAUserWithMultipleObjectiveMemberships()
+    public async Task ListDistinctActiveMemberEmployeeIdsAsync_DeduplicatesAnEmployeeWithMultipleObjectiveMemberships()
     {
         await using var db = BuildInMemoryDb();
         var projectId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
         db.ProjectMembers.AddRange(
-            MakeMember(projectId, userId, Guid.NewGuid()),
-            MakeMember(projectId, userId, Guid.NewGuid()));
+            MakeMember(projectId, employeeId, Guid.NewGuid()),
+            MakeMember(projectId, employeeId, Guid.NewGuid()));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
         var repository = new EfProjectMemberRepository(db);
 
-        var result = await repository.ListDistinctActiveMemberUserIdsAsync(TenantId, [projectId], takePerProject: 5, CancellationToken.None);
+        var result = await repository.ListDistinctActiveMemberEmployeeIdsAsync(TenantId, [projectId], takePerProject: 5, CancellationToken.None);
 
-        Assert.Equal([userId], result[projectId]);
+        Assert.Equal([employeeId], result[projectId]);
     }
 
     [Fact]
-    public async Task ListDistinctActiveMemberUserIdsAsync_ExcludesInactiveMemberships()
+    public async Task ListDistinctActiveMemberEmployeeIdsAsync_ExcludesInactiveMemberships()
     {
         await using var db = BuildInMemoryDb();
         var projectId = Guid.NewGuid();
@@ -53,13 +53,13 @@ public sealed class EfProjectMemberRepositoryMemberListTests
 
         var repository = new EfProjectMemberRepository(db);
 
-        var result = await repository.ListDistinctActiveMemberUserIdsAsync(TenantId, [projectId], takePerProject: 5, CancellationToken.None);
+        var result = await repository.ListDistinctActiveMemberEmployeeIdsAsync(TenantId, [projectId], takePerProject: 5, CancellationToken.None);
 
         Assert.False(result.ContainsKey(projectId));
     }
 
     [Fact]
-    public async Task ListDistinctActiveMemberUserIdsAsync_ExcludesAnotherTenant()
+    public async Task ListDistinctActiveMemberEmployeeIdsAsync_ExcludesAnotherTenant()
     {
         await using var db = BuildInMemoryDb();
         var projectId = Guid.NewGuid();
@@ -69,13 +69,13 @@ public sealed class EfProjectMemberRepositoryMemberListTests
 
         var repository = new EfProjectMemberRepository(db);
 
-        var result = await repository.ListDistinctActiveMemberUserIdsAsync(TenantId, [projectId], takePerProject: 5, CancellationToken.None);
+        var result = await repository.ListDistinctActiveMemberEmployeeIdsAsync(TenantId, [projectId], takePerProject: 5, CancellationToken.None);
 
         Assert.False(result.ContainsKey(projectId));
     }
 
     [Fact]
-    public async Task ListDistinctActiveMemberUserIdsAsync_CapsAtTakePerProject()
+    public async Task ListDistinctActiveMemberEmployeeIdsAsync_CapsAtTakePerProject()
     {
         await using var db = BuildInMemoryDb();
         var projectId = Guid.NewGuid();
@@ -89,20 +89,20 @@ public sealed class EfProjectMemberRepositoryMemberListTests
 
         var repository = new EfProjectMemberRepository(db);
 
-        var result = await repository.ListDistinctActiveMemberUserIdsAsync(TenantId, [projectId], takePerProject: 2, CancellationToken.None);
+        var result = await repository.ListDistinctActiveMemberEmployeeIdsAsync(TenantId, [projectId], takePerProject: 2, CancellationToken.None);
 
         Assert.Equal(2, result[projectId].Count);
     }
 
     [Fact]
-    public async Task CountDistinctActiveMembersAsync_CountsUniqueUsersNotRows()
+    public async Task CountDistinctActiveMembersAsync_CountsUniqueEmployeesNotRows()
     {
         await using var db = BuildInMemoryDb();
         var projectId = Guid.NewGuid();
-        var userId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
         db.ProjectMembers.AddRange(
-            MakeMember(projectId, userId, Guid.NewGuid()),
-            MakeMember(projectId, userId, Guid.NewGuid()),
+            MakeMember(projectId, employeeId, Guid.NewGuid()),
+            MakeMember(projectId, employeeId, Guid.NewGuid()),
             MakeMember(projectId, Guid.NewGuid()));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();

@@ -10,4 +10,8 @@ public interface IEmployeeRepository
     /// query. Used instead of N individual GetByUserIdAsync calls when resolving display names for a
     /// list (e.g. Owner/Reporting-Manager names across every milestone in a project).</summary>
     Task<IReadOnlyList<Employee>> GetByUserIdsAsync(Guid tenantId, IReadOnlyList<Guid> userIds, CancellationToken ct = default);
+
+    /// <summary>Looks the Employee up by its own Id (not by UserId) - used by
+    /// IMilestoneMembershipCoordinator and other EmployeeId-keyed Work Management callers.</summary>
+    Task<Employee?> GetByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 }
