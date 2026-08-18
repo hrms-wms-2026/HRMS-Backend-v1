@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Offboarding;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Features.CoreHr.Offboarding.Commands.CancelOffboarding;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.SelectOffboardingChecklist;
 using ONEVO.Application.Features.CoreHr.Offboarding.Commands.StartOffboarding;
 using ONEVO.Application.Features.CoreHr.Offboarding.Queries.GetOffboarding;
@@ -51,6 +52,15 @@ public class EmployeeOffboardingController(IMediator mediator) : ControllerBase
     public async Task<IActionResult> SelectChecklist(Guid employeeId, [FromBody] SelectOffboardingChecklistRequest request, CancellationToken ct = default)
     {
         var result = await mediator.Send(new SelectOffboardingChecklistCommand(employeeId, request.TemplateId), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("cancel")]
+    [RequirePermission("employees:write")]
+    [Idempotent]
+    public async Task<IActionResult> Cancel(Guid employeeId, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new CancelOffboardingCommand(employeeId), ct);
         return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }
