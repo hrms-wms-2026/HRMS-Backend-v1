@@ -139,6 +139,46 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
         Assert.Equal(2, tenantBDrafts);
     }
 
+    [Fact]
+    public async Task ProcessOnce_FinalizePendingBatch_FinalizesEachSelectedDraftAndCompletesBatch()
+    {
+        var (batch, draftIds) = await SeedFinalizePendingBatchAsync();
+
+        var processor = CreateProcessor();
+        await processor.ProcessOnceAsync(CancellationToken.None);
+
+        await using var db = CreateContext(new TenantContextAccessor());
+        var reloaded = await db.Set<BulkOnboardingBatch>().AsNoTracking().SingleAsync(b => b.Id == batch.Id);
+        Assert.Equal(BulkOnboardingBatchStatus.FinalizeCompleted, reloaded.Status);
+        Assert.NotNull(reloaded.CompletedAt);
+        var rows = await db.Set<BulkOnboardingBatchRow>().AsNoTracking()
+            .Where(r => r.BatchId == batch.Id && draftIds.Contains(r.OnboardingDraftId!.Value)).ToListAsync();
+        var allowed = new[]
+        {
+            BulkOnboardingBatchRowStatus.Finalized,
+            BulkOnboardingBatchRowStatus.WaitingForSeat,
+            BulkOnboardingBatchRowStatus.WaitingForPositionApproval,
+            BulkOnboardingBatchRowStatus.FinalizeFailed,
+        };
+        Assert.All(rows, r => Assert.Contains(r.Status, allowed));
+    }
+
+    private async Task<(BulkOnboardingBatch Batch, List<Guid> DraftIds)> SeedFinalizePendingBatchAsync()
+    {
+        var batch = await SeedValidatedBatchWithTwoValidRowsAsync(_tenantA, _legalEntityA, _userA);
+        var processor = CreateProcessor();
+        await processor.ProcessOnceAsync(CancellationToken.None);
+
+        await using var db = CreateContext(new TenantContextAccessor());
+        var tracked = await db.Set<BulkOnboardingBatch>().SingleAsync(b => b.Id == batch.Id);
+        var rows = await db.Set<BulkOnboardingBatchRow>().Where(r => r.BatchId == batch.Id).ToListAsync();
+        var draftIds = rows.Select(r => r.OnboardingDraftId!.Value).ToList();
+        tracked.Status = BulkOnboardingBatchStatus.FinalizePending;
+        tracked.SelectedDraftIdsJson = JsonSerializer.Serialize(draftIds);
+        await db.SaveChangesAsync();
+        return (tracked, draftIds);
+    }
+
     private async Task<BulkOnboardingBatch> SeedValidatedBatchWithTwoValidRowsAsync(
         Guid tenantId, Guid legalEntityId, Guid createdByUserId, DateTimeOffset? createdAt = null)
     {
@@ -216,6 +256,7 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
         services.AddScoped<ILegalEntityRepository, EfLegalEntityRepository>();
         services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
         services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();
+        services.AddScoped<IEmploymentTypeRepository, EfEmploymentTypeRepository>();
         services.AddScoped<ISeatEntitlementService, SeatEntitlementService>();
         services.AddScoped<ICurrentUser>(_ => new StubCurrentUser());
         services.AddScoped<IDateTimeProvider>(_ => _clock);
@@ -226,7 +267,7 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
             sp.GetRequiredService<IPositionRepository>(), null!,
             sp.GetRequiredService<ILegalEntityRepository>(),
             sp.GetRequiredService<IDepartmentRepository>(),
-            null!,
+            sp.GetRequiredService<IEmploymentTypeRepository>(),
             sp.GetRequiredService<IWorkModeRepository>(),
             sp.GetRequiredService<ISeatEntitlementService>(),
             null!, null!, null!, null!, null!, null!, null!, null!,

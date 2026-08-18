@@ -56,19 +56,18 @@ public sealed class BulkOnboardingBatchProcessor : BackgroundService
         await using var scope = _services.CreateAsyncScope();
         var batchRepository = scope.ServiceProvider.GetRequiredService<IBulkOnboardingBatchRepository>();
 
-        // Admin mode before the cross-tenant scan: bulk_onboarding_batches/_rows use the
-        // mode-aware RLS policy from Task 2, which only bypasses tenant scoping in admin mode -
-        // without this, GetOldestPendingAsync silently returns nothing forever (see Task 2/3).
         var writableTenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
         writableTenantContext.SetAdminMode();
 
-        var batch = await batchRepository.GetOldestPendingAsync(BulkOnboardingBatchStatus.DraftCreationPending, ct);
+        var batch = await batchRepository.GetOldestPendingAsync(BulkOnboardingBatchStatus.DraftCreationPending, ct)
+            ?? await batchRepository.GetOldestPendingAsync(BulkOnboardingBatchStatus.FinalizePending, ct);
         if (batch is null)
             return;
 
         var tenantRepository = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
         var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
         var writeService = scope.ServiceProvider.GetRequiredService<IOnboardingDraftWriteService>();
+        var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
 
         var tenant = await tenantRepository.GetByIdAsync(batch.TenantId, ct);
         if (tenant is null)
@@ -78,6 +77,20 @@ public sealed class BulkOnboardingBatchProcessor : BackgroundService
         }
         await tenantSwitcher.SwitchToTenantAsync(new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
 
+        if (batch.Status == BulkOnboardingBatchStatus.DraftCreationPending)
+        {
+            await ProcessDraftCreationAsync(batch, batchRepository, writeService, ct);
+        }
+        else
+        {
+            await ProcessFinalizeAsync(batch, batchRepository, writeService, clock, ct);
+        }
+    }
+
+    private static async Task ProcessDraftCreationAsync(
+        BulkOnboardingBatch batch, IBulkOnboardingBatchRepository batchRepository,
+        IOnboardingDraftWriteService writeService, CancellationToken ct)
+    {
         var rows = await batchRepository.ListTrackedRowsAsync(batch.TenantId, batch.Id, ct);
         foreach (var row in rows.Where(r => r.Status == BulkOnboardingBatchRowStatus.Valid))
         {
@@ -117,7 +130,40 @@ public sealed class BulkOnboardingBatchProcessor : BackgroundService
         }
 
         batch.Status = BulkOnboardingBatchStatus.DraftsCreated;
-        batch.CompletedAt = null; // reserved for the finalize leg's completion, not draft creation
+        batch.CompletedAt = null;
+        await batchRepository.SaveChangesAsync(ct);
+    }
+
+    private static async Task ProcessFinalizeAsync(
+        BulkOnboardingBatch batch, IBulkOnboardingBatchRepository batchRepository,
+        IOnboardingDraftWriteService writeService, IDateTimeProvider clock, CancellationToken ct)
+    {
+        var selectedIds = JsonSerializer.Deserialize<List<Guid>>(batch.SelectedDraftIdsJson ?? "[]") ?? new();
+        var rows = await batchRepository.ListTrackedRowsAsync(batch.TenantId, batch.Id, ct);
+
+        foreach (var row in rows.Where(r => r.OnboardingDraftId is not null && selectedIds.Contains(r.OnboardingDraftId!.Value)))
+        {
+            var result = await writeService.FinalizeAsync(batch.TenantId, batch.CreatedByUserId, row.OnboardingDraftId!.Value, ct);
+            if (!result.IsSuccess)
+            {
+                row.Status = BulkOnboardingBatchRowStatus.FinalizeFailed;
+                row.ErrorMessage = result.Error;
+                continue;
+            }
+
+            var outcome = result.Value!;
+            row.Status = outcome.Status switch
+            {
+                OnboardingDraftStatus.WaitingForSeat => BulkOnboardingBatchRowStatus.WaitingForSeat,
+                OnboardingDraftStatus.WaitingForPositionApproval => BulkOnboardingBatchRowStatus.WaitingForPositionApproval,
+                OnboardingDraftStatus.Finalized => BulkOnboardingBatchRowStatus.Finalized,
+                _ => BulkOnboardingBatchRowStatus.FinalizeFailed,
+            };
+            row.ErrorMessage = null;
+        }
+
+        batch.Status = BulkOnboardingBatchStatus.FinalizeCompleted;
+        batch.CompletedAt = clock.UtcNow;
         await batchRepository.SaveChangesAsync(ct);
     }
 }
