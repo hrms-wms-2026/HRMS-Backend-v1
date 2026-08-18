@@ -12,7 +12,7 @@
 
 - Work only in `C:\onevoNew\HRMS-Backend-v1`. Do not touch the frontend repo. Do not commit or push beyond staging files per-task (the executor stages and commits each task's own files; leave any final push to the user).
 - `tenantId` is never accepted from a request body or query string — always `ICurrentUser.TenantId`.
-- Every controller action carries `[RequirePermission("employees:read")]` or `[RequirePermission("employees:write")]` — no new permission code is introduced (verified against `PermissionSeeder.cs`: the existing granularity is reused).
+- Every controller action carries `[RequirePermission("employees:read")]`, `[RequirePermission("employees:write")]`, or (Task 19+) `[RequirePermission("employees:offboard")]` on the four offboarding-record-lifecycle actions specifically. `employees:offboard` is a new permission code (Task 19) — the four lifecycle actions additionally require passing `IEmployeeOffboardingCoverageGuard.EnsureCovered` (Task 19), per the user's 2026-08-18 coverage requirement; permission and coverage are independent checks (see backend design spec §11).
 - Controllers inject `IMediator` only.
 - `Result<T>`/`Result` (`src/ONEVO.Application/Common/Models/Result.cs`) is the only handler return shape; controllers convert with `result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400)`, matching `EmployeesController` exactly.
 - Migrations live flat under `src/ONEVO.Infrastructure/Migrations/`, named `{yyyyMMddHHmmss}_{PascalCaseDescription}.cs`, generated via `dotnet ef migrations add` (never hand-write `CreateTable`/`AlterTable` calls) — the tool's own timestamp is fine, no manual renaming required as long as it sorts after `20260817104921_AddAccessGrantRequestXminConcurrencyToken.cs`.
@@ -1434,9 +1434,10 @@ namespace ONEVO.Api.Controllers.Tenant.CoreHr;
 [Authorize(Policy = "TenantPolicy")]
 public class EmployeeOffboardingController(IMediator mediator) : ControllerBase
 {
-    /// <summary>Step 1 - start an employee's offboarding. Fails 409 if one is already open.</summary>
+    /// <summary>Step 1 - start an employee's offboarding. Fails 409 if one is already open, 403 if
+    /// the caller lacks employees:offboard or doesn't cover this employee (Task 19).</summary>
     [HttpPost]
-    [RequirePermission("employees:write")]
+    [RequirePermission("employees:offboard")]
     [Idempotent]
     public async Task<IActionResult> Start(Guid employeeId, [FromBody] StartOffboardingRequest request, CancellationToken ct = default)
     {
@@ -1890,7 +1891,7 @@ In `EmployeeOffboardingController.cs`, add:
 
 ```csharp
     [HttpPost("select-checklist")]
-    [RequirePermission("employees:write")]
+    [RequirePermission("employees:offboard")]
     [Idempotent]
     public async Task<IActionResult> SelectChecklist(Guid employeeId, [FromBody] SelectOffboardingChecklistRequest request, CancellationToken ct = default)
     {
@@ -2076,7 +2077,7 @@ In `EmployeeOffboardingController.cs`, add:
 
 ```csharp
     [HttpPost("cancel")]
-    [RequirePermission("employees:write")]
+    [RequirePermission("employees:offboard")]
     [Idempotent]
     public async Task<IActionResult> Cancel(Guid employeeId, CancellationToken ct = default)
     {
@@ -3330,7 +3331,7 @@ In `EmployeeOffboardingController.cs`, add:
 
 ```csharp
     [HttpPost("complete")]
-    [RequirePermission("employees:write")]
+    [RequirePermission("employees:offboard")]
     [Idempotent]
     public async Task<IActionResult> Complete(Guid employeeId, CancellationToken ct = default)
     {
@@ -3719,10 +3720,433 @@ git add tests/ONEVO.Tests.Integration/CoreHr/Offboarding/
 git commit -m "test: add employee offboarding execution integration tests"
 ```
 
+---
+
+### Task 19: `employees:offboard` permission and coverage guard
+
+**Files:**
+- Modify: `src/ONEVO.Infrastructure/Persistence/Seeders/PermissionSeeder.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/ServiceInterfaces/IEmployeeOffboardingCoverageGuard.cs`
+- Create: `src/ONEVO.Infrastructure/Services/CoreHr/Offboarding/EmployeeOffboardingCoverageGuard.cs`
+- Modify: `src/ONEVO.Infrastructure/DependencyInjection.cs`
+- Modify: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/StartOffboarding/StartOffboardingCommandHandler.cs`
+- Modify: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/SelectOffboardingChecklist/SelectOffboardingChecklistCommandHandler.cs`
+- Modify: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CancelOffboarding/CancelOffboardingCommandHandler.cs`
+- Modify: `src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CompleteOffboarding/CompleteOffboardingCommandHandler.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/EmployeeOffboardingCoverageGuardTests.cs`
+
+**Interfaces:**
+- Consumes: `IEmployeeVisibilityScopeResolver.ResolveAsync(tenantId, userId, ct) -> Task<EmployeeVisibilityScope>` (existing, `src/ONEVO.Infrastructure/Persistence/Repositories/CoreHr/EmployeeVisibilityScopeResolver.cs`), `IPositionAssignmentRepository.GetActivePrimaryAsync` (existing, already used by `ChangeEmployeePositionCommandHandler`), `IEmployeeRepository.GetByIdAsync` (CoreHr.Employee namespace, existing).
+- Produces: `IEmployeeOffboardingCoverageGuard.EnsureCovered(Guid tenantId, Guid actingUserId, Guid targetEmployeeId, CancellationToken ct = default) -> Task<Result?>` — called by all four commands' handlers, right after the controller's `[RequirePermission("employees:offboard")]` has already passed (Steps 3-4 below patched those controller actions in Tasks 9/11/12/16, already done above).
+
+- [ ] **Step 1: Add the permission**
+
+In `PermissionSeeder.cs`, alongside the existing `Perm("employees:write", ...)` line, add:
+
+```csharp
+        Perm("employees:offboard", "Start, cancel, or complete an employee's offboarding.", "core_hr"),
+```
+
+This is a data-only addition — `PermissionSeeder` follows the same idempotent-upsert-by-code convention as other lookup seeders in this codebase (verify by reading the seeder's loop before assuming — if it's an `AnyAsync()`-guarded whole-table skip like `LookupDataSeeder` (Task 1's finding), this needs the same `InsertData` migration treatment Task 1 used, not just an array edit; if it upserts per-code, the array edit alone is sufficient. Confirm which before writing Step 2.).
+
+- [ ] **Step 2: If needed, add the backfill migration (see Step 1's caveat)**
+
+If `PermissionSeeder` is whole-table-skip-guarded, create `src/ONEVO.Infrastructure/Migrations/20260818090000_AddEmployeesOffboardPermission.cs` with an `InsertData` on the `permissions` table (columns `id`, `code`, `description`, `module`, `feature_key`), following Task 1's exact pattern. Generate a fresh `Guid` id (a literal, deterministic GUID, not `Guid.NewGuid()` — migrations must be reproducible) for the permission row.
+
+- [ ] **Step 3: Interface and guard implementation**
+
+Create `IEmployeeOffboardingCoverageGuard.cs`:
+
+```csharp
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
+
+/// <summary>Enforces the 2026-08-18 coverage requirement: a caller may only act on an employee's
+/// offboarding record if that employee falls within the caller's own management_coverage_records
+/// coverage - never bypassed by an "unrestricted" flag, unlike the rest of this app's employee
+/// visibility (see design spec §11 for why that's a deliberate, stricter exception here).</summary>
+public interface IEmployeeOffboardingCoverageGuard
+{
+    Task<Result?> EnsureCovered(Guid tenantId, Guid actingUserId, Guid targetEmployeeId, CancellationToken ct = default);
+}
+```
+
+Create `src/ONEVO.Infrastructure/Services/CoreHr/Offboarding/EmployeeOffboardingCoverageGuard.cs`:
+
+```csharp
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+
+namespace ONEVO.Infrastructure.Services.CoreHr.Offboarding;
+
+public sealed class EmployeeOffboardingCoverageGuard(
+    IEmployeeVisibilityScopeResolver scopeResolver,
+    IEmployeeRepository employeeRepository,
+    IPositionAssignmentRepository positionAssignmentRepository)
+    : IEmployeeOffboardingCoverageGuard
+{
+    public async Task<Result?> EnsureCovered(Guid tenantId, Guid actingUserId, Guid targetEmployeeId, CancellationToken ct = default)
+    {
+        var employee = await employeeRepository.GetByIdAsync(tenantId, targetEmployeeId, ct);
+        if (employee is null)
+            return null; // Not this guard's concern - the caller's own not-found check handles it.
+
+        // Deliberately never substitutes EmployeeVisibilityScope.Unrestricted() - every caller,
+        // including org:manage-style admins, is scoped by literal coverage rows here (design spec §11).
+        var scope = await scopeResolver.ResolveAsync(tenantId, actingUserId, ct);
+
+        var activeAssignment = await positionAssignmentRepository.GetActivePrimaryAsync(tenantId, targetEmployeeId, ct);
+        var isCovered =
+            (activeAssignment is not null && scope.CoveredPositionIds.Contains(activeAssignment.PositionId))
+            || (employee.DepartmentId is not null && scope.CoveredDepartmentIds.Contains(employee.DepartmentId.Value))
+            || (employee.LegalEntityId is not null && scope.CompanyWideLegalEntityIds.Contains(employee.LegalEntityId.Value));
+
+        return isCovered ? null : Result.Forbidden("You do not have management coverage over this employee.");
+    }
+}
+```
+
+- [ ] **Step 4: Register in DI**
+
+In `DependencyInjection.cs`, add:
+
+```csharp
+        services.AddScoped<IEmployeeOffboardingCoverageGuard, EmployeeOffboardingCoverageGuard>();
+```
+
+- [ ] **Step 5: Wire the guard into the four record-lifecycle handlers**
+
+In `StartOffboardingCommandHandler.cs`: add `IEmployeeOffboardingCoverageGuard coverageGuard` as a constructor parameter/field, and immediately after the existing self-offboarding check:
+
+```csharp
+        if (employee.UserId == currentUser.UserId)
+            return Result<Guid>.Forbidden("You cannot start offboarding on your own record.");
+```
+
+insert:
+
+```csharp
+
+        var coverageResult = await coverageGuard.EnsureCovered(tenantId, currentUser.UserId, employee.Id, ct);
+        if (coverageResult is not null)
+            return Result<Guid>.Forbidden(coverageResult.Error!);
+```
+
+In `SelectOffboardingChecklistCommandHandler.cs`, `CancelOffboardingCommandHandler.cs`, and `CompleteOffboardingCommandHandler.cs`: same pattern — add the constructor parameter, and insert the same `coverageGuard.EnsureCovered(...)` check immediately after each handler's own not-found check on the `OffboardingRecord`/`Employee` (i.e., as early as possible once `request.EmployeeId` is known to refer to a real employee), returning the guard's `Forbidden` result (adapted to each handler's own `Result`/`Result<T>` return type) if non-null.
+
+- [ ] **Step 6: Guard unit test**
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/EmployeeOffboardingCoverageGuardTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Models;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
+using ONEVO.Infrastructure.Services.CoreHr.Offboarding;
+using Xunit;
+using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class EmployeeOffboardingCoverageGuardTests
+{
+    private readonly Mock<IEmployeeVisibilityScopeResolver> _scopeResolver = new();
+    private readonly Mock<IEmployeeRepository> _employeeRepository = new();
+    private readonly Mock<IPositionAssignmentRepository> _positionAssignmentRepository = new();
+    private readonly Guid _tenantId = Guid.NewGuid();
+    private readonly Guid _actingUserId = Guid.NewGuid();
+    private readonly Guid _employeeId = Guid.NewGuid();
+
+    private EmployeeOffboardingCoverageGuard CreateSut() =>
+        new(_scopeResolver.Object, _employeeRepository.Object, _positionAssignmentRepository.Object);
+
+    [Fact]
+    public async Task EnsureCovered_DepartmentInScope_ReturnsNull()
+    {
+        var departmentId = Guid.NewGuid();
+        _employeeRepository.Setup(r => r.GetByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeEntity { Id = _employeeId, DepartmentId = departmentId });
+        _scopeResolver.Setup(r => r.ResolveAsync(_tenantId, _actingUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeVisibilityScope(false, null, new HashSet<Guid>(), new HashSet<Guid> { departmentId }, new HashSet<Guid>()));
+
+        var result = await CreateSut().EnsureCovered(_tenantId, _actingUserId, _employeeId);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task EnsureCovered_NoOverlap_ReturnsForbidden()
+    {
+        _employeeRepository.Setup(r => r.GetByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeEntity { Id = _employeeId, DepartmentId = Guid.NewGuid(), LegalEntityId = Guid.NewGuid() });
+        _scopeResolver.Setup(r => r.ResolveAsync(_tenantId, _actingUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeVisibilityScope(true, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>()));
+
+        var result = await CreateSut().EnsureCovered(_tenantId, _actingUserId, _employeeId);
+
+        // CanViewAllTenantEmployees = true is deliberately ignored - still Forbidden.
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(403);
+    }
+}
+```
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~EmployeeOffboardingCoverageGuardTests`
+Expected: both pass — the second test is the one that actually proves the "never `Unrestricted()`" requirement, since `CanViewAllTenantEmployees: true` is passed in and the guard still returns `Forbidden`.
+
+Also re-run `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~StartOffboardingCommandHandlerTests|FullyQualifiedName~SelectOffboardingChecklistCommandHandlerTests|FullyQualifiedName~CancelOffboardingCommandHandlerTests|FullyQualifiedName~CompleteOffboardingCommandHandlerTests"` — these four existing test files (Tasks 9/11/12/16) now construct their handler with one more constructor parameter; add a `Mock<IEmployeeOffboardingCoverageGuard>` (default-mocked to return `null`, i.e. covered) to each file's setup so the existing "happy path" tests keep passing once the new parameter is wired in — this is expected, not a sign of a broken test.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/ONEVO.Infrastructure/Persistence/Seeders/PermissionSeeder.cs src/ONEVO.Infrastructure/Migrations/ src/ONEVO.Application/Features/CoreHr/Offboarding/ServiceInterfaces/IEmployeeOffboardingCoverageGuard.cs src/ONEVO.Infrastructure/Services/CoreHr/Offboarding/EmployeeOffboardingCoverageGuard.cs src/ONEVO.Infrastructure/DependencyInjection.cs src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/StartOffboarding/StartOffboardingCommandHandler.cs src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/SelectOffboardingChecklist/SelectOffboardingChecklistCommandHandler.cs src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CancelOffboarding/CancelOffboardingCommandHandler.cs src/ONEVO.Application/Features/CoreHr/Offboarding/Commands/CompleteOffboarding/CompleteOffboardingCommandHandler.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/EmployeeOffboardingCoverageGuardTests.cs
+git commit -m "feat: add employees:offboard permission and coverage guard for offboarding lifecycle actions"
+```
+
+---
+
+### Task 20: Coverage-scoped offboarding overview endpoint
+
+**Files:**
+- Modify: `src/ONEVO.Application/Features/CoreHr/Offboarding/RepositoryInterfaces/IOffboardingRecordRepository.cs`
+- Modify: `src/ONEVO.Infrastructure/Persistence/Repositories/CoreHr/Offboarding/EfOffboardingRecordRepository.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListOffboardingOverview/ListOffboardingOverviewQuery.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListOffboardingOverview/ListOffboardingOverviewQueryHandler.cs`
+- Create: `src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListOffboardingOverview/OffboardingOverviewItemResponse.cs`
+- Create: `src/ONEVO.Api/Controllers/Tenant/CoreHr/OffboardingOverviewController.cs`
+- Test: `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/ListOffboardingOverviewQueryHandlerTests.cs`
+
+**Interfaces:**
+- Consumes: `IEmployeeVisibilityScopeResolver.ResolveAsync` (existing), `IEmployeeRepository.ListVisibleAsync` (CoreHr.Employee, existing).
+- Produces: `IOffboardingRecordRepository.GetLatestStatusesByEmployeeIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default) -> Task<IReadOnlyDictionary<Guid, string>>` (absent key = no offboarding record ever existed for that employee); `OffboardingOverviewItemResponse(Guid EmployeeId, string EmployeeName, string? DepartmentName, string? PositionName, string? CurrentOffboardingStatus, bool CanStartOffboarding)`; `GET /api/v1/employees/offboarding-overview` — the frontend plan's coverage screen (Task 13) calls this exact route.
+
+- [ ] **Step 1: Repository addition**
+
+In `IOffboardingRecordRepository.cs`, add:
+
+```csharp
+    /// <summary>Batched latest-status lookup - avoids N+1 when listing many employees' offboarding
+    /// overview. Absent key means the employee has no offboarding_records row at all.</summary>
+    Task<IReadOnlyDictionary<Guid, string>> GetLatestStatusesByEmployeeIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
+```
+
+In `EfOffboardingRecordRepository.cs`, add:
+
+```csharp
+    public async Task<IReadOnlyDictionary<Guid, string>> GetLatestStatusesByEmployeeIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        var rows = await db.OffboardingRecords.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && employeeIds.Contains(x.EmployeeId))
+            .GroupBy(x => x.EmployeeId)
+            .Select(g => new { EmployeeId = g.Key, Status = g.OrderByDescending(x => x.CreatedAt).First().Status })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => r.EmployeeId, r => r.Status);
+    }
+```
+
+- [ ] **Step 2: Query, response, and handler**
+
+Create `OffboardingOverviewItemResponse.cs`:
+
+```csharp
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListOffboardingOverview;
+
+public sealed record OffboardingOverviewItemResponse(
+    Guid EmployeeId, string EmployeeName, string? DepartmentName, string? PositionName,
+    string? CurrentOffboardingStatus, bool CanStartOffboarding);
+```
+
+Create `ListOffboardingOverviewQuery.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListOffboardingOverview;
+
+public sealed record ListOffboardingOverviewQuery(int Page = 1, int PageSize = 25)
+    : IRequest<Result<IReadOnlyList<OffboardingOverviewItemResponse>>>;
+```
+
+Create `ListOffboardingOverviewQueryHandler.cs`:
+
+```csharp
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.Models;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+
+namespace ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListOffboardingOverview;
+
+public class ListOffboardingOverviewQueryHandler(
+    IEmployeeVisibilityScopeResolver scopeResolver,
+    IEmployeeRepository employeeRepository,
+    IOffboardingRecordRepository offboardingRecordRepository,
+    ICurrentUser currentUser)
+    : IRequestHandler<ListOffboardingOverviewQuery, Result<IReadOnlyList<OffboardingOverviewItemResponse>>>
+{
+    private static readonly HashSet<string> OpenStatuses = ["initiated", "in_progress"];
+
+    public async Task<Result<IReadOnlyList<OffboardingOverviewItemResponse>>> Handle(
+        ListOffboardingOverviewQuery request, CancellationToken ct)
+    {
+        var tenantId = currentUser.TenantId;
+
+        // Deliberately never EmployeeVisibilityScope.Unrestricted() - see design spec §11.
+        var scope = await scopeResolver.ResolveAsync(tenantId, currentUser.UserId, ct);
+
+        var (items, _) = await employeeRepository.ListVisibleAsync(
+            tenantId, scope, new EmployeeListFilter(null, null, null), request.Page, request.PageSize, ct);
+
+        var employeeIds = items.Select(i => i.Id).ToList();
+        var statuses = await offboardingRecordRepository.GetLatestStatusesByEmployeeIdsAsync(tenantId, employeeIds, ct);
+
+        var result = items.Select(i =>
+        {
+            statuses.TryGetValue(i.Id, out var status);
+            return new OffboardingOverviewItemResponse(
+                i.Id, $"{i.FirstName} {i.LastName}".Trim(), i.DepartmentName, i.PositionName,
+                status, CanStartOffboarding: status is null || !OpenStatuses.Contains(status));
+        }).ToList();
+
+        return Result<IReadOnlyList<OffboardingOverviewItemResponse>>.Success(result);
+    }
+}
+```
+
+(`EmployeeListItemResponse`'s exact field names — `Id`/`FirstName`/`LastName`/`DepartmentName`/`PositionName` — are assumed from `ListEmployeesQueryHandler`'s existing usage; re-verify against the live `EmployeeListItemResponse` DTO before implementing, since this plan's research didn't re-read that specific file's fields in full.)
+
+- [ ] **Step 3: Controller**
+
+Create `OffboardingOverviewController.cs`:
+
+```csharp
+using MediatR;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using ONEVO.Api.Filters;
+using ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListOffboardingOverview;
+
+namespace ONEVO.Api.Controllers.Tenant.CoreHr;
+
+[ApiController]
+[Route("api/v1/employees/offboarding-overview")]
+[Authorize(Policy = "TenantPolicy")]
+public class OffboardingOverviewController(IMediator mediator) : ControllerBase
+{
+    [HttpGet]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> List([FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new ListOffboardingOverviewQuery(page, pageSize), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+}
+```
+
+- [ ] **Step 4: Handler test**
+
+Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/ListOffboardingOverviewQueryHandlerTests.cs`:
+
+```csharp
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
+using ONEVO.Application.Features.CoreHr.Employee.Models;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.Queries.ListOffboardingOverview;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.CoreHr.Offboarding;
+
+public class ListOffboardingOverviewQueryHandlerTests
+{
+    [Fact]
+    public async Task Handle_EmployeeWithNoOffboardingRecord_CanStartOffboardingIsTrue()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var scopeResolver = new Mock<IEmployeeVisibilityScopeResolver>();
+        var employeeRepository = new Mock<IEmployeeRepository>();
+        var offboardingRecordRepository = new Mock<IOffboardingRecordRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        currentUser.Setup(c => c.UserId).Returns(userId);
+        scopeResolver.Setup(r => r.ResolveAsync(tenantId, userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeVisibilityScope(false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>()));
+        employeeRepository.Setup(r => r.ListVisibleAsync(tenantId, It.IsAny<EmployeeVisibilityScope>(), It.IsAny<EmployeeListFilter>(), 1, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<EmployeeListItemResponse> { new() { Id = employeeId, FirstName = "Ada", LastName = "Lovelace" } }, 1));
+        offboardingRecordRepository.Setup(r => r.GetLatestStatusesByEmployeeIdsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string>());
+
+        var result = await new ListOffboardingOverviewQueryHandler(scopeResolver.Object, employeeRepository.Object, offboardingRecordRepository.Object, currentUser.Object)
+            .Handle(new ListOffboardingOverviewQuery(), CancellationToken.None);
+
+        result.Value.Should().ContainSingle();
+        result.Value![0].CanStartOffboarding.Should().BeTrue();
+        result.Value[0].CurrentOffboardingStatus.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_EmployeeWithOpenOffboarding_CanStartOffboardingIsFalse()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var scopeResolver = new Mock<IEmployeeVisibilityScopeResolver>();
+        var employeeRepository = new Mock<IEmployeeRepository>();
+        var offboardingRecordRepository = new Mock<IOffboardingRecordRepository>();
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        currentUser.Setup(c => c.UserId).Returns(userId);
+        scopeResolver.Setup(r => r.ResolveAsync(tenantId, userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeVisibilityScope(false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>()));
+        employeeRepository.Setup(r => r.ListVisibleAsync(tenantId, It.IsAny<EmployeeVisibilityScope>(), It.IsAny<EmployeeListFilter>(), 1, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<EmployeeListItemResponse> { new() { Id = employeeId, FirstName = "Ada", LastName = "Lovelace" } }, 1));
+        offboardingRecordRepository.Setup(r => r.GetLatestStatusesByEmployeeIdsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [employeeId] = "in_progress" });
+
+        var result = await new ListOffboardingOverviewQueryHandler(scopeResolver.Object, employeeRepository.Object, offboardingRecordRepository.Object, currentUser.Object)
+            .Handle(new ListOffboardingOverviewQuery(), CancellationToken.None);
+
+        result.Value![0].CanStartOffboarding.Should().BeFalse();
+        result.Value[0].CurrentOffboardingStatus.Should().Be("in_progress");
+    }
+}
+```
+
+Run: `dotnet test tests/ONEVO.Tests.Unit --filter FullyQualifiedName~ListOffboardingOverviewQueryHandlerTests`
+Expected: both pass. If `EmployeeListItemResponse` construction fails to compile (per Step 2's flagged assumption), adjust the test's object initializer to match the DTO's real property names — the intent (name/department/position projected, status/CanStartOffboarding derived) stays the same regardless.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ONEVO.Application/Features/CoreHr/Offboarding/RepositoryInterfaces/IOffboardingRecordRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/CoreHr/Offboarding/EfOffboardingRecordRepository.cs src/ONEVO.Application/Features/CoreHr/Offboarding/Queries/ListOffboardingOverview/ src/ONEVO.Api/Controllers/Tenant/CoreHr/OffboardingOverviewController.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Offboarding/ListOffboardingOverviewQueryHandlerTests.cs
+git commit -m "feat: add coverage-scoped offboarding overview endpoint"
+```
+
 ## Self-Review
 
-**Spec coverage:** §4.1 (offboarding_records + gaps) → Tasks 2, 4. §4.2 (task fields) → Task 5. §4.3 (bypass table) → Tasks 3-4. §5.1 → Task 9. §5.2 → Tasks 7, 11. §5.3 → Tasks 13-15. §5.4 → Task 12. §5.5 → Task 16. §6 (API surface) → Tasks 9-16 collectively, all 12 endpoints present. §7 (read-only guard) → Task 17. §8 edge cases (bypassing own task, non-bypassable-fixed-at-template-time, all-non-required-templates, cancel-after-approvals) → covered by Tasks 12/14/16's handler logic (no orphaned-approval cleanup needed since nothing is deleted). §9 testing → Task 18, plus every task's own unit tests. Nothing in the design spec is unaddressed.
+**Spec coverage:** §4.1 (offboarding_records + gaps) → Tasks 2, 4. §4.2 (task fields) → Task 5. §4.3 (bypass table) → Tasks 3-4. §5.1 → Task 9. §5.2 → Tasks 7, 11. §5.3 → Tasks 13-15. §5.4 → Task 12. §5.5 → Task 16. §6 (API surface, including the revised permission column and the new overview endpoint) → Tasks 9-16, 20. §7 (read-only guard) → Task 17. §8 edge cases (bypassing own task, non-bypassable-fixed-at-template-time, all-non-required-templates, cancel-after-approvals) → covered by Tasks 12/14/16's handler logic (no orphaned-approval cleanup needed since nothing is deleted). §9 testing → Task 18, plus every task's own unit tests. §11 (coverage-scoped access, added 2026-08-18) → Tasks 19-20. Nothing in the design spec is unaddressed.
 
-**Placeholder scan:** Every task (1-18) contains complete, real code for every step, with one explicit and justified exception: Task 18's integration-test seed block and four test bodies are left as precise structured comments rather than inlined code, because correctly inlining them requires reading two other test files' exact current field-by-field construction first (see that task's embedded note) — hardcoding a guess here would be less honest than flagging the dependency, not more complete.
+**Placeholder scan:** Every task (1-20) contains complete, real code for every step, with two explicit and justified exceptions: Task 18's integration-test seed block and four test bodies are left as precise structured comments rather than inlined code, because correctly inlining them requires reading two other test files' exact current field-by-field construction first (see that task's embedded note); Task 20 Step 2 flags one unverified assumption (`EmployeeListItemResponse`'s exact property names) rather than guessing them, since this plan's research phase never re-read that specific DTO. Both are flagged dependencies, not missing thought — hardcoding an unverified guess would be less honest than naming what needs a quick check first.
 
-**Type consistency:** `OffboardingRecordStatuses`, `BypassRequestStatuses`, `EmployeeChecklistTaskStatuses`, `EmploymentStatusIds.Offboarding/Resigned/Terminated`, `OffboardingRecordId`, `PriorTaskStatus`, and every repository method signature introduced in Tasks 2-8 and 13 are used identically across every consuming task (9-17) — cross-checked `GetTrackedByIdAsync`'s two distinct overloads (`IOffboardingRecordRepository`'s tenant+id form from Task 2, and `IEmployeeChecklistTaskRepository`'s tenant+id form from Task 13, deliberately without an employeeId parameter since Task 15's cross-employee approve/reject flow can't supply one) are called consistently with the right one in each task that uses them.
+**Type consistency:** `OffboardingRecordStatuses`, `BypassRequestStatuses`, `EmployeeChecklistTaskStatuses`, `EmploymentStatusIds.Offboarding/Resigned/Terminated`, `OffboardingRecordId`, `PriorTaskStatus`, `employees:offboard`, and every repository method signature introduced in Tasks 2-8, 13, and 19-20 are used identically across every consuming task — cross-checked `GetTrackedByIdAsync`'s two distinct overloads (`IOffboardingRecordRepository`'s tenant+id form from Task 2, and `IEmployeeChecklistTaskRepository`'s tenant+id form from Task 13, deliberately without an employeeId parameter since Task 15's cross-employee approve/reject flow can't supply one) are called consistently with the right one in each task that uses them. Confirmed Task 19's `IEmployeeOffboardingCoverageGuard` is distinct from Task 17's `IEmployeeOffboardingLockGuard` — same naming family, different concern (coverage vs. post-completion read-only), both real and both referenced only where intended.
