@@ -331,6 +331,11 @@ public static class DependencyInjection
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();
 
+        // Monitoring - Settings (tenant-level feature toggles admin CRUD)
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Settings.RepositoryInterfaces.IMonitoringFeatureTogglesRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Settings.EfMonitoringFeatureTogglesRepository>();
+
         // Monitoring - Screenshots
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IEvidenceAssetRepository,
