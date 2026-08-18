@@ -28,4 +28,15 @@ public sealed class BulkOnboardingControllerTests
         var field = typeof(RequirePermissionAttribute).GetField("_permission", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.Equal("employees:write", (string)field!.GetValue(attribute)!);
     }
+
+    [Fact]
+    public void CreateDrafts_RequiresEmployeesWritePermission()
+    {
+        var method = typeof(BulkOnboardingController).GetMethod(nameof(BulkOnboardingController.CreateDrafts))!;
+        var attribute = method.GetCustomAttribute<RequirePermissionAttribute>();
+        Assert.NotNull(attribute);
+
+        var field = typeof(RequirePermissionAttribute).GetField("_permission", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.Equal("employees:write", (string)field!.GetValue(attribute)!);
+    }
 }
