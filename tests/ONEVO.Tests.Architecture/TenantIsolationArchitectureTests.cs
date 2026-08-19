@@ -370,6 +370,10 @@ public class TenantIsolationArchitectureTests
             // Cross-tenant worker scan: GetOldestPendingAsync. Tenant isolation is enforced by
             // the mode-aware RLS policy plus SetAdminMode() in BulkOnboardingBatchProcessor.
             "EfBulkOnboardingBatchRepository.cs",
+            // Soft-delete-aware status reference check: AnyActiveByStatusIdAsync must see
+            // soft-deleted tasks too, while preserving tenant scoping with an explicit TenantId
+            // predicate in EfWorkTaskRepository.
+            "EfWorkTaskRepository.cs",
         };
 
         var srcDirectory = FindSrcDirectory();
