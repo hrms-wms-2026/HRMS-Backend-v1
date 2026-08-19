@@ -2,6 +2,7 @@ using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.Security;
 using ONEVO.Application.Common.ServiceInterfaces;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
@@ -62,6 +63,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
     private readonly ISecureTokenGenerator _tokenGenerator;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
+    private readonly IUnitOfWork _unitOfWork;
 
     public OnboardingDraftWriteService(
         IOnboardingDraftRepository draftRepository,
@@ -84,7 +86,8 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         IOutboxWriter outboxWriter,
         ISecureTokenGenerator tokenGenerator,
         ICurrentUser currentUser,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IUnitOfWork unitOfWork)
     {
         _draftRepository = draftRepository;
         _employeeRepository = employeeRepository;
@@ -107,6 +110,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         _tokenGenerator = tokenGenerator;
         _currentUser = currentUser;
         _clock = clock;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<Result<OnboardingDraftResponse>> SaveAsync(
@@ -363,13 +367,15 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             accessTemplate = await _positionRepository.GetAccessTemplateByPositionAsync(tenantId, draft.PositionId.Value, ct);
         }
         var requiresApproval = accessTemplate is { IsActive: true, RequiresApproval: true };
+        var bypassApproval = requiresApproval
+            && await _permissionRepository.UserHasPermissionCodeAsync(actingUserId, "roles:manage", _clock.UtcNow, ct);
 
-        if (requiresApproval)
+        if (requiresApproval && !bypassApproval)
         {
             return await FinalizeWithPendingApprovalAsync(draft, accessTemplate!, position!, actingUserId, ct);
         }
 
-        return await FinalizeImmediatelyAsync(draft, accessTemplate, position, employmentTypeId.Value, actingUserId, ct);
+        return await FinalizeImmediatelyAsync(draft, accessTemplate, position, employmentTypeId.Value, actingUserId, bypassApproval, ct);
     }
 
     private async Task<Result<FinalizeOnboardingDraftResponse>> FinalizeWithPendingApprovalAsync(
@@ -433,7 +439,8 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
     }
 
     private async Task<Result<FinalizeOnboardingDraftResponse>> FinalizeImmediatelyAsync(
-        OnboardingDraftEntity draft, PositionAccessTemplate? accessTemplate, Position? position, int employmentTypeId, Guid actingUserId, CancellationToken ct)
+        OnboardingDraftEntity draft, PositionAccessTemplate? accessTemplate, Position? position, int employmentTypeId,
+        Guid actingUserId, bool selfAuthorizedBypass, CancellationToken ct)
     {
         var seatDecision = await _seatEntitlementService.EvaluateAsync(draft.TenantId, ct);
         if (seatDecision.Status == SeatDecisionStatus.Blocked)
@@ -532,81 +539,143 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         await _employeeRepository.AddAsync(employee, ct);
 
         Guid? reservedAssignmentId = null;
-        if (position is not null)
-        {
-            reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
-                draft.TenantId, employeeId, position.Id, draft.StartDate, actingUserId, draft.ReportsToEmployeeId, ct);
-            if (reservedAssignmentId is null)
-                return Result<FinalizeOnboardingDraftResponse>.Conflict("This position has reached its capacity.");
-        }
 
-        // The only role ever assigned here is the position access template's own RoleId - never
-        // a hardcoded Owner/Admin default.
-        if (accessTemplate is { IsActive: true, RequiresApproval: false })
+        // The employee row above is only tracked in memory so far - nothing is in the database
+        // yet. TryReservePositionAssignmentAsync inserts via raw SQL directly against Postgres,
+        // and position_assignments.employee_id has a FK to employees, so the employee row must
+        // already be committed before that insert runs. Everything from here through the final
+        // save therefore has to happen inside one explicit transaction: an intermediate
+        // SaveChangesAsync flushes user+employee+checklist tasks first, and a capacity conflict
+        // throws to roll the whole transaction back instead of leaving an orphaned employee/user
+        // with no position assignment.
+        try
         {
-            var userRole = new UserRole
+            await _unitOfWork.ExecuteInTransactionAsync(async txnCt =>
             {
-                TenantId = draft.TenantId,
-                UserId = user.Id,
-                RoleId = accessTemplate.RoleId,
-                AssignedAt = _clock.UtcNow,
-                AssignedBy = actingUserId,
-                SourcePositionId = draft.PositionId,
-                SourcePositionAccessTemplateId = accessTemplate.Id,
-            };
-            await _userRoleRepository.AddAsync(userRole, ct);
+                await _draftRepository.SaveChangesAsync(txnCt);
+
+                if (position is not null)
+                {
+                    reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
+                        draft.TenantId, employeeId, position.Id, draft.StartDate, actingUserId, draft.ReportsToEmployeeId, txnCt);
+                    if (reservedAssignmentId is null)
+                        throw new PositionAtCapacityException();
+                }
+
+                if (selfAuthorizedBypass)
+                {
+                    var grantRequest = new AccessGrantRequest
+                    {
+                        Id = Guid.NewGuid(),
+                        TenantId = draft.TenantId,
+                        EmployeeId = employeeId,
+                        UserId = user.Id,
+                        OnboardingDraftId = draft.Id,
+                        ActionType = AccessGrantActionType.EmployeeOnboarding,
+                        TargetPositionId = draft.PositionId!.Value,
+                        TargetDepartmentId = position!.DepartmentId!.Value,
+                        PositionAccessTemplateId = accessTemplate!.Id,
+                        RequestedRoleId = accessTemplate.RoleId,
+                        ApprovalStatus = "Approved",
+                        RequestedByUserId = actingUserId,
+                        DecidedByUserId = actingUserId,
+                        RequestedAt = _clock.UtcNow,
+                        DecidedAt = _clock.UtcNow,
+                        EffectiveFrom = ToUtcMidnight(draft.StartDate),
+                        ReservedPositionAssignmentId = reservedAssignmentId,
+                        DecisionNote = "Self-authorized: requester holds roles:manage.",
+                    };
+                    await _accessGrantRequestRepository.AddAsync(grantRequest, txnCt);
+                }
+
+                // The only role ever assigned here is the position access template's own RoleId -
+                // never a hardcoded Owner/Admin default. Also assigned when a roles:manage holder
+                // is self-authorizing a bypass past a template that does require approval.
+                if (accessTemplate is { IsActive: true } && (!accessTemplate.RequiresApproval || selfAuthorizedBypass))
+                {
+                    var userRole = new UserRole
+                    {
+                        TenantId = draft.TenantId,
+                        UserId = user.Id,
+                        RoleId = accessTemplate.RoleId,
+                        AssignedAt = _clock.UtcNow,
+                        AssignedBy = actingUserId,
+                        SourcePositionId = draft.PositionId,
+                        SourcePositionAccessTemplateId = accessTemplate.Id,
+                    };
+                    await _userRoleRepository.AddAsync(userRole, txnCt);
+                }
+
+                var rawToken = _tokenGenerator.GenerateUrlSafeOpaqueToken();
+                var tokenHash = InvitationTokenHasher.Hash(rawToken);
+                var expiresAt = _clock.UtcNow.AddHours(InvitationValidityHours);
+                var fullName = $"{draft.FirstName.Trim()} {draft.LastName.Trim()}".Trim();
+
+                var invitation = new InvitationToken
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = draft.TenantId,
+                    UserId = user.Id,
+                    RoleId = null,
+                    PositionId = draft.PositionId,
+                    PositionAssignmentId = reservedAssignmentId,
+                    Purpose = InvitationToken.EmployeeOnboardingPurpose,
+                    LegalEntityId = draft.LegalEntityId,
+                    EmployeeId = employeeId,
+                    OnboardingDraftId = draft.Id,
+                    InvitedEmail = draft.WorkEmail.Trim(),
+                    InvitedFullName = fullName,
+                    TokenHash = tokenHash,
+                    ExpiresAt = expiresAt,
+                    CreatedAt = _clock.UtcNow,
+                    CreatedById = actingUserId,
+                };
+                await _invitationTokenRepository.AddAsync(invitation, txnCt);
+
+                var tenant = await _tenantRepository.GetByIdAsync(draft.TenantId, txnCt);
+                await _outboxWriter.EnqueueAsync(
+                    OutboxMessageTypes.EmployeeOnboardingInviteEmail,
+                    new EmployeeOnboardingInviteEmailPayload(
+                        draft.TenantId, draft.LegalEntityId, employeeId, invitation.Id,
+                        draft.WorkEmail.Trim(), draft.FirstName.Trim(), draft.LastName.Trim(), rawToken, expiresAt,
+                        tenant?.Slug),
+                    draft.TenantId,
+                    txnCt);
+
+                draft.Status = OnboardingDraftStatus.Finalized;
+                draft.DraftReason = OnboardingDraftReason.InvitationSent;
+                draft.FinalizedAt = _clock.UtcNow;
+                draft.UpdatedAt = _clock.UtcNow;
+
+                await _draftRepository.SaveChangesAsync(txnCt);
+                return true;
+            }, ct);
         }
-
-        var rawToken = _tokenGenerator.GenerateUrlSafeOpaqueToken();
-        var tokenHash = InvitationTokenHasher.Hash(rawToken);
-        var expiresAt = _clock.UtcNow.AddHours(InvitationValidityHours);
-        var fullName = $"{draft.FirstName.Trim()} {draft.LastName.Trim()}".Trim();
-
-        var invitation = new InvitationToken
+        catch (PositionAtCapacityException)
         {
-            Id = Guid.NewGuid(),
-            TenantId = draft.TenantId,
-            UserId = user.Id,
-            RoleId = null,
-            PositionId = draft.PositionId,
-            PositionAssignmentId = reservedAssignmentId,
-            Purpose = InvitationToken.EmployeeOnboardingPurpose,
-            LegalEntityId = draft.LegalEntityId,
-            EmployeeId = employeeId,
-            OnboardingDraftId = draft.Id,
-            InvitedEmail = draft.WorkEmail.Trim(),
-            InvitedFullName = fullName,
-            TokenHash = tokenHash,
-            ExpiresAt = expiresAt,
-            CreatedAt = _clock.UtcNow,
-            CreatedById = actingUserId,
-        };
-        await _invitationTokenRepository.AddAsync(invitation, ct);
-
-        var tenant = await _tenantRepository.GetByIdAsync(draft.TenantId, ct);
-        await _outboxWriter.EnqueueAsync(
-            OutboxMessageTypes.EmployeeOnboardingInviteEmail,
-            new EmployeeOnboardingInviteEmailPayload(
-                draft.TenantId, draft.LegalEntityId, employeeId, invitation.Id,
-                draft.WorkEmail.Trim(), draft.FirstName.Trim(), draft.LastName.Trim(), rawToken, expiresAt,
-                tenant?.Slug),
-            draft.TenantId,
-            ct);
-
-        draft.Status = OnboardingDraftStatus.Finalized;
-        draft.DraftReason = OnboardingDraftReason.InvitationSent;
-        draft.FinalizedAt = _clock.UtcNow;
-        draft.UpdatedAt = _clock.UtcNow;
-
-        var finalSaveResult = await PersistChangesAsync(ct);
-        if (finalSaveResult is not null)
-            return finalSaveResult;
+            return Result<FinalizeOnboardingDraftResponse>.Conflict("This position has reached its capacity.");
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return Result<FinalizeOnboardingDraftResponse>.Conflict(
+                "This draft was just updated by someone else. Please refresh and try again.");
+        }
+        catch (UniqueConstraintConflictException)
+        {
+            return Result<FinalizeOnboardingDraftResponse>.Conflict(
+                "This request conflicts with an existing record (e.g. a duplicate email, employee number, or a request already submitted). Please refresh and try again.");
+        }
 
         return Result<FinalizeOnboardingDraftResponse>.Success(new FinalizeOnboardingDraftResponse(
             draft.Id, employeeId, draft.Status, draft.DraftReason,
             InvitationQueued: true, PositionApprovalPending: false, ChecklistTasksCreated: tasksCreated > 0,
             MessageKey: "onboarding.finalize.invitation_sent"));
     }
+
+    /// <summary>Thrown inside <see cref="IUnitOfWork.ExecuteInTransactionAsync{TResult}"/> so the
+    /// whole transaction (including the already-flushed employee/user) rolls back when the
+    /// position has no free capacity.</summary>
+    private sealed class PositionAtCapacityException : Exception;
 
     /// <summary>Saves all changes staged on the shared DbContext in one transaction. Returns
     /// null on success, or a Result to return immediately on a concurrency/uniqueness

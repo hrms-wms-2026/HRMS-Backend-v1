@@ -26,6 +26,7 @@ public sealed class EnableMfaCommandHandlerTests
     {
         _user = new User { Id = _userId, TenantId = _tenantId, Email = "owner@acme.test" };
         _currentUser.SetupGet(x => x.UserId).Returns(_userId);
+        _currentUser.SetupGet(x => x.TenantId).Returns(_tenantId);
         _users.Setup(x => x.GetByIdAsync(_userId, It.IsAny<CancellationToken>())).ReturnsAsync(_user);
         _mfas.Setup(x => x.GetTotpAsync(_userId, true, It.IsAny<CancellationToken>())).ReturnsAsync((UserMfa?)null);
         _mfas.Setup(x => x.GetTotpAsync(_userId, false, It.IsAny<CancellationToken>())).ReturnsAsync((UserMfa?)null);
@@ -49,7 +50,8 @@ public sealed class EnableMfaCommandHandlerTests
         result.Value.QrCodeUri.Should().Contain(_user.Email);
 
         added.Should().NotBeNull();
-        added!.MethodType.Should().Be("totp");
+        added!.TenantId.Should().Be(_tenantId);
+        added.MethodType.Should().Be("totp");
         added.IsVerified.Should().BeFalse();
         added.Secret.Should().Be($"encrypted:{result.Value.Secret}");
         _unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);

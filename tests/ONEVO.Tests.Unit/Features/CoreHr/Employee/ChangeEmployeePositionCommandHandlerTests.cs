@@ -504,6 +504,128 @@ public class ChangeEmployeePositionCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_SensitivePosition_ActorHasRolesManage_BypassesApprovalAndActivatesImmediately()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var positionId = Guid.NewGuid();
+        var oldAssignmentId = Guid.NewGuid();
+        var reservedAssignmentId = Guid.NewGuid();
+        SetupNonSelfCaller(tenantId, employeeId);
+        var accessTemplate = new PositionAccessTemplate { Id = Guid.NewGuid(), RequiresApproval = true, RoleId = Guid.NewGuid() };
+        _positions.Setup(p => p.GetByIdForLegalEntityAsync(tenantId, It.IsAny<Guid>(), positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = positionId, TenantId = tenantId, IsActive = true, DepartmentId = Guid.NewGuid() });
+        _positions.Setup(p => p.GetAccessTemplateByPositionAsync(tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(accessTemplate);
+        _permissionRepository
+            .Setup(p => p.UserHasPermissionCodeAsync(It.IsAny<Guid>(), "roles:manage", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _assignments
+            .Setup(a => a.GetActivePrimaryAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment
+            {
+                Id = oldAssignmentId,
+                TenantId = tenantId,
+                EmployeeId = employeeId,
+                EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30)),
+            });
+        _assignments
+            .Setup(a => a.TryReservePositionAssignmentAsync(tenantId, employeeId, positionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(reservedAssignmentId);
+        _assignments
+            .Setup(a => a.EndActiveAsync(tenantId, oldAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _assignments
+            .Setup(a => a.ActivatePlannedAsync(tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        AccessGrantRequest? addedRequest = null;
+        _accessGrantRequestRepository.Setup(r => r.AddAsync(It.IsAny<AccessGrantRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AccessGrantRequest, CancellationToken>((r, _) => addedRequest = r)
+            .Returns(Task.CompletedTask);
+
+        var handler = CreateHandler();
+        var result = await handler.Handle(
+            new ChangeEmployeePositionCommand(employeeId, positionId, DateOnly.FromDateTime(DateTime.UtcNow), "Transfer"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.PendingApproval);
+        _assignments.Verify(a => a.EndActiveAsync(tenantId, oldAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Once);
+        _assignments.Verify(a => a.ActivatePlannedAsync(tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.NotNull(addedRequest);
+        Assert.Equal("Approved", addedRequest!.ApprovalStatus);
+        Assert.NotNull(addedRequest.DecidedByUserId);
+        Assert.NotNull(addedRequest.DecidedAt);
+        Assert.Equal("Self-authorized: requester holds roles:manage.", addedRequest.DecisionNote);
+        _outboxWriter.Verify(w => w.EnqueueAsync(
+            OutboxMessageTypes.PositionChangeApprovalRequestEmail,
+            It.IsAny<PositionChangeApprovalRequestEmailPayload>(),
+            It.IsAny<Guid?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_TargetIsCallersOwnEmployee_EvenWithRolesManage_ReturnsForbidden()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        _currentUser.Setup(c => c.TenantId).Returns(tenantId);
+        _currentUser.Setup(c => c.UserId).Returns(userId);
+        _employees
+            .Setup(e => e.GetTrackedByIdAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = employeeId, TenantId = tenantId, UserId = userId, LegalEntityId = Guid.NewGuid() });
+        _permissionRepository
+            .Setup(p => p.UserHasPermissionCodeAsync(userId, "roles:manage", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var handler = CreateHandler();
+        var result = await handler.Handle(
+            new ChangeEmployeePositionCommand(employeeId, Guid.NewGuid(), DateOnly.FromDateTime(DateTime.UtcNow), "Promotion"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal("You cannot change your own position.", result.Error);
+    }
+
+    [Fact]
+    public async Task Handle_SensitivePosition_BypassApproval_ActivationFails_ReturnsConflict()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var positionId = Guid.NewGuid();
+        var reservedAssignmentId = Guid.NewGuid();
+        SetupNonSelfCaller(tenantId, employeeId);
+        _positions.Setup(p => p.GetByIdForLegalEntityAsync(tenantId, It.IsAny<Guid>(), positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = positionId, TenantId = tenantId, IsActive = true, DepartmentId = Guid.NewGuid() });
+        _positions.Setup(p => p.GetAccessTemplateByPositionAsync(tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionAccessTemplate { Id = Guid.NewGuid(), RequiresApproval = true, RoleId = Guid.NewGuid() });
+        _permissionRepository
+            .Setup(p => p.UserHasPermissionCodeAsync(It.IsAny<Guid>(), "roles:manage", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _assignments
+            .Setup(a => a.GetActivePrimaryAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment?)null);
+        _assignments
+            .Setup(a => a.TryReservePositionAssignmentAsync(tenantId, employeeId, positionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(reservedAssignmentId);
+        _assignments
+            .Setup(a => a.ActivatePlannedAsync(tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var handler = CreateHandler();
+        var result = await handler.Handle(
+            new ChangeEmployeePositionCommand(employeeId, positionId, DateOnly.FromDateTime(DateTime.UtcNow), "Transfer"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        _accessGrantRequestRepository.Verify(r => r.AddAsync(It.IsAny<AccessGrantRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Handle_Requires_ReportsToEmployeeId_When_New_Position_Target_Is_Pooled()
     {
         var tenantId = Guid.NewGuid();

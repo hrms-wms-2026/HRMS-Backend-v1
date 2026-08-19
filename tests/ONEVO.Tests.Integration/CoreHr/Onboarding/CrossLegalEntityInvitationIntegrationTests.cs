@@ -143,7 +143,8 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
             new SeatEntitlementService(db),
             null!, null!, null!, null!, null!, null!, null!, null!,
             currentUser,
-            _clock);
+            _clock,
+            null!);
         return new SaveOnboardingDraftCommandHandler(writeService, currentUser);
     }
 

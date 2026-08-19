@@ -219,7 +219,8 @@ public sealed class BulkOnboardingCreateDraftsTests : IAsyncLifetime
                 sp.GetRequiredService<ISeatEntitlementService>(),
                 null!, null!, null!, null!, null!, null!, null!, null!,
                 sp.GetRequiredService<ICurrentUser>(),
-                sp.GetRequiredService<IDateTimeProvider>());
+                sp.GetRequiredService<IDateTimeProvider>(),
+                null!);
         });
 
         return new BulkOnboardingBatchProcessor(services.BuildServiceProvider(), NullLogger<BulkOnboardingBatchProcessor>.Instance);
@@ -251,7 +252,7 @@ public sealed class BulkOnboardingCreateDraftsTests : IAsyncLifetime
             new StubCurrentUser(_tenantId, _userId),
             _clock);
         var result = await upload.Handle(
-            new UploadBulkOnboardingBatchCommand("employees.csv", csv, _legalEntityId, 1, "full_time", null),
+            new UploadBulkOnboardingBatchCommand("employees.csv", System.Text.Encoding.UTF8.GetBytes(csv), _legalEntityId, 1, "full_time", null),
             CancellationToken.None);
         Assert.True(result.IsSuccess);
         return result.Value!.Id;

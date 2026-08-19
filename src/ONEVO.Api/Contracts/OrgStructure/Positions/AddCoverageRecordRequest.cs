@@ -4,4 +4,5 @@ public record AddCoverageRecordRequest(
     string CoveredTargetType,
     Guid? CoveredPositionId,
     Guid? CoveredDepartmentId,
-    int OwnerOrder);
+    int OwnerOrder,
+    Guid? ResponsibleEmployeeId);

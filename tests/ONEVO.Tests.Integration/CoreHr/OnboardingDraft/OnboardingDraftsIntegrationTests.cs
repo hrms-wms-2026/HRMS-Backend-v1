@@ -170,7 +170,7 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
             null!, null!,
             null!, null!,
             null!, null!,
-            null!, currentUser, _clock);
+            null!, currentUser, _clock, null!);
 
         return new SaveOnboardingDraftCommandHandler(writeService, currentUser);
     }

@@ -7,11 +7,14 @@ public record OnboardingDraftResponse(
     string WorkEmail,
     Guid LegalEntityId,
     Guid? DepartmentId,
+    string? DepartmentName,
     Guid? PositionId,
+    string? PositionName,
     string EmploymentType,
     DateOnly StartDate,
     string? EmployeeNumber,
     int WorkModeId,
+    string? WorkModeLabel,
     Guid? SelectedTemplateId,
     string? EditedTasksJson,
     string Status,
@@ -19,4 +22,6 @@ public record OnboardingDraftResponse(
     string LastSavedStep,
     Guid StartedById,
     string Version,
-    Guid? ReportsToEmployeeId);
+    Guid? ReportsToEmployeeId,
+    string? ReportingManagerName,
+    string? ReportingManagerPositionName);

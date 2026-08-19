@@ -122,6 +122,13 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
                 return Result<ChangeEmployeePositionResponse>.Conflict(
                     "A position change for this employee is already awaiting approval.");
 
+            var bypassApproval = await _permissionRepository.UserHasPermissionCodeAsync(
+                _currentUser.UserId, "roles:manage", _clock.UtcNow, ct);
+
+            if (bypassApproval)
+                return await CompleteSensitiveChangeBypassingApprovalAsync(
+                    tenantId, employee, position, accessTemplate, request, ct);
+
             var approverUserIds = await _permissionRepository.ListUserIdsWithPermissionCodeAsync(
                 tenantId, "roles:manage", _clock.UtcNow, ct);
             if (approverUserIds.Count == 0)
@@ -226,6 +233,94 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         return Result<ChangeEmployeePositionResponse>.Success(new ChangeEmployeePositionResponse(PendingApproval: false));
     }
 
+    /// <summary>Completes a sensitive-position change immediately for an actor who holds
+    /// roles:manage, instead of routing through the pending-approval queue. Still writes an
+    /// AccessGrantRequest so the change remains visible in approval history, pre-stamped
+    /// Approved with the actor as both requester and decider.</summary>
+    private async Task<Result<ChangeEmployeePositionResponse>> CompleteSensitiveChangeBypassingApprovalAsync(
+        Guid tenantId,
+        ONEVO.Domain.Features.CoreHr.Entities.Employee employee,
+        Position position,
+        PositionAccessTemplate accessTemplate,
+        ChangeEmployeePositionCommand request,
+        CancellationToken ct)
+    {
+        var currentAssignment = await _positionAssignmentRepository.GetActivePrimaryAsync(tenantId, employee.Id, ct);
+
+        try
+        {
+            await _unitOfWork.ExecuteInTransactionAsync(async txnCt =>
+            {
+                var reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
+                    tenantId, employee.Id, position.Id, request.EffectiveFrom, _currentUser.UserId, request.ReportsToEmployeeId, txnCt);
+                if (reservedAssignmentId is null)
+                    throw new PositionAtCapacityException();
+
+                if (currentAssignment is not null)
+                {
+                    var effectiveTo = request.EffectiveFrom.AddDays(-1);
+                    if (effectiveTo < currentAssignment.EffectiveFrom)
+                        effectiveTo = currentAssignment.EffectiveFrom;
+                    var ended = await _positionAssignmentRepository.EndActiveAsync(
+                        tenantId, currentAssignment.Id, effectiveTo, txnCt);
+                    if (!ended)
+                        throw new UniqueConstraintConflictException(
+                            new InvalidOperationException("Active primary assignment was already ended."));
+                }
+
+                var activated = await _positionAssignmentRepository.ActivatePlannedAsync(
+                    tenantId, reservedAssignmentId.Value, txnCt);
+                if (!activated)
+                    throw new ReservedSeatUnavailableException();
+
+                var grantRequest = new AccessGrantRequest
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenantId,
+                    EmployeeId = employee.Id,
+                    ActionType = AccessGrantActionType.PositionChange,
+                    TargetPositionId = position.Id,
+                    TargetDepartmentId = position.DepartmentId!.Value,
+                    PositionAccessTemplateId = accessTemplate.Id,
+                    RequestedRoleId = accessTemplate.RoleId,
+                    ApprovalStatus = "Approved",
+                    RequestedByUserId = _currentUser.UserId,
+                    DecidedByUserId = _currentUser.UserId,
+                    RequestedAt = _clock.UtcNow,
+                    DecidedAt = _clock.UtcNow,
+                    EffectiveFrom = new DateTimeOffset(request.EffectiveFrom.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+                    ReservedPositionAssignmentId = reservedAssignmentId,
+                    ChangeReason = request.ChangeReason,
+                    DecisionNote = "Self-authorized: requester holds roles:manage.",
+                };
+                await _accessGrantRequestRepository.AddAsync(grantRequest, txnCt);
+                await _accessGrantRequestRepository.SaveChangesAsync(txnCt);
+                return true;
+            }, ct);
+        }
+        catch (PositionAtCapacityException)
+        {
+            return Result<ChangeEmployeePositionResponse>.Conflict("This position has reached its capacity.");
+        }
+        catch (ReservedSeatUnavailableException)
+        {
+            return Result<ChangeEmployeePositionResponse>.Conflict(
+                "The reserved seat for this request is no longer available.");
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return Result<ChangeEmployeePositionResponse>.Conflict(
+                "This request was just updated by someone else. Please refresh and try again.");
+        }
+        catch (UniqueConstraintConflictException)
+        {
+            return Result<ChangeEmployeePositionResponse>.Conflict(
+                "This employee's position was just changed by someone else. Please refresh and try again.");
+        }
+
+        return Result<ChangeEmployeePositionResponse>.Success(new ChangeEmployeePositionResponse(PendingApproval: false));
+    }
+
     private async Task EnqueuePositionChangeApprovalEmailAsync(
         Guid tenantId, Guid approverUserId, AccessGrantRequest grantRequest,
         ONEVO.Domain.Features.CoreHr.Entities.Employee employee, Position position,
@@ -244,4 +339,10 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
     }
 
     private sealed class PositionAtCapacityException : Exception;
+
+    /// <summary>Thrown inside ExecuteInTransactionAsync so a reserved-but-unactivatable seat
+    /// (should not happen - reserve and activate run in the same transaction against a freshly
+    /// created row) rolls back cleanly instead of leaving a Planned row with no matching
+    /// AccessGrantRequest.</summary>
+    private sealed class ReservedSeatUnavailableException : Exception;
 }

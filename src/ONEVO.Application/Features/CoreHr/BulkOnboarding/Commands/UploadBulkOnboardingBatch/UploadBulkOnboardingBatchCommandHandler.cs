@@ -27,7 +27,14 @@ public class UploadBulkOnboardingBatchCommandHandler
     public async Task<Result<BulkOnboardingBatchResponse>> Handle(
         UploadBulkOnboardingBatchCommand request, CancellationToken ct)
     {
-        var parsed = CsvBatchParser.Parse(request.CsvContent);
+        var extension = Path.GetExtension(request.OriginalFileName).ToLowerInvariant();
+        Result<ParsedBatchFile> parsed = extension switch
+        {
+            ".csv" => CsvBatchParser.Parse(System.Text.Encoding.UTF8.GetString(request.FileContent)),
+            ".xlsx" => XlsxBatchParser.Parse(request.FileContent),
+            _ => Result<ParsedBatchFile>.Failure("Upload a .csv or .xlsx file."),
+        };
+
         if (!parsed.IsSuccess)
             return Result<BulkOnboardingBatchResponse>.Failure(parsed.Error!);
 

@@ -60,8 +60,8 @@ public sealed class GetOnboardingDraftQueryHandlerTests
             .Setup(r => r.GetTrackedAsync(_tenantId, draftId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OnboardingDraftEntity { Id = draftId, TenantId = _tenantId, StartedById = _userId });
         var response = new OnboardingDraftResponse(draftId, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
-            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
-            "draft", "saved_manually", "employee_details", _userId, "1", null);
+            null, null, "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
+            null, "draft", "saved_manually", "employee_details", _userId, "1", null, null, null);
         _draftRepository
             .Setup(r => r.GetResponseByIdAsync(_tenantId, draftId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(response);

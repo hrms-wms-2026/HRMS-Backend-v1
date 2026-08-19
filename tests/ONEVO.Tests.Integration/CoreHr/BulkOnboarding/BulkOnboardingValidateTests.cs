@@ -110,7 +110,7 @@ public sealed class BulkOnboardingValidateTests : IAsyncLifetime
             new StubCurrentUser(_tenantId, _userId),
             _clock);
         var result = await upload.Handle(
-            new UploadBulkOnboardingBatchCommand("employees.csv", csv, _legalEntityId, 1, "full_time", null),
+            new UploadBulkOnboardingBatchCommand("employees.csv", System.Text.Encoding.UTF8.GetBytes(csv), _legalEntityId, 1, "full_time", null),
             CancellationToken.None);
         Assert.True(result.IsSuccess);
         return result.Value!.Id;

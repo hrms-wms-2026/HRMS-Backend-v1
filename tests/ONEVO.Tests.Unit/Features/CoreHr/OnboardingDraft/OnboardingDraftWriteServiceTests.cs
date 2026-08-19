@@ -16,6 +16,7 @@ using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.OnboardingDrafts;
 
@@ -50,9 +51,9 @@ public sealed class OnboardingDraftWriteServiceTests
             .Setup(r => r.GetResponseByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid tenantId, Guid id, CancellationToken _) =>
                 new OnboardingDraftResponse(id, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
-                    "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
-                    OnboardingDraftStatus.Draft, OnboardingDraftReason.SeatConfigurationRequired,
-                    OnboardingWizardStep.EmployeeDetails, Guid.Empty, "1", null));
+                    null, null, "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
+                    null, OnboardingDraftStatus.Draft, OnboardingDraftReason.SeatConfigurationRequired,
+                    OnboardingWizardStep.EmployeeDetails, Guid.Empty, "1", null, null, null));
     }
 
     [Fact]
@@ -77,7 +78,7 @@ public sealed class OnboardingDraftWriteServiceTests
             Mock.Of<IPermissionRepository>(), Mock.Of<IChecklistTemplateRepository>(),
             Mock.Of<IEmployeeChecklistTaskRepository>(), Mock.Of<IInvitationTokenRepository>(),
             Mock.Of<ITenantRepository>(), Mock.Of<IOutboxWriter>(),
-            Mock.Of<ISecureTokenGenerator>(), currentUser.Object, _clock.Object);
+            Mock.Of<ISecureTokenGenerator>(), currentUser.Object, _clock.Object, Mock.Of<IUnitOfWork>());
 
         var command = new SaveOnboardingDraftCommand(
             null, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,

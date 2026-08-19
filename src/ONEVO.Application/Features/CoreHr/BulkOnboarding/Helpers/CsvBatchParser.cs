@@ -2,7 +2,7 @@ using ONEVO.Application.Common.Models;
 
 namespace ONEVO.Application.Features.CoreHr.BulkOnboarding.Helpers;
 
-public sealed record ParsedCsv(IReadOnlyList<string> Headers, IReadOnlyList<IReadOnlyDictionary<string, string>> Rows);
+public sealed record ParsedBatchFile(IReadOnlyList<string> Headers, IReadOnlyList<IReadOnlyDictionary<string, string>> Rows);
 
 /// <summary>
 /// Minimal RFC4180-style CSV parser: handles quoted fields, embedded commas inside quotes,
@@ -14,20 +14,20 @@ public static class CsvBatchParser
 {
     public const int MaxRows = 200;
 
-    public static Result<ParsedCsv> Parse(string csvContent)
+    public static Result<ParsedBatchFile> Parse(string csvContent)
     {
         var lines = SplitLines(csvContent);
         if (lines.Count == 0)
-            return Result<ParsedCsv>.Failure("The file is empty.");
+            return Result<ParsedBatchFile>.Failure("The file is empty.");
 
         var headers = SplitLine(lines[0]);
         var dataLines = lines.Skip(1).Where(l => l.Length > 0).ToList();
 
         if (dataLines.Count == 0)
-            return Result<ParsedCsv>.Failure("The file has a header row but no data rows.");
+            return Result<ParsedBatchFile>.Failure("The file has a header row but no data rows.");
 
         if (dataLines.Count > MaxRows)
-            return Result<ParsedCsv>.Failure($"This file has {dataLines.Count} rows; the limit is {MaxRows} rows per upload.");
+            return Result<ParsedBatchFile>.Failure($"This file has {dataLines.Count} rows; the limit is {MaxRows} rows per upload.");
 
         var rows = new List<IReadOnlyDictionary<string, string>>();
         foreach (var line in dataLines)
@@ -39,7 +39,7 @@ public static class CsvBatchParser
             rows.Add(row);
         }
 
-        return Result<ParsedCsv>.Success(new ParsedCsv(headers, rows));
+        return Result<ParsedBatchFile>.Success(new ParsedBatchFile(headers, rows));
     }
 
     private static List<string> SplitLines(string content) =>

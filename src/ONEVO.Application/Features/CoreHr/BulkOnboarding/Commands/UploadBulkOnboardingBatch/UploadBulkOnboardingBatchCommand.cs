@@ -6,7 +6,7 @@ namespace ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.UploadBulkOn
 
 public sealed record UploadBulkOnboardingBatchCommand(
     string OriginalFileName,
-    string CsvContent,
+    byte[] FileContent,
     Guid LegalEntityId,
     int? DefaultWorkModeId,
     string? DefaultEmploymentType,

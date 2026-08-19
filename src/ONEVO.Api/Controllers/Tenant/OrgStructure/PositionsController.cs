@@ -222,6 +222,26 @@ public class PositionsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Resolves coverage for a covered target to specific employees.</summary>
+    [HttpGet("coverage/resolve")]
+    [RequirePermission("org:read")]
+    public async Task<IActionResult> ResolveCoverage(
+        Guid legalEntityId,
+        [FromQuery] string coveredTargetType,
+        [FromQuery] Guid? coveredPositionId,
+        [FromQuery] Guid? coveredDepartmentId,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new ONEVO.Application.Features.OrgStructure.Queries.GetCoverageResolution.GetCoverageResolutionQuery(
+                legalEntityId, coveredTargetType, coveredPositionId, coveredDepartmentId),
+            ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Gets management coverage records where this position is the owner/manager.</summary>
     [HttpGet("{positionId:guid}/coverage")]
     [RequirePermission("org:read")]
@@ -255,7 +275,8 @@ public class PositionsController : ControllerBase
                 request.CoveredTargetType,
                 request.CoveredPositionId,
                 request.CoveredDepartmentId,
-                request.OwnerOrder),
+                request.OwnerOrder,
+                request.ResponsibleEmployeeId),
             ct);
 
         return result.IsSuccess
@@ -278,7 +299,8 @@ public class PositionsController : ControllerBase
                 legalEntityId,
                 positionId,
                 coverageId,
-                request.OwnerOrder),
+                request.OwnerOrder,
+                request.ResponsibleEmployeeId),
             ct);
 
         return result.IsSuccess

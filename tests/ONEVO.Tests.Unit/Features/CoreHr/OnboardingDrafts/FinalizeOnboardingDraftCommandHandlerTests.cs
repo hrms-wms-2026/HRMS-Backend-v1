@@ -6,6 +6,7 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
@@ -20,6 +21,7 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.OnboardingDrafts;
 
@@ -46,6 +48,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
     private readonly Mock<ISecureTokenGenerator> _tokenGenerator = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -102,6 +105,12 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
             .ReturnsAsync(new Tenant { Id = _tenantId, Slug = "acme" });
 
         _draftRepository.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        // Passes through to the operation directly (no real DB transaction in a unit test) so
+        // FinalizeImmediatelyAsync's transactional block still executes and can be asserted on.
+        _unitOfWork
+            .Setup(u => u.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<bool>>>(), It.IsAny<CancellationToken>()))
+            .Returns<Func<CancellationToken, Task<bool>>, CancellationToken>((operation, ct) => operation(ct));
     }
 
     private FinalizeOnboardingDraftCommandHandler CreateHandler() => new(CreateWriteService(), _currentUser.Object);
@@ -112,7 +121,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         _departmentRepository.Object, _employmentTypeRepository.Object, _workModeRepository.Object,
         _seatEntitlementService.Object, _accessGrantRequestRepository.Object, _permissionRepository.Object, _checklistTemplateRepository.Object,
         _checklistTaskRepository.Object, _invitationTokenRepository.Object, _tenantRepository.Object, _outboxWriter.Object,
-        _tokenGenerator.Object, _currentUser.Object, _clock.Object);
+        _tokenGenerator.Object, _currentUser.Object, _clock.Object, _unitOfWork.Object);
 
     private OnboardingDraftEntity ValidDraft(
         Guid? id = null, string status = OnboardingDraftStatus.Draft, Guid? positionId = null,
@@ -548,6 +557,56 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_AccessTemplateRequiringApproval_ActorHasRolesManage_FinalizesImmediatelyWithApprovedAuditRow()
+    {
+        var positionId = Guid.NewGuid();
+        var draft = ValidDraft(positionId: positionId);
+        SetupDraft(draft);
+        SetupPosition(positionId, departmentId: Guid.NewGuid());
+        var roleId = Guid.NewGuid();
+        var template = new PositionAccessTemplate { Id = Guid.NewGuid(), TenantId = _tenantId, PositionId = positionId, RoleId = roleId, RequiresApproval = true, IsActive = true };
+        _positionRepository
+            .Setup(r => r.GetAccessTemplateByPositionAsync(_tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(template);
+        _permissionRepository
+            .Setup(r => r.UserHasPermissionCodeAsync(_userId, "roles:manage", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        UserRole? addedRole = null;
+        _userRoleRepository.Setup(r => r.AddAsync(It.IsAny<UserRole>(), It.IsAny<CancellationToken>()))
+            .Callback<UserRole, CancellationToken>((r, _) => addedRole = r).Returns(Task.CompletedTask);
+        AccessGrantRequest? addedRequest = null;
+        _accessGrantRequestRepository.Setup(r => r.AddAsync(It.IsAny<AccessGrantRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AccessGrantRequest, CancellationToken>((r, _) => addedRequest = r).Returns(Task.CompletedTask);
+
+        var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.PositionApprovalPending);
+        Assert.True(result.Value.InvitationQueued);
+        Assert.Equal(OnboardingDraftStatus.Finalized, draft.Status);
+
+        Assert.NotNull(addedRole);
+        Assert.Equal(roleId, addedRole!.RoleId);
+        Assert.Equal(positionId, addedRole.SourcePositionId);
+
+        Assert.NotNull(addedRequest);
+        Assert.Equal(AccessGrantActionType.EmployeeOnboarding, addedRequest!.ActionType);
+        Assert.Equal("Approved", addedRequest.ApprovalStatus);
+        Assert.Equal(_userId, addedRequest.RequestedByUserId);
+        Assert.Equal(_userId, addedRequest.DecidedByUserId);
+        Assert.NotNull(addedRequest.DecidedAt);
+        Assert.Equal("Self-authorized: requester holds roles:manage.", addedRequest.DecisionNote);
+        Assert.Equal(draft.Id, addedRequest.OnboardingDraftId);
+
+        _outboxWriter.Verify(w => w.EnqueueAsync(
+            OutboxMessageTypes.PositionChangeApprovalRequestEmail,
+            It.IsAny<PositionChangeApprovalRequestEmailPayload>(),
+            It.IsAny<Guid?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Handle_RepeatedFinalizeWhilePendingApproval_DoesNotDuplicateAccessGrantRequest()
     {
         var positionId = Guid.NewGuid();
@@ -751,7 +810,12 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
         Assert.Equal("This position has reached its capacity.", result.Error);
-        _draftRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        // The user+employee are flushed once (inside the transaction) before the raw-SQL
+        // capacity check runs - the FK from position_assignments to employees requires that
+        // row to exist in the database first. A real Postgres transaction rolls this back when
+        // the capacity check fails; a mocked repository has no such rollback, so from its
+        // perspective SaveChangesAsync was called exactly once, not zero times.
+        _draftRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

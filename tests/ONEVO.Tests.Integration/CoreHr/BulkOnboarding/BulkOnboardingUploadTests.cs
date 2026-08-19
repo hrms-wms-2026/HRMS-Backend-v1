@@ -72,7 +72,7 @@ public sealed class BulkOnboardingUploadTests : IAsyncLifetime
         var csv = "First Name,Last Name,Work Email,Start Date\nJane,Doe,jane@acme.com,2026-09-01\n";
 
         var result = await handler.Handle(new UploadBulkOnboardingBatchCommand(
-            "employees.csv", csv, _legalEntityId, null, null, null), CancellationToken.None);
+            "employees.csv", System.Text.Encoding.UTF8.GetBytes(csv), _legalEntityId, null, null, null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(1, result.Value!.TotalRows);
@@ -88,7 +88,7 @@ public sealed class BulkOnboardingUploadTests : IAsyncLifetime
         var csv = "Email\n" + string.Concat(Enumerable.Range(0, 201).Select(i => $"u{i}@acme.com\n"));
 
         var result = await handler.Handle(new UploadBulkOnboardingBatchCommand(
-            "employees.csv", csv, _legalEntityId, null, null, null), CancellationToken.None);
+            "employees.csv", System.Text.Encoding.UTF8.GetBytes(csv), _legalEntityId, null, null, null), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);

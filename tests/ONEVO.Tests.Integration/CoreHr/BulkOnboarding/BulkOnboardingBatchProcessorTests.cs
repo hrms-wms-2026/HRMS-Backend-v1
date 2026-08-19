@@ -29,6 +29,7 @@ using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 using Xunit;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 
 namespace ONEVO.Tests.Integration.CoreHr.BulkOnboarding;
 
@@ -288,6 +289,7 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
             services.AddSingleton(seats);
         services.AddScoped<ICurrentUser>(_ => new StubCurrentUser());
         services.AddScoped<IDateTimeProvider>(_ => _clock);
+        services.AddScoped<IUnitOfWork>(sp => new UnitOfWork(sp.GetRequiredService<ApplicationDbContext>()));
         services.AddScoped<IOnboardingDraftWriteService>(sp => new OnboardingDraftWriteService(
             sp.GetRequiredService<IOnboardingDraftRepository>(),
             sp.GetRequiredService<IEmployeeRepository>(),
@@ -300,7 +302,8 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
             sp.GetRequiredService<ISeatEntitlementService>(),
             null!, null!, null!, null!, null!, null!, null!, null!,
             sp.GetRequiredService<ICurrentUser>(),
-            sp.GetRequiredService<IDateTimeProvider>()));
+            sp.GetRequiredService<IDateTimeProvider>(),
+            sp.GetRequiredService<IUnitOfWork>()));
 
         var provider = services.BuildServiceProvider();
         return new BulkOnboardingBatchProcessor(provider, NullLogger<BulkOnboardingBatchProcessor>.Instance);

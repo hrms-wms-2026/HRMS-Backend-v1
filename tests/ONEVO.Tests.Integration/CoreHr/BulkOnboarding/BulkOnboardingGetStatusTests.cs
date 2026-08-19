@@ -111,7 +111,7 @@ public sealed class BulkOnboardingGetStatusTests : IAsyncLifetime
         var result = await upload.Handle(
             new UploadBulkOnboardingBatchCommand(
                 "employees.csv",
-                "First Name,Last Name,Email\nJane,Doe,jane@acme.com\n",
+                System.Text.Encoding.UTF8.GetBytes("First Name,Last Name,Email\nJane,Doe,jane@acme.com\n"),
                 _legalEntityId, null, null, null),
             CancellationToken.None);
         Assert.True(result.IsSuccess);

@@ -18,6 +18,7 @@ using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 
 // Namespace deliberately avoids a bare ".OnboardingDraft" segment: it would collide with the
 // OnboardingDraft entity type via ancestor-namespace lookup for any sibling test file in
@@ -62,9 +63,9 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
             .Setup(r => r.GetResponseByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid tenantId, Guid id, CancellationToken _) =>
                 new OnboardingDraftResponse(id, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
-                    "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
-                    OnboardingDraftStatus.WaitingForSeat, OnboardingDraftReason.WaitingForSeat,
-                    OnboardingWizardStep.EmployeeDetails, _userId, "1", null));
+                    null, null, "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
+                    null, OnboardingDraftStatus.WaitingForSeat, OnboardingDraftReason.WaitingForSeat,
+                    OnboardingWizardStep.EmployeeDetails, _userId, "1", null, null, null));
     }
 
     private SaveOnboardingDraftCommandHandler CreateHandler() => new(CreateWriteService(), _currentUser.Object);
@@ -79,7 +80,7 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
         Mock.Of<IPermissionRepository>(), Mock.Of<IChecklistTemplateRepository>(),
         Mock.Of<IEmployeeChecklistTaskRepository>(), Mock.Of<IInvitationTokenRepository>(),
         Mock.Of<ITenantRepository>(), Mock.Of<IOutboxWriter>(),
-        Mock.Of<ISecureTokenGenerator>(), _currentUser.Object, _clock.Object);
+        Mock.Of<ISecureTokenGenerator>(), _currentUser.Object, _clock.Object, Mock.Of<IUnitOfWork>());
 
     private SaveOnboardingDraftCommand ValidCommand(Guid? draftId = null, Guid? positionId = null, string? ifMatch = null) => new(
         draftId, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, positionId,
