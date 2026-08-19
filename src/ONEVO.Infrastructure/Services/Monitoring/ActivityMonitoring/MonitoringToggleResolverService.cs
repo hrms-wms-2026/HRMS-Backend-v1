@@ -40,6 +40,94 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         return resolved;
     }
 
+    public async Task<int> GetIdleThresholdMinutesAsync(
+        Guid tenantId,
+        Guid employeeId,
+        CancellationToken ct = default)
+    {
+        var cacheKey = $"tenant:{tenantId}:monitoring-toggle:employee:{employeeId}:idle-threshold-minutes";
+        var cached = await _cache.GetAsync<int?>(cacheKey, ct);
+        if (cached.HasValue)
+            return cached.Value;
+
+        var resolved = await ResolveMinutesAsync(tenantId, employeeId, ct);
+        await _cache.SetAsync(cacheKey, resolved, CacheTtl, ct);
+        return resolved;
+    }
+
+    private async Task<int> ResolveMinutesAsync(Guid tenantId, Guid employeeId, CancellationToken ct)
+    {
+        // 1. Employee-level override
+        var employeeOverride = await _db.EmployeeMonitoringOverrides
+            .AsNoTracking()
+            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.EmployeeId == employeeId, ct);
+        var employeeMinutes = employeeOverride?.IdleThresholdMinutes;
+
+        // 2. Policy overrides: role > position > department
+        var employee = await _db.Employees
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                e => e.TenantId == tenantId && (e.UserId == employeeId || e.Id == employeeId),
+                ct);
+
+        Guid? departmentId = employee?.DepartmentId;
+        Guid? positionId = null; // TODO: resolve via position_assignments once it exists
+        Guid userIdForRoles = employee?.UserId ?? employeeId;
+
+        var roleIds = await _db.UserRoles
+            .AsNoTracking()
+            .Where(ur => ur.TenantId == tenantId && ur.UserId == userIdForRoles)
+            .Select(ur => ur.RoleId)
+            .ToListAsync(ct);
+
+        var scopeIds = new List<Guid>();
+        scopeIds.AddRange(roleIds);
+        if (positionId.HasValue) scopeIds.Add(positionId.Value);
+        if (departmentId.HasValue) scopeIds.Add(departmentId.Value);
+
+        int? roleMinutes = null;
+        int? positionMinutes = null;
+        int? departmentMinutes = null;
+
+        if (scopeIds.Count > 0)
+        {
+            var policies = await _db.MonitoringPolicyOverrides
+                .AsNoTracking()
+                .Where(p => p.TenantId == tenantId && scopeIds.Contains(p.ScopeId))
+                .ToListAsync(ct);
+
+            roleMinutes = policies
+                .Where(p => p.ScopeType == "role" && roleIds.Contains(p.ScopeId))
+                .Select(p => p.IdleThresholdMinutes)
+                .FirstOrDefault(v => v.HasValue);
+
+            if (positionId.HasValue)
+            {
+                positionMinutes = policies
+                    .Where(p => p.ScopeType == "position" && p.ScopeId == positionId.Value)
+                    .Select(p => p.IdleThresholdMinutes)
+                    .FirstOrDefault(v => v.HasValue);
+            }
+
+            if (departmentId.HasValue)
+            {
+                departmentMinutes = policies
+                    .Where(p => p.ScopeType == "department" && p.ScopeId == departmentId.Value)
+                    .Select(p => p.IdleThresholdMinutes)
+                    .FirstOrDefault(v => v.HasValue);
+            }
+        }
+
+        // 3. Tenant-level toggle row (null row or null column → fall through to hardcoded default)
+        var toggles = await _db.MonitoringFeatureToggles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.TenantId == tenantId, ct);
+        var tenantMinutes = toggles?.IdleThresholdMinutes;
+
+        return MonitoringToggleResolution.ResolveMinutes(
+            employeeMinutes, roleMinutes, positionMinutes, departmentMinutes, tenantMinutes);
+    }
+
     private async Task<bool> ResolveAsync(
         Guid tenantId,
         Guid employeeId,
