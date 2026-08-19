@@ -6,10 +6,11 @@
 
 This folder absorbed the former top-level `docs/superpowers/next-plan/` folder on 2026-08-06 as part of the `plans/` restructure into `finished/` and `next/` — see `FILE_CREATION_RULES.md` in `docs/superpowers/rules/`.
 
-**Last updated:** 2026-08-17
+**Last updated:** 2026-08-19
 
 ## Files
 
+- `2026-08-19-sensitive-position-approval-bypass.md` — status: pending, not started. Built from `specs/next/2026-08-19-sensitive-position-approval-bypass-design.md`. 3 tasks: `ChangeEmployeePositionCommandHandler` bypass (transfer), `OnboardingDraftWriteService` bypass (onboarding finalize), integration coverage. Depends on `2026-08-17-sensitive-position-approval-backend.md` below being implemented first (extends its `AccessGrantRequest`/`roles:manage` machinery). Note: touches `OnboardingDraftWriteService.cs` and its test file, both of which have unrelated uncommitted local changes on this branch as of 2026-08-19 (a transactional refactor from other in-progress work) — re-read current state before editing.
 - `2026-08-17-sensitive-position-approval-backend.md` — status: pending, not started. Built from `specs/next/2026-08-17-sensitive-position-approval-backend-design.md`. Routes sensitive Change Position requests through the existing AccessGrantRequest approval machinery, gated on `roles:manage`; blocks an employee from ever changing their own position; adds `employeeId` to `GET /auth/me` for the frontend companion. Companion: `Hrms--Web-application---front-end---v1/docs/superpowers/plans/2026-08-17-sensitive-position-approval-frontend.md`.
 - `2026-08-12-milestone-to-module-display-rename.md` — status: pending, not started. Single-task plan: one new EF migration renaming `module_catalog.name` for `module_key = 'objectives_milestones'` from "Objectives & Milestones" to "Objectives & Modules". Design: `specs/next/2026-08-12-milestone-to-module-display-rename-design.md`. Companion to the frontend repo's same-named plan.
 - `2026-08-12-objective-viewmodel-owner-fields-fix.md` — status: pending, not started. Single-task plan: add `OwnerName`/`ReportingManagerName`/`IsOwner` (+ `IsAchieved`/`AchievedAt` on the subtree node) to `ObjectiveDetailViewModel`/`ObjectiveSubtreeNodeViewModel` and forward them in `ObjectiveViewModelMapper` — fields the Application layer already computes but the wire contract drops. Design: `specs/next/2026-08-12-objective-viewmodel-owner-fields-fix-design.md`. Blocks the frontend repo's `2026-08-12-milestone-tree-mockup-redesign.md`.
