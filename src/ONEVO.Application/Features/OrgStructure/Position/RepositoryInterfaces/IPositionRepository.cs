@@ -77,15 +77,6 @@ public interface IPositionRepository
     Task<IReadOnlyList<ManagementCoverageRecord>> ListCoverageByOwnerPositionAsync(
         Guid tenantId, Guid legalEntityId, Guid ownerPositionId, CancellationToken ct = default);
 
-    Task<IReadOnlyList<ManagementCoverageRecord>> ListActiveCoverageByCoveredTargetAsync(
-        Guid tenantId,
-        Guid legalEntityId,
-        string coveredTargetType,
-        Guid? coveredPositionId,
-        Guid? coveredDepartmentId,
-        Guid? excludingRecordId,
-        CancellationToken ct = default);
-
     Task<ManagementCoverageRecord?> GetCoverageRecordByIdAsync(
         Guid tenantId, Guid id, CancellationToken ct = default);
 

@@ -471,34 +471,6 @@ public class EfPositionRepository : IPositionRepository
         return exists;
     }
 
-    public async Task<IReadOnlyList<ManagementCoverageRecord>> ListActiveCoverageByCoveredTargetAsync(
-        Guid tenantId,
-        Guid legalEntityId,
-        string coveredTargetType,
-        Guid? coveredPositionId,
-        Guid? coveredDepartmentId,
-        Guid? excludingRecordId = null,
-        CancellationToken ct = default)
-    {
-        var query = _db.ManagementCoverageRecords
-            .AsNoTracking()
-            .Where(m =>
-                m.TenantId == tenantId
-                && m.LegalEntityId == legalEntityId
-                && m.CoveredTargetType == coveredTargetType
-                && m.CoveredPositionId == coveredPositionId
-                && m.CoveredDepartmentId == coveredDepartmentId
-                && m.Status == ManagementCoverageRecord.StatusActive);
-
-        if (excludingRecordId is { } excludeId)
-        {
-            query = query.Where(m => m.Id != excludeId);
-        }
-
-        var results = await query.OrderBy(m => m.OwnerOrder).ToListAsync(ct);
-        return results;
-    }
-
     public async Task<PositionAccessTemplate?> GetAccessTemplateByPositionAsync(
         Guid tenantId, Guid positionId, CancellationToken ct = default)
     {
