@@ -34,6 +34,7 @@ public class GetMonitoringFeatureTogglesQueryHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value!.ActivityMonitoring.Should().BeFalse();
         result.Value.Biometric.Should().BeFalse();
+        result.Value.IdleThresholdMinutes.Should().Be(5); // default when no row exists
         result.Value.UpdatedAt.Should().BeNull();
     }
 
@@ -48,6 +49,7 @@ public class GetMonitoringFeatureTogglesQueryHandlerTests
                 TenantId = TenantId,
                 ActivityMonitoring = true,
                 ScreenshotCapture = true,
+                IdleThresholdMinutes = 12,
                 UpdatedAt = updatedAt
             });
         var sut = BuildSut();
@@ -58,6 +60,7 @@ public class GetMonitoringFeatureTogglesQueryHandlerTests
         result.Value!.ActivityMonitoring.Should().BeTrue();
         result.Value.ScreenshotCapture.Should().BeTrue();
         result.Value.ApplicationTracking.Should().BeFalse();
+        result.Value.IdleThresholdMinutes.Should().Be(12);
         result.Value.UpdatedAt.Should().Be(updatedAt);
     }
 

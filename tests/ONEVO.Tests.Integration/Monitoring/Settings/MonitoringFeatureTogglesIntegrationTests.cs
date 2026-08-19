@@ -127,7 +127,45 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
         enabled.Should().BeTrue();
     }
 
-    private static object ToggleBody(bool activityMonitoring) => new
+    [Fact]
+    public async Task Put_IdleThresholdMinutes_ResolverReflectsChange()
+    {
+        var session = await SeedAdminUserAndLoginAsync("mft-idle-threshold");
+        var employeeId = Guid.NewGuid();
+
+        using var putReq = new HttpRequestMessage(HttpMethod.Put, "/api/v1/monitoring/settings");
+        putReq.Headers.Host = session.TenantHost;
+        putReq.Headers.Add("Cookie", session.CookieHeader);
+        putReq.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        putReq.Content = JsonContent.Create(ToggleBody(activityMonitoring: true, idleThresholdMinutes: 20));
+
+        var putResp = await _client.SendAsync(putReq);
+        putResp.StatusCode.Should().Be(HttpStatusCode.OK, await putResp.Content.ReadAsStringAsync());
+
+        using var scope = _factory.Services.CreateScope();
+        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
+        var minutes = await resolver.GetIdleThresholdMinutesAsync(session.TenantId, employeeId);
+
+        minutes.Should().Be(20);
+    }
+
+    [Fact]
+    public async Task Put_IdleThresholdMinutesOutOfRange_Returns400()
+    {
+        var session = await SeedAdminUserAndLoginAsync("mft-idle-threshold-invalid");
+
+        using var putReq = new HttpRequestMessage(HttpMethod.Put, "/api/v1/monitoring/settings");
+        putReq.Headers.Host = session.TenantHost;
+        putReq.Headers.Add("Cookie", session.CookieHeader);
+        putReq.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        putReq.Content = JsonContent.Create(ToggleBody(activityMonitoring: true, idleThresholdMinutes: 120));
+
+        var putResp = await _client.SendAsync(putReq);
+
+        putResp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    private static object ToggleBody(bool activityMonitoring, int idleThresholdMinutes = 5) => new
     {
         activityMonitoring,
         applicationTracking = false,
@@ -139,7 +177,8 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
         deviceTracking = false,
         workLocationVerification = false,
         identityVerification = false,
-        biometric = false
+        biometric = false,
+        idleThresholdMinutes
     };
 
     private Task<SessionInfo> SeedAdminUserAndLoginAsync(string slug) =>

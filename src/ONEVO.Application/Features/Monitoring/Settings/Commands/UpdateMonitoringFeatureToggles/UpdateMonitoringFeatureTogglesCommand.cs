@@ -6,7 +6,7 @@ namespace ONEVO.Application.Features.Monitoring.Settings.Commands.UpdateMonitori
 
 // Full-replace PUT: every capability must be supplied on every call. There is no
 // nullable-means-preserve semantics here - the admin settings screen always
-// submits the complete current state of all 11 switches.
+// submits the complete current state.
 public record UpdateMonitoringFeatureTogglesCommand(
     bool ActivityMonitoring,
     bool ApplicationTracking,
@@ -18,4 +18,5 @@ public record UpdateMonitoringFeatureTogglesCommand(
     bool DeviceTracking,
     bool WorkLocationVerification,
     bool IdentityVerification,
-    bool Biometric) : IRequest<Result<MonitoringFeatureTogglesResponse>>;
+    bool Biometric,
+    int IdleThresholdMinutes) : IRequest<Result<MonitoringFeatureTogglesResponse>>;
