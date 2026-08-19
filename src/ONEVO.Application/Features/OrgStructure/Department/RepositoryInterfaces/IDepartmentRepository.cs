@@ -65,6 +65,11 @@ public interface IDepartmentRepository
     Task<int> CountActiveEmployeesAsync(
         Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default);
 
+    // Batched variant of CountActiveEmployeesAsync: single grouped query for a page/tree of
+    // departments instead of one query per department. Missing keys mean zero active employees.
+    Task<IReadOnlyDictionary<Guid, int>> CountActiveEmployeesByDepartmentIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default);
+
     Task AddAsync(Department department, CancellationToken ct = default);
 
     void Update(Department department);

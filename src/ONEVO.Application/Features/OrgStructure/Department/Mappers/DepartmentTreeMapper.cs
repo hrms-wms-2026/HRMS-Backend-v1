@@ -5,7 +5,11 @@ namespace ONEVO.Application.Features.OrgStructure.Mappers;
 
 public static class DepartmentTreeMapper
 {
-    public static IReadOnlyList<DepartmentTreeNodeResponse> BuildTree(IReadOnlyList<Department> departments)
+    public static IReadOnlyList<DepartmentTreeNodeResponse> BuildTree(
+        IReadOnlyList<Department> departments,
+        IReadOnlyDictionary<Guid, int> positionCountsByDepartmentId,
+        IReadOnlyDictionary<Guid, int> employeeCountsByDepartmentId,
+        IReadOnlyDictionary<Guid, string> positionNamesById)
     {
         var idsInSet = departments.Select(department => department.Id).ToHashSet();
 
@@ -21,15 +25,28 @@ public static class DepartmentTreeMapper
             .OrderBy(department => department.Name)
             .ToList();
 
-        return roots.Select(root => BuildNode(root, childrenByParentId)).ToList();
+        return roots
+            .Select(root => BuildNode(root, childrenByParentId, positionCountsByDepartmentId, employeeCountsByDepartmentId, positionNamesById))
+            .ToList();
     }
 
     private static DepartmentTreeNodeResponse BuildNode(
-        Department department, IReadOnlyDictionary<Guid, List<Department>> childrenByParentId)
+        Department department,
+        IReadOnlyDictionary<Guid, List<Department>> childrenByParentId,
+        IReadOnlyDictionary<Guid, int> positionCountsByDepartmentId,
+        IReadOnlyDictionary<Guid, int> employeeCountsByDepartmentId,
+        IReadOnlyDictionary<Guid, string> positionNamesById)
     {
         var children = childrenByParentId.TryGetValue(department.Id, out var childDepartments)
-            ? childDepartments.Select(child => BuildNode(child, childrenByParentId)).ToList()
+            ? childDepartments
+                .Select(child => BuildNode(child, childrenByParentId, positionCountsByDepartmentId, employeeCountsByDepartmentId, positionNamesById))
+                .ToList()
             : new List<DepartmentTreeNodeResponse>();
+
+        var headPositionTitle = department.HeadPositionId is { } headPositionId
+            && positionNamesById.TryGetValue(headPositionId, out var name)
+                ? name
+                : null;
 
         return new DepartmentTreeNodeResponse(
             department.Id,
@@ -39,6 +56,9 @@ public static class DepartmentTreeMapper
             department.ParentDepartmentId,
             department.HeadPositionId,
             department.IsActive,
-            children);
+            children,
+            positionCountsByDepartmentId.GetValueOrDefault(department.Id),
+            employeeCountsByDepartmentId.GetValueOrDefault(department.Id),
+            headPositionTitle);
     }
 }

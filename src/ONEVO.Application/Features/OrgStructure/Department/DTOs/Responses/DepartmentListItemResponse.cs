@@ -9,4 +9,7 @@ public record DepartmentListItemResponse(
     Guid? HeadPositionId,
     bool IsActive,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    int PositionCount,
+    int EmployeeCount,
+    string? HeadPositionTitle);

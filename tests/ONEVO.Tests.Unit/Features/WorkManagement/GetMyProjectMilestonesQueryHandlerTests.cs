@@ -1,10 +1,9 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyProjectMilestones;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
-using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using Xunit;
@@ -23,7 +22,7 @@ public class GetMyProjectMilestonesQueryHandlerTests
 
     private static ProjectMember Membership(Guid objectiveId, bool isActive = true, DateTimeOffset? removedAt = null) => new()
     {
-        Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = objectiveId, UserId = UserId,
+        Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = objectiveId,
         EmployeeId = Guid.NewGuid(), IsActive = isActive, RemovedAt = removedAt, JoinedAt = DateTimeOffset.UtcNow
     };
 
@@ -41,31 +40,37 @@ public class GetMyProjectMilestonesQueryHandlerTests
         StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), AllocatedHours = 20m, CompletedHours = 5m
     };
 
-    private static Employee Owner() => new() { Id = Guid.NewGuid(), TenantId = TenantId, UserId = OwnerId, FirstName = "Alice", LastName = "Owner" };
-    private static Employee ReportingManager() => new() { Id = Guid.NewGuid(), TenantId = TenantId, UserId = ReportingManagerId, FirstName = "Bob", LastName = "Manager" };
-
-    private (GetMyProjectMilestonesQueryHandler Handler, Mock<IEmployeeRepository> Employees) BuildHandler(
-        List<ProjectMember> memberships, List<Objective> objectives, List<Employee>? employees = null, Guid? callerId = null)
+    private static readonly IReadOnlyDictionary<Guid, string> OwnerAndManagerNames = new Dictionary<Guid, string>
     {
+        [OwnerId] = "Alice Owner",
+        [ReportingManagerId] = "Bob Manager"
+    };
+
+    private (GetMyProjectMilestonesQueryHandler Handler, Mock<ICallerIdentityResolver> Identity) BuildHandler(
+        List<ProjectMember> memberships, List<Objective> objectives, IReadOnlyDictionary<Guid, string>? names = null, Guid? callerId = null)
+    {
+        var resolvedCallerId = callerId ?? UserId;
+
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(callerId ?? UserId);
+        currentUser.SetupGet(x => x.UserId).Returns(resolvedCallerId);
+
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, resolvedCallerId, It.IsAny<CancellationToken>())).ReturnsAsync(resolvedCallerId);
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(names ?? new Dictionary<Guid, string>());
 
         var members = new Mock<IProjectMemberRepository>();
-        members.Setup(x => x.ListForUserInProjectAsync(TenantId, ProjectId, callerId ?? UserId, It.IsAny<CancellationToken>()))
+        members.Setup(x => x.ListForEmployeeInProjectAsync(TenantId, ProjectId, resolvedCallerId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(memberships);
 
         var objectivesRepo = new Mock<IObjectiveRepository>();
         objectivesRepo.Setup(x => x.GetAllByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(objectives);
 
-        var employeesRepo = new Mock<IEmployeeRepository>();
-        employeesRepo.Setup(x => x.GetByUserIdsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(employees ?? new List<Employee>());
-
-        var handler = new GetMyProjectMilestonesQueryHandler(currentUser.Object, members.Object, objectivesRepo.Object, employeesRepo.Object);
-        return (handler, employeesRepo);
+        var handler = new GetMyProjectMilestonesQueryHandler(currentUser.Object, identity.Object, members.Object, objectivesRepo.Object);
+        return (handler, identity);
     }
 
     [Fact]
@@ -85,7 +90,7 @@ public class GetMyProjectMilestonesQueryHandlerTests
         var (handler, _) = BuildHandler(
             new List<ProjectMember> { Membership(MilestoneId) },
             new List<Objective> { Milestone() },
-            new List<Employee> { Owner(), ReportingManager() });
+            OwnerAndManagerNames);
 
         var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
 
@@ -105,7 +110,7 @@ public class GetMyProjectMilestonesQueryHandlerTests
         var (handler, _) = BuildHandler(
             new List<ProjectMember> { Membership(MilestoneId, isActive: false, removedAt: removedAt) },
             new List<Objective> { Milestone() },
-            new List<Employee> { Owner(), ReportingManager() });
+            OwnerAndManagerNames);
 
         var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
 
@@ -121,7 +126,7 @@ public class GetMyProjectMilestonesQueryHandlerTests
         var (handler, _) = BuildHandler(
             new List<ProjectMember> { Membership(MilestoneId) },
             new List<Objective> { Milestone(isActive: false, isAchieved: true) },
-            new List<Employee> { Owner(), ReportingManager() });
+            OwnerAndManagerNames);
 
         var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
 
@@ -138,7 +143,7 @@ public class GetMyProjectMilestonesQueryHandlerTests
         var (handler, _) = BuildHandler(
             new List<ProjectMember> { Membership(DefaultObjectiveId) },
             new List<Objective> { DefaultObjective() },
-            new List<Employee> { Owner() });
+            new Dictionary<Guid, string> { [OwnerId] = "Alice Owner" });
 
         var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
 
@@ -156,7 +161,7 @@ public class GetMyProjectMilestonesQueryHandlerTests
         var (handler, _) = BuildHandler(
             new List<ProjectMember> { Membership(MilestoneId) },
             new List<Objective> { Milestone() },
-            new List<Employee>());
+            new Dictionary<Guid, string>());
 
         var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
 
@@ -177,16 +182,16 @@ public class GetMyProjectMilestonesQueryHandlerTests
             StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), AllocatedHours = 10m, CompletedHours = 0m
         };
 
-        var (handler, employees) = BuildHandler(
+        var (handler, identity) = BuildHandler(
             new List<ProjectMember> { Membership(MilestoneId), Membership(secondMilestoneId) },
             new List<Objective> { Milestone(), secondMilestone },
-            new List<Employee> { Owner(), ReportingManager() });
+            OwnerAndManagerNames);
 
         var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Count);
-        employees.Verify(x => x.GetByUserIdsAsync(TenantId,
+        identity.Verify(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId,
             It.Is<IReadOnlyList<Guid>>(ids => ids.Distinct().Count() == ids.Count && ids.Contains(OwnerId) && ids.Contains(ReportingManagerId)),
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -197,7 +202,7 @@ public class GetMyProjectMilestonesQueryHandlerTests
         var (handler, _) = BuildHandler(
             new List<ProjectMember> { Membership(MilestoneId) },
             new List<Objective> { Milestone() },
-            new List<Employee> { Owner(), ReportingManager() },
+            OwnerAndManagerNames,
             callerId: OwnerId);
 
         var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
@@ -212,7 +217,7 @@ public class GetMyProjectMilestonesQueryHandlerTests
         var (handler, _) = BuildHandler(
             new List<ProjectMember> { Membership(MilestoneId) },
             new List<Objective> { Milestone() },
-            new List<Employee> { Owner(), ReportingManager() });
+            OwnerAndManagerNames);
 
         var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
 
@@ -226,11 +231,11 @@ public class GetMyProjectMilestonesQueryHandlerTests
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(false);
 
+        var identity = new Mock<ICallerIdentityResolver>();
         var members = new Mock<IProjectMemberRepository>();
         var objectivesRepo = new Mock<IObjectiveRepository>();
-        var employeesRepo = new Mock<IEmployeeRepository>();
 
-        var handler = new GetMyProjectMilestonesQueryHandler(currentUser.Object, members.Object, objectivesRepo.Object, employeesRepo.Object);
+        var handler = new GetMyProjectMilestonesQueryHandler(currentUser.Object, identity.Object, members.Object, objectivesRepo.Object);
 
         var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
 

@@ -2,13 +2,16 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.TransferObjectiveHead;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Lookups;
 using Xunit;
 
@@ -17,28 +20,46 @@ namespace ONEVO.Tests.Unit.Features.WorkManagement;
 public class TransferObjectiveHeadCommandHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
-    private static readonly Guid HeadId = Guid.NewGuid();
+    private static readonly Guid HeadUserId = Guid.NewGuid();
+    private static readonly Guid HeadEmployeeId = Guid.NewGuid();
     private static readonly Guid OtherUserId = Guid.NewGuid();
-    private static readonly Guid NewHeadId = Guid.NewGuid();
+    private static readonly Guid OtherEmployeeId = Guid.NewGuid();
+    private static readonly Guid NewHeadEmployeeId = Guid.NewGuid();
+    private static readonly Guid NewHeadUserId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
 
-    private static TransferObjectiveHeadCommand ValidCommand() => new(ObjectiveId, NewHeadId);
+    private static TransferObjectiveHeadCommand ValidCommand() => new(ObjectiveId, NewHeadEmployeeId);
 
     private static Objective SubObjective(Guid createdById, bool isDefault = false, bool isActive = true) => new()
     {
         Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, IsDefault = isDefault, Title = "Sub",
-        OwnerId = HeadId, ReportingManagerId = createdById, CreatedById = createdById, IsActive = isActive,
+        OwnerId = HeadEmployeeId, ReportingManagerId = createdById, CreatedById = createdById, IsActive = isActive,
         StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), CreatedAt = DateTimeOffset.UtcNow
     };
 
-    private (TransferObjectiveHeadCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IObjectiveChangeRequestRepository> Requests) BuildHandler(
+    // Maps the test's login-space caller ids to the employee-space ids the handler now compares
+    // against - HeadUserId resolves to HeadEmployeeId (matches SubObjective's fixed OwnerId),
+    // OtherUserId resolves to OtherEmployeeId (a different employee, so "not the head").
+    private static Mock<ICallerIdentityResolver> BuildIdentity()
+    {
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, HeadUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(HeadEmployeeId);
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, OtherUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OtherEmployeeId);
+        return identity;
+    }
+
+    private (TransferObjectiveHeadCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IObjectiveChangeRequestRepository> Requests, Mock<IProjectMemberInvitationRepository> Invitations) BuildHandler(
         Objective? objective, bool hasPending = false, Guid? callerId = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(callerId ?? HeadId);
+        currentUser.SetupGet(x => x.UserId).Returns(callerId ?? HeadUserId);
+
+        var identity = BuildIdentity();
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
@@ -48,24 +69,24 @@ public class TransferObjectiveHeadCommandHandlerTests
         var requests = new Mock<IObjectiveChangeRequestRepository>();
         requests.Setup(x => x.HasPendingForObjectiveAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(hasPending);
 
-        // Defaults so the pre-existing tests below (written before membership sync / auto-grant
-        // existed) keep passing unmodified: the resolved new head always resolves as an active
-        // employee, and no particular membership/auto-grant behavior is asserted. Same pattern as
-        // CreateObjectiveCommandHandlerTests.BuildHandler.
+        var invitations = new Mock<IProjectMemberInvitationRepository>();
+        invitations.Setup(x => x.ListPendingForObjectiveAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectMemberInvitation>());
+
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = NewHeadId, EmploymentStatusId = EmploymentStatusIds.Active });
+            .ReturnsAsync(new Employee { Id = NewHeadEmployeeId, TenantId = TenantId, UserId = NewHeadUserId, EmploymentStatusId = EmploymentStatusIds.Active });
 
         var autoGrant = new Mock<IPermissionAutoGrantService>();
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
-        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveChangeOutcomeResponse>>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result<ObjectiveChangeOutcomeResponse>>> op, CancellationToken ct) => op(ct));
+        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<TransferOutcomeResponse>>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<Result<TransferOutcomeResponse>>> op, CancellationToken ct) => op(ct));
 
         var handler = new TransferObjectiveHeadCommandHandler(
-            currentUser.Object, objectives.Object, requests.Object, unitOfWork.Object, membership.Object, autoGrant.Object);
-        return (handler, objectives, requests);
+            currentUser.Object, identity.Object, objectives.Object, requests.Object, invitations.Object, unitOfWork.Object, membership.Object, autoGrant.Object);
+        return (handler, objectives, requests, invitations);
     }
 
     // Overload without `newHeadAssignee`: defaults to "resolved new head is a valid active
@@ -74,7 +95,7 @@ public class TransferObjectiveHeadCommandHandlerTests
         Objective? objective, bool oldHeadHasOtherAccess = false)
         => BuildHandlerWithMembership(
             objective,
-            new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = NewHeadId, EmploymentStatusId = EmploymentStatusIds.Active },
+            new Employee { Id = NewHeadEmployeeId, TenantId = TenantId, UserId = NewHeadUserId, EmploymentStatusId = EmploymentStatusIds.Active },
             oldHeadHasOtherAccess);
 
     // Overload with an explicit `newHeadAssignee`: used as-is, including `null`, so a caller can
@@ -93,7 +114,9 @@ public class TransferObjectiveHeadCommandHandlerTests
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(HeadId);
+        currentUser.SetupGet(x => x.UserId).Returns(HeadUserId);
+
+        var identity = BuildIdentity();
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
@@ -104,42 +127,46 @@ public class TransferObjectiveHeadCommandHandlerTests
         requests.Setup(x => x.HasPendingForObjectiveAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
-        membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, NewHeadId, It.IsAny<CancellationToken>()))
+        membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, NewHeadEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(newHeadAssignee);
-        membership.Setup(x => x.HasOtherActiveAccessAsync(TenantId, ProjectId, HeadId, ObjectiveId, It.IsAny<CancellationToken>()))
+        membership.Setup(x => x.HasOtherActiveAccessAsync(TenantId, ProjectId, HeadEmployeeId, ObjectiveId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(oldHeadHasOtherAccess);
+
+        var invitations = new Mock<IProjectMemberInvitationRepository>();
+        invitations.Setup(x => x.ListPendingForObjectiveAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProjectMemberInvitation>());
 
         var autoGrant = new Mock<IPermissionAutoGrantService>();
 
         var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveChangeOutcomeResponse>>>>(), It.IsAny<CancellationToken>()))
-            .Returns((Func<CancellationToken, Task<Result<ObjectiveChangeOutcomeResponse>>> op, CancellationToken ct) => op(ct));
+        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<TransferOutcomeResponse>>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<Result<TransferOutcomeResponse>>> op, CancellationToken ct) => op(ct));
 
         var handler = new TransferObjectiveHeadCommandHandler(
-            currentUser.Object, objectives.Object, requests.Object, unitOfWork.Object, membership.Object, autoGrant.Object);
+            currentUser.Object, identity.Object, objectives.Object, requests.Object, invitations.Object, unitOfWork.Object, membership.Object, autoGrant.Object);
         return (handler, objectives, membership, autoGrant);
     }
 
     [Fact]
     public async Task Handle_CreatorHeadTransfers_UpsertsNewHeadMembershipAndDeactivatesOld()
     {
-        var (handler, _, membership, _) = BuildHandlerWithMembership(SubObjective(createdById: HeadId), oldHeadHasOtherAccess: false);
+        var (handler, _, membership, _) = BuildHandlerWithMembership(SubObjective(createdById: HeadUserId), oldHeadHasOtherAccess: false);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        membership.Verify(x => x.UpsertMembershipAsync(TenantId, ProjectId, ObjectiveId, NewHeadId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
-        membership.Verify(x => x.DeactivateMembershipAsync(TenantId, ProjectId, ObjectiveId, HeadId, It.IsAny<CancellationToken>()), Times.Once);
+        membership.Verify(x => x.UpsertMembershipAsync(TenantId, ProjectId, ObjectiveId, NewHeadEmployeeId, It.IsAny<CancellationToken>()), Times.Once);
+        membership.Verify(x => x.DeactivateMembershipAsync(TenantId, ProjectId, ObjectiveId, HeadEmployeeId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task Handle_OldHeadHasNoOtherAccess_DropsThemFromProject()
     {
-        var (handler, _, membership, _) = BuildHandlerWithMembership(SubObjective(createdById: HeadId), oldHeadHasOtherAccess: false);
+        var (handler, _, membership, _) = BuildHandlerWithMembership(SubObjective(createdById: HeadUserId), oldHeadHasOtherAccess: false);
 
         await handler.Handle(ValidCommand(), CancellationToken.None);
 
-        membership.Verify(x => x.HasOtherActiveAccessAsync(TenantId, ProjectId, HeadId, ObjectiveId, It.IsAny<CancellationToken>()), Times.Once);
+        membership.Verify(x => x.HasOtherActiveAccessAsync(TenantId, ProjectId, HeadEmployeeId, ObjectiveId, It.IsAny<CancellationToken>()), Times.Once);
         // DeactivateMembershipAsync on THIS objective already ran regardless (verified above) -
         // HasOtherActiveAccessAsync being checked at all is what "drop from project" reduces to,
         // since deactivating the one membership row IS the full removal when there's no other row.
@@ -148,7 +175,7 @@ public class TransferObjectiveHeadCommandHandlerTests
     [Fact]
     public async Task Handle_NewHeadNotActiveEmployee_ReturnsBadRequest()
     {
-        var (handler, _, _, _) = BuildHandlerWithMembership(SubObjective(createdById: HeadId), newHeadAssignee: null);
+        var (handler, _, _, _) = BuildHandlerWithMembership(SubObjective(createdById: HeadUserId), newHeadAssignee: null);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -162,26 +189,28 @@ public class TransferObjectiveHeadCommandHandlerTests
         var child = SubObjective(createdById: OtherUserId);
         child.Id = Guid.NewGuid();
         child.ParentObjectiveId = ObjectiveId;
-        child.ReportingManagerId = HeadId;
+        child.ReportingManagerId = HeadEmployeeId;
 
-        var (handler, objectives, _, _) = BuildHandlerWithMembership(SubObjective(createdById: HeadId));
+        var (handler, objectives, _, _) = BuildHandlerWithMembership(SubObjective(createdById: HeadUserId));
         objectives.Setup(x => x.GetTrackedActiveDirectChildrenAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Objective> { child });
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(NewHeadId, child.ReportingManagerId);
+        Assert.Equal(NewHeadEmployeeId, child.ReportingManagerId);
     }
 
     [Fact]
     public async Task Handle_CreatorHeadTransfers_EnsuresProjectsAccessGrantedForNewHead()
     {
-        var (handler, _, _, autoGrant) = BuildHandlerWithMembership(SubObjective(createdById: HeadId));
+        var (handler, _, _, autoGrant) = BuildHandlerWithMembership(SubObjective(createdById: HeadUserId));
 
         await handler.Handle(ValidCommand(), CancellationToken.None);
 
-        autoGrant.Verify(x => x.EnsureGrantedAsync(TenantId, NewHeadId, HeadId, "projects:access", It.IsAny<CancellationToken>()), Times.Once);
+        // Auto-grant stays UserId-keyed (out of Phase 2 scope) - it resolves the new head's login
+        // UserId off the Employee record returned by GetActiveAssigneeAsync, not the EmployeeId itself.
+        autoGrant.Verify(x => x.EnsureGrantedAsync(TenantId, NewHeadUserId, HeadUserId, "projects:access", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -193,27 +222,27 @@ public class TransferObjectiveHeadCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value!.Applied);
-        membership.Verify(x => x.UpsertMembershipAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        membership.Verify(x => x.UpsertMembershipAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         membership.Verify(x => x.DeactivateMembershipAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task Handle_CreatorHeadTransfers_AppliesImmediately()
     {
-        var (handler, objectives, requests) = BuildHandler(SubObjective(createdById: HeadId));
+        var (handler, objectives, requests, _) = BuildHandler(SubObjective(createdById: HeadUserId));
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value!.Applied);
-        objectives.Verify(x => x.Update(It.Is<Objective>(o => o.OwnerId == NewHeadId)), Times.Once);
+        objectives.Verify(x => x.Update(It.Is<Objective>(o => o.OwnerId == NewHeadEmployeeId)), Times.Once);
         requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task Handle_NonCreatorHeadTransfers_CreatesPendingRequest()
     {
-        var (handler, objectives, requests) = BuildHandler(SubObjective(createdById: OtherUserId));
+        var (handler, objectives, requests, _) = BuildHandler(SubObjective(createdById: OtherUserId));
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -221,13 +250,13 @@ public class TransferObjectiveHeadCommandHandlerTests
         Assert.False(result.Value!.Applied);
         objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
         requests.Verify(x => x.AddAsync(It.Is<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(
-            r => r.RequestType == "transfer" && r.PayloadJson!.Contains(NewHeadId.ToString())), It.IsAny<CancellationToken>()), Times.Once);
+            r => r.RequestType == "transfer" && r.PayloadJson!.Contains(NewHeadEmployeeId.ToString())), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task Handle_AlreadyPendingRequest_ReturnsConflict()
     {
-        var (handler, _, _) = BuildHandler(SubObjective(createdById: OtherUserId), hasPending: true);
+        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: OtherUserId), hasPending: true);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -238,7 +267,7 @@ public class TransferObjectiveHeadCommandHandlerTests
     [Fact]
     public async Task Handle_CallerNotHead_ReturnsForbidden()
     {
-        var (handler, _, _) = BuildHandler(SubObjective(createdById: OtherUserId), callerId: OtherUserId);
+        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: OtherUserId), callerId: OtherUserId);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -249,7 +278,7 @@ public class TransferObjectiveHeadCommandHandlerTests
     [Fact]
     public async Task Handle_DefaultObjective_ReturnsBadRequest()
     {
-        var (handler, _, _) = BuildHandler(SubObjective(createdById: HeadId, isDefault: true));
+        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: HeadUserId, isDefault: true));
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -260,11 +289,31 @@ public class TransferObjectiveHeadCommandHandlerTests
     [Fact]
     public async Task Handle_ObjectiveInactive_ReturnsNotFound()
     {
-        var (handler, _, _) = BuildHandler(SubObjective(createdById: HeadId, isActive: false));
+        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: HeadUserId, isActive: false));
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_NonCreatorCaller_ObjectiveHasNoReportingManager_CreatesLeaderInvitationInsteadOfChangeRequest()
+    {
+        var objective = SubObjective(createdById: OtherUserId);
+        objective.ReportingManagerId = null;
+        var (handler, _, requests, invitations) = BuildHandler(objective);
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.Applied);
+        Assert.NotNull(result.Value.PendingInvitation);
+        Assert.Null(result.Value.PendingChangeRequest);
+        Assert.Equal(HeadEmployeeId, objective.OwnerId);
+        invitations.Verify(x => x.AddAsync(It.Is<ProjectMemberInvitation>(i =>
+            i.ObjectiveId == ObjectiveId && i.InvitedEmployeeId == NewHeadEmployeeId
+            && i.InviteType == ProjectInvitationTypes.Leader), It.IsAny<CancellationToken>()), Times.Once);
+        requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

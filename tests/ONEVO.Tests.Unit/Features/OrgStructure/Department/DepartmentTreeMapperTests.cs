@@ -6,6 +6,9 @@ namespace ONEVO.Tests.Unit.Features.OrgStructure.Department;
 
 public sealed class DepartmentTreeMapperTests
 {
+    private static readonly IReadOnlyDictionary<Guid, int> EmptyCounts = new Dictionary<Guid, int>();
+    private static readonly IReadOnlyDictionary<Guid, string> EmptyNames = new Dictionary<Guid, string>();
+
     [Fact]
     public void BuildTree_NestsChildrenUnderParent()
     {
@@ -16,7 +19,8 @@ public sealed class DepartmentTreeMapperTests
         child.ParentDepartmentId = parent.Id;
 
         var tree = DepartmentTreeMapper.BuildTree(
-            new List<Domain.Features.OrgStructure.Entities.Department> { parent, child });
+            new List<Domain.Features.OrgStructure.Entities.Department> { parent, child },
+            EmptyCounts, EmptyCounts, EmptyNames);
 
         Assert.Single(tree);
         Assert.Equal("Parent", tree[0].Name);
@@ -33,7 +37,8 @@ public sealed class DepartmentTreeMapperTests
         orphan.ParentDepartmentId = Guid.NewGuid();
 
         var tree = DepartmentTreeMapper.BuildTree(
-            new List<Domain.Features.OrgStructure.Entities.Department> { orphan });
+            new List<Domain.Features.OrgStructure.Entities.Department> { orphan },
+            EmptyCounts, EmptyCounts, EmptyNames);
 
         Assert.Single(tree);
         Assert.Equal("Orphan", tree[0].Name);
@@ -58,7 +63,8 @@ public sealed class DepartmentTreeMapperTests
         department.HeadPositionId = headPositionId;
 
         var tree = DepartmentTreeMapper.BuildTree(
-            new List<Domain.Features.OrgStructure.Entities.Department> { department });
+            new List<Domain.Features.OrgStructure.Entities.Department> { department },
+            EmptyCounts, EmptyCounts, EmptyNames);
 
         Assert.Equal(headPositionId, tree[0].HeadPositionId);
     }

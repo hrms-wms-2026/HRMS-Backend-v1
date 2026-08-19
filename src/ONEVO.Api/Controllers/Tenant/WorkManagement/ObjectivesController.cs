@@ -2,9 +2,11 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.WorkManagement.Objectives;
+using ONEVO.Api.Contracts.WorkManagement.ProjectInvitations;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.ApproveObjectiveChangeRequest;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RejectObjectiveChangeRequest;
+using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Queries.ListMyObjectiveChangeRequests;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AddObjectiveMember;
@@ -17,8 +19,12 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Commands.UnachieveObj
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyObjectiveHistory;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyProjectMilestones;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveById;
+using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveMembers;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveSubtree;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveTree;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.AcceptObjectiveInvitation;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.RejectObjectiveInvitation;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Queries.GetMyObjectiveInvitations;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 
@@ -38,7 +44,8 @@ public class ObjectivesController : ControllerBase
     {
         var command = new CreateObjectiveCommand(
             request.ParentObjectiveId, request.Title, request.Description,
-            request.StartDate, request.EndDate, request.AllocatedHours, request.HeadUserId);
+            request.StartDate, request.EndDate, request.AllocatedHours, request.HeadEmployeeId,
+            request.MemberInvitations?.Select(m => (m.EmployeeId, m.Type)).ToList());
 
         var result = await _mediator.Send(command, ct);
 
@@ -56,6 +63,17 @@ public class ObjectivesController : ControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetObjectiveByIdQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>This milestone's real members merged with pending invitations. Same visibility rule as GetById.</summary>
+    [HttpGet("{id:guid}/members")]
+    public async Task<IActionResult> GetMembers(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetObjectiveMembersQuery(id), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
@@ -93,46 +111,80 @@ public class ObjectivesController : ControllerBase
             : Accepted(result.Value.PendingRequest!.ToViewModel());
     }
 
-    /// <summary>Reassigns a milestone's head. Same immediate-vs-pending split as Delete. On applying, also syncs project membership for both heads and cascades ReportingManagerId to direct children.</summary>
+    /// <summary>Reassigns a milestone's head (by employeeId). If the objective has a Reporting Manager, applies immediately for the creator or routes to that Reporting Manager for approval otherwise. If the objective has no Reporting Manager, skips approval and sends a leader invitation — the caller remains Head until accepted.</summary>
     [HttpPost("{id:guid}/transfer")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Transfer(Guid id, [FromBody] TransferObjectiveHeadRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new TransferObjectiveHeadCommand(id, request.NewHeadUserId), ct);
+        var result = await _mediator.Send(new TransferObjectiveHeadCommand(id, request.NewHeadEmployeeId), ct);
 
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
         return result.Value!.Applied
-            ? NoContent()
-            : Accepted(result.Value.PendingRequest!.ToViewModel());
+            ? StatusCode(204, result.Value.ToViewModel())
+            : StatusCode(202, result.Value.ToViewModel());
     }
 
-    /// <summary>Adds a member to this milestone. Head-only; the member becomes a project_members row scoped to this Objective. Does not grant projects:access (only assigning someone as Head does that).</summary>
+    /// <summary>Invites an employee to this milestone. Head-only. Immediate no-op (204) if already an active member; otherwise creates a pending invitation (202) the invited employee must accept.</summary>
     [HttpPost("{id:guid}/members")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> AddMember(Guid id, [FromBody] AddObjectiveMemberRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new AddObjectiveMemberCommand(id, request.UserId), ct);
+        var result = await _mediator.Send(new AddObjectiveMemberCommand(id, request.EmployeeId), ct);
 
-        return result.IsSuccess
-            ? NoContent()
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return result.Value!.AlreadyMember
+            ? StatusCode(204, result.Value.ToViewModel())
+            : StatusCode(202, result.Value.ToViewModel());
     }
 
     /// <summary>Removes a member from this milestone. Head-only. Rejects removing the current head - use Transfer instead.</summary>
-    [HttpDelete("{id:guid}/members/{userId:guid}")]
+    [HttpDelete("{id:guid}/members/{employeeId:guid}")]
     [RequirePermission("projects:access")]
-    public async Task<IActionResult> RemoveMember(Guid id, Guid userId, CancellationToken ct)
+    public async Task<IActionResult> RemoveMember(Guid id, Guid employeeId, CancellationToken ct)
     {
-        var result = await _mediator.Send(new RemoveObjectiveMemberCommand(id, userId), ct);
+        var result = await _mediator.Send(new RemoveObjectiveMemberCommand(id, employeeId), ct);
 
         return result.IsSuccess
             ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Marks a milestone Achieved. Requires every direct sub-milestone to already be Achieved. Same immediate-vs-pending split as Delete.</summary>
+    /// <summary>Accepts a pending invitation. Caller must be the invited employee. Member invites create membership; leader invites reassign the milestone's head. No module-level projects:access gate: the invitee may not have that permission yet.</summary>
+    [HttpPost("invitations/{invitationId:guid}/accept")]
+    public async Task<IActionResult> AcceptInvitation(Guid invitationId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new AcceptObjectiveInvitationCommand(invitationId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Rejects a pending invitation. Caller must be the invited employee. No side effects - for a leader invite, the current head simply remains head.</summary>
+    [HttpPost("invitations/{invitationId:guid}/reject")]
+    public async Task<IActionResult> RejectInvitation(Guid invitationId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new RejectObjectiveInvitationCommand(invitationId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>The caller's own pending invitations across every objective they've been invited to.</summary>
+    [HttpGet("invitations/mine")]
+    public async Task<IActionResult> MyInvitations(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetMyObjectiveInvitationsQuery(), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(i => i.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
     [HttpPost("{id:guid}/achieve")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Achieve(Guid id, CancellationToken ct)
@@ -171,6 +223,18 @@ public class ObjectivesController : ControllerBase
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Owner requests more allocated hours, routed to the Objective's Reporting Manager as an extend_allocation change request. Root (no reporting manager) returns 400 — edit the Project instead.</summary>
+    [HttpPost("{id:guid}/allocation-requests")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> RequestAllocationExtension(Guid id, [FromBody] RequestAllocationExtensionRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new RequestAllocationExtensionCommand(id, request.RequestedAdditionalHours, request.Reason), ct);
+
+        return result.IsSuccess
+            ? StatusCode(202, result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

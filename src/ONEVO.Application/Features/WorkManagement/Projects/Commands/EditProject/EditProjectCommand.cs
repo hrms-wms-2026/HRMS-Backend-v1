@@ -13,5 +13,6 @@ public sealed record EditProjectCommand(
     DateOnly TargetDate,
     string? Color,
     decimal? ActualHours,
-    string? Identifier
+    string? Identifier,
+    decimal? AllocatedHours = null
 ) : IRequest<Result<ProjectDetailResponse>>;

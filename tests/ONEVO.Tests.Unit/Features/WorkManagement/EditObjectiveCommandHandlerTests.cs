@@ -2,6 +2,7 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -13,8 +14,10 @@ namespace ONEVO.Tests.Unit.Features.WorkManagement;
 public class EditObjectiveCommandHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
-    private static readonly Guid HeadId = Guid.NewGuid();
+    private static readonly Guid HeadUserId = Guid.NewGuid();
+    private static readonly Guid HeadEmployeeId = Guid.NewGuid();
     private static readonly Guid OtherUserId = Guid.NewGuid();
+    private static readonly Guid OtherEmployeeId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid ParentId = Guid.NewGuid();
@@ -25,14 +28,14 @@ public class EditObjectiveCommandHandlerTests
     private static Objective ParentObjective() => new()
     {
         Id = ParentId, TenantId = TenantId, ProjectId = ProjectId, IsDefault = true, Title = "Parent",
-        OwnerId = HeadId, IsActive = true, StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 6, 1),
+        OwnerId = HeadEmployeeId, IsActive = true, StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 6, 1),
         AllocatedHours = 40m, CreatedAt = DateTimeOffset.UtcNow
     };
 
     private static Objective SubObjective(Guid createdById, bool isDefault = false, bool isActive = true) => new()
     {
         Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, ParentObjectiveId = ParentId, IsDefault = isDefault,
-        Title = "Sub", OwnerId = HeadId, ReportingManagerId = createdById, CreatedById = createdById, IsActive = isActive,
+        Title = "Sub", OwnerId = HeadEmployeeId, ReportingManagerId = createdById, CreatedById = createdById, IsActive = isActive,
         StartDate = new DateOnly(2026, 1, 15), EndDate = new DateOnly(2026, 5, 1), AllocatedHours = 20m,
         CreatedAt = DateTimeOffset.UtcNow
     };
@@ -40,10 +43,17 @@ public class EditObjectiveCommandHandlerTests
     private (EditObjectiveCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IObjectiveChangeRequestRepository> Requests) BuildHandler(
         Objective? objective, Objective? parent, bool hasPending = false, Guid? callerId = null)
     {
+        var resolvedCallerUserId = callerId ?? HeadUserId;
+        var resolvedCallerEmployeeId = resolvedCallerUserId == OtherUserId ? OtherEmployeeId : HeadEmployeeId;
+
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(callerId ?? HeadId);
+        currentUser.SetupGet(x => x.UserId).Returns(resolvedCallerUserId);
+
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, resolvedCallerUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(resolvedCallerEmployeeId);
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
@@ -55,7 +65,7 @@ public class EditObjectiveCommandHandlerTests
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var handler = new EditObjectiveCommandHandler(currentUser.Object, objectives.Object, requests.Object, unitOfWork.Object);
+        var handler = new EditObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, requests.Object, unitOfWork.Object);
         return (handler, objectives, requests);
     }
 
@@ -76,7 +86,7 @@ public class EditObjectiveCommandHandlerTests
     [Fact]
     public async Task Handle_ConflictingEditByCreator_AppliesImmediately()
     {
-        var (handler, objectives, requests) = BuildHandler(SubObjective(createdById: HeadId), ParentObjective());
+        var (handler, objectives, requests) = BuildHandler(SubObjective(createdById: HeadUserId), ParentObjective());
         var command = ValidCommand(endDate: new DateOnly(2026, 7, 1));
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -129,7 +139,7 @@ public class EditObjectiveCommandHandlerTests
     [Fact]
     public async Task Handle_DefaultObjective_ReturnsBadRequest()
     {
-        var (handler, _, _) = BuildHandler(SubObjective(createdById: HeadId, isDefault: true), ParentObjective());
+        var (handler, _, _) = BuildHandler(SubObjective(createdById: HeadUserId, isDefault: true), ParentObjective());
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 

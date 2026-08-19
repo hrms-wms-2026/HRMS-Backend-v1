@@ -1,5 +1,6 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveTree;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -14,6 +15,7 @@ public class GetObjectiveTreeQueryHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
+    private static readonly Guid EmployeeId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
 
     private static Project ActiveProject() => new()
@@ -30,20 +32,23 @@ public class GetObjectiveTreeQueryHandlerTests
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(EmployeeId);
+
         var projects = new Mock<IProjectRepository>();
         projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
 
         var members = new Mock<IProjectMemberRepository>();
-        members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(isMember);
-        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, UserId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+        members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(isMember);
+        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(TenantId, ProjectId, EmployeeId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(hasDirectMembership);
-        members.Setup(x => x.GetActiveObjectiveIdsForUserInProjectAsync(TenantId, ProjectId, UserId, It.IsAny<CancellationToken>()))
+        members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ownedObjectiveIds ?? new List<Guid>());
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetTreeByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(tree ?? []);
 
-        var handler = new GetObjectiveTreeQueryHandler(currentUser.Object, projects.Object, members.Object, objectives.Object);
+        var handler = new GetObjectiveTreeQueryHandler(currentUser.Object, identity.Object, projects.Object, members.Object, objectives.Object);
         return (handler, objectives);
     }
 

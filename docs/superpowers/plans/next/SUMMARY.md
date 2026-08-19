@@ -25,6 +25,7 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 - `2026-08-07-work-management-objective-subtree.md` sits in this folder (flat, per rule) but its git commits (`2a77bbc`..`b900ec5`, 2026-08-07) show it already shipped — it was never moved to `finished/` or given a status row in `plans/SUMMARY.md`. Not touched during the 2026-08-08 pass since it's outside that session's scope; flagged here so it isn't lost again.
 - `2026-08-10-milestone-ownership-and-subtree-access.md` moved to `plans/finished/2026-08-10/` on 2026-08-10 (both tasks done) — see `plans/SUMMARY.md`.
 - `2026-08-10-project-detail-milestone-tree-view-backend.md` moved to `plans/finished/2026-08-10/` on 2026-08-10 (all 3 tasks done, 170/170 WorkManagement unit tests) — see `plans/SUMMARY.md`.
+- `2026-08-17-work-management-task-data-seeding.md` — extends `WorkManagementDapiDemoSeeder` with leaf tasks, project+objective task statuses, and Approvals queue (pending task-creation + extend_allocation). Design: `specs/next/2026-08-17-work-management-task-data-seeding-design.md`.
 
 ## Open items
 

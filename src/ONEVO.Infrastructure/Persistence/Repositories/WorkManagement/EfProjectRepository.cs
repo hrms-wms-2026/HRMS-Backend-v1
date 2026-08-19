@@ -43,13 +43,13 @@ public class EfProjectRepository : IProjectRepository
     }
 
     public async Task<(IReadOnlyList<Project> Items, int TotalCount)> ListForMemberAsync(
-        Guid tenantId, Guid targetUserId, int skip, int take, string? sortBy, string sortDirection,
+        Guid tenantId, Guid targetEmployeeId, int skip, int take, string? sortBy, string sortDirection,
         CancellationToken ct = default)
     {
         var baseQuery = (
             from pm in _db.ProjectMembers.AsNoTracking()
             join p in _db.Projects.AsNoTracking() on pm.ProjectId equals p.Id
-            where pm.TenantId == tenantId && pm.UserId == targetUserId && pm.IsActive && p.IsActive
+            where pm.TenantId == tenantId && pm.EmployeeId == targetEmployeeId && pm.IsActive && p.IsActive
             select p
         ).Distinct();
 
@@ -72,5 +72,20 @@ public class EfProjectRepository : IProjectRepository
 
         var items = await ordered.Skip(skip).Take(take).ToListAsync(ct);
         return (items, total);
+    }
+
+    public async Task<long> IncrementAndGetNextTaskNumberAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
+    {
+        var values = await _db.Database.SqlQuery<long>($@"
+            UPDATE projects
+            SET next_task_number = next_task_number + 1
+            WHERE tenant_id = {tenantId} AND id = {projectId}
+            RETURNING (next_task_number - 1) AS ""Value""
+        ").ToListAsync(ct);
+
+        if (values.Count == 0)
+            throw new InvalidOperationException("Project not found when allocating a task number.");
+
+        return values[0];
     }
 }
