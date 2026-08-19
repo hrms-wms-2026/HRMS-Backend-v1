@@ -178,7 +178,7 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
     private SaveOnboardingDraftCommand NewCommand(
         Guid? draftId = null, string lastSavedStep = "employee_details", string? ifMatch = null) => new(
         draftId, "Ada", "Lovelace", $"{Guid.NewGuid():N}@onboarding-drafts-rls-test.onevo.dev", _legalEntityId, null, null,
-        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null, lastSavedStep, ifMatch);
+        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null, lastSavedStep, ifMatch, null);
 
     private async Task CreateRestrictedRoleAsync()
     {

@@ -13,4 +13,5 @@ public record SaveOnboardingDraftRequest(
     int WorkModeId,
     Guid? SelectedTemplateId,
     string? EditedTasksJson,
-    string LastSavedStep);
+    string LastSavedStep,
+    Guid? ReportsToEmployeeId = null);

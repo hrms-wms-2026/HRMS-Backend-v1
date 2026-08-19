@@ -46,7 +46,8 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 d.DraftReason,
                 d.LastSavedStep,
                 d.StartedById,
-                EF.Property<uint>(d, "xmin").ToString()))
+                EF.Property<uint>(d, "xmin").ToString(),
+                d.ReportsToEmployeeId))
             .FirstOrDefaultAsync(ct);
 
     public async Task<(IReadOnlyList<OnboardingDraftResponse> Items, int TotalCount)> ListAsync(
@@ -83,7 +84,8 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 d.DraftReason,
                 d.LastSavedStep,
                 d.StartedById,
-                EF.Property<uint>(d, "xmin").ToString()))
+                EF.Property<uint>(d, "xmin").ToString(),
+                d.ReportsToEmployeeId))
             .ToListAsync(ct);
 
         return (items, totalCount);

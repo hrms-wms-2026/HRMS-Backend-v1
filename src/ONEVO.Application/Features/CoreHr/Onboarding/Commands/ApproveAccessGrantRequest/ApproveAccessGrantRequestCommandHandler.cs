@@ -349,7 +349,7 @@ public class ApproveAccessGrantRequestCommandHandler
         await _employeeRepository.AddAsync(employee, ct);
 
         var reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
-            draft.TenantId, employeeId, position.Id, draft.StartDate, _currentUser.UserId, ct);
+            draft.TenantId, employeeId, position.Id, draft.StartDate, _currentUser.UserId, reportsToEmployeeId: null, ct);
         if (reservedAssignmentId is null)
             return Result<ApproveAccessGrantRequestResponse>.Conflict("This position has reached its capacity.");
 

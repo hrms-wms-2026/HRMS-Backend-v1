@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ONEVO.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260819055006_AddPositionAssignmentReportsToEmployeeId")]
+    partial class AddPositionAssignmentReportsToEmployeeId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1528,10 +1531,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("resolved_position_id");
 
-                    b.Property<Guid?>("ResolvedReportsToEmployeeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("resolved_reports_to_employee_id");
-
                     b.Property<Guid?>("ResolvedTemplateId")
                         .HasColumnType("uuid")
                         .HasColumnName("resolved_template_id");
@@ -2491,10 +2490,6 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid?>("PositionId")
                         .HasColumnType("uuid")
                         .HasColumnName("position_id");
-
-                    b.Property<Guid?>("ReportsToEmployeeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("reports_to_employee_id");
 
                     b.Property<Guid?>("SelectedTemplateId")
                         .HasColumnType("uuid")

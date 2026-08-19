@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 using ONEVO.Application.Features.OrgStructure.OutboxPayloads;
 using ONEVO.Application.Features.OrgStructure.Mappers;
@@ -20,6 +21,7 @@ public class UpdatePositionCommandHandler
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly IOutboxWriter _outboxWriter;
+    private readonly IEmployeeHierarchyClosureRepository _closureRepository;
 
     public UpdatePositionCommandHandler(
         IPositionRepository positions,
@@ -27,7 +29,8 @@ public class UpdatePositionCommandHandler
         ILegalEntityRepository legalEntities,
         ICurrentUser currentUser,
         IDateTimeProvider dateTimeProvider,
-        IOutboxWriter outboxWriter)
+        IOutboxWriter outboxWriter,
+        IEmployeeHierarchyClosureRepository closureRepository)
     {
         _positions = positions;
         _departments = departments;
@@ -35,6 +38,7 @@ public class UpdatePositionCommandHandler
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;
         _outboxWriter = outboxWriter;
+        _closureRepository = closureRepository;
     }
 
     public async Task<Result<PositionResponse>> Handle(
@@ -199,6 +203,9 @@ public class UpdatePositionCommandHandler
             ct);
 
         await _positions.SaveChangesAsync(ct);
+
+        if (reportsToChanged)
+            await _closureRepository.RebuildAsync(tenantId, ct);
 
         var childCount = await _positions.CountActiveReportsToPositionAsync(tenantId, request.LegalEntityId, existing.Id, ct);
 

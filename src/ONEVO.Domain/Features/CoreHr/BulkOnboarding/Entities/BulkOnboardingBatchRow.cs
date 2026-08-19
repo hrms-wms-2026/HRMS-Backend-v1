@@ -9,6 +9,7 @@ public class BulkOnboardingBatchRow : BaseEntity
     public string RawDataJson { get; set; } = "{}";
     public Guid? ResolvedDepartmentId { get; set; }
     public Guid? ResolvedPositionId { get; set; }
+    public Guid? ResolvedReportsToEmployeeId { get; set; }
     public Guid? ResolvedTemplateId { get; set; }
     public string Status { get; set; } = BulkOnboardingBatchRowStatus.PendingMapping;
     public string? ErrorMessage { get; set; }

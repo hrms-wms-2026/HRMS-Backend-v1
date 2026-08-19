@@ -113,7 +113,8 @@ public sealed class BulkOnboardingBatchProcessor : BackgroundService
                 SelectedTemplateId: row.ResolvedTemplateId,
                 EditedTasksJson: null,
                 LastSavedStep: OnboardingWizardStep.ReviewAndSubmit,
-                IfMatchVersion: null);
+                IfMatchVersion: null,
+                ReportsToEmployeeId: row.ResolvedReportsToEmployeeId);
 
             var result = await writeService.SaveAsync(batch.TenantId, batch.CreatedByUserId, command, ct);
             if (result.IsSuccess)

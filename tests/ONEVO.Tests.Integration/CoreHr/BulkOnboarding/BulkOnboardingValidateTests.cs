@@ -14,6 +14,7 @@ using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
+using ONEVO.Tests.Integration.Support;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.BulkOnboarding;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Tests.Integration.Support;
@@ -129,6 +130,7 @@ public sealed class BulkOnboardingValidateTests : IAsyncLifetime
             new BulkOnboardingRowValidator(
                 new EfDepartmentRepository(db),
                 new EfPositionRepository(db),
+                PositionAssignmentRepositoryTestSupport.CreateRepository(db),
                 new EfWorkModeRepository(db),
                 new EfEmploymentTypeRepository(db),
                 new EfEmployeeRepository(db),

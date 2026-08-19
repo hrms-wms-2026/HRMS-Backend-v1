@@ -32,7 +32,7 @@ public sealed class OnboardingDraftsControllerTests
     private static OnboardingDraftResponse SampleResponse(Guid id) => new(
         id, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
         "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
-        "waiting_for_seat", "waiting_for_seat", "employee_details", Guid.NewGuid(), "1");
+        "waiting_for_seat", "waiting_for_seat", "employee_details", Guid.NewGuid(), "1", null);
 
     [Fact]
     public async Task Create_SendsCommandWithNullDraftIdAndNullIfMatch()

@@ -75,8 +75,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
 
         _positionAssignmentRepository
             .Setup(r => r.TryReservePositionAssignmentAsync(
-                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Guid.NewGuid());
 
         _seatEntitlementService
@@ -744,8 +743,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
             .ReturnsAsync(template);
         _positionAssignmentRepository
             .Setup(r => r.TryReservePositionAssignmentAsync(
-                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid?)null);
 
         var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
@@ -763,6 +761,27 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
             .GetConstructors().Single().GetParameters();
 
         Assert.DoesNotContain(ctorParams, p => p.ParameterType.Name.Contains("TenantOwner", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_Passes_Draft_ReportsToEmployeeId_Into_Assignment_Reservation()
+    {
+        var chosenManagerId = Guid.NewGuid();
+        var positionId = Guid.NewGuid();
+        var draft = ValidDraft(positionId: positionId);
+        draft.ReportsToEmployeeId = chosenManagerId;
+        SetupDraft(draft);
+        SetupPosition(positionId, departmentId: Guid.NewGuid());
+        var template = new PositionAccessTemplate { Id = Guid.NewGuid(), TenantId = _tenantId, PositionId = positionId, RoleId = Guid.NewGuid(), RequiresApproval = false, IsActive = true };
+        _positionRepository
+            .Setup(r => r.GetAccessTemplateByPositionAsync(_tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(template);
+
+        await CreateWriteService().FinalizeAsync(_tenantId, _userId, draft.Id, CancellationToken.None);
+
+        _positionAssignmentRepository.Verify(a => a.TryReservePositionAssignmentAsync(
+            _tenantId, It.IsAny<Guid>(), positionId, draft.StartDate, _userId, chosenManagerId, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     private void SetupPosition(Guid positionId, Guid departmentId)

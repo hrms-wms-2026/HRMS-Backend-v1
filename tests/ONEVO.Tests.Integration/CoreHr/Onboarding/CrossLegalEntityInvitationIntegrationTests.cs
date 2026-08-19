@@ -107,7 +107,7 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
         var result = await handler.Handle(new SaveOnboardingDraftCommand(
             null, "Shared", "Person", SharedEmail, _legalEntityBId, null, null,
             "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "EMP-B-001", 1, null, null,
-            "employee_details", IfMatchVersion: null), CancellationToken.None);
+            "employee_details", IfMatchVersion: null, ReportsToEmployeeId: null), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
     }
@@ -121,7 +121,7 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
         var result = await handler.Handle(new SaveOnboardingDraftCommand(
             null, "Shared", "Person", SharedEmail, _legalEntityAId, null, null,
             "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "EMP-A-002", 1, null, null,
-            "employee_details", IfMatchVersion: null), CancellationToken.None);
+            "employee_details", IfMatchVersion: null, ReportsToEmployeeId: null), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(409);

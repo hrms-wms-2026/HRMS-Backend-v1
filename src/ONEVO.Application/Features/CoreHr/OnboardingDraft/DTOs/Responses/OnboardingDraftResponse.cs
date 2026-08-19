@@ -18,4 +18,5 @@ public record OnboardingDraftResponse(
     string? DraftReason,
     string LastSavedStep,
     Guid StartedById,
-    string Version);
+    string Version,
+    Guid? ReportsToEmployeeId);

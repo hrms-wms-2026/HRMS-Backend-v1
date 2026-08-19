@@ -25,6 +25,7 @@ using ONEVO.Infrastructure.Services.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.Support;
+using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
@@ -142,13 +143,13 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
 
         await seeded.SaveChangesAsync();
 
-        var assignmentRepo = new EfPositionAssignmentRepository(seeded);
+        var assignmentRepo = PositionAssignmentRepositoryTestSupport.CreateRepository(seeded);
         var hireDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
 
         _targetAssignmentId = (await assignmentRepo.TryCreateActiveAssignmentAsync(
-            _tenantId, _targetEmployeeId, _fromPositionId, hireDate, _managerUserId))!.Value;
+            _tenantId, _targetEmployeeId, _fromPositionId, hireDate, _managerUserId, reportsToEmployeeId: null))!.Value;
         _selfApproveAssignmentId = (await assignmentRepo.TryCreateActiveAssignmentAsync(
-            _tenantId, _selfApproveEmployeeId, _selfApproveFromPositionId, hireDate, _managerUserId))!.Value;
+            _tenantId, _selfApproveEmployeeId, _selfApproveFromPositionId, hireDate, _managerUserId, reportsToEmployeeId: null))!.Value;
     }
 
     public async Task DisposeAsync() => await _postgres.DisposeAsync();
@@ -268,7 +269,7 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
         return new ChangeEmployeePositionCommandHandler(
             employees,
             new EfPositionRepository(db),
-            new EfPositionAssignmentRepository(db),
+            PositionAssignmentRepositoryTestSupport.CreateRepository(db),
             new UnitOfWork(db),
             new StubCurrentUser(_tenantId, userId, orgManage: true, sensitive: false),
             new EfAuthRepository(db),
@@ -291,7 +292,7 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
             auth,
             auth,
             new EfPositionRepository(db),
-            new EfPositionAssignmentRepository(db),
+            PositionAssignmentRepositoryTestSupport.CreateRepository(db),
             new EfLegalEntityRepository(db),
             new EfDepartmentRepository(db),
             new EfEmploymentTypeRepository(db),

@@ -6,7 +6,8 @@ public sealed record RowValidationOutcome(
     bool IsValid, string? ErrorMessage,
     Guid? DepartmentId, Guid? PositionId, Guid? TemplateId,
     string FirstName, string LastName, string WorkEmail, DateOnly? StartDate,
-    string EmploymentType, int? WorkModeId, string? EmployeeNumber);
+    string EmploymentType, int? WorkModeId, string? EmployeeNumber,
+    Guid? ReportsToEmployeeId);
 
 public interface IBulkOnboardingRowValidator
 {

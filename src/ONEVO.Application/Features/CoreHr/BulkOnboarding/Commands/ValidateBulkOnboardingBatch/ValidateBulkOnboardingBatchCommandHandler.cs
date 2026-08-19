@@ -45,6 +45,7 @@ public class ValidateBulkOnboardingBatchCommandHandler
 
             row.ResolvedDepartmentId = outcome.DepartmentId;
             row.ResolvedPositionId = outcome.PositionId;
+            row.ResolvedReportsToEmployeeId = outcome.ReportsToEmployeeId;
             row.ResolvedTemplateId = outcome.TemplateId;
             row.Status = outcome.IsValid ? BulkOnboardingBatchRowStatus.Valid : BulkOnboardingBatchRowStatus.Invalid;
             row.ErrorMessage = outcome.ErrorMessage;

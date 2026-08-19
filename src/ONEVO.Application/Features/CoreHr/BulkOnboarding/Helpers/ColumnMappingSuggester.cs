@@ -14,6 +14,7 @@ public static class ColumnMappingSuggester
         ["position"] = ["position", "job title", "title", "role"],
         ["checklistTemplate"] = ["checklist template", "template"],
         ["employeeNumber"] = ["employee number", "employee no", "emp id", "employee id"],
+        ["reportingManager"] = ["reporting manager", "manager", "reports to", "team lead"],
     };
 
     public static IReadOnlyDictionary<string, string?> Suggest(IReadOnlyList<string> csvHeaders)

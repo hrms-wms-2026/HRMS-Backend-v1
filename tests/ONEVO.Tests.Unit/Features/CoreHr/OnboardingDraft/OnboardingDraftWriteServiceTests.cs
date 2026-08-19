@@ -52,7 +52,7 @@ public sealed class OnboardingDraftWriteServiceTests
                 new OnboardingDraftResponse(id, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
                     "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
                     OnboardingDraftStatus.Draft, OnboardingDraftReason.SeatConfigurationRequired,
-                    OnboardingWizardStep.EmployeeDetails, Guid.Empty, "1"));
+                    OnboardingWizardStep.EmployeeDetails, Guid.Empty, "1", null));
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public sealed class OnboardingDraftWriteServiceTests
         var command = new SaveOnboardingDraftCommand(
             null, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
             "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
-            OnboardingWizardStep.EmployeeDetails, null);
+            OnboardingWizardStep.EmployeeDetails, null, null);
 
         var result = await service.SaveAsync(explicitTenantId, explicitUserId, command, CancellationToken.None);
 

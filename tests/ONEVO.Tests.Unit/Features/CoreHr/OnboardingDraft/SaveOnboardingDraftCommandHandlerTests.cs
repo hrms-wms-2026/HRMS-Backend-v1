@@ -11,6 +11,7 @@ using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -29,6 +30,7 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
     private readonly Mock<IOnboardingDraftRepository> _draftRepository = new();
     private readonly Mock<IEmployeeRepository> _employeeRepository = new();
     private readonly Mock<IPositionRepository> _positionRepository = new();
+    private readonly Mock<IPositionAssignmentRepository> _positionAssignments = new();
     private readonly Mock<ILegalEntityRepository> _legalEntityRepository = new();
     private readonly Mock<IDepartmentRepository> _departmentRepository = new();
     private readonly Mock<ISeatEntitlementService> _seatEntitlementService = new();
@@ -62,7 +64,7 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
                 new OnboardingDraftResponse(id, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
                     "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
                     OnboardingDraftStatus.WaitingForSeat, OnboardingDraftReason.WaitingForSeat,
-                    OnboardingWizardStep.EmployeeDetails, _userId, "1"));
+                    OnboardingWizardStep.EmployeeDetails, _userId, "1", null));
     }
 
     private SaveOnboardingDraftCommandHandler CreateHandler() => new(CreateWriteService(), _currentUser.Object);
@@ -70,7 +72,7 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
     private OnboardingDraftWriteService CreateWriteService() => new(
         _draftRepository.Object, _employeeRepository.Object,
         Mock.Of<IUserRepository>(), Mock.Of<IUserRoleRepository>(),
-        _positionRepository.Object, Mock.Of<IPositionAssignmentRepository>(),
+        _positionRepository.Object, _positionAssignments.Object,
         _legalEntityRepository.Object, _departmentRepository.Object,
         Mock.Of<IEmploymentTypeRepository>(), _workModeRepository.Object,
         _seatEntitlementService.Object, Mock.Of<IAccessGrantRequestRepository>(),
@@ -82,7 +84,7 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
     private SaveOnboardingDraftCommand ValidCommand(Guid? draftId = null, Guid? positionId = null, string? ifMatch = null) => new(
         draftId, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, positionId,
         "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
-        OnboardingWizardStep.EmployeeDetails, ifMatch);
+        OnboardingWizardStep.EmployeeDetails, ifMatch, null);
 
     [Fact]
     public async Task Handle_SetsWaitingForPositionApproval_WhenSelectedPositionRequiresApproval()
@@ -174,7 +176,7 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
         var command = new SaveOnboardingDraftCommand(
             null, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
             "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "E-001", 1, null, null,
-            OnboardingWizardStep.EmployeeDetails, null);
+            OnboardingWizardStep.EmployeeDetails, null, null);
         _employeeRepository
             .Setup(r => r.EmployeeNumberExistsAsync(_tenantId, "E-001", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -292,5 +294,92 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task SaveAsync_Requires_ReportsToEmployeeId_When_Position_Target_Is_Pooled()
+    {
+        var positionId = Guid.NewGuid();
+        var pooledTargetId = Guid.NewGuid();
+        _positionRepository.Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, It.IsAny<Guid>(), positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = positionId, IsActive = true, ReportsToPositionId = pooledTargetId });
+        _positionAssignments.Setup(a => a.GetActiveHoldersAsync(_tenantId, pooledTargetId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PositionActiveHolder>
+            {
+                new(Guid.NewGuid(), "A", "One", "a@acme.test", null),
+                new(Guid.NewGuid(), "B", "Two", "b@acme.test", null),
+            });
+
+        var result = await CreateWriteService().SaveAsync(_tenantId, _userId, ValidCommand(positionId: positionId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(422, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task SaveAsync_Rejects_ReportsToEmployeeId_Not_A_Current_Active_Holder()
+    {
+        var positionId = Guid.NewGuid();
+        var pooledTargetId = Guid.NewGuid();
+        _positionRepository.Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, It.IsAny<Guid>(), positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = positionId, IsActive = true, ReportsToPositionId = pooledTargetId });
+        _positionAssignments.Setup(a => a.GetActiveHoldersAsync(_tenantId, pooledTargetId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PositionActiveHolder>
+            {
+                new(Guid.NewGuid(), "A", "One", "a@acme.test", null),
+                new(Guid.NewGuid(), "B", "Two", "b@acme.test", null),
+            });
+
+        var command = ValidCommand(positionId: positionId) with { ReportsToEmployeeId = Guid.NewGuid() };
+        var result = await CreateWriteService().SaveAsync(_tenantId, _userId, command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(422, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task SaveAsync_Persists_ReportsToEmployeeId_When_Valid()
+    {
+        var positionId = Guid.NewGuid();
+        var pooledTargetId = Guid.NewGuid();
+        var chosenManagerId = Guid.NewGuid();
+        _positionRepository.Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, It.IsAny<Guid>(), positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = positionId, IsActive = true, ReportsToPositionId = pooledTargetId });
+        _positionAssignments.Setup(a => a.GetActiveHoldersAsync(_tenantId, pooledTargetId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PositionActiveHolder> { new(chosenManagerId, "A", "One", "a@acme.test", null) });
+
+        OnboardingDraftEntity? added = null;
+        _draftRepository.Setup(r => r.AddAsync(It.IsAny<OnboardingDraftEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<OnboardingDraftEntity, CancellationToken>((d, _) => added = d)
+            .Returns(Task.CompletedTask);
+
+        var command = ValidCommand(positionId: positionId) with { ReportsToEmployeeId = chosenManagerId };
+        var result = await CreateWriteService().SaveAsync(_tenantId, _userId, command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(added);
+        Assert.Equal(chosenManagerId, added!.ReportsToEmployeeId);
+    }
+
+    [Fact]
+    public async Task SaveAsync_Ignores_ReportsToEmployeeId_When_Position_Target_Has_Single_Holder()
+    {
+        var positionId = Guid.NewGuid();
+        var uniqueTargetId = Guid.NewGuid();
+        _positionRepository.Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, It.IsAny<Guid>(), positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = positionId, IsActive = true, ReportsToPositionId = uniqueTargetId });
+        _positionAssignments.Setup(a => a.GetActiveHoldersAsync(_tenantId, uniqueTargetId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PositionActiveHolder> { new(Guid.NewGuid(), "A", "One", "a@acme.test", null) });
+
+        OnboardingDraftEntity? added = null;
+        _draftRepository.Setup(r => r.AddAsync(It.IsAny<OnboardingDraftEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<OnboardingDraftEntity, CancellationToken>((d, _) => added = d)
+            .Returns(Task.CompletedTask);
+
+        var result = await CreateWriteService().SaveAsync(_tenantId, _userId, ValidCommand(positionId: positionId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(added);
+        Assert.Null(added!.ReportsToEmployeeId);
     }
 }

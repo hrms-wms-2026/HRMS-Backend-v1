@@ -95,6 +95,20 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
         if (position is null || !position.IsActive)
             return Result<ChangeEmployeePositionResponse>.NotFound("The selected position does not exist or is not active in this employee's company.");
 
+        if (position.ReportsToPositionId is { } reportsToPositionId)
+        {
+            var activeHolders = await _positionAssignmentRepository.GetActiveHoldersAsync(tenantId, reportsToPositionId, ct);
+            if (activeHolders.Count > 1)
+            {
+                if (request.ReportsToEmployeeId is not { } chosenManagerId)
+                    return Result<ChangeEmployeePositionResponse>.UnprocessableEntity(
+                        "This position's manager position has multiple current holders — select which one this employee reports to.");
+                if (!activeHolders.Any(h => h.EmployeeId == chosenManagerId))
+                    return Result<ChangeEmployeePositionResponse>.UnprocessableEntity(
+                        "The selected reporting manager is not a current holder of this position's manager position.");
+            }
+        }
+
         var accessTemplate = await _positionRepository.GetAccessTemplateByPositionAsync(tenantId, position.Id, ct);
         if (accessTemplate is { RequiresApproval: true })
         {
@@ -121,7 +135,7 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
                 await _unitOfWork.ExecuteInTransactionAsync(async txnCt =>
                 {
                     var reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
-                        tenantId, employee.Id, position.Id, request.EffectiveFrom, _currentUser.UserId, txnCt);
+                        tenantId, employee.Id, position.Id, request.EffectiveFrom, _currentUser.UserId, request.ReportsToEmployeeId, txnCt);
                     if (reservedAssignmentId is null)
                         throw new PositionAtCapacityException();
 
@@ -192,7 +206,7 @@ public class ChangeEmployeePositionCommandHandler : IRequestHandler<ChangeEmploy
                 }
 
                 var reservedAssignmentId = await _positionAssignmentRepository.TryCreateActiveAssignmentAsync(
-                    tenantId, employee.Id, position.Id, request.EffectiveFrom, _currentUser.UserId, txnCt);
+                    tenantId, employee.Id, position.Id, request.EffectiveFrom, _currentUser.UserId, request.ReportsToEmployeeId, txnCt);
                 if (reservedAssignmentId is null)
                     throw new PositionAtCapacityException();
 

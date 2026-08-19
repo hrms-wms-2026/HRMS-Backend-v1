@@ -1,8 +1,10 @@
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 
 namespace ONEVO.Application.Features.CoreHr.BulkOnboarding.Services;
 
@@ -10,6 +12,7 @@ public class BulkOnboardingRowValidator : IBulkOnboardingRowValidator
 {
     private readonly IDepartmentRepository _departmentRepository;
     private readonly IPositionRepository _positionRepository;
+    private readonly IPositionAssignmentRepository _positionAssignments;
     private readonly IWorkModeRepository _workModeRepository;
     private readonly IEmploymentTypeRepository _employmentTypeRepository;
     private readonly IEmployeeRepository _employeeRepository;
@@ -17,11 +20,13 @@ public class BulkOnboardingRowValidator : IBulkOnboardingRowValidator
 
     public BulkOnboardingRowValidator(
         IDepartmentRepository departmentRepository, IPositionRepository positionRepository,
+        IPositionAssignmentRepository positionAssignments,
         IWorkModeRepository workModeRepository, IEmploymentTypeRepository employmentTypeRepository,
         IEmployeeRepository employeeRepository, IChecklistTemplateRepository checklistTemplateRepository)
     {
         _departmentRepository = departmentRepository;
         _positionRepository = positionRepository;
+        _positionAssignments = positionAssignments;
         _workModeRepository = workModeRepository;
         _employmentTypeRepository = employmentTypeRepository;
         _employeeRepository = employeeRepository;
@@ -77,6 +82,7 @@ public class BulkOnboardingRowValidator : IBulkOnboardingRowValidator
         }
 
         Guid? positionId = null;
+        Position? resolvedPosition = null;
         var positionName = Get("position");
         if (positionName is not null)
         {
@@ -85,6 +91,26 @@ public class BulkOnboardingRowValidator : IBulkOnboardingRowValidator
             if (match is null)
                 return Invalid($"Position '{positionName}' was not found in this company/department. Create it under Organization -> Positions first.");
             positionId = match.Id;
+            resolvedPosition = match;
+        }
+
+        Guid? resolvedReportsToEmployeeId = null;
+        if (resolvedPosition?.ReportsToPositionId is { } reportsToPositionId)
+        {
+            var activeHolders = await _positionAssignments.GetActiveHoldersAsync(tenantId, reportsToPositionId, ct);
+            if (activeHolders.Count > 1)
+            {
+                var reportingManagerRaw = Get("reportingManager");
+                if (string.IsNullOrWhiteSpace(reportingManagerRaw))
+                    return Invalid("Row references a position whose manager position has multiple current holders — a Reporting Manager column value is required.");
+
+                var matchedHolder = activeHolders.FirstOrDefault(h =>
+                    string.Equals(h.WorkEmail, reportingManagerRaw.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (matchedHolder is null)
+                    return Invalid($"Reporting Manager \"{reportingManagerRaw}\" is not a current holder of this position's manager position.");
+
+                resolvedReportsToEmployeeId = matchedHolder.EmployeeId;
+            }
         }
 
         int? workModeId = batch.DefaultWorkModeId;
@@ -117,10 +143,11 @@ public class BulkOnboardingRowValidator : IBulkOnboardingRowValidator
 
         return new RowValidationOutcome(
             true, null, departmentId, positionId, templateId,
-            firstName, lastName, workEmail, startDate, employmentType, workModeId, employeeNumber);
+            firstName, lastName, workEmail, startDate, employmentType, workModeId, employeeNumber,
+            resolvedReportsToEmployeeId);
 
         RowValidationOutcome Invalid(string message) => new(
             false, message, null, null, null, firstName ?? string.Empty, lastName ?? string.Empty,
-            workEmail ?? string.Empty, null, employmentType ?? string.Empty, null, employeeNumber);
+            workEmail ?? string.Empty, null, employmentType ?? string.Empty, null, employeeNumber, null);
     }
 }

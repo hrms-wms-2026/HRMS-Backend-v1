@@ -9,3 +9,10 @@ public sealed record PositionOccupantPreviewItem(
     string FirstName,
     string LastName,
     Guid? AvatarFileId);
+
+public sealed record PositionActiveHolder(
+    Guid EmployeeId,
+    string FirstName,
+    string LastName,
+    string WorkEmail,
+    Guid? AvatarFileId);

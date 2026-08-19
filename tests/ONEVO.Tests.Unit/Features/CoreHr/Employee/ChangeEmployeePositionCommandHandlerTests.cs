@@ -12,6 +12,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition
 using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -118,7 +119,7 @@ public class ChangeEmployeePositionCommandHandlerTests
             .Setup(a => a.EndActiveAsync(tenantId, oldAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _assignments
-            .Setup(a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Setup(a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid?)null);
 
         var handler = CreateHandler();
@@ -129,7 +130,7 @@ public class ChangeEmployeePositionCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
         _assignments.Verify(
-            a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
             Times.Once);
         _assignments.Verify(
             a => a.EndActiveAsync(tenantId, oldAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
@@ -163,7 +164,7 @@ public class ChangeEmployeePositionCommandHandlerTests
             .Setup(a => a.EndActiveAsync(tenantId, oldAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _assignments
-            .Setup(a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Setup(a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(newAssignmentId);
 
         var handler = CreateHandler();
@@ -174,7 +175,7 @@ public class ChangeEmployeePositionCommandHandlerTests
         Assert.True(result.IsSuccess);
         _assignments.Verify(a => a.EndActiveAsync(tenantId, oldAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Once);
         _assignments.Verify(
-            a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -226,7 +227,7 @@ public class ChangeEmployeePositionCommandHandlerTests
             .Setup(a => a.EndActiveAsync(tenantId, oldAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _assignments
-            .Setup(a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Setup(a => a.TryCreateActiveAssignmentAsync(tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new UniqueConstraintConflictException(new Exception("duplicate key value violates unique constraint")));
 
         var handler = CreateHandler();
@@ -273,7 +274,7 @@ public class ChangeEmployeePositionCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
         _assignments.Verify(
-            a => a.TryCreateActiveAssignmentAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            a => a.TryCreateActiveAssignmentAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -340,7 +341,7 @@ public class ChangeEmployeePositionCommandHandlerTests
         _permissionRepository.Setup(p => p.ListUserIdsWithPermissionCodeAsync(tenantId, "roles:manage", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Guid> { approverUserId });
         _assignments
-            .Setup(a => a.TryReservePositionAssignmentAsync(tenantId, employeeId, positionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Setup(a => a.TryReservePositionAssignmentAsync(tenantId, employeeId, positionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Guid.NewGuid());
 
         var handler = CreateHandler();
@@ -371,7 +372,7 @@ public class ChangeEmployeePositionCommandHandlerTests
         _permissionRepository.Setup(p => p.ListUserIdsWithPermissionCodeAsync(tenantId, "roles:manage", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Guid> { approverUserId });
         _assignments
-            .Setup(a => a.TryReservePositionAssignmentAsync(tenantId, employeeId, positionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Setup(a => a.TryReservePositionAssignmentAsync(tenantId, employeeId, positionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Guid.NewGuid());
         _userRepository.Setup(u => u.GetByIdAsync(approverUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new User { Email = "approver@test.dev" });
@@ -435,7 +436,7 @@ public class ChangeEmployeePositionCommandHandlerTests
         Assert.Equal(422, result.StatusCode);
         _assignments.Verify(
             a => a.TryReservePositionAssignmentAsync(
-                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -458,7 +459,7 @@ public class ChangeEmployeePositionCommandHandlerTests
         var reserveInsideTransaction = false;
         var saveInsideTransaction = false;
         _assignments
-            .Setup(a => a.TryReservePositionAssignmentAsync(tenantId, employeeId, positionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Setup(a => a.TryReservePositionAssignmentAsync(tenantId, employeeId, positionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .Callback(() => reserveInsideTransaction = fake.IsInTransaction)
             .ReturnsAsync(Guid.NewGuid());
         _accessGrantRequestRepository
@@ -498,7 +499,61 @@ public class ChangeEmployeePositionCommandHandlerTests
         Assert.Equal(409, result.StatusCode);
         _assignments.Verify(
             a => a.TryReservePositionAssignmentAsync(
-                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_Requires_ReportsToEmployeeId_When_New_Position_Target_Is_Pooled()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var newPositionId = Guid.NewGuid();
+        var pooledTargetId = Guid.NewGuid();
+        SetupNonSelfCaller(tenantId, employeeId);
+        _positions.Setup(p => p.GetByIdForLegalEntityAsync(tenantId, It.IsAny<Guid>(), newPositionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = newPositionId, TenantId = tenantId, IsActive = true, ReportsToPositionId = pooledTargetId, DepartmentId = Guid.NewGuid() });
+        _positions.Setup(p => p.GetAccessTemplateByPositionAsync(tenantId, newPositionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionAccessTemplate { RequiresApproval = false, RoleId = Guid.NewGuid() });
+        _assignments.Setup(a => a.GetActiveHoldersAsync(tenantId, pooledTargetId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PositionActiveHolder>
+            {
+                new(Guid.NewGuid(), "A", "One", "a@acme.test", null),
+                new(Guid.NewGuid(), "B", "Two", "b@acme.test", null),
+            });
+
+        var result = await CreateHandler().Handle(
+            new ChangeEmployeePositionCommand(employeeId, newPositionId, DateOnly.FromDateTime(DateTime.UtcNow), "Transfer"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(422, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_Passes_ReportsToEmployeeId_Into_TryCreateActiveAssignmentAsync_For_Immediate_Changes()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var newPositionId = Guid.NewGuid();
+        var chosenManagerId = Guid.NewGuid();
+        SetupNonSelfCaller(tenantId, employeeId);
+        _positions.Setup(p => p.GetByIdForLegalEntityAsync(tenantId, It.IsAny<Guid>(), newPositionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = newPositionId, TenantId = tenantId, IsActive = true, DepartmentId = Guid.NewGuid() });
+        _positions.Setup(p => p.GetAccessTemplateByPositionAsync(tenantId, newPositionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionAccessTemplate { RequiresApproval = false, RoleId = Guid.NewGuid() });
+        _assignments.Setup(a => a.GetActivePrimaryAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment?)null);
+        _assignments.Setup(a => a.TryCreateActiveAssignmentAsync(
+                tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), chosenManagerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
+
+        await CreateHandler().Handle(
+            new ChangeEmployeePositionCommand(employeeId, newPositionId, DateOnly.FromDateTime(DateTime.UtcNow), "Transfer", chosenManagerId),
+            CancellationToken.None);
+
+        _assignments.Verify(a => a.TryCreateActiveAssignmentAsync(
+            tenantId, employeeId, newPositionId, It.IsAny<DateOnly>(), It.IsAny<Guid>(), chosenManagerId, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 }

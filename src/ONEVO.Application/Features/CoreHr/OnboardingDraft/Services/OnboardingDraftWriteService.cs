@@ -133,6 +133,21 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             var position = await _positionRepository.GetByIdForLegalEntityAsync(tenantId, request.LegalEntityId, request.PositionId.Value, ct);
             if (position is null || !position.IsActive || (request.DepartmentId is not null && position.DepartmentId != request.DepartmentId))
                 return Result<OnboardingDraftResponse>.Failure("The selected position does not exist, is inactive, or does not match the selected legal entity and department.");
+
+            if (position.ReportsToPositionId is { } reportsToPositionId)
+            {
+                var activeHolders = await _positionAssignmentRepository.GetActiveHoldersAsync(tenantId, reportsToPositionId, ct);
+                if (activeHolders.Count > 1)
+                {
+                    if (request.ReportsToEmployeeId is not { } chosenManagerId)
+                        return Result<OnboardingDraftResponse>.UnprocessableEntity(
+                            "This position's manager position has multiple current holders — select which one this employee reports to.");
+
+                    if (!activeHolders.Any(h => h.EmployeeId == chosenManagerId))
+                        return Result<OnboardingDraftResponse>.UnprocessableEntity(
+                            "The selected reporting manager is not a current holder of this position's manager position.");
+                }
+            }
         }
 
         if (await _employeeRepository.EmployeeExistsInLegalEntityAsync(tenantId, request.LegalEntityId, request.WorkEmail, excludeId: null, ct))
@@ -226,6 +241,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         draft.LegalEntityId = request.LegalEntityId;
         draft.DepartmentId = request.DepartmentId;
         draft.PositionId = request.PositionId;
+        draft.ReportsToEmployeeId = request.ReportsToEmployeeId;
         draft.EmploymentType = request.EmploymentType;
         draft.StartDate = request.StartDate;
         draft.EmployeeNumber = request.EmployeeNumber;
@@ -519,7 +535,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         if (position is not null)
         {
             reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
-                draft.TenantId, employeeId, position.Id, draft.StartDate, actingUserId, ct);
+                draft.TenantId, employeeId, position.Id, draft.StartDate, actingUserId, draft.ReportsToEmployeeId, ct);
             if (reservedAssignmentId is null)
                 return Result<FinalizeOnboardingDraftResponse>.Conflict("This position has reached its capacity.");
         }
