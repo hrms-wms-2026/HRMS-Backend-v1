@@ -61,9 +61,11 @@ public class ListPositionsQueryHandler
         var positionIds = page.Items.Select(p => p.Id).ToList();
         var occupancyByPositionId = await _positionAssignments.GetOccupancyPreviewsAsync(
             tenantId, positionIds, PositionMapper.OccupantPreviewLimit, ct);
+        var requiresApprovalByPositionId = await _positions.GetRequiresApprovalByPositionIdsAsync(
+            tenantId, positionIds, ct);
 
         var items = page.Items
-            .Select(p => PositionMapper.ToListItemResponse(p, occupancyByPositionId))
+            .Select(p => PositionMapper.ToListItemResponse(p, occupancyByPositionId, requiresApprovalByPositionId))
             .ToList();
         var response = new PositionPageResponse(items, page.Page, page.PageSize, page.TotalCount, page.TotalPages);
 

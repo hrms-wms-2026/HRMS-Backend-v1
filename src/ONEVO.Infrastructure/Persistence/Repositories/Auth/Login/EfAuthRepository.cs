@@ -50,6 +50,18 @@ public sealed class EfAuthRepository :
         return user;
     }
 
+    // Explicit: EfAuthRepository also exposes IPermissionRepository.GetByIdsAsync(IEnumerable<Guid>),
+    // and Guid[] binds more specifically to IReadOnlyCollection<Guid> than IEnumerable<Guid>.
+    async Task<IReadOnlyList<User>> IUserRepository.GetByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0)
+            return Array.Empty<User>();
+
+        return await _db.Users
+            .Where(u => ids.Contains(u.Id) && !u.IsDeleted)
+            .ToListAsync(ct);
+    }
+
     public async Task<User?> GetByTenantAndEmailAsync(Guid tenantId, string normalizedEmail, CancellationToken ct = default)
     {
         var user = await _db.Users.FirstOrDefaultAsync(
@@ -143,6 +155,11 @@ public sealed class EfAuthRepository :
         }
         // Caller must call IUnitOfWork.SaveChangesAsync
     }
+
+    async Task<int> ISessionRepository.RevokeAllActiveByUserIdAsync(Guid userId, CancellationToken ct)
+        => await _db.Sessions
+            .Where(s => s.UserId == userId && !s.IsRevoked)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.IsRevoked, true), ct);
 
     public Task AddAsync(Session session, CancellationToken ct = default)
     {
@@ -425,6 +442,26 @@ public sealed class EfAuthRepository :
 
         var userIds = await query.ToListAsync(ct);
         return userIds;
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListUserIdsWithPermissionCodeAsync(
+        Guid tenantId, string permissionCode, DateTimeOffset now, CancellationToken ct = default)
+    {
+        // UserRole carries TenantId (ITenantOwnedEntity) — filter directly instead of joining Users
+        // for tenancy. Join Users to skip soft-deleted and inactive accounts so the empty-approver
+        // gate matches who will actually receive notification email.
+        var query = _db.UserRoles
+            .AsNoTracking()
+            .Where(ur => ur.TenantId == tenantId && (ur.ExpiresAt == null || ur.ExpiresAt > now))
+            .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => new { ur, rp })
+            .Join(_db.Permissions, x => x.rp.PermissionId, p => p.Id, (x, p) => new { x.ur, p })
+            .Where(x => x.p.Code == permissionCode)
+            .Join(_db.Users, x => x.ur.UserId, u => u.Id, (x, u) => u)
+            .Where(u => !u.IsDeleted && u.IsActive)
+            .Select(u => u.Id)
+            .Distinct();
+
+        return await query.ToListAsync(ct);
     }
 
     public Task AddAsync(UserRole userRole, CancellationToken ct = default)

@@ -19,4 +19,8 @@ public interface ISessionRepository
     Task AddAsync(Session session, CancellationToken ct = default);
     Task RevokeByIdAsync(Guid sessionId, CancellationToken ct = default);
     Task RevokeByKeyHashAsync(string keyHash, CancellationToken ct = default);
+
+    /// <summary>Revokes every non-revoked session for a user in one bulk update. Returns the
+    /// number of sessions revoked. Used by offboarding completion - see design spec §5.5.</summary>
+    Task<int> RevokeAllActiveByUserIdAsync(Guid userId, CancellationToken ct = default);
 }

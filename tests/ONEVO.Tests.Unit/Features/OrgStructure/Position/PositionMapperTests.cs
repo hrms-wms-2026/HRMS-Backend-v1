@@ -14,7 +14,7 @@ public sealed class PositionMapperTests
         var position = CreatePosition(maxOccupancy: 5);
 
         var response = PositionMapper.ToListItemResponse(
-            position, new Dictionary<Guid, PositionOccupancyPreview>());
+            position, new Dictionary<Guid, PositionOccupancyPreview>(), new Dictionary<Guid, bool>());
 
         Assert.Equal(0, response.AssignedCount);
         Assert.Equal(0, response.RemainingAssignedCount);
@@ -35,7 +35,7 @@ public sealed class PositionMapperTests
                 [new PositionOccupantPreviewItem(employeeId, "Jane", "Smith", avatarFileId)])
         };
 
-        var response = PositionMapper.ToListItemResponse(position, occupancy);
+        var response = PositionMapper.ToListItemResponse(position, occupancy, new Dictionary<Guid, bool>());
 
         var occupant = Assert.Single(response.OccupantPreview);
         Assert.Equal("Jane Smith", occupant.DisplayName);
@@ -56,7 +56,7 @@ public sealed class PositionMapperTests
             [position.Id] = new PositionOccupancyPreview(7, previewItems)
         };
 
-        var response = PositionMapper.ToListItemResponse(position, occupancy);
+        var response = PositionMapper.ToListItemResponse(position, occupancy, new Dictionary<Guid, bool>());
 
         Assert.Equal(7, response.AssignedCount);
         Assert.Equal(4, response.OccupantPreview.Count);

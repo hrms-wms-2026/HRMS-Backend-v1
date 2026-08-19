@@ -41,12 +41,12 @@ public class LookupDataSeeder : IHostedService
 
     private async Task SeedAllAsync(ApplicationDbContext db, CancellationToken ct)
     {
-        await SeedAsync(db, db.EmploymentTypes, EmploymentTypes(), "employment types", ct);
-        await SeedAsync(db, db.EmploymentStatuses, EmploymentStatuses(), "employment statuses", ct);
-        await SeedAsync(db, db.WorkModes, WorkModes(), "work modes", ct);
-        await SeedAsync(db, db.ApprovalStatuses, ApprovalStatuses(), "approval statuses", ct);
-        await SeedAsync(db, db.Severities, Severities(), "severities", ct);
-        await SeedAsync(db, db.VersionStatuses, VersionStatuses(), "version statuses", ct);
+        await SeedAsync(db, db.EmploymentTypes, EmploymentTypes(), e => e.Id, "employment types", ct);
+        await SeedAsync(db, db.EmploymentStatuses, EmploymentStatuses(), e => e.Id, "employment statuses", ct);
+        await SeedAsync(db, db.WorkModes, WorkModes(), e => e.Id, "work modes", ct);
+        await SeedAsync(db, db.ApprovalStatuses, ApprovalStatuses(), e => e.Id, "approval statuses", ct);
+        await SeedAsync(db, db.Severities, Severities(), e => e.Id, "severities", ct);
+        await SeedAsync(db, db.VersionStatuses, VersionStatuses(), e => e.Id, "version statuses", ct);
     }
 
     private static VersionStatus[] VersionStatuses() =>
@@ -56,18 +56,27 @@ public class LookupDataSeeder : IHostedService
         new() { Id = VersionStatusIds.Archived, Code = "archived", Label = "Archived" },
     ];
 
-    private async Task SeedAsync<T>(ApplicationDbContext db, DbSet<T> dbSet, T[] rows, string label, CancellationToken ct)
+    // Row-by-row idempotency (not a table-level "any rows exist" skip) is required because some
+    // rows in these tables (e.g. employment_statuses ids 5/6) are seeded directly by EF Core
+    // migrations via InsertData, independently of this seeder. A table-level AnyAsync() check
+    // would see those migration-inserted rows and skip seeding entirely, silently leaving the
+    // baseline ids (e.g. employment_statuses id=1 "active") missing.
+    private async Task SeedAsync<T>(
+        ApplicationDbContext db, DbSet<T> dbSet, T[] rows, Func<T, int> idSelector, string label, CancellationToken ct)
         where T : class
     {
-        if (await dbSet.AnyAsync(ct))
+        var existingIds = (await dbSet.ToListAsync(ct)).Select(idSelector).ToHashSet();
+        var missingRows = rows.Where(r => !existingIds.Contains(idSelector(r))).ToArray();
+
+        if (missingRows.Length == 0)
         {
             _logger.LogInformation("Lookup '{Label}' already seeded — skipping.", label);
             return;
         }
 
-        await dbSet.AddRangeAsync(rows, ct);
+        await dbSet.AddRangeAsync(missingRows, ct);
         await db.SaveChangesAsync(ct);
-        _logger.LogInformation("Seeded {Count} {Label}.", rows.Length, label);
+        _logger.LogInformation("Seeded {Count} {Label}.", missingRows.Length, label);
     }
 
     private static EmploymentType[] EmploymentTypes() =>
@@ -80,10 +89,12 @@ public class LookupDataSeeder : IHostedService
 
     private static EmploymentStatus[] EmploymentStatuses() =>
     [
-        new() { Id = 1, Code = "active",     Label = "Active"     },
-        new() { Id = 2, Code = "on_leave",   Label = "On Leave"   },
-        new() { Id = 3, Code = "suspended",  Label = "Suspended"  },
-        new() { Id = 4, Code = "terminated", Label = "Terminated" },
+        new() { Id = 1, Code = "active",      Label = "Active"      },
+        new() { Id = 2, Code = "on_leave",    Label = "On Leave"    },
+        new() { Id = 3, Code = "suspended",   Label = "Suspended"   },
+        new() { Id = 4, Code = "terminated",  Label = "Terminated"  },
+        new() { Id = 5, Code = "offboarding", Label = "Offboarding" },
+        new() { Id = 6, Code = "resigned",    Label = "Resigned"    },
     ];
 
     private static WorkMode[] WorkModes() =>

@@ -21,6 +21,16 @@ public interface IEmployeeRepository
         Guid employeeId,
         CancellationToken ct = default);
 
+    /// <summary>Employees this specific user invited (invitation_tokens.created_by_id) who
+    /// haven't yet accepted (UsedAt is null) or been revoked - a brand-new invitee has no active
+    /// PrimaryEmployment position assignment yet, so pure coverage-based visibility can't include
+    /// them, but the person who invited them still needs to see/track/resend that invitation.
+    /// Deliberately independent of EmployeeVisibilityScope/ListVisibleAsync - only
+    /// ListEmployeesQueryHandler merges this in; it is not coverage and must never leak into
+    /// coverage-strict consumers like the offboarding feature.</summary>
+    Task<IReadOnlyList<EmployeeListItemResponse>> ListInvitedPendingByInviterAsync(
+        Guid tenantId, Guid inviterUserId, CancellationToken ct = default);
+
     Task<ONEVO.Domain.Features.CoreHr.Entities.Employee?> GetByIdAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default);
 

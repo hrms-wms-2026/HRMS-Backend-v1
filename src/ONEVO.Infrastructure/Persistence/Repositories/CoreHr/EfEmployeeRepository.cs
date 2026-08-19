@@ -127,6 +127,55 @@ public class EfEmployeeRepository : IEmployeeRepository
         return (items, totalCount);
     }
 
+    public async Task<IReadOnlyList<EmployeeListItemResponse>> ListInvitedPendingByInviterAsync(
+        Guid tenantId, Guid inviterUserId, CancellationToken ct = default)
+    {
+        var activePrimaryAssignments = _db.PositionAssignments.AsNoTracking()
+            .Where(pa => pa.TenantId == tenantId
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active);
+
+        var joined =
+            from token in _db.InvitationTokens.AsNoTracking()
+            where token.TenantId == tenantId && token.CreatedById == inviterUserId
+                && token.EmployeeId != null && token.UsedAt == null && token.RevokedAt == null
+            join e in _db.Employees.AsNoTracking() on token.EmployeeId equals e.Id
+            join dept in _db.Departments.AsNoTracking() on e.DepartmentId equals dept.Id into deptJoin
+            from dept in deptJoin.DefaultIfEmpty()
+            join legalEntity in _db.LegalEntities.AsNoTracking() on e.LegalEntityId equals legalEntity.Id into leJoin
+            from legalEntity in leJoin.DefaultIfEmpty()
+            join empType in _db.EmploymentTypes.AsNoTracking() on e.EmploymentTypeId equals empType.Id into typeJoin
+            from empType in typeJoin.DefaultIfEmpty()
+            join empStatus in _db.EmploymentStatuses.AsNoTracking() on e.EmploymentStatusId equals empStatus.Id into statusJoin
+            from empStatus in statusJoin.DefaultIfEmpty()
+            join primaryAssignment in activePrimaryAssignments on e.Id equals primaryAssignment.EmployeeId into paJoin
+            from primaryAssignment in paJoin.DefaultIfEmpty()
+            join position in _db.Positions.AsNoTracking() on primaryAssignment!.PositionId equals position.Id into posJoin
+            from position in posJoin.DefaultIfEmpty()
+            select new { e, dept, legalEntity, empType, empStatus, position, token.Status, token.ExpiresAt };
+
+        return await joined
+            .OrderBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+            .Select(row => new EmployeeListItemResponse(
+                row.e.Id,
+                row.e.EmployeeNumber,
+                row.e.FirstName + " " + row.e.LastName,
+                row.e.Email,
+                row.dept != null ? row.dept.Id : (Guid?)null,
+                row.dept != null ? row.dept.Name : null,
+                row.position != null ? row.position.Id : (Guid?)null,
+                row.position != null ? row.position.Name : null,
+                row.legalEntity != null ? row.legalEntity.Id : (Guid?)null,
+                row.legalEntity != null ? row.legalEntity.Name : null,
+                row.empType != null ? row.empType.Label : row.e.EmploymentTypeId.ToString(),
+                row.empStatus != null ? row.empStatus.Code : "active",
+                null,
+                null,
+                row.Status,
+                row.ExpiresAt))
+            .ToListAsync(ct);
+    }
+
     public async Task<EmployeeListItemResponse?> GetVisibleByIdAsync(
         Guid tenantId, EmployeeVisibilityScope scope, Guid employeeId, CancellationToken ct = default)
     {

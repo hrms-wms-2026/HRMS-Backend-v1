@@ -279,6 +279,30 @@ public class EfDepartmentRepository : IDepartmentRepository
         return count;
     }
 
+    public async Task<IReadOnlyDictionary<Guid, int>> CountActiveEmployeesByDepartmentIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
+    {
+        if (departmentIds.Count == 0)
+            return new Dictionary<Guid, int>();
+
+        // Same "active" semantics as CountActiveEmployeesAsync (employment_statuses.code =
+        // "active"), grouped by department in one round trip instead of one query per department.
+        var counts = await (
+            from employee in _db.Employees.AsNoTracking()
+            join status in _db.EmploymentStatuses.AsNoTracking()
+                on employee.EmploymentStatusId equals status.Id
+            where employee.TenantId == tenantId
+                && employee.LegalEntityId == legalEntityId
+                && employee.DepartmentId != null
+                && departmentIds.Contains(employee.DepartmentId!.Value)
+                && status.Code == "active"
+            group employee by employee.DepartmentId!.Value into g
+            select new { DepartmentId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        return counts.ToDictionary(row => row.DepartmentId, row => row.Count);
+    }
+
     public async Task AddAsync(Department department, CancellationToken ct = default)
     {
         await _db.Departments.AddAsync(department, ct);

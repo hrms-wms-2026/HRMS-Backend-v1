@@ -10,6 +10,7 @@ public class PositionAssignment : BaseEntity
     public DateOnly EffectiveFrom { get; set; }
     public DateOnly? EffectiveTo { get; set; }
     public string AssignmentStatus { get; set; } = PositionAssignmentStatus.Active;
+    public string? ChangeReason { get; set; }
 }
 
 public static class PositionAssignmentKind

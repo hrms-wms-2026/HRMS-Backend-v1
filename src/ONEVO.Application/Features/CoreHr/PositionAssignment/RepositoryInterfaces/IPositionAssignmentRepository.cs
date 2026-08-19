@@ -67,5 +67,10 @@ public interface IPositionAssignmentRepository
     Task<ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment?> GetTrackedAsync(
         Guid tenantId, Guid id, CancellationToken ct = default);
 
+    /// <summary>PrimaryEmployment assignments in Active or Ended status for the employee,
+    /// oldest EffectiveFrom first. Planned (and Cancelled) rows are not history.</summary>
+    Task<IReadOnlyList<ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment>> ListHistoryForEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

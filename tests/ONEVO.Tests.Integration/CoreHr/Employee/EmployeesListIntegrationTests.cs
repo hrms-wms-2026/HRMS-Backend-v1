@@ -52,7 +52,15 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
     private Guid _tenantAId;
     private Guid _tenantBId;
     private Guid _legalEntityAId;
+    private Guid _legalEntityBId;
     private Guid _departmentAId;
+
+    // Since 2026-08-18 (commit e344a7c), the Employees directory is always coverage-scoped -
+    // org:manage no longer bypasses EmployeeVisibilityScopeResolver. Tests that need "see every
+    // employee in the tenant" must impersonate a caller who actually holds company-wide
+    // ManagementCoverageRecord coverage, not just the org:manage permission string.
+    private Guid _callerAUserId;
+    private Guid _callerBUserId;
 
     public async Task InitializeAsync()
     {
@@ -77,6 +85,10 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
         _departmentAId = departmentA.Id;
         db.Departments.Add(departmentA);
 
+        var legalEntityB = new LegalEntity { Id = Guid.NewGuid(), TenantId = _tenantBId, Name = "Beta Co" };
+        _legalEntityBId = legalEntityB.Id;
+        db.LegalEntities.Add(legalEntityB);
+
         for (var i = 1; i <= 30; i++)
         {
             var employee = NewEmployee(_tenantAId, $"E-{i:000}");
@@ -85,7 +97,12 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
             db.Employees.Add(employee);
         }
 
-        db.Employees.Add(NewEmployee(_tenantBId, "E-B-001"));
+        var tenantBEmployee = NewEmployee(_tenantBId, "E-B-001");
+        tenantBEmployee.LegalEntityId = _legalEntityBId;
+        db.Employees.Add(tenantBEmployee);
+
+        _callerAUserId = SeedCompanyWideCaller(db, _tenantAId, _legalEntityAId, "CALLER-A");
+        _callerBUserId = SeedCompanyWideCaller(db, _tenantBId, _legalEntityBId, "CALLER-B");
 
         await db.SaveChangesAsync();
 
@@ -97,23 +114,26 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task List_OnlyReturnsEmployeesBelongingToCallersTenant()
     {
-        var handler = BuildListHandler(_tenantAId, orgManage: true);
+        var handler = BuildListHandler(_tenantAId, orgManage: true, callerOwnEmployeeId: _callerAUserId);
         var resultA = await handler.Handle(new ListEmployeesQuery(null, null, null, 1, 100), CancellationToken.None);
 
         resultA.IsSuccess.Should().BeTrue();
-        resultA.Value!.TotalCount.Should().Be(30);
+        // 30 seeded employees + the caller's own employee row, which is always self-visible
+        // regardless of coverage (see EfEmployeeRepository.ListVisibleAsync's ownEmployeeId branch).
+        resultA.Value!.TotalCount.Should().Be(31);
         resultA.Value.Items.Should().OnlyContain(i => i.LegalEntityId == _legalEntityAId || i.LegalEntityId == null);
 
-        var handlerB = BuildListHandler(_tenantBId, orgManage: true);
+        var handlerB = BuildListHandler(_tenantBId, orgManage: true, callerOwnEmployeeId: _callerBUserId);
         var resultB = await handlerB.Handle(new ListEmployeesQuery(null, null, null, 1, 100), CancellationToken.None);
 
-        resultB.Value!.TotalCount.Should().Be(1);
+        // Seeded "E-B-001" + the caller's own self-visible employee row.
+        resultB.Value!.TotalCount.Should().Be(2);
     }
 
     [Fact]
     public async Task List_RespectsPageSize_AndReturnsStableOrderAcrossPages()
     {
-        var handler = BuildListHandler(_tenantAId, orgManage: true);
+        var handler = BuildListHandler(_tenantAId, orgManage: true, callerOwnEmployeeId: _callerAUserId);
 
         var page1 = await handler.Handle(new ListEmployeesQuery(null, null, null, 1, 10), CancellationToken.None);
         var page2 = await handler.Handle(new ListEmployeesQuery(null, null, null, 2, 10), CancellationToken.None);
@@ -128,7 +148,7 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task List_SearchFiltersByEmployeeNumber()
     {
-        var handler = BuildListHandler(_tenantAId, orgManage: true);
+        var handler = BuildListHandler(_tenantAId, orgManage: true, callerOwnEmployeeId: _callerAUserId);
 
         var result = await handler.Handle(new ListEmployeesQuery("E-015", null, null, 1, 25), CancellationToken.None);
 
@@ -139,7 +159,7 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task List_FiltersByDepartmentId()
     {
-        var handler = BuildListHandler(_tenantAId, orgManage: true);
+        var handler = BuildListHandler(_tenantAId, orgManage: true, callerOwnEmployeeId: _callerAUserId);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, _departmentAId, null, 1, 100), CancellationToken.None);
 
@@ -194,7 +214,7 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
             employeeId = await seedDb.Employees.AsNoTracking().Select(e => e.Id).FirstAsync();
         }
 
-        var handler = BuildGetHandler(_tenantAId, orgManage: true);
+        var handler = BuildGetHandler(_tenantAId, orgManage: true, callerOwnEmployeeId: _callerAUserId);
         var result = await handler.Handle(new GetEmployeeQuery(employeeId), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -303,6 +323,57 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
         CompanySizeRange = "51-200",
         Status = TenantStatus.Active
     };
+
+    /// <summary>
+    /// Creates a caller employee holding a position with an active, company-wide
+    /// ManagementCoverageRecord (Locked Decision 5) and stages it on <paramref name="db"/>.
+    /// Returns the caller's UserId, which callers pass as callerOwnEmployeeId to StubCurrentUser
+    /// so EmployeeVisibilityScopeResolver.ResolveAsync resolves real "see everyone" coverage.
+    /// </summary>
+    private static Guid SeedCompanyWideCaller(ApplicationDbContext db, Guid tenantId, Guid legalEntityId, string label)
+    {
+        var position = new Position
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LegalEntityId = legalEntityId,
+            Name = $"Owner ({label})",
+            PositionType = Position.TypeUnique,
+            MaxOccupancy = 1,
+            IsActive = true,
+        };
+        db.Positions.Add(position);
+
+        var callerEmployee = NewEmployee(tenantId, $"E-{label}");
+        callerEmployee.LegalEntityId = legalEntityId;
+        db.Employees.Add(callerEmployee);
+
+        db.PositionAssignments.Add(new ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeId = callerEmployee.Id,
+            PositionId = position.Id,
+            AssignmentKind = PositionAssignmentKind.PrimaryEmployment,
+            AssignmentStatus = PositionAssignmentStatus.Active,
+            EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow),
+        });
+
+        db.ManagementCoverageRecords.Add(new ManagementCoverageRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LegalEntityId = legalEntityId,
+            OwnerPositionId = position.Id,
+            CoveredTargetType = ManagementCoverageRecord.TargetCompany,
+            OwnerOrder = 1,
+            Source = ManagementCoverageRecord.SourceManual,
+            IsLocked = false,
+            Status = ManagementCoverageRecord.StatusActive,
+        });
+
+        return callerEmployee.UserId;
+    }
 
     private static EmployeeEntity NewEmployee(Guid tenantId, string employeeNumber) => new()
     {

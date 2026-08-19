@@ -151,4 +151,45 @@ public class ChecklistTaskJsonContractTests
         tasks[0].AssignedToId.Should().Be(assignedTo);
         tasks[0].DueDate.Should().Be(new DateOnly(2026, 11, 1));
     }
+
+    [Fact]
+    public void Parse_OffboardingFields_DefaultToFalseAndNull_WhenAbsent()
+    {
+        var json = "[{\"title\":\"Return laptop\",\"ownerType\":\"employee\",\"dueOffsetDays\":1,\"isRequired\":true}]";
+
+        var result = ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.OffsetDays);
+
+        result[0].IsBypassable.Should().BeFalse();
+        result[0].BypassPenaltyDescription.Should().BeNull();
+        result[0].Category.Should().BeNull();
+    }
+
+    [Fact]
+    public void Parse_OffboardingFields_ParsesWhenPresent()
+    {
+        var json = "[{\"title\":\"Return laptop\",\"ownerType\":\"employee\",\"dueOffsetDays\":1,\"isRequired\":true," +
+                    "\"isBypassable\":true,\"bypassPenaltyDescription\":\"Deduct from final settlement\",\"category\":\"asset_return\"}]";
+
+        var result = ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.OffsetDays);
+
+        result[0].IsBypassable.Should().BeTrue();
+        result[0].BypassPenaltyDescription.Should().Be("Deduct from final settlement");
+        result[0].Category.Should().Be("asset_return");
+    }
+
+    [Fact]
+    public void ToEmployeeChecklistTasks_CopiesOffboardingFieldsOntoTheInstantiatedTask()
+    {
+        var defs = new List<ChecklistTaskDefinition>
+        {
+            new("Return laptop", ChecklistTaskOwnerTypes.Employee, null, 1, null, 1, true, true, "None", "asset_return"),
+        };
+
+        var tasks = ChecklistTaskJsonContract.ToEmployeeChecklistTasks(
+            defs, Guid.NewGuid(), Guid.NewGuid(), null, "offboarding", Guid.NewGuid(), new DateOnly(2026, 1, 1), ChecklistTaskDueRuleMode.OffsetDays);
+
+        tasks[0].IsBypassable.Should().BeTrue();
+        tasks[0].BypassPenaltyDescription.Should().Be("None");
+        tasks[0].Category.Should().Be("asset_return");
+    }
 }
