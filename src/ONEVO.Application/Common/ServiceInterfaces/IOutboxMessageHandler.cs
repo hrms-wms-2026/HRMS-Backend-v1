@@ -35,4 +35,5 @@ public static class OutboxMessageTypes
     // NoOpEmployeeSecurityOutboxHandler. Producer-side audit trail for now.
     public const string EmployeeSecurityUpdated = "employee_security_updated";
     public const string InvoiceEmail = "invoice_email";
+    public const string WorkNotification = "work_notification";
 }
