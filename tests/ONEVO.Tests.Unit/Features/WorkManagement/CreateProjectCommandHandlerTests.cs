@@ -165,6 +165,24 @@ public class CreateProjectCommandHandlerTests
     }
 
     [Fact]
+    public void CreateProjectCommand_AllowsOptionalReleaseDateAndBannerFields()
+    {
+        using var banner = new MemoryStream();
+        var command = ValidCommand() with
+        {
+            ReleaseDate = null,
+            BannerFileName = "banner.png",
+            BannerContentType = "image/png",
+            BannerContent = banner
+        };
+
+        Assert.Null(command.ReleaseDate);
+        Assert.Equal("banner.png", command.BannerFileName);
+        Assert.Equal("image/png", command.BannerContentType);
+        Assert.Same(banner, command.BannerContent);
+    }
+
+    [Fact]
     public async Task Handle_CallerEmployeeNotActive_ReturnsForbidden()
     {
         var (handler, _, _) = BuildHandler(employmentStatusId: 4); // 4 = terminated, per EmploymentStatusIds precedent
