@@ -60,6 +60,10 @@ public class AddProjectMemberCommandHandler : IRequestHandler<AddProjectMemberCo
         if (project.LeadId != callerEmployeeId.Value)
             return Result<AddObjectiveMemberOutcomeResponse>.Forbidden("Only the project owner can add members.");
 
+        var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
+        if (defaultObjective is null)
+            return Result<AddObjectiveMemberOutcomeResponse>.Failure("This project has no default milestone; contact support.");
+
         throw new NotImplementedException();
     }
 }

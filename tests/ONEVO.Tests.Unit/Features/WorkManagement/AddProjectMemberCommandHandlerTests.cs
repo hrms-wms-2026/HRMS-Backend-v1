@@ -54,6 +54,7 @@ public class AddProjectMemberCommandHandlerTests
 
     private HandlerSetup BuildHandler(
         Project? project,
+        Objective? defaultObjective = null,
         Guid? callerId = null)
     {
         var currentUser = new Mock<ICurrentUser>();
@@ -72,6 +73,9 @@ public class AddProjectMemberCommandHandlerTests
             .ReturnsAsync(project);
 
         var objectives = new Mock<IObjectiveRepository>();
+        objectives.Setup(x => x.GetDefaultByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(defaultObjective);
+
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         var invitations = new Mock<IProjectMemberInvitationRepository>();
         var unitOfWork = new Mock<IUnitOfWork>();
@@ -116,5 +120,16 @@ public class AddProjectMemberCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_MissingDefaultObjective_ReturnsFailureWithoutThrowing()
+    {
+        var setup = BuildHandler(ActiveProject(), defaultObjective: null);
+
+        var result = await setup.Handler.Handle(new AddProjectMemberCommand(ProjectId, MemberEmployeeId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("This project has no default milestone; contact support.", result.Error);
     }
 }
