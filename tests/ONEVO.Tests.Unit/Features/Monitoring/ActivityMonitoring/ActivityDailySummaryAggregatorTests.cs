@@ -1,4 +1,5 @@
 using FluentAssertions;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
 
@@ -104,5 +105,48 @@ public class ActivityDailySummaryAggregatorTests
             Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), snapshots, baseTime);
 
         summary.DataCoveragePercentage.Should().Be(100m);
+    }
+
+    [Fact]
+    public void Computes_top_10_apps_by_active_seconds_descending()
+    {
+        var baseTime = new DateTimeOffset(2026, 8, 5, 9, 0, 0, TimeSpan.Zero);
+        var snapshots = new List<ActivitySnapshot>
+        {
+            Snap(300, 0, 10, 10, 70, "code.exe", baseTime),
+            Snap(120, 0, 5, 5, 60, "slack.exe", baseTime.AddMinutes(5)),
+            Snap(180, 0, 8, 8, 65, "code.exe", baseTime.AddMinutes(10)),
+            Snap(0, 300, 0, 0, 0, null, baseTime.AddMinutes(15)), // idle, no process — excluded
+        };
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), snapshots, baseTime);
+
+        var topApps = System.Text.Json.JsonSerializer.Deserialize<List<AppUsageSummary>>(summary.TopAppsJson)!;
+        topApps.Should().HaveCount(2);
+        topApps[0].AppName.Should().Be("code.exe");
+        topApps[0].TotalSeconds.Should().Be(480); // 300 + 180
+        topApps[1].AppName.Should().Be("slack.exe");
+        topApps[1].TotalSeconds.Should().Be(120);
+    }
+
+    [Fact]
+    public void Top_apps_caps_at_10_and_is_empty_json_array_when_no_active_process()
+    {
+        var baseTime = new DateTimeOffset(2026, 8, 5, 9, 0, 0, TimeSpan.Zero);
+        var snapshots = Enumerable.Range(0, 12)
+            .Select(i => Snap(60, 0, 1, 1, 50, $"app{i}.exe", baseTime.AddMinutes(i)))
+            .ToList();
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), snapshots, baseTime);
+
+        var topApps = System.Text.Json.JsonSerializer.Deserialize<List<AppUsageSummary>>(summary.TopAppsJson)!;
+        topApps.Should().HaveCount(10);
+
+        var idleOnly = new List<ActivitySnapshot> { Snap(0, 300, 0, 0, 0, "explorer.exe", baseTime) };
+        var idleSummary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), idleOnly, baseTime);
+        idleSummary.TopAppsJson.Should().Be("[]");
     }
 }

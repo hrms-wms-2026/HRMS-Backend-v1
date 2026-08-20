@@ -1,3 +1,5 @@
+using System.Text.Json;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
@@ -70,7 +72,7 @@ public static class ActivityDailySummaryAggregator
             FocusMinutes = focusMinutes,
             ActivityScore = activityScore,
             DataCoveragePercentage = dataCoverage,
-            TopAppsJson = "[]",
+            TopAppsJson = ComputeTopAppsJson(ordered),
             IntensityAvg = intensityAvg,
             KeyboardTotal = keyboardTotal,
             MouseTotal = mouseTotal,
@@ -80,6 +82,28 @@ public static class ActivityDailySummaryAggregator
             CreatedAt = now,
             UpdatedAt = now
         };
+    }
+
+    /// <summary>
+    /// Top 10 foreground processes by summed active seconds. Snapshots with no
+    /// active time or no recorded process are excluded.
+    /// </summary>
+    private static string ComputeTopAppsJson(IReadOnlyList<ActivitySnapshot> ordered)
+    {
+        var topApps = ordered
+            .Where(s => s.ActiveSeconds > 0 && !string.IsNullOrWhiteSpace(s.ForegroundProcessName))
+            .GroupBy(s => s.ForegroundProcessName!, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new AppUsageSummary
+            {
+                AppName = g.Key,
+                TotalSeconds = g.Sum(s => s.ActiveSeconds),
+                Category = string.Empty
+            })
+            .OrderByDescending(a => a.TotalSeconds)
+            .Take(10)
+            .ToList();
+
+        return topApps.Count == 0 ? "[]" : JsonSerializer.Serialize(topApps);
     }
 
     /// <summary>
