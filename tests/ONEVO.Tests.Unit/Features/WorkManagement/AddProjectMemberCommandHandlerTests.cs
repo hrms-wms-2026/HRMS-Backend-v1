@@ -3,6 +3,7 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -27,6 +28,7 @@ public class AddProjectMemberCommandHandlerTests
     private static readonly Guid OtherUserId = Guid.NewGuid();
     private static readonly Guid OtherEmployeeId = Guid.NewGuid();
     private static readonly Guid MemberEmployeeId = Guid.NewGuid();
+    private static readonly Guid MemberUserId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid DefaultObjectiveId = Guid.NewGuid();
 
@@ -50,7 +52,8 @@ public class AddProjectMemberCommandHandlerTests
     private sealed record HandlerSetup(
         AddProjectMemberCommandHandler Handler,
         Mock<IProjectMemberInvitationRepository> Invitations,
-        Mock<IMilestoneMembershipCoordinator> Membership);
+        Mock<IMilestoneMembershipCoordinator> Membership,
+        Mock<IOutboxWriter> Outbox);
 
     private static Objective DefaultObjective(bool isAchieved = false) => new()
     {
@@ -78,6 +81,8 @@ public class AddProjectMemberCommandHandlerTests
             .ReturnsAsync(LeadEmployeeId);
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, OtherUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(OtherEmployeeId);
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [LeadEmployeeId] = "Ada Lovelace" });
 
         var projects = new Mock<IProjectRepository>();
         projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
@@ -89,7 +94,7 @@ public class AddProjectMemberCommandHandlerTests
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         var mockAssignee = explicitNullAssignee ? null
-            : assignee ?? new Employee { Id = MemberEmployeeId, TenantId = TenantId, UserId = Guid.NewGuid(), EmploymentStatusId = EmploymentStatusIds.Active };
+            : assignee ?? new Employee { Id = MemberEmployeeId, TenantId = TenantId, UserId = MemberUserId, EmploymentStatusId = EmploymentStatusIds.Active };
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, MemberEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockAssignee);
         if (defaultObjective is not null && mockAssignee is not null)
@@ -108,11 +113,12 @@ public class AddProjectMemberCommandHandlerTests
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
+        var outbox = new Mock<IOutboxWriter>();
         var handler = new AddProjectMemberCommandHandler(
             currentUser.Object, identity.Object, projects.Object, objectives.Object,
-            membership.Object, invitations.Object, unitOfWork.Object);
+            membership.Object, invitations.Object, unitOfWork.Object, outbox.Object);
 
-        return new HandlerSetup(handler, invitations, membership);
+        return new HandlerSetup(handler, invitations, membership, outbox);
     }
 
     [Fact]
@@ -125,6 +131,8 @@ public class AddProjectMemberCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
         Assert.Equal("Only the project owner can add members.", result.Error);
+        setup.Outbox.Verify(x => x.EnqueueAsync(
+            It.IsAny<string>(), It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -136,6 +144,8 @@ public class AddProjectMemberCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
+        setup.Outbox.Verify(x => x.EnqueueAsync(
+            It.IsAny<string>(), It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -147,6 +157,8 @@ public class AddProjectMemberCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
+        setup.Outbox.Verify(x => x.EnqueueAsync(
+            It.IsAny<string>(), It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -158,6 +170,8 @@ public class AddProjectMemberCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("This project has no default milestone; contact support.", result.Error);
+        setup.Outbox.Verify(x => x.EnqueueAsync(
+            It.IsAny<string>(), It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -171,6 +185,8 @@ public class AddProjectMemberCommandHandlerTests
         Assert.True(result.Value!.AlreadyMember);
         Assert.Null(result.Value.Invitation);
         setup.Invitations.Verify(x => x.AddAsync(It.IsAny<ProjectMemberInvitation>(), It.IsAny<CancellationToken>()), Times.Never);
+        setup.Outbox.Verify(x => x.EnqueueAsync(
+            It.IsAny<string>(), It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -188,6 +204,8 @@ public class AddProjectMemberCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
+        setup.Outbox.Verify(x => x.EnqueueAsync(
+            It.IsAny<string>(), It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -207,6 +225,15 @@ public class AddProjectMemberCommandHandlerTests
             && i.InvitedEmployeeId == MemberEmployeeId
             && i.InviteType == ProjectInvitationTypes.Member && i.Status == ProjectInvitationStatuses.Pending
             && i.InvitedById == LeadEmployeeId), It.IsAny<CancellationToken>()), Times.Once);
+        setup.Outbox.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.WorkNotification,
+            It.Is<WorkNotificationPayload>(p =>
+                p.RecipientUserId == MemberUserId
+                && p.TemplateCode == "work_project_member_invited"
+                && p.Placeholders["inviterName"] == "Ada Lovelace"
+                && p.Placeholders["projectName"] == "Website Revamp"
+                && p.RelatedEntityType == "project_member_invitation"),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -218,6 +245,8 @@ public class AddProjectMemberCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
+        setup.Outbox.Verify(x => x.EnqueueAsync(
+            It.IsAny<string>(), It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -230,5 +259,7 @@ public class AddProjectMemberCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
         Assert.Equal("Cannot add members to an achieved milestone.", result.Error);
+        setup.Outbox.Verify(x => x.EnqueueAsync(
+            It.IsAny<string>(), It.IsAny<WorkNotificationPayload>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

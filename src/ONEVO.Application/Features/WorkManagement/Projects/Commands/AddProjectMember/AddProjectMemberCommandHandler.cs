@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -22,6 +23,7 @@ public class AddProjectMemberCommandHandler : IRequestHandler<AddProjectMemberCo
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IProjectMemberInvitationRepository _invitations;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IOutboxWriter _outboxWriter;
 
     public AddProjectMemberCommandHandler(
         ICurrentUser currentUser,
@@ -30,7 +32,8 @@ public class AddProjectMemberCommandHandler : IRequestHandler<AddProjectMemberCo
         IObjectiveRepository objectives,
         IMilestoneMembershipCoordinator membership,
         IProjectMemberInvitationRepository invitations,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IOutboxWriter outboxWriter)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -39,6 +42,7 @@ public class AddProjectMemberCommandHandler : IRequestHandler<AddProjectMemberCo
         _membership = membership;
         _invitations = invitations;
         _unitOfWork = unitOfWork;
+        _outboxWriter = outboxWriter;
     }
 
     public async Task<Result<AddObjectiveMemberOutcomeResponse>> Handle(AddProjectMemberCommand request, CancellationToken ct)
@@ -94,6 +98,25 @@ public class AddProjectMemberCommandHandler : IRequestHandler<AddProjectMemberCo
         };
 
         await _invitations.AddAsync(invitation, ct);
+
+        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [callerEmployeeId.Value], ct);
+        var inviterDisplayName = names.GetValueOrDefault(callerEmployeeId.Value) ?? "A teammate";
+        await _outboxWriter.EnqueueAsync(
+            OutboxMessageTypes.WorkNotification,
+            new WorkNotificationPayload(
+                tenantId,
+                assignee.UserId,
+                "work_project_member_invited",
+                new Dictionary<string, string>
+                {
+                    ["inviterName"] = inviterDisplayName,
+                    ["projectName"] = project.Name
+                },
+                "project_member_invitation",
+                invitation.Id),
+            tenantId,
+            ct);
+
         await _unitOfWork.SaveChangesAsync(ct);
 
         return Result<AddObjectiveMemberOutcomeResponse>.Success(
