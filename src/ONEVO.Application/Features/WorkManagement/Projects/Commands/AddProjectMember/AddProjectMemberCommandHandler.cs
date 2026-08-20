@@ -6,8 +6,10 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.ProjectInvitations.Mappers;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Projects.Commands.AddProjectMember;
 
@@ -64,6 +66,37 @@ public class AddProjectMemberCommandHandler : IRequestHandler<AddProjectMemberCo
         if (defaultObjective is null)
             return Result<AddObjectiveMemberOutcomeResponse>.Failure("This project has no default milestone; contact support.");
 
-        throw new NotImplementedException();
+        if (defaultObjective.IsAchieved)
+            return Result<AddObjectiveMemberOutcomeResponse>.Failure("Cannot add members to an achieved milestone.");
+
+        var assignee = await _membership.GetActiveAssigneeAsync(tenantId, request.EmployeeId, ct);
+        if (assignee is null)
+            return Result<AddObjectiveMemberOutcomeResponse>.Failure("The member must be an active employee in this tenant.");
+
+        if (await _membership.HasActiveMembershipAsync(tenantId, defaultObjective.ProjectId, defaultObjective.Id, assignee.Id, ct))
+            return Result<AddObjectiveMemberOutcomeResponse>.Success(new AddObjectiveMemberOutcomeResponse(AlreadyMember: true, Invitation: null));
+
+        if (await _invitations.GetPendingForObjectiveAndEmployeeAsync(tenantId, defaultObjective.Id, assignee.Id, ct) is not null)
+            return Result<AddObjectiveMemberOutcomeResponse>.Conflict("An invitation is already pending for this employee on this milestone.");
+
+        var invitation = new ProjectMemberInvitation
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            ProjectId = defaultObjective.ProjectId,
+            ObjectiveId = defaultObjective.Id,
+            InvitedEmployeeId = assignee.Id,
+            InviteType = ProjectInvitationTypes.Member,
+            Status = ProjectInvitationStatuses.Pending,
+            InvitedById = callerEmployeeId.Value,
+            CreatedById = userId,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        await _invitations.AddAsync(invitation, ct);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        return Result<AddObjectiveMemberOutcomeResponse>.Success(
+            new AddObjectiveMemberOutcomeResponse(AlreadyMember: false, ProjectMemberInvitationMapper.ToResponse(invitation)));
     }
 }
