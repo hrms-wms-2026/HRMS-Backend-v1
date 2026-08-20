@@ -89,6 +89,18 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "work_sprint_achieved",
                 InAppTitleTemplate = "Sprint achieved",
                 InAppBodyTemplate = "\"{{sprintName}}\" on {{objectiveName}} was achieved and its tasks are now frozen."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_project_member_invited",
+                InAppTitleTemplate = "You've been added to a project",
+                InAppBodyTemplate = "{{inviterName}} invited you to join {{projectName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_project_member_accepted",
+                InAppTitleTemplate = "Invitation accepted",
+                InAppBodyTemplate = "{{accepterName}} accepted your invitation to join {{projectName}}."
             }
         };
 
