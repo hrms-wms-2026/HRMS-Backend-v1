@@ -96,4 +96,108 @@ public sealed class ExportEmployeeDailyReportQueryHandlerTests
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(404);
     }
+
+    [Fact]
+    public async Task Handle_Does_Not_Embed_Screenshot_Urls_In_Workbook()
+    {
+        var employeeId = Guid.NewGuid();
+        var date = new DateOnly(2026, 8, 19);
+        var clockIn = new DateTimeOffset(2026, 8, 19, 9, 0, 0, TimeSpan.Zero);
+        var clockOut = new DateTimeOffset(2026, 8, 19, 17, 30, 0, TimeSpan.Zero);
+        const string screenshotUrl = "https://x/1.png";
+
+        var report = new EmployeeDailyReportDto
+        {
+            EmployeeId = employeeId,
+            Date = date,
+            ClockInAt = clockIn,
+            ClockOutAt = clockOut,
+            WorkedMinutes = 480,
+            BreakMinutes = 30,
+            BreakSessionCount = 2,
+            Activity = new ActivityDailySummaryDto
+            {
+                EmployeeId = employeeId,
+                Date = date,
+                TotalActiveMinutes = 420,
+                TotalIdleMinutes = 60,
+                ActivePercentage = 87.5m,
+                ActivityScore = 72.3m,
+                FocusMinutes = 180,
+                DeepFocusSessionsCount = 2,
+                KeyboardTotal = 5000,
+                MouseTotal = 3000,
+                DataCoveragePercentage = 100m,
+                TopApps = [new AppUsageSummary { AppName = "code.exe", TotalSeconds = 7200, Category = "" }]
+            },
+            Screenshots =
+            [
+                new ScreenshotEntryDto(Guid.NewGuid(), clockIn.AddHours(1), "screenshot", "periodic", screenshotUrl)
+            ]
+        };
+
+        _mediator.Setup(m => m.Send(
+                It.Is<GetEmployeeDailyReportQuery>(q => q.EmployeeId == employeeId && q.Date == date),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeDailyReportDto>.Success(report));
+
+        var result = await CreateHandler().Handle(
+            new ExportEmployeeDailyReportQuery { EmployeeId = employeeId, Date = date }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        using var stream = new MemoryStream(result.Value!.Content);
+        using var workbook = new XLWorkbook(stream);
+
+        var screenshots = workbook.Worksheet("Screenshots");
+        screenshots.Row(2).CellsUsed().Count().Should().Be(3);
+
+        workbook.Worksheets
+            .SelectMany(w => w.CellsUsed())
+            .Select(c => c.GetString())
+            .Should().NotContain(s => s.Contains(screenshotUrl));
+    }
+
+    [Fact]
+    public async Task Handle_Renders_Dashes_And_Empty_TopApps_When_Activity_Is_Null()
+    {
+        var employeeId = Guid.NewGuid();
+        var date = new DateOnly(2026, 8, 19);
+
+        var report = new EmployeeDailyReportDto
+        {
+            EmployeeId = employeeId,
+            Date = date,
+            ClockInAt = new DateTimeOffset(2026, 8, 19, 9, 0, 0, TimeSpan.Zero),
+            ClockOutAt = null,
+            WorkedMinutes = 0,
+            BreakMinutes = 0,
+            BreakSessionCount = 0,
+            Activity = null,
+            Screenshots = []
+        };
+
+        _mediator.Setup(m => m.Send(
+                It.IsAny<GetEmployeeDailyReportQuery>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeDailyReportDto>.Success(report));
+
+        var result = await CreateHandler().Handle(
+            new ExportEmployeeDailyReportQuery { EmployeeId = employeeId, Date = date }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        using var stream = new MemoryStream(result.Value!.Content);
+        using var workbook = new XLWorkbook(stream);
+
+        workbook.Worksheets.Select(w => w.Name).Should().BeEquivalentTo("Summary", "Top Apps", "Screenshots");
+
+        var summary = workbook.Worksheet("Summary");
+        var activeMinutesRow = summary.Column(1).CellsUsed()
+            .Single(c => c.GetString() == "Active Minutes").Address.RowNumber;
+        summary.Cell(activeMinutesRow, 2).GetString().Should().Be("-");
+
+        var topApps = workbook.Worksheet("Top Apps");
+        topApps.Cell(1, 2).GetString().Should().Be("App");
+        topApps.LastRowUsed()!.RowNumber().Should().Be(1);
+        topApps.Cell(2, 2).GetString().Should().BeEmpty();
+    }
 }
