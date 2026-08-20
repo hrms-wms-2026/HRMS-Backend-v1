@@ -1,8 +1,11 @@
 using Moq;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.Storage.File.DTOs.Responses;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.CreateProject;
@@ -15,6 +18,7 @@ using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities;
 using ONEVO.Domain.Lookups;
@@ -38,6 +42,7 @@ public class CreateProjectCommandHandlerTests
 
     private sealed record HandlerSetup(
         CreateProjectCommandHandler Handler,
+        Mock<IProjectRepository> Projects,
         Mock<ITaskStatusRepository> TaskStatuses,
         Mock<IReleaseCalendarRepository> ReleaseCalendar,
         Mock<IEntityAssetRepository> EntityAssets,
@@ -84,7 +89,7 @@ public class CreateProjectCommandHandlerTests
             versions.Object, releaseCalendar.Object, labels.Object, taskStatuses.Object, entityAssets.Object, employees.Object,
             legalEntities.Object, auditLogs.Object, fileStorage.Object, unitOfWork.Object);
 
-        return new HandlerSetup(handler, taskStatuses, releaseCalendar, entityAssets, fileStorage);
+        return new HandlerSetup(handler, projects, taskStatuses, releaseCalendar, entityAssets, fileStorage);
     }
 
     [Fact]
@@ -207,6 +212,99 @@ public class CreateProjectCommandHandlerTests
         Assert.NotNull(captured);
         Assert.Equal(command.TargetDate, captured!.ScheduledDate);
         Assert.Equal(command.TargetDate, result.Value!.ReleaseReminder.ScheduledDate);
+    }
+
+    private static FileRecordDto MakeFile(string name) => new(
+        Guid.NewGuid(), TenantId, $"key/{name}", name, name, "image/png", 10, "abc", "completed", DateTimeOffset.UtcNow);
+
+    private static void CaptureAssets(HandlerSetup setup, List<EntityAsset> assets)
+    {
+        setup.EntityAssets
+            .Setup(x => x.AddAsync(It.IsAny<EntityAsset>(), It.IsAny<CancellationToken>()))
+            .Callback<EntityAsset, CancellationToken>((asset, _) => assets.Add(asset))
+            .Returns(Task.CompletedTask);
+    }
+
+    [Fact]
+    public async Task Handle_LogoAndBannerUploaded_PersistsBothEntityAssetsWithDistinctPurposes()
+    {
+        var setup = BuildHandler();
+        var assets = new List<EntityAsset>();
+        CaptureAssets(setup, assets);
+        using var logo = new MemoryStream(new byte[] { 1 });
+        using var banner = new MemoryStream(new byte[] { 2 });
+        setup.FileStorage
+            .Setup(x => x.UploadAsync(TenantId, UserId, "logo.png", "image/png",
+                UploadPurposeCatalog.ProjectCover, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(MakeFile("logo.png")));
+        setup.FileStorage
+            .Setup(x => x.UploadAsync(TenantId, UserId, "banner.png", "image/png",
+                UploadPurposeCatalog.ProjectBanner, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(MakeFile("banner.png")));
+
+        var command = ValidCommand() with
+        {
+            LogoFileName = "logo.png", LogoContentType = "image/png", LogoContent = logo,
+            BannerFileName = "banner.png", BannerContentType = "image/png", BannerContent = banner
+        };
+
+        var result = await setup.Handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, assets.Count);
+        Assert.Contains(assets, a => a.AssetPurpose == UploadPurposeCatalog.ProjectCover && a.OwnerId == result.Value!.Project.Id && a.IsPrimary);
+        Assert.Contains(assets, a => a.AssetPurpose == UploadPurposeCatalog.ProjectBanner && a.OwnerId == result.Value!.Project.Id && a.IsPrimary);
+        Assert.Equal(2, assets.Select(a => a.FileRecordId).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task Handle_BannerOnly_PersistsBannerAssetAndNoLogoAsset()
+    {
+        var setup = BuildHandler();
+        var assets = new List<EntityAsset>();
+        CaptureAssets(setup, assets);
+        using var banner = new MemoryStream(new byte[] { 2 });
+        setup.FileStorage
+            .Setup(x => x.UploadAsync(TenantId, UserId, "banner.png", "image/png",
+                UploadPurposeCatalog.ProjectBanner, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(MakeFile("banner.png")));
+
+        var command = ValidCommand() with
+        {
+            BannerFileName = "banner.png", BannerContentType = "image/png", BannerContent = banner
+        };
+
+        var result = await setup.Handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(assets);
+        Assert.Equal(UploadPurposeCatalog.ProjectBanner, assets[0].AssetPurpose);
+        Assert.Equal(result.Value!.Project.Id, assets[0].OwnerId);
+        setup.FileStorage.Verify(x => x.UploadAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            UploadPurposeCatalog.ProjectCover, It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_BannerUploadFailure_DoesNotCreateProject()
+    {
+        var setup = BuildHandler();
+        using var banner = new MemoryStream(new byte[] { 2 });
+        setup.FileStorage
+            .Setup(x => x.UploadAsync(TenantId, UserId, "banner.png", "image/png",
+                UploadPurposeCatalog.ProjectBanner, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Failure("Invalid content type.", 400));
+
+        var command = ValidCommand() with
+        {
+            BannerFileName = "banner.png", BannerContentType = "image/png", BannerContent = banner
+        };
+
+        var result = await setup.Handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        setup.Projects.Verify(x => x.AddAsync(It.IsAny<Project>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

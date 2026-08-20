@@ -133,6 +133,19 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
             uploadedLogo = uploadResult.Value;
         }
 
+        FileRecordDto? uploadedBanner = null;
+        if (request.BannerContent is not null && request.BannerFileName is not null && request.BannerContentType is not null)
+        {
+            var uploadResult = await _fileStorage.UploadAsync(
+                tenantId, userId, request.BannerFileName, request.BannerContentType,
+                UploadPurposeCatalog.ProjectBanner, request.BannerContent, ct);
+
+            if (!uploadResult.IsSuccess)
+                return Result<ProjectCreationResponse>.Failure(uploadResult.Error!, uploadResult.StatusCode ?? 400);
+
+            uploadedBanner = uploadResult.Value;
+        }
+
         try
         {
             var now = DateTimeOffset.UtcNow;
@@ -247,6 +260,24 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 };
             }
 
+            EntityAsset? bannerAsset = null;
+            if (uploadedBanner is not null)
+            {
+                bannerAsset = new EntityAsset
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenantId,
+                    OwnerType = EntityAssetOwnerTypes.Project,
+                    OwnerId = project.Id,
+                    AssetPurpose = UploadPurposeCatalog.ProjectBanner,
+                    FileRecordId = uploadedBanner.Id,
+                    IsPrimary = true,
+                    CreatedByType = "user",
+                    CreatedById = userId,
+                    CreatedAt = now
+                };
+            }
+
             await _projects.AddAsync(project, ct);
             await _objectives.AddAsync(defaultObjective, ct);
             await _taskStatuses.AddRangeAsync(
@@ -260,6 +291,8 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 await _labels.AddAsync(label, ct);
             if (logoAsset is not null)
                 await _entityAssets.AddAsync(logoAsset, ct);
+            if (bannerAsset is not null)
+                await _entityAssets.AddAsync(bannerAsset, ct);
 
             await _auditLogs.AddAsync(new AuditLog
             {
@@ -300,6 +333,12 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 _logger?.LogError(
                     "Project creation failed after logo upload completed. Orphaned file_record {FileRecordId} for tenant {TenantId} requires manual/future reconciliation.",
                     uploadedLogo.Id, tenantId);
+            }
+            if (uploadedBanner is not null)
+            {
+                _logger?.LogError(
+                    "Project creation failed after banner upload completed. Orphaned file_record {FileRecordId} for tenant {TenantId} requires manual/future reconciliation.",
+                    uploadedBanner.Id, tenantId);
             }
             throw;
         }
