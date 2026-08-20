@@ -8,7 +8,7 @@
 
 ## Description
 
-Invites an employee to become a project member **without naming a non-default Objective**. The handler loads the project's Default Objective (`Objective.IsDefault == true`) server-side and creates a normal pending `ProjectMemberInvitation` against that milestone. The invitee accepts or rejects through the existing invitation endpoints.
+Invites an employee to become a project member **without naming a non-default Objective**. The handler loads the project's Default Objective (`Objective.IsDefault == true`) server-side and creates a normal pending `ProjectMemberInvitation` against that milestone. The invitee accepts or rejects through the existing invitation endpoints. A successful invite also enqueues an in-app `work_project_member_invited` notification via the Outbox (same transaction as the invitation row).
 
 Does **not** add a `project_members` row immediately — the invitee must accept (`POST /api/v1/work/objectives/invitations/{id}/accept`). Already-active members of the Default Objective are a no-op (`alreadyMember: true`). Duplicate pending invitations for the same employee on the Default Objective return `409`.
 
