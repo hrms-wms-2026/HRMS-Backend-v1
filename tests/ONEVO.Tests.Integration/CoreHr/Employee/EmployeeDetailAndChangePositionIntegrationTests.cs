@@ -22,6 +22,7 @@ using ONEVO.Infrastructure.Security;
 using ONEVO.Infrastructure.Services.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.Support;
+using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
@@ -152,21 +153,21 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
 
         await db.SaveChangesAsync();
 
-        var assignmentRepo = new EfPositionAssignmentRepository(db);
+        var assignmentRepo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
         var hireDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
 
         var subjectAssignmentId = await assignmentRepo.TryCreateActiveAssignmentAsync(
-            _tenantId, _subjectEmployeeId, subjectPositionId, hireDate, _adminUserId);
+            _tenantId, _subjectEmployeeId, subjectPositionId, hireDate, _adminUserId, reportsToEmployeeId: null);
         Assert.NotNull(subjectAssignmentId);
 
         _reassignAssignmentId = (await assignmentRepo.TryCreateActiveAssignmentAsync(
-            _tenantId, _reassignEmployeeId, _reassignFromPositionId, hireDate, _adminUserId))!.Value;
+            _tenantId, _reassignEmployeeId, _reassignFromPositionId, hireDate, _adminUserId, reportsToEmployeeId: null))!.Value;
 
         _capacityAssignmentId = (await assignmentRepo.TryCreateActiveAssignmentAsync(
-            _tenantId, _capacityEmployeeId, _capacityFromPositionId, hireDate, _adminUserId))!.Value;
+            _tenantId, _capacityEmployeeId, _capacityFromPositionId, hireDate, _adminUserId, reportsToEmployeeId: null))!.Value;
 
         var fillerAssignmentId = await assignmentRepo.TryCreateActiveAssignmentAsync(
-            _tenantId, filler.Id, _fullPositionId, hireDate, _adminUserId);
+            _tenantId, filler.Id, _fullPositionId, hireDate, _adminUserId, reportsToEmployeeId: null);
         Assert.NotNull(fillerAssignmentId);
     }
 
@@ -301,7 +302,7 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
         return new ChangeEmployeePositionCommandHandler(
             employees,
             new EfPositionRepository(db),
-            new EfPositionAssignmentRepository(db),
+            PositionAssignmentRepositoryTestSupport.CreateRepository(db),
             new UnitOfWork(db),
             new StubCurrentUser(_tenantId, userId, orgManage: true, sensitive: false),
             new EfAuthRepository(db),

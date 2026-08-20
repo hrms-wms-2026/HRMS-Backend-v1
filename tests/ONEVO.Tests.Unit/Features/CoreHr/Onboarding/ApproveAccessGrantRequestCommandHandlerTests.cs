@@ -89,8 +89,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
 
         _positionAssignmentRepository
             .Setup(r => r.TryReservePositionAssignmentAsync(
-                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Guid.NewGuid());
 
         _seatEntitlementService
@@ -373,7 +372,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         Assert.NotNull(addedEmployee);
         Assert.Equal(addedUser.Id, addedEmployee!.UserId);
         _positionAssignmentRepository.Verify(r => r.TryReservePositionAssignmentAsync(
-            _tenantId, It.IsAny<Guid>(), _positionId, It.IsAny<DateOnly>(), _userId, It.IsAny<CancellationToken>()), Times.Once);
+            _tenantId, It.IsAny<Guid>(), _positionId, It.IsAny<DateOnly>(), _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.NotNull(addedRole);
         Assert.Equal(_roleId, addedRole!.RoleId);
         Assert.Equal(_positionId, addedRole.SourcePositionId);
@@ -395,8 +394,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         SetupHappyPath(out var requestId, out _);
         _positionAssignmentRepository
             .Setup(r => r.TryReservePositionAssignmentAsync(
-                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid?)null);
 
         var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);

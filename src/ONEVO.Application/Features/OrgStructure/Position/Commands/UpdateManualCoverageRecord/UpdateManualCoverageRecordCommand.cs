@@ -8,4 +8,5 @@ public record UpdateManualCoverageRecordCommand(
     Guid LegalEntityId,
     Guid PositionId,
     Guid CoverageId,
-    int OwnerOrder) : IRequest<Result<ManagementCoverageRecordResponse>>;
+    int OwnerOrder,
+    Guid? ResponsibleEmployeeId) : IRequest<Result<ManagementCoverageRecordResponse>>;

@@ -32,6 +32,7 @@ using ONEVO.Infrastructure.Security;
 using ONEVO.Infrastructure.Services.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.Support;
+using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
@@ -252,7 +253,7 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
         var result = await new ChangeEmployeePositionCommandHandler(
             employees,
             new EfPositionRepository(db),
-            new EfPositionAssignmentRepository(db),
+            PositionAssignmentRepositoryTestSupport.CreateRepository(db),
             new UnitOfWork(db),
             hr,
             new EfAuthRepository(db),

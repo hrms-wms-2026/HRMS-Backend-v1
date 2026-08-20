@@ -1374,6 +1374,211 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("access_grant_requests", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.BulkOnboardingBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ColumnMappingJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("column_mapping_json");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<Guid?>("DefaultChecklistTemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("default_checklist_template_id");
+
+                    b.Property<string>("DefaultEmploymentType")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("default_employment_type");
+
+                    b.Property<int?>("DefaultWorkModeId")
+                        .HasColumnType("integer")
+                        .HasColumnName("default_work_mode_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<int?>("InvalidRows")
+                        .HasColumnType("integer")
+                        .HasColumnName("invalid_rows");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid>("LegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_entity_id");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("original_file_name");
+
+                    b.Property<string>("SelectedDraftIdsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("selected_draft_ids_json");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<int>("TotalRows")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_rows");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int?>("ValidRows")
+                        .HasColumnType("integer")
+                        .HasColumnName("valid_rows");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_bulk_onboarding_batches");
+
+                    b.HasIndex("LegalEntityId")
+                        .HasDatabaseName("ix_bulk_onboarding_batches_legal_entity_id");
+
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("ix_bulk_onboarding_batches_tenant_id_status");
+
+                    b.ToTable("bulk_onboarding_batches", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.BulkOnboardingBatchRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("batch_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("error_message");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<Guid?>("OnboardingDraftId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("onboarding_draft_id");
+
+                    b.Property<string>("RawDataJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("raw_data_json");
+
+                    b.Property<Guid?>("ResolvedDepartmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resolved_department_id");
+
+                    b.Property<Guid?>("ResolvedPositionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resolved_position_id");
+
+                    b.Property<Guid?>("ResolvedReportsToEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resolved_reports_to_employee_id");
+
+                    b.Property<Guid?>("ResolvedTemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resolved_template_id");
+
+                    b.Property<int>("RowNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("row_number");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_bulk_onboarding_batch_rows");
+
+                    b.HasIndex("BatchId")
+                        .HasDatabaseName("ix_bulk_onboarding_batch_rows_batch_id");
+
+                    b.HasIndex("OnboardingDraftId")
+                        .HasDatabaseName("ix_bulk_onboarding_batch_rows_onboarding_draft_id");
+
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("ix_bulk_onboarding_batch_rows_tenant_id_status");
+
+                    b.HasIndex("TenantId", "BatchId", "RowNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_bulk_onboarding_batch_rows_tenant_id_batch_id_row_number");
+
+                    b.ToTable("bulk_onboarding_batch_rows", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.ChecklistTemplate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2287,6 +2492,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("position_id");
 
+                    b.Property<Guid?>("ReportsToEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reports_to_employee_id");
+
                     b.Property<Guid?>("SelectedTemplateId")
                         .HasColumnType("uuid")
                         .HasColumnName("selected_template_id");
@@ -2407,6 +2616,10 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid>("PositionId")
                         .HasColumnType("uuid")
                         .HasColumnName("position_id");
+
+                    b.Property<Guid?>("ReportsToEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reports_to_employee_id");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
@@ -5319,6 +5532,10 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid>("OwnerPositionId")
                         .HasColumnType("uuid")
                         .HasColumnName("owner_position_id");
+
+                    b.Property<Guid?>("ResponsibleEmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("responsible_employee_id");
 
                     b.Property<string>("Source")
                         .IsRequired()
@@ -9034,6 +9251,32 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_access_grant_requests_users_user_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.BulkOnboardingBatch", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("LegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_bulk_onboarding_batches_legal_entities_legal_entity_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.BulkOnboardingBatchRow", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.BulkOnboardingBatch", null)
+                        .WithMany()
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bulk_onboarding_batch_rows_bulk_onboarding_batches_batch_id");
+
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft", null)
+                        .WithMany()
+                        .HasForeignKey("OnboardingDraftId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_bulk_onboarding_batch_rows_onboarding_drafts_onboarding_dra");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.ChecklistTemplate", b =>

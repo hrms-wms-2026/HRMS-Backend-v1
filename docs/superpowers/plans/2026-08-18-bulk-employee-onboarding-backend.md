@@ -1802,7 +1802,37 @@ public class ValidateBulkOnboardingBatchCommandHandler
 }
 ```
 
-Add the `ValidateBulkOnboardingBatchResponse` Contracts view model (mirrors `ValidateBulkOnboardingBatchResult` 1:1) and controller action following the exact same shape as Task 8's `preview` action (bind `[FromBody]`, call `_mediator.Send`, map `Result` to `IActionResult`) — no new pattern to invent here.
+```csharp
+// src/ONEVO.Api/Contracts/CoreHr/BulkOnboarding/ValidateBulkOnboardingBatchResponse.cs
+namespace ONEVO.Api.Contracts.CoreHr.BulkOnboarding;
+
+public sealed record RowValidationResultItemViewModel(int RowNumber, string Status, string? ErrorMessage);
+
+public sealed record ValidateBulkOnboardingBatchResponse(
+    int ValidRows,
+    int InvalidRows,
+    IReadOnlyList<RowValidationResultItemViewModel> Rows);
+```
+
+Add to `BulkOnboardingController.cs`:
+
+```csharp
+    [HttpPost("{id:guid}/validate")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> Validate(Guid id, [FromBody] PreviewBulkOnboardingMappingRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new ValidateBulkOnboardingBatchCommand(id, request.Mapping), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        var r = result.Value!;
+        return Ok(new ValidateBulkOnboardingBatchResponse(
+            r.ValidRows, r.InvalidRows,
+            r.Rows.Select(row => new RowValidationResultItemViewModel(row.RowNumber, row.Status, row.ErrorMessage)).ToList()));
+    }
+```
+
+(Reuses `PreviewBulkOnboardingMappingRequest` from Task 8 as the request body shape — both `preview` and `validate` accept the same `{ mapping }` payload, so no separate request record is needed.)
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1920,7 +1950,23 @@ public class RequestBulkOnboardingDraftCreationCommandHandler
 }
 ```
 
-Controller action follows Task 7's exact `IActionResult` mapping pattern, route `[HttpPost("{id:guid}/create-drafts")]`, `[RequirePermission("employees:write")]`.
+Add to `BulkOnboardingController.cs`:
+
+```csharp
+    [HttpPost("{id:guid}/create-drafts")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> CreateDrafts(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new RequestBulkOnboardingDraftCreationCommand(id), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        var response = result.Value!;
+        return Ok(new BulkOnboardingBatchViewModel(
+            response.Id, response.Status, response.TotalRows, response.ValidRows, response.InvalidRows,
+            response.DetectedColumns, response.SuggestedMapping));
+    }
+```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -2281,7 +2327,24 @@ public class RequestBulkOnboardingFinalizeCommandHandler
 }
 ```
 
-Controller action: `[HttpPost("{id:guid}/finalize")]`, `[RequirePermission("employees:write")]`, `[Idempotent]` (same attribute, same position in the attribute list as `ChecklistTemplatesController.Create`'s precedent), binds `FinalizeBulkOnboardingBatchRequest`, maps to the command, same `Result` → `IActionResult` pattern as every prior action in this controller.
+Add to `BulkOnboardingController.cs` — attribute order (`[HttpPost]`, `[RequirePermission]`, `[Idempotent]`) matches `ChecklistTemplatesController.Create`'s verified precedent exactly:
+
+```csharp
+    [HttpPost("{id:guid}/finalize")]
+    [RequirePermission("employees:write")]
+    [Idempotent]
+    public async Task<IActionResult> Finalize(Guid id, [FromBody] FinalizeBulkOnboardingBatchRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new RequestBulkOnboardingFinalizeCommand(id, request.OnboardingDraftIds), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        var response = result.Value!;
+        return Ok(new BulkOnboardingBatchViewModel(
+            response.Id, response.Status, response.TotalRows, response.ValidRows, response.InvalidRows,
+            response.DetectedColumns, response.SuggestedMapping));
+    }
+```
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -2538,7 +2601,40 @@ public class GetBulkOnboardingBatchQueryHandler
 }
 ```
 
-Controller action: `[HttpGet("{id:guid}")]`, `[RequirePermission("employees:read")]`, maps `Result` → `IActionResult` and `BulkOnboardingBatchDetailResponse` → `BulkOnboardingBatchDetailViewModel` (Contracts record mirroring the Application response 1:1, same as every prior task).
+```csharp
+// src/ONEVO.Api/Contracts/CoreHr/BulkOnboarding/BulkOnboardingBatchDetailViewModel.cs
+namespace ONEVO.Api.Contracts.CoreHr.BulkOnboarding;
+
+public sealed record BulkOnboardingBatchRowDetailViewModel(
+    int RowNumber, string Status, string? ErrorMessage, Guid? OnboardingDraftId);
+
+public sealed record BulkOnboardingBatchDetailViewModel(
+    Guid Id,
+    string Status,
+    int TotalRows,
+    int? ValidRows,
+    int? InvalidRows,
+    IReadOnlyList<BulkOnboardingBatchRowDetailViewModel> Rows);
+```
+
+Add to `BulkOnboardingController.cs`:
+
+```csharp
+    [HttpGet("{id:guid}")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetBulkOnboardingBatchQuery(id), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        var r = result.Value!;
+        return Ok(new BulkOnboardingBatchDetailViewModel(
+            r.Id, r.Status, r.TotalRows, r.ValidRows, r.InvalidRows,
+            r.Rows.Select(row => new BulkOnboardingBatchRowDetailViewModel(
+                row.RowNumber, row.Status, row.ErrorMessage, row.OnboardingDraftId)).ToList()));
+    }
+```
 
 - [ ] **Step 4: Run tests to verify they pass**
 

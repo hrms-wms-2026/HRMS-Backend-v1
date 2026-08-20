@@ -1,5 +1,6 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdatePosition;
 using ONEVO.Application.Features.OrgStructure.OutboxPayloads;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -21,6 +22,7 @@ public sealed class UpdatePositionCommandHandlerTests
     private readonly Mock<ICurrentUser> _currentUserMock = new();
     private readonly Mock<IDateTimeProvider> _dateTimeProviderMock = new();
     private readonly Mock<IOutboxWriter> _outboxWriterMock = new();
+    private readonly Mock<IEmployeeHierarchyClosureRepository> _closureRepositoryMock = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _legalEntityId = Guid.NewGuid();
     private readonly Guid _departmentId = Guid.NewGuid();
@@ -55,7 +57,7 @@ public sealed class UpdatePositionCommandHandlerTests
     }
 
     private UpdatePositionCommandHandler CreateHandler()
-        => new(_positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object);
+        => new(_positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object, _outboxWriterMock.Object, _closureRepositoryMock.Object);
 
     private UpdatePositionCommand ValidCommand(
         Guid? departmentId = null, string name = "New Name", string code = "NEWCD",
@@ -397,5 +399,52 @@ public sealed class UpdatePositionCommandHandlerTests
                 _tenantId,
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_Calls_RebuildAsync_When_ReportsToPositionId_Changes()
+    {
+        var newParentId = Guid.NewGuid();
+        _positionsMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionEntity
+            {
+                Id = _positionId, TenantId = _tenantId, LegalEntityId = _legalEntityId, DepartmentId = _departmentId,
+                Name = "Old Name", Code = "OLDCD", PositionType = "unique", MaxOccupancy = 1, IsActive = true,
+                ReportsToPositionId = null,
+            });
+        _positionsMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, newParentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionEntity
+            {
+                Id = newParentId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "New Manager", IsActive = true
+            });
+        _positionsMock
+            .Setup(p => p.IsDescendantAsync(_tenantId, _legalEntityId, _positionId, newParentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _positionsMock
+            .Setup(p => p.CountActiveReportsToPositionAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+
+        await CreateHandler().Handle(ValidCommand(reportsToPositionId: newParentId), CancellationToken.None);
+
+        _closureRepositoryMock.Verify(c => c.RebuildAsync(_tenantId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_Does_Not_Call_RebuildAsync_When_ReportsToPositionId_Unchanged()
+    {
+        _positionsMock
+            .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionEntity
+            {
+                Id = _positionId, TenantId = _tenantId, LegalEntityId = _legalEntityId, DepartmentId = _departmentId,
+                Name = "Old Name", Code = "OLDCD", PositionType = "unique", MaxOccupancy = 1, IsActive = true,
+                ReportsToPositionId = null,
+            });
+
+        await CreateHandler().Handle(ValidCommand(reportsToPositionId: null), CancellationToken.None);
+
+        _closureRepositoryMock.Verify(c => c.RebuildAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

@@ -103,7 +103,7 @@ public class EmployeesController : ControllerBase
         Guid id, [FromBody] ChangePositionRequest request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(
-            new ChangeEmployeePositionCommand(id, request.PositionId, request.EffectiveFrom, request.ChangeReason), ct);
+            new ChangeEmployeePositionCommand(id, request.PositionId, request.EffectiveFrom, request.ChangeReason, request.ReportsToEmployeeId), ct);
 
         return result.IsSuccess
             ? Ok(result.Value)

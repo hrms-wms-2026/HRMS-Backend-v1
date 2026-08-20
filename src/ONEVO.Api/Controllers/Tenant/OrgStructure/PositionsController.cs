@@ -8,6 +8,8 @@ using ONEVO.Application.Features.OrgStructure.Commands.CheckPositionArchive;
 using ONEVO.Application.Features.OrgStructure.Commands.CreatePosition;
 using ONEVO.Application.Features.OrgStructure.Commands.RestorePosition;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdatePosition;
+using ONEVO.Api.Contracts.OrgStructure.Positions;
+using ONEVO.Application.Features.OrgStructure.Queries.GetActiveHolders;
 using ONEVO.Application.Features.OrgStructure.Queries.GetPositionById;
 using ONEVO.Application.Features.OrgStructure.Queries.GetPositionTree;
 using ONEVO.Application.Features.OrgStructure.Queries.ListPositions;
@@ -76,6 +78,21 @@ public class PositionsController : ControllerBase
         var result = await _mediator.Send(new GetPositionByIdQuery(legalEntityId, positionId), ct);
         return result.IsSuccess
             ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Current active PrimaryEmployment holders of a position — used to disambiguate
+    /// reporting-manager selection when the target position has multiple occupants.</summary>
+    [HttpGet("{positionId:guid}/active-holders")]
+    [RequirePermission("org:read")]
+    public async Task<IActionResult> GetActiveHolders(
+        Guid legalEntityId,
+        Guid positionId,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetActiveHoldersQuery(legalEntityId, positionId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(h => new ActiveHolderViewModel(h.EmployeeId, h.FirstName, h.LastName, h.WorkEmail, h.AvatarFileId)).ToList())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
@@ -205,22 +222,19 @@ public class PositionsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Gets every active coverage record for one covered target (position/department/
-    /// company), regardless of which position owns each rule - lets the "add coverage" UI show
-    /// which responsibility levels are already claimed by OTHER owners before submit.</summary>
-    [HttpGet("coverage/by-target")]
+    /// <summary>Resolves coverage for a covered target to specific employees.</summary>
+    [HttpGet("coverage/resolve")]
     [RequirePermission("org:read")]
-    public async Task<IActionResult> GetCoverageByTarget(
+    public async Task<IActionResult> ResolveCoverage(
         Guid legalEntityId,
         [FromQuery] string coveredTargetType,
-        [FromQuery] Guid? coveredPositionId = null,
-        [FromQuery] Guid? coveredDepartmentId = null,
-        [FromQuery] Guid? excludingRecordId = null,
+        [FromQuery] Guid? coveredPositionId,
+        [FromQuery] Guid? coveredDepartmentId,
         CancellationToken ct = default)
     {
         var result = await _mediator.Send(
-            new ONEVO.Application.Features.OrgStructure.Queries.GetCoverageByTarget.GetCoverageByTargetQuery(
-                legalEntityId, coveredTargetType, coveredPositionId, coveredDepartmentId, excludingRecordId),
+            new ONEVO.Application.Features.OrgStructure.Queries.GetCoverageResolution.GetCoverageResolutionQuery(
+                legalEntityId, coveredTargetType, coveredPositionId, coveredDepartmentId),
             ct);
 
         return result.IsSuccess
@@ -261,7 +275,8 @@ public class PositionsController : ControllerBase
                 request.CoveredTargetType,
                 request.CoveredPositionId,
                 request.CoveredDepartmentId,
-                request.OwnerOrder),
+                request.OwnerOrder,
+                request.ResponsibleEmployeeId),
             ct);
 
         return result.IsSuccess
@@ -284,7 +299,8 @@ public class PositionsController : ControllerBase
                 legalEntityId,
                 positionId,
                 coverageId,
-                request.OwnerOrder),
+                request.OwnerOrder,
+                request.ResponsibleEmployeeId),
             ct);
 
         return result.IsSuccess

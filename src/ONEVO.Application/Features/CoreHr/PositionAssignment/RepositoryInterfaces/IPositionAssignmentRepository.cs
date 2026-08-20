@@ -41,6 +41,7 @@ public interface IPositionAssignmentRepository
         Guid positionId,
         DateOnly effectiveFrom,
         Guid createdById,
+        Guid? reportsToEmployeeId,
         CancellationToken ct = default);
 
     /// <summary>Flips a "planned" PositionAssignment row to "active" (on invite accept). No-op
@@ -58,7 +59,13 @@ public interface IPositionAssignmentRepository
     /// lifecycle.</summary>
     Task<Guid?> TryCreateActiveAssignmentAsync(
         Guid tenantId, Guid employeeId, Guid positionId, DateOnly effectiveFrom, Guid createdById,
-        CancellationToken ct = default);
+        Guid? reportsToEmployeeId, CancellationToken ct = default);
+
+    /// <summary>Current active PrimaryEmployment holders of a position, with work email — used to
+    /// disambiguate a reporting-manager override (onboarding wizard picker, bulk-onboarding CSV
+    /// email match, Change Position picker) against who is actually eligible right now.</summary>
+    Task<IReadOnlyList<PositionActiveHolder>> GetActiveHoldersAsync(
+        Guid tenantId, Guid positionId, CancellationToken ct = default);
 
     Task<bool> EndActiveAsync(Guid tenantId, Guid positionAssignmentId, DateOnly effectiveTo, CancellationToken ct = default);
 

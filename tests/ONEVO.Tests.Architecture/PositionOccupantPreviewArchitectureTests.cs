@@ -70,8 +70,8 @@ public class PositionOccupantPreviewArchitectureTests
     // was re-pointed at the new method name, not weakened.
     [Theory]
     [InlineData(
-        "src", "ONEVO.Application", "Features", "CoreHr", "OnboardingDraft", "Commands",
-        "FinalizeOnboardingDraft", "FinalizeOnboardingDraftCommandHandler.cs")]
+        "src", "ONEVO.Application", "Features", "CoreHr", "OnboardingDraft", "Services",
+        "OnboardingDraftWriteService.cs")]
     [InlineData(
         "src", "ONEVO.Application", "Features", "CoreHr", "Onboarding", "Commands",
         "ApproveAccessGrantRequest", "ApproveAccessGrantRequestCommandHandler.cs")]
