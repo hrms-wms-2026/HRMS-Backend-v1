@@ -2,10 +2,12 @@ using System.Text.Json;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ONEVO.Api.Contracts.WorkManagement.Objectives;
 using ONEVO.Api.Contracts.WorkManagement.Projects;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.AchieveProject;
+using ONEVO.Application.Features.WorkManagement.Projects.Commands.AddProjectMember;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.CreateProject;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.DeleteProject;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.EditProject;
@@ -156,6 +158,21 @@ public class ProjectsController : ControllerBase
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
         return File(result.Value!.Content, result.Value!.ContentType);
+    }
+
+    /// <summary>Invites an employee to this project via its Default Objective. Project-owner (LeadId) only. Immediate no-op (204) if already an active member of the Default Objective; otherwise creates a pending invitation (202) the invited employee must accept.</summary>
+    [HttpPost("{id:guid}/members")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> AddMember(Guid id, [FromBody] AddProjectMemberRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new AddProjectMemberCommand(id, request.EmployeeId), ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return result.Value!.AlreadyMember
+            ? StatusCode(204, result.Value.ToViewModel())
+            : StatusCode(202, result.Value.ToViewModel());
     }
 
     /// <summary>The caller's own projects. Requires projects:access (the module-wide base gate) — this only ever returns the caller's own data, so no additional permission is needed beyond that base gate.</summary>
