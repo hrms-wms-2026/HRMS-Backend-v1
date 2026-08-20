@@ -75,6 +75,7 @@ public class TasksController : ControllerBase
     }
 
     [HttpGet("objectives/{objectiveId:guid}/tasks")]
+    [RequirePermission("projects:access")]
     public async Task<IActionResult> GetByObjective(Guid objectiveId, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetObjectiveTasksQuery(objectiveId), ct);

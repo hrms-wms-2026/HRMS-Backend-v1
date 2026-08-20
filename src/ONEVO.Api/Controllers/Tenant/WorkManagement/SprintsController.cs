@@ -77,6 +77,7 @@ public class SprintsController : ControllerBase
     }
 
     [HttpGet("objectives/{objectiveId:guid}/sprints")]
+    [RequirePermission("projects:access")]
     public async Task<IActionResult> GetByObjective(Guid objectiveId, [FromQuery] bool activeOnly, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetObjectiveSprintsQuery(objectiveId, activeOnly), ct);
