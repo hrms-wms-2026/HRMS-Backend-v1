@@ -251,6 +251,10 @@ public class CreateProjectCommandHandlerTests
         var result = await setup.Handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Value!.Logo);
+        Assert.Equal("logo.png", result.Value.Logo.OriginalFileName);
+        Assert.NotNull(result.Value.Banner);
+        Assert.Equal("banner.png", result.Value.Banner.OriginalFileName);
         Assert.Equal(2, assets.Count);
         Assert.Contains(assets, a => a.AssetPurpose == UploadPurposeCatalog.ProjectCover && a.OwnerId == result.Value!.Project.Id && a.IsPrimary);
         Assert.Contains(assets, a => a.AssetPurpose == UploadPurposeCatalog.ProjectBanner && a.OwnerId == result.Value!.Project.Id && a.IsPrimary);
@@ -277,6 +281,9 @@ public class CreateProjectCommandHandlerTests
         var result = await setup.Handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.Logo);
+        Assert.NotNull(result.Value.Banner);
+        Assert.Equal("banner.png", result.Value.Banner.OriginalFileName);
         Assert.Single(assets);
         Assert.Equal(UploadPurposeCatalog.ProjectBanner, assets[0].AssetPurpose);
         Assert.Equal(result.Value!.Project.Id, assets[0].OwnerId);

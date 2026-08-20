@@ -315,7 +315,8 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 ProjectMapper.ToSummary(releaseReminder),
                 labels.Select(ProjectMapper.ToSummary).ToList(),
                 ProjectMapper.ToSummary(creatorMembership),
-                uploadedLogo is not null ? new ProjectLogoSummaryDto(uploadedLogo.Id, uploadedLogo.OriginalFileName) : null);
+                uploadedLogo is not null ? new ProjectLogoSummaryDto(uploadedLogo.Id, uploadedLogo.OriginalFileName) : null,
+                uploadedBanner is not null ? new ProjectLogoSummaryDto(uploadedBanner.Id, uploadedBanner.OriginalFileName) : null);
 
             return Result<ProjectCreationResponse>.Success(response);
         }
