@@ -52,12 +52,15 @@ public class TransferObjectiveHeadCommandHandlerTests
     }
 
     private (TransferObjectiveHeadCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IObjectiveChangeRequestRepository> Requests, Mock<IProjectMemberInvitationRepository> Invitations) BuildHandler(
-        Objective? objective, bool hasPending = false, Guid? callerId = null)
+        Objective? objective, bool hasPending = false, Guid? callerId = null, bool? callerIsEffectiveManager = null)
     {
+        var resolvedCallerUserId = callerId ?? HeadUserId;
+        var resolvedCallerEmployeeId = resolvedCallerUserId == OtherUserId ? OtherEmployeeId : HeadEmployeeId;
+
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(callerId ?? HeadUserId);
+        currentUser.SetupGet(x => x.UserId).Returns(resolvedCallerUserId);
 
         var identity = BuildIdentity();
 
@@ -76,6 +79,12 @@ public class TransferObjectiveHeadCommandHandlerTests
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = NewHeadEmployeeId, TenantId = TenantId, UserId = NewHeadUserId, EmploymentStatusId = EmploymentStatusIds.Active });
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
+        // separately in MilestoneMembershipCoordinatorTests).
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (objective is not null && objective.OwnerId == resolvedCallerEmployeeId));
 
         var autoGrant = new Mock<IPermissionAutoGrantService>();
 
@@ -92,11 +101,12 @@ public class TransferObjectiveHeadCommandHandlerTests
     // Overload without `newHeadAssignee`: defaults to "resolved new head is a valid active
     // employee" so callers that don't care about employee-validity behavior get the happy path.
     private (TransferObjectiveHeadCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IMilestoneMembershipCoordinator> Membership, Mock<IPermissionAutoGrantService> AutoGrant) BuildHandlerWithMembership(
-        Objective? objective, bool oldHeadHasOtherAccess = false)
+        Objective? objective, bool oldHeadHasOtherAccess = false, bool? callerIsEffectiveManager = null)
         => BuildHandlerWithMembership(
             objective,
             new Employee { Id = NewHeadEmployeeId, TenantId = TenantId, UserId = NewHeadUserId, EmploymentStatusId = EmploymentStatusIds.Active },
-            oldHeadHasOtherAccess);
+            oldHeadHasOtherAccess,
+            callerIsEffectiveManager);
 
     // Overload with an explicit `newHeadAssignee`: used as-is, including `null`, so a caller can
     // simulate "no active employee found" (see Handle_NewHeadNotActiveEmployee_ReturnsBadRequest).
@@ -109,7 +119,7 @@ public class TransferObjectiveHeadCommandHandlerTests
     // CreateObjectiveCommandHandlerTests.BuildHandlerWithMembership; fixed here the same way, by
     // splitting into two overloads instead of one method with a nullable optional parameter.
     private (TransferObjectiveHeadCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IMilestoneMembershipCoordinator> Membership, Mock<IPermissionAutoGrantService> AutoGrant) BuildHandlerWithMembership(
-        Objective? objective, Employee? newHeadAssignee, bool oldHeadHasOtherAccess = false)
+        Objective? objective, Employee? newHeadAssignee, bool oldHeadHasOtherAccess = false, bool? callerIsEffectiveManager = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -131,6 +141,10 @@ public class TransferObjectiveHeadCommandHandlerTests
             .ReturnsAsync(newHeadAssignee);
         membership.Setup(x => x.HasOtherActiveAccessAsync(TenantId, ProjectId, HeadEmployeeId, ObjectiveId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(oldHeadHasOtherAccess);
+        // Caller in this builder is always HeadUserId (resolves to HeadEmployeeId); mirrors
+        // direct-owner-only behavior by default, overridable to simulate an ancestor-cascade grant.
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, HeadEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (objective is not null && objective.OwnerId == HeadEmployeeId));
 
         var invitations = new Mock<IProjectMemberInvitationRepository>();
         invitations.Setup(x => x.ListPendingForObjectiveAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
@@ -230,6 +244,24 @@ public class TransferObjectiveHeadCommandHandlerTests
     public async Task Handle_CreatorHeadTransfers_AppliesImmediately()
     {
         var (handler, objectives, requests, _) = BuildHandler(SubObjective(createdById: HeadUserId));
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.Applied);
+        objectives.Verify(x => x.Update(It.Is<Objective>(o => o.OwnerId == NewHeadEmployeeId)), Times.Once);
+        requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsActiveMemberOfAncestorObjective_AppliesImmediately()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
+        // this only proves the handler defers to its answer instead of the direct OwnerId check.
+        var (handler, objectives, requests, _) = BuildHandler(
+            SubObjective(createdById: OtherUserId), callerId: OtherUserId, callerIsEffectiveManager: true);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
