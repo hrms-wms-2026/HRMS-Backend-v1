@@ -7,10 +7,13 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCreationRequest;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using System.Text.Json;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.Tasks;
@@ -89,5 +92,19 @@ public class CreateTaskCreationRequestCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
         requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.Tasks.Entities.TaskCreationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NullSprintId_StoresNullSprintInPayload()
+    {
+        var (handler, requests) = Build(isActiveMember: true);
+        var command = new CreateTaskCreationRequestCommand(ObjectiveId, "Direct task", null, "task", "medium", null, 5m, null, SprintId: null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.Payload.SprintId);
+        requests.Verify(x => x.AddAsync(It.Is<TaskCreationRequest>(r =>
+            JsonSerializer.Deserialize<TaskCreationRequestPayload>(r.PayloadJson)!.SprintId == null), It.IsAny<CancellationToken>()), Times.Once);
     }
 }

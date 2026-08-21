@@ -5,7 +5,7 @@ namespace ONEVO.Api.Contracts.WorkManagement.Tasks;
 
 public sealed record CreateTaskCreationRequestRequest(
     string Title, string? Description, string TaskType, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid SprintId);
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId);
 
 public sealed record RejectTaskCreationRequestRequest(string Comment);
 

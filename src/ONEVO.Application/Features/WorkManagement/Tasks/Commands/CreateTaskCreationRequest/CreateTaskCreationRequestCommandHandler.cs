@@ -62,11 +62,14 @@ public class CreateTaskCreationRequestCommandHandler : IRequestHandler<CreateTas
         if (!isMember)
             return Result<TaskCreationRequestResponse>.Forbidden("Only active milestone members can request tasks.");
 
-        var sprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId, ct);
-        if (sprint is null || sprint.ObjectiveId != objective.Id)
-            return Result<TaskCreationRequestResponse>.NotFound("Sprint not found.");
-        if (sprint.Status == SprintStatuses.Achieved)
-            return Result<TaskCreationRequestResponse>.Conflict("This sprint has been achieved and is frozen.");
+        if (request.SprintId is not null)
+        {
+            var sprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId.Value, ct);
+            if (sprint is null || sprint.ObjectiveId != objective.Id)
+                return Result<TaskCreationRequestResponse>.NotFound("Sprint not found.");
+            if (sprint.Status == SprintStatuses.Achieved)
+                return Result<TaskCreationRequestResponse>.Conflict("This sprint has been achieved and is frozen.");
+        }
 
         var payload = new TaskCreationRequestPayload(
             request.Title.Trim(), request.Description?.Trim(), request.TaskType, request.Priority,
