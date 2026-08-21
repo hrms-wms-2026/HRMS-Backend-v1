@@ -58,7 +58,7 @@ public class GetObjectiveTreeQueryHandler : IRequestHandler<GetObjectiveTreeQuer
             && await _members.HasActiveMembershipForAnyObjectiveAsync(tenantId, project.Id, callerEmployeeId.Value, new[] { defaultObjective.Id }, ct);
 
         if (hasDirectMembership)
-            return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Success(allObjectives.Select(ObjectiveMapper.ToTreeItem).ToList());
+            return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Success(allObjectives.Select(o => ObjectiveMapper.ToTreeItem(o)).ToList());
 
         var ownedObjectiveIds = await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct);
 
@@ -99,7 +99,7 @@ public class GetObjectiveTreeQueryHandler : IRequestHandler<GetObjectiveTreeQuer
             }
         }
 
-        var scoped = allObjectives.Where(o => reachable.Contains(o.Id)).Select(ObjectiveMapper.ToTreeItem).ToList();
+        var scoped = allObjectives.Where(o => reachable.Contains(o.Id)).Select(o => ObjectiveMapper.ToTreeItem(o)).ToList();
         return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Success(scoped);
     }
 }
