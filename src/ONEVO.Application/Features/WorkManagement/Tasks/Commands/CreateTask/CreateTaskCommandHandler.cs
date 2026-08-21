@@ -70,11 +70,14 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         if (defaultStatus is null)
             return Result<WorkTaskResponse>.Failure("No task statuses configured for this milestone yet.", 422);
 
-        var sprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId, ct);
-        if (sprint is null || sprint.ObjectiveId != objective.Id)
-            return Result<WorkTaskResponse>.NotFound("Sprint not found.");
-        if (sprint.Status == SprintStatuses.Achieved)
-            return Result<WorkTaskResponse>.Conflict("This sprint has been achieved and is frozen.");
+        if (request.SprintId is not null)
+        {
+            var sprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId.Value, ct);
+            if (sprint is null || sprint.ObjectiveId != objective.Id)
+                return Result<WorkTaskResponse>.NotFound("Sprint not found.");
+            if (sprint.Status == SprintStatuses.Achieved)
+                return Result<WorkTaskResponse>.Conflict("This sprint has been achieved and is frozen.");
+        }
 
         if (request.EstimatedHours.HasValue)
         {

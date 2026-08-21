@@ -35,8 +35,8 @@ public class CreateTaskCommandHandlerTests
         IsActive = true, AllocatedHours = allocatedHours, CreatedAt = DateTimeOffset.UtcNow
     };
 
-    private (CreateTaskCommandHandler Handler, Mock<IWorkTaskRepository> Tasks) BuildHandler(
-        Objective objective, decimal existingAllocationSum)
+    private (CreateTaskCommandHandler Handler, Mock<IWorkTaskRepository> Tasks, Mock<ISprintRepository> Sprints) BuildHandler(
+        Objective objective, decimal existingAllocationSum, string sprintStatus = SprintStatuses.Active)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -71,7 +71,7 @@ public class CreateTaskCommandHandlerTests
             .ReturnsAsync(new Sprint
             {
                 Id = SprintId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId,
-                Name = "Sprint 1", Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
+                Name = "Sprint 1", Status = sprintStatus, CreatedAt = DateTimeOffset.UtcNow
             });
 
         var tasks = new Mock<IWorkTaskRepository>();
@@ -87,13 +87,13 @@ public class CreateTaskCommandHandlerTests
         var handler = new CreateTaskCommandHandler(
             currentUser.Object, identity.Object, objectives.Object, projects.Object, tasks.Object,
             statuses.Object, sprints.Object, slackCalculator, unitOfWork.Object);
-        return (handler, tasks);
+        return (handler, tasks, sprints);
     }
 
     [Fact]
     public async Task Handle_OwnerWithinSlack_CreatesTask()
     {
-        var (handler, tasks) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m);
+        var (handler, tasks, _) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m);
         var command = new CreateTaskCommand(ObjectiveId, "Build the thing", null, "task", "medium", null, EstimatedHours: 30m, StoryPoints: null, SprintId);
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -105,7 +105,7 @@ public class CreateTaskCommandHandlerTests
     [Fact]
     public async Task Handle_OwnerExceedsSlack_ReturnsConflictWithAvailableSlack()
     {
-        var (handler, tasks) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m);
+        var (handler, tasks, _) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m);
         var command = new CreateTaskCommand(ObjectiveId, "Too big", null, "task", "medium", null, EstimatedHours: 70m, StoryPoints: null, SprintId);
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -120,7 +120,7 @@ public class CreateTaskCommandHandlerTests
     [Fact]
     public async Task Handle_OwnerWithinSlack_GeneratesProjectPrefixedShortId()
     {
-        var (handler, _) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m);
+        var (handler, _, _) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m);
         var result = await handler.Handle(
             new CreateTaskCommand(ObjectiveId, "Build the thing", null, "task", "medium", null, EstimatedHours: 30m, StoryPoints: null, SprintId),
             CancellationToken.None);
@@ -133,12 +133,39 @@ public class CreateTaskCommandHandlerTests
     [Fact]
     public async Task Handle_ValidSprintId_SetsSprintIdOnTask()
     {
-        var (handler, tasks) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m);
+        var (handler, tasks, _) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m);
         var command = new CreateTaskCommand(ObjectiveId, "Title", null, WorkTaskTypes.Task, WorkTaskPriorities.Medium, null, null, null, SprintId);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         tasks.Verify(x => x.AddAsync(It.Is<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>(t => t.SprintId == SprintId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_NullSprintId_CreatesDirectTaskWithoutSprintLookup()
+    {
+        var (handler, tasks, sprints) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m);
+        var command = new CreateTaskCommand(ObjectiveId, "Direct task", null, WorkTaskTypes.Task, WorkTaskPriorities.Medium, null, null, null, SprintId: null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.SprintId);
+        tasks.Verify(x => x.AddAsync(It.Is<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>(t => t.SprintId == null), It.IsAny<CancellationToken>()), Times.Once);
+        sprints.Verify(x => x.GetByIdForTenantAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_AchievedSprint_ReturnsConflict()
+    {
+        var (handler, tasks, _) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m, sprintStatus: SprintStatuses.Achieved);
+        var command = new CreateTaskCommand(ObjectiveId, "Title", null, WorkTaskTypes.Task, WorkTaskPriorities.Medium, null, null, null, SprintId);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        tasks.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
