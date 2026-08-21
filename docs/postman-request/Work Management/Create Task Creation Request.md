@@ -20,11 +20,12 @@ Non-owner Objective member submits a request to create a task. Slack is **not** 
   "priority": "medium",
   "dueDate": "2026-09-01",
   "estimatedHours": 8,
-  "storyPoints": 5
+  "storyPoints": 5,
+  "sprintId": null
 }
 ```
 
-`taskType` is one of `task`, `bug`, `story`, `feature`. `priority` is one of `low`, `medium`, `high`, `critical`. `estimatedHours`, `dueDate`, `description`, and `storyPoints` are optional.
+`taskType` is one of `task`, `bug`, `story`, `feature`. `priority` is one of `low`, `medium`, `high`, `critical`. `estimatedHours`, `dueDate`, `description`, `storyPoints`, and `sprintId` are optional. Omit `sprintId` (or send `null`) to request a direct task under the Objective with no Sprint.
 
 ## Response
 
@@ -42,7 +43,8 @@ Non-owner Objective member submits a request to create a task. Slack is **not** 
     "priority": "medium",
     "dueDate": "2026-09-01",
     "estimatedHours": 8,
-    "storyPoints": 5
+    "storyPoints": 5,
+    "sprintId": null
   },
   "createdAt": "2026-08-17T00:00:00+00:00"
 }
@@ -54,7 +56,8 @@ Non-owner Objective member submits a request to create a task. Slack is **not** 
 |---|---|
 | `400` | Validation failure, or caller is the milestone owner (owners create tasks directly) |
 | `403` | Not authenticated, no employee record, or caller is not an active milestone member |
-| `404` | Objective not found / inactive |
+| `404` | Objective not found / inactive, or (when provided) Sprint not found |
+| `409` | The provided Sprint is Achieved (frozen) |
 
 ## Source
 
