@@ -61,7 +61,7 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
         if (parent is null || !parent.IsActive)
             return Result<ObjectiveDetailResponse>.NotFound("Parent objective not found.");
 
-        if (parent.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, parent.Id, callerEmployeeId.Value, ct))
             return Result<ObjectiveDetailResponse>.Forbidden("Only the parent milestone's head can create a sub-milestone under it.");
 
         if (ObjectiveParentConstraintChecker.Conflicts(parent, request.StartDate, request.EndDate, request.AllocatedHours))

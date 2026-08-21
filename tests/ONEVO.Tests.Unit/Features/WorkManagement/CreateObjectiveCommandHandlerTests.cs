@@ -65,6 +65,11 @@ public class CreateObjectiveCommandHandlerTests
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, Guid employeeId, CancellationToken _) =>
                 new Employee { Id = employeeId, TenantId = TenantId, UserId = UserId, EmploymentStatusId = EmploymentStatusIds.Active });
+        // Mirrors direct-owner-only behavior for these pre-existing tests (Moq returns false for
+        // any unconfigured IsEffectiveManagerAsync call, which would otherwise flip every
+        // caller-is-owner success case to Forbidden now that the handler defers to this method).
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ParentId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(parent is not null && parent.OwnerId == EmployeeId);
 
         var autoGrant = new Mock<IPermissionAutoGrantService>();
         var invitations = new Mock<IProjectMemberInvitationRepository>();
@@ -105,6 +110,8 @@ public class CreateObjectiveCommandHandlerTests
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(assignee);
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ParentId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(parent is not null && parent.OwnerId == EmployeeId);
 
         var autoGrant = new Mock<IPermissionAutoGrantService>();
         var invitations = new Mock<IProjectMemberInvitationRepository>();
@@ -155,6 +162,47 @@ public class CreateObjectiveCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsActiveMemberOfGrandparentObjective_CreatesSuccessfully()
+    {
+        // Caller is neither the direct parent's owner nor a direct member of it, but is an active
+        // member of the parent's own ancestor (grandparent, two levels up). IsEffectiveManagerAsync
+        // is the single source of truth for that cascade (already unit-tested at the coordinator
+        // level in MilestoneMembershipCoordinatorTests) - the handler only needs to prove it defers
+        // to the coordinator's answer, so the ancestor walk itself is not re-simulated here.
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
+        currentUser.SetupGet(x => x.UserId).Returns(UserId);
+
+        var identity = BuildIdentity();
+        var parent = ParentObjective(ownerId: OtherEmployeeId);
+        var objectives = new Mock<IObjectiveRepository>();
+        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ParentId, It.IsAny<CancellationToken>())).ReturnsAsync(parent);
+
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid employeeId, CancellationToken _) =>
+                new Employee { Id = employeeId, TenantId = TenantId, UserId = UserId, EmploymentStatusId = EmploymentStatusIds.Active });
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ParentId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var autoGrant = new Mock<IPermissionAutoGrantService>();
+        var invitations = new Mock<IProjectMemberInvitationRepository>();
+        var taskStatuses = new Mock<ITaskStatusRepository>();
+        var unitOfWork = new Mock<IUnitOfWork>();
+        unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveDetailResponse>>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<Result<ObjectiveDetailResponse>>> op, CancellationToken ct) => op(ct));
+
+        var handler = new CreateObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, unitOfWork.Object, membership.Object, autoGrant.Object, invitations.Object, taskStatuses.Object);
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(EmployeeId, result.Value!.OwnerId);
     }
 
     [Fact]
@@ -305,6 +353,8 @@ public class CreateObjectiveCommandHandlerTests
             .ReturnsAsync(new Employee { Id = EmployeeId, TenantId = TenantId, UserId = UserId, EmploymentStatusId = EmploymentStatusIds.Active });
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, OtherEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = OtherEmployeeId, TenantId = TenantId, UserId = OtherUserId, EmploymentStatusId = EmploymentStatusIds.Active });
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ParentId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var invitations = new Mock<IProjectMemberInvitationRepository>();
         var autoGrant = new Mock<IPermissionAutoGrantService>();
@@ -342,6 +392,8 @@ public class CreateObjectiveCommandHandlerTests
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, Guid employeeId, CancellationToken _) =>
                 new Employee { Id = employeeId, TenantId = TenantId, EmploymentStatusId = EmploymentStatusIds.Active });
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ParentId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var invitations = new Mock<IProjectMemberInvitationRepository>();
         var autoGrant = new Mock<IPermissionAutoGrantService>();
