@@ -14,4 +14,15 @@ public interface IEmployeeRepository
     /// <summary>Looks the Employee up by its own Id (not by UserId) - used by
     /// IMilestoneMembershipCoordinator and other EmployeeId-keyed Work Management callers.</summary>
     Task<Employee?> GetByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Employee>> ListActiveByLegalEntityAsync(
+        Guid tenantId,
+        Guid? legalEntityId,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyDictionary<Guid, string>> ListLegalEntityChangeWarningsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        int year,
+        CancellationToken ct = default);
 }

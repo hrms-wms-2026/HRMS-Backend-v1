@@ -98,6 +98,42 @@ public sealed class EfEmployeeHierarchyClosureRepositoryTests
         Assert.Equal(directReportId, result[0]);
     }
 
+    [Fact]
+    public async Task GetDescendantEmployeeIdsAsync_ReturnsDirectAndIndirectReports()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var directId = Guid.NewGuid();
+        var indirectId = Guid.NewGuid();
+        db.EmployeeHierarchyClosures.AddRange(
+            new ONEVO.Domain.Features.CoreHr.Entities.EmployeeHierarchyClosure
+            {
+                TenantId = tenantId,
+                AncestorEmployeeId = managerId,
+                DescendantEmployeeId = directId,
+                Depth = 1,
+                SourcePositionAssignmentId = Guid.NewGuid(),
+                GeneratedAt = DateTimeOffset.UtcNow
+            },
+            new ONEVO.Domain.Features.CoreHr.Entities.EmployeeHierarchyClosure
+            {
+                TenantId = tenantId,
+                AncestorEmployeeId = managerId,
+                DescendantEmployeeId = indirectId,
+                Depth = 2,
+                SourcePositionAssignmentId = Guid.NewGuid(),
+                GeneratedAt = DateTimeOffset.UtcNow
+            });
+        await db.SaveChangesAsync();
+
+        var repo = new EfEmployeeHierarchyClosureRepository(db, Mock.Of<IDateTimeProvider>());
+        var ids = await repo.GetDescendantEmployeeIdsAsync(tenantId, managerId, CancellationToken.None);
+
+        Assert.Contains(directId, ids);
+        Assert.Contains(indirectId, ids);
+    }
+
     private static ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment CreateActivePrimary(Guid tenantId, Guid employeeId, Guid positionId)
     {
         return new ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment

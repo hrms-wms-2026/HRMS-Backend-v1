@@ -14,4 +14,9 @@ public interface IEmployeeHierarchyClosureRepository
 
     Task<Guid?> GetDirectManagerEmployeeIdAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Guid>> GetDescendantEmployeeIdsAsync(
+        Guid tenantId,
+        Guid managerEmployeeId,
+        CancellationToken ct = default);
 }

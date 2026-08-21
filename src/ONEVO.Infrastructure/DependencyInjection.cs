@@ -174,6 +174,18 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces.ILeavePolicyRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Policy.EfLeavePolicyRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces.ILeaveEntitlementRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Entitlement.EfLeaveEntitlementRepository>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.ILeaveWorkingDayCounter,
+            ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveWorkingDayCounter>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveEntitlementCalculator>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveEntitlementPlanner>();
+        services.AddOptions<ONEVO.Application.Features.Leave.Entitlement.Options.LeaveEntitlementYearOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Entitlement.Options.LeaveEntitlementYearOptions.SectionName))
+            .Validate(options => options.MinimumYear > 0, "Leave entitlement minimum year must be configured.")
+            .Validate(options => options.MaximumYear >= options.MinimumYear, "Leave entitlement maximum year must be after the minimum year.")
+            .ValidateOnStart();
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
         services.AddScoped<

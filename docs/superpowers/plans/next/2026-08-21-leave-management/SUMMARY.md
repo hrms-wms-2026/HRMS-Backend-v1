@@ -4,7 +4,7 @@
 **Companion (frontend):** `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-08-21-leave-management/SUMMARY.md`
 **Source of truth for product behaviour:** `C:\HR\leave-management-complete.md`
 
-This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`) and Phase 2 (`part-2-leave-policies.md`) — later phases are scoped here (entities/endpoints/files/dependencies/exit-criteria) but not yet broken into bite-sized TDD steps. Write each remaining part's full TDD file when that phase starts, following `part-1`'s pattern.
+This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`), Phase 2 (`part-2-leave-policies.md`), and Phase 3 (`part-3-entitlements-and-balances.md`) — later phases are scoped here (entities/endpoints/files/dependencies/exit-criteria) but not yet broken into bite-sized TDD steps. Write each remaining part's full TDD file when that phase starts, following `part-1`'s pattern.
 
 **Every phase's exit criteria includes a live run against the real dev DB** (`DevSmokeTestTenantSeeder`'s acme/dapi tenants), not just a green test suite — see the design doc's Testing note.
 
@@ -40,7 +40,9 @@ This is a 10-phase build (0-9), one deliverable slice per phase, backend and fro
 
 ## Phase 3 — Entitlements + Balance screens (Screens 3 & 4)
 
-- Backend: `LeaveEntitlementsController` (`/api/v1/leave/entitlements`) — bulk generate (preview + generate + results with CSV), manual assign, adjust, recalculate; `LeaveBalancesController` (`/api/v1/leave/balances`) — My Balances (`leave:read-own`), Team Balances (`leave:read-team`), All Balances (`leave:read`/`leave:manage`). Implements the proration table from spec §4 (calendar-day / working-day / monthly accrual / carry-forward cap / forfeiture) as a pure calculation helper — no EF, no HTTP — per the architecture skill's "Helpers must be pure logic only" rule, so it's unit-testable against the spec's worked example (Priya, §7) directly.
+**Status:** written in full — **executed 2026-08-21** on `feat/leave-management-part-3` (unit + architecture verified). Live dev-DB smoke and Testcontainers integration pending Docker engine. Business values are request/policy/config driven; calendar proration is inclusive days / 365; carry-forward expiry is applied on read and generate.
+
+- Backend: `LeaveEntitlementsController` (`/api/v1/leave/entitlements`) — bulk generate (preview + generate + result groups; CSV export stays in Phase 8), manual assign, adjust, recalculate; `LeaveBalancesController` (`/api/v1/leave/balances`) — My Balances (`leave:read-own`), Team Balances (`leave:read-team`), All Balances (`leave:read`/`leave:manage`). Implements the proration table from spec §4 (calendar-day / working-day / monthly accrual / carry-forward cap / forfeiture) as a pure calculation helper — no EF, no HTTP — per the architecture skill's "Helpers must be pure logic only" rule, so it's unit-testable against the spec's worked example (Priya, §7) directly.
 - Frontend: `leave-entitlement.model.ts`, `leave-balance.model.ts`, stores + `entitlements-management` (HR) + `my-balances` (employee) + `team-balances` (manager) feature pages, wired to `/time-off` (My Balances is the default `time-off` landing page), `/time-off/team`, `/time-off/entitlements`.
 - **Depends on:** Phase 2 (policy amount is the generation source).
 - **Blocks:** Phase 4 (request form needs "N days remaining" per type).

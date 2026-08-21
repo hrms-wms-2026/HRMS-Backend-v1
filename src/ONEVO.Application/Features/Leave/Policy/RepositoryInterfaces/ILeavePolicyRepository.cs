@@ -28,6 +28,12 @@ public interface ILeavePolicyRepository
         IReadOnlyCollection<LeavePolicyLegalEntity> legalEntityAssignments,
         IReadOnlyCollection<Guid> legalEntityIdsToReplace,
         CancellationToken ct = default);
+
+    Task<IReadOnlyDictionary<Guid, LeavePolicyAggregate>> ListActiveAggregatesByLegalEntityIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> legalEntityIds,
+        int year,
+        CancellationToken ct = default);
 }
 
 public record LeavePolicyAggregate(
@@ -43,7 +49,8 @@ public record LeavePolicyLeaveTypeWithType(
 
 public record LeavePolicyLegalEntityWithName(
     LeavePolicyLegalEntity Assignment,
-    string LegalEntityName);
+    string LegalEntityName,
+    string StandardWorkingDaysJson);
 
 public record LeavePolicyLegalEntityConflict(
     Guid LegalEntityId,

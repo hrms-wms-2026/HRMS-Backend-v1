@@ -133,6 +133,46 @@ public class EfLeavePolicyRepository : ILeavePolicyRepository
         }
     }
 
+    public async Task<IReadOnlyDictionary<Guid, LeavePolicyAggregate>> ListActiveAggregatesByLegalEntityIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> legalEntityIds,
+        int year,
+        CancellationToken ct = default)
+    {
+        if (legalEntityIds.Count == 0)
+            return new Dictionary<Guid, LeavePolicyAggregate>();
+
+        var yearEnd = new DateOnly(year, 12, 31);
+        var assignments = await _db.LeavePolicyLegalEntities
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId
+                && x.IsActive
+                && legalEntityIds.Contains(x.LegalEntityId)
+                && x.EffectiveDate <= yearEnd)
+            .ToListAsync(ct);
+
+        var policyIds = assignments.Select(a => a.LeavePolicyId).Distinct().ToArray();
+        if (policyIds.Length == 0)
+            return new Dictionary<Guid, LeavePolicyAggregate>();
+
+        var policies = await _db.LeavePolicies.AsNoTracking()
+            .Where(p => p.TenantId == tenantId
+                && p.IsActive
+                && policyIds.Contains(p.Id)
+                && p.EffectiveFrom <= yearEnd)
+            .ToListAsync(ct);
+
+        var aggregates = await BuildAggregatesAsync(tenantId, policies, ct);
+        var aggregateById = aggregates.ToDictionary(a => a.Policy.Id);
+
+        return assignments
+            .Where(a => aggregateById.ContainsKey(a.LeavePolicyId))
+            .GroupBy(a => a.LegalEntityId)
+            .ToDictionary(
+                group => group.Key,
+                group => aggregateById[group.OrderByDescending(a => a.EffectiveDate).First().LeavePolicyId]);
+    }
+
     private async Task<IReadOnlyList<LeavePolicyAggregate>> BuildAggregatesAsync(
         Guid tenantId, IReadOnlyList<LeavePolicy> policies, CancellationToken ct)
     {
@@ -166,7 +206,7 @@ public class EfLeavePolicyRepository : ILeavePolicyRepository
             select new
             {
                 assignment.LeavePolicyId,
-                Item = new LeavePolicyLegalEntityWithName(assignment, legalEntity.Name)
+                Item = new LeavePolicyLegalEntityWithName(assignment, legalEntity.Name, legalEntity.StandardWorkingDays)
             })
             .ToListAsync(ct);
 
