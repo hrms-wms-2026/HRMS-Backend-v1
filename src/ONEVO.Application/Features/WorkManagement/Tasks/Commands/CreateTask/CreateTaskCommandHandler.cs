@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
@@ -25,11 +26,13 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
     private readonly ISprintRepository _sprints;
     private readonly IObjectiveAllocationSlackCalculator _slack;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMilestoneMembershipCoordinator _membership;
 
     public CreateTaskCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
         IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
-        ISprintRepository sprints, IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork)
+        ISprintRepository sprints, IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork,
+        IMilestoneMembershipCoordinator membership)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -40,6 +43,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         _sprints = sprints;
         _slack = slack;
         _unitOfWork = unitOfWork;
+        _membership = membership;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(CreateTaskCommand request, CancellationToken ct)
@@ -58,7 +62,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         if (objective is null || !objective.IsActive)
             return Result<WorkTaskResponse>.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<WorkTaskResponse>.Forbidden("Only this milestone's owner can create tasks directly. Non-owner members must submit a task creation request.");
 
         var project = await _projects.GetByIdForTenantAsync(tenantId, objective.ProjectId, ct);
