@@ -167,6 +167,16 @@ public sealed class EfAuthRepository :
         return addTask;
     }
 
+    async Task<IReadOnlyList<Session>> ISessionRepository.ListActiveByTenantIdAsync(
+        Guid tenantId, DateTimeOffset now, CancellationToken ct)
+    {
+        var sessions = await _db.Sessions
+            .Where(s => s.TenantId == tenantId && !s.IsRevoked && s.ExpiresAt > now)
+            .OrderByDescending(s => s.LastActivityAt)
+            .ToListAsync(ct);
+        return sessions;
+    }
+
     public async Task<PasswordResetToken?> GetResetTokenByHashAsync(string tokenHash, CancellationToken ct = default)
     {
         var resetToken = await _db.PasswordResetTokens.FirstOrDefaultAsync(t => t.TokenHash == tokenHash, ct);
@@ -483,6 +493,22 @@ public sealed class EfAuthRepository :
     {
         var addTask = _db.AuditLogs.AddAsync(auditLog, ct).AsTask();
         return addTask;
+    }
+
+    async Task<(IReadOnlyList<AuditLog> Items, int Total)> IAuditLogRepository.ListByTenantIdAsync(
+        Guid tenantId, int page, int pageSize, CancellationToken ct)
+    {
+        var query = _db.AuditLogs
+            .Where(a => a.TenantId == tenantId)
+            .OrderByDescending(a => a.CreatedAt);
+
+        var total = await query.CountAsync(ct);
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return (items, total);
     }
 
     async Task<RoleTemplate?> IRoleTemplateRepository.GetByIdAsync(Guid id, CancellationToken ct)
