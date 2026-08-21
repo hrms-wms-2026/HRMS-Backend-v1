@@ -38,7 +38,8 @@ public sealed record ChecklistTaskDefinition(
     bool IsRequired,
     bool IsBypassable = false,
     string? BypassPenaltyDescription = null,
-    string? Category = null);
+    string? Category = null,
+    Guid? AssigneePositionId = null);
 
 /// <summary>The single strict parser/serializer for checklist task definitions, shared by
 /// template CRUD, draft edit validation, and instantiation so there is exactly one definition
@@ -99,14 +100,28 @@ public static class ChecklistTaskJsonContract
             assignedToId = parsedAssignedTo;
         }
 
+        Guid? assigneePositionId = null;
+        var hasAssigneePosition = item.TryGetProperty("assigneePositionId", out var assigneePositionEl) && assigneePositionEl.ValueKind != JsonValueKind.Null;
+        if (hasAssigneePosition)
+        {
+            if (!Guid.TryParse(assigneePositionEl.GetString(), out var parsedPosition))
+                throw new ArgumentException("assigneePositionId must be a valid GUID when present.");
+            assigneePositionId = parsedPosition;
+        }
+
         if (ownerType == ChecklistTaskOwnerTypes.Employee)
         {
-            if (hasAssignedTo)
+            if (hasAssignedTo || hasAssigneePosition)
                 throw new ArgumentException("assignedToId must not be set when ownerType is 'employee' - it is resolved to the new hire at instantiation time.");
         }
-        else if (assignedToId is null)
+        else if (mode == ChecklistTaskDueRuleMode.AbsoluteDate)
         {
-            throw new ArgumentException($"assignedToId is required when ownerType is '{ownerType}'.");
+            if (assignedToId is null)
+                throw new ArgumentException("Tasks assigned to another person must name a specific person.");
+        }
+        else if (assignedToId is null && assigneePositionId is null)
+        {
+            throw new ArgumentException("A reusable checklist task assigned to another person needs a position.");
         }
 
         int? sequence = null;
@@ -134,7 +149,7 @@ public static class ChecklistTaskJsonContract
 
         return new ChecklistTaskDefinition(
             title, ownerType, assignedToId, dueOffsetDays, dueDate, sequence, isRequired,
-            isBypassable, bypassPenaltyDescription, category);
+            isBypassable, bypassPenaltyDescription, category, assigneePositionId);
     }
 
     public static string SerializeTemplateTasks(IReadOnlyList<ChecklistTaskDefinition> tasks)
@@ -144,6 +159,7 @@ public static class ChecklistTaskJsonContract
             title = t.Title,
             ownerType = t.OwnerType,
             assignedToId = t.AssignedToId?.ToString(),
+            assigneePositionId = t.AssigneePositionId?.ToString(),
             dueOffsetDays = t.DueOffsetDays,
             sequence = t.Sequence,
             isRequired = t.IsRequired,
@@ -176,7 +192,10 @@ public static class ChecklistTaskJsonContract
             LifecycleType = lifecycleType,
             TaskTitle = definition.Title,
             OwnerType = definition.OwnerType,
-            AssignedToId = definition.AssignedToId ?? newHireUserId,
+            AssignedToId = definition.OwnerType == ChecklistTaskOwnerTypes.Employee
+                ? newHireUserId
+                : definition.AssignedToId ?? throw new ArgumentException(
+                    "Tasks assigned to another person must name a specific person before they can be created."),
             DueDate = mode == ChecklistTaskDueRuleMode.OffsetDays
                 ? anchorDate.AddDays(definition.DueOffsetDays!.Value)
                 : definition.DueDate!.Value,

@@ -86,6 +86,75 @@ public sealed class EfEmployeeRepositoryTests
     }
 
     [Fact]
+    public async Task ListVisibleAsync_RestrictsToGivenIds_IgnoringScope_WhenRestrictToEmployeeIdsIsSet()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var allowed = NewEmployee(tenantId, "E-001");
+        var notAllowed = NewEmployee(tenantId, "E-002");
+        db.Employees.AddRange(allowed, notAllowed);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repo = new EfEmployeeRepository(db);
+        var (items, total) = await repo.ListVisibleAsync(
+            tenantId,
+            EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, null, new HashSet<Guid> { allowed.Id }),
+            1, 25, CancellationToken.None);
+
+        Assert.Equal(1, total);
+        Assert.Equal(allowed.Id, items[0].Id);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_ReturnsEmpty_WhenRestrictToEmployeeIdsIsEmptySet()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        db.Employees.Add(NewEmployee(tenantId, "E-001"));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repo = new EfEmployeeRepository(db);
+        var (items, total) = await repo.ListVisibleAsync(
+            tenantId,
+            EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, null, new HashSet<Guid>()),
+            1, 25, CancellationToken.None);
+
+        Assert.Equal(0, total);
+        Assert.Empty(items);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_AppliesSearchFilter_WithinRestrictToEmployeeIds()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        // Explicit non-colliding emails: NewEmployee's default random email is a hex GUID
+        // string, which has a small but real chance of containing "ada" as a substring
+        // (a/d are valid hex digits) and flakily matching Bob too.
+        var ada = NewEmployee(tenantId, "E-001", email: "ada@test.dev");
+        ada.FirstName = "Ada";
+        var bob = NewEmployee(tenantId, "E-002", email: "bob@test.dev");
+        bob.FirstName = "Bob";
+        db.Employees.AddRange(ada, bob);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repo = new EfEmployeeRepository(db);
+        var (items, total) = await repo.ListVisibleAsync(
+            tenantId,
+            EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter("ada", null, null, new HashSet<Guid> { ada.Id, bob.Id }),
+            1, 25, CancellationToken.None);
+
+        Assert.Equal(1, total);
+        Assert.Equal(ada.Id, items[0].Id);
+    }
+
+    [Fact]
     public async Task ListVisibleAsync_ResolvesReportingManagerFromHierarchyClosure()
     {
         await using var db = BuildInMemoryDb();

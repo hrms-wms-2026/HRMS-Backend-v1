@@ -42,6 +42,7 @@ public class LegalEntityGeneralSettingsArchitectureTests
 
         var expected = new[]
         {
+            "BreakDurationMinutes",
             "CompanyCode",
             "CountryCode",
             "CreatedAt",
@@ -227,6 +228,26 @@ public class LegalEntityGeneralSettingsArchitectureTests
         Assert.True(end.IsNullable);
         Assert.Equal(typeof(TimeOnly?), start.ClrType);
         Assert.Equal(typeof(TimeOnly?), end.ClrType);
+    }
+
+    /// <summary>
+    /// break_duration_minutes is a default company-wide break duration,
+    /// independent of work_start_time/work_end_time (Time & Attendance's
+    /// work_schedules/work_schedule_days tables remain the deferred canonical
+    /// home for shift-level scheduling). Guards the nullable integer mapping.
+    /// </summary>
+    [Fact]
+    public void Model_LegalEntities_BreakDurationMinutes_MapsToNullableIntColumn()
+    {
+        using var context = CreateModelInspectionContext();
+
+        var entityType = context.Model.GetEntityTypes().Single(e => e.ClrType == typeof(LegalEntity));
+        var property = entityType.FindProperty(nameof(LegalEntity.BreakDurationMinutes));
+
+        Assert.NotNull(property);
+        Assert.Equal("break_duration_minutes", property!.GetColumnName());
+        Assert.True(property.IsNullable);
+        Assert.Equal(typeof(int?), property.ClrType);
     }
 
     private static string ReadExpandMigrationSource()

@@ -14,6 +14,7 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
+using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -181,10 +182,11 @@ public sealed class SwitchActiveCompanyIntegrationTests : IAsyncLifetime
         var handler = new SwitchActiveCompanyCommandHandler(
             permissions,
             new EfEmployeeRepository(db),
+            new EfLegalEntityRepository(db),
             new UnitOfWork(db),
             new StubCurrentUser(_tenantId, _userId, _sessionId));
 
-        var result = await handler.Handle(new SwitchActiveCompanyCommand(_employeeBId), CancellationToken.None);
+        var result = await handler.Handle(new SwitchActiveCompanyCommand(_legalEntityBId), CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
 
         var session = await db.Sessions.AsNoTracking().SingleAsync(s => s.Id == _sessionId);

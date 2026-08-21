@@ -18,6 +18,7 @@ using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
@@ -228,6 +229,10 @@ public class ApplicationDbContext : DbContext
     // OrgStructure
     public DbSet<LegalEntity> LegalEntities => Set<LegalEntity>();
     public DbSet<Department> Departments => Set<Department>();
+
+    // Time & Attendance - Clock-in Policy foundation
+    public DbSet<ClockInPolicy> ClockInPolicies => Set<ClockInPolicy>();
+    public DbSet<ClockInLateDeductionRule> ClockInLateDeductionRules => Set<ClockInLateDeductionRule>();
 
     // Storage - EntityAssets (Phase 1 entity_assets, scoped to owner_type "project" for now)
     public DbSet<EntityAsset> EntityAssets => Set<EntityAsset>();

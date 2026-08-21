@@ -6,6 +6,7 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.PreviewBulkOnboardingMapping;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.RequestBulkOnboardingDraftCreation;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.RequestBulkOnboardingFinalize;
+using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ResolveBulkOnboardingIssues;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.UploadBulkOnboardingBatch;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Queries.GetBulkOnboardingTemplate;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch;
@@ -83,11 +84,74 @@ public class BulkOnboardingController : ControllerBase
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
-        var r = result.Value!;
-        return Ok(new ValidateBulkOnboardingBatchResponse(
-            r.ValidRows, r.InvalidRows,
-            r.Rows.Select(row => new BulkOnboardingRowValidationItem(row.RowNumber, row.Status, row.ErrorMessage)).ToList()));
+        return Ok(MapValidationResponse(result.Value!));
     }
+
+    [HttpPost("{id:guid}/resolve-issues")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> ResolveIssues(
+        Guid id, [FromBody] ResolveBulkOnboardingIssuesRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new ResolveBulkOnboardingIssuesCommand(
+            id,
+            request.IssueKey,
+            request.Action,
+            request.TargetId,
+            request.NewValue,
+            request.WorkModeId,
+            request.ApplyToRowNumbers,
+            request.Create is null
+                ? null
+                : new ResolveBulkOnboardingCreateDepartment(
+                    request.Create.Name, request.Create.Code, request.Create.ParentDepartmentId),
+            request.CreatePosition is null
+                ? null
+                : new ResolveBulkOnboardingCreatePosition(
+                    request.CreatePosition.DepartmentId,
+                    request.CreatePosition.Name,
+                    request.CreatePosition.Code,
+                    request.CreatePosition.Capacity,
+                    request.CreatePosition.ReportsToPositionId)), ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(MapValidationResponse(result.Value!));
+    }
+
+    private static ValidateBulkOnboardingBatchResponse MapValidationResponse(ValidateBulkOnboardingBatchResult r) =>
+        new(
+            r.ValidRows,
+            r.InvalidRows,
+            r.TotalRows,
+            r.Rows.Select(row => new BulkOnboardingRowValidationItem(
+                row.RowNumber,
+                row.Status,
+                row.ErrorMessage,
+                row.Errors.Select(e => new BulkOnboardingRowErrorViewModel(
+                    e.Code, e.Field, e.Message, e.ImportedValue)).ToList())).ToList(),
+            r.Issues.Select(i => new BulkOnboardingGroupedIssueViewModel(
+                i.IssueKey,
+                i.IssueType,
+                i.Field,
+                i.ImportedValue,
+                i.AffectedRowNumbers,
+                i.AffectedRowCount,
+                i.Suggestions.Select(s => new BulkOnboardingIssueSuggestionViewModel(
+                    s.Id, s.Label, s.Confidence)).ToList(),
+                i.AllowedActions,
+                i.Context is null
+                    ? null
+                    : new BulkOnboardingIssueContextViewModel(
+                        i.Context.PositionId,
+                        i.Context.PositionName,
+                        i.Context.DepartmentId,
+                        i.Context.DepartmentName,
+                        i.Context.MaxOccupancy,
+                        i.Context.CurrentPrimaryAssignments,
+                        i.Context.AvailableSeats,
+                        i.Context.RequiredSeatsInBatch,
+                        i.Context.CanIncreaseCapacity))).ToList());
 
     [HttpPost("{id:guid}/create-drafts")]
     [RequirePermission("employees:write")]

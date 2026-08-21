@@ -1436,6 +1436,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("original_file_name");
 
+                    b.Property<string>("ResolutionStateJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("resolution_state_json");
+
                     b.Property<string>("SelectedDraftIdsJson")
                         .HasColumnType("jsonb")
                         .HasColumnName("selected_draft_ids_json");
@@ -1535,6 +1539,10 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid?>("ResolvedTemplateId")
                         .HasColumnType("uuid")
                         .HasColumnName("resolved_template_id");
+
+                    b.Property<int?>("ResolvedWorkModeId")
+                        .HasColumnType("integer")
+                        .HasColumnName("resolved_work_mode_id");
 
                     b.Property<int>("RowNumber")
                         .HasColumnType("integer")
@@ -5313,6 +5321,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<int?>("BreakDurationMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("break_duration_minutes");
+
                     b.Property<string>("CompanyCode")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
@@ -5478,6 +5490,8 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.ToTable("legal_entities", null, t =>
                         {
+                            t.HasCheckConstraint("ck_legal_entities_break_duration_minutes", "break_duration_minutes IS NULL OR break_duration_minutes >= 0");
+
                             t.HasCheckConstraint("ck_legal_entities_financial_year_start_month", "financial_year_start_month BETWEEN 1 AND 12");
 
                             t.HasCheckConstraint("ck_legal_entities_time_format", "time_format IN ('12h', '24h')");
@@ -7644,6 +7658,240 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasName("pk_tenant_storage_stats");
 
                     b.ToTable("tenant_storage_stats", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.ClockInLateDeductionRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClockInPolicyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("clock_in_policy_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<int>("LateArrivalMinute")
+                        .HasColumnType("integer")
+                        .HasColumnName("late_arrival_minute");
+
+                    b.Property<decimal>("Multiplier")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("multiplier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("TimeOffTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("time_off_type_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_clock_in_late_deduction_rules");
+
+                    b.HasIndex("ClockInPolicyId")
+                        .HasDatabaseName("ix_clock_in_late_deduction_rules_clock_in_policy_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_clock_in_late_deduction_rules_tenant_id");
+
+                    b.HasIndex("TenantId", "ClockInPolicyId")
+                        .HasDatabaseName("ix_clock_in_late_deduction_rules_tenant_id_policy_id");
+
+                    b.HasIndex("TenantId", "ClockInPolicyId", "LateArrivalMinute")
+                        .IsUnique()
+                        .HasDatabaseName("ix_clock_in_late_deduction_rules_tenant_policy_minute");
+
+                    b.ToTable("clock_in_late_deduction_rules", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.ClockInPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int?>("AllowedRadiusMeters")
+                        .HasColumnType("integer")
+                        .HasColumnName("allowed_radius_meters");
+
+                    b.Property<bool>("CorrectionRequiresApproval")
+                        .HasColumnType("boolean")
+                        .HasColumnName("correction_requires_approval");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.PrimitiveCollection<Guid[]>("DepartmentIds")
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("department_ids");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<bool>("EitherBiometricEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("either_biometric_enabled");
+
+                    b.Property<bool>("EitherLocationCheckRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("either_location_check_required");
+
+                    b.Property<bool>("EitherPhotoRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("either_photo_required");
+
+                    b.Property<string>("EitherSourceRule")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("either_source_rule");
+
+                    b.Property<bool>("EitherTrayEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("either_tray_enabled");
+
+                    b.Property<bool>("EitherWebEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("either_web_enabled");
+
+                    b.PrimitiveCollection<Guid[]>("EmployeeIds")
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("employee_ids");
+
+                    b.Property<bool>("FieldBiometricEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("field_biometric_enabled");
+
+                    b.Property<string>("FieldPhotoRequirement")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("field_photo_requirement");
+
+                    b.Property<bool>("FieldTrayEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("field_tray_enabled");
+
+                    b.Property<bool>("FieldWebEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("field_web_enabled");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<Guid>("LegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_entity_id");
+
+                    b.Property<bool>("LocationVerificationRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("location_verification_required");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NotificationRecipientResolver")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("notification_recipient_resolver");
+
+                    b.Property<bool>("OnsiteBiometricEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("onsite_biometric_enabled");
+
+                    b.Property<bool>("OnsitePhotoRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("onsite_photo_required");
+
+                    b.Property<bool>("OnsiteTrayEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("onsite_tray_enabled");
+
+                    b.Property<bool>("OnsiteWebEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("onsite_web_enabled");
+
+                    b.PrimitiveCollection<Guid[]>("PositionIds")
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("position_ids");
+
+                    b.Property<bool>("RemoteBiometricEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("remote_biometric_enabled");
+
+                    b.Property<bool>("RemotePhotoRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("remote_photo_required");
+
+                    b.Property<bool>("RemoteTrayEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("remote_tray_enabled");
+
+                    b.Property<bool>("RemoteWebEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("remote_web_enabled");
+
+                    b.Property<string>("ScopeType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("scope_type");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_clock_in_policies");
+
+                    b.HasIndex("LegalEntityId")
+                        .HasDatabaseName("ix_clock_in_policies_legal_entity_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_clock_in_policies_tenant_id");
+
+                    b.HasIndex("TenantId", "LegalEntityId")
+                        .HasDatabaseName("ix_clock_in_policies_tenant_id_legal_entity_id");
+
+                    b.HasIndex("TenantId", "LegalEntityId", "IsActive", "ScopeType")
+                        .HasDatabaseName("ix_clock_in_policies_tenant_le_active_scope");
+
+                    b.ToTable("clock_in_policies", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Labels.Entities.Label", b =>
@@ -10102,6 +10350,28 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_tenant_storage_stats_tenants_tenant_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.ClockInLateDeductionRule", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.TimeAttendance.Entities.ClockInPolicy", "ClockInPolicy")
+                        .WithMany("LateDeductionRules")
+                        .HasForeignKey("ClockInPolicyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_clock_in_late_deduction_rules_clock_in_policies_clock_in_po");
+
+                    b.Navigation("ClockInPolicy");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.ClockInPolicy", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("LegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_clock_in_policies_legal_entities_legal_entity_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Labels.Entities.Label", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Projects.Entities.Project", null)
@@ -10296,6 +10566,11 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Navigation("CountryRoutes");
 
                     b.Navigation("Credentials");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.ClockInPolicy", b =>
+                {
+                    b.Navigation("LateDeductionRules");
                 });
 #pragma warning restore 612, 618
         }

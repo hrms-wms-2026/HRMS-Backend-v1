@@ -103,5 +103,12 @@ public class UpdateLegalEntityGeneralSettingsCommandValidator
             .Must((command, start) => start < command.WorkEndTime)
             .WithMessage("Work start time must be before work end time.")
             .When(x => x.WorkStartTime is not null && x.WorkEndTime is not null);
+
+        // Independent of work start/end time - may be set on its own. No
+        // upper bound: no existing backend validation pattern establishes
+        // one for a break-duration-style field, so none is invented here.
+        RuleFor(x => x.BreakDurationMinutes)
+            .GreaterThanOrEqualTo(0).WithMessage("Break duration must not be negative.")
+            .When(x => x.BreakDurationMinutes is not null);
     }
 }
