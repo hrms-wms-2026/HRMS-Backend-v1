@@ -13,6 +13,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskEditReq
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.MoveTaskStatus;
@@ -154,6 +155,17 @@ public class TasksController : ControllerBase
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpDelete("tasks/{id:guid}")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new DeleteTaskCommand(id), ct);
+
+        return result.IsSuccess
+            ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
