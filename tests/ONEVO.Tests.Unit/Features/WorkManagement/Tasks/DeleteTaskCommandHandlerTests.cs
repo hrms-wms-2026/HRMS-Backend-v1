@@ -3,6 +3,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
@@ -44,7 +45,7 @@ public class DeleteTaskCommandHandlerTests
     }
 
     private (DeleteTaskCommandHandler Handler, Mock<IWorkTaskRepository> Tasks, FilterAwareTaskStore Store) Build(
-        WorkTask? task, Guid callerEmployeeId)
+        WorkTask? task, Guid callerEmployeeId, bool? callerIsEffectiveManager = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -78,8 +79,16 @@ public class DeleteTaskCommandHandlerTests
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
+        // separately in MilestoneMembershipCoordinatorTests).
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (callerEmployeeId == OwnerEmployeeId));
+
         var handler = new DeleteTaskCommandHandler(
-            currentUser.Object, identity.Object, tasks.Object, objectives.Object, unitOfWork.Object);
+            currentUser.Object, identity.Object, tasks.Object, objectives.Object, unitOfWork.Object, membership.Object);
         return (handler, tasks, store);
     }
 
@@ -143,5 +152,21 @@ public class DeleteTaskCommandHandlerTests
         Assert.True(first.IsSuccess);
         Assert.False(second.IsSuccess);
         Assert.Equal(404, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_PlainMemberOfGrandparentObjective_RemovesTask()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
+        // this only proves the handler defers to its answer instead of the direct OwnerId check.
+        var grandparentMemberId = Guid.NewGuid();
+        var (handler, tasks, _) = Build(SeedTask(), callerEmployeeId: grandparentMemberId, callerIsEffectiveManager: true);
+
+        var result = await handler.Handle(new DeleteTaskCommand(TaskId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        tasks.Verify(x => x.Remove(It.Is<WorkTask>(t => t.Id == TaskId)), Times.Once);
     }
 }
