@@ -25,7 +25,8 @@ public class GetObjectiveTreeQueryHandlerTests
 
     private (GetObjectiveTreeQueryHandler Handler, Mock<IObjectiveRepository> Objectives) BuildHandler(
         Project? project, IReadOnlyList<Objective>? tree = null, bool isMember = true,
-        bool hasDirectMembership = true, List<Guid>? ownedObjectiveIds = null)
+        bool hasDirectMembership = true, List<Guid>? ownedObjectiveIds = null,
+        IReadOnlyDictionary<Guid, string>? names = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -34,6 +35,8 @@ public class GetObjectiveTreeQueryHandlerTests
 
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(EmployeeId);
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(names ?? new Dictionary<Guid, string>());
 
         var projects = new Mock<IProjectRepository>();
         projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
@@ -120,5 +123,95 @@ public class GetObjectiveTreeQueryHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Count);
+    }
+
+    [Fact]
+    public async Task Handle_DirectMember_IsOwnerTrueOnlyOnDirectlyOwnedNodes()
+    {
+        var ownerId = Guid.NewGuid();
+        var otherOwnerId = Guid.NewGuid();
+        var defaultObjective = new Objective
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, IsDefault = true, IsActive = true,
+            Title = "Default", OwnerId = ownerId, Progress = 12.5m
+        };
+        var otherNode = new Objective
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ParentObjectiveId = defaultObjective.Id,
+            IsActive = true, Title = "Other", OwnerId = otherOwnerId, Progress = 80m
+        };
+
+        var (handler, _) = BuildHandler(
+            ActiveProject(), new List<Objective> { defaultObjective, otherNode },
+            isMember: true, hasDirectMembership: true, ownedObjectiveIds: new List<Guid> { defaultObjective.Id },
+            names: new Dictionary<Guid, string> { [ownerId] = "Ada Lovelace" });
+
+        var result = await handler.Handle(new GetObjectiveTreeQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var byId = result.Value!.ToDictionary(o => o.Id);
+        Assert.True(byId[defaultObjective.Id].IsOwner);
+        Assert.False(byId[otherNode.Id].IsOwner);
+        Assert.Equal(12.5m, byId[defaultObjective.Id].Progress);
+        Assert.Equal("Ada Lovelace", byId[defaultObjective.Id].OwnerName);
+    }
+
+    [Fact]
+    public async Task Handle_MilestoneScopedMember_AncestorNodesHaveIsOwnerFalse()
+    {
+        var ownerId = Guid.NewGuid();
+        var defaultObjective = new Objective
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, IsDefault = true, IsActive = true,
+            Title = "Default", OwnerId = Guid.NewGuid()
+        };
+        var myMilestone = new Objective
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ParentObjectiveId = defaultObjective.Id,
+            IsActive = true, Title = "Mine", OwnerId = ownerId, Progress = 40m
+        };
+        var myChild = new Objective
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ParentObjectiveId = myMilestone.Id,
+            IsActive = true, Title = "Child", OwnerId = Guid.NewGuid()
+        };
+
+        var (handler, _) = BuildHandler(
+            ActiveProject(), new List<Objective> { defaultObjective, myMilestone, myChild },
+            isMember: true, hasDirectMembership: false, ownedObjectiveIds: new List<Guid> { myMilestone.Id },
+            names: new Dictionary<Guid, string> { [ownerId] = "Grace Hopper" });
+
+        var result = await handler.Handle(new GetObjectiveTreeQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var byId = result.Value!.ToDictionary(o => o.Id);
+        Assert.Contains(defaultObjective.Id, byId.Keys);
+        Assert.Contains(myMilestone.Id, byId.Keys);
+        Assert.Contains(myChild.Id, byId.Keys);
+        Assert.False(byId[defaultObjective.Id].IsOwner);
+        Assert.True(byId[myMilestone.Id].IsOwner);
+        Assert.False(byId[myChild.Id].IsOwner);
+        Assert.Equal(40m, byId[myMilestone.Id].Progress);
+        Assert.Equal("Grace Hopper", byId[myMilestone.Id].OwnerName);
+    }
+
+    [Fact]
+    public async Task Handle_OwnerIdMissingFromNames_OwnerNameIsNull()
+    {
+        var defaultObjective = new Objective
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, IsDefault = true, IsActive = true,
+            Title = "Default", OwnerId = Guid.NewGuid()
+        };
+
+        var (handler, _) = BuildHandler(
+            ActiveProject(), new List<Objective> { defaultObjective },
+            isMember: true, hasDirectMembership: true, ownedObjectiveIds: new List<Guid> { defaultObjective.Id },
+            names: new Dictionary<Guid, string>());
+
+        var result = await handler.Handle(new GetObjectiveTreeQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.Single().OwnerName);
     }
 }
