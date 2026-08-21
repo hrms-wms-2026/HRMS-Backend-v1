@@ -8,6 +8,7 @@
 # Build folders
 bin/
 obj/
+artifacts/
 
 # Test results and temp files
 TestResults/
