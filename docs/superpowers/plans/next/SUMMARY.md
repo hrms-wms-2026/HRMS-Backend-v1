@@ -52,13 +52,17 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
   `MoveTaskStatus` private-status gate; Part 5 cascades the tree's `IsOwner` display flag the same way
   and runs the full-feature regression pass. Do the Parts in order (1 is a hard prerequisite for 2-5;
   2-4 are independent of each other; 5 must be last).
-- `2026-08-21-work-management-project-scoped-task-status-and-category/` — status: pending, not started
-  (plan not yet written — design only so far). Design:
-  `specs/next/2026-08-21-work-management-project-scoped-task-status-and-category-design.md`. Collapses
-  Task Status from per-Objective to per-Project (no destructive migration), adds a new per-Project
-  `TaskCategory` entity replacing the hardcoded `WorkTaskTypes` enum (migration + backfill required).
-  Frontend companion plan (new Project-level Settings page) lives in the frontend repo, also not yet
-  written.
+- `2026-08-21-work-management-project-scoped-task-status-and-category/` — status: pending, not started.
+  4 parts, backend-only (frontend companion plan not yet written, lives in the frontend repo). Design:
+  `specs/next/2026-08-21-work-management-project-scoped-task-status-and-category-design.md`.
+  `part-1-collapse-task-status-to-project-scope.md` re-scopes all 5 Task Status endpoints from
+  `ObjectiveId` to `ProjectId` (depends on the cascading-ownership plan's Part 1
+  `IsEffectiveManagerAsync`), stops seeding per-Objective copies. `part-2-task-category-entity-and-migration.md`
+  adds the new `TaskCategory` entity + migration + default-4-row seeding at Project creation.
+  `part-3-worktask-categoryid-migration-and-wiring.md` migrates `WorkTask.TaskType` (string) to
+  `CategoryId` (Guid) with a SQL backfill, then sweeps ~21 call sites. `part-4-task-category-crud-and-docs.md`
+  adds the 5 Task Category CRUD endpoints mirroring Task Status, plus Postman docs. Do Parts 1-2 in
+  either order, Part 3 needs Part 2 first, Part 4 needs both Part 1 (authorization shape) and Part 2.
   — its own Parts 1-3 (node model, shared icon set, carousel+panel removal) already shipped 2026-08-21 and
   are superseded/reversed in part by the new Parts 4-7.
 - `2026-08-20-work-management-project-page-redesign/` moved to `plans/finished/2026-08-21/` on 2026-08-21 — backend (3 parts) + frontend (3 parts, own plan in the frontend repo) both shipped, and the user completed a full manual browser test 2026-08-21 ("perfect, OK"). See `plans/SUMMARY.md`. **Note:** this SUMMARY and its siblings (`specs/next/SUMMARY.md`, `plans/SUMMARY.md`) are known to lag `git log` on this repo (see `feedback_hrms_docs_lag_git` convention) — several plans/specs listed above as "pending, not started" may already be implemented; verify against `git log --oneline` before trusting any status in this file.
