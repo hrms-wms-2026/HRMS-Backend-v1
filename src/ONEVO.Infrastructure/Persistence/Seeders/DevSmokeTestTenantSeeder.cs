@@ -114,7 +114,8 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
     private static readonly IReadOnlyList<string> HrManagerPermissionCodes =
     [
-        "org:read", "org:manage", "employees:read", "employees:write", "roles:read"
+        "org:read", "org:manage", "employees:read", "employees:write", "roles:read",
+        "leave:read", "leave:manage", "leave:approve"
     ];
 
     private static readonly IReadOnlyList<string> WorkManagerPermissionCodes =
@@ -168,8 +169,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Development smoke-test tenant seeder failed. Startup will stop.");
-            throw;
+            _logger.LogError(ex, "Development smoke-test tenant seeder failed. Continuing startup.");
         }
     }
 
