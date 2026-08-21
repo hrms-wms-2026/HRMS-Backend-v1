@@ -10,6 +10,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.Helpers;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObjective;
@@ -21,16 +22,18 @@ public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand,
     private readonly IObjectiveRepository _objectives;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMilestoneMembershipCoordinator _membership;
 
     public EditObjectiveCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IObjectiveChangeRequestRepository changeRequests, IUnitOfWork unitOfWork)
+        IObjectiveChangeRequestRepository changeRequests, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _changeRequests = changeRequests;
         _unitOfWork = unitOfWork;
+        _membership = membership;
     }
 
     public async Task<Result<ObjectiveEditOutcomeResponse>> Handle(EditObjectiveCommand request, CancellationToken ct)
@@ -58,7 +61,7 @@ public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand,
         if (objective.IsAchieved)
             return Result<ObjectiveEditOutcomeResponse>.Failure("An achieved milestone cannot be edited.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<ObjectiveEditOutcomeResponse>.Forbidden("Only this milestone's head can edit it.");
 
         // Every non-default Objective always has a parent (Task 5 sets ParentObjectiveId at
