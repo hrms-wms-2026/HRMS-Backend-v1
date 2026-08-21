@@ -19,6 +19,7 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
@@ -98,9 +99,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<ActivitySnapshot> ActivitySnapshots => Set<ActivitySnapshot>();
     public DbSet<ActivityRawBuffer> ActivityRawBuffers => Set<ActivityRawBuffer>();
     public DbSet<ActivityDailySummary> ActivityDailySummaries => Set<ActivityDailySummary>();
+    public DbSet<MonitoringException> Exceptions => Set<MonitoringException>();
     public DbSet<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot> AppUsageSnapshots => Set<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot>();
     public DbSet<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot> DeviceStateSnapshots => Set<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot>();
     public DbSet<ONEVO.Domain.Features.Monitoring.Meetings.Entities.MeetingSignal> MeetingSignals => Set<ONEVO.Domain.Features.Monitoring.Meetings.Entities.MeetingSignal>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt> BiometricEnrollmentAttempts => Set<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile> BiometricProfiles => Set<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile>();
 
     // Monitoring - Feature toggles & overrides
     public DbSet<MonitoringFeatureToggles> MonitoringFeatureToggles => Set<MonitoringFeatureToggles>();

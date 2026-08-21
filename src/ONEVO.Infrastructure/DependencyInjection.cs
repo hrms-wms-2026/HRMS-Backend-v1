@@ -1,3 +1,4 @@
+using Amazon.Extensions.NETCore.Setup;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -369,9 +370,28 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces.IMeetingSignalRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Meetings.EfMeetingSignalRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces.IBiometricEnrollmentAttemptRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Biometrics.EfBiometricEnrollmentAttemptRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces.IBiometricProfileRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Biometrics.EfBiometricProfileRepository>();
+        services.AddDefaultAWSOptions(configuration.GetAWSOptions());
+        services.AddAWSService<Amazon.Rekognition.IAmazonRekognition>();
+        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>();
+        services.AddScoped<
+            ONEVO.Application.Common.ServiceInterfaces.IFaceLivenessService,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceLivenessService>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces.IProductivityReportRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Reports.EfProductivityReportRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces.IExceptionRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Exceptions.EfExceptionRepository>();
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Exceptions.ExceptionDetectionJob>();
 
         // Monitoring - Settings (tenant-level feature toggles admin CRUD)
         services.AddScoped<
@@ -441,6 +461,12 @@ public static class DependencyInjection
             configuration.GetSection(ONEVO.Infrastructure.Configuration.StorageQuotaOptions.SectionName));
         services.Configure<ONEVO.Infrastructure.Configuration.FileStorageOptions>(
             configuration.GetSection(ONEVO.Infrastructure.Configuration.FileStorageOptions.SectionName));
+        services.AddOptions<AwsRekognitionOptions>()
+            .Bind(configuration.GetSection(AwsRekognitionOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddOptions<ONEVO.Application.Common.Configuration.BiometricEnrollmentOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Common.Configuration.BiometricEnrollmentOptions.SectionName));
 
         // -- Email: transactional sending via ONEVO-owned platform service keys --
         // Both the active transactional email provider and its API key are resolved
