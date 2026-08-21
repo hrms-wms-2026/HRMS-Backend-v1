@@ -52,15 +52,19 @@ public class GetObjectiveTreeQueryHandler : IRequestHandler<GetObjectiveTreeQuer
             return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Forbidden("You do not have access to this project's milestone tree.");
 
         var allObjectives = await _objectives.GetTreeByProjectIdAsync(tenantId, project.Id, ct);
+        var ownedObjectiveIds = (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct)).ToHashSet();
 
         var defaultObjective = allObjectives.FirstOrDefault(o => o.IsDefault);
         var hasDirectMembership = defaultObjective is not null
             && await _members.HasActiveMembershipForAnyObjectiveAsync(tenantId, project.Id, callerEmployeeId.Value, new[] { defaultObjective.Id }, ct);
 
         if (hasDirectMembership)
-            return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Success(allObjectives.Select(o => ObjectiveMapper.ToTreeItem(o)).ToList());
-
-        var ownedObjectiveIds = await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct);
+        {
+            var namesByEmployeeId = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
+                tenantId, allObjectives.Select(o => o.OwnerId).Distinct().ToList(), ct);
+            return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Success(
+                allObjectives.Select(o => ObjectiveMapper.ToTreeItem(o, ownedObjectiveIds.Contains(o.Id), namesByEmployeeId.GetValueOrDefault(o.OwnerId))).ToList());
+        }
 
         var byId = allObjectives.ToDictionary(o => o.Id);
         var childrenByParent = allObjectives
@@ -99,7 +103,12 @@ public class GetObjectiveTreeQueryHandler : IRequestHandler<GetObjectiveTreeQuer
             }
         }
 
-        var scoped = allObjectives.Where(o => reachable.Contains(o.Id)).Select(o => ObjectiveMapper.ToTreeItem(o)).ToList();
+        var scopedObjectives = allObjectives.Where(o => reachable.Contains(o.Id)).ToList();
+        var scopedNamesByEmployeeId = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
+            tenantId, scopedObjectives.Select(o => o.OwnerId).Distinct().ToList(), ct);
+        var scoped = scopedObjectives
+            .Select(o => ObjectiveMapper.ToTreeItem(o, ownedObjectiveIds.Contains(o.Id), scopedNamesByEmployeeId.GetValueOrDefault(o.OwnerId)))
+            .ToList();
         return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Success(scoped);
     }
 }
