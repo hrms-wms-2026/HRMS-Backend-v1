@@ -43,6 +43,22 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
   for the expanded requirement — 6/4/2 row icon sets, restored side panel, project-wide tree switch,
   icon-visibility scoped to the caller's own branch). Frontend plan (4 new parts, `part-4` through
   `part-7`) in the frontend repo: `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-08-20-work-management-tree-sprint-task-unified-view/`
+- `2026-08-21-work-management-cascading-objective-ownership/` — status: pending, not started. 5 parts,
+  backend-only. Design: `specs/next/2026-08-21-work-management-cascading-objective-ownership-design.md`.
+  `part-1-effective-manager-helper.md` adds `IMilestoneMembershipCoordinator.IsEffectiveManagerAsync`
+  (owner-or-member of this Objective or any ancestor, walking `ParentObjectiveId` up); Parts 2-4 replace
+  the repeated `objective.OwnerId != callerEmployeeId.Value` check with it across sub-module create/edit,
+  member management, Sprint create/edit/achieve/complete, Task create/delete, and the
+  `MoveTaskStatus` private-status gate; Part 5 cascades the tree's `IsOwner` display flag the same way
+  and runs the full-feature regression pass. Do the Parts in order (1 is a hard prerequisite for 2-5;
+  2-4 are independent of each other; 5 must be last).
+- `2026-08-21-work-management-project-scoped-task-status-and-category/` — status: pending, not started
+  (plan not yet written — design only so far). Design:
+  `specs/next/2026-08-21-work-management-project-scoped-task-status-and-category-design.md`. Collapses
+  Task Status from per-Objective to per-Project (no destructive migration), adds a new per-Project
+  `TaskCategory` entity replacing the hardcoded `WorkTaskTypes` enum (migration + backfill required).
+  Frontend companion plan (new Project-level Settings page) lives in the frontend repo, also not yet
+  written.
   — its own Parts 1-3 (node model, shared icon set, carousel+panel removal) already shipped 2026-08-21 and
   are superseded/reversed in part by the new Parts 4-7.
 - `2026-08-20-work-management-project-page-redesign/` moved to `plans/finished/2026-08-21/` on 2026-08-21 — backend (3 parts) + frontend (3 parts, own plan in the frontend repo) both shipped, and the user completed a full manual browser test 2026-08-21 ("perfect, OK"). See `plans/SUMMARY.md`. **Note:** this SUMMARY and its siblings (`specs/next/SUMMARY.md`, `plans/SUMMARY.md`) are known to lag `git log` on this repo (see `feedback_hrms_docs_lag_git` convention) — several plans/specs listed above as "pending, not started" may already be implemented; verify against `git log --oneline` before trusting any status in this file.
