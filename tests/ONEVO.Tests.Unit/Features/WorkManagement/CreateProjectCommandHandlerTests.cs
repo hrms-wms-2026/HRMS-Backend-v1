@@ -163,6 +163,7 @@ public class CreateProjectCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(999m, result.Value!.DefaultObjective.AllocatedHours);
+        Assert.Equal(999m, result.Value!.Project.AllocatedHours);
     }
 
     [Fact]
