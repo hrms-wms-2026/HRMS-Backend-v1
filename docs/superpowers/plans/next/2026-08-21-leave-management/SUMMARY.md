@@ -4,7 +4,7 @@
 **Companion (frontend):** `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-08-21-leave-management/SUMMARY.md`
 **Source of truth for product behaviour:** `C:\HR\leave-management-complete.md`
 
-This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 only (`part-1-schema-and-leave-types.md`) — later phases are scoped here (entities/endpoints/files/dependencies/exit-criteria) but not yet broken into bite-sized TDD steps. Write each part's full TDD file when that phase starts, following `part-1`'s pattern.
+This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`) and Phase 2 (`part-2-leave-policies.md`) — later phases are scoped here (entities/endpoints/files/dependencies/exit-criteria) but not yet broken into bite-sized TDD steps. Write each remaining part's full TDD file when that phase starts, following `part-1`'s pattern.
 
 **Every phase's exit criteria includes a live run against the real dev DB** (`DevSmokeTestTenantSeeder`'s acme/dapi tenants), not just a green test suite — see the design doc's Testing note.
 
@@ -30,6 +30,8 @@ This is a 10-phase build (0-9), one deliverable slice per phase, backend and fro
 - **Blocks:** Phase 2 (a policy must reference an existing, active leave type).
 
 ## Phase 2 — Leave Policies (Screen 2)
+
+**Status:** written in full — **executed 2026-08-21**, Leave Policies CRUD (`/api/v1/leave/policies` list/get/create/clone + replace-confirm) shipped on `feat/leave-management-part-2`. Frontend companion is still pending. Business values are explicitly request/config driven; no production handler defaults for country, days, dates, percentages, approval mode, or policy limits.
 
 - Backend: `LeavePoliciesController` (`/api/v1/leave/policies`) — List, Get, Create (multi-type + blackout periods + legal-entity assignment + activate/replace-confirmation), Clone. Validate: monthly accrual × 12 ≤ type's annual limit; one active policy per legal entity (replace-confirm flow, spec Screen 2 errors table).
 - Frontend: `leave-policy.model.ts`, `leave-policy-api.service.ts`, `leave-policy.store.ts`, `policy-management` feature (multi-step form matching Screen 2's 7 steps), wired to `/time-off/policies`.

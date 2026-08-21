@@ -35,6 +35,8 @@ public static class LeaveApprovalModes
     public const string AnyOne = "any_one";
     public const string AllMustApprove = "all_must_approve";
     public const string InOrder = "in_order";
+
+    public static readonly string[] All = [AnyOne, AllMustApprove, InOrder];
 }
 
 public static class LeaveRequestApproverStatuses
@@ -67,12 +69,25 @@ public static class LeaveAccrualStarts
     public const string Immediately = "immediately";
     public const string AfterProbation = "after_probation";
     public const string AfterNMonths = "after_n_months";
+
+    public static readonly string[] All = [Immediately, AfterProbation, AfterNMonths];
+}
+
+public static class LeaveAccrualMethods
+{
+    public const string Annual = "annual";
+    public const string Monthly = "monthly";
+    public const string Daily = "daily";
+
+    public static readonly string[] All = [Annual, Monthly, Daily];
 }
 
 public static class LeaveProrationMethods
 {
     public const string CalendarDays = "calendar_days";
     public const string WorkingDays = "working_days";
+
+    public static readonly string[] All = [CalendarDays, WorkingDays];
 }
 
 public static class LeaveEntitlementSources
