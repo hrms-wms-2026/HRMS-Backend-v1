@@ -68,7 +68,7 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         if (objective is null)
             return Result.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
         {
             var isMember = await _membership.IsActiveMemberAsync(
                 tenantId,

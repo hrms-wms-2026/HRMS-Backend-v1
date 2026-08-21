@@ -30,7 +30,7 @@ public class MoveTaskStatusCommandHandlerTests
 
     private (MoveTaskStatusCommandHandler Handler, Objective Objective, WorkTask Task, Mock<ITaskStatusRepository> Statuses) Build(
         Guid callerEmployeeId, bool callerIsMember, TaskStatusEntity newStatus, decimal? estimatedHours = 8m,
-        bool preserveNullStatusObjectiveId = false, Sprint? sprint = null)
+        bool preserveNullStatusObjectiveId = false, Sprint? sprint = null, bool? callerIsEffectiveManager = null)
     {
         if (!preserveNullStatusObjectiveId && newStatus.ObjectiveId is null)
             newStatus.ObjectiveId = ObjectiveId;
@@ -92,6 +92,12 @@ public class MoveTaskStatusCommandHandlerTests
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.IsActiveMemberAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerIsMember);
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
+        // separately in MilestoneMembershipCoordinatorTests).
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (callerEmployeeId == OwnerEmployeeId));
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
@@ -244,6 +250,33 @@ public class MoveTaskStatusCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_PlainMemberOfParentObjective_MovingIntoPrivateStatus_Succeeds()
+    {
+        // Caller is not this objective's own OwnerId and is not an active member of the exact
+        // objective either - but IsEffectiveManagerAsync reports them as an effective manager via
+        // an ancestor (parent) membership. This must bypass the whole isMember/Private fallback
+        // block, not just the Private check within it - the coordinator's own ancestor-walk logic
+        // is unit-tested separately in MilestoneMembershipCoordinatorTests.
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId,
+            TenantId = TenantId,
+            Name = "Done",
+            MarksTaskComplete = true,
+            Visibility = TaskStatusVisibilities.Private,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var parentMemberId = Guid.NewGuid();
+        var (handler, _, task, _) = Build(
+            parentMemberId, callerIsMember: false, newStatus, callerIsEffectiveManager: true);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(NewStatusId, task.StatusId);
     }
 
     [Fact]
