@@ -93,4 +93,66 @@ public class MonitoringToggleResolverTests
                 tenantToggle: false)
             .Should().BeTrue();
     }
+
+    [Fact]
+    public void Minutes_No_override_anywhere_returns_default_five()
+    {
+        MonitoringToggleResolution.ResolveMinutes(null, null, null, null, null)
+            .Should().Be(5);
+    }
+
+    [Fact]
+    public void Minutes_Tenant_toggle_fallback()
+    {
+        MonitoringToggleResolution.ResolveMinutes(null, null, null, null, tenantMinutes: 10)
+            .Should().Be(10);
+    }
+
+    [Fact]
+    public void Minutes_Employee_override_wins_over_everything()
+    {
+        MonitoringToggleResolution.ResolveMinutes(
+                employeeMinutes: 2,
+                roleMinutes: 15,
+                positionMinutes: 15,
+                departmentMinutes: 15,
+                tenantMinutes: 15)
+            .Should().Be(2);
+    }
+
+    [Fact]
+    public void Minutes_Role_wins_over_position_and_department_and_tenant()
+    {
+        MonitoringToggleResolution.ResolveMinutes(
+                employeeMinutes: null,
+                roleMinutes: 7,
+                positionMinutes: 20,
+                departmentMinutes: 20,
+                tenantMinutes: 20)
+            .Should().Be(7);
+    }
+
+    [Fact]
+    public void Minutes_Position_wins_over_department_and_tenant()
+    {
+        MonitoringToggleResolution.ResolveMinutes(
+                employeeMinutes: null,
+                roleMinutes: null,
+                positionMinutes: 8,
+                departmentMinutes: 20,
+                tenantMinutes: 20)
+            .Should().Be(8);
+    }
+
+    [Fact]
+    public void Minutes_Department_wins_over_tenant()
+    {
+        MonitoringToggleResolution.ResolveMinutes(
+                employeeMinutes: null,
+                roleMinutes: null,
+                positionMinutes: null,
+                departmentMinutes: 9,
+                tenantMinutes: 20)
+            .Should().Be(9);
+    }
 }

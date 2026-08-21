@@ -12,4 +12,5 @@ public record MonitoringFeatureTogglesResponse(
     bool WorkLocationVerification,
     bool IdentityVerification,
     bool Biometric,
+    int IdleThresholdMinutes,
     DateTimeOffset? UpdatedAt);

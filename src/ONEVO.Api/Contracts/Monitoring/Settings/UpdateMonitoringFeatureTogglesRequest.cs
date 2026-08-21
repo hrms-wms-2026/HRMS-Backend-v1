@@ -11,4 +11,5 @@ public record UpdateMonitoringFeatureTogglesRequest(
     bool DeviceTracking,
     bool WorkLocationVerification,
     bool IdentityVerification,
-    bool Biometric);
+    bool Biometric,
+    int IdleThresholdMinutes);

@@ -21,6 +21,14 @@ public class MonitoringFeatureToggles : ITenantOwnedEntity
     public bool WorkLocationVerification { get; set; }
     public bool IdentityVerification { get; set; }
     public bool Biometric { get; set; }
+
+    /// <summary>
+    /// Minutes of continuous mouse/keyboard inactivity before the TrayApp shows the
+    /// "Activity check" screenshot prompt. Null = tenant has not configured a value yet
+    /// (resolver falls back to <c>MonitoringToggleResolution.DefaultIdleThresholdMinutes</c>).
+    /// </summary>
+    public int? IdleThresholdMinutes { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

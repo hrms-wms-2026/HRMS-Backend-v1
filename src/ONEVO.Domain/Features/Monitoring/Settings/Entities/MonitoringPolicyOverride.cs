@@ -26,6 +26,10 @@ public class MonitoringPolicyOverride : ITenantOwnedEntity
     public bool? WorkLocationVerification { get; set; }
     public bool? IdentityVerification { get; set; }
     public bool? Biometric { get; set; }
+
+    /// <summary>Role/position/department override. Null = inherit from tenant.</summary>
+    public int? IdleThresholdMinutes { get; set; }
+
     public string OverrideReason { get; set; } = string.Empty;
     public Guid SetById { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
