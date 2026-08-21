@@ -10,4 +10,7 @@ public interface IMeetingSignalRepository
         Guid tenantId, Guid employeeId, DateOnly date, int page, int pageSize, CancellationToken ct);
 
     Task<int> GetTotalCountAsync(Guid tenantId, Guid employeeId, DateOnly date, CancellationToken ct);
+
+    Task<IReadOnlyList<MeetingSignal>> GetAllByEmployeeDateAsync(
+        Guid tenantId, Guid employeeId, DateOnly date, CancellationToken ct);
 }
