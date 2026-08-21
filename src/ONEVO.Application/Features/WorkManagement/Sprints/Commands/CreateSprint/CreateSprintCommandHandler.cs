@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
@@ -17,16 +18,18 @@ public class CreateSprintCommandHandler : IRequestHandler<CreateSprintCommand, R
     private readonly IObjectiveRepository _objectives;
     private readonly ISprintRepository _sprints;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMilestoneMembershipCoordinator _membership;
 
     public CreateSprintCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        ISprintRepository sprints, IUnitOfWork unitOfWork)
+        ISprintRepository sprints, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _sprints = sprints;
         _unitOfWork = unitOfWork;
+        _membership = membership;
     }
 
     public async Task<Result<SprintResponse>> Handle(CreateSprintCommand request, CancellationToken ct)
@@ -46,7 +49,7 @@ public class CreateSprintCommandHandler : IRequestHandler<CreateSprintCommand, R
         if (objective is null || !objective.IsActive)
             return Result<SprintResponse>.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<SprintResponse>.Forbidden("Only this milestone's owner can create sprints.");
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
