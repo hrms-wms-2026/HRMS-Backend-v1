@@ -35,19 +35,19 @@ public class ApproveTaskCreationRequestCommandHandlerTests
     private static readonly Guid RequesterEmployeeId = Guid.NewGuid();
     private static readonly Guid SprintId = Guid.NewGuid();
 
-    private static TaskCreationRequest PendingRequest(decimal requestedHours) => new()
+    private static TaskCreationRequest PendingRequest(decimal requestedHours, bool sprintLess = false) => new()
     {
         Id = RequestId, TenantId = TenantId, ObjectiveId = ObjectiveId,
         RequestedByEmployeeId = RequesterEmployeeId,
         PayloadJson = System.Text.Json.JsonSerializer.Serialize(
             new ONEVO.Application.Features.WorkManagement.Tasks.DTOs.TaskCreationRequestPayload(
-                "Title", null, "task", "medium", null, requestedHours, null, SprintId)),
+                "Title", null, "task", "medium", null, requestedHours, null, sprintLess ? null : SprintId)),
         Status = TaskCreationRequestStatuses.Pending,
         CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow
     };
 
     private (ApproveTaskCreationRequestCommandHandler Handler, Mock<IWorkTaskRepository> Tasks, Mock<ITaskCreationRequestRepository> Requests) BuildApprove(
-        decimal allocatedHours, decimal existingTaskSum, decimal requestedHours, Guid? callerEmployeeId = null)
+        decimal allocatedHours, decimal existingTaskSum, decimal requestedHours, Guid? callerEmployeeId = null, bool sprintLess = false)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -58,7 +58,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerEmployeeId ?? OwnerEmployeeId);
 
-        var pendingRequest = PendingRequest(requestedHours);
+        var pendingRequest = PendingRequest(requestedHours, sprintLess);
         var requests = new Mock<ITaskCreationRequestRepository>();
         requests.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, RequestId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(pendingRequest);
@@ -146,6 +146,17 @@ public class ApproveTaskCreationRequestCommandHandlerTests
         Assert.Equal(403, result.StatusCode);
         tasks.Verify(x => x.AddAsync(It.IsAny<WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
         requests.Verify(x => x.Update(It.IsAny<TaskCreationRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NullSprintInPayload_CreatesTaskWithoutSprint()
+    {
+        var (handler, tasks, _) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, sprintLess: true);
+        var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.SprintId);
+        tasks.Verify(x => x.AddAsync(It.Is<WorkTask>(t => t.SprintId == null), It.IsAny<CancellationToken>()), Times.Once);
     }
 }
 

@@ -78,11 +78,14 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
 
         var payload = JsonSerializer.Deserialize<TaskCreationRequestPayload>(pending.PayloadJson)!;
 
-        var sprint = await _sprints.GetByIdForTenantAsync(tenantId, payload.SprintId, ct);
-        if (sprint is null || sprint.ObjectiveId != objective.Id)
-            return Result<WorkTaskResponse>.NotFound("Sprint not found.");
-        if (sprint.Status == SprintStatuses.Achieved)
-            return Result<WorkTaskResponse>.Conflict("This sprint has been achieved and is frozen.");
+        if (payload.SprintId is not null)
+        {
+            var sprint = await _sprints.GetByIdForTenantAsync(tenantId, payload.SprintId.Value, ct);
+            if (sprint is null || sprint.ObjectiveId != objective.Id)
+                return Result<WorkTaskResponse>.NotFound("Sprint not found.");
+            if (sprint.Status == SprintStatuses.Achieved)
+                return Result<WorkTaskResponse>.Conflict("This sprint has been achieved and is frozen.");
+        }
 
         if (payload.EstimatedHours.HasValue)
         {
