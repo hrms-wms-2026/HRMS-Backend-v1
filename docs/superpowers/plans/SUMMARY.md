@@ -46,6 +46,8 @@
 | `2026-08-12-milestone-to-module-display-rename.md` | `next/` | pending (not started) |
 | `2026-08-16-multi-legal-entity-employment-foundation/` (3 parts) | `finished/2026-08-16/` | finished |
 | `2026-08-16-employee-detail-screen-backend.md` | `next/` | pending (not started) |
+| `2026-08-20-work-management-project-page-redesign/` (3 parts) | `finished/2026-08-21/` | finished (backend+frontend shipped, manual browser test passed 2026-08-21) |
+| `2026-08-20-work-management-tree-sprint-task-unified-view/` (6 parts, +7 in frontend repo) | `next/` | code-complete both repos (428/428 + 443/443 tests), manual browser pass pending |
 
 See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all files in that folder (kept short here to avoid duplicating the same list twice).
 

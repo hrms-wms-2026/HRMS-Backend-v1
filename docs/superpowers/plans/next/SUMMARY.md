@@ -24,6 +24,28 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 - `2026-08-10-milestone-ownership-and-subtree-access.md` moved to `plans/finished/2026-08-10/` on 2026-08-10 (both tasks done) — see `plans/SUMMARY.md`.
 - `2026-08-10-project-detail-milestone-tree-view-backend.md` moved to `plans/finished/2026-08-10/` on 2026-08-10 (all 3 tasks done, 170/170 WorkManagement unit tests) — see `plans/SUMMARY.md`.
 - `2026-08-17-work-management-task-data-seeding.md` — extends `WorkManagementDapiDemoSeeder` with leaf tasks, project+objective task statuses, and Approvals queue (pending task-creation + extend_allocation). Design: `specs/next/2026-08-17-work-management-task-data-seeding-design.md`.
+- `2026-08-20-work-management-tree-sprint-task-unified-view/` — status: backend Parts 1-6 all shipped and
+  verified (428/428 WorkManagement tests, per `git log`); frontend Parts 1-7 (own plan folder in the
+  frontend repo) also all shipped and verified (443/443 Work module tests). Code-complete on both sides —
+  **still pending the manual browser pass** called out in the combined Cursor execution prompt before
+  either plan folder moves to `finished/`. Parts 1-2: `part-1-fix-sprint-and-task-authorization.md` (security fix:
+  `GetObjectiveSprintsQueryHandler`/`GetObjectiveTasksQueryHandler` had no membership/reachability check,
+  only `IsAuthenticated`), `part-2-get-sprint-tasks-endpoint.md` (new `GET /work/sprints/{id}/tasks`).
+  Parts 3-5 (new): `part-3-enrich-objective-tree-response.md` (add `Progress`/`OwnerName`/per-node `IsOwner`
+  to `GetObjectiveTreeQuery`'s response — the frontend needs this to switch the Tree tab to the
+  project-wide tree endpoint and gate action icons per-branch), `part-4-delete-task-soft-delete.md`
+  (no migration needed — `WorkTask` already has unused `IsDeleted`/`DeletedAt` via `BaseEntity`, just needs
+  a `Remove()` wired up), `part-5-sprint-optional-task-creation.md` (loosen `SprintId` validation across 3
+  independent code paths: direct create, create-request, and request-approval), `part-6-postman-doc-gaps.md`
+  (done 2026-08-21, docs-only — filled 4 previously-undocumented live Sprint endpoints: Create/Edit/
+  Achieve/Complete Sprint). Design:
+  `specs/next/2026-08-20-work-management-tree-sprint-task-unified-view-design.md` (§4 rewritten 2026-08-21
+  for the expanded requirement — 6/4/2 row icon sets, restored side panel, project-wide tree switch,
+  icon-visibility scoped to the caller's own branch). Frontend plan (4 new parts, `part-4` through
+  `part-7`) in the frontend repo: `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-08-20-work-management-tree-sprint-task-unified-view/`
+  — its own Parts 1-3 (node model, shared icon set, carousel+panel removal) already shipped 2026-08-21 and
+  are superseded/reversed in part by the new Parts 4-7.
+- `2026-08-20-work-management-project-page-redesign/` moved to `plans/finished/2026-08-21/` on 2026-08-21 — backend (3 parts) + frontend (3 parts, own plan in the frontend repo) both shipped, and the user completed a full manual browser test 2026-08-21 ("perfect, OK"). See `plans/SUMMARY.md`. **Note:** this SUMMARY and its siblings (`specs/next/SUMMARY.md`, `plans/SUMMARY.md`) are known to lag `git log` on this repo (see `feedback_hrms_docs_lag_git` convention) — several plans/specs listed above as "pending, not started" may already be implemented; verify against `git log --oneline` before trusting any status in this file.
 
 ## Open items
 
