@@ -51,4 +51,5 @@ public class EfWorkTaskRepository : IWorkTaskRepository
             .AnyAsync(t => t.TenantId == tenantId && t.StatusId == statusId, ct);
 
     public void Update(WorkTask task) => _db.WorkTasks.Update(task);
+    public void Remove(WorkTask task) => _db.WorkTasks.Remove(task);
 }

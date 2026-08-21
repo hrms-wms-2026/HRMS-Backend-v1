@@ -25,4 +25,5 @@ public interface IWorkTaskRepository
     Task<bool> AnyActiveByStatusIdAsync(Guid tenantId, Guid statusId, CancellationToken ct = default);
 
     void Update(WorkTask task);
+    void Remove(WorkTask task);
 }
