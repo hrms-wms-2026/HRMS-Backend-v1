@@ -39,7 +39,8 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
         DeviceTracking: true,
         WorkLocationVerification: false,
         IdentityVerification: false,
-        Biometric: false);
+        Biometric: false,
+        IdleThresholdMinutes: 5);
 
     [Fact]
     public async Task Handle_NoExistingRow_CreatesNewRow()
@@ -86,6 +87,50 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
         existing.UpdatedAt.Should().Be(FixedNow);
         _toggles.Verify(r => r.Update(existing), Times.Once);
         _toggles.Verify(r => r.AddAsync(It.IsAny<MonitoringFeatureToggles>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NoExistingRow_PersistsIdleThresholdMinutes()
+    {
+        _toggles.Setup(r => r.GetByTenantIdAsync(TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MonitoringFeatureToggles?)null);
+        MonitoringFeatureToggles? added = null;
+        _toggles.Setup(r => r.AddAsync(It.IsAny<MonitoringFeatureToggles>(), It.IsAny<CancellationToken>()))
+            .Callback<MonitoringFeatureToggles, CancellationToken>((t, _) => added = t)
+            .Returns(Task.CompletedTask);
+        var sut = BuildSut();
+
+        var command = ValidCommand() with { IdleThresholdMinutes = 15 };
+        var result = await sut.Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        added!.IdleThresholdMinutes.Should().Be(15);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(61)]
+    [InlineData(-1)]
+    public void Validator_RejectsOutOfRangeIdleThresholdMinutes(int minutes)
+    {
+        var validator = new UpdateMonitoringFeatureTogglesCommandValidator();
+
+        var result = validator.Validate(ValidCommand() with { IdleThresholdMinutes = minutes });
+
+        result.IsValid.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    [InlineData(60)]
+    public void Validator_AcceptsInRangeIdleThresholdMinutes(int minutes)
+    {
+        var validator = new UpdateMonitoringFeatureTogglesCommandValidator();
+
+        var result = validator.Validate(ValidCommand() with { IdleThresholdMinutes = minutes });
+
+        result.IsValid.Should().BeTrue();
     }
 
     [Fact]

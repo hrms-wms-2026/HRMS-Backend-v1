@@ -1,6 +1,8 @@
 using FluentAssertions;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Domain.Features.Monitoring.AppUsage.Entities;
+using ONEVO.Domain.Features.Monitoring.Meetings.Entities;
 using ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
 
 namespace ONEVO.Tests.Unit.Features.Monitoring.ActivityMonitoring;
@@ -148,5 +150,70 @@ public class ActivityDailySummaryAggregatorTests
         var idleSummary = ActivityDailySummaryAggregator.Aggregate(
             Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), idleOnly, baseTime);
         idleSummary.TopAppsJson.Should().Be("[]");
+    private static AppUsageSnapshot AppUsage(string? processName, DateTimeOffset capturedAt) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), EmployeeId = Guid.NewGuid(), AgentDeviceId = Guid.NewGuid(),
+        CapturedAt = capturedAt, ProcessName = processName, WindowTitleHash = "hash"
+    };
+
+    private static MeetingSignal Meeting(bool isRunning, DateTimeOffset capturedAt) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), EmployeeId = Guid.NewGuid(), AgentDeviceId = Guid.NewGuid(),
+        CapturedAt = capturedAt, IsMeetingAppRunning = isRunning, ProcessName = isRunning ? "teams.exe" : null
+    };
+
+    [Fact]
+    public void Aggregates_AppUsage_IntoCategorizedMinutes_AndTopAppsJson()
+    {
+        var baseTime = new DateTimeOffset(2026, 8, 17, 9, 0, 0, TimeSpan.Zero);
+        var appUsage = new List<AppUsageSnapshot>
+        {
+            AppUsage("code.exe", baseTime),
+            AppUsage("code.exe", baseTime.AddMinutes(1)),
+            AppUsage("spotify.exe", baseTime.AddMinutes(2)),
+            AppUsage("random_tool.exe", baseTime.AddMinutes(3))
+        };
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 17), [], baseTime,
+            appUsageSnapshots: appUsage);
+
+        summary.ProductiveAppMinutes.Should().Be(2);
+        summary.PersonalAppMinutes.Should().Be(1);
+        summary.UnknownAppMinutes.Should().Be(1);
+        summary.TopAppsJson.Should().Contain("code.exe");
+    }
+
+    [Fact]
+    public void Aggregates_MeetingSignals_IntoTotalMeetingMinutes()
+    {
+        var baseTime = new DateTimeOffset(2026, 8, 17, 9, 0, 0, TimeSpan.Zero);
+        var meetings = new List<MeetingSignal>
+        {
+            Meeting(true, baseTime),
+            Meeting(true, baseTime.AddMinutes(2)),
+            Meeting(false, baseTime.AddMinutes(4))
+        };
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 17), [], baseTime,
+            meetingSignals: meetings);
+
+        summary.TotalMeetingMinutes.Should().Be(4);
+    }
+
+    [Fact]
+    public void NoAppUsageOrMeetingData_LeavesFieldsAtZero()
+    {
+        var baseTime = new DateTimeOffset(2026, 8, 17, 9, 0, 0, TimeSpan.Zero);
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 17), [], baseTime);
+
+        summary.ProductiveAppMinutes.Should().Be(0);
+        summary.PersonalAppMinutes.Should().Be(0);
+        summary.UnknownAppMinutes.Should().Be(0);
+        summary.TotalMeetingMinutes.Should().Be(0);
+        summary.TopAppsJson.Should().Be("[]");
     }
 }

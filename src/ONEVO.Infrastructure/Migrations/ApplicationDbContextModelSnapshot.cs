@@ -4363,6 +4363,117 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("app_usage_snapshots", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AgentDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agent_device_id");
+
+                    b.Property<string>("AwsSessionId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("aws_session_id");
+
+                    b.Property<string>("ChallengeType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("challenge_type");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<float?>("Confidence")
+                        .HasColumnType("real")
+                        .HasColumnName("confidence");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<string>("FailureReason")
+                        .HasColumnType("text")
+                        .HasColumnName("failure_reason");
+
+                    b.Property<string>("Region")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("region");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_biometric_enrollment_attempts");
+
+                    b.HasIndex("TenantId", "EmployeeId", "CreatedAt")
+                        .HasDatabaseName("ix_biometric_enrollment_attempts_tenant_employee_created");
+
+                    b.ToTable("biometric_enrollment_attempts", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<DateTimeOffset>("EnrolledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("enrolled_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_biometric_profiles");
+
+                    b.HasIndex("TenantId", "EmployeeId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_biometric_profiles_tenant_employee");
+
+                    b.ToTable("biometric_profiles", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.CheckIn.Entities.EmployeeCheckIn", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4539,6 +4650,88 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("device_state_snapshots", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AcknowledgedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("acknowledged_at");
+
+                    b.Property<Guid?>("AcknowledgedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("acknowledged_by_id");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("description");
+
+                    b.Property<DateTimeOffset>("DetectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("detected_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<DateTimeOffset?>("EscalatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("escalated_at");
+
+                    b.Property<string>("MetadataJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("{}")
+                        .HasColumnName("metadata_json");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<Guid?>("ResolvedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resolved_by_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_exceptions");
+
+                    b.HasIndex("TenantId", "Status", "DetectedAt")
+                        .HasDatabaseName("ix_exceptions_tenant_status_detected");
+
+                    b.HasIndex("TenantId", "EmployeeId", "Type", "Status")
+                        .HasDatabaseName("ix_exceptions_tenant_employee_type_status");
+
+                    b.ToTable("exceptions", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Meetings.Entities.MeetingSignal", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4582,6 +4775,70 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_meeting_signals_tenant_employee_captured");
 
                     b.ToTable("meeting_signals", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Notifications.Entities.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DeliveredToTrayAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("delivered_to_tray_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("message");
+
+                    b.Property<string>("MetadataJson")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("metadata_json");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_monitoring_notifications");
+
+                    b.HasIndex("TenantId", "EmployeeId", "CreatedAt")
+                        .IsDescending(false, false, true)
+                        .HasDatabaseName("ix_monitoring_notifications_tenant_employee_created");
+
+                    b.HasIndex("TenantId", "EmployeeId", "Type", "CreatedAt")
+                        .IsDescending(false, false, false, true)
+                        .HasDatabaseName("ix_monitoring_notifications_tenant_employee_type_created");
+
+                    b.ToTable("monitoring_notifications", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.AgentCommand", b =>
@@ -4799,6 +5056,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("identity_verification");
 
+                    b.Property<int?>("IdleThresholdMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("idle_threshold_minutes");
+
                     b.Property<bool?>("MeetingDetection")
                         .HasColumnType("boolean")
                         .HasColumnName("meeting_detection");
@@ -4882,6 +5143,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("identity_verification");
 
+                    b.Property<int?>("IdleThresholdMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("idle_threshold_minutes");
+
                     b.Property<bool>("MeetingDetection")
                         .HasColumnType("boolean")
                         .HasColumnName("meeting_detection");
@@ -4954,6 +5219,10 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<bool?>("IdentityVerification")
                         .HasColumnType("boolean")
                         .HasColumnName("identity_verification");
+
+                    b.Property<int?>("IdleThresholdMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("idle_threshold_minutes");
 
                     b.Property<bool?>("MeetingDetection")
                         .HasColumnType("boolean")

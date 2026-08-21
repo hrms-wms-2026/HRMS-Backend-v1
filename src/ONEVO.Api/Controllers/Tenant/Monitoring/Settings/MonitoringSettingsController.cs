@@ -50,7 +50,8 @@ public class MonitoringSettingsController : ControllerBase
                 request.DeviceTracking,
                 request.WorkLocationVerification,
                 request.IdentityVerification,
-                request.Biometric),
+                request.Biometric,
+                request.IdleThresholdMinutes),
             ct);
 
         return result.IsSuccess

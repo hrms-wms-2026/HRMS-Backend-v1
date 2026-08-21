@@ -4,6 +4,10 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
+using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
+using ONEVO.Application.Features.Monitoring.AppUsage.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
 
@@ -73,7 +77,11 @@ public sealed class ActivityDailySummaryJob : BackgroundService
     {
         await using var scope = _services.CreateAsyncScope();
         var snapshots = scope.ServiceProvider.GetRequiredService<IActivitySnapshotRepository>();
+        var appUsage = scope.ServiceProvider.GetRequiredService<IAppUsageSnapshotRepository>();
+        var meetings = scope.ServiceProvider.GetRequiredService<IMeetingSignalRepository>();
         var summaries = scope.ServiceProvider.GetRequiredService<IActivityDailySummaryRepository>();
+        var notifications = scope.ServiceProvider
+            .GetRequiredService<ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces.INotificationRepository>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
 
@@ -96,10 +104,46 @@ public sealed class ActivityDailySummaryJob : BackgroundService
             if (daySnapshots.Count == 0)
                 continue;
 
+            var dayAppUsage = await appUsage.GetAllByEmployeeDateAsync(tenantId, employeeId, date, ct);
+            var dayMeetings = await meetings.GetAllByEmployeeDateAsync(tenantId, employeeId, date, ct);
+
             var summary = ActivityDailySummaryAggregator.Aggregate(
-                tenantId, employeeId, date, daySnapshots, now);
+                tenantId, employeeId, date, daySnapshots, now,
+                appUsageSnapshots: dayAppUsage,
+                meetingSignals: dayMeetings);
 
             await summaries.UpsertAsync(summary, ct);
+
+            const decimal LowActivityThreshold = 40m;
+            const int FocusNudgeMinutesThreshold = 120;
+            const int FocusNudgeSessionsThreshold = 2;
+
+            if (summary.ActivityScore < LowActivityThreshold)
+            {
+                await notifications.AddAsync(new Notification
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId,
+                    Type = NotificationType.LowActivityAlert,
+                    Title = "Lower activity today",
+                    Message = $"Your activity score for {date:yyyy-MM-dd} was {summary.ActivityScore}.",
+                    MetadataJson = $$"""{"activityScore":{{summary.ActivityScore}},"date":"{{date:yyyy-MM-dd}}"}""",
+                    CreatedAt = now
+                }, ct);
+            }
+
+            if (summary.FocusMinutes >= FocusNudgeMinutesThreshold || summary.DeepFocusSessionsCount >= FocusNudgeSessionsThreshold)
+            {
+                await notifications.AddAsync(new Notification
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId,
+                    Type = NotificationType.FocusNudge,
+                    Title = "Great focus today",
+                    Message = $"You had {summary.FocusMinutes} minutes of deep focus across {summary.DeepFocusSessionsCount} sessions.",
+                    MetadataJson = $$"""{"focusMinutes":{{summary.FocusMinutes}},"sessions":{{summary.DeepFocusSessionsCount}}}""",
+                    CreatedAt = now
+                }, ct);
+            }
+
             processed++;
         }
 

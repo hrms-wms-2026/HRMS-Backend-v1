@@ -41,7 +41,9 @@ public sealed class ApiBootTestFactory : WebApplicationFactory<Program>
                 ["DevAdmin:Password"] = "test_password_123",
                 // Bootstrap the canonical platform_users row the DevAdmin login resolves.
                 ["PlatformBootstrap:SuperAdminEmail"] = "test_admin@onevo.dev",
-                ["PlatformBootstrap:SuperAdminFullName"] = "Api Boot Test Super Admin"
+                ["PlatformBootstrap:SuperAdminFullName"] = "Api Boot Test Super Admin",
+                ["AwsRekognition:Region"] = "us-east-1",
+                ["AwsRekognition:LivenessRoleArn"] = "arn:aws:iam::000000000000:role/integration-test-face-liveness"
             });
         });
 

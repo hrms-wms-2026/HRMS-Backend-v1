@@ -58,4 +58,13 @@ public static class MonitoringErrors
 
     public const string EvidenceAssetNotFound =
         "Evidence asset not found.";
+
+    public const string BiometricDisabledCode = "monitoring.biometric_disabled";
+    public const string BiometricDisabled =
+        "Biometric enrollment is not enabled for this employee.";
+
+    public const string EnrollmentAttemptNotFound = "Enrollment attempt not found.";
+    public const string EnrollmentAttemptAlreadySettled = "Enrollment attempt is no longer pending.";
+    public const string EnrollmentAttemptExpired = "Enrollment attempt has expired.";
+    public const string LivenessCheckFailed = "Liveness check did not pass.";
 }
