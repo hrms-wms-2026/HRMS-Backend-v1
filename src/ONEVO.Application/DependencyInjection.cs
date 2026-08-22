@@ -10,6 +10,7 @@ using ONEVO.Application.Features.CoreHr.Onboarding.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.DevPlatform.Billing.OutboxHandlers;
 using ONEVO.Application.Features.OrgStructure.OutboxHandlers;
+using ONEVO.Application.Features.Leave.Approval.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Queries.GetBulkOnboardingTemplate;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Helpers;
 
@@ -51,6 +52,12 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler, EmployeeOnboardingInviteEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, PositionChangeApprovalRequestEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, InvoiceEmailOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler>(_ =>
+            new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveRequestApproved));
+        services.AddScoped<IOutboxMessageHandler>(_ =>
+            new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveRequestRejected));
+        services.AddScoped<IOutboxMessageHandler>(_ =>
+            new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveInformationRequested));
         services.AddScoped<GitHubUserIntegrationAvailability>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 

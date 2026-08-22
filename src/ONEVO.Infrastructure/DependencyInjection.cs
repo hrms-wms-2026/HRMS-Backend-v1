@@ -203,6 +203,13 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveTeamAbsenceWarningService,
             ONEVO.Application.Features.Leave.Request.Services.LeaveTeamAbsenceWarningService>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.LeaveRequestSubmissionEvaluator>();
+        services.AddOptions<ONEVO.Application.Features.Leave.Approval.Options.LeaveApprovalOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Approval.Options.LeaveApprovalOptions.SectionName))
+            .ValidateOnStart();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Approval.EfLeaveApprovalRepository>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Approval.Commands.LeaveApprovalDecisionService>();
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
         services.AddScoped<

@@ -89,6 +89,30 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "work_sprint_achieved",
                 InAppTitleTemplate = "Sprint achieved",
                 InAppBodyTemplate = "\"{{sprintName}}\" on {{objectiveName}} was achieved and its tasks are now frozen."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_approved",
+                InAppTitleTemplate = "Leave approved",
+                InAppBodyTemplate = "{{leaveTypeName}} from {{startDate}} to {{endDate}} was approved."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_rejected",
+                InAppTitleTemplate = "Leave rejected",
+                InAppBodyTemplate = "{{leaveTypeName}} from {{startDate}} to {{endDate}} was rejected. {{reason}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_information_requested",
+                InAppTitleTemplate = "More information requested",
+                InAppBodyTemplate = "{{approverName}} requested more information for {{leaveTypeName}} from {{startDate}} to {{endDate}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_next_approval_required",
+                InAppTitleTemplate = "Leave approval required",
+                InAppBodyTemplate = "{{employeeName}} requested {{leaveTypeName}} from {{startDate}} to {{endDate}}."
             }
         };
 

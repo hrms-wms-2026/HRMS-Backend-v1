@@ -14,7 +14,7 @@ public class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRequest>
         builder.ToTable("leave_requests");
         builder.HasKey(r => r.Id);
         builder.Property(r => r.HalfDayPeriod).HasMaxLength(2);
-        builder.Property(r => r.Status).HasMaxLength(20).IsRequired();
+        builder.Property(r => r.Status).HasMaxLength(40).IsRequired();
         builder.Property(r => r.TotalDays).HasColumnType("numeric(5,1)");
         builder.Property(r => r.PaidDays).HasColumnType("numeric(5,1)");
         builder.Property(r => r.UnpaidDays).HasColumnType("numeric(5,1)");
@@ -36,8 +36,8 @@ public class LeaveRequestApproverConfiguration : IEntityTypeConfiguration<LeaveR
     {
         builder.ToTable("leave_request_approvers");
         builder.HasKey(a => a.Id);
-        builder.Property(a => a.Status).HasMaxLength(20).IsRequired();
-        builder.Property(a => a.Comment).HasMaxLength(500);
+        builder.Property(a => a.Status).HasMaxLength(40).IsRequired();
+        builder.Property(a => a.Comment).HasMaxLength(2000);
 
         builder.HasIndex(a => new { a.TenantId, a.LeaveRequestId })
             .HasDatabaseName("ix_leave_request_approvers_tenant_request");
@@ -72,5 +72,26 @@ public class LeaveApprovalDelegateConfiguration : IEntityTypeConfiguration<Leave
             .HasDatabaseName("ix_leave_approval_delegates_tenant_approver");
         builder.HasOne<Employee>().WithMany().HasForeignKey(d => d.ApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Employee>().WithMany().HasForeignKey(d => d.DelegateEmployeeId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class LeaveRequestInfoMessageConfiguration : IEntityTypeConfiguration<LeaveRequestInfoMessage>
+{
+    public void Configure(EntityTypeBuilder<LeaveRequestInfoMessage> builder)
+    {
+        builder.ToTable("leave_request_info_messages");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Message).HasMaxLength(2000).IsRequired();
+        builder.HasIndex(x => new { x.TenantId, x.LeaveRequestId, x.CreatedAt })
+            .HasDatabaseName("ix_leave_request_info_messages_tenant_request_created");
+
+        builder.HasOne<LeaveRequest>()
+            .WithMany()
+            .HasForeignKey(x => x.LeaveRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Employee>()
+            .WithMany()
+            .HasForeignKey(x => x.SenderEmployeeId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

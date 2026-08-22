@@ -252,6 +252,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<LeaveRequestDocument> LeaveRequestDocuments => Set<LeaveRequestDocument>();
     public DbSet<LeaveApprovalDelegate> LeaveApprovalDelegates => Set<LeaveApprovalDelegate>();
     public DbSet<LeaveBalanceAudit> LeaveBalanceAudits => Set<LeaveBalanceAudit>();
+    public DbSet<LeaveRequestInfoMessage> LeaveRequestInfoMessages => Set<LeaveRequestInfoMessage>();
 
     // Storage - EntityAssets (Phase 1 entity_assets, scoped to owner_type "project" for now)
     public DbSet<EntityAsset> EntityAssets => Set<EntityAsset>();

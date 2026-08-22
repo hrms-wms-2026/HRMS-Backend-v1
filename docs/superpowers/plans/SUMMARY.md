@@ -2,7 +2,7 @@
 
 **Purpose:** Dated implementation plans, one per feature/fix, following the header format in the `writing-plans` skill (Goal / Architecture / Tech Stack / Global Constraints / numbered tasks with checkboxes). Restructured on 2026-08-06 into `finished/` and `next/` — see `docs/superpowers/rules/FILE_CREATION_RULES.md` for the full file-creation/organization rule this follows.
 
-**Last updated:** 2026-08-21
+**Last updated:** 2026-08-23
 
 ## Layout
 
@@ -46,7 +46,7 @@
 | `2026-08-12-milestone-to-module-display-rename.md` | `next/` | pending (not started) |
 | `2026-08-16-multi-legal-entity-employment-foundation/` (3 parts) | `finished/2026-08-16/` | finished |
 | `2026-08-16-employee-detail-screen-backend.md` | `next/` | pending (not started) |
-| `2026-08-21-leave-management/` (Parts 1-4 executed, Part 5 written) | `next/` | Phase 0+1 through Phase 4 executed; Part 4 live Docker smoke pending; Phase 5 written; Phases 6-9 pending |
+| `2026-08-21-leave-management/` (Parts 1-5 executed, Part 6 written) | `next/` | Phase 0+1 through Phase 5 executed; Parts 4-5 live Docker smoke pending; Phase 6 written; Phases 7-9 pending |
 
 See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all files in that folder (kept short here to avoid duplicating the same list twice).
 
