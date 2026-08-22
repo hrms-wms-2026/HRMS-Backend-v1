@@ -5,6 +5,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 
@@ -15,17 +16,20 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
+    private readonly IProjectRepository _projects;
     private readonly ITaskStatusRepository _statuses;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMilestoneMembershipCoordinator _membership;
 
     public ReorderTaskStatusesCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        ITaskStatusRepository statuses, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
+        IProjectRepository projects, ITaskStatusRepository statuses, IUnitOfWork unitOfWork,
+        IMilestoneMembershipCoordinator membership)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
+        _projects = projects;
         _statuses = statuses;
         _unitOfWork = unitOfWork;
         _membership = membership;
@@ -41,12 +45,16 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
         if (callerEmployeeId is null)
             return Result<IReadOnlyList<TaskStatusResponse>>.Forbidden("No employee record for the current user.");
 
-        var objective = await _objectives.GetByIdForTenantAsync(tenantId, request.ObjectiveId, ct);
-        if (objective is null || !objective.IsActive)
-            return Result<IReadOnlyList<TaskStatusResponse>>.NotFound("Objective not found.");
+        var project = await _projects.GetByIdForTenantAsync(tenantId, request.ProjectId, ct);
+        if (project is null || !project.IsActive)
+            return Result<IReadOnlyList<TaskStatusResponse>>.NotFound("Project not found.");
 
-        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
-            return Result<IReadOnlyList<TaskStatusResponse>>.Forbidden("Only this milestone's owner can restructure the board.");
+        var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
+        if (defaultObjective is null)
+            return Result<IReadOnlyList<TaskStatusResponse>>.NotFound("Project has no default milestone.");
+
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))
+            return Result<IReadOnlyList<TaskStatusResponse>>.Forbidden("Only an owner or member of this project can restructure the board.");
 
         // Defense in depth beyond the validator (which runs in the MediatR pipeline in production,
         // but not when a test calls Handle directly) - exactly one complete status, always.
@@ -59,7 +67,7 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
         if (request.Updates.Select(u => u.StatusId).Distinct().Count() != request.Updates.Count)
             return Result<IReadOnlyList<TaskStatusResponse>>.Failure("Updates must not contain duplicate status IDs.", 422);
 
-        var existing = await _statuses.GetByObjectiveIdAsync(tenantId, objective.Id, ct);
+        var existing = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
         var byId = existing.ToDictionary(s => s.Id);
 
         foreach (var update in request.Updates)

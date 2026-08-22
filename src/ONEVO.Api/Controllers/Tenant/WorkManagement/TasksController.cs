@@ -109,13 +109,13 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    [HttpPost("objectives/{objectiveId:guid}/task-statuses/reorder")]
+    [HttpPost("projects/{projectId:guid}/task-statuses/reorder")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> ReorderStatuses(
-        Guid objectiveId, [FromBody] ReorderTaskStatusesRequest request, CancellationToken ct)
+        Guid projectId, [FromBody] ReorderTaskStatusesRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new ReorderTaskStatusesCommand(
-            objectiveId,
+            projectId,
             request.Updates.Select(u => new TaskStatusOrderUpdate(
                 u.StatusId, u.DisplayOrder, u.Visibility, u.MarksTaskComplete)).ToList()), ct);
 
