@@ -25,7 +25,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyDeadlines;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskEditRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskCreationRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
-using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTaskStatuses;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTaskStatuses;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetWorkNotificationNavigation;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
@@ -86,10 +86,10 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    [HttpGet("objectives/{objectiveId:guid}/task-statuses")]
-    public async Task<IActionResult> GetStatuses(Guid objectiveId, CancellationToken ct)
+    [HttpGet("projects/{projectId:guid}/task-statuses")]
+    public async Task<IActionResult> GetStatuses(Guid projectId, CancellationToken ct)
     {
-        var result = await _mediator.Send(new GetObjectiveTaskStatusesQuery(objectiveId), ct);
+        var result = await _mediator.Send(new GetProjectTaskStatusesQuery(projectId), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.Select(s => s.ToViewModel()).ToList())
