@@ -21,7 +21,7 @@ public class RequestAllocationExtensionCommandHandlerTests
     private static readonly Guid ReportingManagerId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
 
-    private (RequestAllocationExtensionCommandHandler Handler, Mock<IObjectiveChangeRequestRepository> Requests) Build(Guid? reportingManagerId)
+    private (RequestAllocationExtensionCommandHandler Handler, Mock<IObjectiveChangeRequestRepository> Requests, Mock<ONEVO.Application.Features.WorkManagement.Objectives.Services.IMilestoneMembershipCoordinator> Membership) Build(Guid? reportingManagerId, bool? callerIsEffectiveManager = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -43,6 +43,12 @@ public class RequestAllocationExtensionCommandHandlerTests
 
         var requests = new Mock<IObjectiveChangeRequestRepository>();
         var membership = new Mock<ONEVO.Application.Features.WorkManagement.Objectives.Services.IMilestoneMembershipCoordinator>();
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
+        // separately in MilestoneMembershipCoordinatorTests).
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (objective.OwnerId == EmployeeId));
         var notifications = new Mock<INotificationDispatcher>();
 
         var unitOfWork = new Mock<IUnitOfWork>();
@@ -52,13 +58,13 @@ public class RequestAllocationExtensionCommandHandlerTests
         var handler = new RequestAllocationExtensionCommandHandler(
             currentUser.Object, identity.Object, objectives.Object, requests.Object,
             membership.Object, notifications.Object, unitOfWork.Object);
-        return (handler, requests);
+        return (handler, requests, membership);
     }
 
     [Fact]
     public async Task Handle_HasReportingManager_CreatesPendingRequest()
     {
-        var (handler, requests) = Build(reportingManagerId: ReportingManagerId);
+        var (handler, requests, _) = Build(reportingManagerId: ReportingManagerId);
         var command = new RequestAllocationExtensionCommand(ObjectiveId, 20m, "Need more hours for the new scope");
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -74,7 +80,7 @@ public class RequestAllocationExtensionCommandHandlerTests
     [Fact]
     public async Task Handle_RootObjectiveNoReportingManager_ReturnsBadRequest()
     {
-        var (handler, requests) = Build(reportingManagerId: null);
+        var (handler, requests, _) = Build(reportingManagerId: null);
         var command = new RequestAllocationExtensionCommand(ObjectiveId, 20m, "reason");
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -82,5 +88,25 @@ public class RequestAllocationExtensionCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
         requests.Verify(x => x.AddAsync(It.IsAny<ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsEffectiveManagerViaCascade_CreatesPendingRequest()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (cascade) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
+        // this only proves the handler defers to its answer instead of the direct OwnerId check.
+        var (handler, requests, _) = Build(reportingManagerId: ReportingManagerId, callerIsEffectiveManager: true);
+        var command = new RequestAllocationExtensionCommand(ObjectiveId, 20m, "Need more hours for the new scope");
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        requests.Verify(x => x.AddAsync(
+            It.Is<ObjectiveChangeRequest>(
+                r => r.RequestType == ObjectiveChangeRequestTypes.ExtendAllocation
+                     && r.ReportingManagerId == ReportingManagerId),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }
