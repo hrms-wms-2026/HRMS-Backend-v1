@@ -282,8 +282,6 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
             await _objectives.AddAsync(defaultObjective, ct);
             await _taskStatuses.AddRangeAsync(
                 DefaultTaskStatusTemplate.BuildRows(tenantId, project.Id, objectiveId: null, userId, now), ct);
-            await _taskStatuses.AddRangeAsync(
-                DefaultTaskStatusTemplate.BuildRows(tenantId, project.Id, objectiveId: defaultObjective.Id, userId, now), ct);
             await _members.AddAsync(creatorMembership, ct);
             await _versions.AddAsync(defaultVersion, ct);
             await _releaseCalendar.AddAsync(releaseReminder, ct);

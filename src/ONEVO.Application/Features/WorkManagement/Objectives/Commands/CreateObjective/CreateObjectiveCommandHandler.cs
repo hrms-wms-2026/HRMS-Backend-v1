@@ -9,8 +9,6 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
@@ -26,12 +24,11 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IPermissionAutoGrantService _autoGrant;
     private readonly IProjectMemberInvitationRepository _invitations;
-    private readonly ITaskStatusRepository _taskStatuses;
 
     public CreateObjectiveCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives, IUnitOfWork unitOfWork,
         IMilestoneMembershipCoordinator membership, IPermissionAutoGrantService autoGrant,
-        IProjectMemberInvitationRepository invitations, ITaskStatusRepository taskStatuses)
+        IProjectMemberInvitationRepository invitations)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -40,7 +37,6 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
         _membership = membership;
         _autoGrant = autoGrant;
         _invitations = invitations;
-        _taskStatuses = taskStatuses;
     }
 
     public async Task<Result<ObjectiveDetailResponse>> Handle(CreateObjectiveCommand request, CancellationToken ct)
@@ -125,8 +121,6 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
             };
 
             await _objectives.AddAsync(objective, innerCt);
-            await _taskStatuses.AddRangeAsync(
-                DefaultTaskStatusTemplate.BuildRows(tenantId, objective.ProjectId, objectiveId: objective.Id, userId, now), innerCt);
             await _membership.UpsertMembershipAsync(tenantId, objective.ProjectId, objective.Id, callerEmployeeId.Value, innerCt);
             await _autoGrant.EnsureGrantedAsync(tenantId, userId, userId, "projects:access", innerCt);
 

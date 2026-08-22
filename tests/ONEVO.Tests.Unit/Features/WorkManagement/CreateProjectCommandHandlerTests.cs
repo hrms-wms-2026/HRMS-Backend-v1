@@ -110,25 +110,20 @@ public class CreateProjectCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ValidRequest_SeedsProjectAndDefaultObjectiveTaskStatuses()
+    public async Task Handle_ValidRequest_SeedsOnlyProjectTemplateTaskStatuses()
     {
         var setup = BuildHandler();
 
         var result = await setup.Handler.Handle(ValidCommand(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        var defaultObjectiveId = result.Value!.DefaultObjective.Id;
         setup.TaskStatuses.Verify(x => x.AddRangeAsync(
             It.Is<IReadOnlyList<TaskStatusEntity>>(rows =>
                 rows.Count == 4 && rows.All(r => r.ObjectiveId == null)),
             It.IsAny<CancellationToken>()), Times.Once);
         setup.TaskStatuses.Verify(x => x.AddRangeAsync(
-            It.Is<IReadOnlyList<TaskStatusEntity>>(rows =>
-                rows.Count == 4 && rows.All(r => r.ObjectiveId == defaultObjectiveId)),
-            It.IsAny<CancellationToken>()), Times.Once);
-        setup.TaskStatuses.Verify(x => x.AddRangeAsync(
             It.IsAny<IReadOnlyList<TaskStatusEntity>>(),
-            It.IsAny<CancellationToken>()), Times.Exactly(2));
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
