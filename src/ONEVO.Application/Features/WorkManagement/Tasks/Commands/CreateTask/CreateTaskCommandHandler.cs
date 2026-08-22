@@ -69,7 +69,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         if (project is null || !project.IsActive)
             return Result<WorkTaskResponse>.NotFound("Project not found.");
 
-        var statuses = await _statuses.GetByObjectiveIdAsync(tenantId, objective.Id, ct);
+        var statuses = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
         var defaultStatus = statuses.Where(s => !s.MarksTaskComplete).OrderBy(s => s.DisplayOrder).FirstOrDefault();
         if (defaultStatus is null)
             return Result<WorkTaskResponse>.Failure("No task statuses configured for this milestone yet.", 422);

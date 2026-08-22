@@ -95,7 +95,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
                     InsufficientAllocationResponseJson.Serialize(new InsufficientAllocationResponse(slack)));
         }
 
-        var statuses = await _statuses.GetByObjectiveIdAsync(tenantId, objective.Id, ct);
+        var statuses = await _statuses.GetProjectTemplateAsync(tenantId, objective.ProjectId, ct);
         var defaultStatus = statuses.Where(s => !s.MarksTaskComplete).OrderBy(s => s.DisplayOrder).FirstOrDefault();
         if (defaultStatus is null)
             return Result<WorkTaskResponse>.Failure("No task statuses configured for this milestone yet.", 422);

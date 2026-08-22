@@ -86,7 +86,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
             .ReturnsAsync(existingTaskSum);
 
         var statuses = new Mock<ITaskStatusRepository>();
-        statuses.Setup(x => x.GetByObjectiveIdAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+        statuses.Setup(x => x.GetProjectTemplateAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<TaskStatusEntity>
             {
                 new() { Id = DefaultStatusId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, Name = "To Do", DisplayOrder = 0, CreatedAt = DateTimeOffset.UtcNow }
