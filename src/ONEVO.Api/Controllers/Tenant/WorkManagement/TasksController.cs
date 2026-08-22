@@ -96,12 +96,12 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    [HttpPost("objectives/{objectiveId:guid}/task-statuses")]
+    [HttpPost("projects/{projectId:guid}/task-statuses")]
     [RequirePermission("projects:access")]
-    public async Task<IActionResult> CreateStatus(Guid objectiveId, [FromBody] CreateTaskStatusRequest request, CancellationToken ct)
+    public async Task<IActionResult> CreateStatus(Guid projectId, [FromBody] CreateTaskStatusRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateTaskStatusCommand(
-            objectiveId, request.Name, request.DisplayOrder, request.Visibility, request.MarksTaskComplete,
+            projectId, request.Name, request.DisplayOrder, request.Visibility, request.MarksTaskComplete,
             request.RequiresApproval, request.ApproverId), ct);
 
         return result.IsSuccess
