@@ -89,8 +89,9 @@ public static class ActivityDailySummaryAggregator
             FocusMinutes = focusMinutes,
             ActivityScore = activityScore,
             DataCoveragePercentage = dataCoverage,
-            TopAppsJson = ComputeTopAppsJson(ordered),
-            TopAppsJson = topAppsJson,
+            // Prefer dedicated app-usage samples; fall back to activity snapshots
+            // so the daily report still has TopApps when app-usage is empty.
+            TopAppsJson = topAppsJson != "[]" ? topAppsJson : ComputeTopAppsJson(ordered),
             IntensityAvg = intensityAvg,
             KeyboardTotal = keyboardTotal,
             MouseTotal = mouseTotal,
@@ -127,10 +128,15 @@ public static class ActivityDailySummaryAggregator
         }
 
         var topApps = byProcess.Take(TopAppsLimit)
-            .Select(x => new { process = x.Process, minutes = x.Minutes });
-        var topAppsJson = JsonSerializer.Serialize(topApps);
+            .Select(x => new AppUsageSummary
+            {
+                AppName = x.Process,
+                TotalSeconds = x.Minutes * 60,
+                Category = AppCategoryClassifier.Classify(x.Process).ToString()
+            })
+            .ToList();
 
-        return (productive, personal, unknown, topAppsJson);
+        return (productive, personal, unknown, JsonSerializer.Serialize(topApps));
     }
 
     /// <summary>

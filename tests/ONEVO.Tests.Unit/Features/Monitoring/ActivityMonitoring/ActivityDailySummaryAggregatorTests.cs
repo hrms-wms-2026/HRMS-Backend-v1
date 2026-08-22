@@ -150,6 +150,8 @@ public class ActivityDailySummaryAggregatorTests
         var idleSummary = ActivityDailySummaryAggregator.Aggregate(
             Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), idleOnly, baseTime);
         idleSummary.TopAppsJson.Should().Be("[]");
+    }
+
     private static AppUsageSnapshot AppUsage(string? processName, DateTimeOffset capturedAt) => new()
     {
         Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), EmployeeId = Guid.NewGuid(), AgentDeviceId = Guid.NewGuid(),
@@ -181,7 +183,9 @@ public class ActivityDailySummaryAggregatorTests
         summary.ProductiveAppMinutes.Should().Be(2);
         summary.PersonalAppMinutes.Should().Be(1);
         summary.UnknownAppMinutes.Should().Be(1);
-        summary.TopAppsJson.Should().Contain("code.exe");
+
+        var topApps = System.Text.Json.JsonSerializer.Deserialize<List<AppUsageSummary>>(summary.TopAppsJson)!;
+        topApps.Should().Contain(a => a.AppName == "code.exe" && a.TotalSeconds == 120);
     }
 
     [Fact]
