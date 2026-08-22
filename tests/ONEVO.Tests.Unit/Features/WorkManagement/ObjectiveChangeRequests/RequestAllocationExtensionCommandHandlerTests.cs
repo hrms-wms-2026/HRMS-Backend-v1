@@ -109,4 +109,21 @@ public class RequestAllocationExtensionCommandHandlerTests
                      && r.ReportingManagerId == ReportingManagerId),
             It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task Handle_CallerNotEffectiveManager_ReturnsForbidden()
+    {
+        // Caller is neither this objective's own OwnerId nor an effective manager via any cascade.
+        // Verifies that when IsEffectiveManagerAsync returns false, the handler correctly rejects
+        // the request with Forbidden.
+        var (handler, requests, _) = Build(reportingManagerId: ReportingManagerId, callerIsEffectiveManager: false);
+        var command = new RequestAllocationExtensionCommand(ObjectiveId, 20m, "Need more hours for the new scope");
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal("Only this milestone's owner can request an allocation extension.", result.Error);
+        requests.Verify(x => x.AddAsync(It.IsAny<ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }
