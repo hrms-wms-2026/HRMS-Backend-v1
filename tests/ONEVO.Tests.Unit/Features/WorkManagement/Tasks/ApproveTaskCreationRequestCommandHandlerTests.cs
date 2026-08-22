@@ -47,8 +47,10 @@ public class ApproveTaskCreationRequestCommandHandlerTests
     };
 
     private (ApproveTaskCreationRequestCommandHandler Handler, Mock<IWorkTaskRepository> Tasks, Mock<ITaskCreationRequestRepository> Requests) BuildApprove(
-        decimal allocatedHours, decimal existingTaskSum, decimal requestedHours, Guid? callerEmployeeId = null, bool sprintLess = false)
+        decimal allocatedHours, decimal existingTaskSum, decimal requestedHours, Guid? callerEmployeeId = null, bool sprintLess = false,
+        bool? callerIsEffectiveManager = null)
     {
+        var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
@@ -56,7 +58,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
 
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerEmployeeId ?? OwnerEmployeeId);
+            .ReturnsAsync(resolvedCallerEmployeeId);
 
         var pendingRequest = PendingRequest(requestedHours, sprintLess);
         var requests = new Mock<ITaskCreationRequestRepository>();
@@ -92,6 +94,11 @@ public class ApproveTaskCreationRequestCommandHandlerTests
 
         var slack = new ObjectiveAllocationSlackCalculator(objectives.Object, tasks.Object);
         var membership = new Mock<IMilestoneMembershipCoordinator>();
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant.
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (objective.OwnerId == resolvedCallerEmployeeId));
         var notifications = new Mock<INotificationDispatcher>();
         var sprints = new Mock<ISprintRepository>();
         sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
@@ -146,6 +153,23 @@ public class ApproveTaskCreationRequestCommandHandlerTests
         Assert.Equal(403, result.StatusCode);
         tasks.Verify(x => x.AddAsync(It.IsAny<WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
         requests.Verify(x => x.Update(It.IsAny<TaskCreationRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsEffectiveManagerNotOwner_ApprovesAndCreatesTask()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately, so this only proves the handler defers to
+        // its answer instead of the direct OwnerId check.
+        var (handler, tasks, requests) = BuildApprove(
+            allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m,
+            callerEmployeeId: OtherEmployeeId, callerIsEffectiveManager: true);
+        var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        tasks.Verify(x => x.AddAsync(It.IsAny<WorkTask>(), It.IsAny<CancellationToken>()), Times.Once);
+        requests.Verify(x => x.Update(It.Is<TaskCreationRequest>(r => r.Status == TaskCreationRequestStatuses.Approved)), Times.Once);
     }
 
     [Fact]
