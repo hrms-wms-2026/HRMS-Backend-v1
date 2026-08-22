@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
@@ -17,11 +18,15 @@ public class DeleteTaskStatusCommandHandlerTests
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
     private static readonly Guid OwnerEmployeeId = Guid.NewGuid();
+    private static readonly Guid OtherEmployeeId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid StatusId = Guid.NewGuid();
 
-    private (DeleteTaskStatusCommandHandler Handler, Mock<ITaskStatusRepository> Statuses) Build(bool anyTasksInStatus)
+    private (DeleteTaskStatusCommandHandler Handler, Mock<ITaskStatusRepository> Statuses) Build(
+        bool anyTasksInStatus, Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null)
     {
+        var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
+
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
@@ -29,7 +34,7 @@ public class DeleteTaskStatusCommandHandlerTests
 
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(OwnerEmployeeId);
+            .ReturnsAsync(resolvedCallerEmployeeId);
 
         var status = new TaskStatusEntity { Id = StatusId, TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "Blocked", CreatedAt = DateTimeOffset.UtcNow };
         var statuses = new Mock<ITaskStatusRepository>();
@@ -47,7 +52,15 @@ public class DeleteTaskStatusCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var handler = new DeleteTaskStatusCommandHandler(currentUser.Object, identity.Object, objectives.Object, statuses.Object, tasks.Object, unitOfWork.Object);
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
+        // separately in MilestoneMembershipCoordinatorTests).
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
+
+        var handler = new DeleteTaskStatusCommandHandler(currentUser.Object, identity.Object, objectives.Object, statuses.Object, tasks.Object, unitOfWork.Object, membership.Object);
         return (handler, statuses);
     }
 
@@ -72,5 +85,32 @@ public class DeleteTaskStatusCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
         statuses.Verify(x => x.Remove(It.IsAny<TaskStatusEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NotOwner_ReturnsForbidden()
+    {
+        var (handler, statuses) = Build(anyTasksInStatus: false, callerEmployeeId: OtherEmployeeId);
+
+        var result = await handler.Handle(new DeleteTaskStatusCommand(StatusId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        statuses.Verify(x => x.Remove(It.IsAny<TaskStatusEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsEffectiveManagerViaAncestor_RemovesIt()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
+        // this only proves the handler defers to its answer instead of the direct OwnerId check.
+        var (handler, statuses) = Build(anyTasksInStatus: false, callerEmployeeId: OtherEmployeeId, callerIsEffectiveManager: true);
+
+        var result = await handler.Handle(new DeleteTaskStatusCommand(StatusId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        statuses.Verify(x => x.Remove(It.Is<TaskStatusEntity>(s => s.Id == StatusId)), Times.Once);
     }
 }

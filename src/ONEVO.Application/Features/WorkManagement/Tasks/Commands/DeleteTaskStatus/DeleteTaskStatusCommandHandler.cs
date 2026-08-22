@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
@@ -16,10 +17,12 @@ public class DeleteTaskStatusCommandHandler : IRequestHandler<DeleteTaskStatusCo
     private readonly ITaskStatusRepository _statuses;
     private readonly IWorkTaskRepository _tasks;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMilestoneMembershipCoordinator _membership;
 
     public DeleteTaskStatusCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        ITaskStatusRepository statuses, IWorkTaskRepository tasks, IUnitOfWork unitOfWork)
+        ITaskStatusRepository statuses, IWorkTaskRepository tasks, IUnitOfWork unitOfWork,
+        IMilestoneMembershipCoordinator membership)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -27,6 +30,7 @@ public class DeleteTaskStatusCommandHandler : IRequestHandler<DeleteTaskStatusCo
         _statuses = statuses;
         _tasks = tasks;
         _unitOfWork = unitOfWork;
+        _membership = membership;
     }
 
     public async Task<Result> Handle(DeleteTaskStatusCommand request, CancellationToken ct)
@@ -47,7 +51,7 @@ public class DeleteTaskStatusCommandHandler : IRequestHandler<DeleteTaskStatusCo
         if (objective is null || !objective.IsActive)
             return Result.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result.Forbidden("Only this milestone's owner can delete task statuses.");
 
         if (await _tasks.AnyActiveByStatusIdAsync(tenantId, status.Id, ct))
