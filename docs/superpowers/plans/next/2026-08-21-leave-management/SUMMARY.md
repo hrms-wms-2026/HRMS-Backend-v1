@@ -4,7 +4,7 @@
 **Companion (frontend):** `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-08-21-leave-management/SUMMARY.md`
 **Source of truth for product behaviour:** `C:\HR\leave-management-complete.md`
 
-This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`), Phase 2 (`part-2-leave-policies.md`), and Phase 3 (`part-3-entitlements-and-balances.md`) — later phases are scoped here (entities/endpoints/files/dependencies/exit-criteria) but not yet broken into bite-sized TDD steps. Write each remaining part's full TDD file when that phase starts, following `part-1`'s pattern.
+This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`), Phase 2 (`part-2-leave-policies.md`), Phase 3 (`part-3-entitlements-and-balances.md`), Phase 4 (`part-4-request-submission.md`), and Phase 5 (`part-5-approval-workflow.md`) — later phases are scoped here (entities/endpoints/files/dependencies/exit-criteria) but not yet broken into bite-sized TDD steps. Write each remaining part's full TDD file when that phase starts, following `part-1`'s pattern.
 
 **Every phase's exit criteria includes a live run against the real dev DB** (`DevSmokeTestTenantSeeder`'s acme/dapi tenants), not just a green test suite — see the design doc's Testing note.
 
@@ -49,12 +49,16 @@ This is a 10-phase build (0-9), one deliverable slice per phase, backend and fro
 
 ## Phase 4 — Leave Request Submission (Screen 5)
 
+**Status:** written in full — **executed 2026-08-22** on `feat/leave-management-part-4` (unit + architecture verified; live Docker smoke pending). Own submit + preview + HR on-behalf + own list. Pending reserves `PaidDays` only. Cross-year blocked. Half-day `am`/`pm` same-day only. No appsettings escalation owner. Calendar writer not called.
+
 - Backend: `LeaveRequestsController` (`/api/v1/leave/requests`) — Create (half-day, notice-period check, blackout check, overlap check, insufficient-balance + paid/unpaid split, document-required-after-N-days, conflict snapshot from existing Calendar module), List own. Approver resolution: reporting line → team lead → department owner → named person → permission → escalation owner (spec §5) — a dedicated `ILeaveApproverResolver` service, since Phase 5 needs the same resolution logic.
 - Frontend: `leave-request.model.ts`, `leave-request-api.service.ts` (extends `leave.store.ts`), `new-request` feature (5-step form matching Screen 5), wired as a modal/route from `/time-off`.
 - **Depends on:** Phase 3 (balance preview), existing Calendar module (`calendar:read`, conflict detection).
 - **Blocks:** Phase 5, 6, 7.
 
 ## Phase 5 — Approval workflow (Screens 6 & 8)
+
+**Status:** written in full — pending execution (`part-5-approval-workflow.md`). Approval behavior is transactional and outbox-driven: approval moves paid days from pending to used, rejection releases pending paid days, request-info pauses/resumes through stored info messages, self-approval is config-driven, and every new leave side-effect outbox type has a registered handler.
 
 - Backend: `LeaveApprovalsController` (`/api/v1/leave/requests/{id}/approve|reject|request-info`, bulk variants) — approval-mode enforcement (any-one/all/in-order), self-approval block, delegate resolution, current-vs-submission conflict re-check. **Outbox-pattern side effects** (per architecture skill's "Outbox Pattern (required for side effects)" rule): calendar confirm, Workforce Presence "On Leave", payroll deduction flag (unpaid days), notify — saved in the same transaction as the approve, published by the background worker, never called directly from the controller. Spec §5's failure-recovery table (calendar stale / no approver / card not delivered / attendance fails / payroll missing) becomes the integration test matrix for the outbox consumer.
 - Frontend: `pending-approvals` feature (`/time-off/team`), `requests-list` (HR, `/time-off/all`), approval detail sheet with conflict/coverage/history panels matching Screen 8.

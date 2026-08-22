@@ -186,6 +186,23 @@ public static class DependencyInjection
             .Validate(options => options.MinimumYear > 0, "Leave entitlement minimum year must be configured.")
             .Validate(options => options.MaximumYear >= options.MinimumYear, "Leave entitlement maximum year must be after the minimum year.")
             .ValidateOnStart();
+        services.AddOptions<ONEVO.Application.Features.Leave.Request.Options.LeaveRequestOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Request.Options.LeaveRequestOptions.SectionName))
+            .Validate(options => options.MaximumRequestRangeDays > 0, "Leave request maximum range days must be configured.")
+            .ValidateOnStart();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Request.EfLeaveRequestRepository>();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestDayCalculator>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveHolidayProvider,
+            ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveHolidayProvider>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveRequestConflictProvider,
+            ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveRequestConflictProvider>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveApproverResolver,
+            ONEVO.Application.Features.Leave.Request.Services.LeaveApproverResolver>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveTeamAbsenceWarningService,
+            ONEVO.Application.Features.Leave.Request.Services.LeaveTeamAbsenceWarningService>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.LeaveRequestSubmissionEvaluator>();
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
         services.AddScoped<
