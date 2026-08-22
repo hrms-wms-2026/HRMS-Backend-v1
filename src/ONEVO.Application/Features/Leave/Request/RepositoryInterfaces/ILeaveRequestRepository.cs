@@ -44,6 +44,7 @@ public sealed record LeaveRequestWriteSet(
     LeaveRequest Request,
     IReadOnlyList<LeaveRequestApprover> Approvers,
     IReadOnlyList<LeaveRequestDocument> Documents,
+    IReadOnlyList<LeaveRequestDayAllocation> DayAllocations,
     LeaveEntitlement Entitlement);
 
 public sealed record LeaveRequestListFilter(

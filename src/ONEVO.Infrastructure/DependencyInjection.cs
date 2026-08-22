@@ -210,6 +210,18 @@ public static class DependencyInjection
             ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Approval.EfLeaveApprovalRepository>();
         services.AddScoped<ONEVO.Application.Features.Leave.Approval.Commands.LeaveApprovalDecisionService>();
+        services.AddOptions<ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions.SectionName))
+            .Validate(
+                options => ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions.IsValidTimezone(options.FallbackTimezone),
+                "Leave:Cancellation:FallbackTimezone must be a valid timezone id.")
+            .ValidateOnStart();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Cancellation.Helpers.LeaveCancellationClassifier>();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Cancellation.Helpers.LeaveRequestDayAllocationBuilder>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Cancellation.Helpers.LeaveBusinessDateResolver>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Cancellation.RepositoryInterfaces.ILeaveCancellationRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Cancellation.EfLeaveCancellationRepository>();
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
         services.AddScoped<

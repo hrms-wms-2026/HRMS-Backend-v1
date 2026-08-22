@@ -113,6 +113,24 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "leave_request_next_approval_required",
                 InAppTitleTemplate = "Leave approval required",
                 InAppBodyTemplate = "{{employeeName}} requested {{leaveTypeName}} from {{startDate}} to {{endDate}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_cancelled_by_employee",
+                InAppTitleTemplate = "Leave cancelled",
+                InAppBodyTemplate = "{{employeeName}} cancelled {{leaveTypeName}} from {{startDate}} to {{endDate}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_cancelled_by_hr",
+                InAppTitleTemplate = "Leave cancelled by HR",
+                InAppBodyTemplate = "{{cancelledByName}} cancelled your {{leaveTypeName}} from {{startDate}} to {{endDate}}. {{reason}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_partially_cancelled",
+                InAppTitleTemplate = "Leave partially cancelled",
+                InAppBodyTemplate = "{{leaveTypeName}} from {{effectiveDate}} to {{endDate}} was cancelled. {{restoredDays}} days restored."
             }
         };
 

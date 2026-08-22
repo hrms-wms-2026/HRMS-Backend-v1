@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Leave.Cancellation.Helpers;
 using ONEVO.Application.Features.Leave.Request.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Request.Helpers;
 using ONEVO.Application.Features.Leave.Request.Mappers;
@@ -18,17 +19,20 @@ public sealed class SubmitLeaveRequestCommandHandler
     private readonly IDateTimeProvider _clock;
     private readonly LeaveRequestSubmissionEvaluator _evaluator;
     private readonly ILeaveRequestRepository _requests;
+    private readonly LeaveRequestDayAllocationBuilder _allocationBuilder;
 
     public SubmitLeaveRequestCommandHandler(
         ICurrentUser currentUser,
         IDateTimeProvider clock,
         LeaveRequestSubmissionEvaluator evaluator,
-        ILeaveRequestRepository requests)
+        ILeaveRequestRepository requests,
+        LeaveRequestDayAllocationBuilder allocationBuilder)
     {
         _currentUser = currentUser;
         _clock = clock;
         _evaluator = evaluator;
         _requests = requests;
+        _allocationBuilder = allocationBuilder;
     }
 
     public async Task<Result<LeaveRequestResponse>> Handle(SubmitLeaveRequestCommand command, CancellationToken ct)
@@ -97,12 +101,20 @@ public sealed class SubmitLeaveRequestCommandHandler
             FileRecordId = fileId
         }).ToList();
 
+        var allocationDrafts = _allocationBuilder.Build(
+            draft.CountedDates,
+            command.HalfDayPeriod,
+            draft.PaidDays,
+            draft.UnpaidDays);
+        var dayAllocations = _allocationBuilder.ToEntities(
+            _currentUser.TenantId, requestId, allocationDrafts, now);
+
         var pendingBeforeSubmit = draft.Entitlement.PendingDays;
 
         try
         {
             await _requests.AddPendingRequestAsync(
-                new LeaveRequestWriteSet(request, approvers, documents, draft.Entitlement), ct);
+                new LeaveRequestWriteSet(request, approvers, documents, dayAllocations, draft.Entitlement), ct);
         }
         catch (InvalidOperationException ex) when (ex.Message == LeaveRequestMessages.Overlap)
         {

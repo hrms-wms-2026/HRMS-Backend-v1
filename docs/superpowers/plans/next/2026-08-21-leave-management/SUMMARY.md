@@ -4,7 +4,7 @@
 **Companion (frontend):** `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-08-21-leave-management/SUMMARY.md`
 **Source of truth for product behaviour:** `C:\HR\leave-management-complete.md`
 
-This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`), Phase 2 (`part-2-leave-policies.md`), Phase 3 (`part-3-entitlements-and-balances.md`), Phase 4 (`part-4-request-submission.md`), Phase 5 (`part-5-approval-workflow.md`), and Phase 6 (`part-6-cancellation.md`) — later phases are scoped here (entities/endpoints/files/dependencies/exit-criteria) but not yet broken into bite-sized TDD steps. Write each remaining part's full TDD file when that phase starts, following `part-1`'s pattern.
+This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`), Phase 2 (`part-2-leave-policies.md`), Phase 3 (`part-3-entitlements-and-balances.md`), Phase 4 (`part-4-request-submission.md`), Phase 5 (`part-5-approval-workflow.md`), Phase 6 (`part-6-cancellation.md`), and Phase 7 (`part-7-team-calendar.md`) — later phases are scoped here (entities/endpoints/files/dependencies/exit-criteria) but not yet broken into bite-sized TDD steps. Write each remaining part's full TDD file when that phase starts, following `part-1`'s pattern.
 
 **Every phase's exit criteria includes a live run against the real dev DB** (`DevSmokeTestTenantSeeder`'s acme/dapi tenants), not just a green test suite — see the design doc's Testing note.
 
@@ -67,7 +67,7 @@ This is a 10-phase build (0-9), one deliverable slice per phase, backend and fro
 
 ## Phase 6 — Cancellation (Screen 9)
 
-**Status:** written in full — pending execution (`part-6-cancellation.md`). Cancellation behavior is transactional and outbox-driven: pending/information-requested cancellation releases pending paid-day reservations without a balance audit row, approved cancellation restores used paid days with one `Adjustment` audit row, partial in-progress cancellation restores only stored future paid allocation units, HR cancellation requires a reason, employee reason is config-driven, business date comes from legal-entity timezone plus validated fallback config, and stale writes return the product refresh message through `xmin` concurrency.
+**Status:** written in full — **executed 2026-08-22** on `feat/leave-management-part-6` (unit + architecture verified; live Docker smoke pending). Cancellation is transactional and outbox-driven: pending/information-requested cancellation releases pending paid-day reservations without a balance audit row, approved cancellation restores used paid days with one `Adjustment` audit row, partial in-progress cancellation restores only stored future paid allocation units, HR cancellation requires a reason, employee reason is config-driven, business date comes from legal-entity timezone plus validated fallback config, and stale writes return the product refresh message through `xmin` concurrency.
 
 - Backend: `POST /api/v1/leave/requests/{id}/cancel` — pending (release pending reservation, no used-balance audit) vs. approved (restore + audit `Adjustment` row + remove calendar/payroll flag through outbox) vs. partial (in-progress leave, only future stored allocations restored, effective-date default from business date). Adds request-day allocation storage so partial cancellation does not depend on recalculating changed working-day/holiday config. HR cancel requires reason; employee cancel reason optional unless configured.
 - Frontend: Cancel action on My Leave / All Requests rows, confirm dialog per spec's exact copy.
@@ -75,9 +75,11 @@ This is a 10-phase build (0-9), one deliverable slice per phase, backend and fro
 
 ## Phase 7 — Team Calendar (Screen 7)
 
-- Backend: `GET /api/v1/leave/calendar` — month view, who's off + type colour + public holidays, department filter. Reuses `LeaveRequest` + existing Calendar/holiday data; no new entity.
+**Status:** written in full — pending execution (`part-7-team-calendar.md`). Team Calendar is a read-only, scoped month projection over leave requests plus holiday provider data; `calendar:read` is required but not sufficient on its own, leave visibility still comes from `leave:read-own`, `leave:read-team`, `leave:read`, or `leave:manage`. Tentative blocks and type colors are config-driven; the plan deliberately avoids hard-coded display/business values.
+
+- Backend: `GET /api/v1/leave/calendar` — month view, who's off + type category/configured color + public holidays, department filter. Reuses `LeaveRequest`, `LeaveType`, employee scope data, and a holiday provider; no new calendar entity.
 - Frontend: `team-calendar` feature, wired to `/time-off/calendar`.
-- **Depends on:** Phase 4 (approved requests to display).
+- **Depends on:** Phase 4 request data. Phase 5 supplies approved/approval-state transitions; Phase 6 is not a calendar dependency, but the backend plan is partial-cancellation aware when those fields are present.
 
 ## Phase 8 — Balance Audit surfacing + bulk generate polish + year-end job
 

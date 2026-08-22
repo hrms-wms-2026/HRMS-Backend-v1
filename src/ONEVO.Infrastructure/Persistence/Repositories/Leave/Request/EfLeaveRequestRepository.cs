@@ -132,6 +132,7 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
         await _db.LeaveRequests.AddAsync(writeSet.Request, ct);
         await _db.LeaveRequestApprovers.AddRangeAsync(writeSet.Approvers, ct);
         await _db.LeaveRequestDocuments.AddRangeAsync(writeSet.Documents, ct);
+        await _db.LeaveRequestDayAllocations.AddRangeAsync(writeSet.DayAllocations, ct);
         await _db.SaveChangesAsync(ct);
 
         if (transaction is not null)

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Leave.Requests;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Features.Leave.Cancellation.Commands;
 using ONEVO.Application.Features.Leave.Request.Commands.SubmitLeaveRequest;
 using ONEVO.Application.Features.Leave.Request.Queries.ListMyLeaveRequests;
 using ONEVO.Application.Features.Leave.Request.Queries.PreviewSubmitLeaveRequest;
@@ -76,6 +77,21 @@ public sealed class LeaveRequestsController : ControllerBase
         CancellationToken ct)
     {
         var result = await _mediator.Send(new ListMyLeaveRequestsQuery(status, fromDate, toDate, leaveTypeId), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("{requestId:guid}/cancel")]
+    [RequireAnyPermission("leave:read-own", "leave:manage")]
+    public async Task<IActionResult> Cancel(
+        Guid requestId,
+        [FromBody] CancelLeaveRequestRequest? request,
+        CancellationToken ct)
+    {
+        var result = await _mediator.Send(new CancelLeaveRequestCommand(
+            requestId,
+            request?.Reason,
+            request?.EffectiveDate,
+            request?.ExpectedVersion), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }

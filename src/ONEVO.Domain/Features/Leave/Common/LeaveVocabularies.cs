@@ -46,6 +46,13 @@ public static class LeaveRequestApproverStatuses
     public const string Rejected = "rejected";
     public const string Skipped = "skipped";
     public const string InformationRequested = "information_requested";
+    public const string Cancelled = "cancelled";
+}
+
+public static class LeaveRequestDayAllocationStatuses
+{
+    public const string Active = "active";
+    public const string Cancelled = "cancelled";
 }
 
 public static class LeaveRequestStatuses

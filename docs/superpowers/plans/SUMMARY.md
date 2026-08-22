@@ -46,7 +46,7 @@
 | `2026-08-12-milestone-to-module-display-rename.md` | `next/` | pending (not started) |
 | `2026-08-16-multi-legal-entity-employment-foundation/` (3 parts) | `finished/2026-08-16/` | finished |
 | `2026-08-16-employee-detail-screen-backend.md` | `next/` | pending (not started) |
-| `2026-08-21-leave-management/` (Parts 1-5 executed, Part 6 written) | `next/` | Phase 0+1 through Phase 5 executed; Parts 4-5 live Docker smoke pending; Phase 6 written; Phases 7-9 pending |
+| `2026-08-21-leave-management/` (Parts 1-6 executed, Part 7 written) | `next/` | Phase 0+1 through Phase 6 executed; Parts 3-6 live Docker smoke pending; Phase 7 written; Phases 8-9 pending |
 
 See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all files in that folder (kept short here to avoid duplicating the same list twice).
 

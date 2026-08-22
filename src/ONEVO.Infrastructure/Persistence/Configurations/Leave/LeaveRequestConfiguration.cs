@@ -27,6 +27,12 @@ public class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRequest>
 
         builder.HasOne<LeaveType>().WithMany().HasForeignKey(r => r.LeaveTypeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Employee>().WithMany().HasForeignKey(r => r.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+
+        builder.Property<uint?>("xmin")
+            .HasColumnName("xmin")
+            .HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
     }
 }
 
@@ -93,5 +99,27 @@ public class LeaveRequestInfoMessageConfiguration : IEntityTypeConfiguration<Lea
             .WithMany()
             .HasForeignKey(x => x.SenderEmployeeId)
             .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class LeaveRequestDayAllocationConfiguration : IEntityTypeConfiguration<LeaveRequestDayAllocation>
+{
+    public void Configure(EntityTypeBuilder<LeaveRequestDayAllocation> builder)
+    {
+        builder.ToTable("leave_request_day_allocations");
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.DayUnit).HasColumnType("numeric(3,1)");
+        builder.Property(a => a.PaidUnit).HasColumnType("numeric(3,1)");
+        builder.Property(a => a.UnpaidUnit).HasColumnType("numeric(3,1)");
+        builder.Property(a => a.Status).HasMaxLength(20).IsRequired();
+        builder.HasIndex(a => new { a.TenantId, a.LeaveRequestId, a.LeaveDate })
+            .IsUnique()
+            .HasDatabaseName("ix_leave_request_day_allocations_tenant_request_date");
+        builder.HasIndex(a => new { a.TenantId, a.LeaveDate, a.Status })
+            .HasDatabaseName("ix_leave_request_day_allocations_tenant_date_status");
+        builder.HasOne<LeaveRequest>()
+            .WithMany()
+            .HasForeignKey(a => a.LeaveRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

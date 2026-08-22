@@ -25,6 +25,7 @@ public class LeaveRequestsControllerArchitectureTests
         Assert.Equal("leave:read-own", GetPermission(nameof(LeaveRequestsController.Preview)));
         Assert.Equal("leave:manage", GetPermission(nameof(LeaveRequestsController.SubmitOnBehalf)));
         Assert.Equal("leave:read-own", GetPermission(nameof(LeaveRequestsController.ListMine)));
+        Assert.Equal(["leave:read-own", "leave:manage"], GetAnyPermissions(nameof(LeaveRequestsController.Cancel)));
     }
 
     [Fact]
@@ -38,7 +39,7 @@ public class LeaveRequestsControllerArchitectureTests
     [Fact]
     public void RequestContracts_DoNotExposeTenantId()
     {
-        foreach (var contractType in new[] { typeof(SubmitLeaveRequestRequest), typeof(SubmitLeaveRequestOnBehalfRequest) })
+        foreach (var contractType in new[] { typeof(SubmitLeaveRequestRequest), typeof(SubmitLeaveRequestOnBehalfRequest), typeof(CancelLeaveRequestRequest) })
         {
             var names = contractType.GetProperties().Select(p => p.Name);
             Assert.DoesNotContain(names, n => string.Equals(n, "TenantId", StringComparison.OrdinalIgnoreCase));
@@ -53,5 +54,15 @@ public class LeaveRequestsControllerArchitectureTests
         var field = typeof(RequirePermissionAttribute)
             .GetField("_permission", BindingFlags.Instance | BindingFlags.NonPublic);
         return (string)field!.GetValue(attribute)!;
+    }
+
+    private static string[] GetAnyPermissions(string methodName)
+    {
+        var method = ControllerType.GetMethod(methodName);
+        var attribute = method!.GetCustomAttribute<RequireAnyPermissionAttribute>();
+        Assert.NotNull(attribute);
+        var field = typeof(RequireAnyPermissionAttribute)
+            .GetField("_permissions", BindingFlags.Instance | BindingFlags.NonPublic);
+        return (string[])field!.GetValue(attribute)!;
     }
 }
