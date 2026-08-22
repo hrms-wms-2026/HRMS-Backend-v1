@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 
@@ -16,16 +17,18 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
     private readonly IObjectiveRepository _objectives;
     private readonly ITaskStatusRepository _statuses;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMilestoneMembershipCoordinator _membership;
 
     public ReorderTaskStatusesCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        ITaskStatusRepository statuses, IUnitOfWork unitOfWork)
+        ITaskStatusRepository statuses, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _statuses = statuses;
         _unitOfWork = unitOfWork;
+        _membership = membership;
     }
 
     public async Task<Result<IReadOnlyList<TaskStatusResponse>>> Handle(ReorderTaskStatusesCommand request, CancellationToken ct)
@@ -42,7 +45,7 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
         if (objective is null || !objective.IsActive)
             return Result<IReadOnlyList<TaskStatusResponse>>.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<IReadOnlyList<TaskStatusResponse>>.Forbidden("Only this milestone's owner can restructure the board.");
 
         // Defense in depth beyond the validator (which runs in the MediatR pipeline in production,

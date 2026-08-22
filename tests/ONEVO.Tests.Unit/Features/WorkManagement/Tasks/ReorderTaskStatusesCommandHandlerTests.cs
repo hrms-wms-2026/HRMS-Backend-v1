@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskStatuses;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
@@ -24,7 +25,8 @@ public class ReorderTaskStatusesCommandHandlerTests
     private static readonly Guid Status1 = Guid.NewGuid();
     private static readonly Guid Status2 = Guid.NewGuid();
 
-    private (ReorderTaskStatusesCommandHandler Handler, List<TaskStatusEntity> Statuses) Build(Guid callerEmployeeId)
+    private (ReorderTaskStatusesCommandHandler Handler, List<TaskStatusEntity> Statuses) Build(
+        Guid callerEmployeeId, bool? callerIsEffectiveManager = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -53,7 +55,15 @@ public class ReorderTaskStatusesCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result<IReadOnlyList<TaskStatusResponse>>>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        var handler = new ReorderTaskStatusesCommandHandler(currentUser.Object, identity.Object, objectives.Object, statuses.Object, unitOfWork.Object);
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
+        // separately in MilestoneMembershipCoordinatorTests).
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (callerEmployeeId == OwnerEmployeeId));
+
+        var handler = new ReorderTaskStatusesCommandHandler(currentUser.Object, identity.Object, objectives.Object, statuses.Object, unitOfWork.Object, membership.Object);
         return (handler, statusList);
     }
 
@@ -179,5 +189,26 @@ public class ReorderTaskStatusesCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsEffectiveManagerViaAncestor_AppliesAllUpdates()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
+        // this only proves the handler defers to its answer instead of the direct OwnerId check.
+        var (handler, statuses) = Build(OtherEmployeeId, callerIsEffectiveManager: true);
+        var command = new ReorderTaskStatusesCommand(ObjectiveId, new List<TaskStatusOrderUpdate>
+        {
+            new(Status1, DisplayOrder: 1, TaskStatusVisibilities.Public, MarksTaskComplete: false),
+            new(Status2, DisplayOrder: 0, TaskStatusVisibilities.Public, MarksTaskComplete: true)
+        });
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, statuses.Single(s => s.Id == Status1).DisplayOrder);
+        Assert.Equal(0, statuses.Single(s => s.Id == Status2).DisplayOrder);
     }
 }
