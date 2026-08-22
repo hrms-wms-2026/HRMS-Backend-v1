@@ -193,7 +193,8 @@ public class RejectTaskCreationRequestCommandHandlerTests
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid RequestId = Guid.NewGuid();
 
-    private (RejectTaskCreationRequestCommandHandler Handler, Mock<ITaskCreationRequestRepository> Requests) Build(Guid callerEmployeeId)
+    private (RejectTaskCreationRequestCommandHandler Handler, Mock<ITaskCreationRequestRepository> Requests) Build(
+        Guid callerEmployeeId, bool? callerIsEffectiveManager = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -212,9 +213,17 @@ public class RejectTaskCreationRequestCommandHandlerTests
         var requests = new Mock<ITaskCreationRequestRepository>();
         requests.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, RequestId, It.IsAny<CancellationToken>())).ReturnsAsync(pending);
 
+        var objective = new Objective { Id = ObjectiveId, TenantId = TenantId, OwnerId = OwnerEmployeeId, IsActive = true, CreatedAt = DateTimeOffset.UtcNow };
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Objective { Id = ObjectiveId, TenantId = TenantId, OwnerId = OwnerEmployeeId, IsActive = true, CreatedAt = DateTimeOffset.UtcNow });
+            .ReturnsAsync(objective);
+
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant.
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (objective.OwnerId == callerEmployeeId));
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
@@ -222,7 +231,7 @@ public class RejectTaskCreationRequestCommandHandlerTests
 
         var handler = new RejectTaskCreationRequestCommandHandler(
             currentUser.Object, identity.Object, requests.Object, objectives.Object,
-            new Mock<IMilestoneMembershipCoordinator>().Object, new Mock<INotificationDispatcher>().Object, unitOfWork.Object);
+            membership.Object, new Mock<INotificationDispatcher>().Object, unitOfWork.Object);
         return (handler, requests);
     }
 
@@ -246,6 +255,21 @@ public class RejectTaskCreationRequestCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
         requests.Verify(x => x.Update(It.IsAny<TaskCreationRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsEffectiveManagerNotOwner_RejectsWithComment()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately, so this only proves the handler defers to
+        // its answer instead of the direct OwnerId check.
+        var (handler, requests) = Build(callerEmployeeId: OtherEmployeeId, callerIsEffectiveManager: true);
+        var result = await handler.Handle(new RejectTaskCreationRequestCommand(RequestId, "Out of scope"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        requests.Verify(x => x.Update(It.Is<TaskCreationRequest>(r =>
+            r.Status == TaskCreationRequestStatuses.Rejected && r.DecisionComment == "Out of scope")), Times.Once);
     }
 }
 
