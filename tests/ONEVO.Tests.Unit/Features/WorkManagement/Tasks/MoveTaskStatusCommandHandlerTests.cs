@@ -25,6 +25,7 @@ public class MoveTaskStatusCommandHandlerTests
     private static readonly Guid OutsiderEmployeeId = Guid.NewGuid();
     private static readonly Guid TaskId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
+    private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid OldStatusId = Guid.NewGuid();
     private static readonly Guid NewStatusId = Guid.NewGuid();
 
@@ -49,6 +50,7 @@ public class MoveTaskStatusCommandHandlerTests
             Id = TaskId,
             TenantId = TenantId,
             ObjectiveId = ObjectiveId,
+            ProjectId = ProjectId,
             Title = "A",
             ShortId = "T-1",
             StatusId = OldStatusId,
@@ -125,14 +127,14 @@ public class MoveTaskStatusCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_TargetStatusBelongsToDifferentObjective_ReturnsNotFoundWithoutMovingTask()
+    public async Task Handle_TargetStatusBelongsToDifferentProject_ReturnsNotFoundWithoutMovingTask()
     {
         var newStatus = new TaskStatusEntity
         {
             Id = NewStatusId,
             TenantId = TenantId,
-            ObjectiveId = Guid.NewGuid(),
-            Name = "Other Objective",
+            ProjectId = Guid.NewGuid(),
+            Name = "Other Project",
             MarksTaskComplete = false,
             Visibility = TaskStatusVisibilities.Public,
             CreatedAt = DateTimeOffset.UtcNow
@@ -147,13 +149,14 @@ public class MoveTaskStatusCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_TargetStatusIsProjectLevel_ReturnsNotFoundWithoutMovingTask()
+    public async Task Handle_TargetStatusIsProjectLevelSameProject_Succeeds()
     {
         var newStatus = new TaskStatusEntity
         {
             Id = NewStatusId,
             TenantId = TenantId,
             ObjectiveId = null,
+            ProjectId = ProjectId,
             Name = "Project Template",
             MarksTaskComplete = false,
             Visibility = TaskStatusVisibilities.Public,
@@ -167,9 +170,8 @@ public class MoveTaskStatusCommandHandlerTests
 
         var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(404, result.StatusCode);
-        Assert.Equal(OldStatusId, task.StatusId);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(NewStatusId, task.StatusId);
     }
 
     [Fact]
@@ -179,6 +181,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "Done",
             MarksTaskComplete = true,
             Visibility = TaskStatusVisibilities.Private,
@@ -199,6 +202,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "In Process",
             MarksTaskComplete = false,
             Visibility = TaskStatusVisibilities.Public,
@@ -218,6 +222,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "Done",
             MarksTaskComplete = true,
             Visibility = TaskStatusVisibilities.Private,
@@ -239,6 +244,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "In Process",
             MarksTaskComplete = false,
             Visibility = TaskStatusVisibilities.Public,
@@ -264,6 +270,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "Done",
             MarksTaskComplete = true,
             Visibility = TaskStatusVisibilities.Private,
@@ -286,6 +293,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "Done",
             MarksTaskComplete = true,
             Visibility = TaskStatusVisibilities.Private,
@@ -312,6 +320,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "Done",
             MarksTaskComplete = true,
             Visibility = TaskStatusVisibilities.Private,
@@ -338,6 +347,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "In Process",
             MarksTaskComplete = false,
             Visibility = TaskStatusVisibilities.Public,
@@ -376,6 +386,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "Verified",
             MarksTaskComplete = true,
             Visibility = TaskStatusVisibilities.Private,
@@ -414,6 +425,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "In Process",
             MarksTaskComplete = false,
             Visibility = TaskStatusVisibilities.Public,
