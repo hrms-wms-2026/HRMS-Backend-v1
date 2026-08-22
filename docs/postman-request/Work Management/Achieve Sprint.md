@@ -38,7 +38,7 @@ No body.
 
 | Status | Cause |
 |---|---|
-| `403` | Caller lacks `projects:access`, or is not the owning Objective's owner |
+| `403` | Caller lacks `projects:access`, or is not an effective manager of the owning Objective (its owner, an active member, or the owner/an active member of any ancestor Objective) |
 | `404` | Sprint or its Objective doesn't exist in tenant |
 | `409` | Sprint is already Achieved |
 

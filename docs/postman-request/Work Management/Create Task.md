@@ -55,7 +55,7 @@ Objective-owner direct create. Blocked with `409` when `estimatedHours` exceeds 
 | Status | Cause |
 |---|---|
 | `400` | Validation failure (title, type, priority, negative hours) |
-| `403` | Not authenticated, no employee record, or caller is not the Objective owner |
+| `403` | Not authenticated, no employee record, or caller is not an effective manager of the Objective (its owner, an active member, or the owner/an active member of any ancestor Objective) — non-cascaded, non-owner members must submit a task creation request instead |
 | `404` | Objective, Project, or (when provided) Sprint not found / inactive |
 | `409` | `estimatedHours` exceeds remaining slack; body is `InsufficientAllocationResponse` (`availableSlackHours`, `suggestedAction: "extend_allocation"`). Also returned when the provided Sprint is Achieved (frozen). |
 | `422` | No task statuses configured for this milestone yet |

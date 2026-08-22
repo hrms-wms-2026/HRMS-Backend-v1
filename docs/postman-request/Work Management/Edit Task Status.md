@@ -29,7 +29,7 @@ Renames, reorders, or toggles `requiresApproval` on an Objective-scoped status c
 
 | Status | Cause |
 |---|---|
-| `403` | Not authenticated, no employee record, or caller is not the Objective owner |
+| `403` | Not authenticated, no employee record, or caller is not an effective manager of the Objective (its owner, an active member, or the owner/an active member of any ancestor Objective) |
 | `404` | Status or Objective not found, or the status is a Project template rather than an Objective copy |
 
 ## Source

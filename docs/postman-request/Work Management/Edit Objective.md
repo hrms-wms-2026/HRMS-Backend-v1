@@ -26,7 +26,7 @@ Edits a milestone. A non-conflicting edit (within the parent's date/hours bounds
 | Status | Cause |
 |---|---|
 | `400` | Validation failure, `{id}` is the Default Objective, or the milestone is achieved |
-| `403` | Caller is not `{id}`'s current Head |
+| `403` | Caller is not an effective manager of `{id}` (its Head, an active member, or the Head/an active member of any ancestor Objective) |
 | `404` | Objective or its parent doesn't exist in tenant |
 | `409` | A change request is already pending for this objective |
 

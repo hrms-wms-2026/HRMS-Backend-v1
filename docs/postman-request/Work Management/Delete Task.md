@@ -22,7 +22,7 @@ No body.
 
 | Status | Cause |
 |---|---|
-| `403` | Caller lacks `projects:access`, or is not this milestone's owner |
+| `403` | Caller lacks `projects:access`, or is not an effective manager of this milestone (its owner, an active member, or the owner/an active member of any ancestor milestone) |
 | `404` | Task doesn't exist in tenant, is already soft-deleted, or its Objective is missing |
 
 ## Source

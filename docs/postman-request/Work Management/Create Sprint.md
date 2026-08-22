@@ -44,7 +44,7 @@ no tenant-permission-bypass path for this action, unlike some read endpoints in 
 | Status | Cause |
 |---|---|
 | `400` | `endDate` is before `startDate` |
-| `403` | Caller lacks `projects:access`, or is not this milestone's owner |
+| `403` | Caller lacks `projects:access`, or is not an effective manager of this milestone (its owner, an active member, or the owner/an active member of any ancestor milestone) |
 | `404` | Objective doesn't exist in tenant, or is inactive |
 
 ## Source
