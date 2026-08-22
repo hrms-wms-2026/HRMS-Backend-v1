@@ -6,6 +6,10 @@
 
 **Scope guard:** Work Management module only.
 
+**Status:** shipped 2026-08-21. `IMilestoneMembershipCoordinator.IsEffectiveManagerAsync` added (owner or
+active member of the Objective or any ancestor, walking `ParentObjectiveId` up); every later Part (2-5)
+calls it.
+
 ## Goal
 
 Today, "can this caller manage this Objective" is checked inline, ad hoc, at ~9 different call sites,

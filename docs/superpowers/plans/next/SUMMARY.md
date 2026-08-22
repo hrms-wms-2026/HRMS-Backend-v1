@@ -6,7 +6,7 @@
 
 This folder absorbed the former top-level `docs/superpowers/next-plan/` folder on 2026-08-06 as part of the `plans/` restructure into `finished/` and `next/` — see `FILE_CREATION_RULES.md` in `docs/superpowers/rules/`.
 
-**Last updated:** 2026-08-16
+**Last updated:** 2026-08-22
 
 ## Files
 
@@ -43,15 +43,22 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
   for the expanded requirement — 6/4/2 row icon sets, restored side panel, project-wide tree switch,
   icon-visibility scoped to the caller's own branch). Frontend plan (4 new parts, `part-4` through
   `part-7`) in the frontend repo: `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-08-20-work-management-tree-sprint-task-unified-view/`
-- `2026-08-21-work-management-cascading-objective-ownership/` — status: pending, not started. 5 parts,
-  backend-only. Design: `specs/next/2026-08-21-work-management-cascading-objective-ownership-design.md`.
-  `part-1-effective-manager-helper.md` adds `IMilestoneMembershipCoordinator.IsEffectiveManagerAsync`
-  (owner-or-member of this Objective or any ancestor, walking `ParentObjectiveId` up); Parts 2-4 replace
+- `2026-08-21-work-management-cascading-objective-ownership/` — status: **code-complete, shipped
+  2026-08-22, still in `next/` pending a manual browser pass** (no frontend code changes in this design,
+  but the tree UI's cascaded action icons can only be confirmed by looking at it as a non-owner
+  ancestor-member). 5 parts, backend-only. Design:
+  `specs/next/2026-08-21-work-management-cascading-objective-ownership-design.md`.
+  `part-1-effective-manager-helper.md` added `IMilestoneMembershipCoordinator.IsEffectiveManagerAsync`
+  (owner-or-member of this Objective or any ancestor, walking `ParentObjectiveId` up); Parts 2-4 replaced
   the repeated `objective.OwnerId != callerEmployeeId.Value` check with it across sub-module create/edit,
   member management, Sprint create/edit/achieve/complete, Task create/delete, and the
-  `MoveTaskStatus` private-status gate; Part 5 cascades the tree's `IsOwner` display flag the same way
-  and runs the full-feature regression pass. Do the Parts in order (1 is a hard prerequisite for 2-5;
-  2-4 are independent of each other; 5 must be last).
+  `MoveTaskStatus` private-status gate; Part 5 cascaded the tree's `IsOwner` display flag the same way
+  and ran the full-feature regression pass. Each Part's own mandated verification grep (or the
+  controller's pre-flight run of it) found more real call sites than the plan/spec's own estimate every
+  time it was run — 27 handlers converted in total across all 5 Parts, vs. the design's original ~9-call-
+  site estimate — see each part file's own `**Status:**` line for its exact handler list. 469/469
+  WorkManagement unit tests passing, `dotnet build` clean, module-wide grep for the old direct-owner
+  pattern returns zero matches. 18 Postman docs updated for the new cascaded-authorization wording.
 - `2026-08-21-work-management-project-scoped-task-status-and-category/` — status: pending, not started.
   4 parts, backend-only (frontend companion plan not yet written, lives in the frontend repo). Design:
   `specs/next/2026-08-21-work-management-project-scoped-task-status-and-category-design.md`.

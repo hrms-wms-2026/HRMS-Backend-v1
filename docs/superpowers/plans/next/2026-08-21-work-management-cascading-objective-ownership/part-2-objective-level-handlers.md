@@ -6,6 +6,11 @@
 
 **Scope guard:** Work Management module only.
 
+**Status:** shipped 2026-08-21. Plan's 4 handlers plus 4 more the plan's own mandated grep caught
+(`CreateObjective`, `EditObjective`, `AddObjectiveMember`, `RemoveObjectiveMember`,
+`AchieveObjective`, `UnachieveObjective`, `DeleteObjective`, `TransferObjectiveHead`) converted to the
+cascading effective-manager check, one commit each.
+
 ## Goal
 
 Replace the direct-match `objective.OwnerId != callerEmployeeId.Value` check with

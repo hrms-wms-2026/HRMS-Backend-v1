@@ -6,6 +6,12 @@ Parts 2-3 — can be done in any order relative to them, but Part 1 is a hard pr
 
 **Scope guard:** Work Management module only.
 
+**Status:** shipped 2026-08-22. Plan's literal 3 (`CreateTask`, `DeleteTask`, `MoveTaskStatus`) plus 10
+more the controller's pre-flight grep caught (`AssignTask`, `UnassignTask`,
+`ApproveTaskCreationRequest`, `RejectTaskCreationRequest`, `ApproveTaskEditRequest`,
+`RejectTaskEditRequest`, `CreateTaskStatus`, `EditTaskStatus`, `DeleteTaskStatus`,
+`ReorderTaskStatuses`) — 13 handlers total, split into 3 reviewable batches, one commit each.
+
 ## Goal
 
 Same replacement pattern as Parts 2-3, applied to `CreateTask` and `DeleteTask`. `MoveTaskStatus` is

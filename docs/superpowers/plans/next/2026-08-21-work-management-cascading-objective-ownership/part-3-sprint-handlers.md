@@ -6,6 +6,10 @@ Part 2 — can be done in either order relative to it, but Part 1 is a hard prer
 
 **Scope guard:** Work Management module only.
 
+**Status:** shipped 2026-08-21. Plan's 4 Sprint handlers plus 1 more the controller's pre-flight grep
+caught (`CreateSprint`, `EditSprint`, `AchieveSprint`, `CompleteSprint`, `SetSprintStatus`) converted to
+the cascading effective-manager check, one commit each.
+
 ## Goal
 
 Same replacement as Part 2, applied to the four Sprint command handlers:

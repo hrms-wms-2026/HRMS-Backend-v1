@@ -7,6 +7,15 @@ feature.
 
 **Scope guard:** Work Management module only.
 
+**Status:** shipped 2026-08-22. Tasks 1-3: `GetObjectiveTreeQueryHandler`'s `IsOwner` display flag now
+cascades to descendants of any Objective the caller effectively manages, in both response branches. Task
+4's full-module regression grep caught one more handler outside every prior Part's literal scope
+(`RequestAllocationExtensionCommandHandler`) — converted under the same self-correcting-clause authority,
+full review+fix-loop cycle. All 5 Parts of this plan are now code-complete; 18 Postman docs updated for
+the new cascaded authorization wording. **Stays in `next/`, not `finished/`** — no frontend code changes
+in this design, but a manual browser pass confirming the tree UI actually shows cascaded action icons for
+a non-owner ancestor-member is still outstanding.
+
 ## Goal
 
 `GetObjectiveTreeQueryHandler` sets `IsOwner = ownedObjectiveIds.Contains(o.Id)` — direct membership on
