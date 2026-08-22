@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
@@ -15,16 +16,18 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
     private readonly ITaskStatusRepository _statuses;
     private readonly IObjectiveRepository _objectives;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMilestoneMembershipCoordinator _membership;
 
     public EditTaskStatusCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, ITaskStatusRepository statuses,
-        IObjectiveRepository objectives, IUnitOfWork unitOfWork)
+        IObjectiveRepository objectives, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
     {
         _currentUser = currentUser;
         _identity = identity;
         _statuses = statuses;
         _objectives = objectives;
         _unitOfWork = unitOfWork;
+        _membership = membership;
     }
 
     public async Task<Result> Handle(EditTaskStatusCommand request, CancellationToken ct)
@@ -47,7 +50,7 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
         if (objective is null || !objective.IsActive)
             return Result.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result.Forbidden("Only this milestone's owner can change task status configuration.");
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
