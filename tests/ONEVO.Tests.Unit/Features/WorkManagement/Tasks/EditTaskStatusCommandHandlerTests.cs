@@ -5,9 +5,11 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 using Xunit;
@@ -21,10 +23,11 @@ public class EditTaskStatusCommandHandlerTests
     private static readonly Guid OwnerEmployeeId = Guid.NewGuid();
     private static readonly Guid OtherEmployeeId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
+    private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid StatusId = Guid.NewGuid();
 
     private (EditTaskStatusCommandHandler Handler, Mock<ITaskStatusRepository> Statuses) Build(
-        Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null)
+        Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null, Guid? statusObjectiveId = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -41,7 +44,8 @@ public class EditTaskStatusCommandHandlerTests
         {
             Id = StatusId,
             TenantId = TenantId,
-            ObjectiveId = ObjectiveId,
+            ProjectId = ProjectId,
+            ObjectiveId = statusObjectiveId,
             Name = "In Progress",
             Visibility = TaskStatusVisibilities.Public,
             CreatedAt = DateTimeOffset.UtcNow
@@ -50,18 +54,32 @@ public class EditTaskStatusCommandHandlerTests
         statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, StatusId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(status);
 
-        var objective = new Objective
+        var project = new Project
+        {
+            Id = ProjectId,
+            TenantId = TenantId,
+            IsActive = true,
+            Name = "Proj",
+            Identifier = "PRJ",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var projects = new Mock<IProjectRepository>();
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(project);
+
+        var defaultObjective = new Objective
         {
             Id = ObjectiveId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             OwnerId = OwnerEmployeeId,
             IsActive = true,
             Title = "Obj",
             CreatedAt = DateTimeOffset.UtcNow
         };
         var objectives = new Mock<IObjectiveRepository>();
-        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(objective);
+        objectives.Setup(x => x.GetDefaultByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(defaultObjective);
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(
@@ -71,14 +89,15 @@ public class EditTaskStatusCommandHandlerTests
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
-        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
-        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
-        // separately in MilestoneMembershipCoordinatorTests).
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate a
+        // non-owner grant (the coordinator's own membership logic is unit-tested separately
+        // in MilestoneMembershipCoordinatorTests). Keyed on the default Objective's Id, since
+        // the handler now resolves the Project's default Objective as its authorization root.
         membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerIsEffectiveManager ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
 
         var handler = new EditTaskStatusCommandHandler(
-            currentUser.Object, identity.Object, statuses.Object, objectives.Object, unitOfWork.Object, membership.Object);
+            currentUser.Object, identity.Object, statuses.Object, objectives.Object, projects.Object, unitOfWork.Object, membership.Object);
         return (handler, statuses);
     }
 
@@ -126,5 +145,23 @@ public class EditTaskStatusCommandHandlerTests
         Assert.True(result.IsSuccess);
         statuses.Verify(x => x.Update(
             It.Is<TaskStatusEntity>(s => s.Visibility == TaskStatusVisibilities.Private)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_StatusHasObjectiveId_ReturnsNotFound()
+    {
+        // Orphaned per-Objective status copies from before this rework (rows with ObjectiveId
+        // set) must stay inaccessible through this now-Project-scoped endpoint - only the
+        // Project's shared template rows (ObjectiveId == null) are editable here. Proves the
+        // guard rejects a non-template row even with an otherwise-valid StatusId.
+        var (handler, statuses) = Build(statusObjectiveId: ObjectiveId);
+        var command = new EditTaskStatusCommand(
+            StatusId, "Review", 2, false, null, TaskStatusVisibilities.Private);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        statuses.Verify(x => x.Update(It.IsAny<TaskStatusEntity>()), Times.Never);
     }
 }

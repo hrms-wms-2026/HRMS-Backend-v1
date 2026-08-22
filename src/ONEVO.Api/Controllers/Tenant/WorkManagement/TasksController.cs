@@ -124,9 +124,9 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    [HttpPatch("objectives/{objectiveId:guid}/task-statuses/{id:guid}")]
+    [HttpPatch("task-statuses/{id:guid}")]
     [RequirePermission("projects:access")]
-    public async Task<IActionResult> EditStatus(Guid objectiveId, Guid id, [FromBody] EditTaskStatusRequest request, CancellationToken ct)
+    public async Task<IActionResult> EditStatus(Guid id, [FromBody] EditTaskStatusRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new EditTaskStatusCommand(
             id, request.Name, request.DisplayOrder, request.RequiresApproval, request.ApproverId, request.Visibility), ct);
