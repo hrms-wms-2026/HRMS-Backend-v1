@@ -42,6 +42,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
     private readonly IReleaseCalendarRepository _releaseCalendar;
     private readonly ILabelRepository _labels;
     private readonly ITaskStatusRepository _taskStatuses;
+    private readonly ITaskCategoryRepository _taskCategories;
     private readonly IEntityAssetRepository _entityAssets;
     private readonly IEmployeeRepository _employees;
     private readonly ILegalEntityRepository _legalEntities;
@@ -60,6 +61,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
         IReleaseCalendarRepository releaseCalendar,
         ILabelRepository labels,
         ITaskStatusRepository taskStatuses,
+        ITaskCategoryRepository taskCategories,
         IEntityAssetRepository entityAssets,
         IEmployeeRepository employees,
         ILegalEntityRepository legalEntities,
@@ -77,6 +79,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
         _releaseCalendar = releaseCalendar;
         _labels = labels;
         _taskStatuses = taskStatuses;
+        _taskCategories = taskCategories;
         _entityAssets = entityAssets;
         _employees = employees;
         _legalEntities = legalEntities;
@@ -282,6 +285,8 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
             await _objectives.AddAsync(defaultObjective, ct);
             await _taskStatuses.AddRangeAsync(
                 DefaultTaskStatusTemplate.BuildRows(tenantId, project.Id, objectiveId: null, userId, now), ct);
+            await _taskCategories.AddRangeAsync(
+                DefaultTaskCategoryTemplate.BuildRows(tenantId, project.Id, userId, now), ct);
             await _members.AddAsync(creatorMembership, ct);
             await _versions.AddAsync(defaultVersion, ct);
             await _releaseCalendar.AddAsync(releaseReminder, ct);

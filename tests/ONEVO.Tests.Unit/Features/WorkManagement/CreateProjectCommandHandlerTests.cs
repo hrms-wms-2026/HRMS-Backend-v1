@@ -21,6 +21,7 @@ using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Domain.Lookups;
 using Xunit;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
@@ -44,6 +45,7 @@ public class CreateProjectCommandHandlerTests
         CreateProjectCommandHandler Handler,
         Mock<IProjectRepository> Projects,
         Mock<ITaskStatusRepository> TaskStatuses,
+        Mock<ITaskCategoryRepository> TaskCategories,
         Mock<IReleaseCalendarRepository> ReleaseCalendar,
         Mock<IEntityAssetRepository> EntityAssets,
         Mock<IFileStorageService> FileStorage);
@@ -70,6 +72,7 @@ public class CreateProjectCommandHandlerTests
         var releaseCalendar = new Mock<IReleaseCalendarRepository>();
         var labels = new Mock<ILabelRepository>();
         var taskStatuses = new Mock<ITaskStatusRepository>();
+        var taskCategories = new Mock<ITaskCategoryRepository>();
         var entityAssets = new Mock<IEntityAssetRepository>();
         var employees = new Mock<IEmployeeRepository>();
         employees.Setup(x => x.GetByUserIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
@@ -86,10 +89,10 @@ public class CreateProjectCommandHandlerTests
 
         var handler = new CreateProjectCommandHandler(
             currentUser.Object, categories.Object, projects.Object, objectives.Object, members.Object,
-            versions.Object, releaseCalendar.Object, labels.Object, taskStatuses.Object, entityAssets.Object, employees.Object,
+            versions.Object, releaseCalendar.Object, labels.Object, taskStatuses.Object, taskCategories.Object, entityAssets.Object, employees.Object,
             legalEntities.Object, auditLogs.Object, fileStorage.Object, unitOfWork.Object);
 
-        return new HandlerSetup(handler, projects, taskStatuses, releaseCalendar, entityAssets, fileStorage);
+        return new HandlerSetup(handler, projects, taskStatuses, taskCategories, releaseCalendar, entityAssets, fileStorage);
     }
 
     [Fact]
@@ -123,6 +126,23 @@ public class CreateProjectCommandHandlerTests
             It.IsAny<CancellationToken>()), Times.Once);
         setup.TaskStatuses.Verify(x => x.AddRangeAsync(
             It.IsAny<IReadOnlyList<TaskStatusEntity>>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_SeedsFourDefaultTaskCategories()
+    {
+        var setup = BuildHandler();
+
+        var result = await setup.Handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        setup.TaskCategories.Verify(x => x.AddRangeAsync(
+            It.Is<IReadOnlyList<TaskCategory>>(rows =>
+                rows.Count == 4
+                && rows.Select(r => r.Name).SequenceEqual(new[] { "task", "bug", "story", "feature" })
+                && rows.Select(r => r.DisplayOrder).SequenceEqual(new[] { 0, 1, 2, 3 })
+                && rows.All(r => r.ProjectId == result.Value!.Project.Id)),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
