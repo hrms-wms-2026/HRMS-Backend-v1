@@ -15,6 +15,7 @@ public sealed class ListEmployeesQueryHandlerTests
     private readonly Mock<IEmployeeRepository> _employeeRepository = new();
     private readonly Mock<IEmployeeAuthorityResolver> _authorityResolver = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
+    private readonly Mock<IDateTimeProvider> _dateTime = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _defaultLegalEntityId = Guid.NewGuid();
@@ -23,6 +24,7 @@ public sealed class ListEmployeesQueryHandlerTests
     {
         _currentUser.SetupGet(u => u.TenantId).Returns(_tenantId);
         _currentUser.SetupGet(u => u.UserId).Returns(_userId);
+        _dateTime.SetupGet(x => x.UtcNow).Returns(new DateTimeOffset(2026, 8, 21, 10, 0, 0, TimeSpan.Zero));
 
         // By default the actor has exactly one Employee row - GetDefaultForUserAsync resolves the
         // implicit legal entity when the query itself doesn't name one (see ListEmployeesQuery.LegalEntityId).
@@ -38,7 +40,8 @@ public sealed class ListEmployeesQueryHandlerTests
         _employeeRepository
             .Setup(r => r.ListVisibleAsync(
                 It.IsAny<Guid>(), It.IsAny<EmployeeVisibilityScope>(), It.IsAny<EmployeeListFilter>(),
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>(),
+                It.IsAny<EmployeeListAttendanceOptions>()))
             .ReturnsAsync((Array.Empty<EmployeeListItemResponse>(), 0));
         _employeeRepository
             .Setup(r => r.ListInvitedPendingByInviterAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -50,7 +53,7 @@ public sealed class ListEmployeesQueryHandlerTests
         null, null, null, null, legalEntityId, null, "Full-Time", "onboarding", null, null, "pending", DateTimeOffset.UtcNow.AddHours(72));
 
     private ListEmployeesQueryHandler CreateHandler() =>
-        new(_employeeRepository.Object, _authorityResolver.Object, _currentUser.Object);
+        new(_employeeRepository.Object, _authorityResolver.Object, _currentUser.Object, _dateTime.Object);
 
     private void SetupVisibility(Guid legalEntityId, bool includesSelf, params Guid[] employeeIds) =>
         _authorityResolver
@@ -187,6 +190,50 @@ public sealed class ListEmployeesQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WithAttendanceRead_PassesOneServerTimestampToBatchRepository()
+    {
+        _currentUser.Setup(x => x.HasPermission("attendance:read")).Returns(true);
+        var visibleId = Guid.NewGuid();
+        SetupVisibility(_defaultLegalEntityId, includesSelf: true, visibleId);
+
+        await CreateHandler().Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
+
+        _employeeRepository.Verify(r => r.ListVisibleAsync(
+            _tenantId,
+            It.IsAny<EmployeeVisibilityScope>(),
+            It.IsAny<EmployeeListFilter>(),
+            1,
+            25,
+            It.IsAny<CancellationToken>(),
+            It.Is<EmployeeListAttendanceOptions>(o => o.UtcNow == _dateTime.Object.UtcNow)),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WithoutAttendanceRead_RemovesAttendanceSummaryFromRepositoryRows()
+    {
+        var visibleId = Guid.NewGuid();
+        SetupVisibility(_defaultLegalEntityId, includesSelf: true, visibleId);
+        var sensitiveSummary = new EmployeeListAttendanceSummaryResponse(
+            true, true, false, new DateOnly(2026, 8, 21), "Asia/Colombo", "09:00", "Still has not clocked in");
+        _employeeRepository
+            .Setup(r => r.ListVisibleAsync(_tenantId, It.IsAny<EmployeeVisibilityScope>(), It.IsAny<EmployeeListFilter>(), 1, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(([Item(visibleId, "Visible", _defaultLegalEntityId) with { AttendanceSummary = sensitiveSummary }], 1));
+
+        var result = await CreateHandler().Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
+
+        Assert.Null(result.Value!.Items.Single().AttendanceSummary);
+        _employeeRepository.Verify(r => r.ListVisibleAsync(
+            _tenantId,
+            It.IsAny<EmployeeVisibilityScope>(),
+            It.IsAny<EmployeeListFilter>(),
+            1,
+            25,
+            It.IsAny<CancellationToken>(),
+            It.Is<EmployeeListAttendanceOptions>(options => options != null)), Times.Never);
+    }
+
+    [Fact]
     public async Task Handle_MergesInPendingInviteesInSameLegalEntity_NotAlreadyInVisiblePage()
     {
         SetupVisibility(_defaultLegalEntityId, includesSelf: true, Guid.NewGuid());
@@ -204,6 +251,24 @@ public sealed class ListEmployeesQueryHandlerTests
         Assert.Equal(2, result.Value!.TotalCount);
         Assert.Contains(result.Value.Items, i => i.Id == visibleEmployee.Id);
         Assert.Contains(result.Value.Items, i => i.Id == pendingInvitee.Id);
+        Assert.Null(result.Value.Items.Single(i => i.Id == pendingInvitee.Id).AttendanceSummary);
+    }
+
+    [Fact]
+    public async Task Handle_WithAttendanceRead_KeepsPendingInviteeAttendanceSummaryNull()
+    {
+        _currentUser.Setup(x => x.HasPermission("attendance:read")).Returns(true);
+        SetupVisibility(_defaultLegalEntityId, includesSelf: true, Guid.NewGuid());
+        var pendingInvitee = Item(Guid.NewGuid(), "Pending Hire", _defaultLegalEntityId);
+        _employeeRepository
+            .Setup(r => r.ListInvitedPendingByInviterAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EmployeeListItemResponse> { pendingInvitee });
+
+        var result = await CreateHandler().Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
+
+        var returned = Assert.Single(result.Value!.Items);
+        Assert.Equal(pendingInvitee.Id, returned.Id);
+        Assert.Null(returned.AttendanceSummary);
     }
 
     [Fact]

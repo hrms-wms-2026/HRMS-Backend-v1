@@ -264,7 +264,7 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
         var currentUser = BuildCurrentUser(tenantId, orgManage, callerOwnEmployeeId);
         var authorityResolver = BuildAuthorityResolver(db, currentUser);
 
-        return new ListEmployeesQueryHandler(employeeRepository, authorityResolver, currentUser);
+        return new ListEmployeesQueryHandler(employeeRepository, authorityResolver, currentUser, _clock);
     }
 
     /// <summary>Builds a real EmployeeAuthorityResolver over the same restricted-role db context

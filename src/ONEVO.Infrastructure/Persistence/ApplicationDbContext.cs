@@ -233,6 +233,9 @@ public class ApplicationDbContext : DbContext
     // Time & Attendance - Clock-in Policy foundation
     public DbSet<ClockInPolicy> ClockInPolicies => Set<ClockInPolicy>();
     public DbSet<ClockInLateDeductionRule> ClockInLateDeductionRules => Set<ClockInLateDeductionRule>();
+    public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
+    public DbSet<PresenceSession> PresenceSessions => Set<PresenceSession>();
+    public DbSet<BreakRecord> BreakRecords => Set<BreakRecord>();
 
     // Storage - EntityAssets (Phase 1 entity_assets, scoped to owner_type "project" for now)
     public DbSet<EntityAsset> EntityAssets => Set<EntityAsset>();

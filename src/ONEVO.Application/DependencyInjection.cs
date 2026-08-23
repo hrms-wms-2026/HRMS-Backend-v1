@@ -36,6 +36,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.Services.IClockInPolicyScopeMembershipValidator,
             ONEVO.Application.Features.TimeAttendance.Services.ClockInPolicyScopeMembershipValidator>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.Services.IAttendanceTodayStateService,
+            ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService>();
 
         // Outbox message consumers (dispatched by the Infrastructure outbox worker).
         services.AddScoped<IOutboxMessageHandler, TenantOwnerInviteEmailOutboxHandler>();

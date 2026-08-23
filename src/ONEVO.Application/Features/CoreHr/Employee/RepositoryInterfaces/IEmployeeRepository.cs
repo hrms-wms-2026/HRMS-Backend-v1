@@ -13,6 +13,12 @@ namespace ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 public sealed record EmployeeListFilter(
     string? Search, Guid? DepartmentId, Guid? LegalEntityId, IReadOnlyCollection<Guid>? RestrictToEmployeeIds = null);
 
+/// <summary>
+/// Enables the employee-list repository to calculate attendance warnings in one batch query. A
+/// null option means attendance-sensitive data must not be projected.
+/// </summary>
+public sealed record EmployeeListAttendanceOptions(DateTimeOffset UtcNow);
+
 public interface IEmployeeRepository
 {
     Task<(IReadOnlyList<EmployeeListItemResponse> Items, int TotalCount)> ListVisibleAsync(
@@ -21,7 +27,8 @@ public interface IEmployeeRepository
         EmployeeListFilter filter,
         int page,
         int pageSize,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        EmployeeListAttendanceOptions? attendanceOptions = null);
 
     Task<EmployeeListItemResponse?> GetVisibleByIdAsync(
         Guid tenantId,

@@ -55,7 +55,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -90,7 +90,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -111,7 +111,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -134,7 +134,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actorUserId] = null;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actorUserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -165,7 +165,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -197,7 +197,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -228,7 +228,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery("ada", null, null), CancellationToken.None);
 
@@ -263,7 +263,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
 
         public Task<(IReadOnlyList<EmployeeListItemResponse> Items, int TotalCount)> ListVisibleAsync(
             Guid tenantId, EmployeeVisibilityScope scope, EmployeeListFilter filter, int page, int pageSize,
-            CancellationToken ct = default)
+            CancellationToken ct = default, EmployeeListAttendanceOptions? attendanceOptions = null)
         {
             IEnumerable<EmployeeListItemResponse> query = Employees.Values;
 

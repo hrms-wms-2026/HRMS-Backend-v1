@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
@@ -249,6 +250,220 @@ public sealed class EfEmployeeRepositoryTests
         Assert.True(await repo.EmployeeNumberExistsAsync(tenantId, "SHARED-001", null, CancellationToken.None));
         Assert.False(await repo.EmployeeNumberExistsAsync(otherTenantId, "SHARED-001", null, CancellationToken.None));
     }
+
+    [Fact]
+    public async Task ListVisibleAsync_MarksActiveEmployeeWithoutTodayRecordAfterLocalStart()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var (items, total) = await new EfEmployeeRepository(db).ListVisibleAsync(
+            tenantId,
+            EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1,
+            25,
+            CancellationToken.None,
+            new EmployeeListAttendanceOptions(new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero)));
+
+        Assert.Equal(1, total);
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.True(summary!.ShowNotClockedInWarning);
+        Assert.True(summary.ShouldHaveClockedIn);
+        Assert.False(summary.HasClockedInToday);
+        Assert.Equal(new DateOnly(2026, 8, 21), summary.WorkDate);
+        Assert.Equal("Asia/Colombo", summary.Timezone);
+        Assert.Equal("09:00", summary.ScheduledStartTime);
+        Assert.Equal("Still has not clocked in", summary.WarningLabel);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_DoesNotMarkEmployeeWithActualStartForToday()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeId = employee.Id,
+            Date = new DateOnly(2026, 8, 21),
+            ActualStart = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero),
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var (items, _) = await new EfEmployeeRepository(db).ListVisibleAsync(
+            tenantId,
+            EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1,
+            25,
+            CancellationToken.None,
+            new EmployeeListAttendanceOptions(new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero)));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.False(summary!.ShowNotClockedInWarning);
+        Assert.False(summary.ShouldHaveClockedIn);
+        Assert.True(summary.HasClockedInToday);
+        Assert.Null(summary.WarningLabel);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_DoesNotMarkEmployeeBeforeLocalScheduledStart()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var (items, _) = await new EfEmployeeRepository(db).ListVisibleAsync(
+            tenantId,
+            EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1,
+            25,
+            CancellationToken.None,
+            new EmployeeListAttendanceOptions(new DateTimeOffset(2026, 8, 21, 3, 0, 0, TimeSpan.Zero)));
+
+        Assert.False(Assert.Single(items).AttendanceSummary!.ShowNotClockedInWarning);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_DoesNotMarkEmployeeOnConfiguredNonWorkingDay()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var (items, _) = await new EfEmployeeRepository(db).ListVisibleAsync(
+            tenantId,
+            EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1,
+            25,
+            CancellationToken.None,
+            new EmployeeListAttendanceOptions(new DateTimeOffset(2026, 8, 23, 4, 0, 0, TimeSpan.Zero)));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.False(summary!.ShowNotClockedInWarning);
+        Assert.Equal(new DateOnly(2026, 8, 23), summary.WorkDate);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_DoesNotMarkEmployeeWhenScheduleIsNotConfigured()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(new LegalEntity { Id = legalEntityId, TenantId = tenantId, Timezone = null, WorkStartTime = null, WorkEndTime = null });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var (items, _) = await new EfEmployeeRepository(db).ListVisibleAsync(
+            tenantId,
+            EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1,
+            25,
+            CancellationToken.None,
+            new EmployeeListAttendanceOptions(new DateTimeOffset(2026, 8, 21, 12, 0, 0, TimeSpan.Zero)));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.False(summary!.ShowNotClockedInWarning);
+        Assert.False(summary.ShouldHaveClockedIn);
+        Assert.Null(summary.ScheduledStartTime);
+        Assert.Null(summary.WarningLabel);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_SortsWarningsBeforeStableEmployeeOrderBeforePagination()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var warning = NewEmployee(tenantId, "E-002");
+        warning.FirstName = "Zoe";
+        warning.LastName = "Zulu";
+        warning.LegalEntityId = legalEntityId;
+        var normal = NewEmployee(tenantId, "E-001");
+        normal.FirstName = "Ada";
+        normal.LastName = "Aardvark";
+        normal.LegalEntityId = legalEntityId;
+        db.Employees.AddRange(warning, normal);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeId = normal.Id,
+            Date = new DateOnly(2026, 8, 21),
+            ActualStart = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero),
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var filter = new EmployeeListFilter(null, null, legalEntityId, new[] { warning.Id, normal.Id });
+        var repo = new EfEmployeeRepository(db);
+        var page1 = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(), filter, 1, 1, CancellationToken.None,
+            new EmployeeListAttendanceOptions(new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero)));
+        var page2 = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(), filter, 2, 1, CancellationToken.None,
+            new EmployeeListAttendanceOptions(new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero)));
+
+        Assert.Equal(2, page1.TotalCount);
+        Assert.Equal(warning.Id, Assert.Single(page1.Items).Id);
+        Assert.True(page1.Items[0].AttendanceSummary!.ShowNotClockedInWarning);
+        Assert.Equal(normal.Id, Assert.Single(page2.Items).Id);
+        Assert.False(page2.Items[0].AttendanceSummary!.ShowNotClockedInWarning);
+    }
+
+    private static LegalEntity WorkingLegalEntity(Guid tenantId, Guid legalEntityId) => new()
+    {
+        Id = legalEntityId,
+        TenantId = tenantId,
+        Timezone = "Asia/Colombo",
+        StandardWorkingDays = "[1,2,3,4,5]",
+        WorkStartTime = new TimeOnly(9, 0),
+        WorkEndTime = new TimeOnly(17, 30),
+    };
 
     private static EmployeeEntity NewEmployee(Guid tenantId, string employeeNumber, string? email = null) => new()
     {

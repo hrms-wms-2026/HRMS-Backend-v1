@@ -33,6 +33,7 @@ internal sealed class EmployeeAuthorityTestGraph
 {
     public Guid TenantId { get; } = Guid.NewGuid();
     public DateTimeOffset Now { get; } = new(2026, 8, 21, 0, 0, 0, TimeSpan.Zero);
+    public IDateTimeProvider Clock => new FakeDateTimeProvider(Now);
 
     private readonly List<DomainEmployee> _employees = new();
     private readonly List<DomainPosition> _positions = new();
@@ -267,7 +268,7 @@ internal sealed class EmployeeAuthorityTestGraph
 
         public Task<(IReadOnlyList<EmployeeListItemResponse> Items, int TotalCount)> ListVisibleAsync(
             Guid tenantId, EmployeeVisibilityScope scope, EmployeeListFilter filter, int page, int pageSize,
-            CancellationToken ct = default) => throw new NotImplementedException();
+            CancellationToken ct = default, EmployeeListAttendanceOptions? attendanceOptions = null) => throw new NotImplementedException();
         public Task<EmployeeListItemResponse?> GetVisibleByIdAsync(
             Guid tenantId, EmployeeVisibilityScope scope, Guid employeeId, CancellationToken ct = default)
             => throw new NotImplementedException();

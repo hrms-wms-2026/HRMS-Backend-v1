@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
@@ -34,9 +36,10 @@ public class EfEmployeeRepository : IEmployeeRepository
         Guid tenantId,
         EmployeeVisibilityScope scope,
         EmployeeListFilter filter,
-        int page,
+                int page,
         int pageSize,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        EmployeeListAttendanceOptions? attendanceOptions = null)
     {
         var activePrimaryAssignments = _db.PositionAssignments.AsNoTracking()
             .Where(pa => pa.TenantId == tenantId
@@ -110,6 +113,99 @@ public class EfEmployeeRepository : IEmployeeRepository
         }
 
         var totalCount = await joined.CountAsync(ct);
+
+        if (attendanceOptions is not null)
+        {
+            // Attendance-sensitive ordering must happen over the complete filtered result before
+            // Skip/Take. The employee query, legal-entity schedule evaluation, and attendance
+            // lookup are all batched; there is intentionally no per-employee Today-state call.
+            var rows = await joined.ToListAsync(ct);
+            var scheduleByEmployeeId = rows
+                .GroupBy(row => row.e.Id)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First().legalEntity is { } entity
+                        ? AttendanceScheduleResolver.Resolve(entity, attendanceOptions.UtcNow)
+                        : null);
+
+            var resolutions = scheduleByEmployeeId.Values
+                .Where(resolution => resolution is not null)
+                .Select(resolution => resolution!)
+                .ToList();
+            var employeeIds = scheduleByEmployeeId.Keys.ToArray();
+            var attendanceRecords = resolutions.Count == 0
+                ? []
+                : await _db.AttendanceRecords.AsNoTracking()
+                    .Where(record => record.TenantId == tenantId
+                        && employeeIds.Contains(record.EmployeeId)
+                        && record.Date >= resolutions.Min(resolution => resolution.WorkDate)
+                        && record.Date <= resolutions.Max(resolution => resolution.WorkDate))
+                    .ToListAsync(ct);
+            var attendanceByEmployeeAndDate = attendanceRecords
+                .GroupBy(record => (record.EmployeeId, record.Date))
+                .ToDictionary(group => group.Key, group => group.First());
+
+            var orderedRows = rows
+                .Select(row =>
+                {
+                    scheduleByEmployeeId.TryGetValue(row.e.Id, out var resolution);
+                    var record = resolution is not null
+                        && attendanceByEmployeeAndDate.TryGetValue((row.e.Id, resolution.WorkDate), out var matchingRecord)
+                            ? matchingRecord
+                            : null;
+                    var hasClockedInToday = record?.ActualStart is not null;
+                    var isActive = string.Equals(
+                        row.empStatus?.Code, "active", StringComparison.OrdinalIgnoreCase);
+                    var shouldHaveClockedIn = isActive
+                        && resolution is not null
+                        && AttendanceScheduleResolver.ShouldHaveClockedIn(
+                            resolution.Schedule,
+                            record?.ActualStart,
+                            resolution.LocalNow);
+                    var attendanceSummary = resolution is null
+                        ? null
+                        : new EmployeeListAttendanceSummaryResponse(
+                            shouldHaveClockedIn,
+                            shouldHaveClockedIn,
+                            hasClockedInToday,
+                            resolution.WorkDate,
+                            resolution.Timezone,
+                            shouldHaveClockedIn ? resolution.Schedule.Start?.ToString("HH:mm") : null,
+                            shouldHaveClockedIn ? "Still has not clocked in" : null);
+
+                    return new
+                    {
+                        Row = row,
+                        AttendanceSummary = attendanceSummary,
+                    };
+                })
+                .OrderByDescending(row => row.AttendanceSummary?.ShowNotClockedInWarning == true)
+                .ThenBy(row => row.Row.e.LastName)
+                .ThenBy(row => row.Row.e.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(row => new EmployeeListItemResponse(
+                    row.Row.e.Id,
+                    row.Row.e.EmployeeNumber,
+                    row.Row.e.FirstName + " " + row.Row.e.LastName,
+                    row.Row.e.Email,
+                    row.Row.dept != null ? row.Row.dept.Id : (Guid?)null,
+                    row.Row.dept != null ? row.Row.dept.Name : null,
+                    row.Row.position != null ? row.Row.position.Id : (Guid?)null,
+                    row.Row.position != null ? row.Row.position.Name : null,
+                    row.Row.legalEntity != null ? row.Row.legalEntity.Id : (Guid?)null,
+                    row.Row.legalEntity != null ? row.Row.legalEntity.Name : null,
+                    row.Row.empType != null ? row.Row.empType.Label : row.Row.e.EmploymentTypeId.ToString(),
+                    row.Row.empStatus != null ? row.Row.empStatus.Code : "active",
+                    row.Row.manager != null ? row.Row.manager.Id : (Guid?)null,
+                    row.Row.manager != null ? row.Row.manager.FirstName + " " + row.Row.manager.LastName : null,
+                    null,
+                    null,
+                    row.AttendanceSummary))
+                .ToList();
+
+            return (orderedRows, totalCount);
+        }
 
         var items = await joined
             .OrderBy(row => row.e.LastName).ThenBy(row => row.e.Id)

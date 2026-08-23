@@ -12,19 +12,23 @@ namespace ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Result<EmployeeListPageResponse>>
 {
     private const string RequiredPermission = "employees:read";
+    private const string AttendanceReadPermission = "attendance:read";
 
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IEmployeeAuthorityResolver _authorityResolver;
     private readonly ICurrentUser _currentUser;
+    private readonly IDateTimeProvider _dateTime;
 
     public ListEmployeesQueryHandler(
         IEmployeeRepository employeeRepository,
         IEmployeeAuthorityResolver authorityResolver,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        IDateTimeProvider dateTime)
     {
         _employeeRepository = employeeRepository;
         _authorityResolver = authorityResolver;
         _currentUser = currentUser;
+        _dateTime = dateTime;
     }
 
     public async Task<Result<EmployeeListPageResponse>> Handle(ListEmployeesQuery request, CancellationToken ct)
@@ -56,6 +60,7 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
                 _currentUser.UserId, legalEntityId.Value, RequiredPermission, true, EmployeeAuthorityPurpose.EmployeeListRead),
             ct);
 
+        var includeAttendanceWarnings = _currentUser.HasPermission(AttendanceReadPermission);
         IReadOnlyList<EmployeeListItemResponse> items;
         int totalCount;
 
@@ -73,14 +78,28 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
             // than fail open (Unrestricted() would fall through to "every tenant employee").
             var noFallbackScope = new EmployeeVisibilityScope(
                 false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>());
+            var filter = new EmployeeListFilter(
+                request.Search,
+                request.DepartmentId,
+                legalEntityId,
+                visibility.EmployeeIds.ToHashSet());
 
-            (items, totalCount) = await _employeeRepository.ListVisibleAsync(
-                _currentUser.TenantId,
-                noFallbackScope,
-                new EmployeeListFilter(request.Search, request.DepartmentId, legalEntityId, visibility.EmployeeIds.ToHashSet()),
-                page,
-                pageSize,
-                ct);
+            (items, totalCount) = includeAttendanceWarnings
+                ? await _employeeRepository.ListVisibleAsync(
+                    _currentUser.TenantId,
+                    noFallbackScope,
+                    filter,
+                    page,
+                    pageSize,
+                    ct,
+                    new EmployeeListAttendanceOptions(_dateTime.UtcNow))
+                : await _employeeRepository.ListVisibleAsync(
+                    _currentUser.TenantId,
+                    noFallbackScope,
+                    filter,
+                    page,
+                    pageSize,
+                    ct);
         }
 
         // A brand-new invitee has no active position assignment yet, so pure coverage visibility
@@ -93,11 +112,19 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
         var existingIds = items.Select(i => i.Id).ToHashSet();
         var toAdd = pendingInvited
             .Where(i => !existingIds.Contains(i.Id) && i.LegalEntityId == legalEntityId)
+            .Select(i => i with { AttendanceSummary = null })
             .ToList();
         if (toAdd.Count > 0)
         {
             items = items.Concat(toAdd).ToList();
             totalCount += toAdd.Count;
+        }
+
+        if (!includeAttendanceWarnings)
+        {
+            // Defense in depth for alternate repository implementations and test doubles: an
+            // employee-list caller without attendance:read must never receive sensitive state.
+            items = items.Select(i => i with { AttendanceSummary = null }).ToList();
         }
 
         return Result<EmployeeListPageResponse>.Success(

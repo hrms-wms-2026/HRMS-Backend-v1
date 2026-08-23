@@ -37,15 +37,11 @@ public sealed class ListEmployeesAuthorityResolverArchitectureTests
         Assert.DoesNotContain("\"employees:write\"", text, StringComparison.Ordinal);
     }
 
-    // 2026-08-18 product decision (see ListEmployeesQueryHandlerTests.cs history): the Employees
-    // directory is always coverage-scoped through the resolver - org:manage must never bypass it.
-    // The old direct-mock test asserting this (Handle_AlwaysCallsResolver_EvenWhenCallerHasOrgManage)
-    // no longer applies verbatim after the resolver migration (the handler no longer branches on
-    // org:manage at all, so there is nothing to mock two ways), but the guard itself must not
-    // silently disappear - this asserts the handler source never reads org:manage or calls
-    // HasPermission, so nobody can reintroduce a bypass without this test catching it.
+    // The Employees directory remains coverage-scoped through the resolver - org:manage must never
+    // bypass it. Attendance-sensitive fields use the separate attendance:read gate required by the
+    // employee-list warning contract.
     [Fact]
-    public void ListEmployeesQueryHandler_NeverChecksOrgManageOrCallsHasPermission()
+    public void ListEmployeesQueryHandler_NeverChecksOrgManage_AndUsesAttendanceReadOnlyForAttendanceData()
     {
         var path = FindFileUnderRepoRoot(
             "src", "ONEVO.Application", "Features", "CoreHr", "Employee", "Queries", "ListEmployees",
@@ -53,7 +49,8 @@ public sealed class ListEmployeesAuthorityResolverArchitectureTests
         var text = File.ReadAllText(path);
 
         Assert.DoesNotContain("org:manage", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("HasPermission", text, StringComparison.Ordinal);
+        Assert.Contains("HasPermission(AttendanceReadPermission)", text, StringComparison.Ordinal);
+        Assert.Contains("\"attendance:read\"", text, StringComparison.Ordinal);
     }
 
     private static string FindFileUnderRepoRoot(params string[] relativeSegments)
