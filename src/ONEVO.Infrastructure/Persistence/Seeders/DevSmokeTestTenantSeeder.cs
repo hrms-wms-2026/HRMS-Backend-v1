@@ -115,7 +115,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
     private static readonly IReadOnlyList<string> HrManagerPermissionCodes =
     [
         "org:read", "org:manage", "employees:read", "employees:write", "roles:read",
-        "leave:read", "leave:manage", "leave:approve"
+        "calendar:read", "leave:read", "leave:manage", "leave:approve"
     ];
 
     private static readonly IReadOnlyList<string> WorkManagerPermissionCodes =

@@ -190,12 +190,24 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Request.Options.LeaveRequestOptions.SectionName))
             .Validate(options => options.MaximumRequestRangeDays > 0, "Leave request maximum range days must be configured.")
             .ValidateOnStart();
+        services.AddOptions<ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions.SectionName))
+            .Validate(options =>
+                ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions.AreColorsValid(options.TypeCategoryColors),
+                "Leave:Calendar:TypeCategoryColors must contain #RRGGBB hex colors.")
+            .ValidateOnStart();
         services.AddScoped<
             ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Request.EfLeaveRequestRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Calendar.RepositoryInterfaces.ILeaveCalendarRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Calendar.EfLeaveCalendarRepository>();
         services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestDayCalculator>();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Calendar.Helpers.LeaveCalendarRequestProjector>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveHolidayProvider,
             ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveHolidayProvider>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveCalendarHolidayProvider,
+            ONEVO.Application.Features.Leave.Calendar.Services.NoOpLeaveCalendarHolidayProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveRequestConflictProvider,
             ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveRequestConflictProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveApproverResolver,

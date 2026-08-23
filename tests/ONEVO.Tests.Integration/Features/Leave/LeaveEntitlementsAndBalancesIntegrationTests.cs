@@ -101,6 +101,7 @@ public class LeaveEntitlementsAndBalancesIntegrationTests : IAsyncLifetime
         generate.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var balances = await SendAsync(HttpMethod.Get, _owner.Host, "/api/v1/leave/balances/all?year=2026",
+            body: null,
             cookie: _owner.SessionCookie,
             csrfToken: _owner.CsrfHeader);
         balances.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -232,7 +233,7 @@ public class LeaveEntitlementsAndBalancesIntegrationTests : IAsyncLifetime
     }
 
     private static object CreatePolicyBody(
-        string name, Guid leaveTypeId, Guid legalEntityId, bool confirm, decimal annualEntitlementDays = 20m) => new()
+        string name, Guid leaveTypeId, Guid legalEntityId, bool confirm, decimal annualEntitlementDays = 20m) => new
     {
         name,
         description = "integration fixture policy",

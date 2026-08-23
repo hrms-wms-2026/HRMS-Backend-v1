@@ -4,7 +4,7 @@
 **Companion (frontend):** `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-08-21-leave-management/SUMMARY.md`
 **Source of truth for product behaviour:** `C:\HR\leave-management-complete.md`
 
-This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`), Phase 2 (`part-2-leave-policies.md`), Phase 3 (`part-3-entitlements-and-balances.md`), Phase 4 (`part-4-request-submission.md`), Phase 5 (`part-5-approval-workflow.md`), Phase 6 (`part-6-cancellation.md`), and Phase 7 (`part-7-team-calendar.md`) — later phases are scoped here (entities/endpoints/files/dependencies/exit-criteria) but not yet broken into bite-sized TDD steps. Write each remaining part's full TDD file when that phase starts, following `part-1`'s pattern.
+This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`), Phase 2 (`part-2-leave-policies.md`), Phase 3 (`part-3-entitlements-and-balances.md`), Phase 4 (`part-4-request-submission.md`), Phase 5 (`part-5-approval-workflow.md`), Phase 6 (`part-6-cancellation.md`), and Phase 7 (`part-7-team-calendar.md`) — Phase 8+ are scoped here (entities/endpoints/files/dependencies/exit-criteria) but not yet broken into bite-sized TDD steps. Write each remaining part's full TDD file when that phase starts, following `part-1`'s pattern.
 
 **Every phase's exit criteria includes a live run against the real dev DB** (`DevSmokeTestTenantSeeder`'s acme/dapi tenants), not just a green test suite — see the design doc's Testing note.
 
@@ -75,9 +75,9 @@ This is a 10-phase build (0-9), one deliverable slice per phase, backend and fro
 
 ## Phase 7 — Team Calendar (Screen 7)
 
-**Status:** written in full — pending execution (`part-7-team-calendar.md`). Team Calendar is a read-only, scoped month projection over leave requests plus holiday provider data; `calendar:read` is required but not sufficient on its own, leave visibility still comes from `leave:read-own`, `leave:read-team`, `leave:read`, or `leave:manage`. Tentative blocks and type colors are config-driven; the plan deliberately avoids hard-coded display/business values.
+**Status:** written in full — **executed 2026-08-23** on the current leave branch (unit + architecture + API build verified; Testcontainers smoke compiles but live run is pending Docker engine). Team Calendar is a read-only, scoped month projection over leave requests plus holiday provider data; `calendar:read` is required but not sufficient on its own, leave visibility still comes from `leave:read-own`, `leave:read-team`, `leave:read`, or `leave:manage`. Tentative blocks and type colors are config-driven through `Leave:Calendar`; no display/business values are hard-coded into handlers.
 
-- Backend: `GET /api/v1/leave/calendar` — month view, who's off + type category/configured color + public holidays, department filter. Reuses `LeaveRequest`, `LeaveType`, employee scope data, and a holiday provider; no new calendar entity.
+- Backend: `GET /api/v1/leave/calendar` — month view, who's off + type category/configured color + public holidays, department filter, own/team/all visibility scoping, partial-cancellation-aware projection. Reuses `LeaveRequest`, `LeaveType`, employee scope data, and a holiday provider; no new calendar entity. `DevSmokeTestTenantSeeder` grants `calendar:read` to the smoke HR manager for live route testing.
 - Frontend: `team-calendar` feature, wired to `/time-off/calendar`.
 - **Depends on:** Phase 4 request data. Phase 5 supplies approved/approval-state transitions; Phase 6 is not a calendar dependency, but the backend plan is partial-cancellation aware when those fields are present.
 
