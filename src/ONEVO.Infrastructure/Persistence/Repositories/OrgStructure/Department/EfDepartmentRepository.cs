@@ -244,6 +244,25 @@ public class EfDepartmentRepository : IDepartmentRepository
         return isDescendant;
     }
 
+    public async Task<IReadOnlyList<Guid>> GetDescendantDepartmentIdsAsync(
+        Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default)
+    {
+        var descendantIds = _db.Database.SqlQuery<Guid>($@"
+            WITH RECURSIVE descendants AS (
+                SELECT id FROM departments
+                WHERE tenant_id = {tenantId} AND legal_entity_id = {legalEntityId}
+                    AND parent_department_id = {departmentId} AND is_active = true
+                UNION ALL
+                SELECT d.id FROM departments d
+                INNER JOIN descendants ON d.parent_department_id = descendants.id
+                WHERE d.tenant_id = {tenantId} AND d.legal_entity_id = {legalEntityId} AND d.is_active = true
+            )
+            SELECT id AS ""Value"" FROM descendants
+        ");
+
+        return await descendantIds.ToListAsync(ct);
+    }
+
     public async Task<int> CountActiveChildrenAsync(
         Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default)
     {

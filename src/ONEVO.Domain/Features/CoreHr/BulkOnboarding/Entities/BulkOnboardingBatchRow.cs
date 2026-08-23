@@ -11,6 +11,7 @@ public class BulkOnboardingBatchRow : BaseEntity
     public Guid? ResolvedPositionId { get; set; }
     public Guid? ResolvedReportsToEmployeeId { get; set; }
     public Guid? ResolvedTemplateId { get; set; }
+    public int? ResolvedWorkModeId { get; set; }
     public string Status { get; set; } = BulkOnboardingBatchRowStatus.PendingMapping;
     public string? ErrorMessage { get; set; }
     public Guid? OnboardingDraftId { get; set; }

@@ -62,13 +62,53 @@ public class ChecklistTaskJsonContractTests
     [InlineData("hr")]
     [InlineData("it")]
     [InlineData("custom_user")]
-    public void Parse_NonEmployeeOwnerType_RequiresAssignedToId(string ownerType)
+    public void Parse_OffsetMode_NonEmployeeOwnerType_AllowsPositionWithoutAssignedToId(string ownerType)
+    {
+        var positionId = Guid.NewGuid();
+        var json = $"[{{\"title\":\"x\",\"ownerType\":\"{ownerType}\",\"assigneePositionId\":\"{positionId}\",\"dueOffsetDays\":1,\"isRequired\":true}}]";
+
+        var result = ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.OffsetDays);
+
+        result[0].AssignedToId.Should().BeNull();
+        result[0].AssigneePositionId.Should().Be(positionId);
+    }
+
+    [Theory]
+    [InlineData("manager")]
+    [InlineData("hr")]
+    [InlineData("it")]
+    [InlineData("custom_user")]
+    public void Parse_OffsetMode_NonEmployeeOwnerType_RequiresAssignedToIdOrPosition(string ownerType)
     {
         var json = $"[{{\"title\":\"x\",\"ownerType\":\"{ownerType}\",\"dueOffsetDays\":1,\"isRequired\":true}}]";
 
         var act = () => ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.OffsetDays);
 
         act.Should().Throw<ArgumentException>();
+    }
+
+    [Theory]
+    [InlineData("manager")]
+    [InlineData("hr")]
+    [InlineData("it")]
+    [InlineData("custom_user")]
+    public void Parse_AbsoluteDateMode_NonEmployeeOwnerType_RequiresAssignedToId(string ownerType)
+    {
+        var json = $"[{{\"title\":\"x\",\"ownerType\":\"{ownerType}\",\"assigneePositionId\":\"{Guid.NewGuid()}\",\"dueDate\":\"2026-09-01\",\"isRequired\":true}}]";
+
+        var act = () => ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.AbsoluteDate);
+
+        act.Should().Throw<ArgumentException>().WithMessage("*specific person*");
+    }
+
+    [Fact]
+    public void Parse_AbsoluteDateMode_EmployeeOwnerType_AllowsNullAssignedToId()
+    {
+        var json = "[{\"title\":\"Complete profile\",\"ownerType\":\"employee\",\"dueDate\":\"2026-09-01\",\"isRequired\":true}]";
+
+        var result = ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.AbsoluteDate);
+
+        result[0].AssignedToId.Should().BeNull();
     }
 
     [Fact]

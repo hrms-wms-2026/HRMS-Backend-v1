@@ -1,7 +1,7 @@
 namespace ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 
 public sealed record ChecklistTemplateTaskResponse(
-    string Title, string OwnerType, Guid? AssignedToId, int DueOffsetDays, int? Sequence, bool IsRequired);
+    string Title, string OwnerType, Guid? AssignedToId, int DueOffsetDays, int? Sequence, bool IsRequired, Guid? AssigneePositionId = null);
 
 public sealed record ChecklistTemplateResponse(
     Guid Id, string Name, string TemplateType, Guid LegalEntityId, Guid? DepartmentId, Guid? PositionId,

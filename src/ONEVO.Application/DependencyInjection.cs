@@ -34,6 +34,13 @@ public static class DependencyInjection
 
         services.AddValidatorsFromAssembly(assembly);
 
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.Services.IClockInPolicyScopeMembershipValidator,
+            ONEVO.Application.Features.TimeAttendance.Services.ClockInPolicyScopeMembershipValidator>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.Services.IAttendanceTodayStateService,
+            ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService>();
+
         // Outbox message consumers (dispatched by the Infrastructure outbox worker).
         services.AddScoped<IOutboxMessageHandler, TenantOwnerInviteEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, PasswordResetEmailOutboxHandler>();
@@ -61,6 +68,10 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Leave.Cancellation.Outbox.NoOpLeaveCancellationSideEffectOutboxHandler>();
         services.AddScoped<GitHubUserIntegrationAvailability>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
+
+        services.AddScoped<
+            ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces.IEmployeeAuthorityResolver,
+            ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services.EmployeeAuthorityResolver>();
 
         return services;
     }

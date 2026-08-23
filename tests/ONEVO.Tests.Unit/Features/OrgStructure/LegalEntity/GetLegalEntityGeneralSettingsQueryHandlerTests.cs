@@ -38,7 +38,8 @@ public class GetLegalEntityGeneralSettingsQueryHandlerTests
             CurrencyCode = "LKR",
             IsActive = true,
             WorkStartTime = new TimeOnly(9, 0),
-            WorkEndTime = new TimeOnly(17, 30)
+            WorkEndTime = new TimeOnly(17, 30),
+            BreakDurationMinutes = 60
         };
         _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entity);
@@ -51,6 +52,30 @@ public class GetLegalEntityGeneralSettingsQueryHandlerTests
         result.Value.Status.Should().Be("active");
         result.Value.WorkStartTime.Should().Be(new TimeOnly(9, 0));
         result.Value.WorkEndTime.Should().Be(new TimeOnly(17, 30));
+        result.Value.BreakDurationMinutes.Should().Be(60);
+    }
+
+    [Fact]
+    public async Task Handle_EntityWithNullBreakDurationMinutes_ReturnsNull()
+    {
+        var entity = new LegalEntityEntity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            Name = "Acme Lanka",
+            CountryCode = "LKA",
+            CurrencyCode = "LKR",
+            IsActive = true,
+            BreakDurationMinutes = null
+        };
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(new GetLegalEntityGeneralSettingsQuery(entity.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.BreakDurationMinutes.Should().BeNull();
     }
 
     [Fact]
