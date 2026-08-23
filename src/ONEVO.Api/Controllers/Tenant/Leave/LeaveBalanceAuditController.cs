@@ -36,4 +36,25 @@ public class LeaveBalanceAuditController : ControllerBase
             new ListBalanceAuditQuery(employeeId, leaveTypeId, changeType, fromDate, toDate, page, pageSize), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
+
+    /// <summary>CSV export of the audit trail, same filters as List. No pagination - capped
+    /// at 5000 rows to keep the export bounded.</summary>
+    [HttpGet("export")]
+    [RequirePermission("leave:read")]
+    public async Task<IActionResult> Export(
+        [FromQuery] Guid? employeeId,
+        [FromQuery] Guid? leaveTypeId,
+        [FromQuery] string? changeType,
+        [FromQuery] DateOnly? fromDate,
+        [FromQuery] DateOnly? toDate,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new ListBalanceAuditQuery(employeeId, leaveTypeId, changeType, fromDate, toDate, Page: 1, PageSize: 5000), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        var file = Application.Features.Leave.BalanceAudit.Helpers.LeaveBalanceAuditCsvBuilder.Build(result.Value!);
+        return File(file.Content, file.ContentType, file.FileName);
+    }
 }
