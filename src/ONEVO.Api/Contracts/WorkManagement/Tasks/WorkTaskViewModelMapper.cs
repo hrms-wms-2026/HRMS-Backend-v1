@@ -6,7 +6,7 @@ public static class WorkTaskViewModelMapper
 {
     public static WorkTaskViewModel ToViewModel(this WorkTaskResponse dto) => new(
         dto.Id, dto.ObjectiveId, dto.ShortId, dto.Title, dto.Description,
-        dto.TaskType, dto.StatusId, dto.Priority, dto.StoryPoints,
+        dto.CategoryId, dto.StatusId, dto.Priority, dto.StoryPoints,
         dto.DueDate, dto.EstimatedHours, dto.CompletedHours, dto.ProgressPercent, dto.SprintId,
         dto.AssigneeEmployeeIds ?? Array.Empty<Guid>());
 
