@@ -24,7 +24,7 @@ public class ListBalanceAuditQueryHandler : IRequestHandler<ListBalanceAuditQuer
             return Result<IReadOnlyList<LeaveBalanceAuditResponse>>.Forbidden("Authentication required.");
 
         var page = request.Page < 1 ? 1 : request.Page;
-        var pageSize = request.PageSize is < 1 or > 200 ? 25 : request.PageSize;
+        var pageSize = request.PageSize < 1 ? 25 : Math.Min(request.PageSize, 5000);
 
         var rows = await _audits.ListRowsAsync(
             _currentUser.TenantId,

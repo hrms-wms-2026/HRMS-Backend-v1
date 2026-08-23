@@ -45,4 +45,20 @@ public class ListBalanceAuditQueryHandlerTests
         Assert.Equal("Priya Kumar", result.Value![0].EmployeeName);
         Assert.Equal(-3m, result.Value[0].DaysChanged);
     }
+
+    [Fact]
+    public async Task Handle_PreservesExportPageSizeUpTo5000()
+    {
+        LeaveBalanceAuditListFilter? captured = null;
+        _repoMock.Setup(r => r.ListRowsAsync(_tenantId, It.IsAny<LeaveBalanceAuditListFilter>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, LeaveBalanceAuditListFilter, CancellationToken>((_, filter, _) => captured = filter)
+            .ReturnsAsync([]);
+
+        var handler = new ListBalanceAuditQueryHandler(_repoMock.Object, _currentUserMock.Object);
+        await handler.Handle(
+            new ListBalanceAuditQuery(null, null, null, null, null, Page: 1, PageSize: 5000),
+            CancellationToken.None);
+
+        Assert.Equal(5000, captured!.PageSize);
+    }
 }

@@ -23,6 +23,7 @@ public class LeaveEntitlementsControllerArchitectureTests
     public void MutatingActions_RequireLeaveManage()
     {
         Assert.Equal("leave:manage", GetPermission(nameof(LeaveEntitlementsController.PreviewGenerate)));
+        Assert.Equal("leave:manage", GetPermission(nameof(LeaveEntitlementsController.PreviewGenerateExport)));
         Assert.Equal("leave:manage", GetPermission(nameof(LeaveEntitlementsController.Generate)));
         Assert.Equal("leave:manage", GetPermission(nameof(LeaveEntitlementsController.CreateManual)));
         Assert.Equal("leave:manage", GetPermission(nameof(LeaveEntitlementsController.Adjust)));
