@@ -46,6 +46,19 @@ public class LeaveEntitlementsController : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    [HttpPost("generate/preview/export")]
+    [RequirePermission("leave:manage")]
+    public async Task<IActionResult> PreviewGenerateExport(
+        [FromBody] GenerateEntitlementsRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new PreviewGenerateEntitlementsQuery(request.Year, request.LegalEntityId), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        var file = Application.Features.Leave.Entitlement.Helpers.LeaveEntitlementGenerationCsvBuilder.Build(result.Value!);
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
     [HttpPost("generate")]
     [RequirePermission("leave:manage")]
     public async Task<IActionResult> Generate(
