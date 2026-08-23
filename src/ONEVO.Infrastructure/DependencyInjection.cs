@@ -181,6 +181,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces.ILeaveEntitlementRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Entitlement.EfLeaveEntitlementRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.BalanceAudit.RepositoryInterfaces.ILeaveBalanceAuditRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.BalanceAudit.EfLeaveBalanceAuditRepository>();
         services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.ILeaveWorkingDayCounter,
             ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveWorkingDayCounter>();
         services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveEntitlementCalculator>();
