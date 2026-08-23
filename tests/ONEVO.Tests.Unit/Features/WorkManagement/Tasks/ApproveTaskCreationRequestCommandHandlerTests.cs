@@ -34,6 +34,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
     private static readonly Guid DefaultStatusId = Guid.NewGuid();
     private static readonly Guid RequesterEmployeeId = Guid.NewGuid();
     private static readonly Guid SprintId = Guid.NewGuid();
+    private static readonly Guid CategoryId = Guid.NewGuid();
 
     private static TaskCreationRequest PendingRequest(decimal requestedHours, bool sprintLess = false) => new()
     {
@@ -41,14 +42,14 @@ public class ApproveTaskCreationRequestCommandHandlerTests
         RequestedByEmployeeId = RequesterEmployeeId,
         PayloadJson = System.Text.Json.JsonSerializer.Serialize(
             new ONEVO.Application.Features.WorkManagement.Tasks.DTOs.TaskCreationRequestPayload(
-                "Title", null, "task", "medium", null, requestedHours, null, sprintLess ? null : SprintId)),
+                "Title", null, CategoryId, "medium", null, requestedHours, null, sprintLess ? null : SprintId)),
         Status = TaskCreationRequestStatuses.Pending,
         CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow
     };
 
     private (ApproveTaskCreationRequestCommandHandler Handler, Mock<IWorkTaskRepository> Tasks, Mock<ITaskCreationRequestRepository> Requests) BuildApprove(
         decimal allocatedHours, decimal existingTaskSum, decimal requestedHours, Guid? callerEmployeeId = null, bool sprintLess = false,
-        bool? callerIsEffectiveManager = null)
+        bool? callerIsEffectiveManager = null, bool categoryExists = true, Guid? categoryProjectId = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
         var currentUser = new Mock<ICurrentUser>();
@@ -92,6 +93,12 @@ public class ApproveTaskCreationRequestCommandHandlerTests
                 new() { Id = DefaultStatusId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, Name = "To Do", DisplayOrder = 0, CreatedAt = DateTimeOffset.UtcNow }
             });
 
+        var categories = new Mock<ITaskCategoryRepository>();
+        categories.Setup(x => x.GetByIdForTenantAsync(TenantId, CategoryId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(categoryExists
+                ? new TaskCategory { Id = CategoryId, TenantId = TenantId, ProjectId = categoryProjectId ?? ProjectId, Name = "Task", CreatedAt = DateTimeOffset.UtcNow }
+                : null);
+
         var slack = new ObjectiveAllocationSlackCalculator(objectives.Object, tasks.Object);
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
@@ -114,7 +121,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
 
         var handler = new ApproveTaskCreationRequestCommandHandler(
             currentUser.Object, identity.Object, requests.Object, objectives.Object, projects.Object,
-            tasks.Object, statuses.Object, slack, membership.Object, notifications.Object, unitOfWork.Object, sprints.Object);
+            tasks.Object, statuses.Object, categories.Object, slack, membership.Object, notifications.Object, unitOfWork.Object, sprints.Object);
         return (handler, tasks, requests);
     }
 
@@ -181,6 +188,30 @@ public class ApproveTaskCreationRequestCommandHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value!.SprintId);
         tasks.Verify(x => x.AddAsync(It.Is<WorkTask>(t => t.SprintId == null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_CategoryNotFound_ReturnsNotFound()
+    {
+        var (handler, tasks, requests) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, categoryExists: false);
+        var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        tasks.Verify(x => x.AddAsync(It.IsAny<WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
+        requests.Verify(x => x.Update(It.IsAny<TaskCreationRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_CategoryBelongsToDifferentProject_ReturnsNotFound()
+    {
+        var (handler, tasks, requests) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, categoryProjectId: Guid.NewGuid());
+        var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        tasks.Verify(x => x.AddAsync(It.IsAny<WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
+        requests.Verify(x => x.Update(It.IsAny<TaskCreationRequest>()), Times.Never);
     }
 }
 

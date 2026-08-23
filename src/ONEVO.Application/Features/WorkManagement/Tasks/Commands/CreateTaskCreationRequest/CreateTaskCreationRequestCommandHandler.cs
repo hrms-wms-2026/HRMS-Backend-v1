@@ -22,20 +22,22 @@ public class CreateTaskCreationRequestCommandHandler : IRequestHandler<CreateTas
     private readonly IObjectiveRepository _objectives;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly ISprintRepository _sprints;
+    private readonly ITaskCategoryRepository _categories;
     private readonly ITaskCreationRequestRepository _requests;
     private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
 
     public CreateTaskCreationRequestCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IMilestoneMembershipCoordinator membership, ISprintRepository sprints, ITaskCreationRequestRepository requests,
-        INotificationDispatcher notifications, IUnitOfWork unitOfWork)
+        IMilestoneMembershipCoordinator membership, ISprintRepository sprints, ITaskCategoryRepository categories,
+        ITaskCreationRequestRepository requests, INotificationDispatcher notifications, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _membership = membership;
         _sprints = sprints;
+        _categories = categories;
         _requests = requests;
         _notifications = notifications;
         _unitOfWork = unitOfWork;
@@ -62,6 +64,10 @@ public class CreateTaskCreationRequestCommandHandler : IRequestHandler<CreateTas
         if (!isMember)
             return Result<TaskCreationRequestResponse>.Forbidden("Only active milestone members can request tasks.");
 
+        var category = await _categories.GetByIdForTenantAsync(tenantId, request.CategoryId, ct);
+        if (category is null || category.ProjectId != objective.ProjectId)
+            return Result<TaskCreationRequestResponse>.NotFound("Category not found.");
+
         if (request.SprintId is not null)
         {
             var sprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId.Value, ct);
@@ -72,7 +78,7 @@ public class CreateTaskCreationRequestCommandHandler : IRequestHandler<CreateTas
         }
 
         var payload = new TaskCreationRequestPayload(
-            request.Title.Trim(), request.Description?.Trim(), request.TaskType, request.Priority,
+            request.Title.Trim(), request.Description?.Trim(), request.CategoryId, request.Priority,
             request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId);
 
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [callerEmployeeId.Value], ct);

@@ -27,6 +27,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskStatusRepository _statuses;
     private readonly ISprintRepository _sprints;
+    private readonly ITaskCategoryRepository _categories;
     private readonly IObjectiveAllocationSlackCalculator _slack;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly INotificationDispatcher _notifications;
@@ -35,7 +36,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
     public ApproveTaskCreationRequestCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, ITaskCreationRequestRepository requests,
         IObjectiveRepository objectives, IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
-        IObjectiveAllocationSlackCalculator slack, IMilestoneMembershipCoordinator membership,
+        ITaskCategoryRepository categories, IObjectiveAllocationSlackCalculator slack, IMilestoneMembershipCoordinator membership,
         INotificationDispatcher notifications, IUnitOfWork unitOfWork, ISprintRepository sprints)
     {
         _currentUser = currentUser;
@@ -46,6 +47,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
         _tasks = tasks;
         _statuses = statuses;
         _sprints = sprints;
+        _categories = categories;
         _slack = slack;
         _membership = membership;
         _notifications = notifications;
@@ -77,6 +79,10 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
             return Result<WorkTaskResponse>.Forbidden("Only this milestone's owner can decide this request.");
 
         var payload = JsonSerializer.Deserialize<TaskCreationRequestPayload>(pending.PayloadJson)!;
+
+        var category = await _categories.GetByIdForTenantAsync(tenantId, payload.CategoryId, ct);
+        if (category is null || category.ProjectId != objective.ProjectId)
+            return Result<WorkTaskResponse>.NotFound("Category not found.");
 
         if (payload.SprintId is not null)
         {
@@ -112,7 +118,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = objective.ProjectId, ObjectiveId = objective.Id,
                 ShortId = $"{project.Identifier}-{taskNumber}",
-                Title = payload.Title, Description = payload.Description, TaskType = payload.TaskType,
+                Title = payload.Title, Description = payload.Description, CategoryId = payload.CategoryId,
                 Priority = payload.Priority, DueDate = payload.DueDate, EstimatedHours = payload.EstimatedHours,
                 StoryPoints = payload.StoryPoints, StatusId = defaultStatus.Id, CompletedHours = 0m,
                 SprintId = payload.SprintId,
@@ -146,7 +152,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
 
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
-                task.TaskType, task.StatusId, task.Priority, task.StoryPoints,
+                task.CategoryId, task.StatusId, task.Priority, task.StoryPoints,
                 task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId));
         }, ct);
     }

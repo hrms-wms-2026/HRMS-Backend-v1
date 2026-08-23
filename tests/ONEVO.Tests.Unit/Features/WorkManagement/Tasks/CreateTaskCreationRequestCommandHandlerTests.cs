@@ -26,8 +26,11 @@ public class CreateTaskCreationRequestCommandHandlerTests
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid OwnerId = Guid.NewGuid();
     private static readonly Guid SprintId = Guid.NewGuid();
+    private static readonly Guid ProjectId = Guid.NewGuid();
+    private static readonly Guid CategoryId = Guid.NewGuid();
 
-    private (CreateTaskCreationRequestCommandHandler Handler, Mock<ITaskCreationRequestRepository> Requests) Build(bool isActiveMember)
+    private (CreateTaskCreationRequestCommandHandler Handler, Mock<ITaskCreationRequestRepository> Requests) Build(
+        bool isActiveMember, bool categoryExists = true, Guid? categoryProjectId = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -41,7 +44,13 @@ public class CreateTaskCreationRequestCommandHandlerTests
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Objective { Id = ObjectiveId, TenantId = TenantId, OwnerId = OwnerId, Title = "Milestone", IsActive = true, CreatedAt = DateTimeOffset.UtcNow });
+            .ReturnsAsync(new Objective { Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, OwnerId = OwnerId, Title = "Milestone", IsActive = true, CreatedAt = DateTimeOffset.UtcNow });
+
+        var categories = new Mock<ITaskCategoryRepository>();
+        categories.Setup(x => x.GetByIdForTenantAsync(TenantId, CategoryId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(categoryExists
+                ? new TaskCategory { Id = CategoryId, TenantId = TenantId, ProjectId = categoryProjectId ?? ProjectId, Name = "Task", CreatedAt = DateTimeOffset.UtcNow }
+                : null);
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.IsActiveMemberAsync(TenantId, ObjectiveId, EmployeeId, It.IsAny<CancellationToken>()))
@@ -63,8 +72,8 @@ public class CreateTaskCreationRequestCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result<TaskCreationRequestResponse>>> op, CancellationToken ct) => op(ct));
 
         var handler = new CreateTaskCreationRequestCommandHandler(
-            currentUser.Object, identity.Object, objectives.Object, membership.Object, sprints.Object, requests.Object,
-            notifications.Object, unitOfWork.Object);
+            currentUser.Object, identity.Object, objectives.Object, membership.Object, sprints.Object, categories.Object,
+            requests.Object, notifications.Object, unitOfWork.Object);
         return (handler, requests);
     }
 
@@ -72,7 +81,7 @@ public class CreateTaskCreationRequestCommandHandlerTests
     public async Task Handle_ActiveMember_CreatesPendingRequest()
     {
         var (handler, requests) = Build(isActiveMember: true);
-        var command = new CreateTaskCreationRequestCommand(ObjectiveId, "New task", null, "task", "medium", null, 5m, null, SprintId);
+        var command = new CreateTaskCreationRequestCommand(ObjectiveId, "New task", null, CategoryId, "medium", null, 5m, null, SprintId);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -85,7 +94,7 @@ public class CreateTaskCreationRequestCommandHandlerTests
     public async Task Handle_NotActiveMember_ReturnsForbidden()
     {
         var (handler, requests) = Build(isActiveMember: false);
-        var command = new CreateTaskCreationRequestCommand(ObjectiveId, "New task", null, "task", "medium", null, 5m, null, SprintId);
+        var command = new CreateTaskCreationRequestCommand(ObjectiveId, "New task", null, CategoryId, "medium", null, 5m, null, SprintId);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -98,7 +107,7 @@ public class CreateTaskCreationRequestCommandHandlerTests
     public async Task Handle_NullSprintId_StoresNullSprintInPayload()
     {
         var (handler, requests) = Build(isActiveMember: true);
-        var command = new CreateTaskCreationRequestCommand(ObjectiveId, "Direct task", null, "task", "medium", null, 5m, null, SprintId: null);
+        var command = new CreateTaskCreationRequestCommand(ObjectiveId, "Direct task", null, CategoryId, "medium", null, 5m, null, SprintId: null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -106,5 +115,31 @@ public class CreateTaskCreationRequestCommandHandlerTests
         Assert.Null(result.Value!.Payload.SprintId);
         requests.Verify(x => x.AddAsync(It.Is<TaskCreationRequest>(r =>
             JsonSerializer.Deserialize<TaskCreationRequestPayload>(r.PayloadJson)!.SprintId == null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_CategoryNotFound_ReturnsNotFound()
+    {
+        var (handler, requests) = Build(isActiveMember: true, categoryExists: false);
+        var command = new CreateTaskCreationRequestCommand(ObjectiveId, "New task", null, CategoryId, "medium", null, 5m, null, SprintId);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.Tasks.Entities.TaskCreationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_CategoryBelongsToDifferentProject_ReturnsNotFound()
+    {
+        var (handler, requests) = Build(isActiveMember: true, categoryProjectId: Guid.NewGuid());
+        var command = new CreateTaskCreationRequestCommand(ObjectiveId, "New task", null, CategoryId, "medium", null, 5m, null, SprintId);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.Tasks.Entities.TaskCreationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
