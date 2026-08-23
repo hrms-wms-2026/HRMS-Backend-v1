@@ -94,7 +94,7 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(a => a.EmployeeId).ToList());
 
         var responses = items.Select(t => new WorkTaskResponse(
-            t.Id, t.ObjectiveId, t.ShortId, t.Title, t.Description, t.TaskType, t.StatusId,
+            t.Id, t.ObjectiveId, t.ShortId, t.Title, t.Description, t.CategoryId, t.StatusId,
             t.Priority, t.StoryPoints, t.DueDate, t.EstimatedHours, t.CompletedHours, t.ProgressPercent, t.SprintId,
             assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()))).ToList();
 

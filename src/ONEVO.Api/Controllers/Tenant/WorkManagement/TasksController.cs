@@ -67,7 +67,7 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> Create(Guid objectiveId, [FromBody] CreateTaskRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateTaskCommand(
-            objectiveId, request.Title, request.Description, request.TaskType, request.Priority,
+            objectiveId, request.Title, request.Description, request.CategoryId, request.Priority,
             request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId), ct);
 
         return result.IsSuccess
@@ -256,7 +256,7 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> CreateRequest(Guid objectiveId, [FromBody] CreateTaskCreationRequestRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateTaskCreationRequestCommand(
-            objectiveId, request.Title, request.Description, request.TaskType, request.Priority,
+            objectiveId, request.Title, request.Description, request.CategoryId, request.Priority,
             request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId), ct);
 
         return result.IsSuccess
