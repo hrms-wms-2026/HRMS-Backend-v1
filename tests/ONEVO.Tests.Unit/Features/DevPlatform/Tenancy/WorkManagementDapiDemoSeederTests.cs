@@ -10,6 +10,7 @@ using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
@@ -567,6 +568,57 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         (await verify.ObjectiveChangeRequests
             .CountAsync(r => r.TenantId == DapiTenantId && r.RequestType == "extend_allocation"))
             .Should().Be(extendCount);
+    }
+
+    /// <summary>
+    /// Mirrors the live self-heal trap: Task 1's migration already inserted TaskCategory rows for
+    /// the dapi demo projects using gen_random_uuid() (not this seeder's deterministic ids). The
+    /// seeder must key its existence check on (ProjectId, Name) and reuse the pre-existing row's
+    /// real id rather than attempting a second, duplicate insert.
+    /// </summary>
+    [Fact]
+    public async Task SeedAsync_WhenTaskCategoryNameAlreadyExistsWithDifferentId_ReusesExistingRowEverywhere()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+
+        var eposProjectId = WorkManagementDapiDemoSeeder.DeterministicGuid("dapi-demo:project:epos");
+        var preexistingId = Guid.NewGuid();
+        db.TaskCategories.Add(new TaskCategory
+        {
+            Id = preexistingId,
+            TenantId = DapiTenantId,
+            ProjectId = eposProjectId,
+            Name = "task",
+            DisplayOrder = 0,
+            CreatedById = DapiOwnerUserId,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var act = async () => await RunDemoSeederAsync(db);
+        await act.Should().NotThrowAsync();
+
+        using var verify = CreateContext();
+        var eposTaskCategories = await verify.TaskCategories
+            .Where(c => c.ProjectId == eposProjectId && c.Name == "task")
+            .ToListAsync();
+        eposTaskCategories.Should().HaveCount(1);
+        eposTaskCategories[0].Id.Should().Be(preexistingId);
+
+        // The remaining 3 canonical categories should have been newly seeded for the same project.
+        var allEposCategories = await verify.TaskCategories
+            .Where(c => c.ProjectId == eposProjectId)
+            .ToListAsync();
+        allEposCategories.Should().HaveCount(4);
+        allEposCategories.Select(c => c.Name).Should().BeEquivalentTo(["task", "bug", "story", "feature"]);
+
+        // Every seeded WorkTask/TaskCreationRequest under EPOS that uses the "task" category must
+        // resolve to the pre-existing (reused) id, not a freshly-minted duplicate.
+        var eposWorkTasksWithTaskCategory = await verify.WorkTasks
+            .Where(t => t.ProjectId == eposProjectId && t.CategoryId == preexistingId)
+            .ToListAsync();
+        eposWorkTasksWithTaskCategory.Should().NotBeEmpty();
     }
 
     private static async Task<List<Guid>> GetLeafObjectiveIdsAsync(ApplicationDbContext db)
