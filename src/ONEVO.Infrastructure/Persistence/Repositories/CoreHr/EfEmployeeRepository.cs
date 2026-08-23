@@ -133,14 +133,21 @@ public class EfEmployeeRepository : IEmployeeRepository
                 .Select(resolution => resolution!)
                 .ToList();
             var employeeIds = scheduleByEmployeeId.Keys.ToArray();
-            var attendanceRecords = resolutions.Count == 0
-                ? []
-                : await _db.AttendanceRecords.AsNoTracking()
+            var attendanceRecords = new List<AttendanceRecord>();
+            if (resolutions.Count != 0)
+            {
+                // Materialize scalar bounds before entering the EF query. Keeping the local
+                // AttendanceScheduleResolution collection out of the expression tree is required
+                // by the EF InMemory provider and is also clearer for relational translation.
+                var minWorkDate = resolutions.Min(resolution => resolution.WorkDate);
+                var maxWorkDate = resolutions.Max(resolution => resolution.WorkDate);
+                attendanceRecords = await _db.AttendanceRecords.AsNoTracking()
                     .Where(record => record.TenantId == tenantId
                         && employeeIds.Contains(record.EmployeeId)
-                        && record.Date >= resolutions.Min(resolution => resolution.WorkDate)
-                        && record.Date <= resolutions.Max(resolution => resolution.WorkDate))
+                        && record.Date >= minWorkDate
+                        && record.Date <= maxWorkDate)
                     .ToListAsync(ct);
+            }
             var attendanceByEmployeeAndDate = attendanceRecords
                 .GroupBy(record => (record.EmployeeId, record.Date))
                 .ToDictionary(group => group.Key, group => group.First());

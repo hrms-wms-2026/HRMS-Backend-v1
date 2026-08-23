@@ -6,6 +6,7 @@ using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
@@ -89,6 +90,7 @@ public sealed class SwitchActiveCompanyIntegrationTests : IAsyncLifetime
             IsActive = true,
         });
         db.WorkModes.Add(new ONEVO.Domain.Lookups.WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true });
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         db.Employees.AddRange(
             new EmployeeEntity
             {

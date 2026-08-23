@@ -1,9 +1,13 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using ONEVO.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace ONEVO.Infrastructure.Migrations;
 
+[DbContext(typeof(ApplicationDbContext))]
+[Migration("20260821120000_AddAttendanceReadModel")]
 public partial class AddAttendanceReadModel : Migration
 {
     private static readonly string[] TenantTables = ["attendance_records", "presence_sessions", "break_records"];
