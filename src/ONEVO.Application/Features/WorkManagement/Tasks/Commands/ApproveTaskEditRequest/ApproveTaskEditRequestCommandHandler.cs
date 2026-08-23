@@ -150,7 +150,7 @@ public class ApproveTaskEditRequestCommandHandler
                 task.ShortId,
                 task.Title,
                 task.Description,
-                task.TaskType,
+                task.CategoryId,
                 task.StatusId,
                 task.Priority,
                 task.StoryPoints,
