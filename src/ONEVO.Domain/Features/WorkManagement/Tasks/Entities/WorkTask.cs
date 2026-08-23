@@ -32,6 +32,7 @@ public class WorkTask : BaseEntity
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string TaskType { get; set; } = WorkTaskTypes.Task;
+    public Guid CategoryId { get; set; }
     public Guid StatusId { get; set; }
     public string Priority { get; set; } = WorkTaskPriorities.Medium;
     public int? StoryPoints { get; set; }
