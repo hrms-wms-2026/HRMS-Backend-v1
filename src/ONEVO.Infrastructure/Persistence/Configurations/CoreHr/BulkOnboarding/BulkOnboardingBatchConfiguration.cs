@@ -18,6 +18,7 @@ public class BulkOnboardingBatchConfiguration : IEntityTypeConfiguration<BulkOnb
         builder.Property(b => b.DefaultEmploymentType).HasMaxLength(30);
         builder.Property(b => b.ColumnMappingJson).HasColumnType("jsonb");
         builder.Property(b => b.SelectedDraftIdsJson).HasColumnType("jsonb");
+        builder.Property(b => b.ResolutionStateJson).HasColumnType("jsonb");
         builder.Property(b => b.OriginalFileName).HasMaxLength(255).IsRequired();
         builder.Property(b => b.Status).HasMaxLength(30).IsRequired();
 

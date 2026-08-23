@@ -159,11 +159,24 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
             return Result<OnboardingDraftResponse>.Conflict("An employee with this work email already exists in this company.");
         }
 
-        if (request.EmployeeNumber is not null
-            && await _employeeRepository.EmployeeNumberExistsAsync(tenantId, request.EmployeeNumber, excludeId: null, ct))
+        var normalizedEmployeeNumber = EmployeeNumberRules.NormalizeInput(request.EmployeeNumber);
+        if (!string.IsNullOrEmpty(normalizedEmployeeNumber))
         {
-            return Result<OnboardingDraftResponse>.Conflict("This employee number is already in use.");
+            if (!EmployeeNumberRules.IsValidFormat(normalizedEmployeeNumber))
+            {
+                return Result<OnboardingDraftResponse>.Failure(EmployeeNumberRules.InvalidFormatMessage);
+            }
+
+            if (await _employeeRepository.EmployeeNumberExistsAsync(tenantId, normalizedEmployeeNumber, excludeId: null, ct))
+            {
+                return Result<OnboardingDraftResponse>.Conflict(EmployeeNumberRules.AlreadyInUseMessage);
+            }
         }
+
+        var editedTasksValidation = await EditedOnboardingTasksValidator.ValidateAsync(
+            tenantId, request.EditedTasksJson, _employeeRepository, _positionAssignmentRepository, ct);
+        if (!editedTasksValidation.IsSuccess)
+            return Result<OnboardingDraftResponse>.Failure(editedTasksValidation.Error!, editedTasksValidation.StatusCode ?? 400);
 
         OnboardingDraftEntity draft;
         if (request.DraftId is null)
@@ -248,7 +261,7 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         draft.ReportsToEmployeeId = request.ReportsToEmployeeId;
         draft.EmploymentType = request.EmploymentType;
         draft.StartDate = request.StartDate;
-        draft.EmployeeNumber = request.EmployeeNumber;
+        draft.EmployeeNumber = string.IsNullOrEmpty(normalizedEmployeeNumber) ? null : normalizedEmployeeNumber;
         draft.WorkModeId = request.WorkModeId;
         draft.SelectedTemplateId = request.SelectedTemplateId;
         draft.EditedTasksJson = request.EditedTasksJson;
@@ -351,15 +364,20 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
         if (await _employeeRepository.EmployeeExistsInLegalEntityAsync(tenantId, draft.LegalEntityId, draft.WorkEmail, excludeId: null, ct))
             return Result<FinalizeOnboardingDraftResponse>.Conflict("An employee with this work email already exists in this company.");
 
-        // EmployeeNumber is "conditional" per product docs (required when not auto-generated),
-        // but no auto-generation policy exists in this codebase, and Employee.EmployeeNumber is
-        // a non-nullable, tenant-unique column - so it is treated as required here.
-        if (string.IsNullOrWhiteSpace(draft.EmployeeNumber))
+        // Frontend auto-fills a suggested default before draft save; finalization still requires
+        // a valid, tenant-unique employee number (suggestion is not a reservation).
+        var finalizeEmployeeNumber = EmployeeNumberRules.NormalizeInput(draft.EmployeeNumber);
+        if (string.IsNullOrEmpty(finalizeEmployeeNumber))
             return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity(
-                "An employee number is required to finalize onboarding; no auto-generation policy exists yet.");
+                EmployeeNumberRules.RequiredForFinalizeMessage);
 
-        if (await _employeeRepository.EmployeeNumberExistsAsync(tenantId, draft.EmployeeNumber, excludeId: null, ct))
-            return Result<FinalizeOnboardingDraftResponse>.Conflict("This employee number already exists for this company.");
+        if (!EmployeeNumberRules.IsValidFormat(finalizeEmployeeNumber))
+            return Result<FinalizeOnboardingDraftResponse>.Failure(EmployeeNumberRules.InvalidFormatMessage);
+
+        if (await _employeeRepository.EmployeeNumberExistsAsync(tenantId, finalizeEmployeeNumber, excludeId: null, ct))
+            return Result<FinalizeOnboardingDraftResponse>.Conflict(EmployeeNumberRules.AlreadyInUseMessage);
+
+        draft.EmployeeNumber = finalizeEmployeeNumber;
 
         PositionAccessTemplate? accessTemplate = null;
         if (draft.PositionId is not null)

@@ -96,7 +96,8 @@ public class LegalEntitiesController : ControllerBase
                 request.TimeFormat,
                 request.Status,
                 request.WorkStartTime,
-                request.WorkEndTime),
+                request.WorkEndTime,
+                request.BreakDurationMinutes),
             ct);
 
         return result.IsSuccess

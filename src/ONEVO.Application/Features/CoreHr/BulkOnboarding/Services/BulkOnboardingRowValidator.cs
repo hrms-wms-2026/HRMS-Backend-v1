@@ -1,3 +1,5 @@
+using ONEVO.Application.Features.CoreHr.BulkOnboarding.Helpers;
+using ONEVO.Application.Features.CoreHr.BulkOnboarding.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
@@ -35,10 +37,22 @@ public class BulkOnboardingRowValidator : IBulkOnboardingRowValidator
 
     public async Task<RowValidationOutcome> ValidateRowAsync(
         Guid tenantId, BulkOnboardingBatch batch, Dictionary<string, string> rawData,
-        IReadOnlyDictionary<string, string?> mapping, ISet<string> emailsSeenInThisFile, CancellationToken ct)
+        IReadOnlyDictionary<string, string?> mapping, ISet<string> emailsSeenInThisFile, CancellationToken ct,
+        BulkOnboardingResolutionState? resolutionState = null)
     {
-        string? Get(string field) =>
-            mapping.TryGetValue(field, out var col) && col is not null && rawData.TryGetValue(col, out var v) && v.Length > 0 ? v : null;
+        resolutionState ??= new BulkOnboardingResolutionState();
+
+        string? Get(string field)
+        {
+            // Prefer synthetic override keys when no column was mapped.
+            var synthetic = $"__override_{field}";
+            if (rawData.TryGetValue(synthetic, out var overridden) && overridden.Length > 0)
+                return overridden;
+
+            return mapping.TryGetValue(field, out var col) && col is not null && rawData.TryGetValue(col, out var v) && v.Length > 0
+                ? v
+                : null;
+        }
 
         var firstName = Get("firstName");
         var lastName = Get("lastName");
@@ -48,37 +62,74 @@ public class BulkOnboardingRowValidator : IBulkOnboardingRowValidator
         var employeeNumber = Get("employeeNumber");
 
         if (string.IsNullOrWhiteSpace(firstName))
-            return Invalid("First name is required.");
+            return Invalid(BulkOnboardingIssueTypes.MissingFirstName, "firstName", "First name is required.");
         if (string.IsNullOrWhiteSpace(lastName))
-            return Invalid("Last name is required.");
+            return Invalid(BulkOnboardingIssueTypes.MissingLastName, "lastName", "Last name is required.");
         if (string.IsNullOrWhiteSpace(workEmail))
-            return Invalid("Work email is required.");
+            return Invalid(BulkOnboardingIssueTypes.MissingWorkEmail, "workEmail", "Work email is required.");
 
         var normalizedEmail = workEmail.Trim().ToLowerInvariant();
         if (emailsSeenInThisFile.Contains(normalizedEmail))
-            return Invalid($"Duplicate work email '{workEmail}' also appears in an earlier row of this file.");
+            return Invalid(
+                BulkOnboardingIssueTypes.DuplicateWorkEmail, "workEmail",
+                $"Duplicate work email '{workEmail}' also appears in an earlier row of this file.", workEmail);
         emailsSeenInThisFile.Add(normalizedEmail);
 
         if (await _employeeRepository.EmployeeExistsInLegalEntityAsync(tenantId, batch.LegalEntityId, workEmail, excludeId: null, ct))
-            return Invalid($"An employee with the email '{workEmail}' already exists in this company.");
+            return Invalid(
+                BulkOnboardingIssueTypes.DuplicateWorkEmail, "workEmail",
+                $"An employee with the email '{workEmail}' already exists in this company.", workEmail);
 
         if (!DateOnly.TryParse(startDateRaw, out var startDate))
-            return Invalid("Start date is required and must be a valid date (YYYY-MM-DD).");
+            return Invalid(
+                BulkOnboardingIssueTypes.InvalidStartDate, "startDate",
+                "Start date is required and must be a valid date (YYYY-MM-DD).", startDateRaw);
 
         if (string.IsNullOrWhiteSpace(employmentType))
-            return Invalid("Employment type is required (set a default for the batch or add an Employment Type column).");
-        if (await _employmentTypeRepository.GetIdByCodeAsync(employmentType, ct) is null)
-            return Invalid($"'{employmentType}' is not a known employment type.");
+            return Invalid(
+                BulkOnboardingIssueTypes.EmploymentTypeMissing, "employmentType",
+                "Employment type is required (set a default for the batch or add an Employment Type column).");
+
+        var employmentTypeMap = BulkOnboardingResolutionStateSerializer.FindValueMap(
+            resolutionState, "employmentType", employmentType);
+        if (employmentTypeMap?.TargetId is not null &&
+            string.Equals(employmentTypeMap.Action, BulkOnboardingIssueTypes.Actions.MapExisting, StringComparison.Ordinal))
+        {
+            employmentType = employmentTypeMap.NewValue ?? employmentType;
+        }
+        else if (await _employmentTypeRepository.GetIdByCodeAsync(employmentType, ct) is null)
+        {
+            return Invalid(
+                BulkOnboardingIssueTypes.EmploymentTypeNotFound, "employmentType",
+                $"'{employmentType}' is not a known employment type.", employmentType);
+        }
 
         Guid? departmentId = null;
         var departmentName = Get("department");
         if (departmentName is not null)
         {
-            var departments = await _departmentRepository.ListByLegalEntityAsync(tenantId, batch.LegalEntityId, includeInactive: false, ct);
-            var match = departments.FirstOrDefault(d => string.Equals(d.Name, departmentName, StringComparison.OrdinalIgnoreCase));
-            if (match is null)
-                return Invalid($"Department '{departmentName}' was not found. Create it under Organization -> Departments first.");
-            departmentId = match.Id;
+            var deptMap = BulkOnboardingResolutionStateSerializer.FindValueMap(
+                resolutionState, "department", departmentName);
+            if (deptMap?.TargetId is not null &&
+                Guid.TryParse(deptMap.TargetId, out var mappedDeptId) &&
+                string.Equals(deptMap.Action, BulkOnboardingIssueTypes.Actions.MapExisting, StringComparison.Ordinal))
+            {
+                departmentId = mappedDeptId;
+            }
+            else
+            {
+                var lookupName = deptMap?.NewValue ?? departmentName;
+                var departments = await _departmentRepository.ListByLegalEntityAsync(
+                    tenantId, batch.LegalEntityId, includeInactive: false, ct);
+                var match = departments.FirstOrDefault(d =>
+                    string.Equals(d.Name, lookupName, StringComparison.OrdinalIgnoreCase));
+                if (match is null)
+                    return Invalid(
+                        BulkOnboardingIssueTypes.DepartmentNotFound, "department",
+                        $"Department '{lookupName}' was not found. Create it under Organization -> Departments first.",
+                        lookupName);
+                departmentId = match.Id;
+            }
         }
 
         Guid? positionId = null;
@@ -86,12 +137,32 @@ public class BulkOnboardingRowValidator : IBulkOnboardingRowValidator
         var positionName = Get("position");
         if (positionName is not null)
         {
-            var positions = await _positionRepository.ListByLegalEntityAsync(tenantId, batch.LegalEntityId, includeInactive: false, departmentId, ct);
-            var match = positions.FirstOrDefault(p => string.Equals(p.Name, positionName, StringComparison.OrdinalIgnoreCase));
-            if (match is null)
-                return Invalid($"Position '{positionName}' was not found in this company/department. Create it under Organization -> Positions first.");
-            positionId = match.Id;
-            resolvedPosition = match;
+            var posMap = BulkOnboardingResolutionStateSerializer.FindValueMap(
+                resolutionState, "position", positionName);
+            if (posMap?.TargetId is not null &&
+                Guid.TryParse(posMap.TargetId, out var mappedPosId) &&
+                string.Equals(posMap.Action, BulkOnboardingIssueTypes.Actions.MapExisting, StringComparison.Ordinal))
+            {
+                positionId = mappedPosId;
+                var positionsForMap = await _positionRepository.ListByLegalEntityAsync(
+                    tenantId, batch.LegalEntityId, includeInactive: false, departmentId, ct);
+                resolvedPosition = positionsForMap.FirstOrDefault(p => p.Id == mappedPosId);
+            }
+            else
+            {
+                var lookupName = posMap?.NewValue ?? positionName;
+                var positions = await _positionRepository.ListByLegalEntityAsync(
+                    tenantId, batch.LegalEntityId, includeInactive: false, departmentId, ct);
+                var match = positions.FirstOrDefault(p =>
+                    string.Equals(p.Name, lookupName, StringComparison.OrdinalIgnoreCase));
+                if (match is null)
+                    return Invalid(
+                        BulkOnboardingIssueTypes.PositionNotFound, "position",
+                        $"Position '{lookupName}' was not found in this company/department. Create it under Organization -> Positions first.",
+                        lookupName);
+                positionId = match.Id;
+                resolvedPosition = match;
+            }
         }
 
         Guid? resolvedReportsToEmployeeId = null;
@@ -102,12 +173,19 @@ public class BulkOnboardingRowValidator : IBulkOnboardingRowValidator
             {
                 var reportingManagerRaw = Get("reportingManager");
                 if (string.IsNullOrWhiteSpace(reportingManagerRaw))
-                    return Invalid("Row references a position whose manager position has multiple current holders — a Reporting Manager column value is required.");
+                    return Invalid(
+                        BulkOnboardingIssueTypes.ReportingManagerRequired, "reportingManager",
+                        "This position reports to a manager role held by more than one person. Choose which employee should be the reporting manager.",
+                        relatedEntityId: reportsToPositionId.ToString());
 
                 var matchedHolder = activeHolders.FirstOrDefault(h =>
                     string.Equals(h.WorkEmail, reportingManagerRaw.Trim(), StringComparison.OrdinalIgnoreCase));
                 if (matchedHolder is null)
-                    return Invalid($"Reporting Manager \"{reportingManagerRaw}\" is not a current holder of this position's manager position.");
+                    return Invalid(
+                        BulkOnboardingIssueTypes.ReportingManagerNotFound, "reportingManager",
+                        "The reporting manager could not be matched to a current holder of the manager position. Choose an eligible employee.",
+                        reportingManagerRaw,
+                        reportsToPositionId.ToString());
 
                 resolvedReportsToEmployeeId = matchedHolder.EmployeeId;
             }
@@ -117,37 +195,81 @@ public class BulkOnboardingRowValidator : IBulkOnboardingRowValidator
         var workModeCode = Get("workMode");
         if (workModeCode is not null)
         {
-            var workModes = await _workModeRepository.ListActiveAsync(ct);
-            var match = workModes.FirstOrDefault(w => string.Equals(w.Code, workModeCode, StringComparison.OrdinalIgnoreCase));
-            if (match is null)
-                return Invalid($"Work mode '{workModeCode}' is not a known work mode.");
-            workModeId = match.Id;
+            var workModeMap = BulkOnboardingResolutionStateSerializer.FindValueMap(
+                resolutionState, "workMode", workModeCode);
+            if (workModeMap?.TargetId is not null &&
+                int.TryParse(workModeMap.TargetId, out var mappedWorkModeId) &&
+                string.Equals(workModeMap.Action, BulkOnboardingIssueTypes.Actions.MapExisting, StringComparison.Ordinal))
+            {
+                workModeId = mappedWorkModeId;
+            }
+            else
+            {
+                var lookupCode = workModeMap?.NewValue ?? workModeCode;
+                var workModes = await _workModeRepository.ListActiveAsync(ct);
+                var match = workModes.FirstOrDefault(w =>
+                    string.Equals(w.Code, lookupCode, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(w.Label, lookupCode, StringComparison.OrdinalIgnoreCase));
+                if (match is null)
+                    return Invalid(
+                        BulkOnboardingIssueTypes.WorkModeNotFound, "workMode",
+                        $"Work mode '{lookupCode}' is not a known work mode.", lookupCode);
+                workModeId = match.Id;
+            }
         }
         if (workModeId is null)
-            return Invalid("Work mode is required (set a default for the batch or add a Work Mode column).");
+            return Invalid(
+                BulkOnboardingIssueTypes.WorkModeMissing, "workMode",
+                "Work mode is required (set a default for the batch or add a Work Mode column).");
 
         Guid? templateId = batch.DefaultChecklistTemplateId;
         var templateName = Get("checklistTemplate");
         if (templateName is not null)
         {
-            var matches = await _checklistTemplateRepository.ListOnboardingMatchesAsync(tenantId, batch.LegalEntityId, departmentId, positionId, ct);
-            var match = matches.FirstOrDefault(t => string.Equals(t.Template.Name, templateName, StringComparison.OrdinalIgnoreCase));
-            if (match is null)
-                return Invalid($"Checklist template '{templateName}' was not found for this company/department/position.");
-            templateId = match.Template.Id;
+            var templateMap = BulkOnboardingResolutionStateSerializer.FindValueMap(
+                resolutionState, "checklistTemplate", templateName);
+            if (templateMap?.TargetId is not null &&
+                Guid.TryParse(templateMap.TargetId, out var mappedTemplateId) &&
+                string.Equals(templateMap.Action, BulkOnboardingIssueTypes.Actions.MapExisting, StringComparison.Ordinal))
+            {
+                templateId = mappedTemplateId;
+            }
+            else
+            {
+                var lookupName = templateMap?.NewValue ?? templateName;
+                var matches = await _checklistTemplateRepository.ListOnboardingMatchesAsync(
+                    tenantId, batch.LegalEntityId, departmentId, positionId, ct);
+                var match = matches.FirstOrDefault(t =>
+                    string.Equals(t.Template.Name, lookupName, StringComparison.OrdinalIgnoreCase));
+                if (match is null)
+                    return Invalid(
+                        BulkOnboardingIssueTypes.ChecklistTemplateNotFound, "checklistTemplate",
+                        $"Checklist template '{lookupName}' was not found for this company/department/position.",
+                        lookupName);
+                templateId = match.Template.Id;
+            }
         }
 
         if (employeeNumber is not null &&
             await _employeeRepository.EmployeeNumberExistsAsync(tenantId, employeeNumber, excludeId: null, ct))
-            return Invalid($"Employee number '{employeeNumber}' is already in use.");
+            return Invalid(
+                BulkOnboardingIssueTypes.DuplicateEmployeeNumber, "employeeNumber",
+                $"Employee number '{employeeNumber}' is already in use.", employeeNumber);
 
         return new RowValidationOutcome(
             true, null, departmentId, positionId, templateId,
             firstName, lastName, workEmail, startDate, employmentType, workModeId, employeeNumber,
             resolvedReportsToEmployeeId);
 
-        RowValidationOutcome Invalid(string message) => new(
-            false, message, null, null, null, firstName ?? string.Empty, lastName ?? string.Empty,
+        RowValidationOutcome Invalid(
+            string code,
+            string field,
+            string message,
+            string? importedValue = null,
+            string? relatedEntityId = null) => new(
+            false,
+            new RowValidationError(code, field, message, importedValue, relatedEntityId),
+            null, null, null, firstName ?? string.Empty, lastName ?? string.Empty,
             workEmail ?? string.Empty, null, employmentType ?? string.Empty, null, employeeNumber, null);
     }
 }

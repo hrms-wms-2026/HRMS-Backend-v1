@@ -62,6 +62,15 @@ public interface IDepartmentRepository
     Task<int> CountActiveChildrenAsync(
         Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default);
 
+    /// <summary>Transitive descendant department ids (any depth, departmentId itself excluded) of
+    /// one department, used by IEmployeeAuthorityResolver to expand a covered department into its
+    /// full sub-tree for visibility. Implemented as a recursive CTE, same convention as
+    /// IsDescendantAsync above, filtered to is_active = true at every level - so an inactive
+    /// intermediate department truncates the walk there, excluding its active children too, not
+    /// just itself.</summary>
+    Task<IReadOnlyList<Guid>> GetDescendantDepartmentIdsAsync(
+        Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default);
+
     Task<int> CountActiveEmployeesAsync(
         Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default);
 
