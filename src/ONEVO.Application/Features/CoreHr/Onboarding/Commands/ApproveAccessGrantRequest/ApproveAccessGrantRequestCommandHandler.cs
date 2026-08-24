@@ -10,6 +10,7 @@ using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
@@ -249,12 +250,18 @@ public class ApproveAccessGrantRequestCommandHandler
         if (await _employeeRepository.EmployeeExistsInLegalEntityAsync(tenantId, draft.LegalEntityId, draft.WorkEmail, excludeId: null, ct))
             return Result<ApproveAccessGrantRequestResponse>.Conflict("An employee with this work email already exists in this company.");
 
-        if (string.IsNullOrWhiteSpace(draft.EmployeeNumber))
+        var approveEmployeeNumber = EmployeeNumberRules.NormalizeInput(draft.EmployeeNumber);
+        if (string.IsNullOrEmpty(approveEmployeeNumber))
             return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity(
-                "An employee number is required to approve this onboarding; no auto-generation policy exists yet.");
+                EmployeeNumberRules.RequiredForFinalizeMessage);
 
-        if (await _employeeRepository.EmployeeNumberExistsAsync(tenantId, draft.EmployeeNumber, excludeId: null, ct))
-            return Result<ApproveAccessGrantRequestResponse>.Conflict("This employee number already exists for this company.");
+        if (!EmployeeNumberRules.IsValidFormat(approveEmployeeNumber))
+            return Result<ApproveAccessGrantRequestResponse>.Failure(EmployeeNumberRules.InvalidFormatMessage);
+
+        if (await _employeeRepository.EmployeeNumberExistsAsync(tenantId, approveEmployeeNumber, excludeId: null, ct))
+            return Result<ApproveAccessGrantRequestResponse>.Conflict(EmployeeNumberRules.AlreadyInUseMessage);
+
+        draft.EmployeeNumber = approveEmployeeNumber;
 
         var accessTemplate = await _positionRepository.GetAccessTemplateByPositionAsync(tenantId, draft.PositionId.Value, ct);
         if (accessTemplate is null || !accessTemplate.IsActive)

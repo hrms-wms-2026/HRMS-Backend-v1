@@ -29,7 +29,7 @@ public sealed class LegalEntitiesControllerTests
     private static LegalEntityGeneralSettingsResponse SampleGeneralSettings(Guid id) => new(
         id, "Acme Lanka", "ACME", null, "REG-001", null, null, null, null, null,
         "LKA", "LKR", "UTC", 1, 1, [1, 2, 3, 4, 5], "en-US", "DD MMM YYYY", "12h", "active",
-        new TimeOnly(9, 0), new TimeOnly(17, 30));
+        new TimeOnly(9, 0), new TimeOnly(17, 30), 60);
 
     [Fact]
     public async Task List_SendsQuery_WithIncludeInactiveValue()
@@ -130,7 +130,7 @@ public sealed class LegalEntitiesControllerTests
         var request = new UpdateLegalEntityGeneralSettingsRequest(
             "Acme Lanka", "ACME", "REG-001", null, null, null, null, null,
             "LKA", "LKR", "UTC", 1, 1, [1, 2, 3, 4, 5], "en-US", "DD MMM YYYY", "12h", "active",
-            new TimeOnly(9, 0), new TimeOnly(17, 30));
+            new TimeOnly(9, 0), new TimeOnly(17, 30), 60);
 
         var result = await _sut.UpdateGeneralSettings(routeId, request, CancellationToken.None);
 
@@ -138,7 +138,8 @@ public sealed class LegalEntitiesControllerTests
             It.Is<UpdateLegalEntityGeneralSettingsCommand>(c =>
                 c.LegalEntityId == routeId &&
                 c.WorkStartTime == new TimeOnly(9, 0) &&
-                c.WorkEndTime == new TimeOnly(17, 30)),
+                c.WorkEndTime == new TimeOnly(17, 30) &&
+                c.BreakDurationMinutes == 60),
             It.IsAny<CancellationToken>()), Times.Once);
         result.Should().BeOfType<OkObjectResult>();
     }

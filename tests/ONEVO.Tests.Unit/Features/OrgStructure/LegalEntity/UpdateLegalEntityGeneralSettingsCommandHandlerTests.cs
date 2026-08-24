@@ -47,7 +47,11 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
     };
 
     private static UpdateLegalEntityGeneralSettingsCommand ValidCommand(
-        Guid id, string status = "active", TimeOnly? workStartTime = null, TimeOnly? workEndTime = null) => new(
+        Guid id,
+        string status = "active",
+        TimeOnly? workStartTime = null,
+        TimeOnly? workEndTime = null,
+        int? breakDurationMinutes = null) => new(
         id,
         "New Name",
         "NEW",
@@ -64,7 +68,8 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         "12h",
         status,
         workStartTime,
-        workEndTime);
+        workEndTime,
+        breakDurationMinutes);
 
     private void SetupNoDuplicates(Guid excludeId)
     {
@@ -170,6 +175,59 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         result.IsSuccess.Should().BeTrue();
         entity.WorkStartTime.Should().BeNull();
         entity.WorkEndTime.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_PersistsBreakDurationMinutes()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            ValidCommand(entity.Id, breakDurationMinutes: 60),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        entity.BreakDurationMinutes.Should().Be(60);
+        result.Value!.BreakDurationMinutes.Should().Be(60);
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_NullBreakDurationMinutes_PersistsNull()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        entity.BreakDurationMinutes = 45;
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(ValidCommand(entity.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        entity.BreakDurationMinutes.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_BreakDurationMinutes_IndependentOfWorkTimes()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            ValidCommand(entity.Id, workStartTime: null, workEndTime: null, breakDurationMinutes: 30),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        entity.WorkStartTime.Should().BeNull();
+        entity.WorkEndTime.Should().BeNull();
+        entity.BreakDurationMinutes.Should().Be(30);
     }
 
     [Fact]

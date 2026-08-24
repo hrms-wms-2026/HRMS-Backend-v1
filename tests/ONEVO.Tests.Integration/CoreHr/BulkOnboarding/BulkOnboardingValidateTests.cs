@@ -127,14 +127,22 @@ public sealed class BulkOnboardingValidateTests : IAsyncLifetime
     private ValidateBulkOnboardingBatchCommandHandler CreateValidateHandler(ApplicationDbContext db) =>
         new(
             new EfBulkOnboardingBatchRepository(db),
-            new BulkOnboardingRowValidator(
+            new BulkOnboardingValidationRunner(
+                new EfBulkOnboardingBatchRepository(db),
+                new BulkOnboardingRowValidator(
+                    new EfDepartmentRepository(db),
+                    new EfPositionRepository(db),
+                    PositionAssignmentRepositoryTestSupport.CreateRepository(db),
+                    new EfWorkModeRepository(db),
+                    new EfEmploymentTypeRepository(db),
+                    new EfEmployeeRepository(db),
+                    new EfChecklistTemplateRepository(db)),
                 new EfDepartmentRepository(db),
                 new EfPositionRepository(db),
                 PositionAssignmentRepositoryTestSupport.CreateRepository(db),
                 new EfWorkModeRepository(db),
-                new EfEmploymentTypeRepository(db),
-                new EfEmployeeRepository(db),
-                new EfChecklistTemplateRepository(db)),
+                new EfChecklistTemplateRepository(db),
+                new StubCurrentUser(_tenantId, _userId)),
             new StubCurrentUser(_tenantId, _userId));
 
     private ApplicationDbContext CreateContext()

@@ -1,5 +1,14 @@
 namespace ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 
+public sealed record EmployeeListAttendanceSummaryResponse(
+    bool ShowNotClockedInWarning,
+    bool ShouldHaveClockedIn,
+    bool HasClockedInToday,
+    DateOnly WorkDate,
+    string Timezone,
+    string? ScheduledStartTime,
+    string? WarningLabel);
+
 public record EmployeeListItemResponse(
     Guid Id,
     string EmployeeNumber,
@@ -21,4 +30,5 @@ public record EmployeeListItemResponse(
     /// on the list read, which does not join invitation_tokens for performance.
     /// </summary>
     string? InvitationStatus = null,
-    DateTimeOffset? InvitationExpiresAt = null);
+    DateTimeOffset? InvitationExpiresAt = null,
+    EmployeeListAttendanceSummaryResponse? AttendanceSummary = null);

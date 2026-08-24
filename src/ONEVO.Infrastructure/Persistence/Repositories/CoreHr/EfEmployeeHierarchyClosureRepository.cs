@@ -36,6 +36,31 @@ public class EfEmployeeHierarchyClosureRepository : IEmployeeHierarchyClosureRep
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Guid>> GetDescendantEmployeeIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> ancestorEmployeeIds, CancellationToken ct = default)
+    {
+        if (ancestorEmployeeIds.Count == 0)
+            return Array.Empty<Guid>();
+
+        return await _db.EmployeeHierarchyClosures
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && ancestorEmployeeIds.Contains(c.AncestorEmployeeId))
+            .Select(c => c.DescendantEmployeeId)
+            .Distinct()
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetAncestorChainEmployeeIdsAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await _db.EmployeeHierarchyClosures
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.DescendantEmployeeId == employeeId)
+            .OrderBy(c => c.Depth)
+            .Select(c => c.AncestorEmployeeId)
+            .ToListAsync(ct);
+    }
+
     /// <summary>
     /// Full-tenant rebuild: walks positions.reports_to_position_id from every position that
     /// currently holds an active PrimaryEmployment assignment. Delete-then-reinsert in one

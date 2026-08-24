@@ -423,6 +423,124 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Fact]
+    public async Task GetGeneralSettings_ReturnsBreakDurationMinutes()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Break Duration Get Co", "BDGET1", "REG-BDGET1");
+        await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Break Duration Get Co", "BDGET1", "REG-BDGET1", [1, 2, 3, 4, 5], breakDurationMinutes: 60),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        var response = await SendAsync(HttpMethod.Get, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            body: null, cookie: _tenantA.SessionCookie);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("breakDurationMinutes").GetInt32().Should().Be(60);
+    }
+
+    [Fact]
+    public async Task Update_ValidBreakDurationMinutes_Returns200_AndPersists()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Break Duration Put Co", "BDPUT1", "REG-BDPUT1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Break Duration Put Co", "BDPUT1", "REG-BDPUT1", [1, 2, 3, 4, 5], breakDurationMinutes: 45),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("breakDurationMinutes").GetInt32().Should().Be(45);
+    }
+
+    [Fact]
+    public async Task Update_NullBreakDurationMinutes_Returns200_AndPersistsNull()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Break Duration Null Co", "BDNULL1", "REG-BDNULL1");
+        await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Break Duration Null Co", "BDNULL1", "REG-BDNULL1", [1, 2, 3, 4, 5], breakDurationMinutes: 30),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Break Duration Null Co", "BDNULL1", "REG-BDNULL1", [1, 2, 3, 4, 5], breakDurationMinutes: null),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("breakDurationMinutes").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Update_NegativeBreakDurationMinutes_Returns400()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Break Duration Negative Co", "BDNEG1", "REG-BDNEG1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Break Duration Negative Co", "BDNEG1", "REG-BDNEG1", [1, 2, 3, 4, 5], breakDurationMinutes: -1),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Update_DecimalBreakDurationMinutes_Returns400()
+    {
+        // BreakDurationMinutes binds as int? - a decimal value fails JSON model binding
+        // itself (before FluentValidation ever runs), and [ApiController] turns that into
+        // an automatic 400. Sent as a raw anonymous object (not the typed UpdateBody
+        // helper, which only accepts int?) so the wire payload can carry a decimal.
+        var company = await CreateCompanyAsync(_tenantA, "Break Duration Decimal Co", "BDDEC1", "REG-BDDEC1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            new
+            {
+                name = "Break Duration Decimal Co",
+                companyCode = "BDDEC1",
+                registrationNumber = "REG-BDDEC1",
+                countryCode = "LKA",
+                currencyCode = "LKR",
+                timezone = "Asia/Colombo",
+                financialYearStartMonth = 1,
+                firstDayOfWeek = 1,
+                standardWorkingDays = new[] { 1, 2, 3, 4, 5 },
+                defaultLanguage = "en-US",
+                dateFormat = "DD MMM YYYY",
+                timeFormat = "12h",
+                status = "active",
+                workStartTime = (string?)null,
+                workEndTime = (string?)null,
+                breakDurationMinutes = 7.5
+            },
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Update_BreakDurationMinutes_IndependentOfWorkStartAndEndTime()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Break Duration Independent Co", "BDIND1", "REG-BDIND1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Break Duration Independent Co", "BDIND1", "REG-BDIND1", [1, 2, 3, 4, 5],
+                workStartTime: null, workEndTime: null, breakDurationMinutes: 15),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("breakDurationMinutes").GetInt32().Should().Be(15);
+        json.GetProperty("workStartTime").ValueKind.Should().Be(JsonValueKind.Null);
+        json.GetProperty("workEndTime").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
     // ── 6. Delete ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -950,7 +1068,7 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
 
     private static object UpdateBody(
         string name, string companyCode, string registrationNumber, IEnumerable<int> workingDays,
-        string? workStartTime = null, string? workEndTime = null) => new
+        string? workStartTime = null, string? workEndTime = null, int? breakDurationMinutes = null) => new
     {
         name,
         companyCode,
@@ -966,7 +1084,8 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
         timeFormat = "12h",
         status = "active",
         workStartTime,
-        workEndTime
+        workEndTime,
+        breakDurationMinutes
     };
 
     private async Task<string?> WaitForInviteTokenForAsync(string email)
