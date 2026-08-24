@@ -41,6 +41,19 @@ bypasses the `TaskCreationRequest`/`TaskEditRequest` approval workflow *for that
 The approval-request workflow is unchanged for a **non-owner member acting on their own exact-node**
 Objective — that still requires a request, only the ancestor-cascade path grants direct rights.
 
+**Confirmed actual behavior (2026-08-24, explicit user decision after Final Review flagged this as a
+possible defect):** because every Project has exactly one root Objective (the default Objective,
+`ParentObjectiveId == null`, created by `CreateProjectCommandHandler`) and every accepted Project
+member's `ProjectMember` row is scoped to that same default Objective, the ancestor walk in §3 always
+reaches a node — the default Objective — where every Project member passes the "active `ProjectMember`"
+branch. **In practice this means any accepted Project member is an effective manager of every Objective,
+Sprint, and Task in that Project**, not only of Objectives below a Module they specifically belong to.
+This is intended, not a bug — confirmed explicitly with the user. One consequence: the
+`TaskCreationRequest`/`TaskEditRequest` approval workflow and the `MoveTaskStatus`
+`TaskStatusVisibilities.Private` gate (§4) retain real effect only for a caller who is **not** a Project
+member at all (no `ProjectMember` row on the default Objective or any ancestor) — not, as the paragraph
+above might otherwise be read, "any non-owner member of the same Project."
+
 **Explicitly out of scope (unchanged):**
 - Read-side reachability in `GetObjectiveTreeQueryHandler`, `GetObjectiveSprintsQueryHandler`,
   `GetSprintTasksQueryHandler` — these already resolve a superset (ancestors *and* descendants of any
