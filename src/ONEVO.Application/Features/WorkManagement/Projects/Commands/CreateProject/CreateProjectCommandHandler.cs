@@ -317,7 +317,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 ProjectMapper.ToSummary(defaultVersion, "planned"),
                 ProjectMapper.ToSummary(releaseReminder),
                 labels.Select(ProjectMapper.ToSummary).ToList(),
-                ProjectMapper.ToSummary(creatorMembership),
+                ProjectMapper.ToSummary(creatorMembership, userId),
                 uploadedLogo is not null ? new ProjectLogoSummaryDto(uploadedLogo.Id, uploadedLogo.OriginalFileName) : null,
                 uploadedBanner is not null ? new ProjectLogoSummaryDto(uploadedBanner.Id, uploadedBanner.OriginalFileName) : null);
 
