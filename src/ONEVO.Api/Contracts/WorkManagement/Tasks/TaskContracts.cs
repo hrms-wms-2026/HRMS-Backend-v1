@@ -32,6 +32,16 @@ public sealed record TaskStatusOrderUpdateRequest(
 
 public sealed record ReorderTaskStatusesRequest(List<TaskStatusOrderUpdateRequest> Updates);
 
+public sealed record EditTaskCategoryRequest(string Name, int DisplayOrder);
+
+public sealed record CreateTaskCategoryRequest(string Name, int DisplayOrder);
+
+public sealed record TaskCategoryOrderUpdateRequest(Guid CategoryId, int DisplayOrder);
+
+public sealed record ReorderTaskCategoriesRequest(List<TaskCategoryOrderUpdateRequest> Updates);
+
+public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder);
+
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
     Guid CategoryId, Guid StatusId, string Priority, int? StoryPoints,
