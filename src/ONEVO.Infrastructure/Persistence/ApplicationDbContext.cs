@@ -42,6 +42,11 @@ using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Notifications.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 using ONEVO.Domain.Features.WorkManagement.Versions.Entities;
+using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
+using ONEVO.Domain.Features.Leave.Entitlement.Entities;
+using ONEVO.Domain.Features.Leave.Policy.Entities;
+using ONEVO.Domain.Features.Leave.Request.Entities;
+using ONEVO.Domain.Features.Leave.Type.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 
@@ -236,6 +241,18 @@ public class ApplicationDbContext : DbContext
     public DbSet<LegalEntity> LegalEntities => Set<LegalEntity>();
     public DbSet<Department> Departments => Set<Department>();
 
+    // Leave Management
+    public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
+    public DbSet<LeavePolicy> LeavePolicies => Set<LeavePolicy>();
+    public DbSet<LeavePolicyLeaveType> LeavePolicyLeaveTypes => Set<LeavePolicyLeaveType>();
+    public DbSet<LeavePolicyBlackoutPeriod> LeavePolicyBlackoutPeriods => Set<LeavePolicyBlackoutPeriod>();
+    public DbSet<LeavePolicyLegalEntity> LeavePolicyLegalEntities => Set<LeavePolicyLegalEntity>();
+    public DbSet<LeaveEntitlement> LeaveEntitlements => Set<LeaveEntitlement>();
+    public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
+    public DbSet<LeaveRequestApprover> LeaveRequestApprovers => Set<LeaveRequestApprover>();
+    public DbSet<LeaveRequestDocument> LeaveRequestDocuments => Set<LeaveRequestDocument>();
+    public DbSet<LeaveApprovalDelegate> LeaveApprovalDelegates => Set<LeaveApprovalDelegate>();
+    public DbSet<LeaveBalanceAudit> LeaveBalanceAudits => Set<LeaveBalanceAudit>();
     // Time & Attendance - Clock-in Policy foundation
     public DbSet<ClockInPolicy> ClockInPolicies => Set<ClockInPolicy>();
     public DbSet<ClockInLateDeductionRule> ClockInLateDeductionRules => Set<ClockInLateDeductionRule>();
