@@ -6,6 +6,7 @@ using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
@@ -14,6 +15,7 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
+using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -88,6 +90,7 @@ public sealed class SwitchActiveCompanyIntegrationTests : IAsyncLifetime
             IsActive = true,
         });
         db.WorkModes.Add(new ONEVO.Domain.Lookups.WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true });
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         db.Employees.AddRange(
             new EmployeeEntity
             {
@@ -181,10 +184,11 @@ public sealed class SwitchActiveCompanyIntegrationTests : IAsyncLifetime
         var handler = new SwitchActiveCompanyCommandHandler(
             permissions,
             new EfEmployeeRepository(db),
+            new EfLegalEntityRepository(db),
             new UnitOfWork(db),
             new StubCurrentUser(_tenantId, _userId, _sessionId));
 
-        var result = await handler.Handle(new SwitchActiveCompanyCommand(_employeeBId), CancellationToken.None);
+        var result = await handler.Handle(new SwitchActiveCompanyCommand(_legalEntityBId), CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
 
         var session = await db.Sessions.AsNoTracking().SingleAsync(s => s.Id == _sessionId);

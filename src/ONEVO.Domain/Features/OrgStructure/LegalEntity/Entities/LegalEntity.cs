@@ -43,6 +43,10 @@ public class LegalEntity : ITenantOwnedEntity
     public TimeOnly? WorkStartTime { get; set; }
     public TimeOnly? WorkEndTime { get; set; }
 
+    // Default company break duration in minutes. Independent of WorkStartTime/
+    // WorkEndTime - null means not configured; when set, must be >= 0.
+    public int? BreakDurationMinutes { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
 }

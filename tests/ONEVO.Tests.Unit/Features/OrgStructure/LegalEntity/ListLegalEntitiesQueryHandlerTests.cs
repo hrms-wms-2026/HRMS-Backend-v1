@@ -65,7 +65,7 @@ public class ListLegalEntitiesQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_RegularUser_CallsAccessibleQuery_WithHasManagementAccessFalse()
+    public async Task Handle_WithoutOrgRead_CallsAccessibleQuery_WithHasManagementAccessFalse()
     {
         _legalEntities.Setup(r => r.ListAccessibleAsync(TenantId, UserId, false, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync([Entity("Own Co", true)]);
@@ -76,6 +76,7 @@ public class ListLegalEntitiesQueryHandlerTests
         result.Value!.Should().ContainSingle().Which.Name.Should().Be("Own Co");
         _legalEntities.Verify(
             r => r.ListAccessibleAsync(TenantId, UserId, false, false, It.IsAny<CancellationToken>()), Times.Once);
+        _currentUser.Verify(c => c.HasPermission("org:read"), Times.Never);
     }
 
     [Fact]

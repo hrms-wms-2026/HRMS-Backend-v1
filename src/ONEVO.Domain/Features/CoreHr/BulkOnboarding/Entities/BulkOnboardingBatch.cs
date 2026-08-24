@@ -10,6 +10,8 @@ public class BulkOnboardingBatch : BaseEntity
     public Guid? DefaultChecklistTemplateId { get; set; }
     public string? ColumnMappingJson { get; set; }
     public string? SelectedDraftIdsJson { get; set; }
+    /// <summary>HR-applied issue resolutions for this batch. Raw row JSON remains the original upload.</summary>
+    public string? ResolutionStateJson { get; set; }
     public string OriginalFileName { get; set; } = string.Empty;
     public string Status { get; set; } = BulkOnboardingBatchStatus.MappingPending;
     public int TotalRows { get; set; }
