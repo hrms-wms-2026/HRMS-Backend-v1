@@ -25,7 +25,7 @@ No body. `objectiveId` is a path parameter.
     "shortId": "WEB-7",
     "title": "Build the login page",
     "description": "optional",
-    "taskType": "task",
+    "categoryId": "guid",
     "statusId": "guid",
     "priority": "medium",
     "storyPoints": 5,
