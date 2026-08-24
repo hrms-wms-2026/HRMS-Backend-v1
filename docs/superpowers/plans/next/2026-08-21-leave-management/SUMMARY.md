@@ -4,7 +4,7 @@
 **Companion (frontend):** `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-08-21-leave-management/SUMMARY.md`
 **Source of truth for product behaviour:** `C:\HR\leave-management-complete.md`
 
-This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`), Phase 2 (`part-2-leave-policies.md`), Phase 3 (`part-3-entitlements-and-balances.md`), Phase 4 (`part-4-request-submission.md`), Phase 5 (`part-5-approval-workflow.md`), Phase 6 (`part-6-cancellation.md`), Phase 7 (`part-7-team-calendar.md`), Phase 8 (`part-8-balance-audit-and-year-end.md`), and Phase 9 (`part-9-hardening.md`) — all 10 phases now have a written plan. Phase 8 executed 2026-08-23; Phase 9 written but not yet executed.
+This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`), Phase 2 (`part-2-leave-policies.md`), Phase 3 (`part-3-entitlements-and-balances.md`), Phase 4 (`part-4-request-submission.md`), Phase 5 (`part-5-approval-workflow.md`), Phase 6 (`part-6-cancellation.md`), Phase 7 (`part-7-team-calendar.md`), Phase 8 (`part-8-balance-audit-and-year-end.md`), and Phase 9 (`part-9-hardening.md`) — all 10 phases now have a written plan. Phase 8 executed 2026-08-23; Phase 9 executed 2026-08-24 (hardening tests shipped; live Priya HTTP e2e still blocked — Docker engine down, local OnevoDb schema behind this branch).
 
 **Every phase's exit criteria includes a live run against the real dev DB** (`DevSmokeTestTenantSeeder`'s acme/dapi tenants), not just a green test suite — see the design doc's Testing note.
 
@@ -91,13 +91,17 @@ This is a 10-phase build (0-9), one deliverable slice per phase, backend and fro
 
 ## Phase 9 — Hardening
 
-**Status:** written in full, see `part-9-hardening.md`. Not yet executed. Audited against the real shipped code on 2026-08-23 — 3 of the original 5 speculative bullets below turned out to be non-issues or stale; `part-9` has the corrected scope and reasoning:
+**Status:** written in full — **executed 2026-08-24** on `feat/leave-management-part-9` (branched from `feat/leave-management-part-8`). Architecture test for `LeaveTypesController`, N+1 regression guard for `LeaveBalanceMapping`, and `GetLeaveTypeQueryHandler` tests shipped. Coverlet `XPlat Code Coverage` hung after matching the Leave unit tests (no cobertura file written) so the 70%+ namespace report was not produced; the untested `GetLeaveType` handler was closed instead. Live Priya HTTP e2e against acme did **not** match spec §7 end-to-end in this environment: Docker Desktop engine was down (Testcontainers cannot start), and `dotnet run` of this branch against local `OnevoDb` aborted because hosted jobs query columns the local DB is missing (`bulk_onboarding_batches.resolution_state_json`). Spec §7 calculator numbers are already unit-locked (`Calculate_CalendarProration_MatchesProductWorkedExampleInclusive` ≈ 10.1 for 1 Jul 2026 hire; `Calculate_CarryForward_UsesConfiguredPolicyCap` carry 5 / forfeit 3 from remaining 8). `EXPLAIN ANALYZE` on `leave_entitlements` for the acme tenant used `ix_leave_entitlements_tenant_employee_type_year` (0.169 ms, 0 rows). Repeat the live HTTP run when Docker is up or the local DB is migrated to this branch.
 
-- Architecture test coverage: **real gap found** — `LeaveTypesControllerArchitectureTests.cs` doesn't exist (every other Leave controller has one). `part-9` Task 1 adds it.
-- Coverage check against the 70%+ target: **never actually measured** — `part-9` Task 2 runs it and closes any gap found.
-- Perf on `GET /leave/balances` (All Balances, N+1 risk): **audited, not a bug** — `ListAllBalancesQueryHandler`/`LeaveBalanceMapping.MapAsync` already batches the policy lookup in one call regardless of row count. `part-9` Task 3 adds a regression-guard test instead of a fix.
-- Frontend: retire the 2026-08-17 mocked `LeaveApiService`/fixtures — **stale assumption, corrected**. Nothing was ever built from that sketch (zero Leave files in the frontend repo as of 2026-08-23), so there's nothing to retire. `part-9` Task 5 fixes this plan folder's own wording instead of doing invented cleanup.
-- Full live-dev-DB run of Priya's worked example (spec §7), end to end: **still genuinely needed** — `part-9` Task 4, scripted step by step, with an explicit dependency note on Phase 8's year-end job for the final carry-forward/forfeiture step.
+- Architecture test coverage: **closed** — `LeaveTypesControllerArchitectureTests.cs` added (TenantPolicy, `leave:read`/`leave:manage`, IMediator-only, no TenantId on contracts, Code absent from update).
+- Coverage check against the 70%+ target: **partial** — collector hung; added `GetLeaveTypeQueryHandlerTests` for the handler that had zero tests.
+- Perf on `GET /leave/balances` (All Balances, N+1 risk): **guarded** — `LeaveBalanceMappingPerfTests` asserts one batched policy lookup for 50 rows. Local `EXPLAIN ANALYZE` on `leave_entitlements` is an index scan.
+- Frontend: no retirement needed — the 2026-08-17 sketch was design-doc-only and no code from
+  it was ever committed (confirmed 2026-08-23: zero Leave-related files in the frontend repo).
+  Frontend Phase 1 (`Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-08-21-leave-management/part-1-leave-types-frontend.md`)
+  has not been executed yet — that is a separate, still-pending piece of work, not part of
+  this backend hardening phase.
+- Full live-dev-DB run of Priya's worked example (spec §7): **blocked in this environment** (Docker down; local `OnevoDb` schema behind this branch). Calculator unit tests already encode the mid-year and year-end numbers.
 
 ---
 
