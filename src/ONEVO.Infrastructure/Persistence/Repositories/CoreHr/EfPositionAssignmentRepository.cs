@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Lookups;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 
@@ -96,6 +97,28 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
             .Join(_db.Employees.AsNoTracking(),
                 pa => pa.EmployeeId, e => e.Id,
                 (pa, e) => new PositionActiveHolder(e.Id, e.FirstName, e.LastName, e.Email, e.AvatarFileId))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<ChecklistAssignee>> GetChecklistAssigneesAsync(
+        Guid tenantId, Guid positionId, CancellationToken ct = default)
+    {
+        return await _db.PositionAssignments
+            .AsNoTracking()
+            .Where(pa => pa.TenantId == tenantId
+                && pa.PositionId == positionId
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active)
+            .Join(_db.Employees.AsNoTracking(),
+                pa => pa.EmployeeId, e => e.Id,
+                (pa, e) => e)
+            .Where(e => e.EmploymentStatusId == EmploymentStatusIds.Active && e.UserId != Guid.Empty)
+            .Select(e => new ChecklistAssignee(
+                e.Id,
+                e.UserId,
+                ((e.FirstName + " " + e.LastName).Trim()),
+                e.Email,
+                e.AvatarFileId))
             .ToListAsync(ct);
     }
 

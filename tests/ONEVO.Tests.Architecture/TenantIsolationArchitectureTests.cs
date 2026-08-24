@@ -374,6 +374,12 @@ public class TenantIsolationArchitectureTests
             // soft-deleted tasks too, while preserving tenant scoping with an explicit TenantId
             // predicate in EfWorkTaskRepository.
             "EfWorkTaskRepository.cs",
+            // Soft-delete-aware employee number uniqueness/sequence checks: EmployeeNumberExistsAsync
+            // and GetNextEmployeeNumberSequenceAsync must see soft-deleted employees too (the
+            // tenant+employee_number unique index has no IsDeleted filter, so an archived
+            // employee's number is still taken), while preserving tenant scoping with an explicit
+            // TenantId predicate in EfEmployeeRepository.
+            "EfEmployeeRepository.cs",
         };
 
         var srcDirectory = FindSrcDirectory();

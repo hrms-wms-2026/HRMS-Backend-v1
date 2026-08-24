@@ -36,7 +36,7 @@ public class UpdateChecklistTemplateCommandHandler(
         var inputs = request.Tasks
             .Select(t => new ChecklistTemplateTaskInput(t.Title, t.OwnerType, t.AssignedToId, t.AssigneePositionId, t.DueOffsetDays, t.Sequence, t.IsRequired))
             .ToList();
-        var resolved = await taskInputResolver.ResolveAsync(tenantId, inputs, ct);
+        var resolved = await taskInputResolver.ResolveAsync(tenantId, template.LegalEntityId.Value, inputs, ct);
         if (!resolved.IsSuccess)
             return Result<ChecklistTemplateResponse>.Failure(resolved.Error!, resolved.StatusCode ?? 422);
 

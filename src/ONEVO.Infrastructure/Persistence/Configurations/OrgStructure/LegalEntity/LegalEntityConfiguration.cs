@@ -27,6 +27,9 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
                 "ck_legal_entities_work_time_pair",
                 "(work_start_time IS NULL AND work_end_time IS NULL) " +
                 "OR (work_start_time IS NOT NULL AND work_end_time IS NOT NULL AND work_start_time < work_end_time)");
+            table.HasCheckConstraint(
+                "ck_legal_entities_break_duration_minutes",
+                "break_duration_minutes IS NULL OR break_duration_minutes >= 0");
         });
         builder.HasKey(l => l.Id);
         builder.Property(l => l.Name).HasMaxLength(200).IsRequired();
@@ -71,6 +74,12 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
         // above (defense in depth alongside the command validator).
         builder.Property(l => l.WorkStartTime).HasColumnType("time");
         builder.Property(l => l.WorkEndTime).HasColumnType("time");
+
+        // Default company break duration in minutes. Nullable = not
+        // configured; independent of WorkStartTime/WorkEndTime pairing.
+        // Non-negative enforced by ck_legal_entities_break_duration_minutes
+        // above (defense in depth alongside the command validator).
+        builder.Property(l => l.BreakDurationMinutes).HasColumnName("break_duration_minutes");
 
         // Existing index, preserved as-is.
         builder.HasIndex(l => l.TenantId);

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using ONEVO.Domain.Features.Monitoring.AppUsage.Entities;
 using ONEVO.Domain.Features.Monitoring.Meetings.Entities;
@@ -88,7 +89,9 @@ public static class ActivityDailySummaryAggregator
             FocusMinutes = focusMinutes,
             ActivityScore = activityScore,
             DataCoveragePercentage = dataCoverage,
-            TopAppsJson = topAppsJson,
+            // Prefer dedicated app-usage samples; fall back to activity snapshots
+            // so the daily report still has TopApps when app-usage is empty.
+            TopAppsJson = topAppsJson != "[]" ? topAppsJson : ComputeTopAppsJson(ordered),
             IntensityAvg = intensityAvg,
             KeyboardTotal = keyboardTotal,
             MouseTotal = mouseTotal,
@@ -125,10 +128,37 @@ public static class ActivityDailySummaryAggregator
         }
 
         var topApps = byProcess.Take(TopAppsLimit)
-            .Select(x => new { process = x.Process, minutes = x.Minutes });
-        var topAppsJson = JsonSerializer.Serialize(topApps);
+            .Select(x => new AppUsageSummary
+            {
+                AppName = x.Process,
+                TotalSeconds = x.Minutes * 60,
+                Category = AppCategoryClassifier.Classify(x.Process).ToString()
+            })
+            .ToList();
 
-        return (productive, personal, unknown, topAppsJson);
+        return (productive, personal, unknown, JsonSerializer.Serialize(topApps));
+    }
+
+    /// <summary>
+    /// Top 10 foreground processes by summed active seconds. Snapshots with no
+    /// active time or no recorded process are excluded.
+    /// </summary>
+    private static string ComputeTopAppsJson(IReadOnlyList<ActivitySnapshot> ordered)
+    {
+        var topApps = ordered
+            .Where(s => s.ActiveSeconds > 0 && !string.IsNullOrWhiteSpace(s.ForegroundProcessName))
+            .GroupBy(s => s.ForegroundProcessName!, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new AppUsageSummary
+            {
+                AppName = g.Key,
+                TotalSeconds = g.Sum(s => s.ActiveSeconds),
+                Category = string.Empty
+            })
+            .OrderByDescending(a => a.TotalSeconds)
+            .Take(10)
+            .ToList();
+
+        return topApps.Count == 0 ? "[]" : JsonSerializer.Serialize(topApps);
     }
 
     /// <summary>

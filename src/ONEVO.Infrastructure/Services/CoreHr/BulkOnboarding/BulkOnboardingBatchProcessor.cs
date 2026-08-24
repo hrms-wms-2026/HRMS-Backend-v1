@@ -94,9 +94,19 @@ public sealed class BulkOnboardingBatchProcessor : BackgroundService
         var rows = await batchRepository.ListTrackedRowsAsync(batch.TenantId, batch.Id, ct);
         foreach (var row in rows.Where(r => r.Status == BulkOnboardingBatchRowStatus.Valid))
         {
-            var raw = JsonSerializer.Deserialize<Dictionary<string, string>>(row.RawDataJson) ?? new();
+            var originalRaw = JsonSerializer.Deserialize<Dictionary<string, string>>(row.RawDataJson) ?? new();
             var mapping = JsonSerializer.Deserialize<Dictionary<string, string?>>(batch.ColumnMappingJson ?? "{}") ?? new();
-            string? Get(string field) => mapping.TryGetValue(field, out var col) && col is not null && raw.TryGetValue(col, out var v) ? v : null;
+            var resolutionState = ONEVO.Application.Features.CoreHr.BulkOnboarding.Helpers.BulkOnboardingResolutionStateSerializer
+                .Deserialize(batch.ResolutionStateJson);
+            var raw = ONEVO.Application.Features.CoreHr.BulkOnboarding.Helpers.BulkOnboardingResolutionStateSerializer
+                .BuildEffectiveRawData(originalRaw, mapping, resolutionState, row.RowNumber);
+            string? Get(string field)
+            {
+                var synthetic = $"__override_{field}";
+                if (raw.TryGetValue(synthetic, out var overridden) && overridden.Length > 0)
+                    return overridden;
+                return mapping.TryGetValue(field, out var col) && col is not null && raw.TryGetValue(col, out var v) ? v : null;
+            }
 
             var command = new SaveOnboardingDraftCommand(
                 DraftId: null,
@@ -109,7 +119,7 @@ public sealed class BulkOnboardingBatchProcessor : BackgroundService
                 EmploymentType: Get("employmentType") ?? batch.DefaultEmploymentType ?? string.Empty,
                 StartDate: DateOnly.TryParse(Get("startDate"), out var startDate) ? startDate : default,
                 EmployeeNumber: Get("employeeNumber"),
-                WorkModeId: batch.DefaultWorkModeId ?? 0,
+                WorkModeId: row.ResolvedWorkModeId ?? batch.DefaultWorkModeId ?? 0,
                 SelectedTemplateId: row.ResolvedTemplateId,
                 EditedTasksJson: null,
                 LastSavedStep: OnboardingWizardStep.ReviewAndSubmit,

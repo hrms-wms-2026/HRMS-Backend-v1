@@ -3,7 +3,21 @@ using ONEVO.Application.Features.CoreHr.Employee.Models;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 
-public sealed record EmployeeListFilter(string? Search, Guid? DepartmentId, Guid? LegalEntityId);
+/// <summary>
+/// RestrictToEmployeeIds, when non-null, is the authoritative visible-employee-id set already
+/// resolved by IEmployeeAuthorityResolver.ResolveVisibilityAsync - ListVisibleAsync applies it
+/// instead of the legacy EmployeeVisibilityScope coverage filter (scope is still honored when
+/// RestrictToEmployeeIds is null, so GetVisibleByIdAsync and other scope-only callers are
+/// unaffected). An empty (non-null) collection means "nothing visible".
+/// </summary>
+public sealed record EmployeeListFilter(
+    string? Search, Guid? DepartmentId, Guid? LegalEntityId, IReadOnlyCollection<Guid>? RestrictToEmployeeIds = null);
+
+/// <summary>
+/// Enables the employee-list repository to calculate attendance warnings in one batch query. A
+/// null option means attendance-sensitive data must not be projected.
+/// </summary>
+public sealed record EmployeeListAttendanceOptions(DateTimeOffset UtcNow);
 
 public interface IEmployeeRepository
 {
@@ -13,7 +27,8 @@ public interface IEmployeeRepository
         EmployeeListFilter filter,
         int page,
         int pageSize,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        EmployeeListAttendanceOptions? attendanceOptions = null);
 
     Task<EmployeeListItemResponse?> GetVisibleByIdAsync(
         Guid tenantId,
@@ -69,9 +84,34 @@ public interface IEmployeeRepository
     Task<bool> EmployeeExistsInLegalEntityAsync(
         Guid tenantId, Guid legalEntityId, string email, Guid? excludeId, CancellationToken ct = default);
 
+    /// <summary>Tenant-scoped uniqueness check matching the <c>ix_employees_tenant_id_employee_number</c>
+    /// unique index. Includes soft-deleted rows so a number held by an archived employee is still
+    /// treated as taken (the unique index has no soft-delete filter).</summary>
     Task<bool> EmployeeNumberExistsAsync(Guid tenantId, string employeeNumber, Guid? excludeId, CancellationToken ct = default);
 
+    /// <summary>Next sequence for <c>{prefix}-NNNN</c> suggestions within the tenant, based on the
+    /// maximum existing numeric suffix for that prefix (including soft-deleted employees). Does not
+    /// reserve the value — callers must re-check uniqueness at save/finalize.</summary>
+    Task<int> GetNextEmployeeNumberSequenceAsync(Guid tenantId, string prefix, CancellationToken ct = default);
+
     Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Active (EmploymentStatus code "active") employee ids in a legal entity, used by
+    /// IEmployeeAuthorityResolver to expand department-scoped and company-wide management
+    /// coverage into concrete employee ids. Pass departmentIds to restrict to those departments
+    /// (an empty collection returns no rows); pass null to return every active employee in the
+    /// legal entity (used only for TargetCompany coverage - deliberately the one case where
+    /// loading the full legal-entity employee set is unavoidable).</summary>
+    Task<IReadOnlyList<Guid>> ListActiveEmployeeIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid>? departmentIds, CancellationToken ct = default);
+
+    /// <summary>Final tenant/legal-entity/active-status chokepoint filter used by
+    /// IEmployeeAuthorityResolver: given a raw candidate id set gathered from several expansion
+    /// paths (position coverage, department coverage, company-wide), returns only the subset that
+    /// is actually tenant-owned, in the requested legal entity, and currently active - so a stale
+    /// or cross-boundary id from any single expansion path can never leak into a resolved scope.</summary>
+    Task<IReadOnlyList<Guid>> ListActiveEmployeeIdsByIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
 
     Task AddAsync(ONEVO.Domain.Features.CoreHr.Entities.Employee employee, CancellationToken ct = default);
 
