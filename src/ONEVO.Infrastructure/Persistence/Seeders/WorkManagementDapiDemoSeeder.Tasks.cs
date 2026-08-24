@@ -35,7 +35,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 continue;
             }
 
-            await SeedProjectTemplateStatusesAsync(db, tree.ProjectKey, projectId, now, ct);
+            var statusIdByName = await SeedProjectTemplateStatusesAsync(db, tree.ProjectKey, projectId, now, ct);
             var categoryIdByName = await SeedProjectTaskCategoriesAsync(db, tree.ProjectKey, projectId, now, ct);
             categoryIdsByProjectKey[tree.ProjectKey] = categoryIdByName;
 
@@ -45,12 +45,12 @@ public sealed partial class WorkManagementDapiDemoSeeder
             {
                 var (path, node, allocatedHours) = leaves[leafIndex];
                 var objectiveId = DeterministicGuid($"dapi-demo:objective:{tree.ProjectKey}:{path}");
-                await SeedObjectiveStatusesAsync(db, tree.ProjectKey, path, projectId, objectiveId, now, ct);
 
                 nextTaskNumber = await SeedLeafTasksAsync(
                     db,
                     employeeIdByPersonKey,
                     categoryIdByName,
+                    statusIdByName,
                     tree,
                     project,
                     path,
@@ -116,20 +116,25 @@ public sealed partial class WorkManagementDapiDemoSeeder
         return categoryIdByName;
     }
 
-    private static async Task SeedProjectTemplateStatusesAsync(
+    private static async Task<Dictionary<string, Guid>> SeedProjectTemplateStatusesAsync(
         ApplicationDbContext db,
         string projectKey,
         Guid projectId,
         DateTimeOffset now,
         CancellationToken ct)
     {
+        var statusIdByName = new Dictionary<string, Guid>();
+
         for (var order = 0; order < CanonicalStatusNames.Length; order++)
         {
             var name = CanonicalStatusNames[order];
             var statusId = DeterministicGuid($"dapi-demo:task-status:{projectKey}:template:{name}");
-            if (db.TaskStatuses.Local.Any(s => s.Id == statusId)
-                || await db.TaskStatuses.AnyAsync(s => s.Id == statusId, ct))
+
+            var existing = db.TaskStatuses.Local.FirstOrDefault(s => s.Id == statusId)
+                ?? await db.TaskStatuses.FirstOrDefaultAsync(s => s.Id == statusId, ct);
+            if (existing is not null)
             {
+                statusIdByName[name] = existing.Id;
                 continue;
             }
 
@@ -145,47 +150,17 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 CreatedById = DapiOwnerUserId,
                 CreatedAt = now
             });
+            statusIdByName[name] = statusId;
         }
-    }
 
-    private static async Task SeedObjectiveStatusesAsync(
-        ApplicationDbContext db,
-        string projectKey,
-        string objectivePath,
-        Guid projectId,
-        Guid objectiveId,
-        DateTimeOffset now,
-        CancellationToken ct)
-    {
-        for (var order = 0; order < CanonicalStatusNames.Length; order++)
-        {
-            var name = CanonicalStatusNames[order];
-            var statusId = DeterministicGuid($"dapi-demo:task-status:{projectKey}:{objectivePath}:{name}");
-            if (db.TaskStatuses.Local.Any(s => s.Id == statusId)
-                || await db.TaskStatuses.AnyAsync(s => s.Id == statusId, ct))
-            {
-                continue;
-            }
-
-            db.TaskStatuses.Add(new TaskStatusEntity
-            {
-                Id = statusId,
-                TenantId = DapiTenantId,
-                ProjectId = projectId,
-                ObjectiveId = objectiveId,
-                Name = name,
-                DisplayOrder = order,
-                MarksTaskComplete = name == "Done",
-                CreatedById = DapiOwnerUserId,
-                CreatedAt = now
-            });
-        }
+        return statusIdByName;
     }
 
     private static async Task<long> SeedLeafTasksAsync(
         ApplicationDbContext db,
         Dictionary<string, Guid> employeeIdByPersonKey,
         Dictionary<string, Guid> categoryIdByName,
+        Dictionary<string, Guid> statusIdByName,
         DemoProjectTree tree,
         Project project,
         string path,
@@ -215,7 +190,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 continue;
             }
 
-            var statusId = DeterministicGuid($"dapi-demo:task-status:{tree.ProjectKey}:{path}:{statusName}");
+            var statusId = statusIdByName[statusName];
             var estimatedHours = Math.Max(
                 2m,
                 Math.Round(leafAllocatedHours * slot.EstimatedHoursFraction, 0, MidpointRounding.AwayFromZero));

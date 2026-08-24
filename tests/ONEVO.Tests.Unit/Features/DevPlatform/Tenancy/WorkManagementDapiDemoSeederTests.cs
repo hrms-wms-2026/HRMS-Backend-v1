@@ -440,7 +440,7 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
     }
 
     [Fact]
-    public async Task SeedAsync_CreatesProjectAndLeafTaskStatusesForEveryLeafWithTasks()
+    public async Task SeedAsync_PointsLeafTasksAtProjectTemplateStatuses_NotPerObjectiveCopies()
     {
         using var db = CreateContext();
         await RunDevSmokeSeederAsync(db);
@@ -450,6 +450,7 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         var projects = await verify.Projects.Where(p => p.TenantId == DapiTenantId).ToListAsync();
         projects.Should().HaveCount(5);
 
+        var templateIdsByProjectId = new Dictionary<Guid, List<Guid>>();
         foreach (var project in projects)
         {
             var templates = await verify.TaskStatuses
@@ -458,15 +459,24 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
             templates.Should().HaveCount(4);
             templates.Select(s => s.Name).Should().BeEquivalentTo(["To Do", "In Process", "Review", "Done"]);
             templates.Single(s => s.Name == "Done").MarksTaskComplete.Should().BeTrue();
+            templateIdsByProjectId[project.Id] = templates.Select(s => s.Id).ToList();
         }
 
         var leafIds = await GetLeafObjectiveIdsAsync(verify);
         foreach (var leafId in leafIds)
         {
-            var statuses = await verify.TaskStatuses
+            // Per-Objective status seeding no longer happens at all — every leaf Objective must
+            // have zero task_statuses rows of its own; tasks point at the Project-template rows.
+            var perObjectiveStatuses = await verify.TaskStatuses
                 .Where(s => s.ObjectiveId == leafId)
                 .ToListAsync();
-            statuses.Should().HaveCount(4);
+            perObjectiveStatuses.Should().BeEmpty();
+
+            var tasks = await verify.WorkTasks.Where(t => t.ObjectiveId == leafId).ToListAsync();
+            foreach (var task in tasks)
+            {
+                templateIdsByProjectId[task.ProjectId].Should().Contain(task.StatusId);
+            }
         }
     }
 
