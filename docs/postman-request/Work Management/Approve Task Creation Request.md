@@ -41,7 +41,7 @@ Empty body.
 | Status | Cause |
 |---|---|
 | `403` | Not authenticated, no employee record, or caller is not an effective manager of this milestone (its owner, an active member, or the owner/an active member of any ancestor milestone) |
-| `404` | Request, Objective, or Project not found / inactive |
+| `404` | Request, Objective, Category, or Project not found / inactive |
 | `409` | Request already decided, or `estimatedHours` exceeds remaining slack (`InsufficientAllocationResponse`) |
 | `422` | No task statuses configured for this milestone yet |
 
