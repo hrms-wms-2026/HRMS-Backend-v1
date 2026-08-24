@@ -67,6 +67,11 @@ public interface IPositionAssignmentRepository
     Task<IReadOnlyList<PositionActiveHolder>> GetActiveHoldersAsync(
         Guid tenantId, Guid positionId, CancellationToken ct = default);
 
+    /// <summary>Active PrimaryEmployment holders who are themselves active employees with a
+    /// user account. Used to pick a concrete checklist assignee (UserId) during onboarding.</summary>
+    Task<IReadOnlyList<ChecklistAssignee>> GetChecklistAssigneesAsync(
+        Guid tenantId, Guid positionId, CancellationToken ct = default);
+
     Task<bool> EndActiveAsync(Guid tenantId, Guid positionAssignmentId, DateOnly effectiveTo, CancellationToken ct = default);
 
     Task AddAsync(ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment assignment, CancellationToken ct = default);

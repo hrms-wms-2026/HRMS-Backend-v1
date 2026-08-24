@@ -1,0 +1,273 @@
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
+using ONEVO.Application.Features.TimeAttendance.Queries;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
+using ONEVO.Domain.Lookups;
+
+namespace ONEVO.Tests.Unit.Features.TimeAttendance;
+
+public sealed class AttendanceReadHandlerTests
+{
+    private static readonly Guid TenantId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    private static readonly Guid UserId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    private static readonly Guid EmployeeId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+    private static readonly Guid LegalEntityId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+
+    [Fact]
+    public async Task Today_AfterStartWithoutRecord_SetsShouldHaveClockedIn()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:00:00+00:00");
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ShouldHaveClockedIn.Should().BeTrue();
+        result.Value.AttendanceStatus.Should().Be("not_clocked_in");
+    }
+
+    [Fact]
+    public async Task Today_AfterStartWithRecordWithoutClockIn_SetsShouldHaveClockedIn()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:00:00+00:00");
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new DateOnly(2026, 8, 21), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21), ExpectedWorkingDay = true });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.ShouldHaveClockedIn.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Today_BeforeStartOrOffDay_DoesNotSetShouldHaveClockedIn()
+    {
+        var beforeStart = CreateFixture(localTimeUtc: "2026-08-21T03:00:00+00:00");
+        (await beforeStart.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None)).Value!.ShouldHaveClockedIn.Should().BeFalse();
+
+        var sunday = CreateFixture(localTimeUtc: "2026-08-23T10:00:00+00:00");
+        (await sunday.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None)).Value!.IsWorkingDay.Should().BeFalse();
+        (await sunday.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None)).Value!.ShouldHaveClockedIn.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Today_UsesLegalEntityLocalDayWindowForBreaks()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:00:00+00:00");
+        await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        var expectedStart = new DateTimeOffset(2026, 8, 20, 18, 30, 0, TimeSpan.Zero);
+        var expectedEnd = new DateTimeOffset(2026, 8, 21, 18, 30, 0, TimeSpan.Zero);
+        fixture.Attendance.Verify(x => x.ListBreaksAsync(TenantId, EmployeeId, expectedStart, expectedEnd, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Today_MapsOnsitePolicyFieldsAndDoesNotUseEmploymentType()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:00:00+00:00", workModeCode: "onsite", employmentTypeId: 99);
+        fixture.Policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ClockInPolicy { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1), OnsiteWebEnabled = true, RemoteWebEnabled = false }]);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.AllowedClockInMethods.Web.Should().BeTrue();
+        result.Value.AllowedClockInMethods.DesktopTray.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Today_MissingPolicyDisablesClockInWithStableMessage()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:00:00+00:00");
+        fixture.Policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.CanClockIn.Should().BeFalse();
+        result.Value.Messages.Should().Contain("clock_in_policy_not_configured");
+    }
+
+    [Fact]
+    public async Task CoveredHistory_WithEmployeeFilterQueriesOnlyThatVisibleEmployeeAndPreservesIdentity()
+    {
+        var fixture = CreateFixture();
+        var selectedId = Guid.NewGuid();
+        var otherId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, selectedId, otherId]));
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = selectedId, Date = new(2026, 8, 21), Status = "late" };
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { selectedId })), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync([record]);
+        fixture.Attendance.Setup(x => x.ListEmployeeIdentitiesAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, AttendanceHistoryEmployee> { [selectedId] = new(selectedId, "Jane Doe", "EMP-001", "Engineer", "Product", Guid.NewGuid()) });
+
+        var result = await fixture.Handler.Handle(new GetCoveredAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), selectedId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().ContainSingle();
+        result.Value![0].Employee!.DisplayName.Should().Be("Jane Doe");
+        result.Value[0].Employee.EmployeeNumber.Should().Be("EMP-001");
+    }
+
+    [Fact]
+    public async Task CoveredHistory_OutsideVisibilityReturnsForbidden()
+    {
+        var fixture = CreateFixture();
+        var hiddenId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
+
+        var result = await fixture.Handler.Handle(new GetCoveredAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), hiddenId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        fixture.Attendance.Verify(x => x.ListRecordsAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Today_ActiveAttendanceWithAllowance_AllowsStartBreak()
+    {
+        var fixture = CreateFixture();
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, ActualStart = DateTimeOffset.Parse("2026-08-21T04:00:00+00:00") });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.CanStartBreak.Should().BeTrue();
+        result.Value.BreakRemainingMinutes.Should().Be(60);
+    }
+
+    [Fact]
+    public async Task Today_ExhaustedAllowance_DisablesStartBreak()
+    {
+        var fixture = CreateFixture();
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, ActualStart = DateTimeOffset.Parse("2026-08-21T04:00:00+00:00") });
+        fixture.Attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BreakRecord { TenantId = TenantId, EmployeeId = EmployeeId, BreakStart = DateTimeOffset.Parse("2026-08-21T04:00:00+00:00"), BreakEnd = DateTimeOffset.Parse("2026-08-21T05:00:00+00:00") }]);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.BreakRemainingMinutes.Should().Be(0);
+        result.Value.CanStartBreak.Should().BeFalse();
+        result.Value.Messages.Should().Contain("break_allowance_used");
+    }
+
+    [Fact]
+    public async Task Today_OpenBreak_AllowsEndOnly()
+    {
+        var fixture = CreateFixture();
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, ActualStart = DateTimeOffset.Parse("2026-08-21T04:00:00+00:00") });
+        fixture.Attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BreakRecord { TenantId = TenantId, EmployeeId = EmployeeId, BreakStart = DateTimeOffset.Parse("2026-08-21T09:00:00+00:00") }]);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.CanEndBreak.Should().BeTrue();
+        result.Value.CanStartBreak.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Today_NoBreakAllowance_ReturnsNullRemainingAndDisablesStart()
+    {
+        var fixture = CreateFixture();
+        fixture.LegalEntity.BreakDurationMinutes = null;
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.BreakAllowanceMinutes.Should().BeNull();
+        result.Value.BreakRemainingMinutes.Should().BeNull();
+        result.Value.CanStartBreak.Should().BeFalse();
+        result.Value.Messages.Should().Contain("break_allowance_not_configured");
+    }
+
+    [Theory]
+    [InlineData("onsite")]
+    [InlineData("remote")]
+    [InlineData("hybrid")]
+    [InlineData("field")]
+    public async Task Today_MapsAllowedMethodsFromWorkMode(string mode)
+    {
+        var fixture = CreateFixture(workModeCode: mode);
+        var policy = new ClockInPolicy { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1) };
+        if (mode == "onsite") policy.OnsiteWebEnabled = true;
+        else if (mode == "remote") policy.RemoteWebEnabled = true;
+        else if (mode == "hybrid") policy.EitherWebEnabled = true;
+        else policy.FieldWebEnabled = true;
+        fixture.Policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync([policy]);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.AllowedClockInMethods.Web.Should().BeTrue();
+        result.Value.ExpectedWorkMode.Should().Be(mode);
+    }
+
+    [Fact]
+    public async Task Today_MultipleActivePolicies_DisablesClockInWithConflictMessage()
+    {
+        var fixture = CreateFixture();
+        var policies = Enumerable.Range(1, 2).Select(_ => new ClockInPolicy { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1) }).ToList();
+        fixture.Policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync(policies);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.CanClockIn.Should().BeFalse();
+        result.Value.Messages.Should().Contain("multiple_active_company_policies");
+    }
+
+    [Fact]
+    public async Task CoveredHistory_WithoutEmployeeFilter_QueriesAllResolverVisibleEmployees()
+    {
+        var fixture = CreateFixture();
+        var secondId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, secondId]));
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 2 && ids.Contains(EmployeeId) && ids.Contains(secondId)), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var result = await fixture.Handler.Handle(new GetCoveredAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), null), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        fixture.Attendance.Verify(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 2 && ids.Contains(EmployeeId) && ids.Contains(secondId)), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private static Fixture CreateFixture(string localTimeUtc = "2026-08-21T10:00:00+00:00", string workModeCode = "remote", int employmentTypeId = 1)
+    {
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
+        currentUser.SetupGet(x => x.UserId).Returns(UserId);
+        currentUser.Setup(x => x.HasPermission("attendance:read")).Returns(true);
+
+        var employee = new Employee { Id = EmployeeId, UserId = UserId, TenantId = TenantId, LegalEntityId = LegalEntityId, WorkModeId = 1, EmploymentTypeId = employmentTypeId };
+        var legalEntity = new LegalEntity { Id = LegalEntityId, TenantId = TenantId, Timezone = "Asia/Colombo", StandardWorkingDays = "[1,2,3,4,5]", WorkStartTime = new(9, 0), WorkEndTime = new(17, 30), BreakDurationMinutes = 60 };
+        var employees = new Mock<IEmployeeRepository>(); employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
+        var legalEntities = new Mock<ILegalEntityRepository>(); legalEntities.Setup(x => x.GetByIdForTenantAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>())).ReturnsAsync(legalEntity);
+        var policies = new Mock<IClockInPolicyRepository>(); policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync([new ClockInPolicy { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1), RemoteWebEnabled = true }]);
+        var attendance = new Mock<IAttendanceReadRepository>(); attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>())).ReturnsAsync((AttendanceRecord?)null); attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var authority = new Mock<IEmployeeAuthorityResolver>(); authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
+        var workModes = new Mock<IWorkModeRepository>(); workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>())).ReturnsAsync([new WorkMode { Id = 1, Code = workModeCode, Label = workModeCode }]);
+        var dateTime = new Mock<IDateTimeProvider>(); dateTime.SetupGet(x => x.UtcNow).Returns(DateTimeOffset.Parse(localTimeUtc));
+        var todayState = new ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService(
+            currentUser.Object,
+            dateTime.Object,
+            employees.Object,
+            legalEntities.Object,
+            policies.Object,
+            attendance.Object,
+            authority.Object,
+            workModes.Object);
+        return new Fixture(
+            new AttendanceReadHandler(currentUser.Object, employees.Object, attendance.Object, authority.Object, todayState),
+            attendance,
+            policies,
+            authority,
+            legalEntity);
+    }
+
+    private sealed record Fixture(AttendanceReadHandler Handler, Mock<IAttendanceReadRepository> Attendance, Mock<IClockInPolicyRepository> Policies, Mock<IEmployeeAuthorityResolver> Authority, LegalEntity LegalEntity);
+}

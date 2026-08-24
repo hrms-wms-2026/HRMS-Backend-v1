@@ -383,4 +383,34 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
         Assert.NotNull(added);
         Assert.Null(added!.ReportsToEmployeeId);
     }
+
+    [Fact]
+    public async Task Handle_AcceptsEmployeeEditedTaskWithoutAssignedToId()
+    {
+        OnboardingDraftEntity? added = null;
+        _draftRepository.Setup(r => r.AddAsync(It.IsAny<OnboardingDraftEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<OnboardingDraftEntity, CancellationToken>((d, _) => added = d)
+            .Returns(Task.CompletedTask);
+
+        var json = "[{\"title\":\"Complete profile\",\"ownerType\":\"employee\",\"dueDate\":\"2026-09-01\",\"sequence\":1,\"isRequired\":true}]";
+        var command = ValidCommand() with { EditedTasksJson = json, SelectedTemplateId = Guid.NewGuid() };
+
+        var result = await CreateHandler().Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(json, added!.EditedTasksJson);
+    }
+
+    [Fact]
+    public async Task Handle_RejectsAnotherPersonEditedTaskWithoutAssignedToId()
+    {
+        var json = $"[{{\"title\":\"IT setup\",\"ownerType\":\"custom_user\",\"assigneePositionId\":\"{Guid.NewGuid()}\",\"dueDate\":\"2026-09-01\",\"sequence\":1,\"isRequired\":true}}]";
+        var command = ValidCommand() with { EditedTasksJson = json, SelectedTemplateId = Guid.NewGuid() };
+
+        var result = await CreateHandler().Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        _draftRepository.Verify(r => r.AddAsync(It.IsAny<OnboardingDraftEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

@@ -23,6 +23,8 @@ using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.BulkOnboarding;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
@@ -186,6 +188,8 @@ public static class DependencyInjection
             .Validate(options => options.MinimumYear > 0, "Leave entitlement minimum year must be configured.")
             .Validate(options => options.MaximumYear >= options.MinimumYear, "Leave entitlement maximum year must be after the minimum year.")
             .ValidateOnStart();
+        services.AddScoped<IClockInPolicyRepository, EfClockInPolicyRepository>();
+        services.AddScoped<IAttendanceReadRepository, EfAttendanceReadRepository>();
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
         services.AddScoped<
@@ -200,6 +204,8 @@ public static class DependencyInjection
         services.AddScoped<IOnboardingDraftWriteService, OnboardingDraftWriteService>();
         services.AddScoped<IBulkOnboardingBatchRepository, EfBulkOnboardingBatchRepository>();
         services.AddScoped<IBulkOnboardingRowValidator, BulkOnboardingRowValidator>();
+        services.AddScoped<ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch.IBulkOnboardingValidationRunner,
+            ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch.BulkOnboardingValidationRunner>();
         services.AddScoped<IAccessGrantRequestRepository, EfAccessGrantRequestRepository>();
         services.AddScoped<IChecklistTemplateRepository, EfChecklistTemplateRepository>();
         services.AddScoped<IEmployeeChecklistTaskRepository, EfEmployeeChecklistTaskRepository>();
