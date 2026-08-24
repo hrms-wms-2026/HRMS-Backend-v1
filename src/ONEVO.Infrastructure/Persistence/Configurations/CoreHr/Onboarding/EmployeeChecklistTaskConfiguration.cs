@@ -15,6 +15,12 @@ public sealed class EmployeeChecklistTaskConfiguration : IEntityTypeConfiguratio
         builder.Property(x => x.OwnerType).HasMaxLength(30).IsRequired();
         builder.Property(x => x.Status).HasMaxLength(20).IsRequired();
         builder.Property(x => x.IsRequired).HasDefaultValue(true).IsRequired();
+        builder.Property(x => x.IsBypassable).HasDefaultValue(false).IsRequired();
+        builder.Property(x => x.BypassPenaltyDescription).HasMaxLength(500);
+        builder.Property(x => x.Category).HasMaxLength(40);
+        builder.HasIndex(x => new { x.TenantId, x.OffboardingRecordId });
+        builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.OffboardingRecord>().WithMany()
+            .HasForeignKey(x => x.OffboardingRecordId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(x => new { x.TenantId, x.EmployeeId, x.LifecycleType, x.Sequence });
         builder.HasOne<ONEVO.Domain.Features.CoreHr.Entities.Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ChecklistTemplate>().WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Restrict);

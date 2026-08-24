@@ -47,6 +47,32 @@ public sealed record DemoProjectTree(
     decimal AllocatedHours,
     DemoObjectiveNode Root);
 
+/// <summary>One recipe slot applied to every leaf objective when seeding demo tasks.</summary>
+public sealed record DemoLeafTaskSlot(
+    string TitleSuffix,
+    string CategoryName,
+    string Priority,
+    string StatusName,
+    decimal EstimatedHoursFraction,
+    bool AssignExtraMember,
+    bool MarkComplete);
+
+public sealed record DemoTaskCreationRequestSpec(
+    string ProjectKey,
+    string ObjectivePath,
+    string RequesterKey,
+    string Title,
+    string? Description,
+    string CategoryName,
+    string Priority,
+    decimal EstimatedHours);
+
+public sealed record DemoAllocationExtendSpec(
+    string ProjectKey,
+    string ObjectivePath,
+    decimal AdditionalHours,
+    string Reason);
+
 public static class WorkManagementDapiDemoData
 {
     private static readonly DateOnly EposTeamHireDate = new(2023, 3, 1);
@@ -253,5 +279,48 @@ public static class WorkManagementDapiDemoData
                 new DemoObjectiveNode("Testing and deployment", "basith", ["nilaxan"]),
                 new DemoObjectiveNode("Marketing", "kavisna", ["sutharshan", "sangavi"]),
             ])),
+    ];
+
+    /// <summary>
+    /// Three slots per leaf. Seeder may promote slot 2 to Done on even leaf indexes.
+    /// Fractions sum to 0.35 so leaf slack remains for Approvals demos and live creates.
+    /// </summary>
+    public static readonly IReadOnlyList<DemoLeafTaskSlot> LeafTaskSlots =
+    [
+        new("Kickoff", "task", "medium", "To Do", 0.10m, false, false),
+        new("Build", "story", "high", "In Process", 0.15m, true, false),
+        new("Handoff", "bug", "low", "Review", 0.10m, false, false),
+    ];
+
+    public static readonly IReadOnlyList<DemoTaskCreationRequestSpec> TaskCreationRequests =
+    [
+        new("epos", "E-pos_System/Testing and deployment", "mathusanth", "Add regression suite task", null, "task", "medium", 8m),
+        new("epos", "E-pos_System/Hardware Integration", "kiru", "Device firmware smoke checklist", null, "task", "high", 6m),
+        new("epos", "E-pos_System/Marketing", "kavisna", "Launch landing page copy", null, "story", "medium", 4m),
+
+        new("evtix", "Event management ticketing/Testing and deployment", "danuharan", "Load-test check-in path", null, "task", "high", 8m),
+        new("evtix", "Event management ticketing/Hardware Integration", "nilaxan", "Scanner pairing checklist", null, "task", "medium", 5m),
+        new("evtix", "Event management ticketing/Marketing", "sutharshan", "Event launch email draft", null, "story", "medium", 4m),
+
+        new("onexso", "Onexso - HR and Work Management System/Testing and deployment", "thivan", "Payroll module soak test", null, "task", "high", 10m),
+        new("onexso", "Onexso - HR and Work Management System/Hardware Integration", "nilaxan", "Badge reader integration spike", null, "task", "medium", 6m),
+        new("onexso", "Onexso - HR and Work Management System/Marketing", "sutharshan", "Product one-pager refresh", null, "story", "low", 4m),
+
+        new("watercraft", "Watercraft/Testing and deployment", "lavanya", "Sea-trial instrumentation checklist", null, "task", "high", 8m),
+        new("watercraft", "Watercraft/Hardware Integration", "kiru", "Sensor harness validation", null, "task", "medium", 6m),
+        new("watercraft", "Watercraft/Marketing", "kavisna", "Trade-show booth narrative", null, "story", "medium", 4m),
+
+        new("hwportal", "The Hardware integration portal/Testing and deployment", "nilaxan", "Driver soak harness", null, "task", "high", 8m),
+        new("hwportal", "The Hardware integration portal/Marketing", "sutharshan", "Portal launch blog outline", null, "story", "medium", 4m),
+        new("hwportal", "The Hardware integration portal/Marketing", "sangavi", "Partner onboarding FAQ draft", null, "task", "low", 3m),
+    ];
+
+    public static readonly IReadOnlyList<DemoAllocationExtendSpec> AllocationExtends =
+    [
+        new("epos", "E-pos_System/Pos System", 40m, "Need more hours for architecture depth"),
+        new("evtix", "Event management ticketing/Ticketing Platform", 30m, "Booking engine capacity"),
+        new("onexso", "Onexso - HR and Work Management System/Core HR And Employee Management", 50m, "Lifecycle module overrun"),
+        new("watercraft", "Watercraft/Hull And Vessel Design", 45m, "Structural analysis buffer"),
+        new("hwportal", "The Hardware integration portal/Device Connectivity Framework", 35m, "Protocol adapter expansion"),
     ];
 }

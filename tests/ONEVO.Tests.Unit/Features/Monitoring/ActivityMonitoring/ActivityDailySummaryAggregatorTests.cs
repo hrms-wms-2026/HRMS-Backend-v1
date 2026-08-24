@@ -1,5 +1,8 @@
 using FluentAssertions;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Domain.Features.Monitoring.AppUsage.Entities;
+using ONEVO.Domain.Features.Monitoring.Meetings.Entities;
 using ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
 
 namespace ONEVO.Tests.Unit.Features.Monitoring.ActivityMonitoring;
@@ -104,5 +107,117 @@ public class ActivityDailySummaryAggregatorTests
             Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), snapshots, baseTime);
 
         summary.DataCoveragePercentage.Should().Be(100m);
+    }
+
+    [Fact]
+    public void Computes_top_10_apps_by_active_seconds_descending()
+    {
+        var baseTime = new DateTimeOffset(2026, 8, 5, 9, 0, 0, TimeSpan.Zero);
+        var snapshots = new List<ActivitySnapshot>
+        {
+            Snap(300, 0, 10, 10, 70, "code.exe", baseTime),
+            Snap(120, 0, 5, 5, 60, "slack.exe", baseTime.AddMinutes(5)),
+            Snap(180, 0, 8, 8, 65, "code.exe", baseTime.AddMinutes(10)),
+            Snap(0, 300, 0, 0, 0, null, baseTime.AddMinutes(15)), // idle, no process — excluded
+        };
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), snapshots, baseTime);
+
+        var topApps = System.Text.Json.JsonSerializer.Deserialize<List<AppUsageSummary>>(summary.TopAppsJson)!;
+        topApps.Should().HaveCount(2);
+        topApps[0].AppName.Should().Be("code.exe");
+        topApps[0].TotalSeconds.Should().Be(480); // 300 + 180
+        topApps[1].AppName.Should().Be("slack.exe");
+        topApps[1].TotalSeconds.Should().Be(120);
+    }
+
+    [Fact]
+    public void Top_apps_caps_at_10_and_is_empty_json_array_when_no_active_process()
+    {
+        var baseTime = new DateTimeOffset(2026, 8, 5, 9, 0, 0, TimeSpan.Zero);
+        var snapshots = Enumerable.Range(0, 12)
+            .Select(i => Snap(60, 0, 1, 1, 50, $"app{i}.exe", baseTime.AddMinutes(i)))
+            .ToList();
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), snapshots, baseTime);
+
+        var topApps = System.Text.Json.JsonSerializer.Deserialize<List<AppUsageSummary>>(summary.TopAppsJson)!;
+        topApps.Should().HaveCount(10);
+
+        var idleOnly = new List<ActivitySnapshot> { Snap(0, 300, 0, 0, 0, "explorer.exe", baseTime) };
+        var idleSummary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), idleOnly, baseTime);
+        idleSummary.TopAppsJson.Should().Be("[]");
+    }
+
+    private static AppUsageSnapshot AppUsage(string? processName, DateTimeOffset capturedAt) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), EmployeeId = Guid.NewGuid(), AgentDeviceId = Guid.NewGuid(),
+        CapturedAt = capturedAt, ProcessName = processName, WindowTitleHash = "hash"
+    };
+
+    private static MeetingSignal Meeting(bool isRunning, DateTimeOffset capturedAt) => new()
+    {
+        Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), EmployeeId = Guid.NewGuid(), AgentDeviceId = Guid.NewGuid(),
+        CapturedAt = capturedAt, IsMeetingAppRunning = isRunning, ProcessName = isRunning ? "teams.exe" : null
+    };
+
+    [Fact]
+    public void Aggregates_AppUsage_IntoCategorizedMinutes_AndTopAppsJson()
+    {
+        var baseTime = new DateTimeOffset(2026, 8, 17, 9, 0, 0, TimeSpan.Zero);
+        var appUsage = new List<AppUsageSnapshot>
+        {
+            AppUsage("code.exe", baseTime),
+            AppUsage("code.exe", baseTime.AddMinutes(1)),
+            AppUsage("spotify.exe", baseTime.AddMinutes(2)),
+            AppUsage("random_tool.exe", baseTime.AddMinutes(3))
+        };
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 17), [], baseTime,
+            appUsageSnapshots: appUsage);
+
+        summary.ProductiveAppMinutes.Should().Be(2);
+        summary.PersonalAppMinutes.Should().Be(1);
+        summary.UnknownAppMinutes.Should().Be(1);
+
+        var topApps = System.Text.Json.JsonSerializer.Deserialize<List<AppUsageSummary>>(summary.TopAppsJson)!;
+        topApps.Should().Contain(a => a.AppName == "code.exe" && a.TotalSeconds == 120);
+    }
+
+    [Fact]
+    public void Aggregates_MeetingSignals_IntoTotalMeetingMinutes()
+    {
+        var baseTime = new DateTimeOffset(2026, 8, 17, 9, 0, 0, TimeSpan.Zero);
+        var meetings = new List<MeetingSignal>
+        {
+            Meeting(true, baseTime),
+            Meeting(true, baseTime.AddMinutes(2)),
+            Meeting(false, baseTime.AddMinutes(4))
+        };
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 17), [], baseTime,
+            meetingSignals: meetings);
+
+        summary.TotalMeetingMinutes.Should().Be(4);
+    }
+
+    [Fact]
+    public void NoAppUsageOrMeetingData_LeavesFieldsAtZero()
+    {
+        var baseTime = new DateTimeOffset(2026, 8, 17, 9, 0, 0, TimeSpan.Zero);
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 17), [], baseTime);
+
+        summary.ProductiveAppMinutes.Should().Be(0);
+        summary.PersonalAppMinutes.Should().Be(0);
+        summary.UnknownAppMinutes.Should().Be(0);
+        summary.TotalMeetingMinutes.Should().Be(0);
+        summary.TopAppsJson.Should().Be("[]");
     }
 }

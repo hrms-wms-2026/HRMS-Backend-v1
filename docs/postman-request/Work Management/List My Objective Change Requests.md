@@ -12,6 +12,8 @@ The caller's approval queue — every `pending` change request where the caller 
 
 `200 OK` — a JSON array of `ObjectiveChangeRequest` objects (same shape as Edit's pending response).
 
+**Breaking change (2026-08-14):** `requestedById`, `reportingManagerId`, and `decidedById` now carry `employees.id` values, not `users.id`. Field names are unchanged. Clients that were caching or comparing against the old UserId-space value must re-fetch.
+
 ## Errors
 
 | Status | Cause |

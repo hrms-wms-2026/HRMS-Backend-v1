@@ -13,7 +13,8 @@ public static class ProjectViewModelMapper
         response.ReleaseReminder.ToViewModel(),
         response.Labels.Select(ToViewModel).ToList(),
         response.CreatorMembership.ToViewModel(),
-        response.Logo?.ToViewModel()
+        response.Logo?.ToViewModel(),
+        response.Banner?.ToViewModel()
     );
 
     public static ProjectViewModel ToViewModel(this ProjectSummaryDto dto) => new(

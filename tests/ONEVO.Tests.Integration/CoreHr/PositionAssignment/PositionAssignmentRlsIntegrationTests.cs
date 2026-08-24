@@ -13,6 +13,7 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Tests.Integration.Support;
+using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -97,7 +98,7 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
     {
         await using (var seedDb = CreateContext(_tenantAId, "posn-assign-rls-a", useRestrictedRole: true))
         {
-            var repo = new EfPositionAssignmentRepository(seedDb);
+            var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(seedDb);
             await repo.AddAsync(NewAssignment(_tenantAId, _tenantAEmployeeId, _tenantAPositionId));
             await repo.SaveChangesAsync();
         }
@@ -140,13 +141,13 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
     {
         await using (var firstDb = CreateContext(_tenantAId, "posn-assign-rls-a", useRestrictedRole: true))
         {
-            var repo = new EfPositionAssignmentRepository(firstDb);
+            var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(firstDb);
             await repo.AddAsync(NewAssignment(_tenantAId, _tenantAEmployeeId, _tenantAPositionId));
             await repo.SaveChangesAsync();
         }
 
         await using var secondDb = CreateContext(_tenantAId, "posn-assign-rls-a", useRestrictedRole: true);
-        var secondRepo = new EfPositionAssignmentRepository(secondDb);
+        var secondRepo = PositionAssignmentRepositoryTestSupport.CreateRepository(secondDb);
         await secondRepo.AddAsync(NewAssignment(_tenantAId, _tenantAEmployeeId, _tenantASecondPositionId));
 
         var act = async () => await secondRepo.SaveChangesAsync();

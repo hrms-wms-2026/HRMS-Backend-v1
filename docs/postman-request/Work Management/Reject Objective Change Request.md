@@ -2,7 +2,7 @@
 
 **POST** `/api/v1/work/objectives/change-requests/{requestId}/reject`
 
-**Auth:** Tenant session cookie + CSRF header. Policy: `TenantPolicy`. **Permission:** `projects:access` + caller must equal the request's `reportingManagerId`.
+**Auth:** Tenant session cookie + CSRF header. Policy: `TenantPolicy`. **Permission:** `projects:access` + caller must equal the request's `reportingManagerId` (an Employee id as of 2026-08-14).
 
 ## Description
 

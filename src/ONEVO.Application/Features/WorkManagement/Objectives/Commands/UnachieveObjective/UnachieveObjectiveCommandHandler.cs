@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
@@ -14,16 +15,18 @@ namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.Unachiev
 public class UnachieveObjectiveCommandHandler : IRequestHandler<UnachieveObjectiveCommand, Result<ObjectiveChangeOutcomeResponse>>
 {
     private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IUnitOfWork _unitOfWork;
 
     public UnachieveObjectiveCommandHandler(
-        ICurrentUser currentUser, IObjectiveRepository objectives, IObjectiveChangeRequestRepository changeRequests,
-        IMilestoneMembershipCoordinator membership, IUnitOfWork unitOfWork)
+        ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
+        IObjectiveChangeRequestRepository changeRequests, IMilestoneMembershipCoordinator membership, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
+        _identity = identity;
         _objectives = objectives;
         _changeRequests = changeRequests;
         _membership = membership;
@@ -40,6 +43,10 @@ public class UnachieveObjectiveCommandHandler : IRequestHandler<UnachieveObjecti
         if (tenantId == Guid.Empty)
             return Result<ObjectiveChangeOutcomeResponse>.Forbidden("Tenant context missing.");
 
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
+        if (callerEmployeeId is null)
+            return Result<ObjectiveChangeOutcomeResponse>.Forbidden("No employee record for the current user.");
+
         var objective = await _objectives.GetByIdForTenantAsync(tenantId, request.ObjectiveId, ct);
         if (objective is null || !objective.IsActive)
             return Result<ObjectiveChangeOutcomeResponse>.NotFound("Objective not found.");
@@ -50,7 +57,7 @@ public class UnachieveObjectiveCommandHandler : IRequestHandler<UnachieveObjecti
         if (!objective.IsAchieved)
             return Result<ObjectiveChangeOutcomeResponse>.Conflict("Objective is not achieved.");
 
-        if (objective.OwnerId != userId)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<ObjectiveChangeOutcomeResponse>.Forbidden("Only this milestone's head can un-achieve it.");
 
         if (objective.CreatedById == userId)
@@ -68,7 +75,7 @@ public class UnachieveObjectiveCommandHandler : IRequestHandler<UnachieveObjecti
 
                 // Un-freezing restores the Head's active participation, mirroring Achieve's own
                 // cleanup in reverse.
-                await _membership.UpsertMembershipAsync(tenantId, objective.ProjectId, objective.Id, objective.OwnerId, headAssignee.Id, innerCt);
+                await _membership.UpsertMembershipAsync(tenantId, objective.ProjectId, objective.Id, objective.OwnerId, innerCt);
 
                 await _unitOfWork.SaveChangesAsync(innerCt);
 
@@ -85,7 +92,7 @@ public class UnachieveObjectiveCommandHandler : IRequestHandler<UnachieveObjecti
             TenantId = tenantId,
             ObjectiveId = objective.Id,
             RequestType = ObjectiveChangeRequestTypes.Unachieve,
-            RequestedById = userId,
+            RequestedById = callerEmployeeId.Value,
             ReportingManagerId = objective.ReportingManagerId!.Value,
             Status = ObjectiveChangeRequestStatuses.Pending,
             PayloadJson = null,

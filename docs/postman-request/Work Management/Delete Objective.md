@@ -12,12 +12,14 @@ Soft-deletes a milestone (no cascade to descendants — design §4). Applies imm
 
 `204 No Content` (applied immediately) or `202 Accepted` with the pending `ObjectiveChangeRequest` body (same shape as Edit's pending response, `requestType: "delete"`, `payloadJson: null`).
 
+**Breaking change (2026-08-14):** `requestedById`, `reportingManagerId`, and `decidedById` on the pending-request body now carry `employees.id` values, not `users.id`. Field names are unchanged. Clients that were caching or comparing against the old UserId-space value must re-fetch.
+
 ## Errors
 
 | Status | Cause |
 |---|---|
 | `400` | `{id}` is the Default Objective |
-| `403` | Caller is not `{id}`'s current Head |
+| `403` | Caller is not an effective manager of `{id}` (its Head, an active member, or the Head/an active member of any ancestor Objective) |
 | `404` | Objective doesn't exist in tenant |
 | `409` | A change request is already pending for this objective |
 

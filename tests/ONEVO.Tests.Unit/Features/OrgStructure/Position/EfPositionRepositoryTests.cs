@@ -688,6 +688,44 @@ public sealed class EfPositionRepositoryTests
         Assert.False(hasConflict);
     }
 
+    [Fact]
+    public async Task GetAccessTemplateByPositionAsync_ExcludesInactiveTemplates()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var activePositionId = Guid.NewGuid();
+        var inactivePositionId = Guid.NewGuid();
+        db.Set<PositionAccessTemplate>().AddRange(
+            new PositionAccessTemplate
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, PositionId = activePositionId,
+                RoleId = Guid.NewGuid(), RequiresApproval = true, IsActive = true,
+            },
+            new PositionAccessTemplate
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, PositionId = inactivePositionId,
+                RoleId = Guid.NewGuid(), RequiresApproval = true, IsActive = false,
+            });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfPositionRepository(db);
+
+        var active = await repository.GetAccessTemplateByPositionAsync(tenantId, activePositionId);
+        var inactive = await repository.GetAccessTemplateByPositionAsync(tenantId, inactivePositionId);
+        var inactiveIncluding = await repository.GetAccessTemplateByPositionIncludingInactiveAsync(tenantId, inactivePositionId);
+        var requiresApproval = await repository.GetRequiresApprovalByPositionIdsAsync(
+            tenantId, [activePositionId, inactivePositionId]);
+
+        Assert.NotNull(active);
+        Assert.True(active!.RequiresApproval);
+        Assert.Null(inactive);
+        Assert.NotNull(inactiveIncluding);
+        Assert.True(inactiveIncluding!.RequiresApproval);
+        Assert.True(requiresApproval[activePositionId]);
+        Assert.False(requiresApproval.ContainsKey(inactivePositionId));
+    }
+
     private static PositionEntity CreatePosition(Guid tenantId, Guid legalEntityId, string name, string code)
     {
         return new PositionEntity

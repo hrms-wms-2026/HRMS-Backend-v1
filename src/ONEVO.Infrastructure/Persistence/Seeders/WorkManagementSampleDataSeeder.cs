@@ -180,9 +180,14 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
             return;
         }
 
+        // Keyed on TenantId+Identifier only (not LeadId): the unique constraint this seeder must
+        // stay idempotent against is ix_projects_tenant_id_identifier, and Identifier is derived
+        // from user.Id, not employee.Id. If an Employee row is ever deleted and recreated for the
+        // same user (its Id changes), a LeadId-based check would stop recognizing already-seeded
+        // rows and try to re-insert the same identifiers, violating the unique index.
         var shortUserId = user.Id.ToString("N")[..8].ToUpperInvariant();
         var existingSampleProjects = await db.Projects
-            .Where(p => p.TenantId == tenantId && p.LeadId == user.Id && p.Identifier.StartsWith(SampleIdentifierPrefix + shortUserId))
+            .Where(p => p.TenantId == tenantId && p.Identifier.StartsWith(SampleIdentifierPrefix + shortUserId))
             .ToListAsync(ct);
 
         var now = DateTimeOffset.UtcNow;
@@ -202,7 +207,7 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
                 Name = $"{user.FirstName}'s Sample Project {projectIndex + 1}",
                 Identifier = identifier,
                 Description = "Development sample data seeded for Work Management UI testing.",
-                LeadId = user.Id,
+                LeadId = employee.Id,
                 StartDate = today,
                 TargetDate = today.AddDays(90),
                 AllocatedHours = 0m,
@@ -221,7 +226,7 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
                 IsDefault = true,
                 Title = project.Name,
                 Description = project.Description,
-                OwnerId = user.Id,
+                OwnerId = employee.Id,
                 IsActive = true,
                 StartDate = project.StartDate,
                 EndDate = project.TargetDate,
@@ -238,7 +243,6 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
                 TenantId = tenantId,
                 ProjectId = project.Id,
                 ObjectiveId = defaultObjective.Id,
-                UserId = user.Id,
                 EmployeeId = employee.Id,
                 MembershipSource = ProjectMembershipSources.System,
                 IsActive = true,
@@ -289,7 +293,7 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
                     IsDefault = false,
                     Title = $"Milestone {milestoneIndex + 1}",
                     Description = "Development sample milestone seeded for Work Management UI testing.",
-                    OwnerId = user.Id,
+                    OwnerId = employee.Id,
                     ReportingManagerId = null,
                     IsActive = true,
                     StartDate = today.AddDays(milestoneIndex * 30),
@@ -307,7 +311,6 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
                     TenantId = tenantId,
                     ProjectId = project.Id,
                     ObjectiveId = milestone.Id,
-                    UserId = user.Id,
                     EmployeeId = employee.Id,
                     MembershipSource = ProjectMembershipSources.System,
                     IsActive = true,

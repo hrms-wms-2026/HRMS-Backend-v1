@@ -1,17 +1,17 @@
 # Remove Objective Member
 
-**DELETE** `/api/v1/work/objectives/{id}/members/{userId}`
+**DELETE** `/api/v1/work/objectives/{id}/members/{employeeId}`
 
 **Auth:** Tenant session cookie (`onevo_session`) + CSRF header. Policy: `TenantPolicy`.
-**Permission:** `projects:access` + caller must be this milestone's current Head.
+**Permission:** `projects:access` + caller must be this milestone's current Head (Employee id).
 
 ## Description
 
-Deactivates a user's membership on this milestone. Removing the milestone's current Head is rejected — use Transfer Objective Head instead, which handles the membership handoff correctly.
+If `{employeeId}` has an active `project_members` row on this milestone, deactivates it. If they have no active membership but a pending invitation on this milestone, cancels that invitation (`status: cancelled`). Removing the milestone's current Head is rejected — use Transfer Objective Head instead.
 
 ## Request
 
-No body.
+No body. `{employeeId}` is an `employees.id`.
 
 ## Response
 
@@ -21,12 +21,12 @@ No body.
 
 | Status | Cause |
 |---|---|
-| `400` | Milestone is achieved (frozen), or `userId` is this milestone's current head |
-| `403` | Caller lacks `projects:access`, or is not this milestone's Head |
-| `404` | Milestone doesn't exist in tenant, or is inactive |
+| `400` | Milestone is achieved (frozen), or `employeeId` is this milestone's current head |
+| `403` | Caller lacks `projects:access`, has no Employee record, or is not an effective manager of this milestone (its Head, an active member, or the Head/an active member of any ancestor milestone) |
+| `404` | Milestone doesn't exist / is inactive, **or** this employee has neither an active membership nor a pending invitation on this milestone |
 
 ## Source
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/ObjectivesController.cs` (`RemoveMember`)
 Handler: `src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/RemoveObjectiveMember/RemoveObjectiveMemberCommandHandler.cs`
-Plan: `docs/superpowers/plans/2026-08-06-work-management-milestone-membership-and-achieve.md`
+Plan: `docs/superpowers/plans/next/2026-08-14-work-management-objective-member-management.md` (Task 5)

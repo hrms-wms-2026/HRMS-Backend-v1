@@ -12,4 +12,6 @@ public record ManagementCoverageRecordResponse(
     int OwnerOrder,
     string Source,
     bool IsLocked,
-    string Status);
+    string Status,
+    Guid? ResponsibleEmployeeId,
+    string? ResponsibleEmployeeName);

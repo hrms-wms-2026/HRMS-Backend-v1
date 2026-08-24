@@ -3,12 +3,14 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.Helpers;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObjective;
@@ -16,18 +18,22 @@ namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObje
 public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand, Result<ObjectiveEditOutcomeResponse>>
 {
     private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMilestoneMembershipCoordinator _membership;
 
     public EditObjectiveCommandHandler(
-        ICurrentUser currentUser, IObjectiveRepository objectives,
-        IObjectiveChangeRequestRepository changeRequests, IUnitOfWork unitOfWork)
+        ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
+        IObjectiveChangeRequestRepository changeRequests, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
     {
         _currentUser = currentUser;
+        _identity = identity;
         _objectives = objectives;
         _changeRequests = changeRequests;
         _unitOfWork = unitOfWork;
+        _membership = membership;
     }
 
     public async Task<Result<ObjectiveEditOutcomeResponse>> Handle(EditObjectiveCommand request, CancellationToken ct)
@@ -40,6 +46,10 @@ public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand,
         if (tenantId == Guid.Empty)
             return Result<ObjectiveEditOutcomeResponse>.Forbidden("Tenant context missing.");
 
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
+        if (callerEmployeeId is null)
+            return Result<ObjectiveEditOutcomeResponse>.Forbidden("No employee record for the current user.");
+
         var objective = await _objectives.GetByIdForTenantAsync(tenantId, request.ObjectiveId, ct);
         if (objective is null || !objective.IsActive)
             return Result<ObjectiveEditOutcomeResponse>.NotFound("Objective not found.");
@@ -51,7 +61,7 @@ public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand,
         if (objective.IsAchieved)
             return Result<ObjectiveEditOutcomeResponse>.Failure("An achieved milestone cannot be edited.");
 
-        if (objective.OwnerId != userId)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<ObjectiveEditOutcomeResponse>.Forbidden("Only this milestone's head can edit it.");
 
         // Every non-default Objective always has a parent (Task 5 sets ParentObjectiveId at
@@ -98,7 +108,7 @@ public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand,
             TenantId = tenantId,
             ObjectiveId = objective.Id,
             RequestType = ObjectiveChangeRequestTypes.Edit,
-            RequestedById = userId,
+            RequestedById = callerEmployeeId.Value,
             // Objective.ReportingManagerId is only ever null for the Default Objective, already
             // excluded above - safe to unwrap here.
             ReportingManagerId = objective.ReportingManagerId!.Value,

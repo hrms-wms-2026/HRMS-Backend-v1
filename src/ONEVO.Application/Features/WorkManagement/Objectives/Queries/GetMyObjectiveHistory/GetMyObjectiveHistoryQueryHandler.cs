@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -10,12 +11,15 @@ namespace ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyObje
 public class GetMyObjectiveHistoryQueryHandler : IRequestHandler<GetMyObjectiveHistoryQuery, Result<IReadOnlyList<ObjectiveHistoryItemResponse>>>
 {
     private readonly ICurrentUser _currentUser;
+    private readonly ICallerIdentityResolver _identity;
     private readonly IProjectMemberRepository _members;
     private readonly IObjectiveRepository _objectives;
 
-    public GetMyObjectiveHistoryQueryHandler(ICurrentUser currentUser, IProjectMemberRepository members, IObjectiveRepository objectives)
+    public GetMyObjectiveHistoryQueryHandler(
+        ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectMemberRepository members, IObjectiveRepository objectives)
     {
         _currentUser = currentUser;
+        _identity = identity;
         _members = members;
         _objectives = objectives;
     }
@@ -30,7 +34,11 @@ public class GetMyObjectiveHistoryQueryHandler : IRequestHandler<GetMyObjectiveH
         if (tenantId == Guid.Empty)
             return Result<IReadOnlyList<ObjectiveHistoryItemResponse>>.Forbidden("Tenant context missing.");
 
-        var inactiveMemberships = await _members.ListInactiveMembershipsForUserAsync(tenantId, userId, ct);
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
+        if (callerEmployeeId is null)
+            return Result<IReadOnlyList<ObjectiveHistoryItemResponse>>.Forbidden("No employee record for the current user.");
+
+        var inactiveMemberships = await _members.ListInactiveMembershipsForEmployeeAsync(tenantId, callerEmployeeId.Value, ct);
 
         var items = new List<ObjectiveHistoryItemResponse>();
         foreach (var membership in inactiveMemberships)

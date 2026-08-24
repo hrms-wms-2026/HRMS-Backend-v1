@@ -1,4 +1,8 @@
+using System.Text.Json;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Domain.Features.Monitoring.AppUsage.Entities;
+using ONEVO.Domain.Features.Monitoring.Meetings.Entities;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
 
@@ -14,13 +18,23 @@ public static class ActivityDailySummaryAggregator
     /// <summary>Minimum contiguous active minutes to count as focus.</summary>
     public const int FocusThresholdMinutes = 30;
 
+    /// <summary>Each AppUsageCollector sample represents this many minutes of foreground time (its fixed 60s sample interval).</summary>
+    private const int AppUsageMinutesPerSample = 1;
+
+    /// <summary>Each MeetingDetector sample represents this many minutes (its fixed 2-minute sample interval).</summary>
+    private const int MeetingMinutesPerSample = 2;
+
+    private const int TopAppsLimit = 5;
+
     public static ActivityDailySummary Aggregate(
         Guid tenantId,
         Guid employeeId,
         DateOnly date,
         IReadOnlyList<ActivitySnapshot> snapshots,
         DateTimeOffset now,
-        int expectedWorkMinutes = DefaultExpectedWorkMinutes)
+        int expectedWorkMinutes = DefaultExpectedWorkMinutes,
+        IReadOnlyList<AppUsageSnapshot>? appUsageSnapshots = null,
+        IReadOnlyList<MeetingSignal>? meetingSignals = null)
     {
         var ordered = snapshots.OrderBy(s => s.CapturedAt).ToList();
 
@@ -49,10 +63,15 @@ public static class ActivityDailySummaryAggregator
 
         var (focusMinutes, deepFocusSessions) = ComputeFocus(ordered);
 
-        // Weighted score: active% * intensity/100 * coverage/100, scaled 0-100
         var activityScore = Math.Round(
             activePercentage * (intensityAvg / 100m) * (dataCoverage / 100m),
             2);
+
+        var (productiveMinutes, personalMinutes, unknownMinutes, topAppsJson) =
+            AggregateAppUsage(appUsageSnapshots ?? []);
+
+        var totalMeetingMinutes = (meetingSignals ?? [])
+            .Count(s => s.IsMeetingAppRunning) * MeetingMinutesPerSample;
 
         return new ActivityDailySummary
         {
@@ -62,15 +81,17 @@ public static class ActivityDailySummaryAggregator
             Date = date,
             TotalActiveMinutes = totalActiveMinutes,
             TotalIdleMinutes = totalIdleMinutes,
-            TotalMeetingMinutes = 0, // Application Tracking / Meeting Detection (Phase 2)
+            TotalMeetingMinutes = totalMeetingMinutes,
             ActivePercentage = activePercentage,
-            ProductiveAppMinutes = 0,
-            PersonalAppMinutes = 0,
-            UnknownAppMinutes = 0,
+            ProductiveAppMinutes = productiveMinutes,
+            PersonalAppMinutes = personalMinutes,
+            UnknownAppMinutes = unknownMinutes,
             FocusMinutes = focusMinutes,
             ActivityScore = activityScore,
             DataCoveragePercentage = dataCoverage,
-            TopAppsJson = "[]",
+            // Prefer dedicated app-usage samples; fall back to activity snapshots
+            // so the daily report still has TopApps when app-usage is empty.
+            TopAppsJson = topAppsJson != "[]" ? topAppsJson : ComputeTopAppsJson(ordered),
             IntensityAvg = intensityAvg,
             KeyboardTotal = keyboardTotal,
             MouseTotal = mouseTotal,
@@ -80,6 +101,64 @@ public static class ActivityDailySummaryAggregator
             CreatedAt = now,
             UpdatedAt = now
         };
+    }
+
+    private static (int Productive, int Personal, int Unknown, string TopAppsJson) AggregateAppUsage(
+        IReadOnlyList<AppUsageSnapshot> appUsageSnapshots)
+    {
+        if (appUsageSnapshots.Count == 0)
+            return (0, 0, 0, "[]");
+
+        var byProcess = appUsageSnapshots
+            .GroupBy(s => s.ProcessName ?? "(unknown)")
+            .Select(g => new { Process = g.Key, Minutes = g.Count() * AppUsageMinutesPerSample })
+            .OrderByDescending(x => x.Minutes)
+            .ToList();
+
+        int productive = 0, personal = 0, unknown = 0;
+        foreach (var app in byProcess)
+        {
+            var category = AppCategoryClassifier.Classify(app.Process);
+            switch (category)
+            {
+                case AppCategory.Productive: productive += app.Minutes; break;
+                case AppCategory.Personal: personal += app.Minutes; break;
+                default: unknown += app.Minutes; break;
+            }
+        }
+
+        var topApps = byProcess.Take(TopAppsLimit)
+            .Select(x => new AppUsageSummary
+            {
+                AppName = x.Process,
+                TotalSeconds = x.Minutes * 60,
+                Category = AppCategoryClassifier.Classify(x.Process).ToString()
+            })
+            .ToList();
+
+        return (productive, personal, unknown, JsonSerializer.Serialize(topApps));
+    }
+
+    /// <summary>
+    /// Top 10 foreground processes by summed active seconds. Snapshots with no
+    /// active time or no recorded process are excluded.
+    /// </summary>
+    private static string ComputeTopAppsJson(IReadOnlyList<ActivitySnapshot> ordered)
+    {
+        var topApps = ordered
+            .Where(s => s.ActiveSeconds > 0 && !string.IsNullOrWhiteSpace(s.ForegroundProcessName))
+            .GroupBy(s => s.ForegroundProcessName!, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new AppUsageSummary
+            {
+                AppName = g.Key,
+                TotalSeconds = g.Sum(s => s.ActiveSeconds),
+                Category = string.Empty
+            })
+            .OrderByDescending(a => a.TotalSeconds)
+            .Take(10)
+            .ToList();
+
+        return topApps.Count == 0 ? "[]" : JsonSerializer.Serialize(topApps);
     }
 
     /// <summary>

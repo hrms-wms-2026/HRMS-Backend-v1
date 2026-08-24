@@ -65,10 +65,10 @@ public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
     {
         var employeeId = await SeedEmployeeAsync();
         await using var db = CreateContext(_tenantId, "try-create-active");
-        var repo = new EfPositionAssignmentRepository(db);
+        var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
 
         var createdId = await repo.TryCreateActiveAssignmentAsync(
-            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid());
+            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
 
         Assert.NotNull(createdId);
         var row = await db.PositionAssignments.FindAsync(createdId!.Value);
@@ -81,12 +81,12 @@ public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
         var employeeA = await SeedEmployeeAsync();
         var employeeB = await SeedEmployeeAsync();
         await using var db = CreateContext(_tenantId, "try-create-active");
-        var repo = new EfPositionAssignmentRepository(db);
+        var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
 
         await repo.TryCreateActiveAssignmentAsync(
-            _tenantId, employeeA, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid());
+            _tenantId, employeeA, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
         var second = await repo.TryCreateActiveAssignmentAsync(
-            _tenantId, employeeB, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid());
+            _tenantId, employeeB, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
 
         Assert.Null(second);
     }
@@ -96,9 +96,9 @@ public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
     {
         var employeeId = await SeedEmployeeAsync();
         await using var db = CreateContext(_tenantId, "try-create-active");
-        var repo = new EfPositionAssignmentRepository(db);
+        var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
         var createdId = await repo.TryCreateActiveAssignmentAsync(
-            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid());
+            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
 
         var effectiveTo = DateOnly.FromDateTime(DateTime.UtcNow);
         var ended = await repo.EndActiveAsync(_tenantId, createdId!.Value, effectiveTo);

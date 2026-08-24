@@ -3,12 +3,14 @@ using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.Security;
 using ONEVO.Application.Common.ServiceInterfaces;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
@@ -63,6 +65,7 @@ public class ApproveAccessGrantRequestCommandHandler
     private readonly ISecureTokenGenerator _tokenGenerator;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
+    private readonly IUnitOfWork _unitOfWork;
 
     public ApproveAccessGrantRequestCommandHandler(
         IAccessGrantRequestRepository accessGrantRequestRepository,
@@ -84,7 +87,8 @@ public class ApproveAccessGrantRequestCommandHandler
         IOutboxWriter outboxWriter,
         ISecureTokenGenerator tokenGenerator,
         ICurrentUser currentUser,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IUnitOfWork unitOfWork)
     {
         _accessGrantRequestRepository = accessGrantRequestRepository;
         _draftRepository = draftRepository;
@@ -106,6 +110,7 @@ public class ApproveAccessGrantRequestCommandHandler
         _tokenGenerator = tokenGenerator;
         _currentUser = currentUser;
         _clock = clock;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<Result<ApproveAccessGrantRequestResponse>> Handle(
@@ -119,6 +124,73 @@ public class ApproveAccessGrantRequestCommandHandler
 
         if (grantRequest.ApprovalStatus != "Pending")
             return Result<ApproveAccessGrantRequestResponse>.Conflict("This access grant request has already been decided.");
+
+        if (grantRequest.RequestedByUserId == _currentUser.UserId)
+            return Result<ApproveAccessGrantRequestResponse>.Forbidden(
+                "You cannot approve or reject a request you submitted yourself.");
+
+        if (grantRequest.ActionType == AccessGrantActionType.PositionChange)
+        {
+            var currentAssignment = await _positionAssignmentRepository.GetActivePrimaryAsync(
+                tenantId, grantRequest.EmployeeId!.Value, ct);
+
+            try
+            {
+                await _unitOfWork.ExecuteInTransactionAsync(async txnCt =>
+                {
+                    if (currentAssignment is not null)
+                    {
+                        var effectiveTo = DateOnly.FromDateTime(grantRequest.EffectiveFrom.UtcDateTime).AddDays(-1);
+                        if (effectiveTo < currentAssignment.EffectiveFrom)
+                            effectiveTo = currentAssignment.EffectiveFrom;
+                        await _positionAssignmentRepository.EndActiveAsync(tenantId, currentAssignment.Id, effectiveTo, txnCt);
+                    }
+
+                    var activated = await _positionAssignmentRepository.ActivatePlannedAsync(
+                        tenantId, grantRequest.ReservedPositionAssignmentId!.Value, txnCt);
+                    if (!activated)
+                        throw new ReservedSeatUnavailableException();
+
+                    var reservedAssignment = await _positionAssignmentRepository.GetTrackedAsync(
+                        tenantId, grantRequest.ReservedPositionAssignmentId.Value, txnCt);
+                    if (reservedAssignment is not null)
+                        reservedAssignment.ChangeReason = grantRequest.ChangeReason;
+
+                    grantRequest.ApprovalStatus = "Approved";
+                    grantRequest.DecidedByUserId = _currentUser.UserId;
+                    grantRequest.DecidedAt = _clock.UtcNow;
+
+                    await _accessGrantRequestRepository.SaveChangesAsync(txnCt);
+                    return true;
+                }, ct);
+            }
+            catch (ReservedSeatUnavailableException)
+            {
+                return Result<ApproveAccessGrantRequestResponse>.Conflict(
+                    "The reserved seat for this request is no longer available.");
+            }
+            catch (ConcurrencyConflictException)
+            {
+                return Result<ApproveAccessGrantRequestResponse>.Conflict(
+                    "This request was just updated by someone else. Please refresh and try again.");
+            }
+            catch (UniqueConstraintConflictException)
+            {
+                return Result<ApproveAccessGrantRequestResponse>.Conflict(
+                    "This request conflicts with an existing record. Please refresh and try again.");
+            }
+
+            return Result<ApproveAccessGrantRequestResponse>.Success(
+                new ApproveAccessGrantRequestResponse(
+                    grantRequest.Id,
+                    grantRequest.OnboardingDraftId ?? Guid.Empty,
+                    grantRequest.EmployeeId!.Value,
+                    "Approved",
+                    InvitationQueued: false,
+                    ChecklistTaskCount: 0,
+                    PositionApprovalStatus: "Approved",
+                    MessageKey: "onboarding.access_grant.position_change_approved"));
+        }
 
         if (grantRequest.OnboardingDraftId is null)
             return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity(
@@ -178,12 +250,18 @@ public class ApproveAccessGrantRequestCommandHandler
         if (await _employeeRepository.EmployeeExistsInLegalEntityAsync(tenantId, draft.LegalEntityId, draft.WorkEmail, excludeId: null, ct))
             return Result<ApproveAccessGrantRequestResponse>.Conflict("An employee with this work email already exists in this company.");
 
-        if (string.IsNullOrWhiteSpace(draft.EmployeeNumber))
+        var approveEmployeeNumber = EmployeeNumberRules.NormalizeInput(draft.EmployeeNumber);
+        if (string.IsNullOrEmpty(approveEmployeeNumber))
             return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity(
-                "An employee number is required to approve this onboarding; no auto-generation policy exists yet.");
+                EmployeeNumberRules.RequiredForFinalizeMessage);
 
-        if (await _employeeRepository.EmployeeNumberExistsAsync(tenantId, draft.EmployeeNumber, excludeId: null, ct))
-            return Result<ApproveAccessGrantRequestResponse>.Conflict("This employee number already exists for this company.");
+        if (!EmployeeNumberRules.IsValidFormat(approveEmployeeNumber))
+            return Result<ApproveAccessGrantRequestResponse>.Failure(EmployeeNumberRules.InvalidFormatMessage);
+
+        if (await _employeeRepository.EmployeeNumberExistsAsync(tenantId, approveEmployeeNumber, excludeId: null, ct))
+            return Result<ApproveAccessGrantRequestResponse>.Conflict(EmployeeNumberRules.AlreadyInUseMessage);
+
+        draft.EmployeeNumber = approveEmployeeNumber;
 
         var accessTemplate = await _positionRepository.GetAccessTemplateByPositionAsync(tenantId, draft.PositionId.Value, ct);
         if (accessTemplate is null || !accessTemplate.IsActive)
@@ -278,7 +356,7 @@ public class ApproveAccessGrantRequestCommandHandler
         await _employeeRepository.AddAsync(employee, ct);
 
         var reservedAssignmentId = await _positionAssignmentRepository.TryReservePositionAssignmentAsync(
-            draft.TenantId, employeeId, position.Id, draft.StartDate, _currentUser.UserId, ct);
+            draft.TenantId, employeeId, position.Id, draft.StartDate, _currentUser.UserId, reportsToEmployeeId: null, ct);
         if (reservedAssignmentId is null)
             return Result<ApproveAccessGrantRequestResponse>.Conflict("This position has reached its capacity.");
 
@@ -393,4 +471,10 @@ public class ApproveAccessGrantRequestCommandHandler
             return false;
         }
     }
+
+    /// <summary>
+    /// Thrown inside <see cref="IUnitOfWork.ExecuteInTransactionAsync{TResult}"/> so EndActive
+    /// is rolled back when the reserved Planned assignment cannot be activated.
+    /// </summary>
+    private sealed class ReservedSeatUnavailableException : Exception;
 }

@@ -1002,6 +1002,56 @@ Pre-invite onboarding records. Drafts hold the pending employee/job/schedule/che
 | `updated_at` | `timestamptz` |  |
 | `finalized_at` | `timestamptz` | Nullable timestamp when final employee creation succeeds |
 
+### `bulk_onboarding_batches`
+
+One CSV upload's worth of prospective employees, from upload through validation, background
+draft creation, and background finalize. Column mapping is ephemeral (this-batch-only, never
+reused across uploads).
+
+| Column | Type | Notes |
+|:-------|:-----|:------|
+| `id` | `uuid` | PK |
+| `tenant_id` | `uuid` | FK -> tenants |
+| `legal_entity_id` | `uuid` | FK -> legal_entities; batch-level default for every row |
+| `default_employment_type` | `varchar(30)` | Nullable; batch-level default, CSV column can override per row |
+| `default_work_mode_id` | `int` | Nullable, FK -> work_modes; batch-level default, CSV column can override per row |
+| `default_checklist_template_id` | `uuid` | Nullable, FK -> checklist_templates; batch-level default, CSV column can override per row |
+| `column_mapping` | `jsonb` | System field -> CSV header map; ephemeral to this batch |
+| `selected_draft_ids` | `jsonb` | Nullable; onboarding_draft ids selected at finalize time |
+| `original_file_name` | `varchar(255)` | Display only |
+| `status` | `varchar(30)` | `mapping_pending`, `validated`, `draft_creation_pending`, `drafts_created`, `finalize_pending`, `finalize_completed` |
+| `total_rows` | `int` | |
+| `valid_rows` | `int` | Nullable until validated |
+| `invalid_rows` | `int` | Nullable until validated |
+| `created_by_user_id` | `uuid` | FK -> users |
+| `created_at` | `timestamptz` | |
+| `updated_at` | `timestamptz` | |
+| `completed_at` | `timestamptz` | Nullable; set when finalize_completed |
+
+### `bulk_onboarding_batch_rows`
+
+One CSV row's parsed data, resolution, and lifecycle status within a `bulk_onboarding_batches`
+batch. Bulk-created drafts are ordinary `onboarding_drafts` rows (see that table) linked back
+here by `onboarding_draft_id` - they also appear in the normal My Drafts list.
+
+| Column | Type | Notes |
+|:-------|:-----|:------|
+| `id` | `uuid` | PK |
+| `tenant_id` | `uuid` | |
+| `batch_id` | `uuid` | FK -> bulk_onboarding_batches |
+| `row_number` | `int` | 1-based, matches the CSV row for error reporting |
+| `raw_data` | `jsonb` | Original cell values keyed by detected CSV header |
+| `resolved_department_id` | `uuid` | Nullable; resolved at validation time by department name |
+| `resolved_position_id` | `uuid` | Nullable; resolved at validation time by position name |
+| `resolved_template_id` | `uuid` | Nullable; resolved checklist template, row override of the batch default |
+| `status` | `varchar(30)` | `pending_mapping`, `valid`, `invalid`, `draft_created`, `draft_failed`, `finalized`, `waiting_for_seat`, `waiting_for_position_approval`, `finalize_failed` |
+| `error_message` | `text` | Nullable |
+| `onboarding_draft_id` | `uuid` | Nullable FK -> onboarding_drafts |
+| `created_at` | `timestamptz` | |
+| `updated_at` | `timestamptz` | |
+
+**Unique:** `(tenant_id, batch_id, row_number)`.
+
 ### `employee_checklist_tasks`
 
 Individual onboarding/offboarding checklist tasks instantiated for a specific employee, with owner and due date.

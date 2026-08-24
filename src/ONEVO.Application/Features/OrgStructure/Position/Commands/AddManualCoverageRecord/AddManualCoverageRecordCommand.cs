@@ -10,4 +10,5 @@ public record AddManualCoverageRecordCommand(
     string CoveredTargetType,
     Guid? CoveredPositionId,
     Guid? CoveredDepartmentId,
-    int OwnerOrder) : IRequest<Result<ManagementCoverageRecordResponse>>;
+    int OwnerOrder,
+    Guid? ResponsibleEmployeeId) : IRequest<Result<ManagementCoverageRecordResponse>>;

@@ -1,5 +1,6 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetMyObjectiveHistory;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -13,6 +14,7 @@ public class GetMyObjectiveHistoryQueryHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
+    private static readonly Guid EmployeeId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
 
@@ -24,13 +26,16 @@ public class GetMyObjectiveHistoryQueryHandlerTests
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(EmployeeId);
+
         var members = new Mock<IProjectMemberRepository>();
-        members.Setup(x => x.ListInactiveMembershipsForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(inactiveMemberships);
+        members.Setup(x => x.ListInactiveMembershipsForEmployeeAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(inactiveMemberships);
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
 
-        var handler = new GetMyObjectiveHistoryQueryHandler(currentUser.Object, members.Object, objectives.Object);
+        var handler = new GetMyObjectiveHistoryQueryHandler(currentUser.Object, identity.Object, members.Object, objectives.Object);
         return (handler, objectives);
     }
 
@@ -38,7 +43,7 @@ public class GetMyObjectiveHistoryQueryHandlerTests
     public async Task Handle_HasInactiveMembership_ReturnsHistoryItem()
     {
         var removedAt = DateTimeOffset.UtcNow;
-        var membership = new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, UserId = UserId, IsActive = false, RemovedAt = removedAt };
+        var membership = new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, EmployeeId = EmployeeId, IsActive = false, RemovedAt = removedAt };
         var objective = new Objective { Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, Title = "Old Milestone", IsAchieved = true };
 
         var (handler, _) = BuildHandler(new List<ProjectMember> { membership }, objective);
@@ -67,7 +72,7 @@ public class GetMyObjectiveHistoryQueryHandlerTests
     [Fact]
     public async Task Handle_ObjectiveNoLongerExists_SkipsItSilently()
     {
-        var membership = new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, UserId = UserId, IsActive = false, RemovedAt = DateTimeOffset.UtcNow };
+        var membership = new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, EmployeeId = EmployeeId, IsActive = false, RemovedAt = DateTimeOffset.UtcNow };
         var (handler, _) = BuildHandler(new List<ProjectMember> { membership }, null);
 
         var result = await handler.Handle(new GetMyObjectiveHistoryQuery(), CancellationToken.None);

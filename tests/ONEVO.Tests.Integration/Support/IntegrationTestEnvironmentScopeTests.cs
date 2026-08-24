@@ -37,6 +37,9 @@ public sealed class IntegrationTestEnvironmentScopeTests
         Environment.GetEnvironmentVariable("PlatformBootstrap__SuperAdminFullName")
             .Should().Be("Integration Test Super Admin");
         Environment.GetEnvironmentVariable("Tenancy__RootDomain").Should().Be("localhost");
+        Environment.GetEnvironmentVariable("AwsRekognition__Region").Should().Be("us-east-1");
+        Environment.GetEnvironmentVariable("AwsRekognition__LivenessRoleArn")
+            .Should().Be("arn:aws:iam::000000000000:role/integration-test-face-liveness");
     }
 
     [Fact]

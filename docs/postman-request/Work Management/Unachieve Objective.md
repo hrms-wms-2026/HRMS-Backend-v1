@@ -17,12 +17,14 @@ No body.
 
 `204 No Content` (applied immediately) or `202 Accepted` with the created change request (pending approval).
 
+**Breaking change (2026-08-14):** `requestedById` and `reportingManagerId` on the pending-request body now carry `employees.id` values, not `users.id`. Field names are unchanged. Clients that were caching or comparing against the old UserId-space value must re-fetch.
+
 ## Errors
 
 | Status | Cause |
 |---|---|
 | `400` | Target is the Default Objective, or the current head is no longer an active employee in this tenant |
-| `403` | Caller lacks `projects:access`, or is not this milestone's Head |
+| `403` | Caller lacks `projects:access`, or is not an effective manager of this milestone (its Head, an active member, or the Head/an active member of any ancestor milestone) |
 | `404` | Milestone doesn't exist in tenant, or is inactive |
 | `409` | Milestone is not achieved, or a change request is already pending |
 

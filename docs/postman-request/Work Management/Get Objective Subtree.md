@@ -26,6 +26,8 @@ Returns `{id}`'s parent Objective detail (if any) plus its full nested descendan
 }
 ```
 
+**Breaking change (2026-08-14):** `ownerId` and `reportingManagerId` on every node now carry `employees.id` values, not `users.id`. The field names are unchanged. Clients that were caching or comparing against the old UserId-space value must re-fetch.
+
 `parentObjective` is `null` when `{id}` has no parent (i.e., it's the Project's Default Objective). Each entry in `children` has the same shape as `objective`, recursively. Added 2026-08-10: `ownerName`/`reportingManagerName` (resolved once across every node in the project, `null` if not found), `isOwner` (per-node, true only when the caller is that specific node's owner — not inherited from an ancestor), and `isAchieved`/`achievedAt` (previously only returned by the single Get Objective endpoint, now also on every subtree node) — added for the Project Detail milestone tree view.
 
 ## Errors

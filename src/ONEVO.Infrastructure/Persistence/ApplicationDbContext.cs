@@ -18,11 +18,14 @@ using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using MonitoringException = ONEVO.Domain.Features.Monitoring.Exceptions.Entities.Exception;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
+using MonitoringNotification = ONEVO.Domain.Features.Monitoring.Notifications.Entities.Notification;
 using ONEVO.Domain.Features.Monitoring.WorkSessions.Entities;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
@@ -34,7 +37,16 @@ using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities;
+using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
+using ONEVO.Domain.Features.SharedPlatform.Notifications.Entities;
+using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 using ONEVO.Domain.Features.WorkManagement.Versions.Entities;
+using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
+using ONEVO.Domain.Features.Leave.Entitlement.Entities;
+using ONEVO.Domain.Features.Leave.Policy.Entities;
+using ONEVO.Domain.Features.Leave.Request.Entities;
+using ONEVO.Domain.Features.Leave.Type.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 
@@ -94,8 +106,13 @@ public class ApplicationDbContext : DbContext
     public DbSet<ActivitySnapshot> ActivitySnapshots => Set<ActivitySnapshot>();
     public DbSet<ActivityRawBuffer> ActivityRawBuffers => Set<ActivityRawBuffer>();
     public DbSet<ActivityDailySummary> ActivityDailySummaries => Set<ActivityDailySummary>();
+    public DbSet<MonitoringException> Exceptions => Set<MonitoringException>();
     public DbSet<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot> AppUsageSnapshots => Set<ONEVO.Domain.Features.Monitoring.AppUsage.Entities.AppUsageSnapshot>();
     public DbSet<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot> DeviceStateSnapshots => Set<ONEVO.Domain.Features.Monitoring.DeviceState.Entities.DeviceStateSnapshot>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.Meetings.Entities.MeetingSignal> MeetingSignals => Set<ONEVO.Domain.Features.Monitoring.Meetings.Entities.MeetingSignal>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt> BiometricEnrollmentAttempts => Set<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricEnrollmentAttempt>();
+    public DbSet<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile> BiometricProfiles => Set<ONEVO.Domain.Features.Monitoring.Biometrics.Entities.BiometricProfile>();
+    public DbSet<MonitoringNotification> MonitoringNotifications => Set<MonitoringNotification>();
 
     // Monitoring - Feature toggles & overrides
     public DbSet<MonitoringFeatureToggles> MonitoringFeatureToggles => Set<MonitoringFeatureToggles>();
@@ -205,9 +222,13 @@ public class ApplicationDbContext : DbContext
     public DbSet<EmployeeDependent> EmployeeDependents => Set<EmployeeDependent>();
     public DbSet<EmployeeBankDetail> EmployeeBankDetails => Set<EmployeeBankDetail>();
     public DbSet<OnboardingDraft> OnboardingDrafts => Set<OnboardingDraft>();
+    public DbSet<BulkOnboardingBatch> BulkOnboardingBatches => Set<BulkOnboardingBatch>();
+    public DbSet<BulkOnboardingBatchRow> BulkOnboardingBatchRows => Set<BulkOnboardingBatchRow>();
     public DbSet<ChecklistTemplate> ChecklistTemplates => Set<ChecklistTemplate>();
     public DbSet<EmployeeChecklistTask> EmployeeChecklistTasks => Set<EmployeeChecklistTask>();
     public DbSet<AccessGrantRequest> AccessGrantRequests => Set<AccessGrantRequest>();
+    public DbSet<OffboardingRecord> OffboardingRecords => Set<OffboardingRecord>();
+    public DbSet<OffboardingTaskBypassRequest> OffboardingTaskBypassRequests => Set<OffboardingTaskBypassRequest>();
 
     // Lookups
     public DbSet<EmploymentType> EmploymentTypes => Set<EmploymentType>();
@@ -219,6 +240,25 @@ public class ApplicationDbContext : DbContext
     // OrgStructure
     public DbSet<LegalEntity> LegalEntities => Set<LegalEntity>();
     public DbSet<Department> Departments => Set<Department>();
+
+    // Leave Management
+    public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
+    public DbSet<LeavePolicy> LeavePolicies => Set<LeavePolicy>();
+    public DbSet<LeavePolicyLeaveType> LeavePolicyLeaveTypes => Set<LeavePolicyLeaveType>();
+    public DbSet<LeavePolicyBlackoutPeriod> LeavePolicyBlackoutPeriods => Set<LeavePolicyBlackoutPeriod>();
+    public DbSet<LeavePolicyLegalEntity> LeavePolicyLegalEntities => Set<LeavePolicyLegalEntity>();
+    public DbSet<LeaveEntitlement> LeaveEntitlements => Set<LeaveEntitlement>();
+    public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
+    public DbSet<LeaveRequestApprover> LeaveRequestApprovers => Set<LeaveRequestApprover>();
+    public DbSet<LeaveRequestDocument> LeaveRequestDocuments => Set<LeaveRequestDocument>();
+    public DbSet<LeaveApprovalDelegate> LeaveApprovalDelegates => Set<LeaveApprovalDelegate>();
+    public DbSet<LeaveBalanceAudit> LeaveBalanceAudits => Set<LeaveBalanceAudit>();
+    // Time & Attendance - Clock-in Policy foundation
+    public DbSet<ClockInPolicy> ClockInPolicies => Set<ClockInPolicy>();
+    public DbSet<ClockInLateDeductionRule> ClockInLateDeductionRules => Set<ClockInLateDeductionRule>();
+    public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
+    public DbSet<PresenceSession> PresenceSessions => Set<PresenceSession>();
+    public DbSet<BreakRecord> BreakRecords => Set<BreakRecord>();
 
     // Storage - EntityAssets (Phase 1 entity_assets, scoped to owner_type "project" for now)
     public DbSet<EntityAsset> EntityAssets => Set<EntityAsset>();
@@ -234,6 +274,15 @@ public class ApplicationDbContext : DbContext
     public DbSet<ProjectVersion> ProjectVersions => Set<ProjectVersion>();
     public DbSet<ReleaseCalendarEntry> ReleaseCalendarEntries => Set<ReleaseCalendarEntry>();
     public DbSet<Label> Labels => Set<Label>();
+    public DbSet<TaskStatusEntity> TaskStatuses => Set<TaskStatusEntity>();
+    public DbSet<TaskCategory> TaskCategories => Set<TaskCategory>();
+    public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
+    public DbSet<Sprint> Sprints => Set<Sprint>();
+    public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
+    public DbSet<TaskCreationRequest> TaskCreationRequests => Set<TaskCreationRequest>();
+    public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();
+    public DbSet<NotificationTemplate> NotificationTemplates => Set<NotificationTemplate>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

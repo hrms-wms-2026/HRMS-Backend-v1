@@ -19,4 +19,5 @@ public record SaveOnboardingDraftCommand(
     Guid? SelectedTemplateId,
     string? EditedTasksJson,
     string LastSavedStep,
-    string? IfMatchVersion) : IRequest<Result<OnboardingDraftResponse>>;
+    string? IfMatchVersion,
+    Guid? ReportsToEmployeeId) : IRequest<Result<OnboardingDraftResponse>>;

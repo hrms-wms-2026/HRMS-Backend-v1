@@ -99,6 +99,32 @@ public sealed class EfLegalEntityRepositoryTests
     }
 
     [Fact]
+    public async Task ListAccessibleAsync_RegularUser_ReturnsEveryOwnActiveEmployeeLegalEntity()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var alpha = CreateLegalEntity(tenantId, "Alpha Co");
+        var beta = CreateLegalEntity(tenantId, "Beta Co");
+        var unrelated = CreateLegalEntity(tenantId, "Unrelated Co");
+        db.LegalEntities.AddRange(alpha, beta, unrelated);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.Employees.AddRange(
+            CreateActiveEmployee(tenantId, userId, beta.Id),
+            CreateActiveEmployee(tenantId, userId, alpha.Id),
+            CreateActiveEmployee(tenantId, Guid.NewGuid(), unrelated.Id));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalEntityRepository(db);
+
+        var results = await repository.ListAccessibleAsync(
+            tenantId, userId, hasManagementAccess: false, includeInactive: false, CancellationToken.None);
+
+        Assert.Equal(new[] { alpha.Id, beta.Id }, results.Select(entity => entity.Id));
+    }
+
+    [Fact]
     public async Task ListAccessibleAsync_RegularUser_NoEmployeeRow_ReturnsEmpty()
     {
         await using var db = BuildInMemoryDb();
@@ -127,6 +153,31 @@ public sealed class EfLegalEntityRepositoryTests
         db.LegalEntities.Add(own);
         db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         db.Employees.Add(CreateActiveEmployee(tenantId, userId, own.Id));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalEntityRepository(db);
+
+        var results = await repository.ListAccessibleAsync(
+            tenantId, userId, hasManagementAccess: false, includeInactive: false, CancellationToken.None);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task ListAccessibleAsync_RegularUser_InactiveEmployeeMembership_ReturnsEmpty()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var own = CreateLegalEntity(tenantId, "Own Co");
+        db.LegalEntities.Add(own);
+        db.EmploymentStatuses.AddRange(
+            new EmploymentStatus { Id = 1, Code = "active", Label = "Active" },
+            new EmploymentStatus { Id = 4, Code = "terminated", Label = "Terminated" });
+        var employee = CreateActiveEmployee(tenantId, userId, own.Id);
+        employee.EmploymentStatusId = 4;
+        db.Employees.Add(employee);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 

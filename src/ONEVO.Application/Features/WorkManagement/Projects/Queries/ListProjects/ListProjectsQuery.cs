@@ -5,6 +5,6 @@ using ONEVO.Application.Features.WorkManagement.Projects.DTOs.Responses;
 namespace ONEVO.Application.Features.WorkManagement.Projects.Queries.ListProjects;
 
 public sealed record ListProjectsQuery(
-    Guid? TargetUserId,
+    Guid? TargetEmployeeId,
     PagedRequest Paging
 ) : IRequest<Result<PagedResult<ProjectListItemResponse>>>;

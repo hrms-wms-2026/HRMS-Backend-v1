@@ -1,5 +1,7 @@
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.Commands.AddManualCoverageRecord;
 using ONEVO.Application.Features.OrgStructure.Commands.RemoveManualCoverageRecord;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdateManualCoverageRecord;
@@ -19,6 +21,7 @@ public sealed class PositionCoverageHandlerTests
     private readonly Mock<IPositionRepository> _positionsMock = new();
     private readonly Mock<IDepartmentRepository> _departmentsMock = new();
     private readonly Mock<ILegalEntityRepository> _legalEntitiesMock = new();
+    private readonly Mock<IPositionAssignmentRepository> _assignmentsMock = new();
     private readonly Mock<ICurrentUser> _currentUserMock = new();
     private readonly Mock<IDateTimeProvider> _dateTimeProviderMock = new();
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -37,6 +40,9 @@ public sealed class PositionCoverageHandlerTests
         _positionsMock
             .Setup(p => p.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, _positionId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PositionEntity { Id = _positionId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Manager", IsActive = true });
+        _assignmentsMock
+            .Setup(a => a.GetActiveHoldersAsync(_tenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<PositionActiveHolder>());
     }
 
     [Fact]
@@ -54,10 +60,10 @@ public sealed class PositionCoverageHandlerTests
             .Returns(Task.CompletedTask);
 
         var handler = new AddManualCoverageRecordCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _assignmentsMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var result = await handler.Handle(
-            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, coveredPositionId, null, 1),
+            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, coveredPositionId, null, 1, null),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -82,10 +88,10 @@ public sealed class PositionCoverageHandlerTests
             .ReturnsAsync(true);
 
         var handler = new AddManualCoverageRecordCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _assignmentsMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var result = await handler.Handle(
-            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, coveredPositionId, null, 1),
+            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, coveredPositionId, null, 1, null),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -102,10 +108,10 @@ public sealed class PositionCoverageHandlerTests
             .ReturnsAsync(new PositionEntity { Id = _positionId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Manager", IsActive = false });
 
         var handler = new AddManualCoverageRecordCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _assignmentsMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var result = await handler.Handle(
-            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, coveredPositionId, null, 1),
+            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, coveredPositionId, null, 1, null),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -121,10 +127,10 @@ public sealed class PositionCoverageHandlerTests
             .ReturnsAsync(new PositionEntity { Id = coveredPositionId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "IC", IsActive = false });
 
         var handler = new AddManualCoverageRecordCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _assignmentsMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var result = await handler.Handle(
-            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, coveredPositionId, null, 1),
+            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, coveredPositionId, null, 1, null),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -140,10 +146,10 @@ public sealed class PositionCoverageHandlerTests
             .ReturnsAsync(new DepartmentEntity { Id = coveredDepartmentId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Support", IsActive = false });
 
         var handler = new AddManualCoverageRecordCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _assignmentsMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var result = await handler.Handle(
-            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetDepartment, null, coveredDepartmentId, 1),
+            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetDepartment, null, coveredDepartmentId, 1, null),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -154,10 +160,10 @@ public sealed class PositionCoverageHandlerTests
     public async Task AddManualCoverage_ReturnsConflict_WhenCoveredPositionIsOwnerItself()
     {
         var handler = new AddManualCoverageRecordCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _assignmentsMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var result = await handler.Handle(
-            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, _positionId, null, 1),
+            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, _positionId, null, 1, null),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -171,10 +177,10 @@ public sealed class PositionCoverageHandlerTests
         var missingPositionId = Guid.NewGuid();
 
         var handler = new AddManualCoverageRecordCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _assignmentsMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var result = await handler.Handle(
-            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, missingPositionId, null, 1),
+            new AddManualCoverageRecordCommand(_legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, missingPositionId, null, 1, null),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -187,7 +193,7 @@ public sealed class PositionCoverageHandlerTests
         var validator = new AddManualCoverageRecordCommandValidator();
 
         var result = validator.Validate(new AddManualCoverageRecordCommand(
-            _legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, null, null, 1));
+            _legalEntityId, _positionId, CoverageRecordEntity.TargetPosition, null, null, 1, null));
 
         Assert.False(result.IsValid);
     }
@@ -198,7 +204,7 @@ public sealed class PositionCoverageHandlerTests
         var validator = new AddManualCoverageRecordCommandValidator();
 
         var result = validator.Validate(new AddManualCoverageRecordCommand(
-            _legalEntityId, _positionId, CoverageRecordEntity.TargetDepartment, Guid.NewGuid(), Guid.NewGuid(), 1));
+            _legalEntityId, _positionId, CoverageRecordEntity.TargetDepartment, Guid.NewGuid(), Guid.NewGuid(), 1, null));
 
         Assert.False(result.IsValid);
     }
@@ -283,10 +289,10 @@ public sealed class PositionCoverageHandlerTests
             .ReturnsAsync(record);
 
         var handler = new UpdateManualCoverageRecordCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _assignmentsMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var result = await handler.Handle(
-            new UpdateManualCoverageRecordCommand(_legalEntityId, _positionId, coverageId, 3),
+            new UpdateManualCoverageRecordCommand(_legalEntityId, _positionId, coverageId, 3, null),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -315,10 +321,10 @@ public sealed class PositionCoverageHandlerTests
             .ReturnsAsync(record);
 
         var handler = new UpdateManualCoverageRecordCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _assignmentsMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var result = await handler.Handle(
-            new UpdateManualCoverageRecordCommand(_legalEntityId, _positionId, coverageId, 2),
+            new UpdateManualCoverageRecordCommand(_legalEntityId, _positionId, coverageId, 2, null),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -347,10 +353,10 @@ public sealed class PositionCoverageHandlerTests
             .ReturnsAsync(true);
 
         var handler = new UpdateManualCoverageRecordCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _assignmentsMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var result = await handler.Handle(
-            new UpdateManualCoverageRecordCommand(_legalEntityId, _positionId, coverageId, 1),
+            new UpdateManualCoverageRecordCommand(_legalEntityId, _positionId, coverageId, 1, null),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -381,10 +387,10 @@ public sealed class PositionCoverageHandlerTests
             .ReturnsAsync(false);
 
         var handler = new UpdateManualCoverageRecordCommandHandler(
-            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
+            _positionsMock.Object, _departmentsMock.Object, _legalEntitiesMock.Object, _assignmentsMock.Object, _currentUserMock.Object, _dateTimeProviderMock.Object);
 
         var result = await handler.Handle(
-            new UpdateManualCoverageRecordCommand(_legalEntityId, _positionId, coverageId, 2),
+            new UpdateManualCoverageRecordCommand(_legalEntityId, _positionId, coverageId, 2, null),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -396,7 +402,7 @@ public sealed class PositionCoverageHandlerTests
     {
         var validator = new UpdateManualCoverageRecordCommandValidator();
 
-        var result = validator.Validate(new UpdateManualCoverageRecordCommand(_legalEntityId, _positionId, Guid.NewGuid(), 0));
+        var result = validator.Validate(new UpdateManualCoverageRecordCommand(_legalEntityId, _positionId, Guid.NewGuid(), 0, null));
 
         Assert.False(result.IsValid);
     }

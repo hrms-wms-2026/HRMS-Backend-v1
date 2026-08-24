@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -106,7 +107,7 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
         var result = await handler.Handle(new SaveOnboardingDraftCommand(
             null, "Shared", "Person", SharedEmail, _legalEntityBId, null, null,
             "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "EMP-B-001", 1, null, null,
-            "employee_details", IfMatchVersion: null), CancellationToken.None);
+            "employee_details", IfMatchVersion: null, ReportsToEmployeeId: null), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
     }
@@ -120,7 +121,7 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
         var result = await handler.Handle(new SaveOnboardingDraftCommand(
             null, "Shared", "Person", SharedEmail, _legalEntityAId, null, null,
             "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "EMP-A-002", 1, null, null,
-            "employee_details", IfMatchVersion: null), CancellationToken.None);
+            "employee_details", IfMatchVersion: null, ReportsToEmployeeId: null), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(409);
@@ -129,16 +130,22 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
     private SaveOnboardingDraftCommandHandler BuildSaveHandler(ApplicationDbContext db)
     {
         var currentUser = new StubCurrentUser(_tenantId, _userId);
-        return new SaveOnboardingDraftCommandHandler(
+        var writeService = new OnboardingDraftWriteService(
             new EfOnboardingDraftRepository(db),
             new EfEmployeeRepository(db),
+            null!, null!,
             new EfPositionRepository(db),
+            null!,
             new EfLegalEntityRepository(db),
             new EfDepartmentRepository(db),
-            new SeatEntitlementService(db),
+            null!,
             new EfWorkModeRepository(db),
+            new SeatEntitlementService(db),
+            null!, null!, null!, null!, null!, null!, null!, null!,
             currentUser,
-            _clock);
+            _clock,
+            null!);
+        return new SaveOnboardingDraftCommandHandler(writeService, currentUser);
     }
 
     private ApplicationDbContext CreateContext(Guid? tenantId = null, string? slug = null)

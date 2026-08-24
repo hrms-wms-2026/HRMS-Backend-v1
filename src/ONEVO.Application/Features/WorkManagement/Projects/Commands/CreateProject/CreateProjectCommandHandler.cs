@@ -17,6 +17,8 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.ReleaseCalendar.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
@@ -39,6 +41,8 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
     private readonly IProjectVersionRepository _versions;
     private readonly IReleaseCalendarRepository _releaseCalendar;
     private readonly ILabelRepository _labels;
+    private readonly ITaskStatusRepository _taskStatuses;
+    private readonly ITaskCategoryRepository _taskCategories;
     private readonly IEntityAssetRepository _entityAssets;
     private readonly IEmployeeRepository _employees;
     private readonly ILegalEntityRepository _legalEntities;
@@ -56,6 +60,8 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
         IProjectVersionRepository versions,
         IReleaseCalendarRepository releaseCalendar,
         ILabelRepository labels,
+        ITaskStatusRepository taskStatuses,
+        ITaskCategoryRepository taskCategories,
         IEntityAssetRepository entityAssets,
         IEmployeeRepository employees,
         ILegalEntityRepository legalEntities,
@@ -72,6 +78,8 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
         _versions = versions;
         _releaseCalendar = releaseCalendar;
         _labels = labels;
+        _taskStatuses = taskStatuses;
+        _taskCategories = taskCategories;
         _entityAssets = entityAssets;
         _employees = employees;
         _legalEntities = legalEntities;
@@ -94,6 +102,8 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
         var employee = await _employees.GetByUserIdAsync(tenantId, userId, ct);
         if (employee is null || employee.EmploymentStatusId != EmploymentStatusIds.Active)
             return Result<ProjectCreationResponse>.Forbidden("No employee record for the current user.");
+
+        var employeeId = employee.Id;
 
         var legalEntity = await _legalEntities.GetPrimaryByTenantIdAsync(tenantId, ct);
         if (legalEntity is null)
@@ -126,6 +136,19 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
             uploadedLogo = uploadResult.Value;
         }
 
+        FileRecordDto? uploadedBanner = null;
+        if (request.BannerContent is not null && request.BannerFileName is not null && request.BannerContentType is not null)
+        {
+            var uploadResult = await _fileStorage.UploadAsync(
+                tenantId, userId, request.BannerFileName, request.BannerContentType,
+                UploadPurposeCatalog.ProjectBanner, request.BannerContent, ct);
+
+            if (!uploadResult.IsSuccess)
+                return Result<ProjectCreationResponse>.Failure(uploadResult.Error!, uploadResult.StatusCode ?? 400);
+
+            uploadedBanner = uploadResult.Value;
+        }
+
         try
         {
             var now = DateTimeOffset.UtcNow;
@@ -139,12 +162,12 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 Name = request.Name.Trim(),
                 Identifier = identifier,
                 Description = request.Description?.Trim(),
-                LeadId = userId,
+                LeadId = employeeId,
                 StartDate = request.StartDate,
                 TargetDate = request.TargetDate,
                 Color = request.Color,
                 ActualHours = request.ActualHours,
-                AllocatedHours = 0m,
+                AllocatedHours = request.DefaultObjectiveAllocatedHours,
                 CompletedHours = 0m,
                 IsActive = true,
                 CreatedById = userId,
@@ -160,7 +183,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 IsDefault = true,
                 Title = project.Name,
                 Description = project.Description,
-                OwnerId = userId,
+                OwnerId = employeeId,
                 IsActive = true,
                 StartDate = project.StartDate,
                 EndDate = project.TargetDate,
@@ -178,8 +201,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 TenantId = tenantId,
                 ProjectId = project.Id,
                 ObjectiveId = defaultObjective.Id,
-                UserId = userId,
-                EmployeeId = employee.Id,
+                EmployeeId = employeeId,
                 MembershipSource = ProjectMembershipSources.System,
                 IsActive = true,
                 JoinedAt = now,
@@ -205,7 +227,7 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 ProjectId = project.Id,
                 VersionId = defaultVersion.Id,
                 RecipientUserId = userId,
-                ScheduledDate = request.ReleaseDate,
+                ScheduledDate = request.ReleaseDate ?? request.TargetDate,
                 ReminderType = ReleaseReminderTypes.ProjectRelease,
                 IsActive = true,
                 CreatedById = userId,
@@ -241,8 +263,30 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 };
             }
 
+            EntityAsset? bannerAsset = null;
+            if (uploadedBanner is not null)
+            {
+                bannerAsset = new EntityAsset
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenantId,
+                    OwnerType = EntityAssetOwnerTypes.Project,
+                    OwnerId = project.Id,
+                    AssetPurpose = UploadPurposeCatalog.ProjectBanner,
+                    FileRecordId = uploadedBanner.Id,
+                    IsPrimary = true,
+                    CreatedByType = "user",
+                    CreatedById = userId,
+                    CreatedAt = now
+                };
+            }
+
             await _projects.AddAsync(project, ct);
             await _objectives.AddAsync(defaultObjective, ct);
+            await _taskStatuses.AddRangeAsync(
+                DefaultTaskStatusTemplate.BuildRows(tenantId, project.Id, objectiveId: null, userId, now), ct);
+            await _taskCategories.AddRangeAsync(
+                DefaultTaskCategoryTemplate.BuildRows(tenantId, project.Id, userId, now), ct);
             await _members.AddAsync(creatorMembership, ct);
             await _versions.AddAsync(defaultVersion, ct);
             await _releaseCalendar.AddAsync(releaseReminder, ct);
@@ -250,6 +294,8 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 await _labels.AddAsync(label, ct);
             if (logoAsset is not null)
                 await _entityAssets.AddAsync(logoAsset, ct);
+            if (bannerAsset is not null)
+                await _entityAssets.AddAsync(bannerAsset, ct);
 
             await _auditLogs.AddAsync(new AuditLog
             {
@@ -271,8 +317,9 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 ProjectMapper.ToSummary(defaultVersion, "planned"),
                 ProjectMapper.ToSummary(releaseReminder),
                 labels.Select(ProjectMapper.ToSummary).ToList(),
-                ProjectMapper.ToSummary(creatorMembership),
-                uploadedLogo is not null ? new ProjectLogoSummaryDto(uploadedLogo.Id, uploadedLogo.OriginalFileName) : null);
+                ProjectMapper.ToSummary(creatorMembership, userId),
+                uploadedLogo is not null ? new ProjectLogoSummaryDto(uploadedLogo.Id, uploadedLogo.OriginalFileName) : null,
+                uploadedBanner is not null ? new ProjectLogoSummaryDto(uploadedBanner.Id, uploadedBanner.OriginalFileName) : null);
 
             return Result<ProjectCreationResponse>.Success(response);
         }
@@ -290,6 +337,12 @@ public class CreateProjectCommandHandler : IRequestHandler<CreateProjectCommand,
                 _logger?.LogError(
                     "Project creation failed after logo upload completed. Orphaned file_record {FileRecordId} for tenant {TenantId} requires manual/future reconciliation.",
                     uploadedLogo.Id, tenantId);
+            }
+            if (uploadedBanner is not null)
+            {
+                _logger?.LogError(
+                    "Project creation failed after banner upload completed. Orphaned file_record {FileRecordId} for tenant {TenantId} requires manual/future reconciliation.",
+                    uploadedBanner.Id, tenantId);
             }
             throw;
         }
