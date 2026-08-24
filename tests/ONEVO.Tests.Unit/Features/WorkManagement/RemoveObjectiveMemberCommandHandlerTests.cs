@@ -32,12 +32,16 @@ public class RemoveObjectiveMemberCommandHandlerTests
     };
 
     private (RemoveObjectiveMemberCommandHandler Handler, Mock<IMilestoneMembershipCoordinator> Membership, Mock<IProjectMemberInvitationRepository> Invitations) BuildHandler(
-        Objective? objective, Guid? callerId = null, bool memberHasActiveRow = true, ProjectMemberInvitation? pendingInvite = null)
+        Objective? objective, Guid? callerId = null, bool memberHasActiveRow = true, ProjectMemberInvitation? pendingInvite = null,
+        bool? callerIsEffectiveManager = null)
     {
+        var resolvedCallerUserId = callerId ?? HeadUserId;
+        var resolvedCallerEmployeeId = resolvedCallerUserId == OtherUserId ? OtherEmployeeId : HeadEmployeeId;
+
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(callerId ?? HeadUserId);
+        currentUser.SetupGet(x => x.UserId).Returns(resolvedCallerUserId);
 
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, HeadUserId, It.IsAny<CancellationToken>()))
@@ -53,6 +57,12 @@ public class RemoveObjectiveMemberCommandHandlerTests
             .ReturnsAsync(memberHasActiveRow);
         membership.Setup(x => x.DeactivateMembershipAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
+        // separately in MilestoneMembershipCoordinatorTests).
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (objective is not null && objective.OwnerId == resolvedCallerEmployeeId));
 
         var invitations = new Mock<IProjectMemberInvitationRepository>();
         invitations.Setup(x => x.GetTrackedPendingForObjectiveAndEmployeeAsync(TenantId, ObjectiveId, MemberEmployeeId, It.IsAny<CancellationToken>()))
@@ -98,6 +108,21 @@ public class RemoveObjectiveMemberCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsActiveMemberOfAncestorObjective_DeactivatesMembership()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
+        // this only proves the handler defers to its answer instead of the direct OwnerId check.
+        var (handler, membership, _) = BuildHandler(SubObjective(), callerId: OtherUserId, callerIsEffectiveManager: true);
+
+        var result = await handler.Handle(new RemoveObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        membership.Verify(x => x.DeactivateMembershipAsync(TenantId, ProjectId, ObjectiveId, MemberEmployeeId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

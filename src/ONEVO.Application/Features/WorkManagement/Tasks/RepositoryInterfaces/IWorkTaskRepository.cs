@@ -24,5 +24,10 @@ public interface IWorkTaskRepository
     /// within the tenant - used to block deleting a status while a restricted FK still references it.</summary>
     Task<bool> AnyActiveByStatusIdAsync(Guid tenantId, Guid statusId, CancellationToken ct = default);
 
+    /// <summary>True if any physical WorkTask row, including a soft-deleted row, has this CategoryId
+    /// within the tenant - used to block deleting a category while a restricted FK still references it.</summary>
+    Task<bool> AnyActiveByCategoryIdAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default);
+
     void Update(WorkTask task);
+    void Remove(WorkTask task);
 }

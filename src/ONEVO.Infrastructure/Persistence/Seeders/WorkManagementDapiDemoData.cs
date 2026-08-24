@@ -50,7 +50,7 @@ public sealed record DemoProjectTree(
 /// <summary>One recipe slot applied to every leaf objective when seeding demo tasks.</summary>
 public sealed record DemoLeafTaskSlot(
     string TitleSuffix,
-    string TaskType,
+    string CategoryName,
     string Priority,
     string StatusName,
     decimal EstimatedHoursFraction,
@@ -63,7 +63,7 @@ public sealed record DemoTaskCreationRequestSpec(
     string RequesterKey,
     string Title,
     string? Description,
-    string TaskType,
+    string CategoryName,
     string Priority,
     decimal EstimatedHours);
 

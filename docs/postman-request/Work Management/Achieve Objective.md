@@ -25,7 +25,7 @@ No body.
 | Status | Cause |
 |---|---|
 | `400` | Target is the Default Objective (use the Project achieve endpoint), or a direct sub-milestone isn't yet Achieved |
-| `403` | Caller lacks `projects:access`, or is not this milestone's Head |
+| `403` | Caller lacks `projects:access`, or is not an effective manager of this milestone (its Head, an active member, or the Head/an active member of any ancestor milestone) |
 | `404` | Milestone doesn't exist in tenant, or is inactive |
 | `409` | Already achieved, or a change request is already pending for this milestone |
 

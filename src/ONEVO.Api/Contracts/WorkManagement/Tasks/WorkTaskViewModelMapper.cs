@@ -6,12 +6,15 @@ public static class WorkTaskViewModelMapper
 {
     public static WorkTaskViewModel ToViewModel(this WorkTaskResponse dto) => new(
         dto.Id, dto.ObjectiveId, dto.ShortId, dto.Title, dto.Description,
-        dto.TaskType, dto.StatusId, dto.Priority, dto.StoryPoints,
-        dto.DueDate, dto.EstimatedHours, dto.CompletedHours, dto.ProgressPercent, dto.SprintId);
+        dto.CategoryId, dto.StatusId, dto.Priority, dto.StoryPoints,
+        dto.DueDate, dto.EstimatedHours, dto.CompletedHours, dto.ProgressPercent, dto.SprintId,
+        dto.AssigneeEmployeeIds ?? Array.Empty<Guid>());
 
     public static TaskStatusViewModel ToViewModel(this TaskStatusResponse dto) => new(
         dto.Id, dto.Name, dto.DisplayOrder, dto.RequiresApproval,
         dto.ApproverId, dto.MarksTaskComplete, dto.Visibility);
+
+    public static TaskCategoryViewModel ToViewModel(this TaskCategoryResponse dto) => new(dto.Id, dto.Name, dto.DisplayOrder);
 
     public static MyDeadlinesViewModel ToViewModel(this MyDeadlinesResponse dto) => new(
         dto.ObjectiveDeadlines.Select(o => new ObjectiveDeadlineViewModel(o.ObjectiveId, o.Title, o.EndDate)).ToList(),

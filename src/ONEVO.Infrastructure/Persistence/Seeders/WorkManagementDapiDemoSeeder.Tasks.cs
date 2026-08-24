@@ -13,6 +13,7 @@ namespace ONEVO.Infrastructure.Persistence.Seeders;
 public sealed partial class WorkManagementDapiDemoSeeder
 {
     private static readonly string[] CanonicalStatusNames = ["To Do", "In Process", "Review", "Done"];
+    private static readonly string[] CanonicalCategoryNames = ["task", "bug", "story", "feature"];
 
     private static async Task SeedTasksAndApprovalsAsync(
         ApplicationDbContext db,
@@ -20,6 +21,8 @@ public sealed partial class WorkManagementDapiDemoSeeder
         DateTimeOffset now,
         CancellationToken ct)
     {
+        var categoryIdsByProjectKey = new Dictionary<string, Dictionary<string, Guid>>();
+
         foreach (var tree in WorkManagementDapiDemoData.ProjectTrees)
         {
             var projectId = DeterministicGuid($"dapi-demo:project:{tree.ProjectKey}");
@@ -32,7 +35,9 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 continue;
             }
 
-            await SeedProjectTemplateStatusesAsync(db, tree.ProjectKey, projectId, now, ct);
+            var statusIdByName = await SeedProjectTemplateStatusesAsync(db, tree.ProjectKey, projectId, now, ct);
+            var categoryIdByName = await SeedProjectTaskCategoriesAsync(db, tree.ProjectKey, projectId, now, ct);
+            categoryIdsByProjectKey[tree.ProjectKey] = categoryIdByName;
 
             var nextTaskNumber = project.NextTaskNumber < 1 ? 1L : project.NextTaskNumber;
             var leaves = EnumerateLeaves(tree.Root, tree.Root.Title, tree.AllocatedHours).ToList();
@@ -40,11 +45,12 @@ public sealed partial class WorkManagementDapiDemoSeeder
             {
                 var (path, node, allocatedHours) = leaves[leafIndex];
                 var objectiveId = DeterministicGuid($"dapi-demo:objective:{tree.ProjectKey}:{path}");
-                await SeedObjectiveStatusesAsync(db, tree.ProjectKey, path, projectId, objectiveId, now, ct);
 
                 nextTaskNumber = await SeedLeafTasksAsync(
                     db,
                     employeeIdByPersonKey,
+                    categoryIdByName,
+                    statusIdByName,
                     tree,
                     project,
                     path,
@@ -60,24 +66,75 @@ public sealed partial class WorkManagementDapiDemoSeeder
             project.NextTaskNumber = nextTaskNumber;
         }
 
-        await SeedTaskCreationRequestsAsync(db, employeeIdByPersonKey, now, ct);
+        await SeedTaskCreationRequestsAsync(db, employeeIdByPersonKey, categoryIdsByProjectKey, now, ct);
         await SeedAllocationExtendsAsync(db, employeeIdByPersonKey, now, ct);
     }
 
-    private static async Task SeedProjectTemplateStatusesAsync(
+    /// <summary>
+    /// Seeds the 4 canonical TaskCategory rows (task/bug/story/feature) for a demo project.
+    /// Existence is keyed on the natural business key (ProjectId, Name) — not on this seeder's
+    /// deterministic id — because Task 1's migration self-heal step already inserted these rows
+    /// for the 5 dapi demo projects using gen_random_uuid(), not deterministic ids. Matching by
+    /// id here would miss those rows and attempt duplicate inserts, violating
+    /// ix_task_categories_one_name_per_project.
+    /// </summary>
+    private static async Task<Dictionary<string, Guid>> SeedProjectTaskCategoriesAsync(
         ApplicationDbContext db,
         string projectKey,
         Guid projectId,
         DateTimeOffset now,
         CancellationToken ct)
     {
+        var categoryIdByName = new Dictionary<string, Guid>();
+
+        for (var order = 0; order < CanonicalCategoryNames.Length; order++)
+        {
+            var name = CanonicalCategoryNames[order];
+
+            var existing = db.TaskCategories.Local.FirstOrDefault(c => c.ProjectId == projectId && c.Name == name)
+                ?? await db.TaskCategories.FirstOrDefaultAsync(c => c.ProjectId == projectId && c.Name == name, ct);
+            if (existing is not null)
+            {
+                categoryIdByName[name] = existing.Id;
+                continue;
+            }
+
+            var categoryId = DeterministicGuid($"dapi-demo:task-category:{projectKey}:{name}");
+            db.TaskCategories.Add(new TaskCategory
+            {
+                Id = categoryId,
+                TenantId = DapiTenantId,
+                ProjectId = projectId,
+                Name = name,
+                DisplayOrder = order,
+                CreatedById = DapiOwnerUserId,
+                CreatedAt = now
+            });
+            categoryIdByName[name] = categoryId;
+        }
+
+        return categoryIdByName;
+    }
+
+    private static async Task<Dictionary<string, Guid>> SeedProjectTemplateStatusesAsync(
+        ApplicationDbContext db,
+        string projectKey,
+        Guid projectId,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var statusIdByName = new Dictionary<string, Guid>();
+
         for (var order = 0; order < CanonicalStatusNames.Length; order++)
         {
             var name = CanonicalStatusNames[order];
             var statusId = DeterministicGuid($"dapi-demo:task-status:{projectKey}:template:{name}");
-            if (db.TaskStatuses.Local.Any(s => s.Id == statusId)
-                || await db.TaskStatuses.AnyAsync(s => s.Id == statusId, ct))
+
+            var existing = db.TaskStatuses.Local.FirstOrDefault(s => s.Id == statusId)
+                ?? await db.TaskStatuses.FirstOrDefaultAsync(s => s.Id == statusId, ct);
+            if (existing is not null)
             {
+                statusIdByName[name] = existing.Id;
                 continue;
             }
 
@@ -93,46 +150,17 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 CreatedById = DapiOwnerUserId,
                 CreatedAt = now
             });
+            statusIdByName[name] = statusId;
         }
-    }
 
-    private static async Task SeedObjectiveStatusesAsync(
-        ApplicationDbContext db,
-        string projectKey,
-        string objectivePath,
-        Guid projectId,
-        Guid objectiveId,
-        DateTimeOffset now,
-        CancellationToken ct)
-    {
-        for (var order = 0; order < CanonicalStatusNames.Length; order++)
-        {
-            var name = CanonicalStatusNames[order];
-            var statusId = DeterministicGuid($"dapi-demo:task-status:{projectKey}:{objectivePath}:{name}");
-            if (db.TaskStatuses.Local.Any(s => s.Id == statusId)
-                || await db.TaskStatuses.AnyAsync(s => s.Id == statusId, ct))
-            {
-                continue;
-            }
-
-            db.TaskStatuses.Add(new TaskStatusEntity
-            {
-                Id = statusId,
-                TenantId = DapiTenantId,
-                ProjectId = projectId,
-                ObjectiveId = objectiveId,
-                Name = name,
-                DisplayOrder = order,
-                MarksTaskComplete = name == "Done",
-                CreatedById = DapiOwnerUserId,
-                CreatedAt = now
-            });
-        }
+        return statusIdByName;
     }
 
     private static async Task<long> SeedLeafTasksAsync(
         ApplicationDbContext db,
         Dictionary<string, Guid> employeeIdByPersonKey,
+        Dictionary<string, Guid> categoryIdByName,
+        Dictionary<string, Guid> statusIdByName,
         DemoProjectTree tree,
         Project project,
         string path,
@@ -162,7 +190,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 continue;
             }
 
-            var statusId = DeterministicGuid($"dapi-demo:task-status:{tree.ProjectKey}:{path}:{statusName}");
+            var statusId = statusIdByName[statusName];
             var estimatedHours = Math.Max(
                 2m,
                 Math.Round(leafAllocatedHours * slot.EstimatedHoursFraction, 0, MidpointRounding.AwayFromZero));
@@ -179,7 +207,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 ShortId = shortId,
                 Title = $"{node.Title} — {slot.TitleSuffix}",
                 Description = $"Development demo task under {path}.",
-                TaskType = slot.TaskType,
+                CategoryId = categoryIdByName[slot.CategoryName],
                 StatusId = statusId,
                 Priority = slot.Priority,
                 EstimatedHours = estimatedHours,
@@ -254,6 +282,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
     private static async Task SeedTaskCreationRequestsAsync(
         ApplicationDbContext db,
         Dictionary<string, Guid> employeeIdByPersonKey,
+        Dictionary<string, Dictionary<string, Guid>> categoryIdsByProjectKey,
         DateTimeOffset now,
         CancellationToken ct)
     {
@@ -268,10 +297,11 @@ public sealed partial class WorkManagementDapiDemoSeeder
             }
 
             var objectiveId = DeterministicGuid($"dapi-demo:objective:{spec.ProjectKey}:{spec.ObjectivePath}");
+            var categoryId = categoryIdsByProjectKey[spec.ProjectKey][spec.CategoryName];
             var payload = new TaskCreationRequestPayload(
                 spec.Title,
                 spec.Description,
-                spec.TaskType,
+                categoryId,
                 spec.Priority,
                 DueDate: null,
                 EstimatedHours: spec.EstimatedHours,

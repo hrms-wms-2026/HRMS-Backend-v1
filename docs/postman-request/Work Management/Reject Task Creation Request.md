@@ -26,7 +26,7 @@ Objective owner rejects a pending task-creation request. No task is created. A n
 | Status | Cause |
 |---|---|
 | `400` | Missing / empty comment |
-| `403` | Not authenticated, no employee record, or caller is not this milestone's owner |
+| `403` | Not authenticated, no employee record, or caller is not an effective manager of this milestone (its owner, an active member, or the owner/an active member of any ancestor milestone) |
 | `404` | Request or Objective not found |
 | `409` | Request has already been decided |
 

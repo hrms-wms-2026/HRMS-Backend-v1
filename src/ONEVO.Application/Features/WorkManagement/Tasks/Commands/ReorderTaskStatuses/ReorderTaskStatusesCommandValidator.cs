@@ -7,7 +7,7 @@ public class ReorderTaskStatusesCommandValidator : AbstractValidator<ReorderTask
 {
     public ReorderTaskStatusesCommandValidator()
     {
-        RuleFor(x => x.ObjectiveId).NotEqual(Guid.Empty);
+        RuleFor(x => x.ProjectId).NotEqual(Guid.Empty);
         RuleFor(x => x.Updates).NotEmpty();
         RuleForEach(x => x.Updates).NotNull()
             .WithMessage("Updates must not contain null entries.");
