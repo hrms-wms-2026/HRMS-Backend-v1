@@ -25,6 +25,7 @@ public class UpdateLegalEntityGeneralSettingsCommandValidatorTests
         "12h",
         "active",
         null,
+        null,
         null);
 
     [Fact]
@@ -184,5 +185,47 @@ public class UpdateLegalEntityGeneralSettingsCommandValidatorTests
             WorkEndTime = new TimeOnly(9, 0)
         });
         result.ShouldHaveValidationErrorFor(x => x.WorkStartTime);
+    }
+
+    [Fact]
+    public void NullBreakDurationMinutes_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { BreakDurationMinutes = null });
+        result.ShouldNotHaveValidationErrorFor(x => x.BreakDurationMinutes);
+    }
+
+    [Fact]
+    public void ZeroBreakDurationMinutes_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { BreakDurationMinutes = 0 });
+        result.ShouldNotHaveValidationErrorFor(x => x.BreakDurationMinutes);
+    }
+
+    [Fact]
+    public void PositiveBreakDurationMinutes_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { BreakDurationMinutes = 60 });
+        result.ShouldNotHaveValidationErrorFor(x => x.BreakDurationMinutes);
+    }
+
+    [Fact]
+    public void NegativeBreakDurationMinutes_HasError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { BreakDurationMinutes = -1 });
+        result.ShouldHaveValidationErrorFor(x => x.BreakDurationMinutes);
+    }
+
+    [Fact]
+    public void BreakDurationMinutes_IsIndependentOfWorkTimes()
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            WorkStartTime = null,
+            WorkEndTime = null,
+            BreakDurationMinutes = 30
+        });
+        result.ShouldNotHaveValidationErrorFor(x => x.BreakDurationMinutes);
+        result.ShouldNotHaveValidationErrorFor(x => x.WorkStartTime);
+        result.ShouldNotHaveValidationErrorFor(x => x.WorkEndTime);
     }
 }

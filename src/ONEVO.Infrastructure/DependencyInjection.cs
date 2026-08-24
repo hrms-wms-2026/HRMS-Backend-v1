@@ -1,3 +1,4 @@
+using Amazon.Extensions.NETCore.Setup;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,11 +11,20 @@ using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.BulkOnboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.BulkOnboarding.Services;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
+using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.BulkOnboarding;
+using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
@@ -160,6 +170,12 @@ public static class DependencyInjection
         services.AddScoped<EfLegalEntityRepository>();
         services.AddScoped<ILegalEntityRepository>(sp => sp.GetRequiredService<EfLegalEntityRepository>());
         services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Type.RepositoryInterfaces.ILeaveTypeRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Type.EfLeaveTypeRepository>();
+                services.AddScoped<IClockInPolicyRepository, EfClockInPolicyRepository>();
+        services.AddScoped<IAttendanceReadRepository, EfAttendanceReadRepository>();
+
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
         services.AddScoped<
@@ -171,9 +187,18 @@ public static class DependencyInjection
         services.AddScoped<IEmployeeVisibilityScopeResolver, EmployeeVisibilityScopeResolver>();
         services.AddScoped<ISeatEntitlementService, SeatEntitlementService>();
         services.AddScoped<IOnboardingDraftRepository, EfOnboardingDraftRepository>();
+        services.AddScoped<IOnboardingDraftWriteService, OnboardingDraftWriteService>();
+        services.AddScoped<IBulkOnboardingBatchRepository, EfBulkOnboardingBatchRepository>();
+        services.AddScoped<IBulkOnboardingRowValidator, BulkOnboardingRowValidator>();
+        services.AddScoped<ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch.IBulkOnboardingValidationRunner,
+            ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch.BulkOnboardingValidationRunner>();
         services.AddScoped<IAccessGrantRequestRepository, EfAccessGrantRequestRepository>();
         services.AddScoped<IChecklistTemplateRepository, EfChecklistTemplateRepository>();
         services.AddScoped<IEmployeeChecklistTaskRepository, EfEmployeeChecklistTaskRepository>();
+        services.AddScoped<IOffboardingRecordRepository, EfOffboardingRecordRepository>();
+        services.AddScoped<IOffboardingTaskBypassRequestRepository, EfOffboardingTaskBypassRequestRepository>();
+        services.AddScoped<IEmployeeOffboardingLockGuard, ONEVO.Infrastructure.Services.CoreHr.Offboarding.EmployeeOffboardingLockGuard>();
+        services.AddScoped<IEmployeeOffboardingCoverageGuard, ONEVO.Infrastructure.Services.CoreHr.Offboarding.EmployeeOffboardingCoverageGuard>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.ServiceInterfaces.IChecklistTemplateAssigneeResolver, ONEVO.Infrastructure.Services.CoreHr.Onboarding.ChecklistTemplateAssigneeResolver>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.Services.ChecklistTemplateTaskInputResolver>();
         services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();
@@ -311,6 +336,7 @@ public static class DependencyInjection
         services.AddScoped<INotificationDispatcher, Services.SharedPlatform.Notifications.NotificationDispatcher>();
         services.AddScoped<IIdempotencyStore, Persistence.Repositories.SharedPlatform.Idempotency.EfIdempotencyStore>();
         services.AddHostedService<Services.SharedPlatform.Outbox.OutboxProcessor>();
+        services.AddHostedService<Services.CoreHr.BulkOnboarding.BulkOnboardingBatchProcessor>();
         services.AddHostedService<Services.Auth.Login.LoginWorkspaceSelectionChallengeCleanupService>();
 
         // Provisioning services
@@ -353,9 +379,41 @@ public static class DependencyInjection
         services.AddScoped<IActivityRawBufferRepository, EfActivityRawBufferRepository>();
         services.AddScoped<IAppUsageSnapshotRepository, EfAppUsageSnapshotRepository>();
         services.AddScoped<IDeviceStateSnapshotRepository, EfDeviceStateSnapshotRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces.INotificationRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Notifications.EfNotificationRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces.IMeetingSignalRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Meetings.EfMeetingSignalRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces.IBiometricEnrollmentAttemptRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Biometrics.EfBiometricEnrollmentAttemptRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces.IBiometricProfileRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Biometrics.EfBiometricProfileRepository>();
+        services.AddDefaultAWSOptions(configuration.GetAWSOptions());
+        services.AddAWSService<Amazon.Rekognition.IAmazonRekognition>();
+        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>();
+        services.AddScoped<
+            ONEVO.Application.Common.ServiceInterfaces.IFaceLivenessService,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceLivenessService>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces.IProductivityReportRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Reports.EfProductivityReportRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces.IExceptionRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Exceptions.EfExceptionRepository>();
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Exceptions.ExceptionDetectionJob>();
+
+        // Monitoring - Settings (tenant-level feature toggles admin CRUD)
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Settings.RepositoryInterfaces.IMonitoringFeatureTogglesRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Settings.EfMonitoringFeatureTogglesRepository>();
+        services.AddHostedService<
+            ONEVO.Infrastructure.Services.Monitoring.Notifications.WellnessRuleEvaluatorJob>();
 
         // Monitoring - Screenshots
         services.AddScoped<
@@ -420,6 +478,12 @@ public static class DependencyInjection
             configuration.GetSection(ONEVO.Infrastructure.Configuration.StorageQuotaOptions.SectionName));
         services.Configure<ONEVO.Infrastructure.Configuration.FileStorageOptions>(
             configuration.GetSection(ONEVO.Infrastructure.Configuration.FileStorageOptions.SectionName));
+        services.AddOptions<AwsRekognitionOptions>()
+            .Bind(configuration.GetSection(AwsRekognitionOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddOptions<ONEVO.Application.Common.Configuration.BiometricEnrollmentOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Common.Configuration.BiometricEnrollmentOptions.SectionName));
 
         // -- Email: transactional sending via ONEVO-owned platform service keys --
         // Both the active transactional email provider and its API key are resolved

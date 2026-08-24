@@ -36,6 +36,31 @@ public class EfEmployeeHierarchyClosureRepository : IEmployeeHierarchyClosureRep
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Guid>> GetDescendantEmployeeIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> ancestorEmployeeIds, CancellationToken ct = default)
+    {
+        if (ancestorEmployeeIds.Count == 0)
+            return Array.Empty<Guid>();
+
+        return await _db.EmployeeHierarchyClosures
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && ancestorEmployeeIds.Contains(c.AncestorEmployeeId))
+            .Select(c => c.DescendantEmployeeId)
+            .Distinct()
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetAncestorChainEmployeeIdsAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await _db.EmployeeHierarchyClosures
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.DescendantEmployeeId == employeeId)
+            .OrderBy(c => c.Depth)
+            .Select(c => c.AncestorEmployeeId)
+            .ToListAsync(ct);
+    }
+
     /// <summary>
     /// Full-tenant rebuild: walks positions.reports_to_position_id from every position that
     /// currently holds an active PrimaryEmployment assignment. Delete-then-reinsert in one
@@ -50,9 +75,9 @@ public class EfEmployeeHierarchyClosureRepository : IEmployeeHierarchyClosureRep
                 && pa.AssignmentStatus == PositionAssignmentStatus.Active)
             .ToListAsync(ct);
 
-        var positionIdToEmployeeAssignment = activeAssignments
+        var holdersByPositionId = activeAssignments
             .GroupBy(pa => pa.PositionId)
-            .ToDictionary(g => g.Key, g => g.First());
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         var positions = await _db.Positions
             .AsNoTracking()
@@ -67,12 +92,24 @@ public class EfEmployeeHierarchyClosureRepository : IEmployeeHierarchyClosureRep
             var depth = 1;
             positions.TryGetValue(assignment.PositionId, out var ownPosition);
             var currentPositionId = ownPosition?.ReportsToPositionId;
+            var currentReportsToEmployeeId = assignment.ReportsToEmployeeId;
             var visited = new HashSet<Guid> { assignment.PositionId };
 
             while (currentPositionId is not null
                 && visited.Add(currentPositionId.Value)
-                && positionIdToEmployeeAssignment.TryGetValue(currentPositionId.Value, out var ancestorAssignment))
+                && holdersByPositionId.TryGetValue(currentPositionId.Value, out var holders))
             {
+                ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment? ancestorAssignment = holders.Count switch
+                {
+                    1 => holders[0],
+                    _ => currentReportsToEmployeeId is { } overrideId
+                        ? holders.FirstOrDefault(h => h.EmployeeId == overrideId)
+                        : null,
+                };
+
+                if (ancestorAssignment is null)
+                    break;
+
                 newRows.Add(new ONEVO.Domain.Features.CoreHr.Entities.EmployeeHierarchyClosure
                 {
                     TenantId = tenantId,
@@ -84,6 +121,7 @@ public class EfEmployeeHierarchyClosureRepository : IEmployeeHierarchyClosureRep
                 });
 
                 depth++;
+                currentReportsToEmployeeId = ancestorAssignment.ReportsToEmployeeId;
                 currentPositionId = positions.TryGetValue(currentPositionId.Value, out var ancestorPosition)
                     ? ancestorPosition.ReportsToPositionId
                     : null;

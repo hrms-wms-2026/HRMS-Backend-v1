@@ -30,7 +30,7 @@ public class GetPositionAccessQueryHandler : IRequestHandler<GetPositionAccessQu
         if (position is null)
             return Result<PositionAccessTemplateResponse>.Failure("Position not found or does not belong to this Company.", 404);
 
-        var template = await _repository.GetAccessTemplateByPositionAsync(tenantId, request.PositionId, ct);
+        var template = await _repository.GetAccessTemplateByPositionIncludingInactiveAsync(tenantId, request.PositionId, ct);
         if (template is null)
         {
             return Result<PositionAccessTemplateResponse>.Success(new PositionAccessTemplateResponse(

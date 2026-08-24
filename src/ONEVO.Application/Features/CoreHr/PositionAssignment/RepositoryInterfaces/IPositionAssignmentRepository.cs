@@ -41,6 +41,7 @@ public interface IPositionAssignmentRepository
         Guid positionId,
         DateOnly effectiveFrom,
         Guid createdById,
+        Guid? reportsToEmployeeId,
         CancellationToken ct = default);
 
     /// <summary>Flips a "planned" PositionAssignment row to "active" (on invite accept). No-op
@@ -58,7 +59,18 @@ public interface IPositionAssignmentRepository
     /// lifecycle.</summary>
     Task<Guid?> TryCreateActiveAssignmentAsync(
         Guid tenantId, Guid employeeId, Guid positionId, DateOnly effectiveFrom, Guid createdById,
-        CancellationToken ct = default);
+        Guid? reportsToEmployeeId, CancellationToken ct = default);
+
+    /// <summary>Current active PrimaryEmployment holders of a position, with work email — used to
+    /// disambiguate a reporting-manager override (onboarding wizard picker, bulk-onboarding CSV
+    /// email match, Change Position picker) against who is actually eligible right now.</summary>
+    Task<IReadOnlyList<PositionActiveHolder>> GetActiveHoldersAsync(
+        Guid tenantId, Guid positionId, CancellationToken ct = default);
+
+    /// <summary>Active PrimaryEmployment holders who are themselves active employees with a
+    /// user account. Used to pick a concrete checklist assignee (UserId) during onboarding.</summary>
+    Task<IReadOnlyList<ChecklistAssignee>> GetChecklistAssigneesAsync(
+        Guid tenantId, Guid positionId, CancellationToken ct = default);
 
     Task<bool> EndActiveAsync(Guid tenantId, Guid positionAssignmentId, DateOnly effectiveTo, CancellationToken ct = default);
 
@@ -66,6 +78,11 @@ public interface IPositionAssignmentRepository
 
     Task<ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment?> GetTrackedAsync(
         Guid tenantId, Guid id, CancellationToken ct = default);
+
+    /// <summary>PrimaryEmployment assignments in Active or Ended status for the employee,
+    /// oldest EffectiveFrom first. Planned (and Cancelled) rows are not history.</summary>
+    Task<IReadOnlyList<ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment>> ListHistoryForEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

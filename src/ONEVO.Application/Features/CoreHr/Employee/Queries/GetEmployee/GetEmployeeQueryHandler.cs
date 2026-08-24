@@ -41,21 +41,42 @@ public class GetEmployeeQueryHandler : IRequestHandler<GetEmployeeQuery, Result<
                 "The employee or selected organization record could not be found.");
         }
 
-        var scope = _currentUser.HasPermission("org:manage")
-            ? EmployeeVisibilityScope.Unrestricted()
-            : await _visibilityScopeResolver.ResolveAsync(_currentUser.TenantId, _currentUser.UserId, ct);
+        // org:manage stays unrestricted for Org Structure (Departments/Positions), but the
+        // Employees directory is always coverage-scoped, org:manage included - per explicit
+        // 2026-08-18 product decision. EmployeeVisibilityScope.Unrestricted() below is used only
+        // for the invite exception's targeted, per-record re-fetch, never as a permission bypass.
+        var scope = await _visibilityScopeResolver.ResolveAsync(_currentUser.TenantId, _currentUser.UserId, ct);
 
         var visible = await _employeeRepository.GetVisibleByIdAsync(
             _currentUser.TenantId, scope, request.EmployeeId, ct);
 
-        if (visible is null)
-        {
-            return Result<EmployeeListItemResponse>.Forbidden(
-                "You do not have access to manage this employee.");
-        }
-
         var invitation = await _invitationTokenRepository.GetLatestByEmployeeIdAsync(
             _currentUser.TenantId, request.EmployeeId, ct);
+
+        if (visible is null)
+        {
+            // Same invite-visibility exception as ListEmployeesQueryHandler: a brand-new invitee
+            // has no coverage yet, but the person who invited them still needs to open the
+            // detail page to manage/resend/revoke the invitation until it's accepted.
+            var invitedByMePending = invitation is not null
+                && invitation.CreatedById == _currentUser.UserId
+                && invitation.UsedAt is null
+                && invitation.RevokedAt is null;
+
+            if (!invitedByMePending)
+            {
+                return Result<EmployeeListItemResponse>.Forbidden(
+                    "You do not have access to manage this employee.");
+            }
+
+            visible = await _employeeRepository.GetVisibleByIdAsync(
+                _currentUser.TenantId, EmployeeVisibilityScope.Unrestricted(), request.EmployeeId, ct);
+            if (visible is null)
+            {
+                return Result<EmployeeListItemResponse>.NotFound(
+                    "The employee or selected organization record could not be found.");
+            }
+        }
 
         return Result<EmployeeListItemResponse>.Success(visible with
         {

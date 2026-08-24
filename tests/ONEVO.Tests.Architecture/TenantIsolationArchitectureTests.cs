@@ -361,10 +361,26 @@ public class TenantIsolationArchitectureTests
     [Fact]
     public void IgnoreQueryFilters_UsageIsExplicitlyAllowlisted()
     {
-        // Files that legitimately call .IgnoreQueryFilters() - each must reproduce tenant
-        // scoping manually and carry a comment at the call site explaining why the
-        // soft-delete/tenant filter is correctly bypassed there.
-        var allowlistedFileNames = new[] { "EfWorkTaskRepository.cs" };
+        // No file in this codebase may call .IgnoreQueryFilters() today. If a
+        // future platform/admin read path legitimately needs one, add its
+        // exact file name here together with a comment at the call site
+        // explaining why tenant scoping is correctly bypassed there.
+        var allowlistedFileNames = new[]
+        {
+            // Cross-tenant worker scan: GetOldestPendingAsync. Tenant isolation is enforced by
+            // the mode-aware RLS policy plus SetAdminMode() in BulkOnboardingBatchProcessor.
+            "EfBulkOnboardingBatchRepository.cs",
+            // Soft-delete-aware status reference check: AnyActiveByStatusIdAsync must see
+            // soft-deleted tasks too, while preserving tenant scoping with an explicit TenantId
+            // predicate in EfWorkTaskRepository.
+            "EfWorkTaskRepository.cs",
+            // Soft-delete-aware employee number uniqueness/sequence checks: EmployeeNumberExistsAsync
+            // and GetNextEmployeeNumberSequenceAsync must see soft-deleted employees too (the
+            // tenant+employee_number unique index has no IsDeleted filter, so an archived
+            // employee's number is still taken), while preserving tenant scoping with an explicit
+            // TenantId predicate in EfEmployeeRepository.
+            "EfEmployeeRepository.cs",
+        };
 
         var srcDirectory = FindSrcDirectory();
         var offenders = Directory.GetFiles(srcDirectory, "*.cs", SearchOption.AllDirectories)

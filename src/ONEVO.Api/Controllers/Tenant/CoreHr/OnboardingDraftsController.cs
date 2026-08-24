@@ -58,7 +58,7 @@ public class OnboardingDraftsController : ControllerBase
             null, request.FirstName, request.LastName, request.WorkEmail, request.LegalEntityId, request.DepartmentId,
             request.PositionId, request.EmploymentType, request.StartDate, request.EmployeeNumber,
             request.WorkModeId, request.SelectedTemplateId, request.EditedTasksJson, request.LastSavedStep,
-            IfMatchVersion: null);
+            IfMatchVersion: null, request.ReportsToEmployeeId);
 
         var result = await _mediator.Send(command, ct);
         return result.IsSuccess
@@ -78,7 +78,7 @@ public class OnboardingDraftsController : ControllerBase
             id, request.FirstName, request.LastName, request.WorkEmail, request.LegalEntityId, request.DepartmentId,
             request.PositionId, request.EmploymentType, request.StartDate, request.EmployeeNumber,
             request.WorkModeId, request.SelectedTemplateId, request.EditedTasksJson, request.LastSavedStep,
-            ifMatch);
+            ifMatch, request.ReportsToEmployeeId);
 
         var result = await _mediator.Send(command, ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);

@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
@@ -34,9 +36,10 @@ public class EfEmployeeRepository : IEmployeeRepository
         Guid tenantId,
         EmployeeVisibilityScope scope,
         EmployeeListFilter filter,
-        int page,
+                int page,
         int pageSize,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        EmployeeListAttendanceOptions? attendanceOptions = null)
     {
         var activePrimaryAssignments = _db.PositionAssignments.AsNoTracking()
             .Where(pa => pa.TenantId == tenantId
@@ -67,7 +70,15 @@ public class EfEmployeeRepository : IEmployeeRepository
             from manager in managerJoin.DefaultIfEmpty()
             select new { e, dept, legalEntity, empType, empStatus, position, manager };
 
-        if (!scope.CanViewAllTenantEmployees)
+        if (filter.RestrictToEmployeeIds is not null)
+        {
+            // Authoritative visible-id set from IEmployeeAuthorityResolver.ResolveVisibilityAsync -
+            // takes precedence over the legacy scope filter below (an empty set is a valid,
+            // deliberate "nothing visible" result, not "unrestricted").
+            var restrictToEmployeeIds = filter.RestrictToEmployeeIds;
+            joined = joined.Where(row => restrictToEmployeeIds.Contains(row.e.Id));
+        }
+        else if (!scope.CanViewAllTenantEmployees)
         {
             var ownEmployeeId = scope.OwnEmployeeId;
             var coveredPositionIds = scope.CoveredPositionIds;
@@ -103,6 +114,106 @@ public class EfEmployeeRepository : IEmployeeRepository
 
         var totalCount = await joined.CountAsync(ct);
 
+        if (attendanceOptions is not null)
+        {
+            // Attendance-sensitive ordering must happen over the complete filtered result before
+            // Skip/Take. The employee query, legal-entity schedule evaluation, and attendance
+            // lookup are all batched; there is intentionally no per-employee Today-state call.
+            var rows = await joined.ToListAsync(ct);
+            var scheduleByEmployeeId = rows
+                .GroupBy(row => row.e.Id)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First().legalEntity is { } entity
+                        ? AttendanceScheduleResolver.Resolve(entity, attendanceOptions.UtcNow)
+                        : null);
+
+            var resolutions = scheduleByEmployeeId.Values
+                .Where(resolution => resolution is not null)
+                .Select(resolution => resolution!)
+                .ToList();
+            var employeeIds = scheduleByEmployeeId.Keys.ToArray();
+            var attendanceRecords = new List<AttendanceRecord>();
+            if (resolutions.Count != 0)
+            {
+                // Materialize scalar bounds before entering the EF query. Keeping the local
+                // AttendanceScheduleResolution collection out of the expression tree is required
+                // by the EF InMemory provider and is also clearer for relational translation.
+                var minWorkDate = resolutions.Min(resolution => resolution.WorkDate);
+                var maxWorkDate = resolutions.Max(resolution => resolution.WorkDate);
+                attendanceRecords = await _db.AttendanceRecords.AsNoTracking()
+                    .Where(record => record.TenantId == tenantId
+                        && employeeIds.Contains(record.EmployeeId)
+                        && record.Date >= minWorkDate
+                        && record.Date <= maxWorkDate)
+                    .ToListAsync(ct);
+            }
+            var attendanceByEmployeeAndDate = attendanceRecords
+                .GroupBy(record => (record.EmployeeId, record.Date))
+                .ToDictionary(group => group.Key, group => group.First());
+
+            var orderedRows = rows
+                .Select(row =>
+                {
+                    scheduleByEmployeeId.TryGetValue(row.e.Id, out var resolution);
+                    var record = resolution is not null
+                        && attendanceByEmployeeAndDate.TryGetValue((row.e.Id, resolution.WorkDate), out var matchingRecord)
+                            ? matchingRecord
+                            : null;
+                    var hasClockedInToday = record?.ActualStart is not null;
+                    var isActive = string.Equals(
+                        row.empStatus?.Code, "active", StringComparison.OrdinalIgnoreCase);
+                    var shouldHaveClockedIn = isActive
+                        && resolution is not null
+                        && AttendanceScheduleResolver.ShouldHaveClockedIn(
+                            resolution.Schedule,
+                            record?.ActualStart,
+                            resolution.LocalNow);
+                    var attendanceSummary = resolution is null
+                        ? null
+                        : new EmployeeListAttendanceSummaryResponse(
+                            shouldHaveClockedIn,
+                            shouldHaveClockedIn,
+                            hasClockedInToday,
+                            resolution.WorkDate,
+                            resolution.Timezone,
+                            shouldHaveClockedIn ? resolution.Schedule.Start?.ToString("HH:mm") : null,
+                            shouldHaveClockedIn ? "Still has not clocked in" : null);
+
+                    return new
+                    {
+                        Row = row,
+                        AttendanceSummary = attendanceSummary,
+                    };
+                })
+                .OrderByDescending(row => row.AttendanceSummary?.ShowNotClockedInWarning == true)
+                .ThenBy(row => row.Row.e.LastName)
+                .ThenBy(row => row.Row.e.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(row => new EmployeeListItemResponse(
+                    row.Row.e.Id,
+                    row.Row.e.EmployeeNumber,
+                    row.Row.e.FirstName + " " + row.Row.e.LastName,
+                    row.Row.e.Email,
+                    row.Row.dept != null ? row.Row.dept.Id : (Guid?)null,
+                    row.Row.dept != null ? row.Row.dept.Name : null,
+                    row.Row.position != null ? row.Row.position.Id : (Guid?)null,
+                    row.Row.position != null ? row.Row.position.Name : null,
+                    row.Row.legalEntity != null ? row.Row.legalEntity.Id : (Guid?)null,
+                    row.Row.legalEntity != null ? row.Row.legalEntity.Name : null,
+                    row.Row.empType != null ? row.Row.empType.Label : row.Row.e.EmploymentTypeId.ToString(),
+                    row.Row.empStatus != null ? row.Row.empStatus.Code : "active",
+                    row.Row.manager != null ? row.Row.manager.Id : (Guid?)null,
+                    row.Row.manager != null ? row.Row.manager.FirstName + " " + row.Row.manager.LastName : null,
+                    null,
+                    null,
+                    row.AttendanceSummary))
+                .ToList();
+
+            return (orderedRows, totalCount);
+        }
+
         var items = await joined
             .OrderBy(row => row.e.LastName).ThenBy(row => row.e.Id)
             .Skip((page - 1) * pageSize)
@@ -125,6 +236,55 @@ public class EfEmployeeRepository : IEmployeeRepository
             .ToListAsync(ct);
 
         return (items, totalCount);
+    }
+
+    public async Task<IReadOnlyList<EmployeeListItemResponse>> ListInvitedPendingByInviterAsync(
+        Guid tenantId, Guid inviterUserId, CancellationToken ct = default)
+    {
+        var activePrimaryAssignments = _db.PositionAssignments.AsNoTracking()
+            .Where(pa => pa.TenantId == tenantId
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active);
+
+        var joined =
+            from token in _db.InvitationTokens.AsNoTracking()
+            where token.TenantId == tenantId && token.CreatedById == inviterUserId
+                && token.EmployeeId != null && token.UsedAt == null && token.RevokedAt == null
+            join e in _db.Employees.AsNoTracking() on token.EmployeeId equals e.Id
+            join dept in _db.Departments.AsNoTracking() on e.DepartmentId equals dept.Id into deptJoin
+            from dept in deptJoin.DefaultIfEmpty()
+            join legalEntity in _db.LegalEntities.AsNoTracking() on e.LegalEntityId equals legalEntity.Id into leJoin
+            from legalEntity in leJoin.DefaultIfEmpty()
+            join empType in _db.EmploymentTypes.AsNoTracking() on e.EmploymentTypeId equals empType.Id into typeJoin
+            from empType in typeJoin.DefaultIfEmpty()
+            join empStatus in _db.EmploymentStatuses.AsNoTracking() on e.EmploymentStatusId equals empStatus.Id into statusJoin
+            from empStatus in statusJoin.DefaultIfEmpty()
+            join primaryAssignment in activePrimaryAssignments on e.Id equals primaryAssignment.EmployeeId into paJoin
+            from primaryAssignment in paJoin.DefaultIfEmpty()
+            join position in _db.Positions.AsNoTracking() on primaryAssignment!.PositionId equals position.Id into posJoin
+            from position in posJoin.DefaultIfEmpty()
+            select new { e, dept, legalEntity, empType, empStatus, position, token.Status, token.ExpiresAt };
+
+        return await joined
+            .OrderBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+            .Select(row => new EmployeeListItemResponse(
+                row.e.Id,
+                row.e.EmployeeNumber,
+                row.e.FirstName + " " + row.e.LastName,
+                row.e.Email,
+                row.dept != null ? row.dept.Id : (Guid?)null,
+                row.dept != null ? row.dept.Name : null,
+                row.position != null ? row.position.Id : (Guid?)null,
+                row.position != null ? row.position.Name : null,
+                row.legalEntity != null ? row.legalEntity.Id : (Guid?)null,
+                row.legalEntity != null ? row.legalEntity.Name : null,
+                row.empType != null ? row.empType.Label : row.e.EmploymentTypeId.ToString(),
+                row.empStatus != null ? row.empStatus.Code : "active",
+                null,
+                null,
+                row.Status,
+                row.ExpiresAt))
+            .ToListAsync(ct);
     }
 
     public async Task<EmployeeListItemResponse?> GetVisibleByIdAsync(
@@ -223,10 +383,16 @@ public class EfEmployeeRepository : IEmployeeRepository
 
     public async Task<EmployeeEntity?> GetByUserAndLegalEntityAsync(
         Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default)
-        => await _db.Employees.AsNoTracking()
-            .FirstOrDefaultAsync(
-                e => e.TenantId == tenantId && e.UserId == userId && e.LegalEntityId == legalEntityId,
-                ct);
+        => await (
+            from employee in _db.Employees.AsNoTracking()
+            join status in _db.EmploymentStatuses.AsNoTracking()
+                on employee.EmploymentStatusId equals status.Id
+            where employee.TenantId == tenantId
+                && employee.UserId == userId
+                && employee.LegalEntityId == legalEntityId
+                && status.Code == "active"
+            select employee)
+            .FirstOrDefaultAsync(ct);
 
     public async Task<EmployeeEntity?> GetTrackedByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => await _db.Employees.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
@@ -280,7 +446,9 @@ public class EfEmployeeRepository : IEmployeeRepository
 
     public async Task<bool> EmployeeNumberExistsAsync(Guid tenantId, string employeeNumber, Guid? excludeId, CancellationToken ct = default)
     {
-        var query = _db.Employees.AsNoTracking()
+        // Ignore soft-delete filter: the unique index is tenant+employee_number with no
+        // IsDeleted filter, so archived rows still occupy the number.
+        var query = _db.Employees.IgnoreQueryFilters().AsNoTracking()
             .Where(e => e.TenantId == tenantId && e.EmployeeNumber == employeeNumber);
 
         if (excludeId is not null)
@@ -291,8 +459,64 @@ public class EfEmployeeRepository : IEmployeeRepository
         return await query.AnyAsync(ct);
     }
 
+    public async Task<int> GetNextEmployeeNumberSequenceAsync(Guid tenantId, string prefix, CancellationToken ct = default)
+    {
+        var expectedPrefix = prefix + "-";
+        var numbers = await _db.Employees.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.EmployeeNumber.StartsWith(expectedPrefix))
+            .Select(e => e.EmployeeNumber)
+            .ToListAsync(ct);
+
+        var maxSequence = 0;
+        foreach (var number in numbers)
+        {
+            var suffix = number.AsSpan(expectedPrefix.Length);
+            if (suffix.Length > 0 && int.TryParse(suffix, out var sequence) && sequence > maxSequence)
+                maxSequence = sequence;
+        }
+
+        return maxSequence + 1;
+    }
+
     public async Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default)
         => await _db.Employees.AsNoTracking().CountAsync(e => e.TenantId == tenantId, ct);
+
+    public async Task<IReadOnlyList<Guid>> ListActiveEmployeeIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid>? departmentIds, CancellationToken ct = default)
+    {
+        if (departmentIds is not null && departmentIds.Count == 0)
+            return Array.Empty<Guid>();
+
+        var query =
+            from e in _db.Employees.AsNoTracking()
+            join status in _db.EmploymentStatuses.AsNoTracking() on e.EmploymentStatusId equals status.Id
+            where e.TenantId == tenantId && e.LegalEntityId == legalEntityId && status.Code == "active"
+            select e;
+
+        if (departmentIds is not null)
+        {
+            query = query.Where(e => e.DepartmentId != null && departmentIds.Contains(e.DepartmentId.Value));
+        }
+
+        return await query.Select(e => e.Id).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListActiveEmployeeIdsByIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return Array.Empty<Guid>();
+
+        return await (
+            from e in _db.Employees.AsNoTracking()
+            join status in _db.EmploymentStatuses.AsNoTracking() on e.EmploymentStatusId equals status.Id
+            where e.TenantId == tenantId
+                && e.LegalEntityId == legalEntityId
+                && status.Code == "active"
+                && employeeIds.Contains(e.Id)
+            select e.Id)
+            .ToListAsync(ct);
+    }
 
     public async Task AddAsync(EmployeeEntity employee, CancellationToken ct = default)
         => await _db.Employees.AddAsync(employee, ct);

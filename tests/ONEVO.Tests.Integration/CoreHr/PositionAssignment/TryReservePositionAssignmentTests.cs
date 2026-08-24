@@ -65,10 +65,10 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
     {
         var employeeId = await SeedEmployeeAsync();
         await using var db = CreateContext(_tenantId, "try-reserve");
-        var repo = new EfPositionAssignmentRepository(db);
+        var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
 
         var reservedId = await repo.TryReservePositionAssignmentAsync(
-            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid());
+            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
 
         Assert.NotNull(reservedId);
         var row = await db.PositionAssignments.FindAsync(reservedId!.Value);
@@ -82,14 +82,14 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
         var employeeA = await SeedEmployeeAsync();
         var employeeB = await SeedEmployeeAsync();
         await using var db = CreateContext(_tenantId, "try-reserve");
-        var repo = new EfPositionAssignmentRepository(db);
+        var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
 
         var first = await repo.TryReservePositionAssignmentAsync(
-            _tenantId, employeeA, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid());
+            _tenantId, employeeA, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
         Assert.NotNull(first);
 
         var second = await repo.TryReservePositionAssignmentAsync(
-            _tenantId, employeeB, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid());
+            _tenantId, employeeB, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
 
         Assert.Null(second);
         var count = await db.PositionAssignments.CountAsync(pa => pa.PositionId == _positionId);
@@ -101,12 +101,12 @@ public sealed class TryReservePositionAssignmentTests : IAsyncLifetime
     {
         var employeeA = await SeedEmployeeAsync();
         var employeeB = await SeedEmployeeAsync();
-        var repoA = new EfPositionAssignmentRepository(CreateContext(_tenantId, "try-reserve"));
-        var repoB = new EfPositionAssignmentRepository(CreateContext(_tenantId, "try-reserve"));
+        var repoA = PositionAssignmentRepositoryTestSupport.CreateRepository(CreateContext(_tenantId, "try-reserve"));
+        var repoB = PositionAssignmentRepositoryTestSupport.CreateRepository(CreateContext(_tenantId, "try-reserve"));
 
         var effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow);
-        var taskA = repoA.TryReservePositionAssignmentAsync(_tenantId, employeeA, _positionId, effectiveFrom, Guid.NewGuid());
-        var taskB = repoB.TryReservePositionAssignmentAsync(_tenantId, employeeB, _positionId, effectiveFrom, Guid.NewGuid());
+        var taskA = repoA.TryReservePositionAssignmentAsync(_tenantId, employeeA, _positionId, effectiveFrom, Guid.NewGuid(), reportsToEmployeeId: null);
+        var taskB = repoB.TryReservePositionAssignmentAsync(_tenantId, employeeB, _positionId, effectiveFrom, Guid.NewGuid(), reportsToEmployeeId: null);
         var results = await Task.WhenAll(taskA, taskB);
 
         Assert.Single(results, r => r is not null);

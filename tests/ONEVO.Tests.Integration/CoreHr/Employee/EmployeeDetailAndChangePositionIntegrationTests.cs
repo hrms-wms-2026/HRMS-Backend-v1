@@ -14,9 +14,14 @@ using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Invite;
+using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
+using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Infrastructure.Security;
+using ONEVO.Infrastructure.Services.CoreHr.Offboarding;
+using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
+using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -148,21 +153,21 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
 
         await db.SaveChangesAsync();
 
-        var assignmentRepo = new EfPositionAssignmentRepository(db);
+        var assignmentRepo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
         var hireDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30));
 
         var subjectAssignmentId = await assignmentRepo.TryCreateActiveAssignmentAsync(
-            _tenantId, _subjectEmployeeId, subjectPositionId, hireDate, _adminUserId);
+            _tenantId, _subjectEmployeeId, subjectPositionId, hireDate, _adminUserId, reportsToEmployeeId: null);
         Assert.NotNull(subjectAssignmentId);
 
         _reassignAssignmentId = (await assignmentRepo.TryCreateActiveAssignmentAsync(
-            _tenantId, _reassignEmployeeId, _reassignFromPositionId, hireDate, _adminUserId))!.Value;
+            _tenantId, _reassignEmployeeId, _reassignFromPositionId, hireDate, _adminUserId, reportsToEmployeeId: null))!.Value;
 
         _capacityAssignmentId = (await assignmentRepo.TryCreateActiveAssignmentAsync(
-            _tenantId, _capacityEmployeeId, _capacityFromPositionId, hireDate, _adminUserId))!.Value;
+            _tenantId, _capacityEmployeeId, _capacityFromPositionId, hireDate, _adminUserId, reportsToEmployeeId: null))!.Value;
 
         var fillerAssignmentId = await assignmentRepo.TryCreateActiveAssignmentAsync(
-            _tenantId, filler.Id, _fullPositionId, hireDate, _adminUserId);
+            _tenantId, filler.Id, _fullPositionId, hireDate, _adminUserId, reportsToEmployeeId: null);
         Assert.NotNull(fillerAssignmentId);
     }
 
@@ -223,7 +228,7 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
         var handler = BuildChangePositionHandler(_adminUserId);
 
         var result = await handler.Handle(
-            new ChangeEmployeePositionCommand(_reassignEmployeeId, _reassignToPositionId, effectiveFrom),
+            new ChangeEmployeePositionCommand(_reassignEmployeeId, _reassignToPositionId, effectiveFrom, "Promotion"),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -251,7 +256,7 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
         var handler = BuildChangePositionHandler(_adminUserId);
 
         var result = await handler.Handle(
-            new ChangeEmployeePositionCommand(_capacityEmployeeId, _fullPositionId, effectiveFrom),
+            new ChangeEmployeePositionCommand(_capacityEmployeeId, _fullPositionId, effectiveFrom, "Promotion"),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -293,12 +298,20 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
     private ChangeEmployeePositionCommandHandler BuildChangePositionHandler(Guid userId)
     {
         var db = CreateContext(_tenantId, TenantSlug);
+        var employees = new EfEmployeeRepository(db);
         return new ChangeEmployeePositionCommandHandler(
-            new EfEmployeeRepository(db),
+            employees,
             new EfPositionRepository(db),
-            new EfPositionAssignmentRepository(db),
+            PositionAssignmentRepositoryTestSupport.CreateRepository(db),
             new UnitOfWork(db),
-            new StubCurrentUser(_tenantId, userId, orgManage: true, sensitive: false));
+            new StubCurrentUser(_tenantId, userId, orgManage: true, sensitive: false),
+            new EfAuthRepository(db),
+            new EfAccessGrantRequestRepository(db),
+            _clock,
+            new OutboxWriter(db, _encryption, _clock),
+            new EfAuthRepository(db),
+            new EfTenantRepository(db),
+            new EmployeeOffboardingLockGuard(employees));
     }
 
     private Position NewPosition(Guid id, string name) => new()

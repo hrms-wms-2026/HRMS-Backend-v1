@@ -247,6 +247,7 @@ public class ModuleCatalogSeeder : IHostedService
             // core_hr
             new { Module = "core_hr", Perm = "employees:read" },
             new { Module = "core_hr", Perm = "employees:write" },
+            new { Module = "core_hr", Perm = "employees:offboard" },
             new { Module = "core_hr", Perm = "employees:delete" },
 
             // time_off

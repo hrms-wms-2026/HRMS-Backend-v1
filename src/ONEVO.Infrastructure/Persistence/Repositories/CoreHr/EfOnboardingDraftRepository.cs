@@ -26,27 +26,44 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
     // method call inside a Select() lambda does not translate to SQL (see the EfEmployeeRepository
     // doc comment for the same lesson learned on a different query).
     public async Task<OnboardingDraftResponse?> GetResponseByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
-        => await _db.OnboardingDrafts.AsNoTracking()
-            .Where(d => d.TenantId == tenantId && d.Id == id)
-            .Select(d => new OnboardingDraftResponse(
+        => await (
+            from d in _db.OnboardingDrafts.AsNoTracking()
+            where d.TenantId == tenantId && d.Id == id
+            join position in _db.Positions.AsNoTracking() on d.PositionId equals position.Id into posJoin
+            from position in posJoin.DefaultIfEmpty()
+            join dept in _db.Departments.AsNoTracking() on d.DepartmentId equals dept.Id into deptJoin
+            from dept in deptJoin.DefaultIfEmpty()
+            join workMode in _db.WorkModes.AsNoTracking() on d.WorkModeId equals workMode.Id into workModeJoin
+            from workMode in workModeJoin.DefaultIfEmpty()
+            join reportsToPosition in _db.Positions.AsNoTracking() on position!.ReportsToPositionId equals reportsToPosition.Id into reportsToPosJoin
+            from reportsToPosition in reportsToPosJoin.DefaultIfEmpty()
+            join manager in _db.Employees.AsNoTracking() on d.ReportsToEmployeeId equals manager.Id into managerJoin
+            from manager in managerJoin.DefaultIfEmpty()
+            select new OnboardingDraftResponse(
                 d.Id,
                 d.FirstName,
                 d.LastName,
                 d.WorkEmail,
                 d.LegalEntityId,
                 d.DepartmentId,
+                dept != null ? dept.Name : null,
                 d.PositionId,
+                position != null ? position.Name : null,
                 d.EmploymentType,
                 d.StartDate,
                 d.EmployeeNumber,
                 d.WorkModeId,
+                workMode != null ? workMode.Label : null,
                 d.SelectedTemplateId,
                 d.EditedTasksJson,
                 d.Status,
                 d.DraftReason,
                 d.LastSavedStep,
                 d.StartedById,
-                EF.Property<uint>(d, "xmin").ToString()))
+                EF.Property<uint>(d, "xmin").ToString(),
+                d.ReportsToEmployeeId,
+                manager != null ? manager.FirstName + " " + manager.LastName : null,
+                reportsToPosition != null ? reportsToPosition.Name : null))
             .FirstOrDefaultAsync(ct);
 
     public async Task<(IReadOnlyList<OnboardingDraftResponse> Items, int TotalCount)> ListAsync(
@@ -61,29 +78,46 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
 
         var totalCount = await query.CountAsync(ct);
 
-        var items = await query
-            .OrderByDescending(d => d.UpdatedAt ?? d.CreatedAt).ThenBy(d => d.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(d => new OnboardingDraftResponse(
+        var items = await (
+            from d in query
+            join position in _db.Positions.AsNoTracking() on d.PositionId equals position.Id into posJoin
+            from position in posJoin.DefaultIfEmpty()
+            join dept in _db.Departments.AsNoTracking() on d.DepartmentId equals dept.Id into deptJoin
+            from dept in deptJoin.DefaultIfEmpty()
+            join workMode in _db.WorkModes.AsNoTracking() on d.WorkModeId equals workMode.Id into workModeJoin
+            from workMode in workModeJoin.DefaultIfEmpty()
+            join reportsToPosition in _db.Positions.AsNoTracking() on position!.ReportsToPositionId equals reportsToPosition.Id into reportsToPosJoin
+            from reportsToPosition in reportsToPosJoin.DefaultIfEmpty()
+            join manager in _db.Employees.AsNoTracking() on d.ReportsToEmployeeId equals manager.Id into managerJoin
+            from manager in managerJoin.DefaultIfEmpty()
+            orderby d.UpdatedAt ?? d.CreatedAt descending, d.Id
+            select new OnboardingDraftResponse(
                 d.Id,
                 d.FirstName,
                 d.LastName,
                 d.WorkEmail,
                 d.LegalEntityId,
                 d.DepartmentId,
+                dept != null ? dept.Name : null,
                 d.PositionId,
+                position != null ? position.Name : null,
                 d.EmploymentType,
                 d.StartDate,
                 d.EmployeeNumber,
                 d.WorkModeId,
+                workMode != null ? workMode.Label : null,
                 d.SelectedTemplateId,
                 d.EditedTasksJson,
                 d.Status,
                 d.DraftReason,
                 d.LastSavedStep,
                 d.StartedById,
-                EF.Property<uint>(d, "xmin").ToString()))
+                EF.Property<uint>(d, "xmin").ToString(),
+                d.ReportsToEmployeeId,
+                manager != null ? manager.FirstName + " " + manager.LastName : null,
+                reportsToPosition != null ? reportsToPosition.Name : null))
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(ct);
 
         return (items, totalCount);

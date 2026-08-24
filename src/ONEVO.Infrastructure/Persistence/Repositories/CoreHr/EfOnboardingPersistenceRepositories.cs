@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Onboarding.Models;
+using ONEVO.Application.Features.CoreHr.Onboarding.Queries.ListPendingAccessGrantRequestsForMe;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 
@@ -22,6 +25,10 @@ public sealed class EfAccessGrantRequestRepository(ApplicationDbContext db) : IA
     public Task<bool> AnyPendingByDraftAsync(Guid tenantId, Guid onboardingDraftId, CancellationToken ct = default)
         => db.AccessGrantRequests.AnyAsync(x => x.TenantId == tenantId && x.OnboardingDraftId == onboardingDraftId
             && x.ApprovalStatus == "Pending", ct);
+
+    public Task<bool> AnyPendingByEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => db.AccessGrantRequests.AnyAsync(x => x.TenantId == tenantId && x.EmployeeId == employeeId
+            && x.ActionType == AccessGrantActionType.PositionChange && x.ApprovalStatus == "Pending", ct);
 
     public async Task<(IReadOnlyList<OnboardingAccessGrantRequestListItemResponse> Items, int TotalCount)> ListOnboardingRequestsAsync(
         Guid tenantId, string approvalStatus, string actionType, Guid? legalEntityId, Guid? requestedRoleId,
@@ -115,7 +122,82 @@ public sealed class EfAccessGrantRequestRepository(ApplicationDbContext db) : IA
         return (items, totalCount);
     }
 
-    public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
+    public async Task<IReadOnlyList<PendingAccessGrantRequestResponse>> ListPendingAsync(
+        Guid tenantId, Guid excludeRequestedByUserId, CancellationToken ct = default)
+    {
+        var requests = db.AccessGrantRequests.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ApprovalStatus == "Pending"
+                && x.RequestedByUserId != excludeRequestedByUserId);
+        var positions = db.Positions.AsNoTracking().Where(p => p.TenantId == tenantId);
+        var users = db.Users.AsNoTracking().Where(u => u.TenantId == tenantId);
+        var employees = db.Employees.AsNoTracking().Where(e => e.TenantId == tenantId);
+        var drafts = db.OnboardingDrafts.AsNoTracking().Where(d => d.TenantId == tenantId);
+
+        // Every join is LEFT - a display name that fails to resolve must not drop the row.
+        // Employee is left-joined on EmployeeId; when EmployeeId is null, EmployeeName is null
+        // and InvitedFullName is filled from the onboarding draft when present.
+        var joined =
+            from x in requests
+            join position in positions on x.TargetPositionId equals position.Id into positionJoin
+            from position in positionJoin.DefaultIfEmpty()
+            join requester in users on x.RequestedByUserId equals requester.Id into requesterJoin
+            from requester in requesterJoin.DefaultIfEmpty()
+            join employee in employees on x.EmployeeId equals employee.Id into employeeJoin
+            from employee in employeeJoin.DefaultIfEmpty()
+            join draft in drafts on x.OnboardingDraftId equals draft.Id into draftJoin
+            from draft in draftJoin.DefaultIfEmpty()
+            select new { x, position, requester, employee, draft };
+
+        return await joined
+            .OrderByDescending(row => row.x.RequestedAt).ThenBy(row => row.x.Id)
+            .Select(row => new PendingAccessGrantRequestResponse(
+                row.x.Id,
+                row.x.ActionType,
+                row.employee != null ? row.employee.FirstName + " " + row.employee.LastName : null,
+                row.position != null ? row.position.Name : string.Empty,
+                row.x.ChangeReason,
+                row.requester != null ? row.requester.FirstName + " " + row.requester.LastName : string.Empty,
+                row.x.RequestedAt,
+                row.draft != null ? row.draft.FirstName + " " + row.draft.LastName : null))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, Guid>> GetApprovedByUserIdsForAssignmentsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> assignmentIds, CancellationToken ct = default)
+    {
+        if (assignmentIds.Count == 0)
+            return new Dictionary<Guid, Guid>();
+
+        var rows = await db.AccessGrantRequests
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId
+                && x.ApprovalStatus == "Approved"
+                && x.ReservedPositionAssignmentId != null
+                && assignmentIds.Contains(x.ReservedPositionAssignmentId.Value)
+                && x.DecidedByUserId != null)
+            .Select(x => new { AssignmentId = x.ReservedPositionAssignmentId!.Value, UserId = x.DecidedByUserId!.Value })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(row => row.AssignmentId)
+            .ToDictionary(group => group.Key, group => group.First().UserId);
+    }
+
+    public async Task<int> SaveChangesAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            return await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConcurrencyConflictException(ex);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new UniqueConstraintConflictException(ex);
+        }
+    }
 }
 
 public sealed class EfChecklistTemplateRepository(ApplicationDbContext db) : IChecklistTemplateRepository
@@ -182,6 +264,32 @@ public sealed class EfChecklistTemplateRepository(ApplicationDbContext db) : ICh
             .ToList();
     }
 
+    public async Task<IReadOnlyList<ChecklistTemplateMatch>> ListOffboardingMatchesAsync(
+        Guid tenantId, Guid legalEntityId, Guid? departmentId, Guid? positionId, CancellationToken ct = default)
+    {
+        var candidates = await db.ChecklistTemplates.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.IsActive && x.TemplateType == "offboarding" && x.LegalEntityId == legalEntityId
+                && (
+                    (positionId != null && x.PositionId == positionId)
+                    || (departmentId != null && x.PositionId == null && x.DepartmentId == departmentId)
+                    || (x.PositionId == null && x.DepartmentId == null)
+                ))
+            .ToListAsync(ct);
+
+        return candidates
+            .Select(t => new ChecklistTemplateMatch(t, t.PositionId is not null
+                ? ChecklistTemplateMatchLevels.Position
+                : t.DepartmentId is not null ? ChecklistTemplateMatchLevels.Department : ChecklistTemplateMatchLevels.Company))
+            .OrderBy(m => m.MatchLevel switch
+            {
+                ChecklistTemplateMatchLevels.Position => 0,
+                ChecklistTemplateMatchLevels.Department => 1,
+                _ => 2,
+            })
+            .ThenBy(m => m.Template.Name)
+            .ToList();
+    }
+
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }
 
@@ -190,8 +298,8 @@ public sealed class EfEmployeeChecklistTaskRepository(ApplicationDbContext db) :
     public async Task<IReadOnlyList<EmployeeChecklistTask>> InstantiateAsync(
         ChecklistTemplate template, Guid employeeId, Guid newHireUserId, string? editedTasksJson, DateOnly anchorDate, CancellationToken ct = default)
     {
-        if (!template.IsActive || template.TemplateType != "onboarding")
-            throw new ArgumentException("Only active onboarding templates can be instantiated.", nameof(template));
+        if (!template.IsActive || (template.TemplateType != "onboarding" && template.TemplateType != "offboarding"))
+            throw new ArgumentException("Only active onboarding or offboarding templates can be instantiated.", nameof(template));
 
         var mode = editedTasksJson is not null ? ChecklistTaskDueRuleMode.AbsoluteDate : ChecklistTaskDueRuleMode.OffsetDays;
         var definitions = ChecklistTaskJsonContract.Parse(editedTasksJson ?? template.TasksJson, mode);
@@ -205,6 +313,16 @@ public sealed class EfEmployeeChecklistTaskRepository(ApplicationDbContext db) :
     public async Task<IReadOnlyList<EmployeeChecklistTask>> ListByEmployeeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => await db.EmployeeChecklistTasks.AsNoTracking().Where(x => x.TenantId == tenantId && x.EmployeeId == employeeId)
             .OrderBy(x => x.Sequence).ThenBy(x => x.Id).ToListAsync(ct);
+
+    public Task<EmployeeChecklistTask?> GetTrackedByIdAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
+        => db.EmployeeChecklistTasks.FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == taskId, ct);
+
+    public Task<IReadOnlyList<EmployeeChecklistTask>> ListByOffboardingRecordAsync(Guid tenantId, Guid offboardingRecordId, CancellationToken ct = default)
+        => db.EmployeeChecklistTasks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.OffboardingRecordId == offboardingRecordId)
+            .OrderBy(x => x.Sequence).ThenBy(x => x.Id)
+            .ToListAsync(ct)
+            .ContinueWith(t => (IReadOnlyList<EmployeeChecklistTask>)t.Result, ct);
 
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

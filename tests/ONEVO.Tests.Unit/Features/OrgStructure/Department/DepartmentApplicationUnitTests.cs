@@ -41,6 +41,21 @@ public class DepartmentApplicationUnitTests
                 TenantId = _tenantId,
                 Name = "Acme Corp"
             });
+
+        // Default department-enrichment lookups (position/employee counts, head-position names)
+        // to empty so tests that don't care about them don't NRE on ListDepartmentsQueryHandler's
+        // batched enrichment calls.
+        _positionRepoMock
+            .Setup(p => p.CountActiveByDepartmentIdsAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
+        _positionRepoMock
+            .Setup(p => p.GetByIdsAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Domain.Features.OrgStructure.Entities.Position>());
+        _departmentRepoMock
+            .Setup(d => d.CountActiveEmployeesByDepartmentIdsAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
     }
 
     #region ListDepartments
@@ -72,7 +87,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(page);
 
         var handler = new ListDepartmentsQueryHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
 
         var result = await handler.Handle(DefaultListQuery(_legalEntityId), CancellationToken.None);
 
@@ -81,6 +96,75 @@ public class DepartmentApplicationUnitTests
         Assert.Null(result.Value.Tree);
         Assert.Single(result.Value.Flat!.Items);
         Assert.Equal(1, result.Value.Flat.TotalCount);
+    }
+
+    // Regression: the department list/tree UI showed "0 positions - 0 employees - Vacant" for
+    // every department because the handler never populated PositionCount/EmployeeCount/
+    // HeadPositionTitle. Verifies the batched enrichment lookups actually flow through to the
+    // response for both the flat and tree views.
+    [Fact]
+    public async Task ListDepartments_FlatView_PopulatesPositionAndEmployeeCountsAndHeadPositionTitle()
+    {
+        var dept1 = CreateDepartment(_tenantId, _legalEntityId, "Engineering");
+        var headPosition = CreatePosition(_tenantId, _legalEntityId, dept1.Id, isActive: true);
+        headPosition.Name = "Engineering Manager";
+        dept1.HeadPositionId = headPosition.Id;
+        var page = new DepartmentPage(new List<Domain.Features.OrgStructure.Entities.Department> { dept1 }, 1, 1, 25, 1);
+
+        _departmentRepoMock
+            .Setup(d => d.ListPageByLegalEntityAsync(
+                _tenantId, _legalEntityId, null, false, null, DepartmentSortBy.Name, SortDirection.Ascending, 1, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(page);
+
+        _positionRepoMock
+            .Setup(p => p.CountActiveByDepartmentIdsAsync(
+                _tenantId, _legalEntityId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(dept1.Id)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int> { [dept1.Id] = 3 });
+        _departmentRepoMock
+            .Setup(d => d.CountActiveEmployeesByDepartmentIdsAsync(
+                _tenantId, _legalEntityId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(dept1.Id)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int> { [dept1.Id] = 5 });
+        _positionRepoMock
+            .Setup(p => p.GetByIdsAsync(
+                _tenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(headPosition.Id)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Domain.Features.OrgStructure.Entities.Position> { headPosition });
+
+        var handler = new ListDepartmentsQueryHandler(
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+
+        var result = await handler.Handle(DefaultListQuery(_legalEntityId), CancellationToken.None);
+
+        var item = Assert.Single(result.Value!.Flat!.Items);
+        Assert.Equal(3, item.PositionCount);
+        Assert.Equal(5, item.EmployeeCount);
+        Assert.Equal("Engineering Manager", item.HeadPositionTitle);
+    }
+
+    [Fact]
+    public async Task ListDepartments_TreeView_PopulatesPositionAndEmployeeCounts()
+    {
+        var dept1 = CreateDepartment(_tenantId, _legalEntityId, "Engineering");
+        _departmentRepoMock
+            .Setup(d => d.ListForTreeByLegalEntityAsync(_tenantId, _legalEntityId, null, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Domain.Features.OrgStructure.Entities.Department> { dept1 });
+
+        _positionRepoMock
+            .Setup(p => p.CountActiveByDepartmentIdsAsync(
+                _tenantId, _legalEntityId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(dept1.Id)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int> { [dept1.Id] = 2 });
+        _departmentRepoMock
+            .Setup(d => d.CountActiveEmployeesByDepartmentIdsAsync(
+                _tenantId, _legalEntityId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(dept1.Id)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int> { [dept1.Id] = 4 });
+
+        var handler = new ListDepartmentsQueryHandler(
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+
+        var result = await handler.Handle(DefaultListQuery(_legalEntityId, view: "tree"), CancellationToken.None);
+
+        var node = Assert.Single(result.Value!.Tree!.TreeItems);
+        Assert.Equal(2, node.PositionCount);
+        Assert.Equal(4, node.EmployeeCount);
     }
 
     [Fact]
@@ -92,7 +176,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync((Domain.Features.OrgStructure.Entities.LegalEntity?)null);
 
         var handler = new ListDepartmentsQueryHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
 
         var result = await handler.Handle(DefaultListQuery(invalidLegalEntityId), CancellationToken.None);
 
@@ -109,7 +193,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(new DepartmentPage(new List<Domain.Features.OrgStructure.Entities.Department>(), 0, 1, 25, 0));
 
         var handler = new ListDepartmentsQueryHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
 
         var result = await handler.Handle(DefaultListQuery(_legalEntityId, search: "  engineering  "), CancellationToken.None);
 
@@ -130,7 +214,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(new DepartmentPage(new List<Domain.Features.OrgStructure.Entities.Department>(), 0, 1, 25, 0));
 
         var handler = new ListDepartmentsQueryHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
 
         var result = await handler.Handle(DefaultListQuery(_legalEntityId, search: search), CancellationToken.None);
 
@@ -150,7 +234,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(new DepartmentPage(new List<Domain.Features.OrgStructure.Entities.Department>(), 0, 1, 25, 0));
 
         var handler = new ListDepartmentsQueryHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
 
         var result = await handler.Handle(DefaultListQuery(_legalEntityId, parentDepartmentId: parentId), CancellationToken.None);
 
@@ -169,7 +253,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(new DepartmentPage(new List<Domain.Features.OrgStructure.Entities.Department>(), 0, 1, 25, 0));
 
         var handler = new ListDepartmentsQueryHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
 
         var result = await handler.Handle(DefaultListQuery(_legalEntityId, includeInactive: true), CancellationToken.None);
 
@@ -192,7 +276,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(new DepartmentPage(new List<Domain.Features.OrgStructure.Entities.Department>(), 0, 1, 25, 0));
 
         var handler = new ListDepartmentsQueryHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
 
         var result = await handler.Handle(DefaultListQuery(_legalEntityId, sortBy: sortByInput), CancellationToken.None);
 
@@ -213,7 +297,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(new DepartmentPage(new List<Domain.Features.OrgStructure.Entities.Department>(), 0, 1, 25, 0));
 
         var handler = new ListDepartmentsQueryHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
 
         var result = await handler.Handle(DefaultListQuery(_legalEntityId, sortDirection: input), CancellationToken.None);
 
@@ -235,7 +319,7 @@ public class DepartmentApplicationUnitTests
             .ReturnsAsync(new List<Domain.Features.OrgStructure.Entities.Department> { parent, child });
 
         var handler = new ListDepartmentsQueryHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
 
         var result = await handler.Handle(DefaultListQuery(_legalEntityId, view: "tree"), CancellationToken.None);
 
@@ -263,7 +347,7 @@ public class DepartmentApplicationUnitTests
             });
 
         var handler = new ListDepartmentsQueryHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
 
         var result = await handler.Handle(
             DefaultListQuery(_legalEntityId, view: "tree", parentDepartmentId: Guid.NewGuid(), page: 2, pageSize: 1),
@@ -286,7 +370,7 @@ public class DepartmentApplicationUnitTests
             });
 
         var handler = new ListDepartmentsQueryHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, _currentUserMock.Object);
 
         await handler.Handle(DefaultListQuery(_legalEntityId, view: "tree"), CancellationToken.None);
 
@@ -1362,7 +1446,7 @@ public class DepartmentApplicationUnitTests
         unauthenticatedUserMock.Setup(c => c.IsAuthenticated).Returns(false);
 
         var handler = new ListDepartmentsQueryHandler(
-            _departmentRepoMock.Object, _legalEntityRepoMock.Object, unauthenticatedUserMock.Object);
+            _departmentRepoMock.Object, _positionRepoMock.Object, _legalEntityRepoMock.Object, unauthenticatedUserMock.Object);
 
         var result = await handler.Handle(DefaultListQuery(_legalEntityId), CancellationToken.None);
 

@@ -3,6 +3,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
@@ -362,6 +363,32 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
         pairs.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task ListUserIdsWithPermissionCodeAsync_ExcludesInactiveAndDeletedUsers()
+    {
+        using var db = CreateContext();
+        var repo = new EfAuthRepository(db);
+        var tenantId = Guid.NewGuid();
+        var permission = NewPermission("roles:manage", "roles");
+        var role = NewRole(tenantId, "approver");
+        var active = NewUser(tenantId, "active@example.com", isActive: true);
+        var inactive = NewUser(tenantId, "inactive@example.com", isActive: false);
+        var deleted = NewUser(tenantId, "deleted@example.com", isActive: true);
+        deleted.IsDeleted = true;
+        await SeedAsync(permission);
+        await SeedAsync(role);
+        await SeedAsync(NewRolePermission(tenantId, role.Id, permission.Id));
+        await SeedAsync(active, inactive, deleted);
+        await SeedAsync(
+            NewUserRole(tenantId, active.Id, role.Id, expiresAt: null),
+            NewUserRole(tenantId, inactive.Id, role.Id, expiresAt: null),
+            NewUserRole(tenantId, deleted.Id, role.Id, expiresAt: null));
+
+        var result = await repo.ListUserIdsWithPermissionCodeAsync(tenantId, "roles:manage", _clock.UtcNow);
+
+        result.Should().Equal(active.Id);
+    }
+
     // ---- Fixtures ----
 
     private Permission NewPermission(string code, string module)
@@ -395,6 +422,28 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
             RoleId = roleId,
             PermissionId = permissionId
         };
+    }
+
+    private User NewUser(Guid tenantId, string email, bool isActive = true)
+    {
+        return new User
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            Email = email,
+            PasswordHash = "hash",
+            FirstName = "Test",
+            LastName = "User",
+            IsActive = isActive,
+            CreatedAt = _clock.UtcNow
+        };
+    }
+
+    private async Task SeedAsync(params User[] users)
+    {
+        using var db = CreateContext();
+        db.Users.AddRange(users);
+        await db.SaveChangesAsync();
     }
 
     private UserRole NewUserRole(Guid tenantId, Guid userId, Guid roleId, DateTimeOffset? expiresAt)

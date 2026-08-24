@@ -59,6 +59,18 @@ public class EfPositionRepository : IPositionRepository
         return result;
     }
 
+    public async Task<IReadOnlyList<Position>> GetByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+    {
+        if (ids.Count == 0)
+            return Array.Empty<Position>();
+
+        return await _db.Positions
+            .AsNoTracking()
+            .Where(position => position.TenantId == tenantId && ids.Contains(position.Id))
+            .ToListAsync(ct);
+    }
+
     public async Task<Position?> GetByIdForLegalEntityAsync(
         Guid tenantId, Guid legalEntityId, Guid positionId, CancellationToken ct = default)
     {
@@ -185,6 +197,27 @@ public class EfPositionRepository : IPositionRepository
             .CountAsync(ct);
 
         return count;
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, int>> CountActiveByDepartmentIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default)
+    {
+        if (departmentIds.Count == 0)
+            return new Dictionary<Guid, int>();
+
+        var counts = await _db.Positions
+            .AsNoTracking()
+            .Where(position =>
+                position.TenantId == tenantId
+                && position.LegalEntityId == legalEntityId
+                && position.DepartmentId != null
+                && departmentIds.Contains(position.DepartmentId!.Value)
+                && position.IsActive)
+            .GroupBy(position => position.DepartmentId!.Value)
+            .Select(group => new { DepartmentId = group.Key, Count = group.Count() })
+            .ToListAsync(ct);
+
+        return counts.ToDictionary(row => row.DepartmentId, row => row.Count);
     }
 
     public async Task<int> CountActiveReportsToPositionAsync(
@@ -359,6 +392,34 @@ public class EfPositionRepository : IPositionRepository
         return results;
     }
 
+    public async Task<IReadOnlyList<ManagementCoverageRecord>> ListActiveCoverageByCoveredTargetAsync(
+        Guid tenantId,
+        Guid legalEntityId,
+        string coveredTargetType,
+        Guid? coveredPositionId,
+        Guid? coveredDepartmentId,
+        Guid? excludingRecordId,
+        CancellationToken ct = default)
+    {
+        var query = _db.ManagementCoverageRecords
+            .AsNoTracking()
+            .Where(m =>
+                m.TenantId == tenantId
+                && m.LegalEntityId == legalEntityId
+                && m.CoveredTargetType == coveredTargetType
+                && m.CoveredPositionId == coveredPositionId
+                && m.CoveredDepartmentId == coveredDepartmentId
+                && m.Status == ManagementCoverageRecord.StatusActive);
+
+        if (excludingRecordId is { } excludeId)
+            query = query.Where(m => m.Id != excludeId);
+
+        return await query
+            .OrderBy(m => m.OwnerOrder)
+            .ThenBy(m => m.Id)
+            .ToListAsync(ct);
+    }
+
     public async Task<ManagementCoverageRecord?> GetCoverageRecordByIdAsync(
         Guid tenantId, Guid id, CancellationToken ct = default)
     {
@@ -415,10 +476,33 @@ public class EfPositionRepository : IPositionRepository
     {
         var result = await _db.Set<PositionAccessTemplate>()
             .AsNoTracking()
+            .Where(t => t.TenantId == tenantId && t.PositionId == positionId && t.IsActive)
+            .FirstOrDefaultAsync(ct);
+
+        return result;
+    }
+
+    public async Task<PositionAccessTemplate?> GetAccessTemplateByPositionIncludingInactiveAsync(
+        Guid tenantId, Guid positionId, CancellationToken ct = default)
+    {
+        var result = await _db.Set<PositionAccessTemplate>()
+            .AsNoTracking()
             .Where(t => t.TenantId == tenantId && t.PositionId == positionId)
             .FirstOrDefaultAsync(ct);
 
         return result;
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, bool>> GetRequiresApprovalByPositionIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> positionIds, CancellationToken ct = default)
+    {
+        if (positionIds.Count == 0)
+            return new Dictionary<Guid, bool>();
+
+        return await _db.Set<PositionAccessTemplate>()
+            .AsNoTracking()
+            .Where(t => t.TenantId == tenantId && positionIds.Contains(t.PositionId) && t.IsActive)
+            .ToDictionaryAsync(t => t.PositionId, t => t.RequiresApproval, ct);
     }
 
     public async Task AddAccessTemplateAsync(PositionAccessTemplate template, CancellationToken ct = default)
