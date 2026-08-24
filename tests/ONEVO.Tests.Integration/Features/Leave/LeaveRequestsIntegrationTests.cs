@@ -125,6 +125,7 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         }
 
         var mine = await SendAsync(HttpMethod.Get, _owner.Host, "/api/v1/leave/requests/my",
+            body: null,
             cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
         mine.StatusCode.Should().Be(HttpStatusCode.OK);
         var list = await ReadJsonAsync(mine);
@@ -259,7 +260,7 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
     }
 
     private static object CreatePolicyBody(
-        string name, Guid leaveTypeId, Guid legalEntityId, bool confirm, decimal annualEntitlementDays = 20m) => new()
+        string name, Guid leaveTypeId, Guid legalEntityId, bool confirm, decimal annualEntitlementDays = 20m) => new
     {
         name,
         description = "integration fixture policy",
