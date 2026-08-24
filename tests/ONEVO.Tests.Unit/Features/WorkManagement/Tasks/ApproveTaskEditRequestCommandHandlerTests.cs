@@ -83,7 +83,7 @@ public class ApproveTaskEditRequestCommandHandlerTests
             ShortId = "WEB-7",
             Title = "Original title",
             Description = "Original description",
-            TaskType = WorkTaskTypes.Task,
+            CategoryId = Guid.NewGuid(),
             StatusId = StatusId,
             Priority = WorkTaskPriorities.Medium,
             StoryPoints = 3,

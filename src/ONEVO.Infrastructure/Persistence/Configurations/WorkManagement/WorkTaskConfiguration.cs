@@ -14,7 +14,6 @@ public class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
         builder.HasKey(t => t.Id);
         builder.Property(t => t.ShortId).HasMaxLength(50).IsRequired();
         builder.Property(t => t.Title).HasMaxLength(500).IsRequired();
-        builder.Property(t => t.TaskType).HasMaxLength(20).IsRequired();
         builder.Property(t => t.Priority).HasMaxLength(20).IsRequired();
         builder.Property(t => t.EstimatedHours).HasColumnType("numeric(18,2)");
         builder.Property(t => t.CompletedHours).HasColumnType("numeric(18,2)");
