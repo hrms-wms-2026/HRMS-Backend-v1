@@ -5,6 +5,6 @@ using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskStatus;
 
 public sealed record CreateTaskStatusCommand(
-    Guid ObjectiveId, string Name, int DisplayOrder, string Visibility, bool MarksTaskComplete,
+    Guid ProjectId, string Name, int DisplayOrder, string Visibility, bool MarksTaskComplete,
     bool RequiresApproval, Guid? ApproverId
 ) : IRequest<Result<TaskStatusResponse>>;

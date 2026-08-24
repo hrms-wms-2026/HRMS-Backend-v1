@@ -22,20 +22,24 @@ public class AchieveSprintCommandHandlerTests
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
     private static readonly Guid OwnerEmployeeId = Guid.NewGuid();
+    private static readonly Guid OtherEmployeeId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
     private static readonly Guid SprintId = Guid.NewGuid();
     private static readonly Guid MemberEmployeeId = Guid.NewGuid();
     private static readonly Guid MemberUserId = Guid.NewGuid();
 
-    private (AchieveSprintCommandHandler Handler, Sprint Sprint, Mock<INotificationDispatcher> Notifications) Build(string startingStatus)
+    private (AchieveSprintCommandHandler Handler, Sprint Sprint, Mock<INotificationDispatcher> Notifications) Build(
+        string startingStatus, Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null)
     {
+        var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
+
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
         var identity = new Mock<ICallerIdentityResolver>();
-        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(OwnerEmployeeId);
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(resolvedCallerEmployeeId);
 
         var sprint = new Sprint { Id = SprintId, TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "S1", StartDate = new DateOnly(2026, 9, 1), EndDate = new DateOnly(2026, 9, 14), Status = startingStatus, CreatedAt = DateTimeOffset.UtcNow };
         var sprints = new Mock<ISprintRepository>();
@@ -55,6 +59,12 @@ public class AchieveSprintCommandHandlerTests
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, MemberEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = MemberEmployeeId, TenantId = TenantId, UserId = MemberUserId });
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
+        // separately in MilestoneMembershipCoordinatorTests).
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (objective.OwnerId == resolvedCallerEmployeeId));
 
         var notifications = new Mock<INotificationDispatcher>();
 
@@ -98,5 +108,32 @@ public class AchieveSprintCommandHandlerTests
                 It.Is<IReadOnlyDictionary<string, string>>(p => p["sprintName"] == "S1" && p["objectiveName"] == "Obj"),
                 "sprint", SprintId, It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_NotOwner_ReturnsForbidden()
+    {
+        var (handler, sprint, _) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId);
+
+        var result = await handler.Handle(new AchieveSprintCommand(SprintId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal(SprintStatuses.Active, sprint.Status);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsEffectiveManagerViaCascade_AchievesSprint()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor membership - the coordinator's own ancestor-walk
+        // logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so this only
+        // proves the handler defers to its answer instead of the direct OwnerId check.
+        var (handler, sprint, _) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId, callerIsEffectiveManager: true);
+
+        var result = await handler.Handle(new AchieveSprintCommand(SprintId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(SprintStatuses.Achieved, sprint.Status);
     }
 }

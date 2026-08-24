@@ -2,6 +2,7 @@ namespace ONEVO.Api.Contracts.WorkManagement.Sprints;
 
 public sealed record CreateSprintRequest(string Name, DateOnly StartDate, DateOnly EndDate);
 public sealed record EditSprintRequest(string Name, DateOnly StartDate, DateOnly EndDate);
+public sealed record SetSprintStatusRequest(string Status);
 
 public sealed record SprintViewModel(
     Guid Id, Guid ObjectiveId, string Name, DateOnly StartDate, DateOnly EndDate, string Status,

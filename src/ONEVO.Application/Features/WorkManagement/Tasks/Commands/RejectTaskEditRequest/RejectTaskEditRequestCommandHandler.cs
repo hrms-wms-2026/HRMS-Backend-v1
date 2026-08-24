@@ -74,7 +74,7 @@ public class RejectTaskEditRequestCommandHandler
         if (objective is null)
             return Result.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result.Forbidden("Only this milestone's owner can decide this request.");
 
         var payload = JsonSerializer.Deserialize<TaskEditRequestPayload>(pending.PayloadJson);

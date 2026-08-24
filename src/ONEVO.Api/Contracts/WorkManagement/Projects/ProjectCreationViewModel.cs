@@ -27,4 +27,5 @@ public sealed record ProjectCreationViewModel(
     ReleaseReminderViewModel ReleaseReminder,
     IReadOnlyList<LabelViewModel> Labels,
     ProjectMembershipViewModel CreatorMembership,
-    ProjectLogoViewModel? Logo);
+    ProjectLogoViewModel? Logo,
+    ProjectLogoViewModel? Banner);

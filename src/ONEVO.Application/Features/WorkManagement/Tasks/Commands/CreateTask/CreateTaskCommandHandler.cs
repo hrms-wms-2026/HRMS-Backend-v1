@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
@@ -23,13 +24,16 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskStatusRepository _statuses;
     private readonly ISprintRepository _sprints;
+    private readonly ITaskCategoryRepository _categories;
     private readonly IObjectiveAllocationSlackCalculator _slack;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMilestoneMembershipCoordinator _membership;
 
     public CreateTaskCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
         IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
-        ISprintRepository sprints, IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork)
+        ISprintRepository sprints, ITaskCategoryRepository categories, IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork,
+        IMilestoneMembershipCoordinator membership)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -38,8 +42,10 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         _tasks = tasks;
         _statuses = statuses;
         _sprints = sprints;
+        _categories = categories;
         _slack = slack;
         _unitOfWork = unitOfWork;
+        _membership = membership;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(CreateTaskCommand request, CancellationToken ct)
@@ -58,23 +64,30 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         if (objective is null || !objective.IsActive)
             return Result<WorkTaskResponse>.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<WorkTaskResponse>.Forbidden("Only this milestone's owner can create tasks directly. Non-owner members must submit a task creation request.");
 
         var project = await _projects.GetByIdForTenantAsync(tenantId, objective.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result<WorkTaskResponse>.NotFound("Project not found.");
 
-        var statuses = await _statuses.GetByObjectiveIdAsync(tenantId, objective.Id, ct);
+        var statuses = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
         var defaultStatus = statuses.Where(s => !s.MarksTaskComplete).OrderBy(s => s.DisplayOrder).FirstOrDefault();
         if (defaultStatus is null)
             return Result<WorkTaskResponse>.Failure("No task statuses configured for this milestone yet.", 422);
 
-        var sprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId, ct);
-        if (sprint is null || sprint.ObjectiveId != objective.Id)
-            return Result<WorkTaskResponse>.NotFound("Sprint not found.");
-        if (sprint.Status == SprintStatuses.Achieved)
-            return Result<WorkTaskResponse>.Conflict("This sprint has been achieved and is frozen.");
+        var category = await _categories.GetByIdForTenantAsync(tenantId, request.CategoryId, ct);
+        if (category is null || category.ProjectId != project.Id)
+            return Result<WorkTaskResponse>.NotFound("Category not found.");
+
+        if (request.SprintId is not null)
+        {
+            var sprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId.Value, ct);
+            if (sprint is null || sprint.ObjectiveId != objective.Id)
+                return Result<WorkTaskResponse>.NotFound("Sprint not found.");
+            if (sprint.Status == SprintStatuses.Achieved)
+                return Result<WorkTaskResponse>.Conflict("This sprint has been achieved and is frozen.");
+        }
 
         if (request.EstimatedHours.HasValue)
         {
@@ -94,7 +107,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
                 ShortId = $"{project.Identifier}-{taskNumber}",
                 StatusId = defaultStatus.Id,
                 Title = request.Title.Trim(), Description = request.Description?.Trim(),
-                TaskType = request.TaskType, Priority = request.Priority, DueDate = request.DueDate,
+                CategoryId = request.CategoryId, Priority = request.Priority, DueDate = request.DueDate,
                 EstimatedHours = request.EstimatedHours, StoryPoints = request.StoryPoints,
                 SprintId = request.SprintId,
                 CompletedHours = 0m, ProgressPercent = 0, CreatedById = userId, CreatedAt = now
@@ -105,7 +118,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
 
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
-                task.TaskType, task.StatusId, task.Priority, task.StoryPoints,
+                task.CategoryId, task.StatusId, task.Priority, task.StoryPoints,
                 task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId));
         }, ct);
     }

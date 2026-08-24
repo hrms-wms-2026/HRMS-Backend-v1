@@ -4,8 +4,8 @@ using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 namespace ONEVO.Api.Contracts.WorkManagement.Tasks;
 
 public sealed record CreateTaskRequest(
-    string Title, string? Description, string TaskType, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid SprintId);
+    string Title, string? Description, Guid CategoryId, string Priority,
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId);
 
 public sealed record EditTaskRequest(
     string Title, string? Description, string Priority,
@@ -32,11 +32,21 @@ public sealed record TaskStatusOrderUpdateRequest(
 
 public sealed record ReorderTaskStatusesRequest(List<TaskStatusOrderUpdateRequest> Updates);
 
+public sealed record EditTaskCategoryRequest(string Name, int DisplayOrder);
+
+public sealed record CreateTaskCategoryRequest(string Name, int DisplayOrder);
+
+public sealed record TaskCategoryOrderUpdateRequest(Guid CategoryId, int DisplayOrder);
+
+public sealed record ReorderTaskCategoriesRequest(List<TaskCategoryOrderUpdateRequest> Updates);
+
+public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder);
+
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
-    string TaskType, Guid StatusId, string Priority, int? StoryPoints,
+    Guid CategoryId, Guid StatusId, string Priority, int? StoryPoints,
     DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent,
-    Guid? SprintId);
+    Guid? SprintId, IReadOnlyList<Guid> AssigneeEmployeeIds);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,

@@ -68,7 +68,9 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("work_sprint_completed", codes);
         Assert.Contains("work_sprint_incomplete", codes);
         Assert.Contains("work_sprint_achieved", codes);
-        Assert.Equal(8, codes.Count);
+        Assert.Contains("work_project_member_invited", codes);
+        Assert.Contains("work_project_member_accepted", codes);
+        Assert.Equal(10, codes.Count);
     }
 
     private ApplicationDbContext CreateContext()

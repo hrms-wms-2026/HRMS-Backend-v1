@@ -50,5 +50,13 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         => await _db.WorkTasks.IgnoreQueryFilters()
             .AnyAsync(t => t.TenantId == tenantId && t.StatusId == statusId, ct);
 
+    // IgnoreQueryFilters() bypasses the soft-delete half of the composed query filter on
+    // purpose: a category must stay undeletable if a soft-deleted task still references it, not
+    // just active ones. Tenant scoping is preserved manually via the TenantId equality below.
+    public async Task<bool> AnyActiveByCategoryIdAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default)
+        => await _db.WorkTasks.IgnoreQueryFilters()
+            .AnyAsync(t => t.TenantId == tenantId && t.CategoryId == categoryId, ct);
+
     public void Update(WorkTask task) => _db.WorkTasks.Update(task);
+    public void Remove(WorkTask task) => _db.WorkTasks.Remove(task);
 }

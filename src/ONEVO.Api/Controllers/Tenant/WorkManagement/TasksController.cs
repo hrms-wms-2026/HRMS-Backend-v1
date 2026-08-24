@@ -11,20 +11,26 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CancelTaskCreatio
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskEditRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCreationRequest;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCategory;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTask;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskCategory;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskCategory;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.MoveTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.RejectTaskEditRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.RejectTaskCreationRequest;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskCategories;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskStatuses;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.UnassignTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyDeadlines;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskEditRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskCreationRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
-using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTaskStatuses;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTaskCategories;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTaskStatuses;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetWorkNotificationNavigation;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
@@ -66,7 +72,7 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> Create(Guid objectiveId, [FromBody] CreateTaskRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateTaskCommand(
-            objectiveId, request.Title, request.Description, request.TaskType, request.Priority,
+            objectiveId, request.Title, request.Description, request.CategoryId, request.Priority,
             request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId), ct);
 
         return result.IsSuccess
@@ -75,6 +81,7 @@ public class TasksController : ControllerBase
     }
 
     [HttpGet("objectives/{objectiveId:guid}/tasks")]
+    [RequirePermission("projects:access")]
     public async Task<IActionResult> GetByObjective(Guid objectiveId, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetObjectiveTasksQuery(objectiveId), ct);
@@ -84,22 +91,22 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    [HttpGet("objectives/{objectiveId:guid}/task-statuses")]
-    public async Task<IActionResult> GetStatuses(Guid objectiveId, CancellationToken ct)
+    [HttpGet("projects/{projectId:guid}/task-statuses")]
+    public async Task<IActionResult> GetStatuses(Guid projectId, CancellationToken ct)
     {
-        var result = await _mediator.Send(new GetObjectiveTaskStatusesQuery(objectiveId), ct);
+        var result = await _mediator.Send(new GetProjectTaskStatusesQuery(projectId), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.Select(s => s.ToViewModel()).ToList())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    [HttpPost("objectives/{objectiveId:guid}/task-statuses")]
+    [HttpPost("projects/{projectId:guid}/task-statuses")]
     [RequirePermission("projects:access")]
-    public async Task<IActionResult> CreateStatus(Guid objectiveId, [FromBody] CreateTaskStatusRequest request, CancellationToken ct)
+    public async Task<IActionResult> CreateStatus(Guid projectId, [FromBody] CreateTaskStatusRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateTaskStatusCommand(
-            objectiveId, request.Name, request.DisplayOrder, request.Visibility, request.MarksTaskComplete,
+            projectId, request.Name, request.DisplayOrder, request.Visibility, request.MarksTaskComplete,
             request.RequiresApproval, request.ApproverId), ct);
 
         return result.IsSuccess
@@ -107,13 +114,13 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    [HttpPost("objectives/{objectiveId:guid}/task-statuses/reorder")]
+    [HttpPost("projects/{projectId:guid}/task-statuses/reorder")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> ReorderStatuses(
-        Guid objectiveId, [FromBody] ReorderTaskStatusesRequest request, CancellationToken ct)
+        Guid projectId, [FromBody] ReorderTaskStatusesRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new ReorderTaskStatusesCommand(
-            objectiveId,
+            projectId,
             request.Updates.Select(u => new TaskStatusOrderUpdate(
                 u.StatusId, u.DisplayOrder, u.Visibility, u.MarksTaskComplete)).ToList()), ct);
 
@@ -122,9 +129,9 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    [HttpPatch("objectives/{objectiveId:guid}/task-statuses/{id:guid}")]
+    [HttpPatch("task-statuses/{id:guid}")]
     [RequirePermission("projects:access")]
-    public async Task<IActionResult> EditStatus(Guid objectiveId, Guid id, [FromBody] EditTaskStatusRequest request, CancellationToken ct)
+    public async Task<IActionResult> EditStatus(Guid id, [FromBody] EditTaskStatusRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new EditTaskStatusCommand(
             id, request.Name, request.DisplayOrder, request.RequiresApproval, request.ApproverId, request.Visibility), ct);
@@ -145,6 +152,53 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    [HttpGet("projects/{projectId:guid}/task-categories")]
+    public async Task<IActionResult> GetCategories(Guid projectId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetProjectTaskCategoriesQuery(projectId), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(c => c.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("projects/{projectId:guid}/task-categories")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> CreateCategory(Guid projectId, [FromBody] CreateTaskCategoryRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new CreateTaskCategoryCommand(projectId, request.Name, request.DisplayOrder), ct);
+        return result.IsSuccess
+            ? StatusCode(201, result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("projects/{projectId:guid}/task-categories/reorder")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> ReorderCategories(Guid projectId, [FromBody] ReorderTaskCategoriesRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new ReorderTaskCategoriesCommand(
+            projectId,
+            request.Updates.Select(u => new TaskCategoryOrderUpdate(u.CategoryId, u.DisplayOrder)).ToList()), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(c => c.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPatch("task-categories/{id:guid}")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> EditCategory(Guid id, [FromBody] EditTaskCategoryRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new EditTaskCategoryCommand(id, request.Name, request.DisplayOrder), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpDelete("task-categories/{id:guid}")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> DeleteCategory(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new DeleteTaskCategoryCommand(id), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     [HttpPatch("tasks/{id:guid}")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditTaskRequest request, CancellationToken ct)
@@ -153,6 +207,17 @@ public class TasksController : ControllerBase
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpDelete("tasks/{id:guid}")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new DeleteTaskCommand(id), ct);
+
+        return result.IsSuccess
+            ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
@@ -243,7 +308,7 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> CreateRequest(Guid objectiveId, [FromBody] CreateTaskCreationRequestRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateTaskCreationRequestCommand(
-            objectiveId, request.Title, request.Description, request.TaskType, request.Priority,
+            objectiveId, request.Title, request.Description, request.CategoryId, request.Priority,
             request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId), ct);
 
         return result.IsSuccess

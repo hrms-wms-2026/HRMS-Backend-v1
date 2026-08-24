@@ -16,15 +16,16 @@ Objective-owner direct create. Blocked with `409` when `estimatedHours` exceeds 
 {
   "title": "Build the login page",
   "description": "optional",
-  "taskType": "task",
+  "categoryId": "guid",
   "priority": "medium",
   "dueDate": "2026-09-01",
   "estimatedHours": 8,
-  "storyPoints": 5
+  "storyPoints": 5,
+  "sprintId": null
 }
 ```
 
-`taskType` is one of `task`, `bug`, `story`, `feature`. `priority` is one of `low`, `medium`, `high`, `critical`. `estimatedHours`, `dueDate`, `description`, and `storyPoints` are optional.
+`categoryId` must be the id of a `TaskCategory` row belonging to this task's Project (categories are seeded per-Project; a dedicated listing endpoint is planned separately). `priority` is one of `low`, `medium`, `high`, `critical`. `estimatedHours`, `dueDate`, `description`, `storyPoints`, and `sprintId` are optional. Omit `sprintId` (or send `null`) to create a direct task under the Objective with no Sprint. When `sprintId` is provided, the Sprint must belong to this Objective and must not be Achieved.
 
 ## Response
 
@@ -37,14 +38,15 @@ Objective-owner direct create. Blocked with `409` when `estimatedHours` exceeds 
   "shortId": "WEB-7",
   "title": "Build the login page",
   "description": "optional",
-  "taskType": "task",
+  "categoryId": "guid",
   "statusId": "guid",
   "priority": "medium",
   "storyPoints": 5,
   "dueDate": "2026-09-01",
   "estimatedHours": 8,
   "completedHours": 0,
-  "progressPercent": 0
+  "progressPercent": 0,
+  "sprintId": null
 }
 ```
 
@@ -52,10 +54,10 @@ Objective-owner direct create. Blocked with `409` when `estimatedHours` exceeds 
 
 | Status | Cause |
 |---|---|
-| `400` | Validation failure (title, type, priority, negative hours) |
-| `403` | Not authenticated, no employee record, or caller is not the Objective owner |
-| `404` | Objective or Project not found / inactive |
-| `409` | `estimatedHours` exceeds remaining slack; body is `InsufficientAllocationResponse` (`availableSlackHours`, `suggestedAction: "extend_allocation"`) |
+| `400` | Validation failure (title, categoryId, priority, negative hours) |
+| `403` | Not authenticated, no employee record, or caller is not an effective manager of the Objective (its owner, an active member, or the owner/an active member of any ancestor Objective) — non-cascaded, non-owner members must submit a task creation request instead |
+| `404` | Objective, Project, Category, or (when provided) Sprint not found / inactive |
+| `409` | `estimatedHours` exceeds remaining slack; body is `InsufficientAllocationResponse` (`availableSlackHours`, `suggestedAction: "extend_allocation"`). Also returned when the provided Sprint is Achieved (frozen). |
 | `422` | No task statuses configured for this milestone yet |
 
 ## Source

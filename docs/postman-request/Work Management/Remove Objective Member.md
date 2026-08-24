@@ -22,7 +22,7 @@ No body. `{employeeId}` is an `employees.id`.
 | Status | Cause |
 |---|---|
 | `400` | Milestone is achieved (frozen), or `employeeId` is this milestone's current head |
-| `403` | Caller lacks `projects:access`, has no Employee record, or is not this milestone's Head |
+| `403` | Caller lacks `projects:access`, has no Employee record, or is not an effective manager of this milestone (its Head, an active member, or the Head/an active member of any ancestor milestone) |
 | `404` | Milestone doesn't exist / is inactive, **or** this employee has neither an active membership nor a pending invitation on this milestone |
 
 ## Source
