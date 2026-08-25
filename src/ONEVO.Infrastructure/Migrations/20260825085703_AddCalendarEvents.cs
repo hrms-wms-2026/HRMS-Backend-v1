@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -7,8 +8,6 @@ namespace ONEVO.Infrastructure.Migrations
     /// <inheritdoc />
     public partial class AddCalendarEvents : Migration
     {
-        private static readonly string[] TenantTables = ["calendar_events"];
-
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -65,11 +64,6 @@ namespace ONEVO.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "ix_calendar_events_tenant_project_status",
-                table: "calendar_events",
-                columns: new[] { "tenant_id", "project_id", "status" });
-
-            migrationBuilder.CreateIndex(
                 name: "ix_calendar_event_objectives_event_objective",
                 table: "calendar_event_objectives",
                 columns: new[] { "calendar_event_id", "objective_id" },
@@ -80,44 +74,25 @@ namespace ONEVO.Infrastructure.Migrations
                 table: "calendar_event_objectives",
                 column: "objective_id");
 
-            foreach (var table in TenantTables)
-            {
-                migrationBuilder.Sql($@"
-                    ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;
-                    ALTER TABLE {table} FORCE ROW LEVEL SECURITY;
-                    DROP POLICY IF EXISTS tenant_isolation ON {table};
-                    CREATE POLICY tenant_isolation ON {table}
-                        USING (
-                            current_setting('app.tenant_context_mode', true) = 'admin'
-                            OR (
-                                current_setting('app.tenant_context_mode', true) = 'tenant'
-                                AND tenant_id::text = current_setting('app.current_tenant_id', true)
-                            )
-                        )
-                        WITH CHECK (
-                            current_setting('app.tenant_context_mode', true) = 'admin'
-                            OR (
-                                current_setting('app.tenant_context_mode', true) = 'tenant'
-                                AND tenant_id::text = current_setting('app.current_tenant_id', true)
-                            )
-                        );
-                ");
-            }
+            migrationBuilder.CreateIndex(
+                name: "ix_calendar_events_project_id",
+                table: "calendar_events",
+                column: "project_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_calendar_events_tenant_project_status",
+                table: "calendar_events",
+                columns: new[] { "tenant_id", "project_id", "status" });
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            foreach (var table in TenantTables)
-            {
-                migrationBuilder.Sql($@"
-                    DROP POLICY IF EXISTS tenant_isolation ON {table};
-                    ALTER TABLE {table} DISABLE ROW LEVEL SECURITY;
-                ");
-            }
+            migrationBuilder.DropTable(
+                name: "calendar_event_objectives");
 
-            migrationBuilder.DropTable(name: "calendar_event_objectives");
-            migrationBuilder.DropTable(name: "calendar_events");
+            migrationBuilder.DropTable(
+                name: "calendar_events");
         }
     }
 }
