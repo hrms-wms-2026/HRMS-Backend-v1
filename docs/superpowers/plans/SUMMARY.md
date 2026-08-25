@@ -50,6 +50,7 @@
 | `2026-08-20-work-management-tree-sprint-task-unified-view/` (6 parts, +7 in frontend repo) | `next/` | code-complete both repos (428/428 + 443/443 tests), manual browser pass pending |
 | `2026-08-21-work-management-cascading-objective-ownership/` (5 parts, backend-only) | `next/` | code-complete (469/469 tests, 27 handlers converted), manual browser pass pending |
 | `2026-08-21-work-management-project-scoped-task-status-and-category/` (4 parts, backend-only) | `next/` | pending (not started) |
+| `2026-08-21-leave-management/` (Parts 1-2 executed) | `next/` | Phase 0+1 and Phase 2 executed 2026-08-21; Phases 3-9 pending |
 
 See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all files in that folder (kept short here to avoid duplicating the same list twice).
 
