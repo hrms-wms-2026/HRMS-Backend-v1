@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using MediatR;
 using ONEVO.Api.Contracts.Attendance.Corrections;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.TimeAttendance.Commands.AttendanceCorrections;
 using ONEVO.Application.Features.TimeAttendance.Queries.AttendanceCorrections;
 
@@ -36,9 +37,10 @@ public sealed class AttendanceCorrectionsController(IMediator mediator) : Contro
     [HttpGet("my")]
     public async Task<IActionResult> My(
         [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] string? status,
+        [FromQuery] PagedRequest paging,
         CancellationToken ct = default)
     {
-        var result = await mediator.Send(new ListMyAttendanceCorrectionsQuery(from, to, status), ct);
+        var result = await mediator.Send(new ListMyAttendanceCorrectionsQuery(from, to, status, paging), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
