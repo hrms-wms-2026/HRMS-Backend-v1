@@ -12,6 +12,7 @@ using ONEVO.Application.Features.DevPlatform.Billing.OutboxHandlers;
 using ONEVO.Application.Features.OrgStructure.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Queries.GetBulkOnboardingTemplate;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Helpers;
+using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 
 
 namespace ONEVO.Application;
@@ -59,6 +60,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler, EmployeeOnboardingInviteEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, PositionChangeApprovalRequestEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, InvoiceEmailOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
         services.AddScoped<GitHubUserIntegrationAvailability>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 

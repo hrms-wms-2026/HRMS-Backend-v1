@@ -10,6 +10,7 @@ public class LeavePolicy : ITenantOwnedEntity
     public string? Description { get; set; }
     public string? Country { get; set; }
     public string? JobLevel { get; set; }
+    public string AccrualMethod { get; set; } = Common.LeaveAccrualMethods.Annual;
     public string AccrualStart { get; set; } = Common.LeaveAccrualStarts.Immediately;
     public int? AccrualAfterNMonths { get; set; }
     public string ProrationMethod { get; set; } = Common.LeaveProrationMethods.CalendarDays;

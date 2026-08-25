@@ -1,8 +1,11 @@
 using Moq;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.Storage.File.DTOs.Responses;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.Commands.CreateProject;
@@ -15,7 +18,10 @@ using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.ReleaseCalendar.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Domain.Lookups;
 using Xunit;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
@@ -35,7 +41,16 @@ public class CreateProjectCommandHandlerTests
         new DateOnly(2026, 1, 1), new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 15),
         "#2563EB", 10m, 40m, labels ?? [], null, null, null);
 
-    private (CreateProjectCommandHandler Handler, Mock<IProjectRepository> Projects, Mock<ITaskStatusRepository> TaskStatuses) BuildHandler(
+    private sealed record HandlerSetup(
+        CreateProjectCommandHandler Handler,
+        Mock<IProjectRepository> Projects,
+        Mock<ITaskStatusRepository> TaskStatuses,
+        Mock<ITaskCategoryRepository> TaskCategories,
+        Mock<IReleaseCalendarRepository> ReleaseCalendar,
+        Mock<IEntityAssetRepository> EntityAssets,
+        Mock<IFileStorageService> FileStorage);
+
+    private HandlerSetup BuildHandler(
         bool categoryExists = true, bool identifierExists = false, int employmentStatusId = EmploymentStatusIds.Active)
     {
         var currentUser = new Mock<ICurrentUser>();
@@ -57,6 +72,7 @@ public class CreateProjectCommandHandlerTests
         var releaseCalendar = new Mock<IReleaseCalendarRepository>();
         var labels = new Mock<ILabelRepository>();
         var taskStatuses = new Mock<ITaskStatusRepository>();
+        var taskCategories = new Mock<ITaskCategoryRepository>();
         var entityAssets = new Mock<IEntityAssetRepository>();
         var employees = new Mock<IEmployeeRepository>();
         employees.Setup(x => x.GetByUserIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
@@ -73,16 +89,16 @@ public class CreateProjectCommandHandlerTests
 
         var handler = new CreateProjectCommandHandler(
             currentUser.Object, categories.Object, projects.Object, objectives.Object, members.Object,
-            versions.Object, releaseCalendar.Object, labels.Object, taskStatuses.Object, entityAssets.Object, employees.Object,
+            versions.Object, releaseCalendar.Object, labels.Object, taskStatuses.Object, taskCategories.Object, entityAssets.Object, employees.Object,
             legalEntities.Object, auditLogs.Object, fileStorage.Object, unitOfWork.Object);
 
-        return (handler, projects, taskStatuses);
+        return new HandlerSetup(handler, projects, taskStatuses, taskCategories, releaseCalendar, entityAssets, fileStorage);
     }
 
     [Fact]
     public async Task Handle_ValidRequest_ReturnsSuccessWithDefaultObjectiveMembershipVersionAndReminder()
     {
-        var (handler, _, _) = BuildHandler();
+        var handler = BuildHandler().Handler;
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -97,31 +113,43 @@ public class CreateProjectCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ValidRequest_SeedsProjectAndDefaultObjectiveTaskStatuses()
+    public async Task Handle_ValidRequest_SeedsOnlyProjectTemplateTaskStatuses()
     {
-        var (handler, _, taskStatuses) = BuildHandler();
+        var setup = BuildHandler();
 
-        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+        var result = await setup.Handler.Handle(ValidCommand(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        var defaultObjectiveId = result.Value!.DefaultObjective.Id;
-        taskStatuses.Verify(x => x.AddRangeAsync(
+        setup.TaskStatuses.Verify(x => x.AddRangeAsync(
             It.Is<IReadOnlyList<TaskStatusEntity>>(rows =>
                 rows.Count == 4 && rows.All(r => r.ObjectiveId == null)),
             It.IsAny<CancellationToken>()), Times.Once);
-        taskStatuses.Verify(x => x.AddRangeAsync(
-            It.Is<IReadOnlyList<TaskStatusEntity>>(rows =>
-                rows.Count == 4 && rows.All(r => r.ObjectiveId == defaultObjectiveId)),
-            It.IsAny<CancellationToken>()), Times.Once);
-        taskStatuses.Verify(x => x.AddRangeAsync(
+        setup.TaskStatuses.Verify(x => x.AddRangeAsync(
             It.IsAny<IReadOnlyList<TaskStatusEntity>>(),
-            It.IsAny<CancellationToken>()), Times.Exactly(2));
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_SeedsFourDefaultTaskCategories()
+    {
+        var setup = BuildHandler();
+
+        var result = await setup.Handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        setup.TaskCategories.Verify(x => x.AddRangeAsync(
+            It.Is<IReadOnlyList<TaskCategory>>(rows =>
+                rows.Count == 4
+                && rows.Select(r => r.Name).SequenceEqual(new[] { "task", "bug", "story", "feature" })
+                && rows.Select(r => r.DisplayOrder).SequenceEqual(new[] { 0, 1, 2, 3 })
+                && rows.All(r => r.ProjectId == result.Value!.Project.Id)),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task Handle_DuplicateIdentifier_ReturnsConflict()
     {
-        var (handler, _, _) = BuildHandler(identifierExists: true);
+        var handler = BuildHandler(identifierExists: true).Handler;
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -132,7 +160,7 @@ public class CreateProjectCommandHandlerTests
     [Fact]
     public async Task Handle_CategoryNotFoundForTenant_ReturnsNotFound()
     {
-        var (handler, _, _) = BuildHandler(categoryExists: false);
+        var handler = BuildHandler(categoryExists: false).Handler;
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -143,19 +171,20 @@ public class CreateProjectCommandHandlerTests
     [Fact]
     public async Task Handle_AllocatedHoursExceedActualHours_StillSucceeds_OverAllocationIsWarningOnly()
     {
-        var (handler, _, _) = BuildHandler();
+        var handler = BuildHandler().Handler;
         var command = ValidCommand() with { ActualHours = 5m, DefaultObjectiveAllocatedHours = 999m };
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(999m, result.Value!.DefaultObjective.AllocatedHours);
+        Assert.Equal(999m, result.Value!.Project.AllocatedHours);
     }
 
     [Fact]
     public async Task Handle_DuplicateLabelNamesInRequest_ReturnsValidationConflict()
     {
-        var (handler, _, _) = BuildHandler();
+        var handler = BuildHandler().Handler;
         var command = ValidCommand([new CreateProjectLabelInput("Backend", "#111111"), new CreateProjectLabelInput("backend", "#222222")]);
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -165,9 +194,146 @@ public class CreateProjectCommandHandlerTests
     }
 
     [Fact]
+    public void CreateProjectCommand_AllowsOptionalReleaseDateAndBannerFields()
+    {
+        using var banner = new MemoryStream();
+        var command = ValidCommand() with
+        {
+            ReleaseDate = null,
+            BannerFileName = "banner.png",
+            BannerContentType = "image/png",
+            BannerContent = banner
+        };
+
+        Assert.Null(command.ReleaseDate);
+        Assert.Equal("banner.png", command.BannerFileName);
+        Assert.Equal("image/png", command.BannerContentType);
+        Assert.Same(banner, command.BannerContent);
+    }
+
+    [Fact]
+    public async Task Handle_OmittedReleaseDate_DefaultsScheduledDateToTargetDate()
+    {
+        var setup = BuildHandler();
+        ReleaseCalendarEntry? captured = null;
+        setup.ReleaseCalendar
+            .Setup(x => x.AddAsync(It.IsAny<ReleaseCalendarEntry>(), It.IsAny<CancellationToken>()))
+            .Callback<ReleaseCalendarEntry, CancellationToken>((entry, _) => captured = entry)
+            .Returns(Task.CompletedTask);
+
+        var command = ValidCommand() with { ReleaseDate = null };
+        var result = await setup.Handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(captured);
+        Assert.Equal(command.TargetDate, captured!.ScheduledDate);
+        Assert.Equal(command.TargetDate, result.Value!.ReleaseReminder.ScheduledDate);
+    }
+
+    private static FileRecordDto MakeFile(string name) => new(
+        Guid.NewGuid(), TenantId, $"key/{name}", name, name, "image/png", 10, "abc", "completed", DateTimeOffset.UtcNow);
+
+    private static void CaptureAssets(HandlerSetup setup, List<EntityAsset> assets)
+    {
+        setup.EntityAssets
+            .Setup(x => x.AddAsync(It.IsAny<EntityAsset>(), It.IsAny<CancellationToken>()))
+            .Callback<EntityAsset, CancellationToken>((asset, _) => assets.Add(asset))
+            .Returns(Task.CompletedTask);
+    }
+
+    [Fact]
+    public async Task Handle_LogoAndBannerUploaded_PersistsBothEntityAssetsWithDistinctPurposes()
+    {
+        var setup = BuildHandler();
+        var assets = new List<EntityAsset>();
+        CaptureAssets(setup, assets);
+        using var logo = new MemoryStream(new byte[] { 1 });
+        using var banner = new MemoryStream(new byte[] { 2 });
+        setup.FileStorage
+            .Setup(x => x.UploadAsync(TenantId, UserId, "logo.png", "image/png",
+                UploadPurposeCatalog.ProjectCover, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(MakeFile("logo.png")));
+        setup.FileStorage
+            .Setup(x => x.UploadAsync(TenantId, UserId, "banner.png", "image/png",
+                UploadPurposeCatalog.ProjectBanner, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(MakeFile("banner.png")));
+
+        var command = ValidCommand() with
+        {
+            LogoFileName = "logo.png", LogoContentType = "image/png", LogoContent = logo,
+            BannerFileName = "banner.png", BannerContentType = "image/png", BannerContent = banner
+        };
+
+        var result = await setup.Handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Value!.Logo);
+        Assert.Equal("logo.png", result.Value.Logo.OriginalFileName);
+        Assert.NotNull(result.Value.Banner);
+        Assert.Equal("banner.png", result.Value.Banner.OriginalFileName);
+        Assert.Equal(2, assets.Count);
+        Assert.Contains(assets, a => a.AssetPurpose == UploadPurposeCatalog.ProjectCover && a.OwnerId == result.Value!.Project.Id && a.IsPrimary);
+        Assert.Contains(assets, a => a.AssetPurpose == UploadPurposeCatalog.ProjectBanner && a.OwnerId == result.Value!.Project.Id && a.IsPrimary);
+        Assert.Equal(2, assets.Select(a => a.FileRecordId).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task Handle_BannerOnly_PersistsBannerAssetAndNoLogoAsset()
+    {
+        var setup = BuildHandler();
+        var assets = new List<EntityAsset>();
+        CaptureAssets(setup, assets);
+        using var banner = new MemoryStream(new byte[] { 2 });
+        setup.FileStorage
+            .Setup(x => x.UploadAsync(TenantId, UserId, "banner.png", "image/png",
+                UploadPurposeCatalog.ProjectBanner, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(MakeFile("banner.png")));
+
+        var command = ValidCommand() with
+        {
+            BannerFileName = "banner.png", BannerContentType = "image/png", BannerContent = banner
+        };
+
+        var result = await setup.Handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.Logo);
+        Assert.NotNull(result.Value.Banner);
+        Assert.Equal("banner.png", result.Value.Banner.OriginalFileName);
+        Assert.Single(assets);
+        Assert.Equal(UploadPurposeCatalog.ProjectBanner, assets[0].AssetPurpose);
+        Assert.Equal(result.Value!.Project.Id, assets[0].OwnerId);
+        setup.FileStorage.Verify(x => x.UploadAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            UploadPurposeCatalog.ProjectCover, It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_BannerUploadFailure_DoesNotCreateProject()
+    {
+        var setup = BuildHandler();
+        using var banner = new MemoryStream(new byte[] { 2 });
+        setup.FileStorage
+            .Setup(x => x.UploadAsync(TenantId, UserId, "banner.png", "image/png",
+                UploadPurposeCatalog.ProjectBanner, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Failure("Invalid content type.", 400));
+
+        var command = ValidCommand() with
+        {
+            BannerFileName = "banner.png", BannerContentType = "image/png", BannerContent = banner
+        };
+
+        var result = await setup.Handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        setup.Projects.Verify(x => x.AddAsync(It.IsAny<Project>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Handle_CallerEmployeeNotActive_ReturnsForbidden()
     {
-        var (handler, _, _) = BuildHandler(employmentStatusId: 4); // 4 = terminated, per EmploymentStatusIds precedent
+        var handler = BuildHandler(employmentStatusId: 4).Handler; // 4 = terminated, per EmploymentStatusIds precedent
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 

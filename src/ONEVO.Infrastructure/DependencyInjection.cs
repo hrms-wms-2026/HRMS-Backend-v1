@@ -173,8 +173,7 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Leave.Type.RepositoryInterfaces.ILeaveTypeRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Type.EfLeaveTypeRepository>();
-        services.AddScoped<IClockInPolicyRepository, EfClockInPolicyRepository>();
-        services.AddScoped<IAttendanceReadRepository, EfAttendanceReadRepository>();
+
         services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IAttendanceCorrectionRepository,
             ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceCorrectionRepository>();
@@ -182,6 +181,11 @@ public static class DependencyInjection
             ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestReadRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Request.EfLeaveRequestReadRepository>();
 
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces.ILeavePolicyRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Policy.EfLeavePolicyRepository>();
+        services.AddScoped<IClockInPolicyRepository, EfClockInPolicyRepository>();
+        services.AddScoped<IAttendanceReadRepository, EfAttendanceReadRepository>();
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
         services.AddScoped<
@@ -231,6 +235,8 @@ public static class DependencyInjection
         services.AddScoped<IObjectiveRepository>(sp => sp.GetRequiredService<EfObjectiveRepository>());
         services.AddScoped<EfTaskStatusRepository>();
         services.AddScoped<ITaskStatusRepository>(sp => sp.GetRequiredService<EfTaskStatusRepository>());
+        services.AddScoped<EfTaskCategoryRepository>();
+        services.AddScoped<ITaskCategoryRepository>(sp => sp.GetRequiredService<EfTaskCategoryRepository>());
         services.AddScoped<EfWorkTaskRepository>();
         services.AddScoped<IWorkTaskRepository>(sp => sp.GetRequiredService<EfWorkTaskRepository>());
         services.AddScoped<EfSprintRepository>();

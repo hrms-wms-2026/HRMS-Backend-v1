@@ -10,6 +10,10 @@ Per user request, `finished/` is further split into one subfolder per completion
 
 For the 16 files with no date in their filename (the `*_REPORT.md`/`*_AUDIT_PLAN.md` ones), the date was determined from a `**Date:**` header where present, or otherwise inferred from content (cross-references to sibling Part reports, migration filenames, or matching plan files) — marked "(inferred)" below where not explicitly stated in the file itself.
 
+## 2026-08-21/
+
+- `2026-08-20-work-management-project-page-redesign/` (3 parts) — Projects list/create redesign: list view + explanation card + 4-step create wizard, project-level membership via the existing Default Objective (no schema migration), a new Banner image upload distinct from Logo, and the first two Outbox-routed notifications (`work_project_member_invited`/`work_project_member_accepted`). Backend shipped via Cursor (417/417 WorkManagement tests), frontend shipped via Cursor in the sibling repo (394/394 Work module tests). User completed a full manual browser test 2026-08-21 and confirmed it's clean ("perfect, OK"). Design: `specs/finished/2026-08-21/2026-08-20-work-management-project-page-redesign-design.md`.
+
 ## Status note
 
 All 42 files from the 2026-08-06 batch move are treated as `finished` by default (dated plans with no open-task markers, and `*_REPORT.md`/`*_AUDIT_PLAN.md` files, which are inherently point-in-time and already acted on). This is a filename/convention-based classification done during the move, not a per-file content re-verification — if any of these turns out to actually be incomplete, flag it and it should move to `plans/next/` with status `pending` and a note explaining what's left. The 43rd and 44th files (both in `2026-08-08/`) are different: each was individually verified task-by-task (build + unit tests + inline diff review) rather than batch-classified, per their own entries below.

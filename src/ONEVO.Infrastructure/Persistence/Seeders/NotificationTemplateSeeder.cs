@@ -107,6 +107,15 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "attendance_correction_request_cancelled",
                 InAppTitleTemplate = "Attendance correction cancelled",
                 InAppBodyTemplate = "Your attendance correction request was cancelled."
+                Id = Guid.NewGuid(), Code = "work_project_member_invited",
+                InAppTitleTemplate = "You've been added to a project",
+                InAppBodyTemplate = "{{inviterName}} invited you to join {{projectName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_project_member_accepted",
+                InAppTitleTemplate = "Invitation accepted",
+                InAppBodyTemplate = "{{accepterName}} accepted your invitation to join {{projectName}}."
             }
 
         };
