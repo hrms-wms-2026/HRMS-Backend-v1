@@ -131,6 +131,18 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "leave_request_partially_cancelled",
                 InAppTitleTemplate = "Leave partially cancelled",
                 InAppBodyTemplate = "{{leaveTypeName}} from {{effectiveDate}} to {{endDate}} was cancelled. {{restoredDays}} days restored."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_project_member_invited",
+                InAppTitleTemplate = "You've been added to a project",
+                InAppBodyTemplate = "{{inviterName}} invited you to join {{projectName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_project_member_accepted",
+                InAppTitleTemplate = "Invitation accepted",
+                InAppBodyTemplate = "{{accepterName}} accepted your invitation to join {{projectName}}."
             }
         };
 

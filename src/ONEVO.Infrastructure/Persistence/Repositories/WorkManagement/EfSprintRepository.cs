@@ -28,7 +28,7 @@ public class EfSprintRepository : ISprintRepository
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Sprint>> GetByStatusAsync(string status, CancellationToken ct = default)
-        => await _db.Sprints.Where(s => s.Status == status).ToListAsync(ct);
+        => await _db.Sprints.Where(s => s.Status == status && !s.IsManuallyOverridden).ToListAsync(ct);
 
     public void Update(Sprint sprint) => _db.Sprints.Update(sprint);
 }

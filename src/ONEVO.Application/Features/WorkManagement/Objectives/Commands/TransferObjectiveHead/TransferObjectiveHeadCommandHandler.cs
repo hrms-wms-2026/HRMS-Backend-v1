@@ -67,7 +67,7 @@ public class TransferObjectiveHeadCommandHandler : IRequestHandler<TransferObjec
         if (objective.IsAchieved)
             return Result<TransferOutcomeResponse>.Failure("An achieved milestone's head cannot be transferred.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<TransferOutcomeResponse>.Forbidden("Only this milestone's head can transfer it.");
 
         var newHeadAssignee = await _membership.GetActiveAssigneeAsync(tenantId, request.NewHeadEmployeeId, ct);

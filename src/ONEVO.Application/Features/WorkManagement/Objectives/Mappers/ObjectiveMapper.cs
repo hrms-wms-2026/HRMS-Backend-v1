@@ -19,9 +19,10 @@ public static class ObjectiveMapper
     private static string? ResolveName(Guid? employeeId, IReadOnlyDictionary<Guid, string>? namesByEmployeeId)
         => employeeId.HasValue && namesByEmployeeId is not null && namesByEmployeeId.TryGetValue(employeeId.Value, out var name) ? name : null;
 
-    public static ObjectiveTreeItemResponse ToTreeItem(Objective objective) => new(
+    public static ObjectiveTreeItemResponse ToTreeItem(Objective objective, bool isOwner = false, string? ownerName = null) => new(
         objective.Id, objective.ParentObjectiveId, objective.IsDefault, objective.Title, objective.OwnerId,
-        objective.StartDate, objective.EndDate, objective.AllocatedHours, objective.CompletedHours, objective.IsActive, objective.IsAchieved);
+        objective.StartDate, objective.EndDate, objective.AllocatedHours, objective.CompletedHours, objective.IsActive, objective.IsAchieved,
+        objective.Progress, ownerName, isOwner);
 
     public static ObjectiveSubtreeNodeResponse ToSubtreeNode(
         Objective objective, ILookup<Guid, Objective> childrenByParent,

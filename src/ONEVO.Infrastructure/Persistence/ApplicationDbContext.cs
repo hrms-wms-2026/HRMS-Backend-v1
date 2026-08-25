@@ -278,6 +278,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ReleaseCalendarEntry> ReleaseCalendarEntries => Set<ReleaseCalendarEntry>();
     public DbSet<Label> Labels => Set<Label>();
     public DbSet<TaskStatusEntity> TaskStatuses => Set<TaskStatusEntity>();
+    public DbSet<TaskCategory> TaskCategories => Set<TaskCategory>();
     public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
     public DbSet<Sprint> Sprints => Set<Sprint>();
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();

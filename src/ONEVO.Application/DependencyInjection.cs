@@ -13,6 +13,7 @@ using ONEVO.Application.Features.OrgStructure.OutboxHandlers;
 using ONEVO.Application.Features.Leave.Approval.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Queries.GetBulkOnboardingTemplate;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Helpers;
+using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 
 
 namespace ONEVO.Application;
@@ -66,6 +67,7 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler>(_ =>
             new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveInformationRequested));
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Leave.Cancellation.Outbox.NoOpLeaveCancellationSideEffectOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
         services.AddScoped<GitHubUserIntegrationAvailability>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 

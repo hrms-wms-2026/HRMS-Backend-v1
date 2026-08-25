@@ -12,7 +12,7 @@ public class WorkTaskConfigurationTests
         {
             Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), ProjectId = Guid.NewGuid(),
             ObjectiveId = Guid.NewGuid(), ShortId = "PRJ-1", Title = "Do the thing",
-            TaskType = WorkTaskTypes.Task, StatusId = Guid.NewGuid(), Priority = WorkTaskPriorities.Medium,
+            CategoryId = Guid.NewGuid(), StatusId = Guid.NewGuid(), Priority = WorkTaskPriorities.Medium,
             CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow
         };
 

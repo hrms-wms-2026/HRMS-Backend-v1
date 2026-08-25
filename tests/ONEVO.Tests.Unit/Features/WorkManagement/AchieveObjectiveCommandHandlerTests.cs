@@ -36,7 +36,7 @@ public class AchieveObjectiveCommandHandlerTests
 
     private (AchieveObjectiveCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IObjectiveChangeRequestRepository> Requests, Mock<IMilestoneMembershipCoordinator> Membership) BuildHandler(
         Objective? objective, List<Objective>? unachievedChildren = null, bool hasPending = false, Guid? callerId = null,
-        IReadOnlyList<Sprint>? sprints = null)
+        IReadOnlyList<Sprint>? sprints = null, bool? callerIsEffectiveManager = null)
     {
         var resolvedCallerUserId = callerId ?? HeadUserId;
         var resolvedCallerEmployeeId = resolvedCallerUserId == OtherUserId ? OtherEmployeeId : HeadEmployeeId;
@@ -60,6 +60,12 @@ public class AchieveObjectiveCommandHandlerTests
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.HasOtherActiveAccessAsync(TenantId, ProjectId, HeadEmployeeId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
+        // separately in MilestoneMembershipCoordinatorTests).
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (objective is not null && objective.OwnerId == resolvedCallerEmployeeId));
 
         var sprintRepo = new Mock<ISprintRepository>();
         sprintRepo.Setup(x => x.GetByObjectiveIdAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
@@ -142,6 +148,24 @@ public class AchieveObjectiveCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsActiveMemberOfAncestorObjective_AppliesImmediately()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
+        // this only proves the handler defers to its answer instead of the direct OwnerId check.
+        var (handler, objectives, requests, _) = BuildHandler(
+            SubObjective(createdById: OtherUserId), callerId: OtherUserId, callerIsEffectiveManager: true);
+
+        var result = await handler.Handle(new AchieveObjectiveCommand(ObjectiveId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.Applied);
+        objectives.Verify(x => x.Update(It.Is<Objective>(o => o.IsAchieved)), Times.Once);
+        requests.Verify(x => x.AddAsync(It.IsAny<ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

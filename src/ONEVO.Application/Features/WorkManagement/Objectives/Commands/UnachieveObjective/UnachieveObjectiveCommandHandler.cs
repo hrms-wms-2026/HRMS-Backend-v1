@@ -57,7 +57,7 @@ public class UnachieveObjectiveCommandHandler : IRequestHandler<UnachieveObjecti
         if (!objective.IsAchieved)
             return Result<ObjectiveChangeOutcomeResponse>.Conflict("Objective is not achieved.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<ObjectiveChangeOutcomeResponse>.Forbidden("Only this milestone's head can un-achieve it.");
 
         if (objective.CreatedById == userId)

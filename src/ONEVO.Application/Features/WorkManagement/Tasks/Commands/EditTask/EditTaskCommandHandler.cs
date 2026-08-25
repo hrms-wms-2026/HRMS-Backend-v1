@@ -75,7 +75,7 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
 
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
-                task.TaskType, task.StatusId, task.Priority, task.StoryPoints,
+                task.CategoryId, task.StatusId, task.Priority, task.StoryPoints,
                 task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId));
         }, ct);
     }

@@ -25,12 +25,13 @@ public class MoveTaskStatusCommandHandlerTests
     private static readonly Guid OutsiderEmployeeId = Guid.NewGuid();
     private static readonly Guid TaskId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
+    private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid OldStatusId = Guid.NewGuid();
     private static readonly Guid NewStatusId = Guid.NewGuid();
 
     private (MoveTaskStatusCommandHandler Handler, Objective Objective, WorkTask Task, Mock<ITaskStatusRepository> Statuses) Build(
         Guid callerEmployeeId, bool callerIsMember, TaskStatusEntity newStatus, decimal? estimatedHours = 8m,
-        bool preserveNullStatusObjectiveId = false, Sprint? sprint = null)
+        bool preserveNullStatusObjectiveId = false, Sprint? sprint = null, bool? callerIsEffectiveManager = null)
     {
         if (!preserveNullStatusObjectiveId && newStatus.ObjectiveId is null)
             newStatus.ObjectiveId = ObjectiveId;
@@ -49,6 +50,7 @@ public class MoveTaskStatusCommandHandlerTests
             Id = TaskId,
             TenantId = TenantId,
             ObjectiveId = ObjectiveId,
+            ProjectId = ProjectId,
             Title = "A",
             ShortId = "T-1",
             StatusId = OldStatusId,
@@ -92,6 +94,12 @@ public class MoveTaskStatusCommandHandlerTests
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.IsActiveMemberAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerIsMember);
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
+        // separately in MilestoneMembershipCoordinatorTests).
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (callerEmployeeId == OwnerEmployeeId));
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
@@ -119,14 +127,14 @@ public class MoveTaskStatusCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_TargetStatusBelongsToDifferentObjective_ReturnsNotFoundWithoutMovingTask()
+    public async Task Handle_TargetStatusBelongsToDifferentProject_ReturnsNotFoundWithoutMovingTask()
     {
         var newStatus = new TaskStatusEntity
         {
             Id = NewStatusId,
             TenantId = TenantId,
-            ObjectiveId = Guid.NewGuid(),
-            Name = "Other Objective",
+            ProjectId = Guid.NewGuid(),
+            Name = "Other Project",
             MarksTaskComplete = false,
             Visibility = TaskStatusVisibilities.Public,
             CreatedAt = DateTimeOffset.UtcNow
@@ -141,13 +149,14 @@ public class MoveTaskStatusCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_TargetStatusIsProjectLevel_ReturnsNotFoundWithoutMovingTask()
+    public async Task Handle_TargetStatusIsProjectLevelSameProject_Succeeds()
     {
         var newStatus = new TaskStatusEntity
         {
             Id = NewStatusId,
             TenantId = TenantId,
             ObjectiveId = null,
+            ProjectId = ProjectId,
             Name = "Project Template",
             MarksTaskComplete = false,
             Visibility = TaskStatusVisibilities.Public,
@@ -161,9 +170,8 @@ public class MoveTaskStatusCommandHandlerTests
 
         var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(404, result.StatusCode);
-        Assert.Equal(OldStatusId, task.StatusId);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(NewStatusId, task.StatusId);
     }
 
     [Fact]
@@ -173,6 +181,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "Done",
             MarksTaskComplete = true,
             Visibility = TaskStatusVisibilities.Private,
@@ -193,6 +202,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "In Process",
             MarksTaskComplete = false,
             Visibility = TaskStatusVisibilities.Public,
@@ -212,6 +222,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "Done",
             MarksTaskComplete = true,
             Visibility = TaskStatusVisibilities.Private,
@@ -233,6 +244,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "In Process",
             MarksTaskComplete = false,
             Visibility = TaskStatusVisibilities.Public,
@@ -247,12 +259,41 @@ public class MoveTaskStatusCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_PlainMemberOfParentObjective_MovingIntoPrivateStatus_Succeeds()
+    {
+        // Caller is not this objective's own OwnerId and is not an active member of the exact
+        // objective either - but IsEffectiveManagerAsync reports them as an effective manager via
+        // an ancestor (parent) membership. This must bypass the whole isMember/Private fallback
+        // block, not just the Private check within it - the coordinator's own ancestor-walk logic
+        // is unit-tested separately in MilestoneMembershipCoordinatorTests.
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId,
+            TenantId = TenantId,
+            ProjectId = ProjectId,
+            Name = "Done",
+            MarksTaskComplete = true,
+            Visibility = TaskStatusVisibilities.Private,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var parentMemberId = Guid.NewGuid();
+        var (handler, _, task, _) = Build(
+            parentMemberId, callerIsMember: false, newStatus, callerIsEffectiveManager: true);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(NewStatusId, task.StatusId);
+    }
+
+    [Fact]
     public async Task Handle_MovingIntoCompleteStatus_RollsUpHoursOntoTaskAndObjective()
     {
         var newStatus = new TaskStatusEntity
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "Done",
             MarksTaskComplete = true,
             Visibility = TaskStatusVisibilities.Private,
@@ -279,6 +320,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "Done",
             MarksTaskComplete = true,
             Visibility = TaskStatusVisibilities.Private,
@@ -305,6 +347,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "In Process",
             MarksTaskComplete = false,
             Visibility = TaskStatusVisibilities.Public,
@@ -343,6 +386,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "Verified",
             MarksTaskComplete = true,
             Visibility = TaskStatusVisibilities.Private,
@@ -381,6 +425,7 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = NewStatusId,
             TenantId = TenantId,
+            ProjectId = ProjectId,
             Name = "In Process",
             MarksTaskComplete = false,
             Visibility = TaskStatusVisibilities.Public,

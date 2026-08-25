@@ -10004,6 +10004,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
 
+                    b.Property<bool>("IsManuallyOverridden")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_manually_overridden");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -10080,6 +10084,64 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_task_assignments_one_per_task_user");
 
                     b.ToTable("task_assignments", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("display_order");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_task_categories");
+
+                    b.HasIndex("TenantId", "ProjectId", "DisplayOrder")
+                        .HasDatabaseName("ix_task_categories_tenant_id_project_id_display_order");
+
+                    b.HasIndex("TenantId", "ProjectId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_task_categories_one_name_per_project");
+
+                    b.ToTable("task_categories", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCreationRequest", b =>
@@ -10326,6 +10388,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id");
+
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
@@ -10406,12 +10472,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("story_points");
 
-                    b.Property<string>("TaskType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("task_type");
-
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -10429,6 +10489,9 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_tasks");
 
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("ix_tasks_category_id");
+
                     b.HasIndex("SprintId")
                         .HasDatabaseName("ix_tasks_sprint_id");
 
@@ -10441,6 +10504,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "ObjectiveId", "StatusId")
                         .HasDatabaseName("ix_tasks_tenant_id_objective_id_status_id");
+
+                    b.HasIndex("TenantId", "ProjectId", "CategoryId")
+                        .HasDatabaseName("ix_tasks_tenant_id_project_id_category_id");
 
                     b.ToTable("tasks", (string)null);
                 });
@@ -12048,6 +12114,13 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.WorkTask", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCategory", null)
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tasks_task_categories_category_id");
+
                     b.HasOne("ONEVO.Domain.Features.WorkManagement.Sprints.Entities.Sprint", null)
                         .WithMany()
                         .HasForeignKey("SprintId")

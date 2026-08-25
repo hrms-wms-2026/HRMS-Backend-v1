@@ -65,7 +65,7 @@ Wrapper body on both success statuses (so clients can read `applied` / `pendingI
 | Status | Cause |
 |---|---|
 | `400` | `{id}` is the Default Objective, the milestone is achieved, or the new head isn't an active employee in this tenant |
-| `403` | Caller is not `{id}`'s current Head, or has no Employee record |
+| `403` | Caller is not an effective manager of `{id}` (its Head, an active member, or the Head/an active member of any ancestor Objective), or has no Employee record |
 | `404` | Objective doesn't exist in tenant, or is inactive |
 | `409` | A change request is already pending (RM path), or a leader invitation is already pending (no-RM path) |
 

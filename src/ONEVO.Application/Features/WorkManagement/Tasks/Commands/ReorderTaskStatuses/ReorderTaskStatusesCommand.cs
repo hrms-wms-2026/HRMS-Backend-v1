@@ -6,4 +6,4 @@ namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskSt
 
 public sealed record TaskStatusOrderUpdate(Guid StatusId, int DisplayOrder, string Visibility, bool MarksTaskComplete);
 
-public sealed record ReorderTaskStatusesCommand(Guid ObjectiveId, List<TaskStatusOrderUpdate> Updates) : IRequest<Result<IReadOnlyList<TaskStatusResponse>>>;
+public sealed record ReorderTaskStatusesCommand(Guid ProjectId, List<TaskStatusOrderUpdate> Updates) : IRequest<Result<IReadOnlyList<TaskStatusResponse>>>;
