@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Attendance.TimeTracking;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.TimeAttendance.Commands.ClockIn;
 using ONEVO.Application.Features.TimeAttendance.Commands.ClockOut;
 using ONEVO.Application.Features.TimeAttendance.Commands.EndBreak;
@@ -67,9 +68,10 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
     public async Task<IActionResult> History(
         [FromQuery] DateOnly from,
         [FromQuery] DateOnly to,
+        [FromQuery] PagedRequest paging,
         CancellationToken ct = default)
     {
-        var result = await mediator.Send(new GetMyAttendanceHistoryQuery(from, to), ct);
+        var result = await mediator.Send(new GetMyAttendanceHistoryQuery(from, to, paging), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
@@ -81,10 +83,11 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
         [FromQuery] DateOnly from,
         [FromQuery] DateOnly to,
         [FromQuery] Guid? employeeId,
+        [FromQuery] PagedRequest paging,
         CancellationToken ct = default)
     {
         var result = await mediator.Send(
-            new GetCoveredAttendanceHistoryQuery(from, to, employeeId), ct);
+            new GetCoveredAttendanceHistoryQuery(from, to, employeeId, paging), ct);
         return result.IsSuccess
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
