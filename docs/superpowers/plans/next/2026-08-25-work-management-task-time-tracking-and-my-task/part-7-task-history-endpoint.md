@@ -51,10 +51,13 @@ session's entry rather than appearing as a separate row.
 ```csharp
 namespace ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 
-public const string TaskHistoryEntryTypeEdit = "edit";
-public const string TaskHistoryEntryTypeStatusChange = "status_change";
-public const string TaskHistoryEntryTypeClockSession = "clock_session";
-public const string TaskHistoryEntryTypePercentageChange = "percentage_change";
+public static class TaskHistoryEntryTypes
+{
+    public const string Edit = "edit";
+    public const string StatusChange = "status_change";
+    public const string ClockSession = "clock_session";
+    public const string PercentageChange = "percentage_change";
+}
 
 public sealed record TaskHistoryEntryResponse(
     string Type, DateTimeOffset OccurredAt, Guid EmployeeId, string EmployeeName,
@@ -77,22 +80,8 @@ public sealed record TaskPercentageChangeEntryDetails(
 public sealed record TaskHistoryResponse(IReadOnlyList<TaskHistoryEntryResponse> Entries);
 ```
 
-**Fix the stray `namespace`/`public const` ordering above before saving** — top-level `const` fields must
-live inside a `static class`, not loose in the namespace. Wrap the 4 constants in:
-
-```csharp
-public static class TaskHistoryEntryTypes
-{
-    public const string Edit = "edit";
-    public const string StatusChange = "status_change";
-    public const string ClockSession = "clock_session";
-    public const string PercentageChange = "percentage_change";
-}
-```
-
-and reference them as `TaskHistoryEntryTypes.Edit` etc. in Task 2. (This deliberate error is left in the
-plan text above to make sure whoever implements this actually reads and compiles the code rather than
-copy-pasting blind — the corrected version is this note.)
+Reference the 4 type constants as `TaskHistoryEntryTypes.Edit`/`.StatusChange`/`.ClockSession`/
+`.PercentageChange` everywhere in Task 2 and Task 3 below — never the literal string.
 
 - [ ] **Step 2: Build to confirm the file compiles standalone**
 
