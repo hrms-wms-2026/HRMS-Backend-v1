@@ -4,9 +4,12 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 
 namespace ONEVO.Application.Features.TimeAttendance.Queries;
 
@@ -15,7 +18,10 @@ public sealed class AttendanceReadHandler(
     IEmployeeRepository employees,
     IAttendanceReadRepository attendance,
     IEmployeeAuthorityResolver authority,
-    IAttendanceTodayStateService todayState)
+    IAttendanceTodayStateService todayState,
+    ILeaveRequestReadRepository? leaveRequests = null,
+    ILegalEntityRepository? legalEntities = null,
+    IDateTimeProvider? dateTimeProvider = null)
     : IRequestHandler<GetAttendanceTodayQuery, Result<AttendanceTodayResponse>>,
       IRequestHandler<GetMyAttendanceHistoryQuery, Result<IReadOnlyList<AttendanceHistoryRow>>>,
       IRequestHandler<GetCoveredAttendanceHistoryQuery, Result<IReadOnlyList<AttendanceHistoryRow>>>
@@ -39,7 +45,7 @@ public sealed class AttendanceReadHandler(
         var records = await attendance.ListRecordsAsync(
             currentUser.TenantId, [employee.Id], query.From, query.To, ct);
         return Result<IReadOnlyList<AttendanceHistoryRow>>.Success(
-            await BuildRowsAsync(records, includeEmployee: false, employee.LegalEntityId, ct));
+            await BuildRowsAsync(records, includeEmployee: false, employee.LegalEntityId, employee.Id, ct));
     }
 
     public async Task<Result<IReadOnlyList<AttendanceHistoryRow>>> Handle(
@@ -80,13 +86,14 @@ public sealed class AttendanceReadHandler(
         var records = await attendance.ListRecordsAsync(
             currentUser.TenantId, employeeIds, query.From, query.To, ct);
         return Result<IReadOnlyList<AttendanceHistoryRow>>.Success(
-            await BuildRowsAsync(records, includeEmployee: true, actor.LegalEntityId, ct));
+            await BuildRowsAsync(records, includeEmployee: true, actor.LegalEntityId, actor.Id, ct));
     }
 
     private async Task<IReadOnlyList<AttendanceHistoryRow>> BuildRowsAsync(
-        IReadOnlyList<Domain.Features.TimeAttendance.Entities.AttendanceRecord> records,
+        IReadOnlyList<AttendanceRecord> records,
         bool includeEmployee,
         Guid? legalEntityId,
+        Guid currentEmployeeId,
         CancellationToken ct)
     {
         IReadOnlyDictionary<Guid, AttendanceHistoryEmployee> identities =
@@ -98,22 +105,106 @@ public sealed class AttendanceReadHandler(
                     ct)
                 : new Dictionary<Guid, AttendanceHistoryEmployee>();
 
-        return records.Select(record => new AttendanceHistoryRow(
-            record.Id,
-            record.Date,
-            includeEmployee && identities.TryGetValue(record.EmployeeId, out var identity) ? identity : null,
-            record.ActualStart,
-            record.ActualEnd,
-            record.ActualStart is not null && record.ActualEnd is null,
-            record.BreakMinutes,
-            record.WorkedMinutes,
-            NormalizeWorkMode(record.ExpectedWorkArea),
-            record.AttendanceSource,
-            record.Status,
-            CanViewDetails: true,
-            CanRequestCorrection: false,
-            CanRequestWorkAreaChange: false,
-            CanCorrect: false)).ToList();
+        if (records.Count == 0)
+            return Array.Empty<AttendanceHistoryRow>();
+
+        var employeeIds = records.Select(record => record.EmployeeId).Distinct().ToArray();
+        var from = records.Min(record => record.Date);
+        var to = records.Max(record => record.Date);
+        var approvedLeaveRequests = leaveRequests is null
+            ? Array.Empty<Domain.Features.Leave.Request.Entities.LeaveRequest>()
+            : await leaveRequests.ListApprovedCoveringAsync(
+                currentUser.TenantId, employeeIds, from, to, ct);
+        var leavesByEmployee = approvedLeaveRequests
+            .GroupBy(request => request.EmployeeId)
+            .ToDictionary(group => group.Key, group => group.ToArray());
+
+        var legalEntity = legalEntities is not null && legalEntityId is Guid entityIdForRead
+            ? await legalEntities.GetByIdForTenantAsync(currentUser.TenantId, entityIdForRead, ct)
+            : null;
+        var timezone = TryFindTimezone(legalEntity?.Timezone ?? records[0].ScheduleTimezone);
+        var localWindows = records
+            .Select(record => AttendanceTodayStateService.GetLocalDayWindow(record.Date, timezone))
+            .ToList();
+        var breakRecords = await attendance.ListBreaksForEmployeesAsync(
+            currentUser.TenantId,
+            employeeIds,
+            localWindows.Min(window => window.Start),
+            localWindows.Max(window => window.End),
+            ct) ?? Array.Empty<BreakRecord>();
+        var breaksByEmployee = breakRecords
+            .GroupBy(record => record.EmployeeId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<BreakRecord>)group.ToArray());
+
+        return records.Select(record =>
+        {
+            var hasApprovedLeave = leavesByEmployee.TryGetValue(record.EmployeeId, out var employeeLeaves)
+                && employeeLeaves.Any(request => request.StartDate <= record.Date
+                    && request.EndDate >= record.Date);
+            var schedule = new AttendanceSchedule(
+                record.ScheduledStart is not null && record.ScheduledEnd is not null
+                    ? "configured"
+                    : "not_configured",
+                record.ExpectedWorkingDay,
+                record.ScheduledStart,
+                record.ScheduledEnd,
+                record.RequiredWorkMinutes);
+            var dayWindow = AttendanceTodayStateService.GetLocalDayWindow(record.Date, timezone);
+            var breakUsedMinutes = breaksByEmployee.TryGetValue(record.EmployeeId, out var employeeBreaks)
+                ? AttendanceTodayStateService.CalculateBreakUsage(
+                    employeeBreaks, dayWindow, dayWindow.End)
+                : record.BreakMinutes;
+            var localNow = record.Date.ToDateTime(
+                record.ScheduledStart ?? TimeOnly.MinValue,
+                DateTimeKind.Unspecified);
+            var status = AttendanceDayStatusResolver.Resolve(
+                schedule,
+                "configured",
+                record,
+                hasApprovedLeave,
+                legalEntity?.BreakDurationMinutes,
+                breakUsedMinutes,
+                new DateTimeOffset(localNow, TimeSpan.Zero));
+
+            return new AttendanceHistoryRow(
+                record.Id,
+                record.Date,
+                includeEmployee && identities.TryGetValue(record.EmployeeId, out var identity) ? identity : null,
+                record.ActualStart,
+                record.ActualEnd,
+                record.ActualStart is not null && record.ActualEnd is null,
+                record.BreakMinutes,
+                record.WorkedMinutes,
+                NormalizeWorkMode(record.ExpectedWorkArea),
+                record.AttendanceSource,
+                status.Status,
+                CanViewDetails: true,
+                CanRequestCorrection: record.EmployeeId == currentEmployeeId
+                    && record.Date <= (dateTimeProvider?.Today ?? DateOnly.FromDateTime(DateTime.UtcNow)),
+                CanRequestWorkAreaChange: false,
+                CanCorrect: false,
+                status.StatusLabel,
+                status.AttentionType,
+                status.AttentionLabel,
+                status.AttentionSeverity,
+                status.BreakOverageMinutes,
+                status.IsOverBreakAllowance);
+        }).ToList();
+    }
+
+    private static TimeZoneInfo TryFindTimezone(string? timezone)
+    {
+        if (string.IsNullOrWhiteSpace(timezone))
+            return TimeZoneInfo.Utc;
+
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(timezone);
+        }
+        catch
+        {
+            return TimeZoneInfo.Utc;
+        }
     }
 
     private static string? NormalizeWorkMode(string? value)

@@ -63,21 +63,35 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         await using var assert = CreateContext();
         var codes = await assert.NotificationTemplates.Select(t => t.Code).ToListAsync();
 
-        Assert.Contains("work_task_creation_request_created", codes);
-        Assert.Contains("work_task_edit_request_decided", codes);
-        Assert.Contains("work_sprint_completed", codes);
-        Assert.Contains("work_sprint_incomplete", codes);
-        Assert.Contains("work_sprint_achieved", codes);
-        Assert.Contains("leave_request_approved", codes);
-        Assert.Contains("leave_request_rejected", codes);
-        Assert.Contains("leave_request_information_requested", codes);
-        Assert.Contains("leave_request_next_approval_required", codes);
-        Assert.Contains("leave_request_cancelled_by_employee", codes);
-        Assert.Contains("leave_request_cancelled_by_hr", codes);
-        Assert.Contains("leave_request_partially_cancelled", codes);
-        Assert.Contains("work_project_member_invited", codes);
-        Assert.Contains("work_project_member_accepted", codes);
-        Assert.Equal(17, codes.Count);
+        var expectedCodes = new[]
+        {
+            "work_task_creation_request_created",
+            "work_task_creation_request_decided",
+            "work_task_edit_request_decided",
+            "work_allocation_extend_request_created",
+            "work_allocation_extend_request_decided",
+            "work_sprint_completed",
+            "work_sprint_incomplete",
+            "work_sprint_achieved",
+            "leave_request_approved",
+            "leave_request_rejected",
+            "leave_request_information_requested",
+            "leave_request_next_approval_required",
+            "leave_request_cancelled_by_employee",
+            "leave_request_cancelled_by_hr",
+            "leave_request_partially_cancelled",
+            "attendance_correction_request_created",
+            "attendance_correction_request_decided",
+            "attendance_correction_request_cancelled",
+            "work_project_member_invited",
+            "work_project_member_accepted"
+        };
+
+        Assert.Equal(
+            expectedCodes.OrderBy(x => x),
+            codes.OrderBy(x => x));
+
+        Assert.Equal(codes.Count, codes.Distinct(StringComparer.Ordinal).Count());
     }
 
     private ApplicationDbContext CreateContext()
