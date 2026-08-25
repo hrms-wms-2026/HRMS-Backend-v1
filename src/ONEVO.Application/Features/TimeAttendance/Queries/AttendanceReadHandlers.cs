@@ -23,44 +23,47 @@ public sealed class AttendanceReadHandler(
     ILegalEntityRepository? legalEntities = null,
     IDateTimeProvider? dateTimeProvider = null)
     : IRequestHandler<GetAttendanceTodayQuery, Result<AttendanceTodayResponse>>,
-      IRequestHandler<GetMyAttendanceHistoryQuery, Result<IReadOnlyList<AttendanceHistoryRow>>>,
-      IRequestHandler<GetCoveredAttendanceHistoryQuery, Result<IReadOnlyList<AttendanceHistoryRow>>>
+      IRequestHandler<GetMyAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
+      IRequestHandler<GetCoveredAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>
 {
     private const string AttendanceReadPermission = "attendance:read";
 
     public Task<Result<AttendanceTodayResponse>> Handle(GetAttendanceTodayQuery _, CancellationToken ct)
         => todayState.GetTodayAsync(ct);
 
-    public async Task<Result<IReadOnlyList<AttendanceHistoryRow>>> Handle(
+    public async Task<Result<PagedResult<AttendanceHistoryRow>>> Handle(
         GetMyAttendanceHistoryQuery query, CancellationToken ct)
     {
         var validation = ValidateRange(query.From, query.To);
         if (validation is not null)
-            return Result<IReadOnlyList<AttendanceHistoryRow>>.Failure(validation);
+            return Result<PagedResult<AttendanceHistoryRow>>.Failure(validation);
 
         var employee = await employees.GetDefaultForUserAsync(currentUser.TenantId, currentUser.UserId, ct);
         if (employee is null)
-            return Result<IReadOnlyList<AttendanceHistoryRow>>.NotFound("Current employee record was not found.");
+            return Result<PagedResult<AttendanceHistoryRow>>.NotFound("Current employee record was not found.");
 
-        var records = await attendance.ListRecordsAsync(
-            currentUser.TenantId, [employee.Id], query.From, query.To, ct);
-        return Result<IReadOnlyList<AttendanceHistoryRow>>.Success(
-            await BuildRowsAsync(records, includeEmployee: false, employee.LegalEntityId, employee.Id, ct));
+        var pageNumber = query.Paging.PageNumber < 1 ? 1 : query.Paging.PageNumber;
+        var skip = (pageNumber - 1) * query.Paging.PageSize;
+        var (records, totalCount) = await attendance.ListRecordsAsync(
+            currentUser.TenantId, [employee.Id], query.From, query.To, skip, query.Paging.PageSize, ct);
+        var rows = await BuildRowsAsync(records, includeEmployee: false, employee.LegalEntityId, employee.Id, ct);
+        return Result<PagedResult<AttendanceHistoryRow>>.Success(
+            new PagedResult<AttendanceHistoryRow>(rows, pageNumber, query.Paging.PageSize, totalCount));
     }
 
-    public async Task<Result<IReadOnlyList<AttendanceHistoryRow>>> Handle(
+    public async Task<Result<PagedResult<AttendanceHistoryRow>>> Handle(
         GetCoveredAttendanceHistoryQuery query, CancellationToken ct)
     {
         if (!currentUser.IsAuthenticated || !currentUser.HasPermission(AttendanceReadPermission))
-            return Result<IReadOnlyList<AttendanceHistoryRow>>.Forbidden();
+            return Result<PagedResult<AttendanceHistoryRow>>.Forbidden();
 
         var validation = ValidateRange(query.From, query.To);
         if (validation is not null)
-            return Result<IReadOnlyList<AttendanceHistoryRow>>.Failure(validation);
+            return Result<PagedResult<AttendanceHistoryRow>>.Failure(validation);
 
         var actor = await employees.GetDefaultForUserAsync(currentUser.TenantId, currentUser.UserId, ct);
         if (actor?.LegalEntityId is null)
-            return Result<IReadOnlyList<AttendanceHistoryRow>>.NotFound("Current employee record was not found.");
+            return Result<PagedResult<AttendanceHistoryRow>>.NotFound("Current employee record was not found.");
 
         var visibility = await authority.ResolveVisibilityAsync(
             new EmployeeAuthorityVisibilityRequest(
@@ -74,7 +77,7 @@ public sealed class AttendanceReadHandler(
         if (query.EmployeeId is Guid requestedEmployeeId)
         {
             if (!visibility.EmployeeIds.Contains(requestedEmployeeId))
-                return Result<IReadOnlyList<AttendanceHistoryRow>>.Forbidden();
+                return Result<PagedResult<AttendanceHistoryRow>>.Forbidden();
 
             employeeIds = [requestedEmployeeId];
         }
@@ -83,10 +86,13 @@ public sealed class AttendanceReadHandler(
             employeeIds = visibility.EmployeeIds;
         }
 
-        var records = await attendance.ListRecordsAsync(
-            currentUser.TenantId, employeeIds, query.From, query.To, ct);
-        return Result<IReadOnlyList<AttendanceHistoryRow>>.Success(
-            await BuildRowsAsync(records, includeEmployee: true, actor.LegalEntityId, actor.Id, ct));
+        var pageNumber = query.Paging.PageNumber < 1 ? 1 : query.Paging.PageNumber;
+        var skip = (pageNumber - 1) * query.Paging.PageSize;
+        var (records, totalCount) = await attendance.ListRecordsAsync(
+            currentUser.TenantId, employeeIds, query.From, query.To, skip, query.Paging.PageSize, ct);
+        var rows = await BuildRowsAsync(records, includeEmployee: true, actor.LegalEntityId, actor.Id, ct);
+        return Result<PagedResult<AttendanceHistoryRow>>.Success(
+            new PagedResult<AttendanceHistoryRow>(rows, pageNumber, query.Paging.PageSize, totalCount));
     }
 
     private async Task<IReadOnlyList<AttendanceHistoryRow>> BuildRowsAsync(
