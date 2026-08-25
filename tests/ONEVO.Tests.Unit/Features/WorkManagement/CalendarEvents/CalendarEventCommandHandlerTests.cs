@@ -50,6 +50,53 @@ public sealed class CalendarEventCommandHandlerTests
     }
 
     [Fact]
+    public async Task Create_PersistsEventAndMembershipsForValidObjectives()
+    {
+        var (currentUser, identity) = UserContext();
+        var secondObjectiveId = Guid.NewGuid();
+        var projects = new Mock<IProjectRepository>();
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Project { Id = ProjectId, TenantId = TenantId, Name = "P", Identifier = "P" });
+        var objectives = new Mock<IObjectiveRepository>();
+        objectives.Setup(x => x.GetAllByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Objective> { Objective(), Objective(secondObjectiveId) });
+        var events = new Mock<ICalendarEventRepository>();
+        events.Setup(x => x.ListActiveMembershipsForObjectivesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ActiveCalendarEventMembership>());
+        CalendarEvent? added = null;
+        IReadOnlyCollection<CalendarEventObjective>? addedMemberships = null;
+        events.Setup(x => x.AddAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()))
+            .Callback<CalendarEvent, CancellationToken>((e, _) => added = e)
+            .Returns(Task.CompletedTask);
+        events.Setup(x => x.AddMembershipsAsync(It.IsAny<IReadOnlyCollection<CalendarEventObjective>>(), It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyCollection<CalendarEventObjective>, CancellationToken>((m, _) => addedMemberships = m)
+            .Returns(Task.CompletedTask);
+        var unitOfWork = new Mock<IUnitOfWork>();
+        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<bool>>>(), It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<bool>> op, CancellationToken ct) => op(ct));
+        unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        var handler = new CreateCalendarEventCommandHandler(
+            currentUser.Object, identity.Object, projects.Object, objectives.Object, events.Object, unitOfWork.Object);
+        var result = await handler.Handle(
+            new CreateCalendarEventCommand(ProjectId, "Launch", "#ABCDEF", new[] { ObjectiveId, secondObjectiveId }),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Launch", result.Value!.Name);
+        Assert.Equal("#ABCDEF", result.Value.Color);
+        Assert.Equal(CalendarEventStatuses.Active, result.Value.Status);
+        Assert.Equal(new[] { ObjectiveId, secondObjectiveId }, result.Value.ObjectiveIds);
+        Assert.NotNull(added);
+        Assert.Equal(ProjectId, added!.ProjectId);
+        Assert.Equal(EmployeeId, added.CreatedById);
+        Assert.NotNull(addedMemberships);
+        Assert.Equal(2, addedMemberships!.Count);
+        Assert.All(addedMemberships, m => Assert.Equal(added.Id, m.CalendarEventId));
+        Assert.Equal(new[] { ObjectiveId, secondObjectiveId }, addedMemberships.Select(m => m.ObjectiveId));
+    }
+
+    [Fact]
     public async Task Update_RejectsObjectiveAlreadyInDifferentActiveEvent()
     {
         var (currentUser, identity) = UserContext();
@@ -123,9 +170,9 @@ public sealed class CalendarEventCommandHandlerTests
         return (currentUser, identity);
     }
 
-    private static Objective Objective() => new()
+    private static Objective Objective(Guid? id = null) => new()
     {
-        Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, Title = "Objective", OwnerId = EmployeeId,
+        Id = id ?? ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, Title = "Objective", OwnerId = EmployeeId,
         StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 2, 1), AllocatedHours = 10m
     };
 }
