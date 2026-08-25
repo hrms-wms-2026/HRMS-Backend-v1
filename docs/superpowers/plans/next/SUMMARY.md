@@ -10,6 +10,15 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 
 ## Files
 
+- `2026-08-25-work-management-task-time-tracking-and-my-task/` — status: pending, not started. 9 parts:
+  Parts 1-2 data model/migration + edit-payload extension, Parts 3-5 wire `TaskEditLog`/
+  `TaskStatusChangeLog`/`TaskPercentageLog` into the existing `EditTaskCommand`/`ApproveTaskEditRequest`/
+  `MoveTaskStatus` handlers, Part 6 Clock-in/Push commands + reason notes, Part 7 merged history endpoint,
+  Part 8 `GetMyProjectTasksQuery`, Part 9 (added after Part 6, a gap found while writing the frontend plan)
+  exposes per-task open-session state on list endpoints. Design:
+  `../../specs/next/2026-08-25-work-management-task-time-tracking-and-my-task-design.md`. Companion:
+  frontend repo's same-named plan folder (6 parts). Combined execution/code-review prompts at
+  `Desktop/build/`.
 - `2026-08-12-milestone-to-module-display-rename.md` — status: pending, not started. Single-task plan: one new EF migration renaming `module_catalog.name` for `module_key = 'objectives_milestones'` from "Objectives & Milestones" to "Objectives & Modules". Design: `specs/next/2026-08-12-milestone-to-module-display-rename-design.md`. Companion to the frontend repo's same-named plan.
 - `2026-08-12-objective-viewmodel-owner-fields-fix.md` — status: pending, not started. Single-task plan: add `OwnerName`/`ReportingManagerName`/`IsOwner` (+ `IsAchieved`/`AchievedAt` on the subtree node) to `ObjectiveDetailViewModel`/`ObjectiveSubtreeNodeViewModel` and forward them in `ObjectiveViewModelMapper` — fields the Application layer already computes but the wire contract drops. Design: `specs/next/2026-08-12-objective-viewmodel-owner-fields-fix-design.md`. Blocks the frontend repo's `2026-08-12-milestone-tree-mockup-redesign.md`.
 - `2026-08-16-employee-detail-screen-backend.md` — status: pending, not started. Built from `specs/next/2026-08-16-employee-detail-screen-backend-design.md`. Sub-project 2 of 2 in the decomposed employee-detail/invitation/cross-entity feature request; depends on the finished `2026-08-16-multi-legal-entity-employment-foundation` plan.
