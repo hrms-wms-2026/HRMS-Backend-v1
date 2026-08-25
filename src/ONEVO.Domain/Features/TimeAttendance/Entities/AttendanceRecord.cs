@@ -19,6 +19,12 @@ public class AttendanceRecord : ITenantOwnedEntity
     public const string StatusPolicyNotConfigured = "policy_not_configured";
     public const string StatusNotClockedIn = "not_clocked_in";
     public const string StatusShortHours = "short_hours";
+    public const string StatusNormal = "normal";
+    public const string StatusOnTimeOff = "on_time_off";
+    public const string StatusWorkedDuringTimeOff = "worked_during_time_off";
+    public const string StatusNonWorkingDay = "non_working_day";
+    public const string StatusWorkedOnNonWorkingDay = "worked_on_non_working_day";
+    public const string StatusOverBreak = "over_break";
 
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }

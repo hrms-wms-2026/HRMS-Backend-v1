@@ -53,6 +53,34 @@ public static class AttendanceScheduleResolver
                 (int)(end.ToTimeSpan() - start.ToTimeSpan()).TotalMinutes));
     }
 
+    public static AttendanceScheduleResolution ResolveForDate(
+        LegalEntity legalEntity, DateOnly workDate, DateTimeOffset utcNow)
+    {
+        var configuredTimezone = !string.IsNullOrWhiteSpace(legalEntity.Timezone);
+        var timezone = configuredTimezone ? legalEntity.Timezone! : "UTC";
+        var timezoneResolved = TryFindTimezone(timezone, out var zone);
+        var localNow = TimeZoneInfo.ConvertTime(utcNow, zone);
+        var configuredStart = legalEntity.WorkStartTime;
+        var configuredEnd = legalEntity.WorkEndTime;
+        var scheduleConfigured = configuredTimezone
+            && timezoneResolved
+            && configuredStart is not null
+            && configuredEnd is not null
+            && configuredStart.Value < configuredEnd.Value;
+
+        var schedule = !scheduleConfigured
+            ? new AttendanceSchedule("not_configured", false, null, null, null)
+            : new AttendanceSchedule(
+                "configured",
+                ParseWorkingDays(legalEntity.StandardWorkingDays)
+                    .Contains(workDate.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)workDate.DayOfWeek),
+                configuredStart,
+                configuredEnd,
+                (int)(configuredEnd!.Value.ToTimeSpan() - configuredStart!.Value.ToTimeSpan()).TotalMinutes);
+
+        return new AttendanceScheduleResolution(timezone, zone, localNow, workDate, schedule);
+    }
+
     public static bool ShouldHaveClockedIn(
         AttendanceSchedule schedule,
         DateTimeOffset? actualStart,

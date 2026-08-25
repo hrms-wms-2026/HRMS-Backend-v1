@@ -67,8 +67,12 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("work_task_edit_request_decided", codes);
         Assert.Contains("work_sprint_completed", codes);
         Assert.Contains("work_sprint_incomplete", codes);
-        Assert.Contains("work_sprint_achieved", codes);
-        Assert.Equal(8, codes.Count);
+                Assert.Contains("work_sprint_achieved", codes);
+        Assert.Contains("attendance_correction_request_created", codes);
+        Assert.Contains("attendance_correction_request_decided", codes);
+        Assert.Contains("attendance_correction_request_cancelled", codes);
+        Assert.Equal(11, codes.Count);
+
     }
 
     private ApplicationDbContext CreateContext()

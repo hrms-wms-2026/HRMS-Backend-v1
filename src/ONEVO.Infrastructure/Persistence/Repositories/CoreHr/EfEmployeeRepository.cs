@@ -2,6 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
@@ -12,10 +15,17 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 public class EfEmployeeRepository : IEmployeeRepository
 {
     private readonly ApplicationDbContext _db;
+    private readonly IAttendanceReadRepository? _attendance;
+    private readonly ILeaveRequestReadRepository? _leaveRequests;
 
-    public EfEmployeeRepository(ApplicationDbContext db)
+    public EfEmployeeRepository(
+        ApplicationDbContext db,
+        IAttendanceReadRepository? attendance = null,
+        ILeaveRequestReadRepository? leaveRequests = null)
     {
         _db = db;
+        _attendance = attendance;
+        _leaveRequests = leaveRequests;
     }
 
     /// <summary>
@@ -117,8 +127,8 @@ public class EfEmployeeRepository : IEmployeeRepository
         if (attendanceOptions is not null)
         {
             // Attendance-sensitive ordering must happen over the complete filtered result before
-            // Skip/Take. The employee query, legal-entity schedule evaluation, and attendance
-            // lookup are all batched; there is intentionally no per-employee Today-state call.
+            // Skip/Take. All attendance, break, and approved-leave reads are batched; there is
+            // intentionally no per-employee Today-state call.
             var rows = await joined.ToListAsync(ct);
             var scheduleByEmployeeId = rows
                 .GroupBy(row => row.e.Id)
@@ -134,11 +144,10 @@ public class EfEmployeeRepository : IEmployeeRepository
                 .ToList();
             var employeeIds = scheduleByEmployeeId.Keys.ToArray();
             var attendanceRecords = new List<AttendanceRecord>();
+            var approvedLeaveRequests = new List<ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequest>();
+            var breakRecords = new List<BreakRecord>();
             if (resolutions.Count != 0)
             {
-                // Materialize scalar bounds before entering the EF query. Keeping the local
-                // AttendanceScheduleResolution collection out of the expression tree is required
-                // by the EF InMemory provider and is also clearer for relational translation.
                 var minWorkDate = resolutions.Min(resolution => resolution.WorkDate);
                 var maxWorkDate = resolutions.Max(resolution => resolution.WorkDate);
                 attendanceRecords = await _db.AttendanceRecords.AsNoTracking()
@@ -147,10 +156,42 @@ public class EfEmployeeRepository : IEmployeeRepository
                         && record.Date >= minWorkDate
                         && record.Date <= maxWorkDate)
                     .ToListAsync(ct);
+                approvedLeaveRequests = _leaveRequests is not null
+                    ? (await _leaveRequests.ListApprovedCoveringAsync(
+                        tenantId, employeeIds, minWorkDate, maxWorkDate, ct)).ToList()
+                    : await _db.LeaveRequests.AsNoTracking()
+                        .Where(request => request.TenantId == tenantId
+                            && employeeIds.Contains(request.EmployeeId)
+                            && request.Status == ONEVO.Domain.Features.Leave.Common.LeaveRequestStatuses.Approved
+                            && request.StartDate <= maxWorkDate
+                            && request.EndDate >= minWorkDate)
+                        .ToListAsync(ct);
+
+                var localWindows = resolutions
+                    .Select(resolution => AttendanceTodayStateService.GetLocalDayWindow(
+                        resolution.WorkDate, resolution.TimeZone))
+                    .ToList();
+                var minWindowStart = localWindows.Min(window => window.Start);
+                var maxWindowEnd = localWindows.Max(window => window.End);
+                breakRecords = _attendance is not null
+                    ? (await _attendance.ListBreaksForEmployeesAsync(
+                        tenantId, employeeIds, minWindowStart, maxWindowEnd, ct)).ToList()
+                    : await _db.BreakRecords.AsNoTracking()
+                        .Where(record => record.TenantId == tenantId
+                            && employeeIds.Contains(record.EmployeeId)
+                            && record.BreakStart < maxWindowEnd
+                            && (record.BreakEnd == null || record.BreakEnd > minWindowStart))
+                        .ToListAsync(ct);
             }
             var attendanceByEmployeeAndDate = attendanceRecords
                 .GroupBy(record => (record.EmployeeId, record.Date))
                 .ToDictionary(group => group.Key, group => group.First());
+            var leavesByEmployee = approvedLeaveRequests
+                .GroupBy(request => request.EmployeeId)
+                .ToDictionary(group => group.Key, group => group.ToArray());
+            var breaksByEmployee = breakRecords
+                .GroupBy(record => record.EmployeeId)
+                .ToDictionary(group => group.Key, group => (IReadOnlyList<BreakRecord>)group.ToArray());
 
             var orderedRows = rows
                 .Select(row =>
@@ -163,22 +204,48 @@ public class EfEmployeeRepository : IEmployeeRepository
                     var hasClockedInToday = record?.ActualStart is not null;
                     var isActive = string.Equals(
                         row.empStatus?.Code, "active", StringComparison.OrdinalIgnoreCase);
-                    var shouldHaveClockedIn = isActive
-                        && resolution is not null
-                        && AttendanceScheduleResolver.ShouldHaveClockedIn(
-                            resolution.Schedule,
-                            record?.ActualStart,
+                    var schedule = resolution?.Schedule ?? new AttendanceSchedule("not_configured", false, null, null, null);
+                    var hasApprovedLeave = resolution is not null
+                        && leavesByEmployee.TryGetValue(row.e.Id, out var employeeLeaves)
+                        && employeeLeaves.Any(request => request.StartDate <= resolution.WorkDate
+                            && request.EndDate >= resolution.WorkDate);
+                    var breakUsedMinutes = resolution is not null
+                        && breaksByEmployee.TryGetValue(row.e.Id, out var employeeBreaks)
+                            ? AttendanceTodayStateService.CalculateBreakUsage(
+                                employeeBreaks,
+                                AttendanceTodayStateService.GetLocalDayWindow(
+                                    resolution.WorkDate, resolution.TimeZone),
+                                resolution.LocalNow)
+                            : 0;
+                    var status = resolution is null
+                        ? null
+                        : AttendanceDayStatusResolver.Resolve(
+                            schedule,
+                            "configured",
+                            record,
+                            hasApprovedLeave,
+                            row.legalEntity?.BreakDurationMinutes,
+                            breakUsedMinutes,
                             resolution.LocalNow);
-                    var attendanceSummary = resolution is null
+                    var attendanceSummary = resolution is null || !isActive
                         ? null
                         : new EmployeeListAttendanceSummaryResponse(
-                            shouldHaveClockedIn,
-                            shouldHaveClockedIn,
+                            status!.AttentionType == "not_clocked_in",
+                            status.ShouldHaveClockedIn,
                             hasClockedInToday,
                             resolution.WorkDate,
                             resolution.Timezone,
-                            shouldHaveClockedIn ? resolution.Schedule.Start?.ToString("HH:mm") : null,
-                            shouldHaveClockedIn ? "Still has not clocked in" : null);
+                            status.ShouldHaveClockedIn ? resolution.Schedule.Start?.ToString("HH:mm") : null,
+                            status.AttentionType == "not_clocked_in" ? status.AttentionLabel : null,
+                            status.Status,
+                            status.StatusLabel,
+                            status.AttentionType,
+                            status.AttentionSeverity,
+                            status.AttentionLabel,
+                            breakUsedMinutes,
+                            row.legalEntity?.BreakDurationMinutes,
+                            status.BreakOverageMinutes,
+                            status.IsOverBreakAllowance);
 
                     return new
                     {
@@ -186,7 +253,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                         AttendanceSummary = attendanceSummary,
                     };
                 })
-                .OrderByDescending(row => row.AttendanceSummary?.ShowNotClockedInWarning == true)
+                .OrderByDescending(row => GetAttentionPriority(row.AttendanceSummary?.AttentionType))
                 .ThenBy(row => row.Row.e.LastName)
                 .ThenBy(row => row.Row.e.Id)
                 .Skip((page - 1) * pageSize)
@@ -235,10 +302,21 @@ public class EfEmployeeRepository : IEmployeeRepository
                 row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null))
             .ToListAsync(ct);
 
-        return (items, totalCount);
+                return (items, totalCount);
     }
 
+    private static int GetAttentionPriority(string? attentionType)
+        => attentionType switch
+        {
+            "not_clocked_in" => 4,
+            "over_break" => 3,
+            "worked_during_time_off" => 2,
+            "worked_on_non_working_day" => 1,
+            _ => 0
+        };
+
     public async Task<IReadOnlyList<EmployeeListItemResponse>> ListInvitedPendingByInviterAsync(
+
         Guid tenantId, Guid inviterUserId, CancellationToken ct = default)
     {
         var activePrimaryAssignments = _db.PositionAssignments.AsNoTracking()

@@ -7,7 +7,16 @@ public sealed record EmployeeListAttendanceSummaryResponse(
     DateOnly WorkDate,
     string Timezone,
     string? ScheduledStartTime,
-    string? WarningLabel);
+    string? WarningLabel,
+    string? AttendanceStatus = null,
+    string? AttendanceStatusLabel = null,
+    string? AttentionType = null,
+    string? AttentionSeverity = null,
+    string? AttentionLabel = null,
+    int BreakUsedMinutes = 0,
+    int? BreakAllowanceMinutes = null,
+    int BreakOverageMinutes = 0,
+    bool IsOverBreakAllowance = false);
 
 public record EmployeeListItemResponse(
     Guid Id,
