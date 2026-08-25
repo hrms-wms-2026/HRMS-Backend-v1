@@ -122,6 +122,7 @@ public class ApplicationDbContext : DbContext
     // Monitoring - Screenshots & agent commands
     public DbSet<MonitoringEvidenceAsset> MonitoringEvidenceAssets => Set<MonitoringEvidenceAsset>();
     public DbSet<AgentCommand> AgentCommands => Set<AgentCommand>();
+    public DbSet<InactivityCaptureAttempt> InactivityCaptureAttempts => Set<InactivityCaptureAttempt>();
 
     // Infrastructure
     public DbSet<User> Users => Set<User>();
