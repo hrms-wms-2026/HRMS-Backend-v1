@@ -509,6 +509,7 @@ public static class DependencyInjection
         services.AddHostedService<PlatformAccessSeeder>();
         services.AddHostedService<PositionTemplatePackSeeder>();
         services.AddHostedService<ModuleCatalogSeeder>();
+        services.AddHostedService<FeatureFlagSeeder>();
         services.AddHostedService<DevSmokeTestTenantSeeder>();
         services.AddHostedService<WorkManagementDapiDemoSeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();

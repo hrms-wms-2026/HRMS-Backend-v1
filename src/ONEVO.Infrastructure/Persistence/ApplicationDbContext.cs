@@ -182,6 +182,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<ModulePermissionOwnership> ModulePermissionOwnerships => Set<ModulePermissionOwnership>();
     public DbSet<ModuleCatalogPriceHistory> ModuleCatalogPriceHistories => Set<ModuleCatalogPriceHistory>();
     public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
+    public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
+    public DbSet<FeatureFlagOverride> FeatureFlagOverrides => Set<FeatureFlagOverride>();
     public DbSet<TenantProvisioningState> TenantProvisioningStates => Set<TenantProvisioningState>();
     public DbSet<TenantSetupSelection> TenantSetupSelections => Set<TenantSetupSelection>();
     public DbSet<TenantOneTimeCharge> TenantOneTimeCharges => Set<TenantOneTimeCharge>();
