@@ -297,7 +297,7 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Every milestone in this project the caller has ever had a project_members row for, any status - the frontend filters by objectiveIsActive/isAchieved/membershipIsActive as needed. Owner and Reporting Manager names are resolved server-side. No [RequirePermission] beyond the module base gate: this endpoint can only ever return the caller's own rows, so an unrelated projectId just yields an empty array, never 403/404.</summary>
+    /// <summary>Every milestone in this project the caller can act on: one they have a direct project_members row for (any status - the frontend filters by objectiveIsActive/isAchieved/membershipIsActive as needed), or one reachable via the cascading-ownership walk from an ancestor's owner/active member (IsEffectiveManagerAsync). Owner and Reporting Manager names are resolved server-side. No [RequirePermission] beyond the module base gate: this endpoint can only ever return the caller's own rows, so an unrelated projectId just yields an empty array, never 403/404.</summary>
     [HttpGet("~/api/v1/work/projects/{projectId:guid}/objectives/mine")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> GetMine(Guid projectId, CancellationToken ct)
