@@ -338,11 +338,26 @@ public record EmployeeDetailResponse(
 
 - [ ] **Step 2: Populate it in the query handler**
 
-Open `GetEmployeeDetailQueryHandler.cs`, find the line that constructs the final
-`EmployeeDetailResponse` (it will be a `new EmployeeDetailResponse(...)` call using the loaded
-`Employee` entity — the exact local variable name depends on the handler's existing code, e.g.
-`employee`). Add `employee.TrayAppAccessEnabled` as the last constructor argument, matching the
-field order added in Step 1.
+In `GetEmployeeDetailQueryHandler.cs`, the loaded `Employee` entity is held in the local
+variable `existing` (from `_employeeRepository.GetByIdAsync(tenantId, request.EmployeeId, ct)`
+at line 53). Change the final `return` statement (currently lines 90-94):
+
+```csharp
+        return Result<EmployeeDetailResponse>.Success(new EmployeeDetailResponse(
+            request.EmployeeId, jobInformation, personalInformation,
+            emergencyContacts.Select(c => new EmployeeDetailEmergencyContact(c.Id, c.Name, c.Relationship, c.Phone, c.Email, c.IsPrimary)).ToList(),
+            payroll,
+            InvitationStatusOf(invitation, _clock.UtcNow), invitation?.ExpiresAt));
+```
+to:
+```csharp
+        return Result<EmployeeDetailResponse>.Success(new EmployeeDetailResponse(
+            request.EmployeeId, jobInformation, personalInformation,
+            emergencyContacts.Select(c => new EmployeeDetailEmergencyContact(c.Id, c.Name, c.Relationship, c.Phone, c.Email, c.IsPrimary)).ToList(),
+            payroll,
+            InvitationStatusOf(invitation, _clock.UtcNow), invitation?.ExpiresAt,
+            existing.TrayAppAccessEnabled));
+```
 
 - [ ] **Step 3: Build to verify the DTO change compiles everywhere it's constructed**
 
