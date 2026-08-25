@@ -30,7 +30,9 @@ using ONEVO.Domain.Features.Monitoring.WorkSessions.Entities;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
+using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
+
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
@@ -265,8 +267,11 @@ public class ApplicationDbContext : DbContext
 
     // Work Management - Foundation slice
     public DbSet<ProjectCategory> ProjectCategories => Set<ProjectCategory>();
-    public DbSet<Project> Projects => Set<Project>();
+        public DbSet<Project> Projects => Set<Project>();
     public DbSet<Objective> Objectives => Set<Objective>();
+    public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
+    public DbSet<CalendarEventObjective> CalendarEventObjectives => Set<CalendarEventObjective>();
+
     public DbSet<ObjectiveChangeRequest> ObjectiveChangeRequests => Set<ObjectiveChangeRequest>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
     public DbSet<ProjectMemberInvitation> ProjectMemberInvitations => Set<ProjectMemberInvitation>();
