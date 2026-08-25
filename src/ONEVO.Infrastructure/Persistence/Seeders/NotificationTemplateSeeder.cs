@@ -84,11 +84,29 @@ public class NotificationTemplateSeeder : IHostedService
                 InAppTitleTemplate = "Sprint ended incomplete",
                 InAppBodyTemplate = "\"{{sprintName}}\" on {{objectiveName}} ended with unfinished tasks and is now Incomplete."
             },
-            new()
+                        new()
             {
                 Id = Guid.NewGuid(), Code = "work_sprint_achieved",
                 InAppTitleTemplate = "Sprint achieved",
                 InAppBodyTemplate = "\"{{sprintName}}\" on {{objectiveName}} was achieved and its tasks are now frozen."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "attendance_correction_request_created",
+                InAppTitleTemplate = "Attendance correction request",
+                InAppBodyTemplate = "Attendance correction request from {{employeeName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "attendance_correction_request_decided",
+                InAppTitleTemplate = "Attendance correction {{decision}}",
+                InAppBodyTemplate = "Your attendance correction request was {{decision}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "attendance_correction_request_cancelled",
+                InAppTitleTemplate = "Attendance correction cancelled",
+                InAppBodyTemplate = "Your attendance correction request was cancelled."
             },
             new()
             {
@@ -102,6 +120,7 @@ public class NotificationTemplateSeeder : IHostedService
                 InAppTitleTemplate = "Invitation accepted",
                 InAppBodyTemplate = "{{accepterName}} accepted your invitation to join {{projectName}}."
             }
+
         };
 
         var addedCount = 0;
