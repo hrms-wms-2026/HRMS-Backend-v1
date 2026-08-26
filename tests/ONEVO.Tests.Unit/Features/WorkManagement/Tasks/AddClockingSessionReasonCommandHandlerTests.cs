@@ -18,16 +18,17 @@ public class AddClockingSessionReasonCommandHandlerTests
     private static readonly Guid OtherEmployeeId = Guid.NewGuid();
 
     private (AddClockingSessionReasonCommandHandler Handler, Mock<ITaskClockingSessionRepository> Sessions, Guid CallerEmployeeId, TaskClockingSession Session)
-        ArrangeReasonHandler(bool sessionOwnedByCaller)
+        ArrangeReasonHandler(bool sessionOwnedByCaller, bool authenticated = true,
+            bool employeeExists = true, bool sessionExists = true)
     {
         var currentUser = new Mock<ICurrentUser>();
-        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CallerEmployeeId);
+            .ReturnsAsync(employeeExists ? CallerEmployeeId : null);
 
         var session = new TaskClockingSession
         {
@@ -37,7 +38,7 @@ public class AddClockingSessionReasonCommandHandlerTests
         };
         var sessions = new Mock<ITaskClockingSessionRepository>();
         sessions.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, session.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(session);
+            .ReturnsAsync(sessionExists ? session : null);
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
@@ -60,6 +61,57 @@ public class AddClockingSessionReasonCommandHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal("context on why this took long", session.Reason);
         sessions.Verify(x => x.Update(session), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_NotAuthenticated_ReturnsForbidden()
+    {
+        var (handler, sessions, _, session) = ArrangeReasonHandler(true, authenticated: false);
+
+        var result = await handler.Handle(new AddClockingSessionReasonCommand(session.Id, "note"), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Null(session.Reason);
+        sessions.Verify(x => x.Update(It.IsAny<TaskClockingSession>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NoEmployeeRecord_ReturnsForbidden()
+    {
+        var (handler, sessions, _, session) = ArrangeReasonHandler(true, employeeExists: false);
+
+        var result = await handler.Handle(new AddClockingSessionReasonCommand(session.Id, "note"), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Null(session.Reason);
+        sessions.Verify(x => x.Update(It.IsAny<TaskClockingSession>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_SessionNotFound_ReturnsNotFound()
+    {
+        var (handler, sessions, _, session) = ArrangeReasonHandler(true, sessionExists: false);
+
+        var result = await handler.Handle(new AddClockingSessionReasonCommand(session.Id, "note"), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Null(session.Reason);
+        sessions.Verify(x => x.Update(It.IsAny<TaskClockingSession>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_ExistingReason_IsOverwrittenWithTrimmedValue()
+    {
+        var (handler, _, _, session) = ArrangeReasonHandler(true);
+        session.Reason = "old note";
+
+        var result = await handler.Handle(new AddClockingSessionReasonCommand(session.Id, "  new note  "), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("new note", session.Reason);
     }
 
     [Fact]

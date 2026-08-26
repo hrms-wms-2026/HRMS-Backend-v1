@@ -18,16 +18,17 @@ public class AddPercentageLogReasonCommandHandlerTests
     private static readonly Guid OtherEmployeeId = Guid.NewGuid();
 
     private (AddPercentageLogReasonCommandHandler Handler, Mock<ITaskPercentageLogRepository> Logs, Guid CallerEmployeeId, TaskPercentageLog Log)
-        ArrangePercentageLogReasonHandler(bool logOwnedByCaller)
+        ArrangePercentageLogReasonHandler(bool logOwnedByCaller, bool authenticated = true,
+            bool employeeExists = true, bool logExists = true)
     {
         var currentUser = new Mock<ICurrentUser>();
-        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CallerEmployeeId);
+            .ReturnsAsync(employeeExists ? CallerEmployeeId : null);
 
         var log = new TaskPercentageLog
         {
@@ -38,7 +39,7 @@ public class AddPercentageLogReasonCommandHandlerTests
         };
         var logs = new Mock<ITaskPercentageLogRepository>();
         logs.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, log.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(log);
+            .ReturnsAsync(logExists ? log : null);
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
@@ -61,6 +62,57 @@ public class AddPercentageLogReasonCommandHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal("why the estimate changed", log.Reason);
         logs.Verify(x => x.Update(log), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_NotAuthenticated_ReturnsForbidden()
+    {
+        var (handler, logs, _, log) = ArrangePercentageLogReasonHandler(true, authenticated: false);
+
+        var result = await handler.Handle(new AddPercentageLogReasonCommand(log.Id, "note"), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Null(log.Reason);
+        logs.Verify(x => x.Update(It.IsAny<TaskPercentageLog>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NoEmployeeRecord_ReturnsForbidden()
+    {
+        var (handler, logs, _, log) = ArrangePercentageLogReasonHandler(true, employeeExists: false);
+
+        var result = await handler.Handle(new AddPercentageLogReasonCommand(log.Id, "note"), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Null(log.Reason);
+        logs.Verify(x => x.Update(It.IsAny<TaskPercentageLog>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_LogNotFound_ReturnsNotFound()
+    {
+        var (handler, logs, _, log) = ArrangePercentageLogReasonHandler(true, logExists: false);
+
+        var result = await handler.Handle(new AddPercentageLogReasonCommand(log.Id, "note"), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Null(log.Reason);
+        logs.Verify(x => x.Update(It.IsAny<TaskPercentageLog>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_ExistingReason_IsOverwrittenWithTrimmedValue()
+    {
+        var (handler, _, _, log) = ArrangePercentageLogReasonHandler(true);
+        log.Reason = "old note";
+
+        var result = await handler.Handle(new AddPercentageLogReasonCommand(log.Id, "  new note  "), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("new note", log.Reason);
     }
 
     [Fact]
