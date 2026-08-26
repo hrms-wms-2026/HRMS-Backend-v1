@@ -110,33 +110,39 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
 
     public async Task AddPendingRequestAsync(LeaveRequestWriteSet writeSet, CancellationToken ct = default)
     {
-        await using var transaction = _db.Database.IsRelational()
-            ? await _db.Database.BeginTransactionAsync(ct)
-            : null;
+        // EnableRetryOnFailure configured - EF Core forbids a user-initiated BeginTransactionAsync
+        // under a retrying execution strategy unless it runs inside ExecuteAsync.
+        var executionStrategy = _db.Database.CreateExecutionStrategy();
+        await executionStrategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = _db.Database.IsRelational()
+                ? await _db.Database.BeginTransactionAsync(ct)
+                : null;
 
-        var overlaps = await _db.LeaveRequests.AnyAsync(
-            request =>
-                request.TenantId == writeSet.Request.TenantId &&
-                request.EmployeeId == writeSet.Request.EmployeeId &&
-                (request.Status == LeaveRequestStatuses.Pending ||
-                 request.Status == LeaveRequestStatuses.Approved) &&
-                request.StartDate <= writeSet.Request.EndDate &&
-                request.EndDate >= writeSet.Request.StartDate,
-            ct);
-        if (overlaps)
-            throw new InvalidOperationException(LeaveRequestMessages.Overlap);
+            var overlaps = await _db.LeaveRequests.AnyAsync(
+                request =>
+                    request.TenantId == writeSet.Request.TenantId &&
+                    request.EmployeeId == writeSet.Request.EmployeeId &&
+                    (request.Status == LeaveRequestStatuses.Pending ||
+                     request.Status == LeaveRequestStatuses.Approved) &&
+                    request.StartDate <= writeSet.Request.EndDate &&
+                    request.EndDate >= writeSet.Request.StartDate,
+                ct);
+            if (overlaps)
+                throw new InvalidOperationException(LeaveRequestMessages.Overlap);
 
-        writeSet.Entitlement.PendingDays += writeSet.Request.PaidDays;
-        writeSet.Entitlement.UpdatedAt = _clock.UtcNow;
+            writeSet.Entitlement.PendingDays += writeSet.Request.PaidDays;
+            writeSet.Entitlement.UpdatedAt = _clock.UtcNow;
 
-        await _db.LeaveRequests.AddAsync(writeSet.Request, ct);
-        await _db.LeaveRequestApprovers.AddRangeAsync(writeSet.Approvers, ct);
-        await _db.LeaveRequestDocuments.AddRangeAsync(writeSet.Documents, ct);
-        await _db.LeaveRequestDayAllocations.AddRangeAsync(writeSet.DayAllocations, ct);
-        await _db.SaveChangesAsync(ct);
+            await _db.LeaveRequests.AddAsync(writeSet.Request, ct);
+            await _db.LeaveRequestApprovers.AddRangeAsync(writeSet.Approvers, ct);
+            await _db.LeaveRequestDocuments.AddRangeAsync(writeSet.Documents, ct);
+            await _db.LeaveRequestDayAllocations.AddRangeAsync(writeSet.DayAllocations, ct);
+            await _db.SaveChangesAsync(ct);
 
-        if (transaction is not null)
-            await transaction.CommitAsync(ct);
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+        });
     }
 
     public async Task<bool> AreAvailableFileRecordsAsync(

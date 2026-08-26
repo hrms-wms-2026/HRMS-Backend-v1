@@ -189,6 +189,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         var tenantDefinitions = BuildTenantDefinitions();
         Tenant? acmeTenant = null;
         User? acmeOwnerUser = null;
+        var seededUserRefs = new List<(Guid TenantId, Guid UserId)>();
 
         foreach (var tenantDefinition in tenantDefinitions)
         {
@@ -206,6 +207,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             {
                 var user = await SeedTenantUserAsync(db, tenant.Id, userDefinition, passwordHasher, now, ct);
                 firstUser ??= user;
+                seededUserRefs.Add((tenant.Id, user.Id));
                 await SeedTenantRoleAsync(db, tenant.Id, user.Id, userDefinition, now, ct);
 
                 var employeeDefinition = tenantDefinition.Employees
@@ -233,6 +235,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         }
 
         await SeedDevelopmentLegalVersionsAsync(db, now, ct);
+        await SeedSmokeUserLegalAcceptancesAsync(db, seededUserRefs, now, ct);
 
         var platformUser = await GetPlatformBootstrapUserAsync(db, ct);
         if (platformUser is null)
@@ -1042,6 +1045,54 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 CreatedAt = now,
                 UpdatedAt = now
             });
+        }
+    }
+
+    /// <summary>
+    /// SeedDevelopmentLegalVersionsAsync seeds "terms"/1.0 and "privacy_notice"/1.0 as
+    /// IsRequired=true, BlockScope="dashboard" documents, which gates every login behind
+    /// LegalAcceptanceChecker (see LoginContinuationService) until the logging-in user has an
+    /// "accepted" LegalAcceptanceRecord for each. Without this, every smoke-seeded user's base-host
+    /// login is redirected to the legal-acceptance continuation instead of completing normally.
+    /// </summary>
+    private static async Task SeedSmokeUserLegalAcceptancesAsync(
+        ApplicationDbContext db,
+        IReadOnlyList<(Guid TenantId, Guid UserId)> userRefs,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var requiredDocuments = new (string DocumentType, string Version)[]
+        {
+            ("terms", "1.0"),
+            ("privacy_notice", "1.0")
+        };
+
+        foreach (var (tenantId, userId) in userRefs)
+        {
+            foreach (var (documentType, version) in requiredDocuments)
+            {
+                var alreadyAccepted = await db.LegalAcceptanceRecords.AnyAsync(
+                    a => a.TenantId == tenantId
+                        && a.UserId == userId
+                        && a.DocumentType == documentType
+                        && a.DocumentVersion == version,
+                    ct);
+                if (alreadyAccepted)
+                    continue;
+
+                db.LegalAcceptanceRecords.Add(new LegalAcceptanceRecord
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenantId,
+                    UserId = userId,
+                    DocumentType = documentType,
+                    DocumentVersion = version,
+                    Decision = "accepted",
+                    Required = true,
+                    DecidedAt = now,
+                    Source = "dev-smoke-seed"
+                });
+            }
         }
     }
 }

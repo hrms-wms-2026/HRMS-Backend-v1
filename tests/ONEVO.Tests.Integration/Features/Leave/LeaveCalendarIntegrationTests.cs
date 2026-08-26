@@ -136,7 +136,7 @@ public sealed class LeaveCalendarIntegrationTests : IAsyncLifetime
         }
 
         var leaveTypeId = Guid.NewGuid();
-        var leaveTypeCode = $"{FixtureCodePrefix}-{Guid.NewGuid():N}"[..24].ToUpperInvariant();
+        var leaveTypeCode = $"{FixtureCodePrefix}-{Guid.NewGuid():N}"[..20].ToUpperInvariant();
         db.LeaveTypes.Add(new LeaveType
         {
             Id = leaveTypeId,
