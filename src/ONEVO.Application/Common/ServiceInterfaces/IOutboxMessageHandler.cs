@@ -36,5 +36,9 @@ public static class OutboxMessageTypes
     // NoOpEmployeeSecurityOutboxHandler. Producer-side audit trail for now.
     public const string EmployeeSecurityUpdated = "employee_security_updated";
     public const string InvoiceEmail = "invoice_email";
+    public const string LeaveRequestApproved = "leave_request_approved";
+    public const string LeaveRequestRejected = "leave_request_rejected";
+    public const string LeaveInformationRequested = "leave_information_requested";
+    public const string LeaveRequestCancelled = "leave_request_cancelled";
     public const string WorkNotification = "work_notification";
 }

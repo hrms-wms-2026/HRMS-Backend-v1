@@ -253,6 +253,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<LeaveRequestDocument> LeaveRequestDocuments => Set<LeaveRequestDocument>();
     public DbSet<LeaveApprovalDelegate> LeaveApprovalDelegates => Set<LeaveApprovalDelegate>();
     public DbSet<LeaveBalanceAudit> LeaveBalanceAudits => Set<LeaveBalanceAudit>();
+    public DbSet<LeaveRequestInfoMessage> LeaveRequestInfoMessages => Set<LeaveRequestInfoMessage>();
+    public DbSet<LeaveRequestDayAllocation> LeaveRequestDayAllocations => Set<LeaveRequestDayAllocation>();
+
     // Time & Attendance - Clock-in Policy foundation
     public DbSet<ClockInPolicy> ClockInPolicies => Set<ClockInPolicy>();
     public DbSet<ClockInLateDeductionRule> ClockInLateDeductionRules => Set<ClockInLateDeductionRule>();

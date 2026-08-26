@@ -141,6 +141,46 @@ public class EfLeavePolicyRepositoryTests
         Assert.Equal(2, await db.LeavePolicies.CountAsync(x => x.TenantId == tenantId));
     }
 
+    [Fact]
+    public async Task ListActiveAggregatesByLegalEntityIdsAsync_ReturnsPolicyKeyedByLegalEntity()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntity = CreateLegalEntity(tenantId, "Acme UK");
+        legalEntity.StandardWorkingDays = "[2,4]";
+        var leaveType = CreateLeaveType(tenantId, "Annual Leave", "AL");
+        var policy = CreatePolicy(tenantId, "UK Policy");
+        db.LegalEntities.Add(legalEntity);
+        db.LeaveTypes.Add(leaveType);
+        db.LeavePolicies.Add(policy);
+        db.LeavePolicyLeaveTypes.Add(new LeavePolicyLeaveType
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LeavePolicyId = policy.Id,
+            LeaveTypeId = leaveType.Id,
+            AnnualEntitlementDays = 17.5m
+        });
+        db.LeavePolicyLegalEntities.Add(new LeavePolicyLegalEntity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LeavePolicyId = policy.Id,
+            LegalEntityId = legalEntity.Id,
+            EffectiveDate = new DateOnly(2026, 1, 1),
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var repo = new EfLeavePolicyRepository(db);
+        var result = await repo.ListActiveAggregatesByLegalEntityIdsAsync(
+            tenantId, [legalEntity.Id], 2026, CancellationToken.None);
+
+        Assert.True(result.ContainsKey(legalEntity.Id));
+        Assert.Equal(17.5m, result[legalEntity.Id].LeaveTypes.Single().Rule.AnnualEntitlementDays);
+        Assert.Equal("[2,4]", result[legalEntity.Id].LegalEntities.Single().StandardWorkingDaysJson);
+    }
+
     private static ApplicationDbContext BuildInMemoryDb()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

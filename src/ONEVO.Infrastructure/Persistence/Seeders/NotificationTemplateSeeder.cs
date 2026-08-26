@@ -92,6 +92,48 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "leave_request_approved",
+                InAppTitleTemplate = "Leave approved",
+                InAppBodyTemplate = "{{leaveTypeName}} from {{startDate}} to {{endDate}} was approved."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_rejected",
+                InAppTitleTemplate = "Leave rejected",
+                InAppBodyTemplate = "{{leaveTypeName}} from {{startDate}} to {{endDate}} was rejected. {{reason}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_information_requested",
+                InAppTitleTemplate = "More information requested",
+                InAppBodyTemplate = "{{approverName}} requested more information for {{leaveTypeName}} from {{startDate}} to {{endDate}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_next_approval_required",
+                InAppTitleTemplate = "Leave approval required",
+                InAppBodyTemplate = "{{employeeName}} requested {{leaveTypeName}} from {{startDate}} to {{endDate}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_cancelled_by_employee",
+                InAppTitleTemplate = "Leave cancelled",
+                InAppBodyTemplate = "{{employeeName}} cancelled {{leaveTypeName}} from {{startDate}} to {{endDate}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_cancelled_by_hr",
+                InAppTitleTemplate = "Leave cancelled by HR",
+                InAppBodyTemplate = "{{cancelledByName}} cancelled your {{leaveTypeName}} from {{startDate}} to {{endDate}}. {{reason}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_partially_cancelled",
+                InAppTitleTemplate = "Leave partially cancelled",
+                InAppBodyTemplate = "{{leaveTypeName}} from {{effectiveDate}} to {{endDate}} was cancelled. {{restoredDays}} days restored."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "attendance_correction_request_created",
                 InAppTitleTemplate = "Attendance correction request",
                 InAppBodyTemplate = "Attendance correction request from {{employeeName}}."
