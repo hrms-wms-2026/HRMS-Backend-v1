@@ -9,11 +9,11 @@ public sealed record CreateTaskRequest(
 
 public sealed record EditTaskRequest(
     string Title, string? Description, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints);
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason);
 
 public sealed record CreateTaskEditRequestRequest(
     string Title, string? Description, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints);
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason);
 
 public sealed record RejectTaskEditRequestRequest(string Comment);
 

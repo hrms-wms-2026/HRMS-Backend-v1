@@ -214,7 +214,9 @@ public class TasksController : ControllerBase
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditTaskRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new EditTaskCommand(id, request.Title, request.Description, request.Priority, request.DueDate, request.EstimatedHours, request.StoryPoints), ct);
+        var result = await _mediator.Send(new EditTaskCommand(
+            id, request.Title, request.Description, request.Priority, request.DueDate,
+            request.EstimatedHours, request.StoryPoints, request.ProgressPercent, request.Reason), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
@@ -271,7 +273,8 @@ public class TasksController : ControllerBase
     {
         var result = await _mediator.Send(new CreateTaskEditRequestCommand(
             taskId, request.Title, request.Description, request.Priority,
-            request.DueDate, request.EstimatedHours, request.StoryPoints), ct);
+            request.DueDate, request.EstimatedHours, request.StoryPoints,
+            request.ProgressPercent, request.Reason), ct);
 
         return result.IsSuccess
             ? StatusCode(202, result.Value!.ToViewModel())
