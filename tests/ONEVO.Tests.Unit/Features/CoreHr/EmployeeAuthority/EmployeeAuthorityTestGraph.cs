@@ -546,6 +546,10 @@ internal sealed class EmployeeAuthorityTestGraph
         public FakeClosureRepository(EmployeeAuthorityTestGraph graph) => _graph = graph;
 
         public Task<IReadOnlyList<Guid>> GetDescendantEmployeeIdsAsync(
+            Guid tenantId, Guid managerEmployeeId, CancellationToken ct = default)
+            => Task.FromResult(_graph.DescendantsOf([managerEmployeeId]));
+
+        public Task<IReadOnlyList<Guid>> GetDescendantEmployeeIdsAsync(
             Guid tenantId, IReadOnlyCollection<Guid> ancestorEmployeeIds, CancellationToken ct = default)
             => Task.FromResult(_graph.DescendantsOf(ancestorEmployeeIds));
 

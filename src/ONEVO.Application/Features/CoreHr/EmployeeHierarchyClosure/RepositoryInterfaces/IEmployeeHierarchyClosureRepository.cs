@@ -15,6 +15,11 @@ public interface IEmployeeHierarchyClosureRepository
     Task<Guid?> GetDirectManagerEmployeeIdAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    Task<IReadOnlyList<Guid>> GetDescendantEmployeeIdsAsync(
+        Guid tenantId,
+        Guid managerEmployeeId,
+        CancellationToken ct = default);
+
     /// <summary>Distinct transitive descendant employee ids (any depth) of the given ancestor
     /// employee ids, used by IEmployeeAuthorityResolver to expand a covered position's holder(s)
     /// into their full reporting-line subtree for visibility, and to guard approval routing
