@@ -194,7 +194,7 @@ public class MoveTaskStatusCommandHandlerTests
         var logged = Assert.Single(percentageLogs);
         Assert.Equal(TaskPercentageLogSources.StatusChange, logged.Source);
         Assert.Null(logged.ClockingSessionId);
-        Assert.Equal(0, logged.PreviousPercent);
+        Assert.Equal(40, logged.PreviousPercent);
         Assert.Equal(100, logged.NewPercent);
         Assert.Equal(100, task.ProgressPercent);
     }

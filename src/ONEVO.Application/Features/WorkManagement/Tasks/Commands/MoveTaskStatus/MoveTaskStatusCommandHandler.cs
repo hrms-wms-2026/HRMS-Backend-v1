@@ -110,16 +110,31 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
             {
                 task.CompletedHours = task.EstimatedHours ?? 0m;
                 task.CompletedAt = now;
+                var previousPercent = task.ProgressPercent;
                 task.ProgressPercent = 100;
                 objective.CompletedHours += task.CompletedHours;
+                await _percentageLogs.AddAsync(new TaskPercentageLog
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
+                    EmployeeId = callerEmployeeId.Value, PreviousPercent = previousPercent, NewPercent = 100,
+                    Source = TaskPercentageLogSources.StatusChange, ClockingSessionId = null, ChangedAt = now
+                }, innerCt);
             }
 
             else if (wasComplete && !willBeComplete)
             {
-                objective.CompletedHours -= task.CompletedHours;
+                                objective.CompletedHours -= task.CompletedHours;
                 task.CompletedHours = 0m;
                 task.CompletedAt = null;
+                var previousPercent = task.ProgressPercent;
                 task.ProgressPercent = 0;
+                await _percentageLogs.AddAsync(new TaskPercentageLog
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
+                    EmployeeId = callerEmployeeId.Value, PreviousPercent = previousPercent, NewPercent = 0,
+                    Source = TaskPercentageLogSources.StatusChange, ClockingSessionId = null, ChangedAt = now
+                }, innerCt);
+
             }
 
                         await _statusChangeLogs.AddAsync(new TaskStatusChangeLog
