@@ -10,14 +10,16 @@ This folder absorbed the former top-level `docs/superpowers/next-plan/` folder o
 
 ## Files
 
-- `2026-08-25-work-management-task-time-tracking-and-my-task/` — status: pending, not started. 9 parts:
+- `2026-08-25-work-management-task-time-tracking-and-my-task/` — status: pending, not started. 10 parts:
   Parts 1-2 data model/migration + edit-payload extension, Parts 3-5 wire `TaskEditLog`/
   `TaskStatusChangeLog`/`TaskPercentageLog` into the existing `EditTaskCommand`/`ApproveTaskEditRequest`/
   `MoveTaskStatus` handlers, Part 6 Clock-in/Push commands + reason notes, Part 7 merged history endpoint,
   Part 8 `GetMyProjectTasksQuery`, Part 9 (added after Part 6, a gap found while writing the frontend plan)
-  exposes per-task open-session state on list endpoints. Design:
+  exposes per-task open-session state on list endpoints, Part 10 (added 2026-08-26 per explicit user
+  request) is a mandatory post-implementation test-coverage audit against a deep per-handler checklist —
+  boundary values, negative "must not happen" cases, attribution correctness — run last. Design:
   `../../specs/next/2026-08-25-work-management-task-time-tracking-and-my-task-design.md`. Companion:
-  frontend repo's same-named plan folder (6 parts). Combined execution/code-review prompts at
+  frontend repo's same-named plan folder (7 parts). Combined execution/code-review prompts at
   `Desktop/build/`.
 - `2026-08-12-milestone-to-module-display-rename.md` — status: pending, not started. Single-task plan: one new EF migration renaming `module_catalog.name` for `module_key = 'objectives_milestones'` from "Objectives & Milestones" to "Objectives & Modules". Design: `specs/next/2026-08-12-milestone-to-module-display-rename-design.md`. Companion to the frontend repo's same-named plan.
 - `2026-08-12-objective-viewmodel-owner-fields-fix.md` — status: pending, not started. Single-task plan: add `OwnerName`/`ReportingManagerName`/`IsOwner` (+ `IsAchieved`/`AchievedAt` on the subtree node) to `ObjectiveDetailViewModel`/`ObjectiveSubtreeNodeViewModel` and forward them in `ObjectiveViewModelMapper` — fields the Application layer already computes but the wire contract drops. Design: `specs/next/2026-08-12-objective-viewmodel-owner-fields-fix-design.md`. Blocks the frontend repo's `2026-08-12-milestone-tree-mockup-redesign.md`.
