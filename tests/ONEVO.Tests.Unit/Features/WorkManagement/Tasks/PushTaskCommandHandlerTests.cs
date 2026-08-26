@@ -30,16 +30,17 @@ public class PushTaskCommandHandlerTests
         bool sessionOwnedByCaller,
         int taskCurrentPercent,
         int clockedInMinutesAgo,
-        bool hasOpenSession = true)
+        bool hasOpenSession = true, bool authenticated = true,
+        bool employeeExists = true, bool taskExists = true)
     {
         var currentUser = new Mock<ICurrentUser>();
-        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CallerEmployeeId);
+            .ReturnsAsync(employeeExists ? CallerEmployeeId : null);
 
         var task = new WorkTask
         {
@@ -48,7 +49,7 @@ public class PushTaskCommandHandlerTests
         };
         var tasks = new Mock<IWorkTaskRepository>();
         tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, TaskId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(task);
+            .ReturnsAsync(taskExists ? task : null);
 
         var openSession = hasOpenSession
             ? new TaskClockingSession
@@ -149,13 +150,97 @@ public class PushTaskCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_NotAuthenticated_ReturnsForbidden()
+    {
+        var (handler, _, percentageLogs, _, _, task, openSession) =
+            ArrangePushHandlerWithOpenSession(true, 30, 10, authenticated: false);
+
+        var result = await handler.Handle(new PushTaskCommand(task.Id, 60, null), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Null(openSession!.ClockOutAt);
+        Assert.Empty(percentageLogs);
+    }
+
+    [Fact]
+    public async Task Handle_NoEmployeeRecord_ReturnsForbidden()
+    {
+        var (handler, _, percentageLogs, _, _, task, openSession) =
+            ArrangePushHandlerWithOpenSession(true, 30, 10, employeeExists: false);
+
+        var result = await handler.Handle(new PushTaskCommand(task.Id, 60, null), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Null(openSession!.ClockOutAt);
+        Assert.Empty(percentageLogs);
+    }
+
+    [Fact]
+    public async Task Handle_TaskNotFound_ReturnsNotFound()
+    {
+        var (handler, _, percentageLogs, _, _, task, _) =
+            ArrangePushHandlerWithOpenSession(true, 30, 10, taskExists: false);
+
+        var result = await handler.Handle(new PushTaskCommand(task.Id, 60, null), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Empty(percentageLogs);
+    }
+
+    [Fact]
+    public async Task Handle_PercentOneBelowCurrent_ReturnsBadRequest()
+    {
+        var (handler, _, percentageLogs, _, _, task, openSession) =
+            ArrangePushHandlerWithOpenSession(true, 30, 10);
+
+        var result = await handler.Handle(new PushTaskCommand(task.Id, 29, null), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Null(openSession!.ClockOutAt);
+        Assert.Empty(percentageLogs);
+    }
+
+    [Fact]
+    public async Task Handle_PercentOneAboveCurrent_Succeeds()
+    {
+        var (handler, _, percentageLogs, _, _, task, openSession) =
+            ArrangePushHandlerWithOpenSession(true, 30, 10);
+
+        var result = await handler.Handle(new PushTaskCommand(task.Id, 31, "  trimmed note  "), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(openSession!.ClockOutAt);
+        var log = Assert.Single(percentageLogs);
+        Assert.Equal(31, log.NewPercent);
+        Assert.Equal("trimmed note", log.Reason);
+    }
+
+    [Fact]
+    public async Task Handle_NullReason_SavesNullReason()
+    {
+        var (handler, _, percentageLogs, _, _, task, _) =
+            ArrangePushHandlerWithOpenSession(true, 30, 10);
+
+        var result = await handler.Handle(new PushTaskCommand(task.Id, 60, null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(Assert.Single(percentageLogs).Reason);
+    }
+
+    [Fact]
     public async Task Handle_PercentReaches100_UpdatesTaskTo100()
     {
-        var (handler, _, _, _, _, task, _) = ArrangePushHandlerWithOpenSession(true, 90, 5);
+        var (handler, _, percentageLogs, _, _, task, _) = ArrangePushHandlerWithOpenSession(true, 90, 5);
 
         var result = await handler.Handle(new PushTaskCommand(task.Id, 100, null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
+        Assert.Equal(100, result.Value!.ProgressPercent);
         Assert.Equal(100, task.ProgressPercent);
+        Assert.Null(Assert.Single(percentageLogs).Reason);
     }
 }
