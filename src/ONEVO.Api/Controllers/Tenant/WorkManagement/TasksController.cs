@@ -35,6 +35,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.UnassignTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyDeadlines;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskEditRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskCreationRequests;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyProjectTasks;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskHistory;
 
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
@@ -97,6 +98,17 @@ public class TasksController : ControllerBase
 
         return result.IsSuccess
             ? Ok(result.Value!.Select(t => t.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("projects/{projectId:guid}/my-tasks")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> GetMyTasks(Guid projectId, [FromQuery] Guid? sprintId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetMyProjectTasksQuery(projectId, sprintId), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(task => task.ToViewModel()).ToList())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
