@@ -22,6 +22,8 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskCategory;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.MoveTaskStatus;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.PushTask;
+
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.RejectTaskEditRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.RejectTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskCategories;
@@ -255,6 +257,17 @@ public class TasksController : ControllerBase
 
         return result.IsSuccess
             ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("tasks/{id:guid}/push")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> Push(Guid id, [FromBody] PushTaskRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new PushTaskCommand(id, request.Percent, request.Reason), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
