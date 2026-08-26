@@ -22,6 +22,8 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly ISprintRepository _sprints;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ITaskStatusChangeLogRepository _statusChangeLogs;
+    private readonly ITaskPercentageLogRepository _percentageLogs;
 
     public MoveTaskStatusCommandHandler(
         ICurrentUser currentUser,
@@ -30,8 +32,11 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         ITaskStatusRepository statuses,
         IObjectiveRepository objectives,
         IMilestoneMembershipCoordinator membership,
-        IUnitOfWork unitOfWork,
-        ISprintRepository sprints)
+                IUnitOfWork unitOfWork,
+        ISprintRepository sprints,
+        ITaskStatusChangeLogRepository statusChangeLogs,
+        ITaskPercentageLogRepository percentageLogs)
+
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -39,8 +44,11 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         _statuses = statuses;
         _objectives = objectives;
         _membership = membership;
-        _unitOfWork = unitOfWork;
+                _unitOfWork = unitOfWork;
         _sprints = sprints;
+        _statusChangeLogs = statusChangeLogs;
+        _percentageLogs = percentageLogs;
+
     }
 
     public async Task<Result> Handle(MoveTaskStatusCommand request, CancellationToken ct)
@@ -94,15 +102,18 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
+            var now = DateTimeOffset.UtcNow;
+            var fromStatusId = task.StatusId;
             task.StatusId = newStatus.Id;
 
-            if (!wasComplete && willBeComplete)
+                        if (!wasComplete && willBeComplete)
             {
                 task.CompletedHours = task.EstimatedHours ?? 0m;
-                task.CompletedAt = DateTimeOffset.UtcNow;
+                task.CompletedAt = now;
                 task.ProgressPercent = 100;
                 objective.CompletedHours += task.CompletedHours;
             }
+
             else if (wasComplete && !willBeComplete)
             {
                 objective.CompletedHours -= task.CompletedHours;
@@ -111,10 +122,18 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
                 task.ProgressPercent = 0;
             }
 
-            task.UpdatedAt = DateTimeOffset.UtcNow;
-            objective.UpdatedAt = DateTimeOffset.UtcNow;
+                        await _statusChangeLogs.AddAsync(new TaskStatusChangeLog
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
+                EmployeeId = callerEmployeeId.Value, FromStatusId = fromStatusId, ToStatusId = newStatus.Id,
+                ChangedAt = now
+            }, innerCt);
+
+            task.UpdatedAt = now;
+            objective.UpdatedAt = now;
 
             await _unitOfWork.SaveChangesAsync(innerCt);
+
             return Result.Success();
         }, ct);
     }

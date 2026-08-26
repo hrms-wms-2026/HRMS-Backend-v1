@@ -29,9 +29,18 @@ public class MoveTaskStatusCommandHandlerTests
     private static readonly Guid OldStatusId = Guid.NewGuid();
     private static readonly Guid NewStatusId = Guid.NewGuid();
 
-    private (MoveTaskStatusCommandHandler Handler, Objective Objective, WorkTask Task, Mock<ITaskStatusRepository> Statuses) Build(
+        private (
+        MoveTaskStatusCommandHandler Handler,
+        Objective Objective,
+        WorkTask Task,
+        Mock<ITaskStatusRepository> Statuses,
+        List<TaskStatusChangeLog> StatusChangeLogs,
+        List<TaskPercentageLog> PercentageLogs) Build(
+
         Guid callerEmployeeId, bool callerIsMember, TaskStatusEntity newStatus, decimal? estimatedHours = 8m,
-        bool preserveNullStatusObjectiveId = false, Sprint? sprint = null, bool? callerIsEffectiveManager = null)
+                bool preserveNullStatusObjectiveId = false, Sprint? sprint = null, bool? callerIsEffectiveManager = null,
+        int taskCurrentPercent = 0, bool oldStatusMarksComplete = false)
+
     {
         if (!preserveNullStatusObjectiveId && newStatus.ObjectiveId is null)
             newStatus.ObjectiveId = ObjectiveId;
@@ -54,8 +63,10 @@ public class MoveTaskStatusCommandHandlerTests
             Title = "A",
             ShortId = "T-1",
             StatusId = OldStatusId,
-            EstimatedHours = estimatedHours,
+                        EstimatedHours = estimatedHours,
+            ProgressPercent = taskCurrentPercent,
             SprintId = sprint?.Id,
+
             CreatedAt = DateTimeOffset.UtcNow
         };
         var tasks = new Mock<IWorkTaskRepository>();
@@ -67,11 +78,12 @@ public class MoveTaskStatusCommandHandlerTests
             Id = OldStatusId,
             TenantId = TenantId,
             Name = "To Do",
-            MarksTaskComplete = false,
+                        MarksTaskComplete = oldStatusMarksComplete,
             Visibility = TaskStatusVisibilities.Public,
             CreatedAt = DateTimeOffset.UtcNow
         };
         var statuses = new Mock<ITaskStatusRepository>();
+
         statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, NewStatusId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(newStatus);
         statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, OldStatusId, It.IsAny<CancellationToken>()))
@@ -101,7 +113,20 @@ public class MoveTaskStatusCommandHandlerTests
         membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerIsEffectiveManager ?? (callerEmployeeId == OwnerEmployeeId));
 
+                var statusChangeLogs = new List<TaskStatusChangeLog>();
+        var statusChangeLogRepository = new Mock<ITaskStatusChangeLogRepository>();
+        statusChangeLogRepository.Setup(x => x.AddAsync(It.IsAny<TaskStatusChangeLog>(), It.IsAny<CancellationToken>()))
+            .Callback<TaskStatusChangeLog, CancellationToken>((log, _) => statusChangeLogs.Add(log))
+            .Returns(Task.CompletedTask);
+
+        var percentageLogs = new List<TaskPercentageLog>();
+        var percentageLogRepository = new Mock<ITaskPercentageLogRepository>();
+        percentageLogRepository.Setup(x => x.AddAsync(It.IsAny<TaskPercentageLog>(), It.IsAny<CancellationToken>()))
+            .Callback<TaskPercentageLog, CancellationToken>((log, _) => percentageLogs.Add(log))
+            .Returns(Task.CompletedTask);
+
         var unitOfWork = new Mock<IUnitOfWork>();
+
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
@@ -120,14 +145,106 @@ public class MoveTaskStatusCommandHandlerTests
             statuses.Object,
             objectives.Object,
             membership.Object,
-            unitOfWork.Object,
-            sprints.Object);
+                        unitOfWork.Object,
+            sprints.Object,
+            statusChangeLogRepository.Object,
+            percentageLogRepository.Object);
 
-        return (handler, objective, task, statuses);
+        return (handler, objective, task, statuses, statusChangeLogs, percentageLogs);
+
+    }
+
+        [Fact]
+    public async Task Handle_OnSuccessfulMove_WritesTaskStatusChangeLog()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId, TenantId = TenantId, ProjectId = ProjectId,
+            Name = "In Process", MarksTaskComplete = false,
+            Visibility = TaskStatusVisibilities.Public, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, task, _, statusChangeLogs, _) = Build(
+            OwnerEmployeeId, callerIsMember: false, newStatus);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(task.Id, newStatus.Id), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var logged = Assert.Single(statusChangeLogs);
+        Assert.Equal(task.Id, logged.TaskId);
+        Assert.Equal(OldStatusId, logged.FromStatusId);
+        Assert.Equal(newStatus.Id, logged.ToStatusId);
+        Assert.Equal(OwnerEmployeeId, logged.EmployeeId);
+    }
+
+    [Fact]
+    public async Task Handle_WhenMoveMarksTaskComplete_WritesStatusChangePercentageLogTo100()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId, TenantId = TenantId, ProjectId = ProjectId,
+            Name = "Done", MarksTaskComplete = true,
+            Visibility = TaskStatusVisibilities.Private, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, task, _, _, percentageLogs) = Build(
+            OwnerEmployeeId, callerIsMember: false, newStatus, taskCurrentPercent: 40);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(task.Id, newStatus.Id), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var logged = Assert.Single(percentageLogs);
+        Assert.Equal(TaskPercentageLogSources.StatusChange, logged.Source);
+        Assert.Null(logged.ClockingSessionId);
+        Assert.Equal(0, logged.PreviousPercent);
+        Assert.Equal(100, logged.NewPercent);
+        Assert.Equal(100, task.ProgressPercent);
+    }
+
+    [Fact]
+    public async Task Handle_WhenMoveUnmarksCompletion_WritesStatusChangePercentageLogTo0()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId, TenantId = TenantId, ProjectId = ProjectId,
+            Name = "In Process", MarksTaskComplete = false,
+            Visibility = TaskStatusVisibilities.Public, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, task, _, _, percentageLogs) = Build(
+            OwnerEmployeeId, callerIsMember: false, newStatus,
+            taskCurrentPercent: 100, oldStatusMarksComplete: true);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(task.Id, newStatus.Id), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var logged = Assert.Single(percentageLogs);
+        Assert.Equal(TaskPercentageLogSources.StatusChange, logged.Source);
+        Assert.Null(logged.ClockingSessionId);
+        Assert.Equal(100, logged.PreviousPercent);
+        Assert.Equal(0, logged.NewPercent);
+        Assert.Equal(0, task.ProgressPercent);
+    }
+
+    [Fact]
+    public async Task Handle_WhenMoveDoesNotCrossCompletionBoundary_WritesNoPercentageLog()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId, TenantId = TenantId, ProjectId = ProjectId,
+            Name = "In Process", MarksTaskComplete = false,
+            Visibility = TaskStatusVisibilities.Public, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, task, _, _, percentageLogs) = Build(
+            OwnerEmployeeId, callerIsMember: false, newStatus, taskCurrentPercent: 30);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(task.Id, newStatus.Id), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(percentageLogs);
+        Assert.Equal(30, task.ProgressPercent);
     }
 
     [Fact]
     public async Task Handle_TargetStatusBelongsToDifferentProject_ReturnsNotFoundWithoutMovingTask()
+
     {
         var newStatus = new TaskStatusEntity
         {
@@ -139,7 +256,7 @@ public class MoveTaskStatusCommandHandlerTests
             Visibility = TaskStatusVisibilities.Public,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        var (handler, _, task, _) = Build(OwnerEmployeeId, callerIsMember: false, newStatus);
+        var (handler, _, task, _, _, _) = Build(OwnerEmployeeId, callerIsMember: false, newStatus);
 
         var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
 
@@ -162,7 +279,7 @@ public class MoveTaskStatusCommandHandlerTests
             Visibility = TaskStatusVisibilities.Public,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        var (handler, _, task, _) = Build(
+        var (handler, _, task, _, _, _) = Build(
             OwnerEmployeeId,
             callerIsMember: false,
             newStatus,
@@ -187,7 +304,7 @@ public class MoveTaskStatusCommandHandlerTests
             Visibility = TaskStatusVisibilities.Private,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        var (handler, _, task, _) = Build(OwnerEmployeeId, callerIsMember: false, newStatus);
+        var (handler, _, task, _, _, _) = Build(OwnerEmployeeId, callerIsMember: false, newStatus);
 
         var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
 
@@ -208,7 +325,7 @@ public class MoveTaskStatusCommandHandlerTests
             Visibility = TaskStatusVisibilities.Public,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        var (handler, _, _, _) = Build(MemberEmployeeId, callerIsMember: true, newStatus);
+        var (handler, _, _, _, _, _) = Build(MemberEmployeeId, callerIsMember: true, newStatus);
 
         var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
 
@@ -228,7 +345,7 @@ public class MoveTaskStatusCommandHandlerTests
             Visibility = TaskStatusVisibilities.Private,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        var (handler, _, task, _) = Build(MemberEmployeeId, callerIsMember: true, newStatus);
+        var (handler, _, task, _, _, _) = Build(MemberEmployeeId, callerIsMember: true, newStatus);
 
         var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
 
@@ -250,7 +367,7 @@ public class MoveTaskStatusCommandHandlerTests
             Visibility = TaskStatusVisibilities.Public,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        var (handler, _, _, _) = Build(OutsiderEmployeeId, callerIsMember: false, newStatus);
+        var (handler, _, _, _, _, _) = Build(OutsiderEmployeeId, callerIsMember: false, newStatus);
 
         var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
 
@@ -277,7 +394,7 @@ public class MoveTaskStatusCommandHandlerTests
             CreatedAt = DateTimeOffset.UtcNow
         };
         var parentMemberId = Guid.NewGuid();
-        var (handler, _, task, _) = Build(
+        var (handler, _, task, _, _, _) = Build(
             parentMemberId, callerIsMember: false, newStatus, callerIsEffectiveManager: true);
 
         var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
@@ -299,7 +416,7 @@ public class MoveTaskStatusCommandHandlerTests
             Visibility = TaskStatusVisibilities.Private,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        var (handler, objective, task, _) = Build(
+        var (handler, objective, task, _, _, _) = Build(
             OwnerEmployeeId,
             callerIsMember: false,
             newStatus,
@@ -326,7 +443,7 @@ public class MoveTaskStatusCommandHandlerTests
             Visibility = TaskStatusVisibilities.Private,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        var (handler, objective, task, _) = Build(
+        var (handler, objective, task, _, _, _) = Build(
             OwnerEmployeeId,
             callerIsMember: false,
             newStatus,
@@ -353,7 +470,7 @@ public class MoveTaskStatusCommandHandlerTests
             Visibility = TaskStatusVisibilities.Public,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        var (handler, objective, task, statuses) = Build(
+        var (handler, objective, task, statuses, _, _) = Build(
             OwnerEmployeeId,
             callerIsMember: false,
             newStatus,
@@ -392,7 +509,7 @@ public class MoveTaskStatusCommandHandlerTests
             Visibility = TaskStatusVisibilities.Private,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        var (handler, objective, task, statuses) = Build(
+        var (handler, objective, task, statuses, _, _) = Build(
             OwnerEmployeeId,
             callerIsMember: false,
             newStatus,
@@ -440,7 +557,7 @@ public class MoveTaskStatusCommandHandlerTests
             Status = SprintStatuses.Achieved,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        var (handler, _, _, _) = Build(OwnerEmployeeId, callerIsMember: false, newStatus, sprint: achieved);
+        var (handler, _, _, _, _, _) = Build(OwnerEmployeeId, callerIsMember: false, newStatus, sprint: achieved);
 
         var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
 
