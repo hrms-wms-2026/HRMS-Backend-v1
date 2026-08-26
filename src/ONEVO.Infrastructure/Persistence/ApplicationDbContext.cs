@@ -285,7 +285,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<Sprint> Sprints => Set<Sprint>();
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
     public DbSet<TaskCreationRequest> TaskCreationRequests => Set<TaskCreationRequest>();
-    public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();
+        public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();
+    public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
+    public DbSet<TaskStatusChangeLog> TaskStatusChangeLogs => Set<TaskStatusChangeLog>();
+    public DbSet<TaskClockingSession> TaskClockingSessions => Set<TaskClockingSession>();
+    public DbSet<TaskPercentageLog> TaskPercentageLogs => Set<TaskPercentageLog>();
+
     public DbSet<NotificationTemplate> NotificationTemplates => Set<NotificationTemplate>();
     public DbSet<Notification> Notifications => Set<Notification>();
 
