@@ -51,6 +51,39 @@ public sealed class EfTaskClockingSessionRepositoryTests
         Assert.Equal(second.Id, result[1].Id);
     }
 
+    [Fact]
+    public async Task GetOpenSessionsForTasksAsync_ReturnsOnlyTasksWithAnOpenSession()
+    {
+        var tenantId = Guid.NewGuid();
+        var taskWithOpen = Guid.NewGuid();
+        var taskWithClosedOnly = Guid.NewGuid();
+        var taskWithNone = Guid.NewGuid();
+        var openEmployeeId = Guid.NewGuid();
+        await using var db = BuildInMemoryDb();
+        var repository = new EfTaskClockingSessionRepository(db);
+
+        await repository.AddAsync(new TaskClockingSession
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, TaskId = taskWithOpen,
+            EmployeeId = openEmployeeId, ClockInAt = DateTimeOffset.UtcNow
+        });
+        await repository.AddAsync(new TaskClockingSession
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, TaskId = taskWithClosedOnly,
+            EmployeeId = Guid.NewGuid(), ClockInAt = DateTimeOffset.UtcNow.AddHours(-1),
+            ClockOutAt = DateTimeOffset.UtcNow, DurationMinutes = 60
+        });
+        await db.SaveChangesAsync();
+
+        var result = await repository.GetOpenSessionsForTasksAsync(
+            tenantId, new[] { taskWithOpen, taskWithClosedOnly, taskWithNone });
+
+        Assert.Single(result);
+        Assert.Equal(openEmployeeId, result[taskWithOpen]);
+        Assert.False(result.ContainsKey(taskWithClosedOnly));
+        Assert.False(result.ContainsKey(taskWithNone));
+    }
+
     private static ApplicationDbContext BuildInMemoryDb()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

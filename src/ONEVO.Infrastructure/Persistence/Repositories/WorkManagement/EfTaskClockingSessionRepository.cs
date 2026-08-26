@@ -17,6 +17,12 @@ public class EfTaskClockingSessionRepository : ITaskClockingSessionRepository
         => await _db.TaskClockingSessions.AsNoTracking()
             .FirstOrDefaultAsync(session => session.TenantId == tenantId && session.TaskId == taskId && session.ClockOutAt == null, ct);
 
+    public async Task<IReadOnlyDictionary<Guid, Guid>> GetOpenSessionsForTasksAsync(
+        Guid tenantId, IReadOnlyList<Guid> taskIds, CancellationToken ct = default)
+        => await _db.TaskClockingSessions.AsNoTracking()
+            .Where(session => session.TenantId == tenantId && taskIds.Contains(session.TaskId) && session.ClockOutAt == null)
+            .ToDictionaryAsync(session => session.TaskId, session => session.EmployeeId, ct);
+
     public async Task<TaskClockingSession?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.TaskClockingSessions
             .FirstOrDefaultAsync(session => session.TenantId == tenantId && session.Id == id, ct);
