@@ -29,6 +29,8 @@ public class ApproveTaskEditRequestCommandHandler
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ITaskEditLogRepository _editLogs;
+    private readonly ITaskPercentageLogRepository _percentageLogs;
 
     public ApproveTaskEditRequestCommandHandler(
         ICurrentUser currentUser,
@@ -38,9 +40,12 @@ public class ApproveTaskEditRequestCommandHandler
         IObjectiveRepository objectives,
         ISprintRepository sprints,
         IObjectiveAllocationSlackCalculator slack,
-        IMilestoneMembershipCoordinator membership,
+                IMilestoneMembershipCoordinator membership,
         INotificationDispatcher notifications,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        ITaskEditLogRepository editLogs,
+        ITaskPercentageLogRepository percentageLogs)
+
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -50,8 +55,11 @@ public class ApproveTaskEditRequestCommandHandler
         _sprints = sprints;
         _slack = slack;
         _membership = membership;
-        _notifications = notifications;
+                _notifications = notifications;
         _unitOfWork = unitOfWork;
+        _editLogs = editLogs;
+        _percentageLogs = percentageLogs;
+
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(

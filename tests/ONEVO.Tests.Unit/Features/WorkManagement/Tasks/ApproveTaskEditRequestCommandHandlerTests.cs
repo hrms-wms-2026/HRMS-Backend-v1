@@ -141,7 +141,11 @@ public class ApproveTaskEditRequestCommandHandlerTests
                 CreatedAt = DateTimeOffset.UtcNow
             });
 
+                var editLogs = new Mock<ITaskEditLogRepository>();
+        var percentageLogs = new Mock<ITaskPercentageLogRepository>();
+
         var unitOfWork = new Mock<IUnitOfWork>();
+
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(
                 It.IsAny<Func<CancellationToken, Task<Result<WorkTaskResponse>>>>(),
                 It.IsAny<CancellationToken>()))
@@ -158,7 +162,9 @@ public class ApproveTaskEditRequestCommandHandlerTests
             new ObjectiveAllocationSlackCalculator(objectives.Object, tasks.Object),
             membership.Object,
             new Mock<INotificationDispatcher>().Object,
-            unitOfWork.Object);
+            unitOfWork.Object,
+            editLogs.Object,
+            percentageLogs.Object);
 
         return (handler, task, tasks, requests);
     }
