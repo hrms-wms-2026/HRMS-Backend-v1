@@ -102,12 +102,31 @@ public class NotificationTemplateSeeder : IHostedService
                 InAppTitleTemplate = "Attendance correction {{decision}}",
                 InAppBodyTemplate = "Your attendance correction request was {{decision}}."
             },
-            new()
+                        new()
             {
                 Id = Guid.NewGuid(), Code = "attendance_correction_request_cancelled",
                 InAppTitleTemplate = "Attendance correction cancelled",
                 InAppBodyTemplate = "Your attendance correction request was cancelled."
             },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_area_change_request_created",
+                InAppTitleTemplate = "Work-area change requested",
+                InAppBodyTemplate = "{{employeeName}} requested {{requestedWorkArea}} work for {{date}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_area_change_request_decided",
+                InAppTitleTemplate = "Work-area change {{decision}}",
+                InAppBodyTemplate = "Your work-area change request for {{date}} was {{decision}}. {{reviewComment}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_area_change_request_cancelled",
+                InAppTitleTemplate = "Work-area change cancelled",
+                InAppBodyTemplate = "{{employeeName}} cancelled the work-area change request for {{date}}."
+            },
+
             new()
             {
                 Id = Guid.NewGuid(), Code = "work_project_member_invited",

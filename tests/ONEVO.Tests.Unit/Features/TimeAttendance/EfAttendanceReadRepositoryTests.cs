@@ -146,6 +146,94 @@ public sealed class EfAttendanceReadRepositoryTests
         result.Should().NotContainKey(otherEntity.Id);
     }
 
+    [Fact]
+    public async Task GetTrackedRecordAsync_ReturnsTrackedEntity_AndMutationPersistsViaSaveChanges()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(dbName).Options;
+        var employeeId = Guid.NewGuid();
+        var date = new DateOnly(2026, 8, 21);
+        var recordId = Guid.NewGuid();
+
+        await using (var seedDb = NewDbContext(options))
+        {
+            seedDb.AttendanceRecords.Add(new AttendanceRecord
+            {
+                Id = recordId,
+                TenantId = TenantId,
+                EmployeeId = employeeId,
+                Date = date,
+                ExpectedWorkArea = "onsite",
+                WorkedMinutes = 0,
+                BreakMinutes = 0,
+                CreatedAt = new DateTimeOffset(2026, 8, 21, 8, 0, 0, TimeSpan.Zero),
+                UpdatedAt = new DateTimeOffset(2026, 8, 21, 8, 0, 0, TimeSpan.Zero)
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using (var mutateDb = NewDbContext(options))
+        {
+            var repository = new EfAttendanceReadRepository(mutateDb);
+
+            var tracked = await repository.GetTrackedRecordAsync(TenantId, employeeId, date);
+
+            tracked.Should().NotBeNull();
+            mutateDb.Entry(tracked!).State.Should().Be(EntityState.Unchanged,
+                "GetTrackedRecordAsync must not use AsNoTracking, or a later mutation could not be saved");
+
+            tracked!.ExpectedWorkArea = "remote";
+            await repository.SaveChangesAsync();
+        }
+
+        await using (var reloadDb = NewDbContext(options))
+        {
+            var reloaded = await reloadDb.AttendanceRecords.AsNoTracking().SingleAsync(x => x.Id == recordId);
+            reloaded.ExpectedWorkArea.Should().Be("remote",
+                "the mutation on the tracked entity must persist through the repository's own SaveChangesAsync, not a blind detached Update()");
+        }
+    }
+
+    [Fact]
+    public async Task GetRecordAsync_ReturnsNoTrackingEntity()
+    {
+        await using var db = BuildInMemoryDb();
+        var employeeId = Guid.NewGuid();
+        var date = new DateOnly(2026, 8, 21);
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            EmployeeId = employeeId,
+            Date = date,
+            WorkedMinutes = 0,
+            BreakMinutes = 0,
+            CreatedAt = new DateTimeOffset(2026, 8, 21, 8, 0, 0, TimeSpan.Zero),
+            UpdatedAt = new DateTimeOffset(2026, 8, 21, 8, 0, 0, TimeSpan.Zero)
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfAttendanceReadRepository(db);
+        var result = await repository.GetRecordAsync(TenantId, employeeId, date);
+
+        result.Should().NotBeNull();
+        db.Entry(result!).State.Should().Be(EntityState.Detached);
+    }
+
+    private static ApplicationDbContext NewDbContext(DbContextOptions<ApplicationDbContext> options)
+    {
+        var currentUser = new Mock<ICurrentUser>();
+        var dateTime = new Mock<IDateTimeProvider>();
+        var publisher = new Mock<IPublisher>();
+        var tenantContext = new Mock<ITenantContext>();
+        return new ApplicationDbContext(options,
+            new AuditableEntityInterceptor(currentUser.Object, dateTime.Object),
+            new SoftDeleteInterceptor(dateTime.Object),
+            new DomainEventDispatchInterceptor(publisher.Object),
+            tenantContext.Object);
+    }
+
     private static Employee NewEmployee(Guid tenantId, Guid legalEntityId, string number, string first, string last, Guid? avatar) => new()
     {
         Id = Guid.NewGuid(),
@@ -161,16 +249,6 @@ public sealed class EfAttendanceReadRepositoryTests
     };
 
     private static ApplicationDbContext BuildInMemoryDb()
-    {
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-        var currentUser = new Mock<ICurrentUser>();
-        var dateTime = new Mock<IDateTimeProvider>();
-        var publisher = new Mock<IPublisher>();
-        var tenantContext = new Mock<ITenantContext>();
-        return new ApplicationDbContext(options,
-            new AuditableEntityInterceptor(currentUser.Object, dateTime.Object),
-            new SoftDeleteInterceptor(dateTime.Object),
-            new DomainEventDispatchInterceptor(publisher.Object),
-            tenantContext.Object);
-    }
+        => NewDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 }

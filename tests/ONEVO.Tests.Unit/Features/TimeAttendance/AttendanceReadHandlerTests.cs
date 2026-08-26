@@ -5,15 +5,14 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.Queries;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using ONEVO.Domain.Lookups;
 
 namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 
@@ -272,7 +271,10 @@ public sealed class AttendanceReadHandlerTests
         var policies = new Mock<IClockInPolicyRepository>(); policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync([new ClockInPolicy { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1), RemoteWebEnabled = true }]);
         var attendance = new Mock<IAttendanceReadRepository>(); attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>())).ReturnsAsync((AttendanceRecord?)null); attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var authority = new Mock<IEmployeeAuthorityResolver>(); authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
-        var workModes = new Mock<IWorkModeRepository>(); workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>())).ReturnsAsync([new WorkMode { Id = 1, Code = workModeCode, Label = workModeCode }]);
+        var expectedWorkAreas = new Mock<IExpectedWorkAreaResolver>();
+        expectedWorkAreas.Setup(x => x.ResolveAsync(It.IsAny<Employee>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(
+                new ExpectedWorkAreaResolution(ToExpectedWorkArea(workModeCode), legalEntity.Timezone!, "active_employee_work_mode")));
         var dateTime = new Mock<IDateTimeProvider>(); dateTime.SetupGet(x => x.UtcNow).Returns(DateTimeOffset.Parse(localTimeUtc));
         var todayState = new ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService(
             currentUser.Object,
@@ -282,7 +284,7 @@ public sealed class AttendanceReadHandlerTests
             policies.Object,
             attendance.Object,
             authority.Object,
-            workModes.Object);
+            expectedWorkAreas.Object);
         return new Fixture(
             new AttendanceReadHandler(currentUser.Object, employees.Object, attendance.Object, authority.Object, todayState),
             attendance,
@@ -290,6 +292,12 @@ public sealed class AttendanceReadHandlerTests
             authority,
             legalEntity);
     }
+
+    private static string ToExpectedWorkArea(string workModeCode) => workModeCode switch
+    {
+        "hybrid" => "either",
+        _ => workModeCode
+    };
 
     private sealed record Fixture(AttendanceReadHandler Handler, Mock<IAttendanceReadRepository> Attendance, Mock<IClockInPolicyRepository> Policies, Mock<IEmployeeAuthorityResolver> Authority, LegalEntity LegalEntity);
 }

@@ -61,6 +61,24 @@ public class EfEmployeeHierarchyClosureRepository : IEmployeeHierarchyClosureRep
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetAncestorChainsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<Guid>>();
+
+        var rows = await _db.EmployeeHierarchyClosures.AsNoTracking()
+            .Where(c => c.TenantId == tenantId && employeeIds.Contains(c.DescendantEmployeeId))
+            .OrderBy(c => c.Depth)
+            .Select(c => new { c.DescendantEmployeeId, c.AncestorEmployeeId })
+            .ToListAsync(ct);
+
+        // GroupBy over a list already ordered by Depth preserves each group's element order
+        // (LINQ-to-Objects GroupBy is stable), so nearest-manager-first survives the grouping.
+        return rows.GroupBy(r => r.DescendantEmployeeId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(r => r.AncestorEmployeeId).ToList());
+    }
+
     /// <summary>
     /// Full-tenant rebuild: walks positions.reports_to_position_id from every position that
     /// currently holds an active PrimaryEmployment assignment. Delete-then-reinsert in one

@@ -43,6 +43,14 @@ internal sealed class EmployeeAuthorityTestGraph
     private readonly HashSet<Guid> _inactiveDepartments = new();
     private readonly Dictionary<Guid, Guid> _managerOf = new(); // employeeId -> direct manager employeeId
     private readonly HashSet<(Guid UserId, string PermissionCode)> _permissions = new();
+    private readonly Dictionary<string, int> _callCounts = new();
+
+    /// <summary>Call counts recorded by the batch repository methods added for the Part 1 Final
+    /// Hardening inbox-scope refactor, keyed by a short method label. Used to assert the resolver
+    /// issues a small constant number of calls to each - not one per candidate.</summary>
+    public IReadOnlyDictionary<string, int> CallCounts => _callCounts;
+
+    private void RecordCall(string label) => _callCounts[label] = _callCounts.GetValueOrDefault(label) + 1;
 
     public DomainEmployee AddEmployee(
         Guid legalEntityId, Guid? departmentId = null, bool active = true, Guid? userId = null,
@@ -188,9 +196,10 @@ internal sealed class EmployeeAuthorityTestGraph
         return result.ToList();
     }
 
-    public IEmployeeAuthorityResolver BuildResolver(Guid? currentTenantId = null)
+    public IEmployeeAuthorityResolver BuildResolver(
+        Guid? currentTenantId = null, Guid? currentUserId = null, bool isAuthenticated = true)
     {
-        var currentUser = new FakeCurrentUser(currentTenantId ?? TenantId);
+        var currentUser = new FakeCurrentUser(currentTenantId ?? TenantId, currentUserId ?? Guid.Empty, isAuthenticated);
         var clock = new FakeDateTimeProvider(Now);
 
         return new EmployeeAuthorityResolver(
@@ -206,13 +215,18 @@ internal sealed class EmployeeAuthorityTestGraph
 
     private sealed class FakeCurrentUser : ICurrentUser
     {
-        public FakeCurrentUser(Guid tenantId) => TenantId = tenantId;
-        public Guid UserId => Guid.Empty;
+        public FakeCurrentUser(Guid tenantId, Guid userId, bool isAuthenticated)
+        {
+            TenantId = tenantId;
+            UserId = userId;
+            IsAuthenticated = isAuthenticated;
+        }
+        public Guid UserId { get; }
         public Guid TenantId { get; }
         public string Email => "actor@example.com";
         public IReadOnlyList<string> Permissions => Array.Empty<string>();
         public bool HasPermission(string permission) => false;
-        public bool IsAuthenticated => true;
+        public bool IsAuthenticated { get; }
     }
 
     private sealed class FakeDateTimeProvider : IDateTimeProvider
@@ -258,12 +272,23 @@ internal sealed class EmployeeAuthorityTestGraph
         public Task<IReadOnlyList<Guid>> ListActiveEmployeeIdsByIdsAsync(
             Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
         {
+            _graph.RecordCall("Employee.ListActiveEmployeeIdsByIdsAsync");
             var result = _graph._employees
                 .Where(e => e.TenantId == tenantId && e.LegalEntityId == legalEntityId
                     && e.EmploymentStatusId == 1 && employeeIds.Contains(e.Id))
                 .Select(e => e.Id)
                 .ToList();
             return Task.FromResult<IReadOnlyList<Guid>>(result);
+        }
+
+        public Task<IReadOnlyDictionary<Guid, DomainEmployee>> ListByIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+        {
+            _graph.RecordCall("Employee.ListByIdsAsync");
+            var result = _graph._employees
+                .Where(e => e.TenantId == tenantId && employeeIds.Contains(e.Id))
+                .ToDictionary(e => e.Id);
+            return Task.FromResult<IReadOnlyDictionary<Guid, DomainEmployee>>(result);
         }
 
         public Task<(IReadOnlyList<EmployeeListItemResponse> Items, int TotalCount)> ListVisibleAsync(
@@ -319,6 +344,33 @@ internal sealed class EmployeeAuthorityTestGraph
                     (a, e) => new PositionActiveHolder(e.Id, e.FirstName, e.LastName, e.Email, e.AvatarFileId))
                 .ToList();
             return Task.FromResult<IReadOnlyList<PositionActiveHolder>>(holders);
+        }
+
+        public Task<IReadOnlyDictionary<Guid, DomainPositionAssignment>> GetActivePrimaryByEmployeeIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+        {
+            _graph.RecordCall("PositionAssignment.GetActivePrimaryByEmployeeIdsAsync");
+            var result = _graph._assignments
+                .Where(a => a.TenantId == tenantId && employeeIds.Contains(a.EmployeeId)
+                    && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                    && a.AssignmentStatus == PositionAssignmentStatus.Active)
+                .ToDictionary(a => a.EmployeeId);
+            return Task.FromResult<IReadOnlyDictionary<Guid, DomainPositionAssignment>>(result);
+        }
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<PositionActiveHolder>>> GetActiveHoldersByPositionIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> positionIds, CancellationToken ct = default)
+        {
+            _graph.RecordCall("PositionAssignment.GetActiveHoldersByPositionIdsAsync");
+            var result = _graph._assignments
+                .Where(a => a.TenantId == tenantId && positionIds.Contains(a.PositionId)
+                    && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                    && a.AssignmentStatus == PositionAssignmentStatus.Active)
+                .Join(_graph._employees, a => a.EmployeeId, e => e.Id,
+                    (a, e) => new { a.PositionId, Holder = new PositionActiveHolder(e.Id, e.FirstName, e.LastName, e.Email, e.AvatarFileId) })
+                .GroupBy(x => x.PositionId)
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<PositionActiveHolder>)g.Select(x => x.Holder).ToList());
+            return Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<PositionActiveHolder>>>(result);
         }
 
         public Task<int> CountActiveAsync(Guid tenantId, Guid positionId, CancellationToken ct = default)
@@ -390,13 +442,47 @@ internal sealed class EmployeeAuthorityTestGraph
             return Task.FromResult<IReadOnlyList<ManagementCoverageRecord>>(rows);
         }
 
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<ManagementCoverageRecord>>> ListActivePositionCoverageByCoveredPositionIdsAsync(
+            Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> coveredPositionIds, CancellationToken ct = default)
+        {
+            _graph.RecordCall("Position.ListActivePositionCoverageByCoveredPositionIdsAsync");
+            var result = _graph._coverage
+                .Where(c => c.TenantId == tenantId && c.LegalEntityId == legalEntityId
+                    && c.CoveredTargetType == ManagementCoverageRecord.TargetPosition
+                    && c.CoveredPositionId is { } pid && coveredPositionIds.Contains(pid)
+                    && c.Status == ManagementCoverageRecord.StatusActive)
+                .OrderBy(c => c.OwnerOrder).ThenBy(c => c.Id)
+                .GroupBy(c => c.CoveredPositionId!.Value)
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<ManagementCoverageRecord>)g.ToList());
+            return Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<ManagementCoverageRecord>>>(result);
+        }
+
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<ManagementCoverageRecord>>> ListActiveDepartmentCoverageByCoveredDepartmentIdsAsync(
+            Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> coveredDepartmentIds, CancellationToken ct = default)
+        {
+            _graph.RecordCall("Position.ListActiveDepartmentCoverageByCoveredDepartmentIdsAsync");
+            var result = _graph._coverage
+                .Where(c => c.TenantId == tenantId && c.LegalEntityId == legalEntityId
+                    && c.CoveredTargetType == ManagementCoverageRecord.TargetDepartment
+                    && c.CoveredDepartmentId is { } did && coveredDepartmentIds.Contains(did)
+                    && c.Status == ManagementCoverageRecord.StatusActive)
+                .OrderBy(c => c.OwnerOrder).ThenBy(c => c.Id)
+                .GroupBy(c => c.CoveredDepartmentId!.Value)
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<ManagementCoverageRecord>)g.ToList());
+            return Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<ManagementCoverageRecord>>>(result);
+        }
+
         public Task<DomainPosition?> GetByIdAsync(Guid id, CancellationToken ct = default) => throw new NotImplementedException();
         public Task AddAsync(DomainPosition position, CancellationToken ct = default) => throw new NotImplementedException();
         public void Update(DomainPosition position) => throw new NotImplementedException();
         public Task<DomainPosition?> GetByIdForLegalEntityAsync(Guid tenantId, Guid legalEntityId, Guid positionId, CancellationToken ct = default)
             => throw new NotImplementedException();
         public Task<IReadOnlyList<DomainPosition>> GetByIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
-            => throw new NotImplementedException();
+        {
+            _graph.RecordCall("Position.GetByIdsAsync");
+            var result = _graph._positions.Where(p => p.TenantId == tenantId && ids.Contains(p.Id)).ToList();
+            return Task.FromResult<IReadOnlyList<DomainPosition>>(result);
+        }
         public Task<IReadOnlyList<DomainPosition>> ListByLegalEntityAsync(
             Guid tenantId, Guid legalEntityId, bool includeInactive = false, Guid? departmentId = null, CancellationToken ct = default)
             => throw new NotImplementedException();
@@ -467,6 +553,14 @@ internal sealed class EmployeeAuthorityTestGraph
             Guid tenantId, Guid employeeId, CancellationToken ct = default)
             => Task.FromResult(_graph.AncestorsOf(employeeId));
 
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetAncestorChainsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+        {
+            _graph.RecordCall("Closure.GetAncestorChainsAsync");
+            var result = employeeIds.ToDictionary(id => id, id => _graph.AncestorsOf(id));
+            return Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>>(result);
+        }
+
         public Task RebuildAsync(Guid tenantId, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<IReadOnlyList<Guid>> GetDirectReportEmployeeIdsAsync(
             Guid tenantId, Guid managerEmployeeId, CancellationToken ct = default) => throw new NotImplementedException();
@@ -531,6 +625,14 @@ internal sealed class EmployeeAuthorityTestGraph
         public Task<bool> UserHasPermissionCodeAsync(
             Guid userId, string permissionCode, DateTimeOffset now, CancellationToken ct = default)
             => Task.FromResult(_graph._permissions.Contains((userId, permissionCode)));
+
+        public Task<IReadOnlySet<Guid>> ListUserIdsHoldingPermissionAsync(
+            IReadOnlyCollection<Guid> userIds, string permissionCode, DateTimeOffset now, CancellationToken ct = default)
+        {
+            _graph.RecordCall("Permission.ListUserIdsHoldingPermissionAsync");
+            var result = userIds.Where(id => _graph._permissions.Contains((id, permissionCode))).ToHashSet();
+            return Task.FromResult<IReadOnlySet<Guid>>(result);
+        }
 
         public Task<AuthPermission?> GetByCodeAsync(string code, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<IReadOnlyList<AuthPermission>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken ct = default)

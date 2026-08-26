@@ -3,8 +3,8 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -13,7 +13,6 @@ using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Leave.Request.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using ONEVO.Domain.Lookups;
 
 namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 
@@ -118,9 +117,10 @@ public sealed class AttendanceTodayLeaveAwareTests
         var authority = new Mock<IEmployeeAuthorityResolver>();
         authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
-        var workModes = new Mock<IWorkModeRepository>();
-        workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new WorkMode { Id = 1, Code = "remote", Label = "Remote" }]);
+        var expectedWorkAreas = new Mock<IExpectedWorkAreaResolver>();
+        expectedWorkAreas.Setup(x => x.ResolveAsync(It.IsAny<Employee>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(
+                new ExpectedWorkAreaResolution("remote", "UTC", "active_employee_work_mode")));
         var leaves = new Mock<ILeaveRequestReadRepository>();
         leaves.Setup(x => x.ListApprovedCoveringAsync(
                 TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
@@ -137,7 +137,7 @@ public sealed class AttendanceTodayLeaveAwareTests
         return new Fixture(
             new AttendanceTodayStateService(
                 currentUser.Object, dateTime.Object, employees.Object, legalEntities.Object,
-                policies.Object, attendance.Object, authority.Object, workModes.Object, leaves.Object));
+                policies.Object, attendance.Object, authority.Object, expectedWorkAreas.Object, leaves.Object));
     }
 
     private sealed record Fixture(AttendanceTodayStateService Service);

@@ -260,6 +260,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<PresenceSession> PresenceSessions => Set<PresenceSession>();
     public DbSet<BreakRecord> BreakRecords => Set<BreakRecord>();
     public DbSet<AttendanceCorrection> AttendanceCorrections => Set<AttendanceCorrection>();
+    public DbSet<WorkAreaChangeRequest> WorkAreaChangeRequests => Set<WorkAreaChangeRequest>();
 
     // Storage - EntityAssets (Phase 1 entity_assets, scoped to owner_type "project" for now)
     public DbSet<EntityAsset> EntityAssets => Set<EntityAsset>();

@@ -596,6 +596,18 @@ public class EfEmployeeRepository : IEmployeeRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, EmployeeEntity>> ListByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return new Dictionary<Guid, EmployeeEntity>();
+
+        var rows = await _db.Employees.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && employeeIds.Contains(e.Id))
+            .ToListAsync(ct);
+        return rows.ToDictionary(e => e.Id);
+    }
+
     public async Task AddAsync(EmployeeEntity employee, CancellationToken ct = default)
         => await _db.Employees.AddAsync(employee, ct);
 

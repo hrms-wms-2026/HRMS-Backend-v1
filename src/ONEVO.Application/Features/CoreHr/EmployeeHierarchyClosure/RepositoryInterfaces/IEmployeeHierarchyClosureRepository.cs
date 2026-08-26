@@ -28,4 +28,10 @@ public interface IEmployeeHierarchyClosureRepository
     /// fallback.</summary>
     Task<IReadOnlyList<Guid>> GetAncestorChainEmployeeIdsAsync(
         Guid tenantId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>Batched GetAncestorChainEmployeeIdsAsync: for every id in employeeIds, its full
+    /// upward reporting chain ordered nearest-manager-first (Depth ascending), keyed by the
+    /// descendant (subject) employee id. Ids with no ancestors are absent from the result.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> GetAncestorChainsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
 }

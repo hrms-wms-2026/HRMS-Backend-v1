@@ -9285,6 +9285,99 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("presence_sessions", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.WorkAreaChangeRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CurrentExpectedWorkArea")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("current_expected_work_area");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date")
+                        .HasColumnName("date");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<Guid>("LegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_entity_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("reason");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<string>("RequestedWorkArea")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("requested_work_area");
+
+                    b.Property<string>("ReviewComment")
+                        .HasColumnType("text")
+                        .HasColumnName("review_comment");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<Guid?>("ReviewedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reviewed_by_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status")
+                        .IsConcurrencyToken();
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_work_area_change_requests");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_work_area_change_requests_employee_id");
+
+                    b.HasIndex("LegalEntityId")
+                        .HasDatabaseName("ix_work_area_change_requests_legal_entity_id");
+
+                    b.HasIndex("ReviewedById")
+                        .HasDatabaseName("ix_work_area_change_requests_reviewed_by_id");
+
+                                        b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("ix_work_area_change_requests_tenant_status");
+
+                    b.HasIndex("TenantId", "EmployeeId", "Date")
+                        .HasDatabaseName("ix_work_area_change_requests_tenant_employee_date");
+
+                    b.HasIndex("TenantId", "EmployeeId", "Date")
+
+                        .IsUnique()
+                        .HasDatabaseName("ux_work_area_change_requests_active_employee_date")
+                        .HasFilter("status IN ('pending', 'approved')");
+
+                    b.HasIndex("TenantId", "LegalEntityId", "Status")
+                        .HasDatabaseName("ix_work_area_change_requests_tenant_legal_entity_status");
+
+                    b.ToTable("work_area_change_requests", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Labels.Entities.Label", b =>
                 {
                     b.Property<Guid>("Id")
@@ -12021,6 +12114,29 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_clock_in_policies_legal_entities_legal_entity_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.WorkAreaChangeRequest", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_work_area_change_requests_employees_employee_id");
+
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("LegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_work_area_change_requests_legal_entities_legal_entity_id");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_work_area_change_requests_users_reviewed_by_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Labels.Entities.Label", b =>
