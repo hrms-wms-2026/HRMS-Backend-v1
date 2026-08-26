@@ -4,7 +4,6 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
@@ -24,8 +23,19 @@ public class EditTaskCommandHandlerTests
     private static readonly Guid TaskId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
 
-    private (EditTaskCommandHandler Handler, Mock<IWorkTaskRepository> Tasks) Build(
-        decimal allocatedHours, decimal existingSumExcludingThisTask, Sprint? sprint = null)
+    private (
+        EditTaskCommandHandler Handler,
+        Mock<IWorkTaskRepository> Tasks,
+        List<TaskEditLog> EditLogs,
+        Guid CallerEmployeeId,
+        WorkTask Task,
+        List<TaskPercentageLog> PercentageLogs) Build(
+        decimal allocatedHours,
+        decimal existingSumExcludingThisTask,
+        Sprint? sprint = null,
+        string title = "Old",
+        string priority = WorkTaskPriorities.Medium,
+        int progressPercent = 0)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -34,8 +44,9 @@ public class EditTaskCommandHandlerTests
 
         var task = new WorkTask
         {
-            Id = TaskId, TenantId = TenantId, ObjectiveId = ObjectiveId, Title = "Old", ShortId = "T-1",
-            EstimatedHours = 10m, SprintId = sprint?.Id, CreatedAt = DateTimeOffset.UtcNow
+            Id = TaskId, TenantId = TenantId, ObjectiveId = ObjectiveId, Title = title, ShortId = "T-1",
+            Priority = priority, ProgressPercent = progressPercent, EstimatedHours = 10m,
+            SprintId = sprint?.Id, CreatedAt = DateTimeOffset.UtcNow
         };
 
         var tasks = new Mock<IWorkTaskRepository>();
@@ -58,28 +69,38 @@ public class EditTaskCommandHandlerTests
                 .ReturnsAsync(sprint);
         }
 
-                var identity = new Mock<ICallerIdentityResolver>();
+        var callerEmployeeId = UserId;
+        var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(UserId);
-        var editLogs = new Mock<ITaskEditLogRepository>();
-        var percentageLogs = new Mock<ITaskPercentageLogRepository>();
+            .ReturnsAsync(callerEmployeeId);
+
+        var editLogs = new List<TaskEditLog>();
+        var editLogRepository = new Mock<ITaskEditLogRepository>();
+        editLogRepository.Setup(x => x.AddAsync(It.IsAny<TaskEditLog>(), It.IsAny<CancellationToken>()))
+            .Callback<TaskEditLog, CancellationToken>((log, _) => editLogs.Add(log))
+            .Returns(Task.CompletedTask);
+
+        var percentageLogs = new List<TaskPercentageLog>();
+        var percentageLogRepository = new Mock<ITaskPercentageLogRepository>();
+        percentageLogRepository.Setup(x => x.AddAsync(It.IsAny<TaskPercentageLog>(), It.IsAny<CancellationToken>()))
+            .Callback<TaskPercentageLog, CancellationToken>((log, _) => percentageLogs.Add(log))
+            .Returns(Task.CompletedTask);
 
         var unitOfWork = new Mock<IUnitOfWork>();
-
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<WorkTaskResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<WorkTaskResponse>>> op, CancellationToken ct) => op(ct));
 
-                var handler = new EditTaskCommandHandler(
+        var handler = new EditTaskCommandHandler(
             currentUser.Object, tasks.Object, objectives.Object, slack, unitOfWork.Object, sprints.Object,
-            identity.Object, editLogs.Object, percentageLogs.Object);
+            identity.Object, editLogRepository.Object, percentageLogRepository.Object);
 
-        return (handler, tasks);
+        return (handler, tasks, editLogs, callerEmployeeId, task, percentageLogs);
     }
 
     [Fact]
     public async Task Handle_IncreaseWithinSlack_Updates()
     {
-        var (handler, tasks) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m);
+        var (handler, _, _, _, _, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m);
         var result = await handler.Handle(new EditTaskCommand(TaskId, "New Title", null, "medium", null, EstimatedHours: 50m, StoryPoints: null, ProgressPercent: null, Reason: null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -89,7 +110,7 @@ public class EditTaskCommandHandlerTests
     [Fact]
     public async Task Handle_IncreaseExceedsSlack_ReturnsConflict()
     {
-        var (handler, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m);
+        var (handler, _, _, _, _, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m);
         var result = await handler.Handle(new EditTaskCommand(TaskId, "New Title", null, "medium", null, EstimatedHours: 70m, StoryPoints: null, ProgressPercent: null, Reason: null), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -106,10 +127,46 @@ public class EditTaskCommandHandlerTests
             Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "S1",
             Status = SprintStatuses.Achieved, CreatedAt = DateTimeOffset.UtcNow
         };
-        var (handler, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, sprint: achieved);
+        var (handler, _, _, _, _, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, sprint: achieved);
         var result = await handler.Handle(new EditTaskCommand(TaskId, "New Title", null, "medium", null, EstimatedHours: 10m, StoryPoints: null, ProgressPercent: null, Reason: null), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_WhenTitleChanges_WritesTaskEditLogWithOnlyTheChangedField()
+    {
+        var (handler, _, editLogs, callerEmployeeId, task, _) = Build(
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m,
+            title: "Old Title", priority: WorkTaskPriorities.Medium, progressPercent: 20);
+        var command = new EditTaskCommand(
+            task.Id, "New Title", task.Description, task.Priority, task.DueDate,
+            task.EstimatedHours, task.StoryPoints, null, null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var addedLog = Assert.Single(editLogs);
+        Assert.Equal(TaskEditLogSources.Direct, addedLog.Source);
+        Assert.Equal(callerEmployeeId, addedLog.EmployeeId);
+        Assert.Contains("\"title\"", addedLog.NewValuesJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"priority\"", addedLog.NewValuesJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Handle_WhenNothingChanges_WritesNoEditLog()
+    {
+        var (handler, _, editLogs, _, task, _) = Build(
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m,
+            title: "Same Title", priority: WorkTaskPriorities.Medium, progressPercent: 20);
+        var command = new EditTaskCommand(
+            task.Id, task.Title, task.Description, task.Priority, task.DueDate,
+            task.EstimatedHours, task.StoryPoints, null, null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(editLogs);
     }
 }
