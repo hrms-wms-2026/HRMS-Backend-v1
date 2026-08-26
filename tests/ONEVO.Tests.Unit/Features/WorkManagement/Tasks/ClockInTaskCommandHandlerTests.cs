@@ -18,16 +18,18 @@ public class ClockInTaskCommandHandlerTests
     private static readonly Guid TaskId = Guid.NewGuid();
 
     private (ClockInTaskCommandHandler Handler, List<TaskClockingSession> Added, Guid CallerEmployeeId, WorkTask Task) ArrangeClockInHandler(
-        bool isAssignee, bool hasOpenSession, int taskProgressPercent)
+        bool isAssignee, bool hasOpenSession, int taskProgressPercent,
+        Guid? openSessionEmployeeId = null, bool authenticated = true,
+        bool employeeExists = true, bool taskExists = true)
     {
         var currentUser = new Mock<ICurrentUser>();
-        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CallerEmployeeId);
+            .ReturnsAsync(employeeExists ? CallerEmployeeId : null);
 
         var task = new WorkTask
         {
@@ -36,7 +38,7 @@ public class ClockInTaskCommandHandlerTests
         };
         var tasks = new Mock<IWorkTaskRepository>();
         tasks.Setup(x => x.GetByIdForTenantAsync(TenantId, TaskId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(task);
+            .ReturnsAsync(taskExists ? task : null);
 
         var assignments = new Mock<ITaskAssignmentRepository>();
         assignments.Setup(x => x.GetByTaskAndEmployeeAsync(TaskId, CallerEmployeeId, It.IsAny<CancellationToken>()))
@@ -49,7 +51,7 @@ public class ClockInTaskCommandHandlerTests
             ? new TaskClockingSession
             {
                 Id = Guid.NewGuid(), TenantId = TenantId, TaskId = TaskId,
-                EmployeeId = CallerEmployeeId, ClockInAt = DateTimeOffset.UtcNow.AddMinutes(-5)
+                EmployeeId = openSessionEmployeeId ?? CallerEmployeeId, ClockInAt = DateTimeOffset.UtcNow.AddMinutes(-5)
             }
             : null;
         var sessions = new Mock<ITaskClockingSessionRepository>();
@@ -111,6 +113,84 @@ public class ClockInTaskCommandHandlerTests
     public async Task Handle_CallerNotAnAssignee_ReturnsForbidden()
     {
         var (handler, sessions, _, task) = ArrangeClockInHandler(false, false, 20);
+
+        var result = await handler.Handle(new ClockInTaskCommand(task.Id), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Empty(sessions);
+    }
+
+    [Fact]
+    public async Task Handle_NotAuthenticated_ReturnsForbidden()
+    {
+        var (handler, sessions, _, task) = ArrangeClockInHandler(true, false, 20, authenticated: false);
+
+        var result = await handler.Handle(new ClockInTaskCommand(task.Id), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Empty(sessions);
+    }
+
+    [Fact]
+    public async Task Handle_NoEmployeeRecord_ReturnsForbidden()
+    {
+        var (handler, sessions, _, task) = ArrangeClockInHandler(true, false, 20, employeeExists: false);
+
+        var result = await handler.Handle(new ClockInTaskCommand(task.Id), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Empty(sessions);
+    }
+
+    [Fact]
+    public async Task Handle_TaskNotFound_ReturnsNotFound()
+    {
+        var (handler, sessions, _, task) = ArrangeClockInHandler(true, false, 20, taskExists: false);
+
+        var result = await handler.Handle(new ClockInTaskCommand(task.Id), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Empty(sessions);
+    }
+
+    [Fact]
+    public async Task Handle_TaskAt99Percent_OpensSession()
+    {
+        var before = DateTimeOffset.UtcNow;
+        var (handler, sessions, callerEmployeeId, task) = ArrangeClockInHandler(true, false, 99);
+
+        var result = await handler.Handle(new ClockInTaskCommand(task.Id), CancellationToken.None);
+
+        var after = DateTimeOffset.UtcNow;
+        Assert.True(result.IsSuccess);
+        var opened = Assert.Single(sessions);
+        Assert.Equal(task.Id, opened.TaskId);
+        Assert.Equal(callerEmployeeId, opened.EmployeeId);
+        Assert.InRange(opened.ClockInAt, before, after);
+        Assert.Null(opened.ClockOutAt);
+    }
+
+    [Fact]
+    public async Task Handle_OpenSessionOwnedByDifferentEmployee_ReturnsConflict()
+    {
+        var (handler, sessions, _, task) = ArrangeClockInHandler(
+            true, true, 20, openSessionEmployeeId: Guid.NewGuid());
+
+        var result = await handler.Handle(new ClockInTaskCommand(task.Id), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Empty(sessions);
+    }
+
+    [Fact]
+    public async Task Handle_NotAssigneeAndTaskComplete_ReturnsForbiddenBeforeLockCheck()
+    {
+        var (handler, sessions, _, task) = ArrangeClockInHandler(false, false, 100);
 
         var result = await handler.Handle(new ClockInTaskCommand(task.Id), CancellationToken.None);
 
