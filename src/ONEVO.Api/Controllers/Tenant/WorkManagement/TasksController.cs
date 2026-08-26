@@ -32,6 +32,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.RejectTaskCreatio
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskCategories;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskStatuses;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.UnassignTask;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetCurrentEmployee;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyDeadlines;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskEditRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskCreationRequests;
@@ -54,6 +55,19 @@ public class TasksController : ControllerBase
     private readonly IMediator _mediator;
 
     public TasksController(IMediator mediator) => _mediator = mediator;
+
+    /// <summary>The caller's own employee id within this Work Management tenant, resolved the same
+    /// way every other WorkManagement handler resolves it. A Work-Management-scoped stand-in for
+    /// GET /api/v1/auth/me exposing this, which it does not.</summary>
+    [HttpGet("me")]
+    public async Task<IActionResult> Me(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetCurrentEmployeeQuery(), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
 
     [HttpGet("my-deadlines")]
     public async Task<IActionResult> MyDeadlines([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct)

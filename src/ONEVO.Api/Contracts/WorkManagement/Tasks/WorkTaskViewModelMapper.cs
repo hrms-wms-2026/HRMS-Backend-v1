@@ -8,7 +8,8 @@ public static class WorkTaskViewModelMapper
         dto.Id, dto.ObjectiveId, dto.ShortId, dto.Title, dto.Description,
         dto.CategoryId, dto.StatusId, dto.Priority, dto.StoryPoints,
         dto.DueDate, dto.EstimatedHours, dto.CompletedHours, dto.ProgressPercent, dto.SprintId,
-        dto.AssigneeEmployeeIds ?? Array.Empty<Guid>(), dto.OpenClockSessionEmployeeId);
+        dto.AssigneeEmployeeIds ?? Array.Empty<Guid>(), dto.OpenClockSessionEmployeeId,
+        dto.OpenClockSessionClockInAt, dto.TotalLoggedMinutes);
 
     public static TaskStatusViewModel ToViewModel(this TaskStatusResponse dto) => new(
         dto.Id, dto.Name, dto.DisplayOrder, dto.RequiresApproval,
@@ -22,4 +23,6 @@ public static class WorkTaskViewModelMapper
 
     public static WorkNotificationNavigationViewModel ToViewModel(this WorkNotificationNavigationResponse dto) =>
         new(dto.ProjectId, dto.ObjectiveId, dto.TaskId, dto.TargetTab);
+
+    public static CurrentEmployeeViewModel ToViewModel(this CurrentEmployeeResponse dto) => new(dto.EmployeeId);
 }

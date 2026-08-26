@@ -85,7 +85,10 @@ public sealed class GetProjectTasksQueryHandlerTests
         var sessionRepository = new Mock<ITaskClockingSessionRepository>();
         sessionRepository.Setup(x => x.GetOpenSessionsForTasksAsync(
                 TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<Guid, Guid>());
+            .ReturnsAsync(new Dictionary<Guid, OpenTaskClockingSessionSummary>());
+        sessionRepository.Setup(x => x.GetTotalClosedSessionMinutesForTasksAsync(
+                TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
 
         return new GetProjectTasksQueryHandler(
             currentUser.Object, identity.Object, projects.Object, members.Object,

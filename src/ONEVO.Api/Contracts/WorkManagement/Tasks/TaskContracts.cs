@@ -50,7 +50,8 @@ public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
     Guid CategoryId, Guid StatusId, string Priority, int? StoryPoints,
     DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent,
-    Guid? SprintId, IReadOnlyList<Guid> AssigneeEmployeeIds, Guid? OpenClockSessionEmployeeId);
+    Guid? SprintId, IReadOnlyList<Guid> AssigneeEmployeeIds, Guid? OpenClockSessionEmployeeId,
+    DateTimeOffset? OpenClockSessionClockInAt, int TotalLoggedMinutes);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,
@@ -76,6 +77,8 @@ public sealed record MyDeadlinesViewModel(
 
 public sealed record WorkNotificationNavigationViewModel(
     Guid ProjectId, Guid ObjectiveId, Guid? TaskId, string TargetTab);
+
+public sealed record CurrentEmployeeViewModel(Guid EmployeeId);
 
 public sealed record TaskHistoryEntryViewModel(
     string Type, DateTimeOffset OccurredAt, Guid EmployeeId, string EmployeeName,

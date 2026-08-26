@@ -24,6 +24,7 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
     private readonly IUnitOfWork _unitOfWork;
     private readonly ITaskStatusChangeLogRepository _statusChangeLogs;
     private readonly ITaskPercentageLogRepository _percentageLogs;
+    private readonly ITaskClockingSessionRepository _clockingSessions;
 
     public MoveTaskStatusCommandHandler(
         ICurrentUser currentUser,
@@ -35,7 +36,8 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
                 IUnitOfWork unitOfWork,
         ISprintRepository sprints,
         ITaskStatusChangeLogRepository statusChangeLogs,
-        ITaskPercentageLogRepository percentageLogs)
+        ITaskPercentageLogRepository percentageLogs,
+        ITaskClockingSessionRepository clockingSessions)
 
     {
         _currentUser = currentUser;
@@ -48,6 +50,7 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         _sprints = sprints;
         _statusChangeLogs = statusChangeLogs;
         _percentageLogs = percentageLogs;
+        _clockingSessions = clockingSessions;
 
     }
 
@@ -119,6 +122,25 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
                     EmployeeId = callerEmployeeId.Value, PreviousPercent = previousPercent, NewPercent = 100,
                     Source = TaskPercentageLogSources.StatusChange, ClockingSessionId = null, ChangedAt = now
                 }, innerCt);
+
+                // A status-driven completion locks clocking the same way a 100% Push does (spec §4),
+                // but unlike Push there is no caller-supplied session to close - an assignee may still
+                // have this task clocked in when someone else drags it to a complete column. Leaving
+                // that session open would be unclosable forever (Push requires percent > 100, which is
+                // impossible) and would permanently block re-clocking via the partial unique index, even
+                // after a later edit unlocks the task by resetting ProgressPercent below 100.
+                var openSession = await _clockingSessions.GetOpenSessionForTaskAsync(tenantId, task.Id, innerCt);
+                if (openSession is not null)
+                {
+                    var trackedSession = await _clockingSessions.GetTrackedByIdForTenantAsync(tenantId, openSession.Id, innerCt);
+                    if (trackedSession is not null)
+                    {
+                        trackedSession.ClockOutAt = now;
+                        trackedSession.DurationMinutes = (int)(now - trackedSession.ClockInAt).TotalMinutes;
+                        trackedSession.UpdatedAt = now;
+                        _clockingSessions.Update(trackedSession);
+                    }
+                }
             }
 
             else if (wasComplete && !willBeComplete)

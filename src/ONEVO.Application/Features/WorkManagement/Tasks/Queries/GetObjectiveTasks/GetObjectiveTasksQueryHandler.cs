@@ -92,13 +92,17 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
 
                 var openSessions = await _sessions.GetOpenSessionsForTasksAsync(
             tenantId, items.Select(task => task.Id).ToList(), ct);
+        var totalLoggedMinutes = await _sessions.GetTotalClosedSessionMinutesForTasksAsync(
+            tenantId, items.Select(task => task.Id).ToList(), ct);
 
         var responses = items.Select(t => new WorkTaskResponse(
 
             t.Id, t.ObjectiveId, t.ShortId, t.Title, t.Description, t.CategoryId, t.StatusId,
             t.Priority, t.StoryPoints, t.DueDate, t.EstimatedHours, t.CompletedHours, t.ProgressPercent, t.SprintId,
             assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()),
-            openSessions.TryGetValue(t.Id, out var openEmployeeId) ? openEmployeeId : (Guid?)null)).ToList();
+            openSessions.TryGetValue(t.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
+            openSession?.ClockInAt,
+            totalLoggedMinutes.GetValueOrDefault(t.Id, 0))).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

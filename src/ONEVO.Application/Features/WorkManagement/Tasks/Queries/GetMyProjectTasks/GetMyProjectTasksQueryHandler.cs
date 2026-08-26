@@ -67,6 +67,8 @@ public sealed class GetMyProjectTasksQueryHandler : IRequestHandler<GetMyProject
             assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>()).Contains(callerEmployeeId.Value));
         var openSessions = await _sessions.GetOpenSessionsForTasksAsync(
             tenantId, myTasks.Select(task => task.Id).ToList(), ct);
+        var totalLoggedMinutes = await _sessions.GetTotalClosedSessionMinutesForTasksAsync(
+            tenantId, myTasks.Select(task => task.Id).ToList(), ct);
 
         var sorted = myTasks
             .OrderBy(task => task.DueDate.HasValue ? 0 : 1)
@@ -78,7 +80,9 @@ public sealed class GetMyProjectTasksQueryHandler : IRequestHandler<GetMyProject
             task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description, task.CategoryId, task.StatusId,
             task.Priority, task.StoryPoints, task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
             assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>()),
-            openSessions.TryGetValue(task.Id, out var openEmployeeId) ? openEmployeeId : (Guid?)null)).ToList();
+            openSessions.TryGetValue(task.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
+            openSession?.ClockInAt,
+            totalLoggedMinutes.GetValueOrDefault(task.Id, 0))).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

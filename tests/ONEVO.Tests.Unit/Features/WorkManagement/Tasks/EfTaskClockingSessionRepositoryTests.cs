@@ -59,13 +59,14 @@ public sealed class EfTaskClockingSessionRepositoryTests
         var taskWithClosedOnly = Guid.NewGuid();
         var taskWithNone = Guid.NewGuid();
         var openEmployeeId = Guid.NewGuid();
+        var openClockInAt = DateTimeOffset.UtcNow;
         await using var db = BuildInMemoryDb();
         var repository = new EfTaskClockingSessionRepository(db);
 
         await repository.AddAsync(new TaskClockingSession
         {
             Id = Guid.NewGuid(), TenantId = tenantId, TaskId = taskWithOpen,
-            EmployeeId = openEmployeeId, ClockInAt = DateTimeOffset.UtcNow
+            EmployeeId = openEmployeeId, ClockInAt = openClockInAt
         });
         await repository.AddAsync(new TaskClockingSession
         {
@@ -79,8 +80,45 @@ public sealed class EfTaskClockingSessionRepositoryTests
             tenantId, new[] { taskWithOpen, taskWithClosedOnly, taskWithNone });
 
         Assert.Single(result);
-        Assert.Equal(openEmployeeId, result[taskWithOpen]);
+        Assert.Equal(openEmployeeId, result[taskWithOpen].EmployeeId);
+        Assert.Equal(openClockInAt, result[taskWithOpen].ClockInAt);
         Assert.False(result.ContainsKey(taskWithClosedOnly));
+        Assert.False(result.ContainsKey(taskWithNone));
+    }
+
+    [Fact]
+    public async Task GetTotalClosedSessionMinutesForTasksAsync_SumsClosedSessionsAndExcludesOpenAndOtherTasks()
+    {
+        var tenantId = Guid.NewGuid();
+        var taskWithSessions = Guid.NewGuid();
+        var taskWithNone = Guid.NewGuid();
+        await using var db = BuildInMemoryDb();
+        var repository = new EfTaskClockingSessionRepository(db);
+
+        await repository.AddAsync(new TaskClockingSession
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, TaskId = taskWithSessions,
+            EmployeeId = Guid.NewGuid(), ClockInAt = DateTimeOffset.UtcNow.AddHours(-2),
+            ClockOutAt = DateTimeOffset.UtcNow.AddHours(-1), DurationMinutes = 60
+        });
+        await repository.AddAsync(new TaskClockingSession
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, TaskId = taskWithSessions,
+            EmployeeId = Guid.NewGuid(), ClockInAt = DateTimeOffset.UtcNow.AddMinutes(-30),
+            ClockOutAt = DateTimeOffset.UtcNow, DurationMinutes = 30
+        });
+        // An open session on the same task must not be counted yet - it has no DurationMinutes.
+        await repository.AddAsync(new TaskClockingSession
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, TaskId = taskWithSessions,
+            EmployeeId = Guid.NewGuid(), ClockInAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var result = await repository.GetTotalClosedSessionMinutesForTasksAsync(
+            tenantId, new[] { taskWithSessions, taskWithNone });
+
+        Assert.Equal(90, result[taskWithSessions]);
         Assert.False(result.ContainsKey(taskWithNone));
     }
 

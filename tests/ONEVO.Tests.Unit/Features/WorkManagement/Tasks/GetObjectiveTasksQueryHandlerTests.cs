@@ -78,7 +78,10 @@ public class GetObjectiveTasksQueryHandlerTests
         var sessions = new Mock<ITaskClockingSessionRepository>();
         sessions.Setup(x => x.GetOpenSessionsForTasksAsync(
                 TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<Guid, Guid>());
+            .ReturnsAsync(new Dictionary<Guid, OpenTaskClockingSessionSummary>());
+        sessions.Setup(x => x.GetTotalClosedSessionMinutesForTasksAsync(
+                TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
 
         var (identity, objectives, members, permissions) = MembershipOnObjectiveItself();
         var handler = new GetObjectiveTasksQueryHandler(
@@ -121,7 +124,10 @@ public class GetObjectiveTasksQueryHandlerTests
                 var sessions = new Mock<ITaskClockingSessionRepository>();
         sessions.Setup(x => x.GetOpenSessionsForTasksAsync(
                 TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<Guid, Guid>());
+            .ReturnsAsync(new Dictionary<Guid, OpenTaskClockingSessionSummary>());
+        sessions.Setup(x => x.GetTotalClosedSessionMinutesForTasksAsync(
+                TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
 
         var (identity, objectives, members, permissions) = MembershipOnObjectiveItself();
         var handler = new GetObjectiveTasksQueryHandler(
@@ -182,7 +188,10 @@ public class GetObjectiveTasksQueryHandlerTests
         var sessions = new Mock<ITaskClockingSessionRepository>();
         sessions.Setup(x => x.GetOpenSessionsForTasksAsync(
                 TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<Guid, Guid>());
+            .ReturnsAsync(new Dictionary<Guid, OpenTaskClockingSessionSummary>());
+        sessions.Setup(x => x.GetTotalClosedSessionMinutesForTasksAsync(
+                TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
 
         return new GetObjectiveTasksQueryHandler(
             currentUser.Object, identity.Object, objectives.Object, members.Object, permissionResolver.Object,
