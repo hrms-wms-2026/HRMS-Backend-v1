@@ -8,7 +8,9 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ApproveTaskCreati
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.AssignTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CancelTaskEditRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CancelTaskCreationRequest;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ClockInTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTask;
+
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskEditRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCategory;
@@ -245,7 +247,19 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+        [HttpPost("tasks/{id:guid}/clock-in")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> ClockIn(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new ClockInTaskCommand(id), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     [HttpPost("tasks/{id:guid}/assignments")]
+
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Assign(Guid id, [FromBody] AssignTaskRequest request, CancellationToken ct)
     {
