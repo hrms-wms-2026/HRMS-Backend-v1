@@ -8,7 +8,7 @@ public static class WorkTaskViewModelMapper
         dto.Id, dto.ObjectiveId, dto.ShortId, dto.Title, dto.Description,
         dto.CategoryId, dto.StatusId, dto.Priority, dto.StoryPoints,
         dto.DueDate, dto.EstimatedHours, dto.CompletedHours, dto.ProgressPercent, dto.SprintId,
-        dto.AssigneeEmployeeIds ?? Array.Empty<Guid>());
+        dto.AssigneeEmployeeIds ?? Array.Empty<Guid>(), dto.OpenClockSessionEmployeeId);
 
     public static TaskStatusViewModel ToViewModel(this TaskStatusResponse dto) => new(
         dto.Id, dto.Name, dto.DisplayOrder, dto.RequiresApproval,

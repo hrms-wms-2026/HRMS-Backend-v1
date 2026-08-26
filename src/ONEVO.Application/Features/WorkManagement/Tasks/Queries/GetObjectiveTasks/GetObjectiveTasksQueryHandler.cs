@@ -19,23 +19,28 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
     private readonly IPermissionResolver _permissionResolver;
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskAssignmentRepository _assignments;
+    private readonly ITaskClockingSessionRepository _sessions;
 
     public GetObjectiveTasksQueryHandler(
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
         IObjectiveRepository objectives,
         IProjectMemberRepository members,
-        IPermissionResolver permissionResolver,
+                IPermissionResolver permissionResolver,
         IWorkTaskRepository tasks,
-        ITaskAssignmentRepository assignments)
+        ITaskAssignmentRepository assignments,
+        ITaskClockingSessionRepository sessions)
+
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _members = members;
         _permissionResolver = permissionResolver;
-        _tasks = tasks;
+                _tasks = tasks;
         _assignments = assignments;
+        _sessions = sessions;
+
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetObjectiveTasksQuery request, CancellationToken ct)
@@ -85,10 +90,15 @@ public class GetObjectiveTasksQueryHandler : IRequestHandler<GetObjectiveTasksQu
             .GroupBy(a => a.TaskId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(a => a.EmployeeId).ToList());
 
+                var openSessions = await _sessions.GetOpenSessionsForTasksAsync(
+            tenantId, items.Select(task => task.Id).ToList(), ct);
+
         var responses = items.Select(t => new WorkTaskResponse(
+
             t.Id, t.ObjectiveId, t.ShortId, t.Title, t.Description, t.CategoryId, t.StatusId,
             t.Priority, t.StoryPoints, t.DueDate, t.EstimatedHours, t.CompletedHours, t.ProgressPercent, t.SprintId,
-            assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()))).ToList();
+            assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()),
+            openSessions.TryGetValue(t.Id, out var openEmployeeId) ? openEmployeeId : (Guid?)null)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

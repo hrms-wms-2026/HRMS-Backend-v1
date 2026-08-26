@@ -42,7 +42,8 @@ public class GetMyProjectTasksQueryHandlerTests
             assigneeEmployeeIds ?? Array.Empty<Guid>());
 
     private (GetMyProjectTasksQueryHandler Handler, Guid CallerEmployeeId, Project Project) ArrangeMyTasksHandler(
-        IReadOnlyList<TaskFixtureData> fixtures)
+        IReadOnlyList<TaskFixtureData> fixtures,
+        IReadOnlyDictionary<Guid, Guid>? openSessionsByTaskId = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -71,8 +72,14 @@ public class GetMyProjectTasksQueryHandlerTests
         assignmentRepository.Setup(x => x.GetByTaskIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(assignments);
 
+        var sessionRepository = new Mock<ITaskClockingSessionRepository>();
+        sessionRepository.Setup(x => x.GetOpenSessionsForTasksAsync(
+                TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(openSessionsByTaskId ?? new Dictionary<Guid, Guid>());
+
         var handler = new GetMyProjectTasksQueryHandler(
-            currentUser.Object, identity.Object, projects.Object, tasks.Object, assignmentRepository.Object);
+            currentUser.Object, identity.Object, projects.Object, tasks.Object, assignmentRepository.Object,
+            sessionRepository.Object);
         return (handler, CallerEmployeeIdConst, project);
     }
 
@@ -111,6 +118,32 @@ public class GetMyProjectTasksQueryHandlerTests
         Assert.Equal(
             new[] { "Same day as sooner, critical", "Due sooner, low", "Due later, high", "No due date" },
             result.Value!.Select(task => task.Title).ToArray());
+    }
+
+    [Fact]
+    public async Task Handle_TaskWithOpenSession_IncludesOpenClockSessionEmployeeId()
+    {
+        var fixture = TaskFixture("Mine", assigneeEmployeeIds: new[] { CallerEmployeeIdConst });
+        var openEmployeeId = Guid.NewGuid();
+        var (handler, _, project) = ArrangeMyTasksHandler(
+            new[] { fixture }, new Dictionary<Guid, Guid> { [fixture.Task.Id] = openEmployeeId });
+
+        var result = await handler.Handle(new GetMyProjectTasksQuery(project.Id, null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(openEmployeeId, result.Value![0].OpenClockSessionEmployeeId);
+    }
+
+    [Fact]
+    public async Task Handle_TaskWithNoOpenSession_HasNullOpenClockSessionEmployeeId()
+    {
+        var fixture = TaskFixture("Mine", assigneeEmployeeIds: new[] { CallerEmployeeIdConst });
+        var (handler, _, project) = ArrangeMyTasksHandler(new[] { fixture });
+
+        var result = await handler.Handle(new GetMyProjectTasksQuery(project.Id, null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value![0].OpenClockSessionEmployeeId);
     }
 
     [Fact]

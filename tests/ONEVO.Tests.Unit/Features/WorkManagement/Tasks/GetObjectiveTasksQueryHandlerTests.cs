@@ -72,14 +72,19 @@ public class GetObjectiveTasksQueryHandlerTests
                 new() { Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, Title = "B", ShortId = "T-2", CreatedAt = DateTimeOffset.UtcNow }
             });
 
-        var assignments = new Mock<ITaskAssignmentRepository>();
+                var assignments = new Mock<ITaskAssignmentRepository>();
         assignments.Setup(x => x.GetByTaskIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<TaskAssignment>());
+        var sessions = new Mock<ITaskClockingSessionRepository>();
+        sessions.Setup(x => x.GetOpenSessionsForTasksAsync(
+                TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
 
         var (identity, objectives, members, permissions) = MembershipOnObjectiveItself();
         var handler = new GetObjectiveTasksQueryHandler(
             currentUser.Object, identity.Object, objectives.Object, members.Object, permissions.Object,
-            tasks.Object, assignments.Object);
+            tasks.Object, assignments.Object, sessions.Object);
+
         var result = await handler.Handle(new GetObjectiveTasksQuery(ObjectiveId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -113,10 +118,16 @@ public class GetObjectiveTasksQueryHandlerTests
                 new() { Id = Guid.NewGuid(), TaskId = taskWithAssignee, EmployeeId = assigneeEmployeeId, UserId = Guid.NewGuid(), AssignedById = Guid.NewGuid(), AssignedAt = DateTimeOffset.UtcNow }
             });
 
+                var sessions = new Mock<ITaskClockingSessionRepository>();
+        sessions.Setup(x => x.GetOpenSessionsForTasksAsync(
+                TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
+
         var (identity, objectives, members, permissions) = MembershipOnObjectiveItself();
         var handler = new GetObjectiveTasksQueryHandler(
             currentUser.Object, identity.Object, objectives.Object, members.Object, permissions.Object,
-            tasks.Object, assignments.Object);
+            tasks.Object, assignments.Object, sessions.Object);
+
         var result = await handler.Handle(new GetObjectiveTasksQuery(ObjectiveId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -165,13 +176,18 @@ public class GetObjectiveTasksQueryHandlerTests
                 new() { Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, Title = "A", ShortId = "T-1", CreatedAt = DateTimeOffset.UtcNow }
             });
 
-        var assignments = new Mock<ITaskAssignmentRepository>();
+                var assignments = new Mock<ITaskAssignmentRepository>();
         assignments.Setup(x => x.GetByTaskIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<TaskAssignment>());
+        var sessions = new Mock<ITaskClockingSessionRepository>();
+        sessions.Setup(x => x.GetOpenSessionsForTasksAsync(
+                TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
 
         return new GetObjectiveTasksQueryHandler(
             currentUser.Object, identity.Object, objectives.Object, members.Object, permissionResolver.Object,
-            tasks.Object, assignments.Object);
+            tasks.Object, assignments.Object, sessions.Object);
+
     }
 
     [Fact]

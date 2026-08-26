@@ -24,16 +24,18 @@ public sealed class GetMyProjectTasksQueryHandler : IRequestHandler<GetMyProject
     private readonly IProjectRepository _projects;
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskAssignmentRepository _assignments;
+    private readonly ITaskClockingSessionRepository _sessions;
 
     public GetMyProjectTasksQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectRepository projects,
-        IWorkTaskRepository tasks, ITaskAssignmentRepository assignments)
+        IWorkTaskRepository tasks, ITaskAssignmentRepository assignments, ITaskClockingSessionRepository sessions)
     {
         _currentUser = currentUser;
         _identity = identity;
         _projects = projects;
         _tasks = tasks;
         _assignments = assignments;
+        _sessions = sessions;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetMyProjectTasksQuery request, CancellationToken ct)
@@ -61,6 +63,8 @@ public sealed class GetMyProjectTasksQueryHandler : IRequestHandler<GetMyProject
 
         var myTasks = items.Where(task =>
             assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>()).Contains(callerEmployeeId.Value));
+        var openSessions = await _sessions.GetOpenSessionsForTasksAsync(
+            tenantId, myTasks.Select(task => task.Id).ToList(), ct);
 
         var sorted = myTasks
             .OrderBy(task => task.DueDate.HasValue ? 0 : 1)
@@ -71,7 +75,8 @@ public sealed class GetMyProjectTasksQueryHandler : IRequestHandler<GetMyProject
         var responses = sorted.Select(task => new WorkTaskResponse(
             task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description, task.CategoryId, task.StatusId,
             task.Priority, task.StoryPoints, task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
-            assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>()))).ToList();
+            assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>()),
+            openSessions.TryGetValue(task.Id, out var openEmployeeId) ? openEmployeeId : (Guid?)null)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

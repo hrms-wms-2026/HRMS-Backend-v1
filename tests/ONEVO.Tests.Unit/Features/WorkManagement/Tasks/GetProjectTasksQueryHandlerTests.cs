@@ -82,9 +82,14 @@ public sealed class GetProjectTasksQueryHandlerTests
         assignmentRepository.Setup(x => x.GetByTaskIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(assignments ?? Array.Empty<TaskAssignment>());
 
+        var sessionRepository = new Mock<ITaskClockingSessionRepository>();
+        sessionRepository.Setup(x => x.GetOpenSessionsForTasksAsync(
+                TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
+
         return new GetProjectTasksQueryHandler(
             currentUser.Object, identity.Object, projects.Object, members.Object,
-            permissions.Object, taskRepository.Object, assignmentRepository.Object);
+            permissions.Object, taskRepository.Object, assignmentRepository.Object, sessionRepository.Object);
     }
 
     [Fact]
