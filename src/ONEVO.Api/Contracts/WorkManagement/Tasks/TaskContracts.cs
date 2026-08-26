@@ -21,6 +21,8 @@ public sealed record MoveTaskStatusRequest(Guid NewStatusId);
 
 public sealed record PushTaskRequest(int Percent, string? Reason);
 
+public sealed record AddReasonRequest(string Reason);
+
 public sealed record AssignTaskRequest(Guid EmployeeId);
 
 public sealed record EditTaskStatusRequest(

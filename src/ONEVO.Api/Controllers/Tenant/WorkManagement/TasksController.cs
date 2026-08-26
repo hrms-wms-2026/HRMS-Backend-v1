@@ -5,7 +5,10 @@ using ONEVO.Api.Contracts.WorkManagement.Tasks;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ApproveTaskEditRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ApproveTaskCreationRequest;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.AddClockingSessionReason;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.AddPercentageLogReason;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.AssignTask;
+
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CancelTaskEditRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CancelTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ClockInTask;
@@ -269,6 +272,22 @@ public class TasksController : ControllerBase
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPatch("clocking-sessions/{id:guid}/reason")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> AddClockingSessionReason(Guid id, [FromBody] AddReasonRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new AddClockingSessionReasonCommand(id, request.Reason), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPatch("percentage-log/{id:guid}/reason")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> AddPercentageLogReason(Guid id, [FromBody] AddReasonRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new AddPercentageLogReasonCommand(id, request.Reason), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
     [HttpPost("tasks/{id:guid}/assignments")]

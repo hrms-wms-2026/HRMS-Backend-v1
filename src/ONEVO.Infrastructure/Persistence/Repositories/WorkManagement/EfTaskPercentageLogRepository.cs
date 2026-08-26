@@ -18,4 +18,10 @@ public class EfTaskPercentageLogRepository : ITaskPercentageLogRepository
             .Where(log => log.TenantId == tenantId && log.TaskId == taskId)
             .OrderBy(log => log.ChangedAt)
             .ToListAsync(ct);
+
+    public async Task<TaskPercentageLog?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+        => await _db.TaskPercentageLogs
+            .FirstOrDefaultAsync(log => log.TenantId == tenantId && log.Id == id, ct);
+
+    public void Update(TaskPercentageLog log) => _db.TaskPercentageLogs.Update(log);
 }
