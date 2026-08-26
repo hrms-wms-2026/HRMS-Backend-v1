@@ -34,6 +34,7 @@ public class SubscriptionTrialAndGracePeriodTests
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Mock<ITenantOwnerInvitationService> _invitationService = new();
+    private readonly Mock<IWritableTenantContext> _tenantContext = new();
 
     private readonly DateTimeOffset _now = new DateTimeOffset(2025, 6, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -47,7 +48,8 @@ public class SubscriptionTrialAndGracePeriodTests
         _currentUser.Object,
         _unitOfWork.Object,
         _clock.Object,
-        _invitationService.Object);
+        _invitationService.Object,
+        _tenantContext.Object);
 
     private static CreateTenantCommand BuildCommand(int? trialPeriodDays = null, int? unpaidGracePeriodDays = null) =>
         new("Acme Corp", "acme-corp", "office_it", "51-200",
