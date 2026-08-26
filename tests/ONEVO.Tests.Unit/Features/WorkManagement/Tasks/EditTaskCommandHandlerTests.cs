@@ -155,6 +155,44 @@ public class EditTaskCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WhenProgressPercentChanges_WritesManualEditPercentageLog()
+    {
+        var (handler, _, _, _, task, percentageLogs) = Build(
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m,
+            title: "T", priority: WorkTaskPriorities.Medium, progressPercent: 100);
+        var command = new EditTaskCommand(
+            task.Id, task.Title, task.Description, task.Priority, task.DueDate,
+            task.EstimatedHours, task.StoryPoints, 40, "Reviewer found incomplete subtasks");
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var logged = Assert.Single(percentageLogs);
+        Assert.Equal(TaskPercentageLogSources.ManualEdit, logged.Source);
+        Assert.Null(logged.ClockingSessionId);
+        Assert.Equal(100, logged.PreviousPercent);
+        Assert.Equal(40, logged.NewPercent);
+        Assert.Equal(40, task.ProgressPercent);
+    }
+
+    [Fact]
+    public async Task Handle_WhenProgressPercentNotSupplied_WritesNoPercentageLog_AndLeavesPercentUnchanged()
+    {
+        var (handler, _, _, _, task, percentageLogs) = Build(
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m,
+            title: "T", priority: WorkTaskPriorities.Medium, progressPercent: 55);
+        var command = new EditTaskCommand(
+            task.Id, "New Title", task.Description, task.Priority, task.DueDate,
+            task.EstimatedHours, task.StoryPoints, null, null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(percentageLogs);
+        Assert.Equal(55, task.ProgressPercent);
+    }
+
+    [Fact]
     public async Task Handle_WhenNothingChanges_WritesNoEditLog()
     {
         var (handler, _, editLogs, _, task, _) = Build(

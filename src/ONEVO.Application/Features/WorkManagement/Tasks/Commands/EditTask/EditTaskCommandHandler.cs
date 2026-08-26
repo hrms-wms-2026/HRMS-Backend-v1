@@ -95,13 +95,27 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
+            var now = DateTimeOffset.UtcNow;
             task.Title = request.Title.Trim();
             task.Description = request.Description?.Trim();
             task.Priority = request.Priority;
             task.DueDate = request.DueDate;
             task.EstimatedHours = request.EstimatedHours;
             task.StoryPoints = request.StoryPoints;
-            var now = DateTimeOffset.UtcNow;
+
+            if (request.ProgressPercent.HasValue && request.ProgressPercent.Value != task.ProgressPercent)
+            {
+                var previousPercent = task.ProgressPercent;
+                task.ProgressPercent = request.ProgressPercent.Value;
+                await _percentageLogs.AddAsync(new TaskPercentageLog
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
+                    EmployeeId = callerEmployeeId.Value, PreviousPercent = previousPercent,
+                    NewPercent = task.ProgressPercent, Source = TaskPercentageLogSources.ManualEdit,
+                    ClockingSessionId = null, Reason = request.Reason?.Trim(), ChangedAt = now
+                }, innerCt);
+            }
+
             task.UpdatedAt = now;
 
             if (newValues.Count > 0)
