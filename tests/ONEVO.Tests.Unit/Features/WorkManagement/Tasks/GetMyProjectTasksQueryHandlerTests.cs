@@ -19,9 +19,9 @@ public class GetMyProjectTasksQueryHandlerTests
 
     private sealed record TaskFixtureData(WorkTask Task, IReadOnlyList<Guid> AssigneeEmployeeIds);
 
-    private static Project ActiveProject() => new()
+    private static Project ActiveProject(bool isActive = true) => new()
     {
-        Id = ProjectId, TenantId = TenantId, IsActive = true, Name = "Project",
+        Id = ProjectId, TenantId = TenantId, IsActive = isActive, Name = "Project",
         Identifier = "P1", CreatedAt = DateTimeOffset.UtcNow
     };
 
@@ -30,11 +30,12 @@ public class GetMyProjectTasksQueryHandlerTests
         DateOnly? dueDate = null,
         string priority = WorkTaskPriorities.Medium,
         Guid? sprintId = null,
-        IReadOnlyList<Guid>? assigneeEmployeeIds = null) =>
+        IReadOnlyList<Guid>? assigneeEmployeeIds = null,
+        Guid? projectId = null) =>
         new(
             new WorkTask
             {
-                Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId,
+                Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = projectId ?? ProjectId,
                 ObjectiveId = Guid.NewGuid(), SprintId = sprintId, ShortId = $"P-{Random.Shared.Next(1, 9999)}",
                 Title = title, CategoryId = Guid.NewGuid(), StatusId = Guid.NewGuid(),
                 Priority = priority, DueDate = dueDate, CreatedAt = DateTimeOffset.UtcNow
@@ -43,7 +44,8 @@ public class GetMyProjectTasksQueryHandlerTests
 
     private (GetMyProjectTasksQueryHandler Handler, Guid CallerEmployeeId, Project Project) ArrangeMyTasksHandler(
         IReadOnlyList<TaskFixtureData> fixtures,
-        IReadOnlyDictionary<Guid, Guid>? openSessionsByTaskId = null)
+        IReadOnlyDictionary<Guid, Guid>? openSessionsByTaskId = null,
+        bool projectExists = true, bool projectActive = true)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -54,10 +56,10 @@ public class GetMyProjectTasksQueryHandlerTests
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(CallerEmployeeIdConst);
 
-        var project = ActiveProject();
+        var project = ActiveProject(projectActive);
         var projects = new Mock<IProjectRepository>();
         projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(project);
+            .ReturnsAsync(projectExists ? project : null);
 
         var tasks = new Mock<IWorkTaskRepository>();
         tasks.Setup(x => x.GetByProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
@@ -144,6 +146,63 @@ public class GetMyProjectTasksQueryHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value![0].OpenClockSessionEmployeeId);
+    }
+
+    [Fact]
+    public async Task Handle_ProjectNotFound_ReturnsNotFound()
+    {
+        var (handler, _, project) = ArrangeMyTasksHandler(Array.Empty<TaskFixtureData>(), projectExists: false);
+
+        var result = await handler.Handle(new GetMyProjectTasksQuery(project.Id, null), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Null(result.Value);
+    }
+
+    [Fact]
+    public async Task Handle_InactiveProject_ReturnsNotFound()
+    {
+        var (handler, _, project) = ArrangeMyTasksHandler(Array.Empty<TaskFixtureData>(), projectActive: false);
+
+        var result = await handler.Handle(new GetMyProjectTasksQuery(project.Id, null), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Null(result.Value);
+    }
+
+    [Fact]
+    public async Task Handle_TaskFromDifferentProject_IsNotReturned()
+    {
+        var otherProjectId = Guid.NewGuid();
+        var fixtures = new[]
+        {
+            TaskFixture("Requested project", assigneeEmployeeIds: new[] { CallerEmployeeIdConst }),
+            TaskFixture("Other project", assigneeEmployeeIds: new[] { CallerEmployeeIdConst }, projectId: otherProjectId)
+        };
+        var (handler, _, project) = ArrangeMyTasksHandler(fixtures);
+
+        var result = await handler.Handle(new GetMyProjectTasksQuery(project.Id, null), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var task = Assert.Single(result.Value!);
+        Assert.Equal("Requested project", task.Title);
+    }
+
+    [Fact]
+    public async Task Handle_SprintWithNoCallerTasks_ReturnsEmptyList()
+    {
+        var requestedSprintId = Guid.NewGuid();
+        var (handler, _, project) = ArrangeMyTasksHandler(new[]
+        {
+            TaskFixture("Another sprint", sprintId: Guid.NewGuid(), assigneeEmployeeIds: new[] { CallerEmployeeIdConst })
+        });
+
+        var result = await handler.Handle(new GetMyProjectTasksQuery(project.Id, requestedSprintId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value!);
     }
 
     [Fact]

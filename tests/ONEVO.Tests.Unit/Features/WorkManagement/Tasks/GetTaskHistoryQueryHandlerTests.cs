@@ -20,7 +20,9 @@ public class GetTaskHistoryQueryHandlerTests
         IReadOnlyList<TaskEditLog>? editLogs = null,
         IReadOnlyList<TaskStatusChangeLog>? statusChangeLogs = null,
         IReadOnlyList<TaskClockingSession>? sessions = null,
-        IReadOnlyList<TaskPercentageLog>? percentageLogs = null)
+        IReadOnlyList<TaskPercentageLog>? percentageLogs = null,
+        IReadOnlyDictionary<Guid, string>? displayNames = null,
+        bool taskExists = true)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -31,12 +33,12 @@ public class GetTaskHistoryQueryHandlerTests
         identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(
                 TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, IReadOnlyList<Guid> ids, CancellationToken _) =>
-                ids.ToDictionary(id => id, _ => "Employee"));
+                displayNames ?? ids.ToDictionary(id => id, _ => "Employee"));
 
         var task = new WorkTask { Id = TaskIdConst, TenantId = TenantId, Title = "Task", CreatedAt = At(-20) };
         var tasks = new Mock<IWorkTaskRepository>();
         tasks.Setup(x => x.GetByIdForTenantAsync(TenantId, TaskIdConst, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(task);
+            .ReturnsAsync(taskExists ? task : null);
 
         var editLogRepository = new Mock<ITaskEditLogRepository>();
         editLogRepository.Setup(x => x.GetForTaskAsync(TenantId, TaskIdConst, It.IsAny<CancellationToken>()))
@@ -120,5 +122,64 @@ public class GetTaskHistoryQueryHandlerTests
         Assert.Equal(2, result.Value!.Entries.Count);
         Assert.Equal(TaskHistoryEntryTypes.StatusChange, result.Value.Entries[0].Type);
         Assert.Equal(TaskHistoryEntryTypes.Edit, result.Value.Entries[1].Type);
+    }
+
+    [Fact]
+    public async Task Handle_TwoPushCycles_PairEachPercentageLogWithItsOwnSession()
+    {
+        var firstSessionId = Guid.NewGuid();
+        var secondSessionId = Guid.NewGuid();
+        var firstLogId = Guid.NewGuid();
+        var secondLogId = Guid.NewGuid();
+        var (handler, _) = ArrangeHistoryHandler(
+            sessions: new[]
+            {
+                new TaskClockingSession { Id = firstSessionId, TaskId = TaskIdConst, EmployeeId = EmployeeIdConst, ClockInAt = At(-30), ClockOutAt = At(-25) },
+                new TaskClockingSession { Id = secondSessionId, TaskId = TaskIdConst, EmployeeId = EmployeeIdConst, ClockInAt = At(-10), ClockOutAt = At(-5) }
+            },
+            percentageLogs: new[]
+            {
+                new TaskPercentageLog { Id = firstLogId, TaskId = TaskIdConst, EmployeeId = EmployeeIdConst, PreviousPercent = 10, NewPercent = 40, Source = TaskPercentageLogSources.Push, ClockingSessionId = firstSessionId, ChangedAt = At(-25) },
+                new TaskPercentageLog { Id = secondLogId, TaskId = TaskIdConst, EmployeeId = EmployeeIdConst, PreviousPercent = 40, NewPercent = 70, Source = TaskPercentageLogSources.Push, ClockingSessionId = secondSessionId, ChangedAt = At(-5) }
+            });
+
+        var result = await handler.Handle(new GetTaskHistoryQuery(TaskIdConst), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var entries = result.Value!.Entries.Where(entry => entry.Type == TaskHistoryEntryTypes.ClockSession).ToList();
+        Assert.Equal(2, entries.Count);
+        var first = entries.Single(entry => entry.ClockSession!.SessionId == firstSessionId);
+        var second = entries.Single(entry => entry.ClockSession!.SessionId == secondSessionId);
+        Assert.Equal(40, first.ClockSession.PushedPercent);
+        Assert.Equal(firstLogId, first.ClockSession.PercentageLogId);
+        Assert.Equal(70, second.ClockSession.PushedPercent);
+        Assert.Equal(secondLogId, second.ClockSession.PercentageLogId);
+    }
+
+    [Fact]
+    public async Task Handle_UnresolvableEmployeeName_FallsBackToATeammate()
+    {
+        var (handler, _) = ArrangeHistoryHandler(
+            displayNames: new Dictionary<Guid, string>(),
+            statusChangeLogs: new[]
+            {
+                new TaskStatusChangeLog { Id = Guid.NewGuid(), TaskId = TaskIdConst, EmployeeId = EmployeeIdConst, FromStatusId = Guid.NewGuid(), ToStatusId = Guid.NewGuid(), ChangedAt = At(0) }
+            });
+
+        var result = await handler.Handle(new GetTaskHistoryQuery(TaskIdConst), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("A teammate", Assert.Single(result.Value!.Entries).EmployeeName);
+    }
+
+    [Fact]
+    public async Task Handle_TaskNotFound_ReturnsNotFound()
+    {
+        var (handler, _) = ArrangeHistoryHandler(taskExists: false);
+
+        var result = await handler.Handle(new GetTaskHistoryQuery(TaskIdConst), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
     }
 }

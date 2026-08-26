@@ -52,7 +52,9 @@ public sealed class GetMyProjectTasksQueryHandler : IRequestHandler<GetMyProject
         if (project is null || !project.IsActive)
             return Result<IReadOnlyList<WorkTaskResponse>>.NotFound("Project not found.");
 
-        var items = await _tasks.GetByProjectAsync(tenantId, project.Id, ct);
+        var items = (await _tasks.GetByProjectAsync(tenantId, project.Id, ct))
+            .Where(task => task.ProjectId == project.Id)
+            .ToList();
         if (request.SprintId.HasValue)
             items = items.Where(task => task.SprintId == request.SprintId.Value).ToList();
 
