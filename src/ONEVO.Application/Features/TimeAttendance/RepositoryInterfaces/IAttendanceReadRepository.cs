@@ -31,6 +31,13 @@ public interface IAttendanceReadRepository
         DateTimeOffset to,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<BreakRecord>> ListBreaksForEmployeesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken ct = default);
+
     Task<bool> HasOpenBreakAsync(
         Guid tenantId,
         Guid employeeId,
@@ -60,6 +67,8 @@ public interface IAttendanceReadRepository
     Task AddRecordAsync(AttendanceRecord record, CancellationToken ct = default);
 
     Task AddBreakAsync(BreakRecord record, CancellationToken ct = default);
+
+    Task DeleteBreakAsync(Guid breakId, CancellationToken ct = default);
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 
