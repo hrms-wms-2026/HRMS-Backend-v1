@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
@@ -150,7 +151,9 @@ public class EditTaskCommandHandlerTests
         var addedLog = Assert.Single(editLogs);
         Assert.Equal(TaskEditLogSources.Direct, addedLog.Source);
         Assert.Equal(callerEmployeeId, addedLog.EmployeeId);
-        Assert.Contains("\"title\"", addedLog.NewValuesJson, StringComparison.OrdinalIgnoreCase);
+        using var newValues = JsonDocument.Parse(addedLog.NewValuesJson);
+        Assert.Single(newValues.RootElement.EnumerateObject());
+        Assert.True(newValues.RootElement.TryGetProperty("title", out _));
         Assert.DoesNotContain("\"priority\"", addedLog.NewValuesJson, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -173,6 +176,81 @@ public class EditTaskCommandHandlerTests
         Assert.Equal(100, logged.PreviousPercent);
         Assert.Equal(40, logged.NewPercent);
         Assert.Equal(40, task.ProgressPercent);
+    }
+
+    [Fact]
+    public async Task Handle_WhenProgressPercentChangesToZero_WritesPercentageLogWithZero()
+    {
+        var (handler, _, _, callerEmployeeId, task, percentageLogs) = Build(
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m, progressPercent: 55);
+        var command = new EditTaskCommand(
+            task.Id, task.Title, task.Description, task.Priority, task.DueDate,
+            task.EstimatedHours, task.StoryPoints, 0, "reset progress");
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var log = Assert.Single(percentageLogs);
+        Assert.Equal(callerEmployeeId, log.EmployeeId);
+        Assert.Equal(55, log.PreviousPercent);
+        Assert.Equal(0, log.NewPercent);
+        Assert.Equal(0, task.ProgressPercent);
+    }
+
+    [Fact]
+    public async Task Handle_WhenProgressPercentChangesTo100_WritesPercentageLogWith100()
+    {
+        var (handler, _, _, _, task, percentageLogs) = Build(
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m, progressPercent: 20);
+        var command = new EditTaskCommand(
+            task.Id, task.Title, task.Description, task.Priority, task.DueDate,
+            task.EstimatedHours, task.StoryPoints, 100, null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(100, Assert.Single(percentageLogs).NewPercent);
+    }
+
+    [Fact]
+    public async Task Handle_WhenProgressPercentEqualsCurrent_WritesNoPercentageLog()
+    {
+        var (handler, _, _, _, task, percentageLogs) = Build(
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m, progressPercent: 55);
+        var command = new EditTaskCommand(
+            task.Id, task.Title, task.Description, task.Priority, task.DueDate,
+            task.EstimatedHours, task.StoryPoints, 55, "unchanged");
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(55, task.ProgressPercent);
+        Assert.Empty(percentageLogs);
+    }
+
+    [Fact]
+    public async Task Handle_WhenTitleAndProgressChange_WritesBothLogsWithSameTimestampAndExactKeys()
+    {
+        var (handler, _, editLogs, callerEmployeeId, task, percentageLogs) = Build(
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m, title: "Old", progressPercent: 20);
+        var command = new EditTaskCommand(
+            task.Id, "New", task.Description, task.Priority, task.DueDate,
+            task.EstimatedHours, task.StoryPoints, 40, "updated context");
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var editLog = Assert.Single(editLogs);
+        var percentageLog = Assert.Single(percentageLogs);
+        Assert.Equal(callerEmployeeId, editLog.EmployeeId);
+        Assert.Equal(callerEmployeeId, percentageLog.EmployeeId);
+        using var oldValues = JsonDocument.Parse(editLog.OldValuesJson);
+        using var newValues = JsonDocument.Parse(editLog.NewValuesJson);
+        Assert.Equal(2, oldValues.RootElement.EnumerateObject().Count());
+        Assert.Equal(2, newValues.RootElement.EnumerateObject().Count());
+        Assert.True(newValues.RootElement.TryGetProperty("title", out _));
+        Assert.True(newValues.RootElement.TryGetProperty("progressPercent", out _));
+        Assert.Equal(editLog.ChangedAt, percentageLog.ChangedAt);
     }
 
     [Fact]
