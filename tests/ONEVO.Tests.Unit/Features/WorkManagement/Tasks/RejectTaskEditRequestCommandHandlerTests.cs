@@ -43,7 +43,8 @@ public class RejectTaskEditRequestCommandHandlerTests
             .ReturnsAsync(callerEmployeeId);
 
         var payload = new TaskEditRequestPayload(
-            "Updated task", null, WorkTaskPriorities.High, null, null, null);
+                        "Updated task", null, WorkTaskPriorities.High, null, null, null, null);
+
         var pending = new TaskEditRequest
         {
             Id = RequestId,

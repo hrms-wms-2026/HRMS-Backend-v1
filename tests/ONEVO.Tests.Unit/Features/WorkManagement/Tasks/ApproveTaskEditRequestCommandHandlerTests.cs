@@ -57,7 +57,8 @@ public class ApproveTaskEditRequestCommandHandlerTests
 
         var payload = new TaskEditRequestPayload(
             "Updated title", "Updated description", WorkTaskPriorities.High,
-            new DateOnly(2026, 10, 1), 40m, 8);
+                        new DateOnly(2026, 10, 1), 40m, 8, null);
+
         var pending = new TaskEditRequest
         {
             Id = RequestId,

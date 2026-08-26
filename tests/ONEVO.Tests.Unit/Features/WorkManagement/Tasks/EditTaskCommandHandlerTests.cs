@@ -67,7 +67,7 @@ public class EditTaskCommandHandlerTests
     public async Task Handle_IncreaseWithinSlack_Updates()
     {
         var (handler, tasks) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m);
-        var result = await handler.Handle(new EditTaskCommand(TaskId, "New Title", null, "medium", null, EstimatedHours: 50m, StoryPoints: null), CancellationToken.None);
+        var result = await handler.Handle(new EditTaskCommand(TaskId, "New Title", null, "medium", null, EstimatedHours: 50m, StoryPoints: null, ProgressPercent: null, Reason: null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("New Title", result.Value!.Title);
@@ -77,7 +77,7 @@ public class EditTaskCommandHandlerTests
     public async Task Handle_IncreaseExceedsSlack_ReturnsConflict()
     {
         var (handler, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m);
-        var result = await handler.Handle(new EditTaskCommand(TaskId, "New Title", null, "medium", null, EstimatedHours: 70m, StoryPoints: null), CancellationToken.None);
+        var result = await handler.Handle(new EditTaskCommand(TaskId, "New Title", null, "medium", null, EstimatedHours: 70m, StoryPoints: null, ProgressPercent: null, Reason: null), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
@@ -94,7 +94,7 @@ public class EditTaskCommandHandlerTests
             Status = SprintStatuses.Achieved, CreatedAt = DateTimeOffset.UtcNow
         };
         var (handler, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, sprint: achieved);
-        var result = await handler.Handle(new EditTaskCommand(TaskId, "New Title", null, "medium", null, EstimatedHours: 10m, StoryPoints: null), CancellationToken.None);
+        var result = await handler.Handle(new EditTaskCommand(TaskId, "New Title", null, "medium", null, EstimatedHours: 10m, StoryPoints: null, ProgressPercent: null, Reason: null), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
