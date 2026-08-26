@@ -5,8 +5,10 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
@@ -25,6 +27,7 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
     private readonly ITaskStatusChangeLogRepository _statusChangeLogs;
     private readonly ITaskPercentageLogRepository _percentageLogs;
     private readonly ITaskClockingSessionRepository _clockingSessions;
+    private readonly IProjectRepository _projects;
 
     public MoveTaskStatusCommandHandler(
         ICurrentUser currentUser,
@@ -37,7 +40,8 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         ISprintRepository sprints,
         ITaskStatusChangeLogRepository statusChangeLogs,
         ITaskPercentageLogRepository percentageLogs,
-        ITaskClockingSessionRepository clockingSessions)
+        ITaskClockingSessionRepository clockingSessions,
+        IProjectRepository projects)
 
     {
         _currentUser = currentUser;
@@ -51,6 +55,7 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         _statusChangeLogs = statusChangeLogs;
         _percentageLogs = percentageLogs;
         _clockingSessions = clockingSessions;
+        _projects = projects;
 
     }
 
@@ -115,7 +120,8 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
                 task.CompletedAt = now;
                 var previousPercent = task.ProgressPercent;
                 task.ProgressPercent = 100;
-                objective.CompletedHours += task.CompletedHours;
+                                await CascadeCompletedHoursAsync(tenantId, objective, task.CompletedHours, innerCt);
+
                 await _percentageLogs.AddAsync(new TaskPercentageLog
                 {
                     Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
@@ -145,8 +151,10 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
 
             else if (wasComplete && !willBeComplete)
             {
-                                objective.CompletedHours -= task.CompletedHours;
+                                                var reversedHours = task.CompletedHours;
                 task.CompletedHours = 0m;
+                await CascadeCompletedHoursAsync(tenantId, objective, -reversedHours, innerCt);
+
                 task.CompletedAt = null;
                 var previousPercent = task.ProgressPercent;
                 task.ProgressPercent = 0;
@@ -173,5 +181,31 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
 
             return Result.Success();
         }, ct);
+    }
+
+    private async Task CascadeCompletedHoursAsync(Guid tenantId, Objective startingObjective, decimal delta, CancellationToken ct)
+    {
+        if (delta == 0m)
+            return;
+
+        var current = startingObjective;
+        while (true)
+        {
+            current.CompletedHours += delta;
+
+            if (current.ParentObjectiveId is null)
+            {
+                var project = await _projects.GetTrackedByIdForTenantAsync(tenantId, current.ProjectId, ct);
+                if (project is not null)
+                    project.CompletedHours += delta;
+                return;
+            }
+
+            var parent = await _objectives.GetTrackedByIdForTenantAsync(tenantId, current.ParentObjectiveId.Value, ct);
+            if (parent is null)
+                return;
+
+            current = parent;
+        }
     }
 }
