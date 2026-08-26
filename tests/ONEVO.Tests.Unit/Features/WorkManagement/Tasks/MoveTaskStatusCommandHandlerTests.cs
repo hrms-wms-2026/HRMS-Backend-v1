@@ -39,20 +39,23 @@ public class MoveTaskStatusCommandHandlerTests
 
         Guid callerEmployeeId, bool callerIsMember, TaskStatusEntity newStatus, decimal? estimatedHours = 8m,
                 bool preserveNullStatusObjectiveId = false, Sprint? sprint = null, bool? callerIsEffectiveManager = null,
-        int taskCurrentPercent = 0, bool oldStatusMarksComplete = false)
+        int taskCurrentPercent = 0, bool oldStatusMarksComplete = false,
+        bool authenticated = true, bool employeeExists = true, bool taskExists = true,
+        bool targetStatusExists = true, bool objectiveExists = true)
 
     {
         if (!preserveNullStatusObjectiveId && newStatus.ObjectiveId is null)
             newStatus.ObjectiveId = ObjectiveId;
 
         var currentUser = new Mock<ICurrentUser>();
-        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+                currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
+
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerEmployeeId);
+            .ReturnsAsync(employeeExists ? callerEmployeeId : null);
 
         var task = new WorkTask
         {
@@ -71,7 +74,7 @@ public class MoveTaskStatusCommandHandlerTests
         };
         var tasks = new Mock<IWorkTaskRepository>();
         tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, TaskId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(task);
+            .ReturnsAsync(taskExists ? task : null);
 
         var oldStatus = new TaskStatusEntity
         {
@@ -84,8 +87,9 @@ public class MoveTaskStatusCommandHandlerTests
         };
         var statuses = new Mock<ITaskStatusRepository>();
 
-        statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, NewStatusId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(newStatus);
+                statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, NewStatusId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(targetStatusExists ? newStatus : null);
+
         statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, OldStatusId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(oldStatus);
 
@@ -101,7 +105,7 @@ public class MoveTaskStatusCommandHandlerTests
         };
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(objective);
+            .ReturnsAsync(objectiveExists ? objective : null);
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.IsActiveMemberAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
@@ -154,7 +158,112 @@ public class MoveTaskStatusCommandHandlerTests
 
     }
 
-        [Fact]
+    [Fact]
+    public async Task Handle_NotAuthenticated_ReturnsForbidden()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId, TenantId = TenantId, ProjectId = ProjectId,
+            Name = "In Process", MarksTaskComplete = false,
+            Visibility = TaskStatusVisibilities.Public, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, task, _, statusChangeLogs, percentageLogs) = Build(
+            OwnerEmployeeId, false, newStatus, authenticated: false);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal(OldStatusId, task.StatusId);
+        Assert.Empty(statusChangeLogs);
+        Assert.Empty(percentageLogs);
+    }
+
+    [Fact]
+    public async Task Handle_NoEmployeeRecord_ReturnsForbidden()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId, TenantId = TenantId, ProjectId = ProjectId,
+            Name = "In Process", MarksTaskComplete = false,
+            Visibility = TaskStatusVisibilities.Public, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, task, _, statusChangeLogs, percentageLogs) = Build(
+            OwnerEmployeeId, false, newStatus, employeeExists: false);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal(OldStatusId, task.StatusId);
+        Assert.Empty(statusChangeLogs);
+        Assert.Empty(percentageLogs);
+    }
+
+    [Fact]
+    public async Task Handle_TaskNotFound_ReturnsNotFound()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId, TenantId = TenantId, ProjectId = ProjectId,
+            Name = "In Process", MarksTaskComplete = false,
+            Visibility = TaskStatusVisibilities.Public, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, task, _, statusChangeLogs, percentageLogs) = Build(
+            OwnerEmployeeId, false, newStatus, taskExists: false);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(OldStatusId, task.StatusId);
+        Assert.Empty(statusChangeLogs);
+        Assert.Empty(percentageLogs);
+    }
+
+    [Fact]
+    public async Task Handle_TargetStatusNotFound_ReturnsNotFound()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId, TenantId = TenantId, ProjectId = ProjectId,
+            Name = "In Process", MarksTaskComplete = false,
+            Visibility = TaskStatusVisibilities.Public, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, task, _, statusChangeLogs, percentageLogs) = Build(
+            OwnerEmployeeId, false, newStatus, targetStatusExists: false);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(OldStatusId, task.StatusId);
+        Assert.Empty(statusChangeLogs);
+        Assert.Empty(percentageLogs);
+    }
+
+    [Fact]
+    public async Task Handle_ObjectiveNotFound_ReturnsNotFound()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId, TenantId = TenantId, ProjectId = ProjectId,
+            Name = "In Process", MarksTaskComplete = false,
+            Visibility = TaskStatusVisibilities.Public, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, task, _, statusChangeLogs, percentageLogs) = Build(
+            OwnerEmployeeId, false, newStatus, objectiveExists: false);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(OldStatusId, task.StatusId);
+        Assert.Empty(statusChangeLogs);
+        Assert.Empty(percentageLogs);
+    }
+
+    [Fact]
     public async Task Handle_OnSuccessfulMove_WritesTaskStatusChangeLog()
     {
         var newStatus = new TaskStatusEntity
@@ -535,8 +644,32 @@ public class MoveTaskStatusCommandHandlerTests
         Assert.Equal(21m, objective.CompletedHours);
     }
 
+        [Fact]
+    public async Task Handle_BetweenTwoCompleteStatuses_WritesStatusLogButNoPercentageLog()
+    {
+        var newStatus = new TaskStatusEntity
+        {
+            Id = NewStatusId, TenantId = TenantId, ProjectId = ProjectId,
+            Name = "Verified", MarksTaskComplete = true,
+            Visibility = TaskStatusVisibilities.Private, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var (handler, _, task, _, statusChangeLogs, percentageLogs) = Build(
+            OwnerEmployeeId, callerIsMember: false, newStatus,
+            taskCurrentPercent: 100, oldStatusMarksComplete: true);
+
+        var result = await handler.Handle(new MoveTaskStatusCommand(TaskId, NewStatusId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(NewStatusId, task.StatusId);
+        var statusLog = Assert.Single(statusChangeLogs);
+        Assert.Equal(OldStatusId, statusLog.FromStatusId);
+        Assert.Equal(NewStatusId, statusLog.ToStatusId);
+        Assert.Empty(percentageLogs);
+    }
+
     [Fact]
     public async Task Handle_TaskInAchievedSprint_ReturnsForbidden()
+
     {
         var newStatus = new TaskStatusEntity
         {
