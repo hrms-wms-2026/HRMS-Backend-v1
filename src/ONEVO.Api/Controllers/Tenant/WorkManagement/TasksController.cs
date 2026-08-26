@@ -35,6 +35,8 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.UnassignTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyDeadlines;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskEditRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskCreationRequests;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskHistory;
+
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTasks;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTaskCategories;
@@ -230,7 +232,19 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+        [HttpGet("tasks/{id:guid}/history")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> GetHistory(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetTaskHistoryQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     [HttpDelete("tasks/{id:guid}")]
+
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {

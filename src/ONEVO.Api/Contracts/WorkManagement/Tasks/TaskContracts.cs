@@ -76,3 +76,16 @@ public sealed record MyDeadlinesViewModel(
 
 public sealed record WorkNotificationNavigationViewModel(
     Guid ProjectId, Guid ObjectiveId, Guid? TaskId, string TargetTab);
+
+public sealed record TaskHistoryEntryViewModel(
+    string Type, DateTimeOffset OccurredAt, Guid EmployeeId, string EmployeeName,
+    TaskEditEntryDetails? Edit, TaskStatusChangeEntryDetails? StatusChange,
+    TaskClockSessionEntryDetails? ClockSession, TaskPercentageChangeEntryDetails? PercentageChange);
+
+public static class TaskHistoryViewModelMapper
+{
+    public static IReadOnlyList<TaskHistoryEntryViewModel> ToViewModel(this TaskHistoryResponse response) =>
+        response.Entries.Select(entry => new TaskHistoryEntryViewModel(
+            entry.Type, entry.OccurredAt, entry.EmployeeId, entry.EmployeeName,
+            entry.Edit, entry.StatusChange, entry.ClockSession, entry.PercentageChange)).ToList();
+}
