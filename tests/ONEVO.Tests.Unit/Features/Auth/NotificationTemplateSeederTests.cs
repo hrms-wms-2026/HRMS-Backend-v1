@@ -75,7 +75,7 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("leave_request_cancelled_by_employee", codes);
         Assert.Contains("leave_request_cancelled_by_hr", codes);
         Assert.Contains("leave_request_partially_cancelled", codes);
-        Assert.Equal(15, codes.Count);
+        Assert.Equal(23, codes.Count);
         var expectedCodes = new[]
         {
             "work_task_creation_request_created",
