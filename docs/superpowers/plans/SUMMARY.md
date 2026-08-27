@@ -51,7 +51,7 @@
 | `2026-08-21-work-management-cascading-objective-ownership/` (5 parts, backend-only) | `next/` | code-complete (469/469 tests, 27 handlers converted), manual browser pass pending |
 | `2026-08-21-work-management-project-scoped-task-status-and-category/` (4 parts, backend-only) | `next/` | pending (not started) |
 | `2026-08-21-leave-management/` (Parts 1-9 written; Parts 1-9 executed) | `next/` | Phase 0+1 through Phase 9 executed (live Docker/HTTP smoke still pending: Docker engine down; local OnevoDb behind this branch). Phase 9 shipped architecture + N+1 guard + GetLeaveType tests on `feat/leave-management-part-9` |
-| `2026-08-27-attendance-history-redesign-backend.md` (2 tasks) | `next/` | pending (not started) |
+| `2026-08-27-attendance-history-redesign-backend.md` (2 tasks) | `finished/2026-08-27/` | finished (2/2 tasks; 3390/3390 unit tests; API build clean) |
 
 See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all files in that folder (kept short here to avoid duplicating the same list twice).
 

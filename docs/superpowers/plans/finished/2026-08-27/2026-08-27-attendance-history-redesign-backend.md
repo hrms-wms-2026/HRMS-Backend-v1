@@ -1,6 +1,6 @@
 # Attendance Day Detail Endpoint Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add one aggregated endpoint, `GET /api/v1/attendance/time-tracking/history-detail`, that returns a single employee-day's attendance summary, a clock/break event timeline, and their TrayApp daily activity (idle/active minutes, app usage) in one response — feeding the frontend's new attendance detail drawer (see the companion frontend plan).
 
@@ -29,7 +29,7 @@
 **Interfaces:**
 - Produces: `GetAttendanceDayDetailQuery(Guid EmployeeId, DateOnly Date) : IRequest<Result<AttendanceDayDetailResponse>>`; `AttendanceDayDetailResponse(AttendanceHistoryRow Summary, IReadOnlyList<TimelineEvent> TimelineEvents, ActivityDailySummaryDto? DailyActivity)`; `TimelineEvent(string EventType, DateTimeOffset Timestamp, string Source)` — `EventType` is one of `"ClockIn"`, `"ClockOut"`, `"BreakStart"`, `"BreakEnd"`. Task 2 (controller) sends this query and returns `result.Value`/`result.Error` exactly like the existing `History`/`CoveredHistory` actions.
 
-- [ ] **Step 1: Write the failing handler tests**
+- [x] **Step 1: Write the failing handler tests**
 
 Add to `tests/ONEVO.Tests.Unit/Features/TimeAttendance/AttendanceReadHandlerTests.cs`. First, extend the shared fixture so tests can control the new `IActivityDailySummaryRepository` dependency. Change the `Fixture` record definition (near the bottom of the file) from:
 
@@ -224,12 +224,12 @@ public async Task DayDetail_NoActivitySummaryRow_ReturnsNullActivityNotError()
 
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~AttendanceReadHandlerTests.DayDetail"`
 Expected: compile error (`GetAttendanceDayDetailQuery`, `AttendanceDayDetailResponse`, `TimelineEvent` don't exist yet) or, once Steps 3-4 below add the types but not the handler case, a runtime failure because `AttendanceReadHandler` doesn't implement `IRequestHandler<GetAttendanceDayDetailQuery, ...>` yet.
 
-- [ ] **Step 3: Add the query and response DTOs**
+- [x] **Step 3: Add the query and response DTOs**
 
 In `src/ONEVO.Application/Features/TimeAttendance/Queries/AttendanceReadQueries.cs`, add after the existing `GetCoveredAttendanceHistoryQuery` line:
 
@@ -251,7 +251,7 @@ public sealed record AttendanceDayDetailResponse(
     ActivityDailySummaryDto? DailyActivity);
 ```
 
-- [ ] **Step 4: Implement the handler**
+- [x] **Step 4: Implement the handler**
 
 In `src/ONEVO.Application/Features/TimeAttendance/Queries/AttendanceReadHandlers.cs`, add these usings at the top:
 
@@ -379,12 +379,12 @@ public async Task<Result<AttendanceDayDetailResponse>> Handle(
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~AttendanceReadHandlerTests"`
 Expected: PASS (all `DayDetail_*` tests plus every pre-existing test in the file, unaffected by the new optional constructor parameter).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/TimeAttendance/Queries/AttendanceReadQueries.cs src/ONEVO.Application/Features/TimeAttendance/DTOs/Responses/AttendanceReadResponses.cs src/ONEVO.Application/Features/TimeAttendance/Queries/AttendanceReadHandlers.cs tests/ONEVO.Tests.Unit/Features/TimeAttendance/AttendanceReadHandlerTests.cs
@@ -403,7 +403,7 @@ git commit -m "feat: add GetAttendanceDayDetailQuery aggregating attendance day 
 - Consumes: `GetAttendanceDayDetailQuery(Guid EmployeeId, DateOnly Date) : IRequest<Result<AttendanceDayDetailResponse>>` from Task 1.
 - Produces: `GET /api/v1/attendance/time-tracking/history-detail?employeeId={guid}&date={yyyy-MM-dd}` — 200 with `AttendanceDayDetailResponse` body on success, otherwise `Problem(result.Error, statusCode: result.StatusCode ?? 400)` matching every other action on this controller. This is the exact route/shape the frontend's `TimeTrackingApiService.getDayDetail` (frontend plan part-1, Task 2) calls.
 
-- [ ] **Step 1: Write the failing controller test**
+- [x] **Step 1: Write the failing controller test**
 
 Add to `tests/ONEVO.Tests.Unit/Controllers/Tenant/Attendance/TimeTrackingControllerTests.cs`. Add `using ONEVO.Application.Features.TimeAttendance.Queries;` if not already present (it is, via the `DTOs.Responses` using — check and add `Queries` explicitly since `GetAttendanceDayDetailQuery` lives there). Add this test:
 
@@ -448,12 +448,12 @@ public async Task HistoryDetail_ForbiddenResult_ReturnsProblemWith403()
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~TimeTrackingControllerTests.HistoryDetail"`
 Expected: compile error — `TimeTrackingController.HistoryDetail` doesn't exist yet.
 
-- [ ] **Step 3: Add the controller action**
+- [x] **Step 3: Add the controller action**
 
 In `src/ONEVO.Api/Controllers/Tenant/Attendance/TimeTrackingController.cs`, add after the `CoveredHistory` action, before the closing brace of the class:
 
@@ -473,12 +473,12 @@ In `src/ONEVO.Api/Controllers/Tenant/Attendance/TimeTrackingController.cs`, add 
 
 No `[RequirePermission]` attribute — matching `History` (self-service, no attribute) rather than `CoveredHistory`, because this one route serves both self and others, and self access must always succeed regardless of any permission. All permission logic lives in the handler from Task 1.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~TimeTrackingControllerTests"`
 Expected: PASS (new tests plus every pre-existing test in the file).
 
-- [ ] **Step 5: Full backend test suite and build sanity check**
+- [x] **Step 5: Full backend test suite and build sanity check**
 
 Run: `dotnet build src/ONEVO.Api/ONEVO.Api.csproj`
 Expected: Build succeeded, 0 errors.
@@ -486,7 +486,7 @@ Expected: Build succeeded, 0 errors.
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj`
 Expected: PASS, no regressions in unrelated tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Api/Controllers/Tenant/Attendance/TimeTrackingController.cs tests/ONEVO.Tests.Unit/Controllers/Tenant/Attendance/TimeTrackingControllerTests.cs
