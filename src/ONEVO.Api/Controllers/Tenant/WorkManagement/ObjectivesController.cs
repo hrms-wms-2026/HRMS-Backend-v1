@@ -241,9 +241,13 @@ public class ObjectivesController : ControllerBase
     /// <summary>Approves a pending change request. Caller must be the request's Reporting Manager.</summary>
     [HttpPost("change-requests/{requestId:guid}/approve")]
     [RequirePermission("projects:access")]
-    public async Task<IActionResult> ApproveChangeRequest(Guid requestId, CancellationToken ct)
+    public async Task<IActionResult> ApproveChangeRequest(
+        Guid requestId,
+        [FromBody] ApproveObjectiveChangeRequestRequest? request,
+        CancellationToken ct)
     {
-        var result = await _mediator.Send(new ApproveObjectiveChangeRequestCommand(requestId), ct);
+        var result = await _mediator.Send(
+            new ApproveObjectiveChangeRequestCommand(requestId, request?.ApprovedAdditionalHours), ct);
 
         return result.IsSuccess
             ? NoContent()
