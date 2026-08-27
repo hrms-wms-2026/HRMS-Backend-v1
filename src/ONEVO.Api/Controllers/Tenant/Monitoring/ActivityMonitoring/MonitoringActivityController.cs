@@ -6,6 +6,7 @@ using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivi
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailySummary;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivitySnapshots;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetMyActivityTimeline;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetMyFocusStatus;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetMyWorkPattern;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.ActivityMonitoring;
@@ -125,6 +126,23 @@ public class MonitoringActivityController : ControllerBase
         CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetMyWorkPatternQuery(from, to), ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Self-service: whether the current employee is right now in a continuous focus streak
+    /// long enough to warrant a mindful-break nudge, for the Wellbeing dashboard widget (and,
+    /// via this same endpoint, the desktop tray app's own notification later).
+    /// </summary>
+    [HttpGet("my-focus-status")]
+    [RequirePermission("activity:read:self")]
+    public async Task<IActionResult> GetMyFocusStatus(CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetMyFocusStatusQuery(), ct);
 
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
