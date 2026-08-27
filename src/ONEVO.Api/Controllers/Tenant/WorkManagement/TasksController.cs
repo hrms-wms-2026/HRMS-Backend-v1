@@ -41,6 +41,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskHistory;
 
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTasks;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskById;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTaskCategories;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTaskStatuses;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetWorkNotificationNavigation;
@@ -112,6 +113,17 @@ public class TasksController : ControllerBase
 
         return result.IsSuccess
             ? Ok(result.Value!.Select(t => t.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("tasks/{id:guid}")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetTaskByIdQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
