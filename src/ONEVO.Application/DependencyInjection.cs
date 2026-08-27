@@ -42,6 +42,7 @@ public static class DependencyInjection
             ONEVO.Application.Features.TimeAttendance.Services.IAttendanceTodayStateService,
             ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService>();
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Commands.AttendanceCorrections.AttendanceCorrectionWorkflow>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Commands.WorkAreaChangeRequests.WorkAreaChangeRequestWorkflow>();
 
         // Outbox message consumers (dispatched by the Infrastructure outbox worker).
         services.AddScoped<IOutboxMessageHandler, TenantOwnerInviteEmailOutboxHandler>();

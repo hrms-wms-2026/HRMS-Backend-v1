@@ -2,10 +2,11 @@
 
 **Purpose:** Approved designs whose implementation isn't finished yet — either the plan is still `pending`, or no plan has been written. Stays flat, no date subfolders (the date-split is `finished/`-only).
 
-**Last updated:** 2026-08-19
+**Last updated:** 2026-08-27
 
 ## Files
 
+- `2026-08-27-attendance-history-redesign-backend-design.md` — status: pending, no plan written yet. Adds `GET .../history/{employeeId}/{date}/detail` aggregating attendance summary + timeline + `ActivityDailySummary` (TrayApp daily activity, previously unsurfaced anywhere) for the frontend's new attendance detail drawer. Own data always visible; others' data needs `attendance:read`+visibility for summary/timeline and additionally `monitoring:read` for activity (nulled, not 403'd, if absent). Builds on `2026-08-25-attendance-list-pagination-design.md`. Companion: `Hrms--Web-application---front-end---v1/docs/superpowers/specs/next/2026-08-27-attendance-history-redesign-frontend-design.md`.
 - `2026-08-19-sensitive-position-approval-bypass-design.md` — status: plan written, not started. Plan: `plans/next/2026-08-19-sensitive-position-approval-bypass.md`. Extends the sensitive-position approval machinery below: a `roles:manage` holder doing onboarding or position-change (transfer) into a sensitive position completes immediately instead of queuing, but still writes an `Approved`-stamped `AccessGrantRequest` audit row. Promotion excluded (no workflow exists to attach it to); self-transfer block stays independent and unaffected.
 - `2026-08-17-sensitive-position-approval-backend-design.md` — status: pending, no plan written yet. Extends Change Position (employee-detail-screen sub-project) to route sensitive-position moves through the existing AccessGrantRequest approval machinery instead of assigning immediately; adds `PositionAccessTemplate.ApprovingPositionId` (position-based approver, not a permission code), fixes a self-approval gap in onboarding's existing approval too. Companion: `Hrms--Web-application---front-end---v1/docs/superpowers/specs/2026-08-17-sensitive-position-approval-frontend-design.md`.
 

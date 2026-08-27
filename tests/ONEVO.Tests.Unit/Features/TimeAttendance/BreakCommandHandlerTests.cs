@@ -64,6 +64,27 @@ public sealed class BreakCommandHandlerTests
     }
 
     [Fact]
+    public async Task StartBreak_DoesNotRevertApprovedExpectedWorkAreaSnapshotToLiveContextArea()
+    {
+        // Today's live context happens to resolve to "onsite" (e.g. a later date's fallback),
+        // while the attendance record was already snapshotted as "remote" at clock-in. Start
+        // Break must not re-resolve or overwrite that persisted snapshot.
+        var fixture = CreateFixture(expectedWorkArea: AttendanceRecord.WorkAreaOnsite);
+        var record = ActiveAttendance();
+        fixture.Attendance
+            .Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(record);
+        fixture.Attendance
+            .Setup(x => x.AddBreakAsync(It.IsAny<BreakRecord>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await fixture.StartBreak.Handle(new StartBreakCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AttendanceRecord.WorkAreaRemote, record.ExpectedWorkArea);
+    }
+
+    [Fact]
     public async Task StartBreak_RejectsWhenCurrentEmployeeIsMissing()
     {
         var fixture = CreateFixture();
@@ -233,6 +254,34 @@ public sealed class BreakCommandHandlerTests
     }
 
     [Fact]
+    public async Task EndBreak_DoesNotRevertApprovedExpectedWorkAreaSnapshotToLiveContextArea()
+    {
+        var fixture = CreateFixture(expectedWorkArea: AttendanceRecord.WorkAreaOnsite);
+        var record = ActiveAttendance();
+        var openBreak = new BreakRecord
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
+            BreakStart = UtcNow.AddMinutes(-30), BreakEnd = null
+        };
+        fixture.Attendance
+            .Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(record);
+        fixture.Attendance
+            .Setup(x => x.GetOpenBreakTrackedAsync(
+                TenantId, EmployeeId, LocalDayWindow.Start, LocalDayWindow.End, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(openBreak);
+        fixture.Attendance
+            .Setup(x => x.SumCompletedBreakMinutesAsync(
+                TenantId, EmployeeId, LocalDayWindow.Start, LocalDayWindow.End, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(20);
+
+        var result = await fixture.EndBreak.Handle(new EndBreakCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AttendanceRecord.WorkAreaRemote, record.ExpectedWorkArea);
+    }
+
+    [Fact]
     public async Task EndBreak_RejectsWhenAttendanceIsMissingNotStartedOrClockedOut()
     {
         var missingFixture = CreateFixture();
@@ -337,10 +386,11 @@ public sealed class BreakCommandHandlerTests
             EmployeeId = EmployeeId,
             Date = WorkDate,
             ActualStart = UtcNow.AddHours(-8),
+            ExpectedWorkArea = AttendanceRecord.WorkAreaRemote,
             Status = AttendanceRecord.StatusActive
         };
 
-    private static Fixture CreateFixture(int? allowance = 60)
+    private static Fixture CreateFixture(int? allowance = 60, string expectedWorkArea = AttendanceRecord.WorkAreaRemote)
     {
         var context = new AttendanceTodayContext(
             new Employee
@@ -364,7 +414,8 @@ public sealed class BreakCommandHandlerTests
             UtcNow,
             LocalNow,
             new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
-            "remote",
+            expectedWorkArea,
+            "active_employee_work_mode",
             new ClockInPolicy { Id = Guid.NewGuid(), RemoteWebEnabled = true },
             "configured",
             new AllowedClockInMethods(true, false, false, false, false, null),

@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Attendance.TimeTracking;
 using ONEVO.Api.Controllers.Tenant.Attendance;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Architecture;
@@ -79,16 +81,40 @@ public sealed class TimeTrackingMutationArchitectureTests
         Assert.DoesNotContain("Npgsql.EntityFrameworkCore.PostgreSQL", references);
     }
 
+    /// <summary>
+    /// This used to assert tracked-vs-no-tracking behavior by slicing the repository's source text
+    /// between two literal method-name strings, which threw ArgumentOutOfRangeException the moment
+    /// method order/signatures shifted (e.g. ListRecordsAsync's tuple return type no longer matches
+    /// the literal it searched for) - a brittle source-layout assertion unrelated to whether tracked
+    /// mutation actually works. The real tracked-vs-detached-Update() behavior is now proven
+    /// directly against a database in
+    /// EfAttendanceReadRepositoryTests.GetTrackedRecordAsync_ReturnsTrackedEntity_AndMutationPersistsViaSaveChanges.
+    /// This test instead checks only the stable architectural contract: the abstraction mutation
+    /// handlers depend on exposes a tracked-fetch method with the expected shape.
+    /// </summary>
     [Fact]
-    public void AttendanceRepository_UsesTrackedFetchForMutation()
+    public void AttendanceRepository_ExposesTrackedFetchForMutation()
     {
-        var path = FindRepositorySource();
-        var source = File.ReadAllText(path);
-        var trackedMethod = source[(source.IndexOf("GetTrackedRecordAsync", StringComparison.Ordinal))..];
-        trackedMethod = trackedMethod[..trackedMethod.IndexOf("public async Task<IReadOnlyList<AttendanceRecord>>", StringComparison.Ordinal)];
+        var method = typeof(IAttendanceReadRepository).GetMethod(nameof(IAttendanceReadRepository.GetTrackedRecordAsync));
 
-        Assert.DoesNotContain("AsNoTracking", trackedMethod);
-        Assert.Contains("db.AttendanceRecords", trackedMethod);
+        Assert.NotNull(method);
+        Assert.Equal(typeof(Task<AttendanceRecord>), method!.ReturnType);
+
+        var parameters = method.GetParameters();
+        Assert.Equal(4, parameters.Length);
+        Assert.Equal(typeof(Guid), parameters[0].ParameterType);
+        Assert.Equal(typeof(Guid), parameters[1].ParameterType);
+        Assert.Equal(typeof(DateOnly), parameters[2].ParameterType);
+        Assert.Equal(typeof(CancellationToken), parameters[3].ParameterType);
+    }
+
+    [Theory]
+    [InlineData(typeof(ONEVO.Application.Features.TimeAttendance.Commands.ClockIn.ClockInCommandHandler))]
+    [InlineData(typeof(ONEVO.Application.Features.TimeAttendance.Commands.WorkAreaChangeRequests.WorkAreaChangeRequestWorkflow))]
+    public void MutationHandlers_DependOnAttendanceRepositoryAbstraction(Type handlerType)
+    {
+        var constructor = handlerType.GetConstructors().Single();
+        Assert.Contains(constructor.GetParameters(), parameter => parameter.ParameterType == typeof(IAttendanceReadRepository));
     }
 
     [Fact]
@@ -129,18 +155,5 @@ public sealed class TimeTrackingMutationArchitectureTests
         Assert.Contains("tenant_isolation", source);
         Assert.Contains("attendance_records", source);
         Assert.Contains("break_records", source);
-    }
-
-    private static string FindRepositorySource()
-    {
-        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        return Path.Combine(
-            root,
-            "src",
-            "ONEVO.Infrastructure",
-            "Persistence",
-            "Repositories",
-            "TimeAttendance",
-            "EfAttendanceReadRepository.cs");
     }
 }

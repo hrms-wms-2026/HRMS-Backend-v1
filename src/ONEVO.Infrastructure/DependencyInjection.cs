@@ -24,6 +24,8 @@ using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.BulkOnboarding;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Services;
+
 using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -176,9 +178,13 @@ public static class DependencyInjection
             ONEVO.Application.Features.Leave.Type.RepositoryInterfaces.ILeaveTypeRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Type.EfLeaveTypeRepository>();
 
-        services.AddScoped<
+                services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IAttendanceCorrectionRepository,
             ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceCorrectionRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IWorkAreaChangeRequestRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfWorkAreaChangeRequestRepository>();
+
         services.AddScoped<
             ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestReadRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Request.EfLeaveRequestReadRepository>();
@@ -250,6 +256,8 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Leave.Cancellation.RepositoryInterfaces.ILeaveCancellationRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Cancellation.EfLeaveCancellationRepository>();
+
+        services.AddScoped<IExpectedWorkAreaResolver, ExpectedWorkAreaResolver>();
 
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
