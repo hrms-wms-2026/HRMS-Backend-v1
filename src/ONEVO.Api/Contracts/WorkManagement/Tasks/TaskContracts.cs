@@ -72,3 +72,17 @@ public sealed record MyDeadlinesViewModel(
 
 public sealed record WorkNotificationNavigationViewModel(
     Guid ProjectId, Guid ObjectiveId, Guid? TaskId, string TargetTab);
+
+public sealed record MyTaskItemViewModel(
+    Guid TaskId, string ShortId, string Title, DateOnly DueDate, bool IsOverdue,
+    Guid ProjectId, string ProjectName, Guid ObjectiveId, string Priority);
+
+public sealed record MyTasksViewModel(IReadOnlyList<MyTaskItemViewModel> Tasks);
+
+public static class MyTasksViewModelMapper
+{
+    public static MyTasksViewModel ToViewModel(this MyTasksResponse dto) =>
+        new(dto.Tasks.Select(t => new MyTaskItemViewModel(
+            t.TaskId, t.ShortId, t.Title, t.DueDate, t.IsOverdue,
+            t.ProjectId, t.ProjectName, t.ObjectiveId, t.Priority)).ToList());
+}

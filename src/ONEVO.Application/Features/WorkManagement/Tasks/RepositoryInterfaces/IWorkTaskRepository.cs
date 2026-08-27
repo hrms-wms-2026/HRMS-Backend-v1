@@ -2,6 +2,18 @@ using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 
+/// <summary>A task assigned to the caller, joined with its project name and status for the
+/// My Tasks dashboard widget.</summary>
+public sealed record MyTaskRow(
+    Guid Id,
+    string ShortId,
+    string Title,
+    DateOnly DueDate,
+    Guid ProjectId,
+    string ProjectName,
+    Guid ObjectiveId,
+    string Priority);
+
 public interface IWorkTaskRepository
 {
     Task AddAsync(WorkTask task, CancellationToken ct = default);
@@ -17,6 +29,11 @@ public interface IWorkTaskRepository
     /// <summary>Tasks with an assignment to this employee and DueDate in [from, to]. For the
     /// my-deadlines endpoint (spec §7) - not used by any other query.</summary>
     Task<IReadOnlyList<WorkTask>> GetAssignedToEmployeeWithinRangeAsync(Guid tenantId, Guid employeeId, DateOnly from, DateOnly to, CancellationToken ct = default);
+
+    /// <summary>Not-yet-complete tasks assigned to this employee, due on or before
+    /// upcomingCutoff - includes every overdue task regardless of age (no lower bound), plus
+    /// tasks due within the upcoming window. For the My Tasks dashboard widget.</summary>
+    Task<IReadOnlyList<MyTaskRow>> GetMyActiveTasksAsync(Guid tenantId, Guid employeeId, DateOnly upcomingCutoff, CancellationToken ct = default);
 
     Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default);
 

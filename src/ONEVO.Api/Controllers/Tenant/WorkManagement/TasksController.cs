@@ -25,6 +25,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.RejectTaskCreatio
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskCategories;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskStatuses;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.UnassignTask;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyActiveTasks;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyDeadlines;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskEditRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskCreationRequests;
@@ -48,6 +49,19 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> MyDeadlines([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetMyDeadlinesQuery(from, to), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Overdue and near-term tasks assigned to the current employee, for the My Tasks
+    /// dashboard widget.</summary>
+    [HttpGet("my-tasks")]
+    [RequirePermission("tasks:read-own")]
+    public async Task<IActionResult> MyTasks([FromQuery] int upcomingDays = 7, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetMyActiveTasksQuery(upcomingDays), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
