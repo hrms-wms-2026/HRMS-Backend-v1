@@ -209,14 +209,15 @@ public class EfEmployeeRepository : IEmployeeRepository
                         && leavesByEmployee.TryGetValue(row.e.Id, out var employeeLeaves)
                         && employeeLeaves.Any(request => request.StartDate <= resolution.WorkDate
                             && request.EndDate >= resolution.WorkDate);
-                    var breakUsedMinutes = resolution is not null
-                        && breaksByEmployee.TryGetValue(row.e.Id, out var employeeBreaks)
-                            ? AttendanceTodayStateService.CalculateBreakUsage(
-                                employeeBreaks,
-                                AttendanceTodayStateService.GetLocalDayWindow(
-                                    resolution.WorkDate, resolution.TimeZone),
-                                resolution.LocalNow)
-                            : 0;
+                    breaksByEmployee.TryGetValue(row.e.Id, out var employeeBreaks);
+                    var breakUsedMinutes = resolution is not null && employeeBreaks is not null
+                        ? AttendanceTodayStateService.CalculateBreakUsage(
+                            employeeBreaks,
+                            AttendanceTodayStateService.GetLocalDayWindow(
+                                resolution.WorkDate, resolution.TimeZone),
+                            resolution.LocalNow)
+                        : 0;
+                    var hasOpenBreak = employeeBreaks?.Any(breakRecord => breakRecord.BreakEnd is null) ?? false;
                     var status = resolution is null
                         ? null
                         : AttendanceDayStatusResolver.Resolve(
@@ -224,6 +225,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                             "configured",
                             record,
                             hasApprovedLeave,
+                            hasOpenBreak,
                             row.legalEntity?.BreakDurationMinutes,
                             breakUsedMinutes,
                             resolution.LocalNow);

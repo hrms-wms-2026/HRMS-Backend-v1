@@ -110,6 +110,7 @@ public sealed class AttendanceTodayStateService(
             context.PolicyStatus,
             attendanceRecord,
             hasApprovedLeave,
+            breakState.HasOpenBreak,
             context.LegalEntity.BreakDurationMinutes,
             breakUsage,
             context.LocalNow);
@@ -158,7 +159,7 @@ public sealed class AttendanceTodayStateService(
             attendanceState.Status,
             attendanceRecord?.ActualStart,
             attendanceRecord?.ActualEnd,
-            attendanceRecord?.WorkedMinutes ?? 0,
+            CalculateWorkedMinutes(attendanceRecord, breakUsage, context.LocalNow),
             attendanceRecord?.AttendanceSource,
             actions.CanClockIn,
             actions.CanClockOut,
@@ -278,6 +279,14 @@ public sealed class AttendanceTodayStateService(
             if (end <= start) return 0;
             return (int)Math.Max(0, (end - start).TotalMinutes);
         });
+    }
+
+    public static int CalculateWorkedMinutes(AttendanceRecord? record, int breakUsedMinutes, DateTimeOffset now)
+    {
+        if (record?.ActualStart is not DateTimeOffset start || record.ActualEnd is not null)
+            return record?.WorkedMinutes ?? 0;
+
+        return Math.Max(0, (int)(now - start).TotalMinutes - breakUsedMinutes);
     }
 
     public static AttendanceLocalDayWindow GetLocalDayWindow(DateOnly date, TimeZoneInfo zone)
