@@ -246,6 +246,15 @@ $script:Areas = @(
         Keywords     = @()
         Filter       = 'FullyQualifiedName~CoreHr|FullyQualifiedName~Employee|FullyQualifiedName~Onboarding'
     }
+    @{
+        Name         = 'Leave'
+        PathPatterns = @(
+            'src/*/Leave/*'
+            'src/ONEVO.Api/Controllers/Tenant/Leave/*'
+        ) + (New-IntegrationTestPathPatterns -Names @('Leave'))
+        Keywords     = @('LeavePolicy', 'LeaveType', 'LeaveEntitlement', 'LeaveRequest')
+        Filter       = 'FullyQualifiedName~Leave'
+    }
 )
 
 $script:MigrationPathPattern  = 'src/ONEVO.Infrastructure/Migrations/*'
@@ -506,6 +515,14 @@ function Invoke-SelfTest {
     Assert-Decision -Name 'CoreHr/Employee/Onboarding src change routes to the CoreHr filter' `
         -Files @('src/ONEVO.Application/Features/CoreHr/Onboarding/Queries/ListOnboardingAccessGrantRequests/ListOnboardingAccessGrantRequestsQueryHandler.cs') `
         -Check { param($d) -not $d.Skip -and -not $d.FullIntegration -and $d.Filter -eq 'FullyQualifiedName~CoreHr|FullyQualifiedName~Employee|FullyQualifiedName~Onboarding' }
+
+    Assert-Decision -Name 'Leave src change routes to Leave filter instead of full integration' `
+        -Files @('src/ONEVO.Api/Controllers/Tenant/Leave/LeavePoliciesController.cs') `
+        -Check { param($d) -not $d.Skip -and -not $d.FullIntegration -and $d.Filter -eq 'FullyQualifiedName~Leave' }
+
+    Assert-Decision -Name 'Leave integration test file under Features/Leave routes to Leave filter' `
+        -Files @('tests/ONEVO.Tests.Integration/Features/Leave/LeavePoliciesIntegrationTests.cs') `
+        -Check { param($d) -not $d.Skip -and -not $d.FullIntegration -and $d.Filter -eq 'FullyQualifiedName~Leave' }
 
     Assert-Decision -Name 'CoreHr/Employee/Onboarding integration test file also routes to the CoreHr filter' `
         -Files @('tests/ONEVO.Tests.Integration/CoreHr/OnboardingDraft/OnboardingDraftsIntegrationTests.cs') `

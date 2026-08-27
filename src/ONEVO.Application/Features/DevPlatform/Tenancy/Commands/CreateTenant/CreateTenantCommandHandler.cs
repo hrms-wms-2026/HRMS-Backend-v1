@@ -37,6 +37,7 @@ public class CreateTenantCommandHandler
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
     private readonly ITenantOwnerInvitationService _invitationService;
+    private readonly IWritableTenantContext _tenantContext;
 
     public CreateTenantCommandHandler(
         ITenantRepository tenants,
@@ -48,7 +49,8 @@ public class CreateTenantCommandHandler
         ICurrentUser currentUser,
         IUnitOfWork unitOfWork,
         IDateTimeProvider clock,
-        ITenantOwnerInvitationService invitationService)
+        ITenantOwnerInvitationService invitationService,
+        IWritableTenantContext tenantContext)
     {
         _tenants = tenants;
         _legalEntities = legalEntities;
@@ -60,6 +62,7 @@ public class CreateTenantCommandHandler
         _unitOfWork = unitOfWork;
         _clock = clock;
         _invitationService = invitationService;
+        _tenantContext = tenantContext;
     }
 
     public async Task<Result<CreateTenantDraftResponseDto>> Handle(
@@ -69,6 +72,14 @@ public class CreateTenantCommandHandler
         // 1. Auth check
         if (!_currentUser.IsAuthenticated)
             return Result<CreateTenantDraftResponseDto>.Forbidden("Authentication required.");
+
+        // This is a Dev Platform admin operation provisioning a brand-new tenant, so it
+        // writes tenant-scoped, RLS-protected rows (legal_entities, tenant_auth_policies,
+        // tenant_subscriptions, users, user_roles, invitation_tokens) before that tenant is
+        // resolvable through the normal host-based tenant context. Admin mode must be set
+        // explicitly here rather than relying on ambient host-subdomain resolution, matching
+        // the pattern used by the other cross-tenant seeders (e.g. WorkManagementSampleDataSeeder).
+        _tenantContext.SetAdminMode();
 
         // 2. Slug validation
         var slug = request.Slug.Trim().ToLowerInvariant();

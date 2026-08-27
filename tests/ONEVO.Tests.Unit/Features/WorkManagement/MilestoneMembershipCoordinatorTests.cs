@@ -1,8 +1,10 @@
 using Moq;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -24,13 +26,19 @@ public class MilestoneMembershipCoordinatorTests
 
     private (MilestoneMembershipCoordinator Coordinator, Mock<IProjectMemberRepository> Members) BuildCoordinator(Employee? employee)
     {
+        var (coordinator, members, _) = BuildCoordinator(employee, new Mock<IObjectiveRepository>());
+        return (coordinator, members);
+    }
+
+    private (MilestoneMembershipCoordinator Coordinator, Mock<IProjectMemberRepository> Members, Mock<IObjectiveRepository> Objectives) BuildCoordinator(Employee? employee, Mock<IObjectiveRepository> objectives)
+    {
         var employees = new Mock<IEmployeeRepository>();
         employees.Setup(x => x.GetByIdAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
 
         var members = new Mock<IProjectMemberRepository>();
 
-        var coordinator = new MilestoneMembershipCoordinator(employees.Object, members.Object);
-        return (coordinator, members);
+        var coordinator = new MilestoneMembershipCoordinator(employees.Object, members.Object, objectives.Object);
+        return (coordinator, members, objectives);
     }
 
     [Fact]
@@ -147,5 +155,128 @@ public class MilestoneMembershipCoordinatorTests
         var result = await coordinator.HasOtherActiveAccessAsync(TenantId, ProjectId, EmployeeId, ObjectiveId, CancellationToken.None);
 
         Assert.True(result);
+    }
+
+    // --- IsEffectiveManagerAsync: Root (no parent) -> Child (parent = Root) -> Grandchild (parent = Child),
+    // plus an unrelated Sibling (no parent, not an ancestor of any of the three). ---
+
+    private static readonly Guid RootId = Guid.NewGuid();
+    private static readonly Guid ChildId = Guid.NewGuid();
+    private static readonly Guid GrandchildId = Guid.NewGuid();
+    private static readonly Guid SiblingId = Guid.NewGuid();
+    private static readonly Guid OtherEmployeeId = Guid.NewGuid();
+
+    private static Objective MakeObjective(Guid id, Guid? parentId, Guid ownerId) => new()
+    {
+        Id = id,
+        TenantId = TenantId,
+        ProjectId = ProjectId,
+        ParentObjectiveId = parentId,
+        OwnerId = ownerId,
+    };
+
+    private (MilestoneMembershipCoordinator Coordinator, Mock<IProjectMemberRepository> Members) BuildTreeCoordinator(
+        Objective root, Objective child, Objective grandchild, Objective sibling)
+    {
+        var (coordinator, members, objectives) = BuildCoordinator(ActiveEmployee(), new Mock<IObjectiveRepository>());
+
+        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, RootId, It.IsAny<CancellationToken>())).ReturnsAsync(root);
+        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ChildId, It.IsAny<CancellationToken>())).ReturnsAsync(child);
+        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, GrandchildId, It.IsAny<CancellationToken>())).ReturnsAsync(grandchild);
+        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, SiblingId, It.IsAny<CancellationToken>())).ReturnsAsync(sibling);
+
+        foreach (var id in new[] { RootId, ChildId, GrandchildId, SiblingId })
+            members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(Array.Empty<ProjectMember>());
+
+        return (coordinator, members);
+    }
+
+    [Fact]
+    public async Task IsEffectiveManagerAsync_SelfOwner_ReturnsTrue()
+    {
+        var root = MakeObjective(RootId, null, OtherEmployeeId);
+        var child = MakeObjective(ChildId, RootId, OtherEmployeeId);
+        var grandchild = MakeObjective(GrandchildId, ChildId, EmployeeId);
+        var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
+        var (coordinator, _) = BuildTreeCoordinator(root, child, grandchild, sibling);
+
+        var result = await coordinator.IsEffectiveManagerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task IsEffectiveManagerAsync_SelfActiveMember_ReturnsTrue()
+    {
+        var root = MakeObjective(RootId, null, OtherEmployeeId);
+        var child = MakeObjective(ChildId, RootId, OtherEmployeeId);
+        var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
+        var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
+        var (coordinator, members) = BuildTreeCoordinator(root, child, grandchild, sibling);
+        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, GrandchildId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = GrandchildId, EmployeeId = EmployeeId, IsActive = true } });
+
+        var result = await coordinator.IsEffectiveManagerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task IsEffectiveManagerAsync_ParentOwner_ReturnsTrue()
+    {
+        var root = MakeObjective(RootId, null, OtherEmployeeId);
+        var child = MakeObjective(ChildId, RootId, EmployeeId);
+        var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
+        var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
+        var (coordinator, _) = BuildTreeCoordinator(root, child, grandchild, sibling);
+
+        var result = await coordinator.IsEffectiveManagerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task IsEffectiveManagerAsync_GrandparentActiveMember_ReturnsTrue()
+    {
+        var root = MakeObjective(RootId, null, OtherEmployeeId);
+        var child = MakeObjective(ChildId, RootId, OtherEmployeeId);
+        var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
+        var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
+        var (coordinator, members) = BuildTreeCoordinator(root, child, grandchild, sibling);
+        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, RootId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = RootId, EmployeeId = EmployeeId, IsActive = true } });
+
+        var result = await coordinator.IsEffectiveManagerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task IsEffectiveManagerAsync_SiblingOwner_ReturnsFalse()
+    {
+        var root = MakeObjective(RootId, null, OtherEmployeeId);
+        var child = MakeObjective(ChildId, RootId, OtherEmployeeId);
+        var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
+        var sibling = MakeObjective(SiblingId, null, EmployeeId);
+        var (coordinator, _) = BuildTreeCoordinator(root, child, grandchild, sibling);
+
+        var result = await coordinator.IsEffectiveManagerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task IsEffectiveManagerAsync_NoRelationship_ReturnsFalse()
+    {
+        var root = MakeObjective(RootId, null, OtherEmployeeId);
+        var child = MakeObjective(ChildId, RootId, OtherEmployeeId);
+        var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
+        var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
+        var (coordinator, _) = BuildTreeCoordinator(root, child, grandchild, sibling);
+
+        var result = await coordinator.IsEffectiveManagerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
+
+        Assert.False(result);
     }
 }

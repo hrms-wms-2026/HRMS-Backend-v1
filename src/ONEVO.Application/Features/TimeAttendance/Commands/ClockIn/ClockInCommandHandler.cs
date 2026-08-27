@@ -26,9 +26,6 @@ public sealed class ClockInCommandHandler(
         if (context.Schedule.Status != "configured")
             return Result<AttendanceTodayResponse>.Conflict("schedule_not_configured");
 
-        if (!context.Schedule.IsWorkingDay)
-            return Result<AttendanceTodayResponse>.Conflict("off_day");
-
         if (context.PolicyStatus == "not_configured")
             return Result<AttendanceTodayResponse>.Conflict("clock_in_policy_not_configured");
 
@@ -117,12 +114,12 @@ public sealed class ClockInCommandHandler(
         record.TenantId = context.Employee.TenantId;
         record.EmployeeId = context.Employee.Id;
         record.Date = context.WorkDate;
-        record.ExpectedWorkingDay = true;
+        record.ExpectedWorkingDay = context.Schedule.IsWorkingDay;
         record.WorkTimeType = AttendanceRecord.WorkTimeTypeFixed;
         record.ScheduledStart = context.Schedule.Start;
         record.ScheduledEnd = context.Schedule.End;
         record.RequiredWorkMinutes = context.Schedule.RequiredWorkMinutes;
-        record.ExpectedWorkArea = ToPersistedWorkArea(context.WorkMode);
+        record.ExpectedWorkArea = context.ExpectedWorkArea;
         record.ScheduleTimezone = context.Timezone;
         record.IsHoliday = false;
         record.HolidayName = null;
@@ -136,16 +133,6 @@ public sealed class ClockInCommandHandler(
             : AttendanceRecord.StatusOnTime;
         record.UpdatedAt = context.UtcNow;
     }
-
-    private static string? ToPersistedWorkArea(string? workMode)
-        => workMode switch
-        {
-            "onsite" => AttendanceRecord.WorkAreaOnsite,
-            "remote" => AttendanceRecord.WorkAreaRemote,
-            "hybrid" => AttendanceRecord.WorkAreaHybrid,
-            "field" => AttendanceRecord.WorkAreaField,
-            _ => null
-        };
 
     private static Result<AttendanceTodayResponse> ToTodayFailure(
         Result<AttendanceTodayContext> contextResult)

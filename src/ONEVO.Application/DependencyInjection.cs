@@ -13,6 +13,7 @@ using ONEVO.Application.Features.OrgStructure.OutboxHandlers;
 using ONEVO.Application.Features.Leave.Approval.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Queries.GetBulkOnboardingTemplate;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Helpers;
+using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 
 
 namespace ONEVO.Application;
@@ -40,6 +41,8 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.Services.IAttendanceTodayStateService,
             ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Commands.AttendanceCorrections.AttendanceCorrectionWorkflow>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Commands.WorkAreaChangeRequests.WorkAreaChangeRequestWorkflow>();
 
         // Outbox message consumers (dispatched by the Infrastructure outbox worker).
         services.AddScoped<IOutboxMessageHandler, TenantOwnerInviteEmailOutboxHandler>();
@@ -71,6 +74,8 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.ITrayEnrollmentService,
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.TrayEnrollmentService>();
 
+        services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
+        
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 
         services.AddScoped<

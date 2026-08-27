@@ -113,6 +113,15 @@ public interface IEmployeeRepository
     Task<IReadOnlyList<Guid>> ListActiveEmployeeIdsByIdsAsync(
         Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
 
+    /// <summary>Batch tenant-scoped employee lookup by id, unfiltered by employment status
+    /// (mirrors GetByIdAsync's lack of an active filter, deliberately - callers that need only
+    /// active rows should intersect with ListActiveEmployeeIdsByIdsAsync). Used by
+    /// IEmployeeAuthorityResolver's batch approval-inbox scope resolution to preload subjects and
+    /// reporting-line ancestor/holder candidates without one query per id. Ids not found are
+    /// simply absent from the result.</summary>
+    Task<IReadOnlyDictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.Employee>> ListByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
+
     Task AddAsync(ONEVO.Domain.Features.CoreHr.Entities.Employee employee, CancellationToken ct = default);
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);

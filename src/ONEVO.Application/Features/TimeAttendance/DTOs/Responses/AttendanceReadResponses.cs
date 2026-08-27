@@ -1,3 +1,5 @@
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
+
 namespace ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 
 public sealed record AllowedClockInMethods(
@@ -38,7 +40,14 @@ public sealed record AttendanceTodayResponse(
     bool ShouldHaveClockedIn,
     bool CanViewCoveredEmployees,
     AllowedClockInMethods AllowedClockInMethods,
-    IReadOnlyList<string> Messages);
+    IReadOnlyList<string> Messages,
+    string? AttendanceStatusLabel = null,
+    string? AttentionType = null,
+    string? AttentionLabel = null,
+    string? AttentionSeverity = null,
+    int BreakOverageMinutes = 0,
+    bool IsOverBreakAllowance = false,
+    string? ExpectedWorkAreaSource = null);
 
 public sealed record AttendanceHistoryEmployee(
     Guid EmployeeId,
@@ -63,4 +72,20 @@ public sealed record AttendanceHistoryRow(
     bool CanViewDetails,
     bool CanRequestCorrection,
     bool CanRequestWorkAreaChange,
-    bool CanCorrect);
+    bool CanCorrect,
+    string? StatusLabel = null,
+    string? AttentionType = null,
+    string? AttentionLabel = null,
+    string? AttentionSeverity = null,
+    int BreakOverageMinutes = 0,
+    bool IsOverBreakAllowance = false);
+
+public sealed record TimelineEvent(
+    string EventType,
+    DateTimeOffset Timestamp,
+    string Source);
+
+public sealed record AttendanceDayDetailResponse(
+    AttendanceHistoryRow Summary,
+    IReadOnlyList<TimelineEvent> TimelineEvents,
+    ActivityDailySummaryDto? DailyActivity);

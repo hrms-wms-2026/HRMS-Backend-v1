@@ -15,7 +15,8 @@ public static class ObjectiveViewModelMapper
 
     public static ObjectiveTreeItemViewModel ToViewModel(this ObjectiveTreeItemResponse dto) => new(
         dto.Id, dto.ParentObjectiveId, dto.IsDefault, dto.Title, dto.OwnerId,
-        dto.StartDate, dto.EndDate, dto.AllocatedHours, dto.CompletedHours, dto.IsActive, dto.IsAchieved);
+        dto.StartDate, dto.EndDate, dto.AllocatedHours, dto.CompletedHours, dto.IsActive, dto.IsAchieved,
+        dto.Progress, dto.OwnerName, dto.IsOwner);
 
     public static ObjectiveChangeRequestViewModel ToViewModel(this ObjectiveChangeRequestResponse dto) => new(
         dto.Id, dto.ObjectiveId, dto.RequestType, dto.RequestedById, dto.ReportingManagerId,
@@ -52,7 +53,7 @@ public static class ObjectiveViewModelMapper
     {
         Items = response.Items.Select(i => new ObjectiveMemberItemViewModel
         {
-            EmployeeId = i.EmployeeId, IsHead = i.IsHead, Pending = i.Pending,
+            EmployeeId = i.EmployeeId, Name = i.Name, IsHead = i.IsHead, Pending = i.Pending,
             InviteType = i.InviteType, InvitationId = i.InvitationId, SinceOrInvitedAt = i.SinceOrInvitedAt
         }).ToList()
     };

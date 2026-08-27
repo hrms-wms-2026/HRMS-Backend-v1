@@ -76,6 +76,38 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("leave_request_cancelled_by_hr", codes);
         Assert.Contains("leave_request_partially_cancelled", codes);
         Assert.Equal(15, codes.Count);
+        var expectedCodes = new[]
+        {
+            "work_task_creation_request_created",
+            "work_task_creation_request_decided",
+            "work_task_edit_request_decided",
+            "work_allocation_extend_request_created",
+            "work_allocation_extend_request_decided",
+            "work_sprint_completed",
+            "work_sprint_incomplete",
+            "work_sprint_achieved",
+            "leave_request_approved",
+            "leave_request_rejected",
+            "leave_request_information_requested",
+            "leave_request_next_approval_required",
+            "leave_request_cancelled_by_employee",
+            "leave_request_cancelled_by_hr",
+            "leave_request_partially_cancelled",
+            "attendance_correction_request_created",
+            "attendance_correction_request_decided",
+            "attendance_correction_request_cancelled",
+            "work_area_change_request_created",
+            "work_area_change_request_decided",
+            "work_area_change_request_cancelled",
+            "work_project_member_invited",
+            "work_project_member_accepted"
+        };
+
+        Assert.Equal(
+            expectedCodes.OrderBy(x => x),
+            codes.OrderBy(x => x));
+
+        Assert.Equal(codes.Count, codes.Distinct(StringComparer.Ordinal).Count());
     }
 
     private ApplicationDbContext CreateContext()

@@ -54,7 +54,7 @@ public class AddObjectiveMemberCommandHandler : IRequestHandler<AddObjectiveMemb
         if (objective.IsAchieved)
             return Result<AddObjectiveMemberOutcomeResponse>.Failure("Cannot add members to an achieved milestone.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<AddObjectiveMemberOutcomeResponse>.Forbidden("Only this milestone's head can add members.");
 
         var assignee = await _membership.GetActiveAssigneeAsync(tenantId, request.EmployeeId, ct);

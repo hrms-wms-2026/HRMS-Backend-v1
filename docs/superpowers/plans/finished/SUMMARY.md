@@ -2,13 +2,17 @@
 
 **Purpose:** Completed plans and point-in-time audit/fix reports. Everything here was moved from the flat `plans/` folder on 2026-08-06 as part of the `finished/` + `next/` restructure (see `docs/superpowers/rules/FILE_CREATION_RULES.md`). Files were **not** re-split or content-edited during the move — only relocated, per the migration rule (existing files get moved + status-tagged, not retroactively restructured into parts). The `plans/kajaa/` personal folder was also dissolved into this structure the same day — its 3 finished plans now live here too (see "From `kajaa/`" below).
 
-**Last updated:** 2026-08-16
+**Last updated:** 2026-08-27
 
 ## Layout: date subfolders
 
 Per user request, `finished/` is further split into one subfolder per completion date (`YYYY-MM-DD/`), each holding the files completed that day. This date-folder split exists **only inside `finished/`** — `next/` stays flat (see `FILE_CREATION_RULES.md` rule 7).
 
 For the 16 files with no date in their filename (the `*_REPORT.md`/`*_AUDIT_PLAN.md` ones), the date was determined from a `**Date:**` header where present, or otherwise inferred from content (cross-references to sibling Part reports, migration filenames, or matching plan files) — marked "(inferred)" below where not explicitly stated in the file itself.
+
+## 2026-08-21/
+
+- `2026-08-20-work-management-project-page-redesign/` (3 parts) — Projects list/create redesign: list view + explanation card + 4-step create wizard, project-level membership via the existing Default Objective (no schema migration), a new Banner image upload distinct from Logo, and the first two Outbox-routed notifications (`work_project_member_invited`/`work_project_member_accepted`). Backend shipped via Cursor (417/417 WorkManagement tests), frontend shipped via Cursor in the sibling repo (394/394 Work module tests). User completed a full manual browser test 2026-08-21 and confirmed it's clean ("perfect, OK"). Design: `specs/finished/2026-08-21/2026-08-20-work-management-project-page-redesign-design.md`.
 
 ## Status note
 
@@ -95,6 +99,9 @@ Each entry's **Related:** line is a wiki-link (`[[bare-filename]]`, no extension
 - `2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md` (from `kajaa/`) — Work Management Slice 2: `PUT`/`DELETE`/`GET`-by-id/`GET mine`/`GET ?userId=` on `ProjectsController`. Executed 2026-08-05.
 
 `plans/kajaa/` was dissolved into this structure on 2026-08-06 — `plans/` now has only `finished/` and `next/` as its two status folders, per user request.
+
+**`2026-08-27/`** (1)
+- `2026-08-27-attendance-history-redesign-backend.md` — Attendance day-detail query/DTO aggregation and `GET .../history-detail` endpoint; 3390/3390 unit tests passed and API build succeeded. Related: [[2026-08-27-attendance-history-redesign-backend-design]] (its spec)
 
 ## Open items
 

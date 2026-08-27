@@ -84,7 +84,7 @@ public class NotificationTemplateSeeder : IHostedService
                 InAppTitleTemplate = "Sprint ended incomplete",
                 InAppBodyTemplate = "\"{{sprintName}}\" on {{objectiveName}} ended with unfinished tasks and is now Incomplete."
             },
-            new()
+                        new()
             {
                 Id = Guid.NewGuid(), Code = "work_sprint_achieved",
                 InAppTitleTemplate = "Sprint achieved",
@@ -131,7 +131,57 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "leave_request_partially_cancelled",
                 InAppTitleTemplate = "Leave partially cancelled",
                 InAppBodyTemplate = "{{leaveTypeName}} from {{effectiveDate}} to {{endDate}} was cancelled. {{restoredDays}} days restored."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "attendance_correction_request_created",
+                InAppTitleTemplate = "Attendance correction request",
+                InAppBodyTemplate = "Attendance correction request from {{employeeName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "attendance_correction_request_decided",
+                InAppTitleTemplate = "Attendance correction {{decision}}",
+                InAppBodyTemplate = "Your attendance correction request was {{decision}}."
+            },
+                        new()
+            {
+                Id = Guid.NewGuid(), Code = "attendance_correction_request_cancelled",
+                InAppTitleTemplate = "Attendance correction cancelled",
+                InAppBodyTemplate = "Your attendance correction request was cancelled."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_area_change_request_created",
+                InAppTitleTemplate = "Work-area change requested",
+                InAppBodyTemplate = "{{employeeName}} requested {{requestedWorkArea}} work for {{date}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_area_change_request_decided",
+                InAppTitleTemplate = "Work-area change {{decision}}",
+                InAppBodyTemplate = "Your work-area change request for {{date}} was {{decision}}. {{reviewComment}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_area_change_request_cancelled",
+                InAppTitleTemplate = "Work-area change cancelled",
+                InAppBodyTemplate = "{{employeeName}} cancelled the work-area change request for {{date}}."
+            },
+
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_project_member_invited",
+                InAppTitleTemplate = "You've been added to a project",
+                InAppBodyTemplate = "{{inviterName}} invited you to join {{projectName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_project_member_accepted",
+                InAppTitleTemplate = "Invitation accepted",
+                InAppBodyTemplate = "{{accepterName}} accepted your invitation to join {{projectName}}."
             }
+
         };
 
         var addedCount = 0;

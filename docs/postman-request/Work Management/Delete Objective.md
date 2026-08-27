@@ -19,7 +19,7 @@ Soft-deletes a milestone (no cascade to descendants — design §4). Applies imm
 | Status | Cause |
 |---|---|
 | `400` | `{id}` is the Default Objective |
-| `403` | Caller is not `{id}`'s current Head |
+| `403` | Caller is not an effective manager of `{id}` (its Head, an active member, or the Head/an active member of any ancestor Objective) |
 | `404` | Objective doesn't exist in tenant |
 | `409` | A change request is already pending for this objective |
 

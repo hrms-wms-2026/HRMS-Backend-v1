@@ -6,6 +6,9 @@
 
 ## Files by date
 
+**`2026-08-21/`** (1)
+- `2026-08-20-work-management-project-page-redesign-design.md` — matching plan `plans/finished/2026-08-21/2026-08-20-work-management-project-page-redesign/`.
+
 **`2026-08-03/`** (2)
 - `2026-08-03-doc-audit-and-process-setup-design.md`
 - `2026-08-03-work-management-foundation-design.md`

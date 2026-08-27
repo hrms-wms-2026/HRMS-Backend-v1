@@ -13,6 +13,10 @@ public interface IPermissionRepository
         string permissionCode,
         DateTimeOffset now,
         CancellationToken ct = default);
+    /// <summary>Batched UserHasPermissionCodeAsync: the subset of userIds who currently hold
+    /// permissionCode via an unexpired UserRole grant.</summary>
+    Task<IReadOnlySet<Guid>> ListUserIdsHoldingPermissionAsync(
+        IReadOnlyCollection<Guid> userIds, string permissionCode, DateTimeOffset now, CancellationToken ct = default);
     Task<IReadOnlyList<string>> ListRolePermissionCodesAsync(
         Guid userId,
         DateTimeOffset now,

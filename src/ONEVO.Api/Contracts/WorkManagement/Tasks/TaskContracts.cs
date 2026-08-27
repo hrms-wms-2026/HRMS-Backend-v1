@@ -4,20 +4,24 @@ using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 namespace ONEVO.Api.Contracts.WorkManagement.Tasks;
 
 public sealed record CreateTaskRequest(
-    string Title, string? Description, string TaskType, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid SprintId);
+    string Title, string? Description, Guid CategoryId, string Priority,
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId);
 
 public sealed record EditTaskRequest(
     string Title, string? Description, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints);
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason);
 
 public sealed record CreateTaskEditRequestRequest(
     string Title, string? Description, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints);
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason);
 
 public sealed record RejectTaskEditRequestRequest(string Comment);
 
 public sealed record MoveTaskStatusRequest(Guid NewStatusId);
+
+public sealed record PushTaskRequest(int Percent, string? Reason);
+
+public sealed record AddReasonRequest(string Reason);
 
 public sealed record AssignTaskRequest(Guid EmployeeId);
 
@@ -32,11 +36,22 @@ public sealed record TaskStatusOrderUpdateRequest(
 
 public sealed record ReorderTaskStatusesRequest(List<TaskStatusOrderUpdateRequest> Updates);
 
+public sealed record EditTaskCategoryRequest(string Name, int DisplayOrder);
+
+public sealed record CreateTaskCategoryRequest(string Name, int DisplayOrder);
+
+public sealed record TaskCategoryOrderUpdateRequest(Guid CategoryId, int DisplayOrder);
+
+public sealed record ReorderTaskCategoriesRequest(List<TaskCategoryOrderUpdateRequest> Updates);
+
+public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder);
+
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
-    string TaskType, Guid StatusId, string Priority, int? StoryPoints,
+    Guid CategoryId, Guid StatusId, string Priority, int? StoryPoints,
     DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent,
-    Guid? SprintId);
+    Guid? SprintId, IReadOnlyList<Guid> AssigneeEmployeeIds, Guid? OpenClockSessionEmployeeId,
+    DateTimeOffset? OpenClockSessionClockInAt, int TotalLoggedMinutes);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,
@@ -62,3 +77,18 @@ public sealed record MyDeadlinesViewModel(
 
 public sealed record WorkNotificationNavigationViewModel(
     Guid ProjectId, Guid ObjectiveId, Guid? TaskId, string TargetTab);
+
+public sealed record CurrentEmployeeViewModel(Guid EmployeeId);
+
+public sealed record TaskHistoryEntryViewModel(
+    string Type, DateTimeOffset OccurredAt, Guid EmployeeId, string EmployeeName,
+    TaskEditEntryDetails? Edit, TaskStatusChangeEntryDetails? StatusChange,
+    TaskClockSessionEntryDetails? ClockSession, TaskPercentageChangeEntryDetails? PercentageChange);
+
+public static class TaskHistoryViewModelMapper
+{
+    public static IReadOnlyList<TaskHistoryEntryViewModel> ToViewModel(this TaskHistoryResponse response) =>
+        response.Entries.Select(entry => new TaskHistoryEntryViewModel(
+            entry.Type, entry.OccurredAt, entry.EmployeeId, entry.EmployeeName,
+            entry.Edit, entry.StatusChange, entry.ClockSession, entry.PercentageChange)).ToList();
+}

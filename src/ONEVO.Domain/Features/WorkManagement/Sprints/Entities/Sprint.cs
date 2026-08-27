@@ -27,4 +27,12 @@ public class Sprint : BaseEntity
     public string Status { get; set; } = SprintStatuses.Future;
     public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset? AchievedAt { get; set; }
+
+    /// <summary>
+    /// Set by SetSprintStatusCommand (an owner picking any status directly, bypassing the normal
+    /// gates). Once true, SprintLifecycleJob's periodic sweep (EfSprintRepository.GetByStatusAsync)
+    /// permanently excludes this sprint - a manual override must stick, not get silently flipped
+    /// back by the next date-driven tick.
+    /// </summary>
+    public bool IsManuallyOverridden { get; set; }
 }

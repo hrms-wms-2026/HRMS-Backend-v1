@@ -24,6 +24,18 @@ public class EfWorkTaskRepository : IWorkTaskRepository
             .Where(t => t.TenantId == tenantId && t.ObjectiveId == objectiveId)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<WorkTask>> GetByProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
+        => await _db.WorkTasks.AsNoTracking()
+            .Join(_db.Objectives,
+                task => task.ObjectiveId,
+                objective => objective.Id,
+                (task, objective) => new { task, objective })
+            .Where(x => x.task.TenantId == tenantId
+                        && x.objective.TenantId == tenantId
+                        && x.objective.ProjectId == projectId)
+            .Select(x => x.task)
+            .ToListAsync(ct);
+
     public async Task<decimal> GetActiveAllocationSumByObjectiveIdAsync(Guid tenantId, Guid objectiveId, Guid? excludingTaskId = null, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking()
             .Where(t => t.TenantId == tenantId && t.ObjectiveId == objectiveId && t.Id != (excludingTaskId ?? Guid.Empty))
@@ -50,5 +62,13 @@ public class EfWorkTaskRepository : IWorkTaskRepository
         => await _db.WorkTasks.IgnoreQueryFilters()
             .AnyAsync(t => t.TenantId == tenantId && t.StatusId == statusId, ct);
 
+    // IgnoreQueryFilters() bypasses the soft-delete half of the composed query filter on
+    // purpose: a category must stay undeletable if a soft-deleted task still references it, not
+    // just active ones. Tenant scoping is preserved manually via the TenantId equality below.
+    public async Task<bool> AnyActiveByCategoryIdAsync(Guid tenantId, Guid categoryId, CancellationToken ct = default)
+        => await _db.WorkTasks.IgnoreQueryFilters()
+            .AnyAsync(t => t.TenantId == tenantId && t.CategoryId == categoryId, ct);
+
     public void Update(WorkTask task) => _db.WorkTasks.Update(task);
+    public void Remove(WorkTask task) => _db.WorkTasks.Remove(task);
 }

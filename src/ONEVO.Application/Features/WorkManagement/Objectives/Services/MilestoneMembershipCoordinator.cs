@@ -1,4 +1,5 @@
 using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
@@ -10,11 +11,13 @@ public class MilestoneMembershipCoordinator : IMilestoneMembershipCoordinator
 {
     private readonly IEmployeeRepository _employees;
     private readonly IProjectMemberRepository _members;
+    private readonly IObjectiveRepository _objectives;
 
-    public MilestoneMembershipCoordinator(IEmployeeRepository employees, IProjectMemberRepository members)
+    public MilestoneMembershipCoordinator(IEmployeeRepository employees, IProjectMemberRepository members, IObjectiveRepository objectives)
     {
         _employees = employees;
         _members = members;
+        _objectives = objectives;
     }
 
     public async Task<Employee?> GetActiveAssigneeAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
@@ -77,5 +80,25 @@ public class MilestoneMembershipCoordinator : IMilestoneMembershipCoordinator
     {
         var members = await _members.ListActiveForObjectiveAsync(tenantId, objectiveId, ct);
         return members.Any(m => m.EmployeeId == employeeId);
+    }
+
+    public async Task<bool> IsEffectiveManagerAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default)
+    {
+        var cursor = await _objectives.GetByIdForTenantAsync(tenantId, objectiveId, ct);
+
+        while (cursor is not null)
+        {
+            if (cursor.OwnerId == employeeId)
+                return true;
+
+            if (await IsActiveMemberAsync(tenantId, cursor.Id, employeeId, ct))
+                return true;
+
+            cursor = cursor.ParentObjectiveId is null
+                ? null
+                : await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
+        }
+
+        return false;
     }
 }

@@ -17,16 +17,25 @@ public interface IAttendanceReadRepository
         DateOnly date,
         CancellationToken ct = default);
 
-    Task<IReadOnlyList<AttendanceRecord>> ListRecordsAsync(
+    Task<(IReadOnlyList<AttendanceRecord> Items, int TotalCount)> ListRecordsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> employeeIds,
         DateOnly from,
         DateOnly to,
+        int skip,
+        int take,
         CancellationToken ct = default);
 
     Task<IReadOnlyList<BreakRecord>> ListBreaksAsync(
         Guid tenantId,
         Guid employeeId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<BreakRecord>> ListBreaksForEmployeesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
         DateTimeOffset from,
         DateTimeOffset to,
         CancellationToken ct = default);
@@ -60,6 +69,8 @@ public interface IAttendanceReadRepository
     Task AddRecordAsync(AttendanceRecord record, CancellationToken ct = default);
 
     Task AddBreakAsync(BreakRecord record, CancellationToken ct = default);
+
+    Task DeleteBreakAsync(Guid breakId, CancellationToken ct = default);
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 

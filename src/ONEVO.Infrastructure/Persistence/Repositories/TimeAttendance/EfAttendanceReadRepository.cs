@@ -32,20 +32,31 @@ public sealed class EfAttendanceReadRepository(ApplicationDbContext db) : IAtten
                 x => x.TenantId == tenantId && x.EmployeeId == employeeId && x.Date == date,
                 ct);
 
-    public async Task<IReadOnlyList<AttendanceRecord>> ListRecordsAsync(
+    public async Task<(IReadOnlyList<AttendanceRecord> Items, int TotalCount)> ListRecordsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> employeeIds,
         DateOnly from,
         DateOnly to,
+        int skip,
+        int take,
         CancellationToken ct = default)
-        => await db.AttendanceRecords
+    {
+        var query = db.AttendanceRecords
             .AsNoTracking()
             .Where(x => x.TenantId == tenantId
                 && employeeIds.Contains(x.EmployeeId)
                 && x.Date >= from
-                && x.Date <= to)
+                && x.Date <= to);
+
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
             .OrderByDescending(x => x.Date)
+            .Skip(skip)
+            .Take(take)
             .ToListAsync(ct);
+
+        return (items, totalCount);
+    }
 
     public async Task<IReadOnlyList<BreakRecord>> ListBreaksAsync(
         Guid tenantId,
@@ -60,6 +71,25 @@ public sealed class EfAttendanceReadRepository(ApplicationDbContext db) : IAtten
                 && x.BreakStart < to
                 && (x.BreakEnd == null || x.BreakEnd > from))
             .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<BreakRecord>> ListBreaksForEmployeesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> employeeIds,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return Array.Empty<BreakRecord>();
+
+        return await db.BreakRecords
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId
+                && employeeIds.Contains(x.EmployeeId)
+                && x.BreakStart < to
+                && (x.BreakEnd == null || x.BreakEnd > from))
+            .ToListAsync(ct);
+    }
 
     public Task<bool> HasOpenBreakAsync(
         Guid tenantId,
@@ -131,6 +161,9 @@ public sealed class EfAttendanceReadRepository(ApplicationDbContext db) : IAtten
 
     public Task AddBreakAsync(BreakRecord record, CancellationToken ct = default)
         => db.BreakRecords.AddAsync(record, ct).AsTask();
+
+    public Task DeleteBreakAsync(Guid breakId, CancellationToken ct = default)
+        => db.BreakRecords.Where(x => x.Id == breakId).ExecuteDeleteAsync(ct);
 
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {

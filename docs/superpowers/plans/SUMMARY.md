@@ -2,7 +2,7 @@
 
 **Purpose:** Dated implementation plans, one per feature/fix, following the header format in the `writing-plans` skill (Goal / Architecture / Tech Stack / Global Constraints / numbered tasks with checkboxes). Restructured on 2026-08-06 into `finished/` and `next/` — see `docs/superpowers/rules/FILE_CREATION_RULES.md` for the full file-creation/organization rule this follows.
 
-**Last updated:** 2026-08-23
+**Last updated:** 2026-08-27
 
 ## Layout
 
@@ -46,7 +46,12 @@
 | `2026-08-12-milestone-to-module-display-rename.md` | `next/` | pending (not started) |
 | `2026-08-16-multi-legal-entity-employment-foundation/` (3 parts) | `finished/2026-08-16/` | finished |
 | `2026-08-16-employee-detail-screen-backend.md` | `next/` | pending (not started) |
-| `2026-08-21-leave-management/` (Parts 1-9 written; Parts 1-7 executed) | `next/` | Phase 0+1 through Phase 7 executed (Parts 3-7 live Docker smoke pending); Phases 8-9 written in full (`part-8-balance-audit-and-year-end.md`, `part-9-hardening.md`) but not yet executed |
+| `2026-08-20-work-management-project-page-redesign/` (3 parts) | `finished/2026-08-21/` | finished (backend+frontend shipped, manual browser test passed 2026-08-21) |
+| `2026-08-20-work-management-tree-sprint-task-unified-view/` (6 parts, +7 in frontend repo) | `next/` | code-complete both repos (428/428 + 443/443 tests), manual browser pass pending |
+| `2026-08-21-work-management-cascading-objective-ownership/` (5 parts, backend-only) | `next/` | code-complete (469/469 tests, 27 handlers converted), manual browser pass pending |
+| `2026-08-21-work-management-project-scoped-task-status-and-category/` (4 parts, backend-only) | `next/` | pending (not started) |
+| `2026-08-21-leave-management/` (Parts 1-9 written; Parts 1-9 executed) | `next/` | Phase 0+1 through Phase 9 executed (live Docker/HTTP smoke still pending: Docker engine down; local OnevoDb behind this branch). Phase 9 shipped architecture + N+1 guard + GetLeaveType tests on `feat/leave-management-part-9` |
+| `2026-08-27-attendance-history-redesign-backend.md` (2 tasks) | `finished/2026-08-27/` | finished (2/2 tasks; 3390/3390 unit tests; API build clean) |
 
 See `finished/SUMMARY.md` for the full file-by-file list, grouped by date folder, of all files in that folder (kept short here to avoid duplicating the same list twice).
 

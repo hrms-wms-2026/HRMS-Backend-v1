@@ -11,6 +11,7 @@ public static class UploadPurposeCatalog
     public const string EmployeeAvatar = "employee_avatar";
     public const string GenericDocument = "generic_document";
     public const string ProjectCover = "project_cover";
+    public const string ProjectBanner = "project_banner";
     public const string MonitoringFaceScan = "monitoring_face_scan";
     public const string MonitoringScreenshot = "monitoring_screenshot";
 
@@ -31,6 +32,7 @@ public static class UploadPurposeCatalog
         [MonitoringFaceScan] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [MonitoringScreenshot] = new UploadPurposeRule(10 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [ProjectCover] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
+        [ProjectBanner] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [GenericDocument] = new UploadPurposeRule(
             25 * 1024 * 1024,
             new[]

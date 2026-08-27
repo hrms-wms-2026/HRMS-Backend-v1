@@ -31,7 +31,7 @@ public class RejectTaskEditRequestCommandHandlerTests
     private (
         RejectTaskEditRequestCommandHandler Handler,
         Mock<ITaskEditRequestRepository> Requests,
-        Mock<INotificationDispatcher> Notifications) Build(Guid callerEmployeeId)
+        Mock<INotificationDispatcher> Notifications) Build(Guid callerEmployeeId, bool? callerIsEffectiveManager = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -43,7 +43,8 @@ public class RejectTaskEditRequestCommandHandlerTests
             .ReturnsAsync(callerEmployeeId);
 
         var payload = new TaskEditRequestPayload(
-            "Updated task", null, WorkTaskPriorities.High, null, null, null);
+                        "Updated task", null, WorkTaskPriorities.High, null, null, null, null);
+
         var pending = new TaskEditRequest
         {
             Id = RequestId,
@@ -91,6 +92,12 @@ public class RejectTaskEditRequestCommandHandlerTests
                 TenantId = TenantId,
                 UserId = RequesterUserId
             });
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
+        // separately in MilestoneMembershipCoordinatorTests).
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (callerEmployeeId == OwnerEmployeeId));
 
         var notifications = new Mock<INotificationDispatcher>();
         var unitOfWork = new Mock<IUnitOfWork>();
@@ -161,5 +168,34 @@ public class RejectTaskEditRequestCommandHandlerTests
             It.IsAny<string?>(),
             It.IsAny<Guid?>(),
             It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsEffectiveManagerViaAncestor_RejectsWithCommentAndNotifiesRequester()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
+        // this only proves the handler defers to its answer instead of the direct OwnerId check.
+        var (handler, requests, notifications) = Build(OtherEmployeeId, callerIsEffectiveManager: true);
+
+        var result = await handler.Handle(
+            new RejectTaskEditRequestCommand(RequestId, " Out of scope "),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        requests.Verify(x => x.Update(It.Is<TaskEditRequest>(r =>
+            r.Status == TaskEditRequestStatuses.Rejected
+            && r.DecisionComment == "Out of scope"
+            && r.DecidedByEmployeeId == OtherEmployeeId
+            && r.DecidedAt.HasValue)), Times.Once);
+        notifications.Verify(x => x.SendTemplatedAsync(
+            TenantId,
+            RequesterUserId,
+            "work_task_edit_request_decided",
+            It.IsAny<IReadOnlyDictionary<string, string>>(),
+            "task_edit_request",
+            RequestId,
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

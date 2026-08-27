@@ -1,10 +1,9 @@
-using System.Text.Json;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -20,10 +19,12 @@ public sealed class AttendanceTodayStateService(
     IClockInPolicyRepository policies,
     IAttendanceReadRepository attendance,
     IEmployeeAuthorityResolver authority,
-    IWorkModeRepository workModes)
+    IExpectedWorkAreaResolver expectedWorkAreas,
+    ILeaveRequestReadRepository? leaveRequests = null)
     : IAttendanceTodayStateService
 {
     private const string AttendanceReadPermission = "attendance:read";
+    public const string ExpectedWorkAreaSourceAttendanceSnapshot = "attendance_record_snapshot";
 
     public async Task<Result<AttendanceTodayContext>> ResolveContextAsync(CancellationToken ct = default)
     {
@@ -49,8 +50,15 @@ public sealed class AttendanceTodayStateService(
         var workDate = scheduleResolution.WorkDate;
         var localNow = scheduleResolution.LocalNow;
         var schedule = scheduleResolution.Schedule;
-        var workMode = await ResolveWorkModeAsync(employee.WorkModeId, ct);
-        var policy = await ResolvePolicyAsync(legalEntity.Id, workDate, workMode, ct);
+
+        var expectedAreaResult = await expectedWorkAreas.ResolveAsync(employee, legalEntity, workDate, ct);
+        if (!expectedAreaResult.IsSuccess || expectedAreaResult.Value is null)
+            return Result<AttendanceTodayContext>.Failure(
+                expectedAreaResult.Error ?? "The expected work area could not be resolved.",
+                expectedAreaResult.StatusCode ?? 409);
+
+        var expectedArea = expectedAreaResult.Value;
+        var policy = await ResolvePolicyAsync(legalEntity.Id, workDate, NormalizeWorkMode(expectedArea.WorkArea), ct);
 
         return Result<AttendanceTodayContext>.Success(new AttendanceTodayContext(
             employee,
@@ -61,7 +69,8 @@ public sealed class AttendanceTodayStateService(
             utcNow,
             localNow,
             schedule,
-            workMode,
+            expectedArea.WorkArea,
+            expectedArea.Source,
             policy.Policy,
             policy.Status,
             policy.AllowedMethods,
@@ -83,26 +92,35 @@ public sealed class AttendanceTodayStateService(
             context.LocalDayWindow.Start,
             context.LocalDayWindow.End,
             ct);
+        var hasApprovedLeave = leaveRequests is not null
+            && (await leaveRequests.ListApprovedCoveringAsync(
+                currentUser.TenantId,
+                [context.Employee.Id],
+                context.WorkDate,
+                context.WorkDate,
+                ct)).Count != 0;
         var breakUsage = CalculateBreakUsage(breakRecords, context.LocalDayWindow, context.LocalNow);
         var breakState = ResolveBreakState(
             attendanceRecord,
             breakRecords,
             context.LegalEntity.BreakDurationMinutes,
             breakUsage);
-        var attendanceState = ResolveAttendanceStatus(
-            attendanceRecord,
+        var attendanceState = AttendanceDayStatusResolver.Resolve(
             context.Schedule,
-            context.PolicyStatus);
+            context.PolicyStatus,
+            attendanceRecord,
+            hasApprovedLeave,
+            breakState.HasOpenBreak,
+            context.LegalEntity.BreakDurationMinutes,
+            breakUsage,
+            context.LocalNow);
         var actions = ResolveActions(
             attendanceRecord,
             context.Schedule,
             context.PolicyStatus,
             breakState,
             context.LegalEntity.BreakDurationMinutes);
-        var shouldHaveClockedIn = AttendanceScheduleResolver.ShouldHaveClockedIn(
-            context.Schedule,
-            attendanceRecord?.ActualStart,
-            context.LocalNow);
+        var shouldHaveClockedIn = attendanceState.ShouldHaveClockedIn;
         var messages = BuildMessages(context.Schedule, context.PolicyStatus, breakState);
         var visibility = await authority.ResolveVisibilityAsync(
             new EmployeeAuthorityVisibilityRequest(
@@ -111,6 +129,14 @@ public sealed class AttendanceTodayStateService(
                 AttendanceReadPermission,
                 IncludeSelf: true,
                 EmployeeAuthorityPurpose.TimeTrackingRead), ct);
+
+        // Once an attendance row exists, its persisted ExpectedWorkArea is the historical
+        // snapshot for the day and takes precedence over today's live resolution, which may have
+        // moved on (e.g. a later approval for a different date, or a policy change).
+        var effectiveExpectedWorkArea = attendanceRecord?.ExpectedWorkArea ?? context.ExpectedWorkArea;
+        var effectiveExpectedWorkAreaSource = attendanceRecord is not null
+            ? ExpectedWorkAreaSourceAttendanceSnapshot
+            : context.ExpectedWorkAreaSource;
 
         return Result<AttendanceTodayResponse>.Success(new AttendanceTodayResponse(
             context.Employee.Id,
@@ -129,11 +155,11 @@ public sealed class AttendanceTodayStateService(
             breakUsage,
             breakState.RemainingMinutes,
             breakState.State,
-            context.WorkMode,
-            attendanceState,
+            NormalizeWorkMode(effectiveExpectedWorkArea),
+            attendanceState.Status,
             attendanceRecord?.ActualStart,
             attendanceRecord?.ActualEnd,
-            attendanceRecord?.WorkedMinutes ?? 0,
+            CalculateWorkedMinutes(attendanceRecord, breakUsage, context.LocalNow),
             attendanceRecord?.AttendanceSource,
             actions.CanClockIn,
             actions.CanClockOut,
@@ -142,13 +168,14 @@ public sealed class AttendanceTodayStateService(
             shouldHaveClockedIn,
             visibility.EmployeeIds.Any(id => id != context.Employee.Id),
             context.AllowedClockInMethods,
-            messages));
-    }
-
-    private async Task<string?> ResolveWorkModeAsync(int workModeId, CancellationToken ct)
-    {
-        var mode = (await workModes.ListActiveAsync(ct)).FirstOrDefault(x => x.Id == workModeId);
-        return NormalizeWorkMode(mode?.Code);
+            messages,
+            attendanceState.StatusLabel,
+            attendanceState.AttentionType,
+            attendanceState.AttentionLabel,
+            attendanceState.AttentionSeverity,
+            attendanceState.BreakOverageMinutes,
+            attendanceState.IsOverBreakAllowance,
+            effectiveExpectedWorkAreaSource));
     }
 
     private async Task<PolicyResolution> ResolvePolicyAsync(
@@ -180,24 +207,6 @@ public sealed class AttendanceTodayStateService(
             ResolveAllowedMethods(active[0], workMode));
     }
 
-    private static string ResolveAttendanceStatus(
-        AttendanceRecord? record,
-        AttendanceSchedule schedule,
-        string policyStatus)
-    {
-        if (record?.ActualEnd is not null)
-            return AttendanceRecord.StatusClockedOut;
-        if (record?.ActualStart is not null)
-            return AttendanceRecord.StatusActive;
-        if (!schedule.IsWorkingDay)
-            return AttendanceRecord.StatusOffDay;
-        if (schedule.Status != "configured")
-            return AttendanceRecord.StatusNoSchedule;
-        if (policyStatus != "configured")
-            return AttendanceRecord.StatusPolicyNotConfigured;
-        return AttendanceRecord.StatusNotClockedIn;
-    }
-
     private static ActionResolution ResolveActions(
         AttendanceRecord? record,
         AttendanceSchedule schedule,
@@ -207,7 +216,6 @@ public sealed class AttendanceTodayStateService(
     {
         var activeSession = record?.ActualStart is not null && record.ActualEnd is null;
         var canClockIn = record?.ActualStart is null
-            && schedule.IsWorkingDay
             && schedule.Status == "configured"
             && policyStatus == "configured";
         var canClockOut = activeSession;
@@ -232,7 +240,14 @@ public sealed class AttendanceTodayStateService(
             : record?.ActualStart is null
                 ? "not_started"
                 : "ended";
-        return new BreakResolution(state, remaining, hasOpenBreak);
+        return new BreakResolution(
+            state,
+            remaining,
+            hasOpenBreak,
+            allowance is int configuredAllowance && usedMinutes > configuredAllowance
+                ? usedMinutes - configuredAllowance
+                : 0,
+            allowance is int configured && usedMinutes > configured);
     }
 
     private static IReadOnlyList<string> BuildMessages(
@@ -245,6 +260,7 @@ public sealed class AttendanceTodayStateService(
         if (policyStatus == "not_configured") messages.Add("clock_in_policy_not_configured");
         if (policyStatus == "configuration_conflict") messages.Add("multiple_active_company_policies");
         if (breakState.RemainingMinutes is null) messages.Add("break_allowance_not_configured");
+        else if (breakState.IsOverBreakAllowance) messages.Add("break_allowance_exceeded");
         else if (breakState.RemainingMinutes == 0) messages.Add("break_allowance_used");
         return messages;
     }
@@ -263,6 +279,14 @@ public sealed class AttendanceTodayStateService(
             if (end <= start) return 0;
             return (int)Math.Max(0, (end - start).TotalMinutes);
         });
+    }
+
+    public static int CalculateWorkedMinutes(AttendanceRecord? record, int breakUsedMinutes, DateTimeOffset now)
+    {
+        if (record?.ActualStart is not DateTimeOffset start || record.ActualEnd is not null)
+            return record?.WorkedMinutes ?? 0;
+
+        return Math.Max(0, (int)(now - start).TotalMinutes - breakUsedMinutes);
     }
 
     public static AttendanceLocalDayWindow GetLocalDayWindow(DateOnly date, TimeZoneInfo zone)
@@ -320,7 +344,12 @@ public sealed class AttendanceTodayStateService(
         ClockInPolicy? Policy,
         AllowedClockInMethods AllowedMethods);
 
-    private sealed record BreakResolution(string State, int? RemainingMinutes, bool HasOpenBreak);
+    private sealed record BreakResolution(
+        string State,
+        int? RemainingMinutes,
+        bool HasOpenBreak,
+        int BreakOverageMinutes,
+        bool IsOverBreakAllowance);
 
     private sealed record ActionResolution(bool CanClockIn, bool CanClockOut, bool CanStartBreak, bool CanEndBreak);
 }

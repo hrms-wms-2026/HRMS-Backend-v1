@@ -35,27 +35,46 @@ public class ApproveTaskEditRequestCommandHandlerTests
 
     private (
         ApproveTaskEditRequestCommandHandler Handler,
-        WorkTask Task,
+                WorkTask Task,
         Mock<IWorkTaskRepository> Tasks,
-        Mock<ITaskEditRequestRepository> Requests) Build(
+        Mock<ITaskEditRequestRepository> Requests,
+        List<TaskEditLog> EditLogs,
+        List<TaskPercentageLog> PercentageLogs) Build(
         Guid? callerEmployeeId = null,
         string requestStatus = TaskEditRequestStatuses.Pending,
         string sprintStatus = SprintStatuses.Active,
         decimal allocatedHours = 100m,
-        decimal existingTaskSum = 20m)
+        decimal existingTaskSum = 20m,
+        bool? callerIsEffectiveManager = null,
+        string requestedTitle = "Updated title",
+        int? payloadProgressPercent = null,
+        int currentTaskPercent = 0,
+        string requestedDescription = "Updated description",
+        string requestedPriority = WorkTaskPriorities.High,
+        DateOnly? requestedDueDate = null,
+        decimal? requestedEstimatedHours = 40m,
+        int? requestedStoryPoints = 8,
+        bool authenticated = true,
+        bool employeeExists = true,
+        bool taskExists = true,
+        bool objectiveExists = true)
+
     {
+        var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
         var currentUser = new Mock<ICurrentUser>();
-        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+                currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
+
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerEmployeeId ?? OwnerEmployeeId);
+            .ReturnsAsync(employeeExists ? resolvedCallerEmployeeId : null);
 
         var payload = new TaskEditRequestPayload(
-            "Updated title", "Updated description", WorkTaskPriorities.High,
-            new DateOnly(2026, 10, 1), 40m, 8);
+            requestedTitle, requestedDescription, requestedPriority,
+            requestedDueDate ?? new DateOnly(2026, 10, 1), requestedEstimatedHours, requestedStoryPoints, payloadProgressPercent);
+
         var pending = new TaskEditRequest
         {
             Id = RequestId,
@@ -81,18 +100,21 @@ public class ApproveTaskEditRequestCommandHandlerTests
             ShortId = "WEB-7",
             Title = "Original title",
             Description = "Original description",
-            TaskType = WorkTaskTypes.Task,
+            CategoryId = Guid.NewGuid(),
             StatusId = StatusId,
             Priority = WorkTaskPriorities.Medium,
             StoryPoints = 3,
             DueDate = new DateOnly(2026, 9, 1),
-            EstimatedHours = 20m,
+                        EstimatedHours = 20m,
+            ProgressPercent = currentTaskPercent,
             CreatedById = UserId,
+
             CreatedAt = DateTimeOffset.UtcNow
         };
         var tasks = new Mock<IWorkTaskRepository>();
-        tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, TaskId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(task);
+                tasks.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, TaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(taskExists ? task : null);
+
         tasks.Setup(x => x.GetActiveAllocationSumByObjectiveIdAsync(
                 TenantId, ObjectiveId, TaskId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existingTaskSum);
@@ -110,10 +132,18 @@ public class ApproveTaskEditRequestCommandHandlerTests
             CreatedAt = DateTimeOffset.UtcNow
         };
         var objectives = new Mock<IObjectiveRepository>();
-        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(objective);
+                objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(objectiveExists ? objective : null);
+
         objectives.Setup(x => x.GetTrackedActiveDirectChildrenAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Objective>());
+
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant.
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (objective.OwnerId == resolvedCallerEmployeeId));
 
         var sprints = new Mock<ISprintRepository>();
         sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
@@ -131,7 +161,20 @@ public class ApproveTaskEditRequestCommandHandlerTests
                 CreatedAt = DateTimeOffset.UtcNow
             });
 
+        var editLogs = new List<TaskEditLog>();
+        var editLogRepository = new Mock<ITaskEditLogRepository>();
+        editLogRepository.Setup(x => x.AddAsync(It.IsAny<TaskEditLog>(), It.IsAny<CancellationToken>()))
+            .Callback<TaskEditLog, CancellationToken>((log, _) => editLogs.Add(log))
+            .Returns(Task.CompletedTask);
+
+        var percentageLogs = new List<TaskPercentageLog>();
+        var percentageLogRepository = new Mock<ITaskPercentageLogRepository>();
+        percentageLogRepository.Setup(x => x.AddAsync(It.IsAny<TaskPercentageLog>(), It.IsAny<CancellationToken>()))
+            .Callback<TaskPercentageLog, CancellationToken>((log, _) => percentageLogs.Add(log))
+            .Returns(Task.CompletedTask);
+
         var unitOfWork = new Mock<IUnitOfWork>();
+
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(
                 It.IsAny<Func<CancellationToken, Task<Result<WorkTaskResponse>>>>(),
                 It.IsAny<CancellationToken>()))
@@ -146,17 +189,66 @@ public class ApproveTaskEditRequestCommandHandlerTests
             objectives.Object,
             sprints.Object,
             new ObjectiveAllocationSlackCalculator(objectives.Object, tasks.Object),
-            new Mock<IMilestoneMembershipCoordinator>().Object,
-            new Mock<INotificationDispatcher>().Object,
-            unitOfWork.Object);
+            membership.Object,
+                        new Mock<INotificationDispatcher>().Object,
+            unitOfWork.Object,
+            editLogRepository.Object,
+            percentageLogRepository.Object);
 
-        return (handler, task, tasks, requests);
+        return (handler, task, tasks, requests, editLogs, percentageLogs);
+
+    }
+
+        [Fact]
+    public async Task Handle_OnApproval_WritesTaskEditLogAttributedToRequester_NotApprover()
+    {
+        var (handler, _, _, _, editLogs, _) = Build(requestedTitle: "New Title");
+
+        var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var logged = Assert.Single(editLogs);
+        Assert.Equal(TaskEditLogSources.ApprovedRequest, logged.Source);
+        Assert.Equal(RequestId, logged.EditRequestId);
+        Assert.Equal(RequesterEmployeeId, logged.EmployeeId);
+        Assert.NotEqual(OwnerEmployeeId, logged.EmployeeId);
+    }
+
+    [Fact]
+    public async Task Handle_WhenPayloadProgressPercentDiffers_WritesManualEditPercentageLog()
+    {
+        var (handler, task, _, _, _, percentageLogs) = Build(
+            requestedTitle: "Original title", payloadProgressPercent: 75, currentTaskPercent: 30);
+
+        var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var logged = Assert.Single(percentageLogs);
+        Assert.Equal(TaskPercentageLogSources.ManualEdit, logged.Source);
+        Assert.Null(logged.ClockingSessionId);
+        Assert.Equal(RequesterEmployeeId, logged.EmployeeId);
+        Assert.Equal(30, logged.PreviousPercent);
+        Assert.Equal(75, logged.NewPercent);
+        Assert.Equal(75, task.ProgressPercent);
+    }
+
+    [Fact]
+    public async Task Handle_WhenPayloadHasNoProgressPercent_WritesNoPercentageLog()
+    {
+        var (handler, task, _, _, _, percentageLogs) = Build(currentTaskPercent: 30);
+
+        var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(percentageLogs);
+        Assert.Equal(30, task.ProgressPercent);
     }
 
     [Fact]
     public async Task Handle_OwnerApproves_UpdatesFieldsAndRechecksSlackExcludingCurrentTask()
+
     {
-        var (handler, task, tasks, requests) = Build();
+        var (handler, task, tasks, requests, _, _) = Build();
 
         var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
 
@@ -179,7 +271,7 @@ public class ApproveTaskEditRequestCommandHandlerTests
     [Fact]
     public async Task Handle_NotOwner_ReturnsForbiddenWithoutUpdatingTaskOrRequest()
     {
-        var (handler, task, tasks, requests) = Build(callerEmployeeId: OtherEmployeeId);
+        var (handler, task, tasks, requests, _, _) = Build(callerEmployeeId: OtherEmployeeId);
 
         var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
 
@@ -192,9 +284,26 @@ public class ApproveTaskEditRequestCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_CallerIsEffectiveManagerNotOwner_ApprovesRequest()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately, so this only proves the handler defers to
+        // its answer instead of the direct OwnerId check.
+        var (handler, task, tasks, requests, _, _) = Build(callerEmployeeId: OtherEmployeeId, callerIsEffectiveManager: true);
+
+        var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Updated title", task.Title);
+        requests.Verify(x => x.Update(It.Is<TaskEditRequest>(r =>
+            r.Status == TaskEditRequestStatuses.Approved && r.DecidedByEmployeeId == OtherEmployeeId)), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_AlreadyDecided_ReturnsConflictWithoutUpdatingTaskOrRequest()
     {
-        var (handler, task, tasks, requests) = Build(requestStatus: TaskEditRequestStatuses.Rejected);
+        var (handler, task, tasks, requests, _, _) = Build(requestStatus: TaskEditRequestStatuses.Rejected);
 
         var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
 
@@ -206,10 +315,132 @@ public class ApproveTaskEditRequestCommandHandlerTests
         requests.Verify(x => x.Update(It.IsAny<TaskEditRequest>()), Times.Never);
     }
 
+        [Fact]
+    public async Task Handle_NotAuthenticated_ReturnsForbidden()
+    {
+        var (handler, task, tasks, requests, _, _) = Build(authenticated: false);
+
+        var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal("Original title", task.Title);
+        requests.Verify(x => x.Update(It.IsAny<TaskEditRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_NoEmployeeRecord_ReturnsForbidden()
+    {
+        var (handler, task, tasks, requests, _, _) = Build(employeeExists: false);
+
+        var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal("Original title", task.Title);
+        requests.Verify(x => x.Update(It.IsAny<TaskEditRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_TaskNotFound_ReturnsNotFound()
+    {
+        var (handler, _, tasks, requests, _, _) = Build(taskExists: false);
+
+        var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        requests.Verify(x => x.Update(It.IsAny<TaskEditRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_ObjectiveNotFound_ReturnsNotFound()
+    {
+        var (handler, _, tasks, requests, _, _) = Build(objectiveExists: false);
+
+        var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+        requests.Verify(x => x.Update(It.IsAny<TaskEditRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_AlreadyApproved_ReturnsConflictWithoutMutatingTask()
+    {
+        var (handler, task, tasks, requests, editLogs, percentageLogs) = Build(requestStatus: TaskEditRequestStatuses.Approved);
+
+        var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal("Original title", task.Title);
+        Assert.Empty(editLogs);
+        Assert.Empty(percentageLogs);
+        requests.Verify(x => x.Update(It.IsAny<TaskEditRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_PayloadProgressEqualsCurrent_WritesNoPercentageLog()
+    {
+        var (handler, task, _, _, _, percentageLogs) = Build(
+            requestedTitle: "Original title", payloadProgressPercent: 30, currentTaskPercent: 30);
+
+        var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(30, task.ProgressPercent);
+        Assert.Empty(percentageLogs);
+    }
+
+    [Fact]
+    public async Task Handle_MultiplePayloadFieldsChanged_WritesOnlyThoseKeysToEditLog()
+    {
+        var (handler, _, _, _, editLogs, _) = Build(
+            requestedTitle: "New title", requestedDescription: "New description",
+            requestedPriority: WorkTaskPriorities.High, requestedDueDate: new DateOnly(2026, 9, 2),
+            requestedEstimatedHours: 20m, requestedStoryPoints: 3);
+
+        var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var log = Assert.Single(editLogs);
+        using var values = JsonDocument.Parse(log.NewValuesJson);
+        var keys = values.RootElement.EnumerateObject().Select(property => property.Name).ToHashSet();
+        Assert.Equal(4, keys.Count);
+        Assert.Contains("title", keys);
+        Assert.Contains("description", keys);
+        Assert.Contains("priority", keys);
+        Assert.Contains("dueDate", keys);
+        Assert.DoesNotContain("estimatedHours", keys);
+        Assert.DoesNotContain("storyPoints", keys);
+    }
+
+    [Fact]
+    public async Task Handle_ApprovingTwice_ReturnsConflictAndDoesNotWriteDuplicateLogs()
+    {
+        var (handler, task, _, requests, editLogs, percentageLogs) = Build(
+            requestedTitle: "New title", payloadProgressPercent: 75, currentTaskPercent: 30);
+
+        var first = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+        var firstEditCount = editLogs.Count;
+        var firstPercentageCount = percentageLogs.Count;
+        var second = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.True(first.IsSuccess);
+        Assert.False(second.IsSuccess);
+        Assert.Equal(409, second.StatusCode);
+        Assert.Equal(firstEditCount, editLogs.Count);
+        Assert.Equal(firstPercentageCount, percentageLogs.Count);
+        Assert.Equal("New title", task.Title);
+        requests.Verify(x => x.Update(It.IsAny<TaskEditRequest>()), Times.Once);
+    }
+
     [Fact]
     public async Task Handle_SprintAchievedSinceRequest_ReturnsConflictWithoutUpdatingTaskOrRequest()
+
     {
-        var (handler, task, tasks, requests) = Build(sprintStatus: SprintStatuses.Achieved);
+        var (handler, task, tasks, requests, _, _) = Build(sprintStatus: SprintStatuses.Achieved);
 
         var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
 

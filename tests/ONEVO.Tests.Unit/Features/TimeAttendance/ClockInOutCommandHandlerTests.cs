@@ -142,6 +142,51 @@ public sealed class ClockInOutCommandHandlerTests
     }
 
     [Fact]
+    public async Task ClockIn_ApprovedOnsiteOverride_PersistsOnsiteAsEffectiveExpectedAreaAndAllowsWebWhenOnsiteEnabled()
+    {
+        // The employee's permanent work mode is remote (encoded upstream, before reaching this
+        // handler), but AttendanceTodayStateService already resolved today's effective area to
+        // the approved onsite override; Onsite web is enabled while Remote web is disabled for
+        // this policy, proving the handler uses the resolved override, not the permanent mode.
+        var fixture = CreateFixture(
+            expectedWorkArea: AttendanceRecord.WorkAreaOnsite,
+            expectedWorkAreaSource: "approved_work_area_change_request",
+            allowedMethods: new AllowedClockInMethods(true, false, false, true, false, null));
+        AttendanceRecord? added = null;
+        fixture.Attendance
+            .Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AttendanceRecord?)null);
+        fixture.Attendance
+            .Setup(x => x.AddRecordAsync(It.IsAny<AttendanceRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<AttendanceRecord, CancellationToken>((record, _) => added = record)
+            .Returns(Task.CompletedTask);
+
+        var result = await fixture.ClockIn.Handle(new ClockInCommand("web"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(added);
+        Assert.Equal(AttendanceRecord.WorkAreaOnsite, added!.ExpectedWorkArea);
+    }
+
+    [Fact]
+    public async Task ClockIn_ApprovedOnsiteOverride_RejectedWhenOnsiteWebIsDisabledEvenThoughRemoteWebWasEnabled()
+    {
+        // Inverse of the override case above: the effective area for today is the approved
+        // onsite override, and the policy disallows web for onsite, so the clock-in must be
+        // rejected even though this same policy happens to allow web for remote.
+        var fixture = CreateFixture(
+            expectedWorkArea: AttendanceRecord.WorkAreaOnsite,
+            expectedWorkAreaSource: "approved_work_area_change_request",
+            allowedMethods: new AllowedClockInMethods(false, false, false, false, false, null));
+
+        var result = await fixture.ClockIn.Handle(new ClockInCommand("web"), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        fixture.Attendance.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public void ClockInValidator_RejectsUnsupportedSource()
     {
         var result = new ClockInCommandValidator().Validate(new ClockInCommand("desktop"));
@@ -151,16 +196,24 @@ public sealed class ClockInOutCommandHandlerTests
     }
 
     [Fact]
-    public async Task ClockIn_RejectsOffDayAndDoesNotPersist()
+    public async Task ClockIn_AllowsConfiguredNonWorkingDayAndPersistsAccurateWorkingDayState()
     {
         var fixture = CreateFixture(schedule: new AttendanceSchedule("configured", false, new(9, 0), new(17, 30), 510));
+        AttendanceRecord? added = null;
+        fixture.Attendance
+            .Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AttendanceRecord?)null);
+        fixture.Attendance
+            .Setup(x => x.AddRecordAsync(It.IsAny<AttendanceRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<AttendanceRecord, CancellationToken>((record, _) => added = record)
+            .Returns(Task.CompletedTask);
 
         var result = await fixture.ClockIn.Handle(new ClockInCommand("web"), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(409, result.StatusCode);
-        Assert.Equal("off_day", result.Error);
-        fixture.Attendance.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(added);
+        Assert.False(added!.ExpectedWorkingDay);
+        fixture.Attendance.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -227,6 +280,35 @@ public sealed class ClockInOutCommandHandlerTests
             TenantId, EmployeeId, LocalDayWindow.Start, LocalDayWindow.End, It.IsAny<CancellationToken>()), Times.Once);
         fixture.Attendance.Verify(x => x.SumCompletedBreakMinutesAsync(
             TenantId, EmployeeId, LocalDayWindow.Start, LocalDayWindow.End, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ClockOut_DoesNotRevertApprovedExpectedWorkAreaSnapshotToLivePermanentWorkMode()
+    {
+        // The attendance snapshot was persisted as "remote" (an approved override) at clock-in
+        // time. Today's live context now happens to resolve to "onsite" (e.g. the override
+        // expired for a later date, or the fallback would differ) - Clock Out must not re-resolve
+        // or overwrite the already-persisted snapshot.
+        var fixture = CreateFixture(expectedWorkArea: AttendanceRecord.WorkAreaOnsite);
+        var record = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            EmployeeId = EmployeeId,
+            Date = WorkDate,
+            ActualStart = new DateTimeOffset(2026, 8, 21, 9, 0, 0, TimeSpan.Zero),
+            ExpectedWorkArea = AttendanceRecord.WorkAreaRemote,
+            RequiredWorkMinutes = 480,
+            Status = AttendanceRecord.StatusActive
+        };
+        fixture.Attendance
+            .Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(record);
+
+        var result = await fixture.ClockOut.Handle(new ClockOutCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AttendanceRecord.WorkAreaRemote, record.ExpectedWorkArea);
     }
 
     [Fact]
@@ -321,7 +403,9 @@ public sealed class ClockInOutCommandHandlerTests
     private static Fixture CreateFixture(
         AttendanceSchedule? schedule = null,
         AllowedClockInMethods? allowedMethods = null,
-        string policyStatus = "configured")
+        string policyStatus = "configured",
+        string expectedWorkArea = AttendanceRecord.WorkAreaRemote,
+        string expectedWorkAreaSource = "active_employee_work_mode")
     {
         var context = new AttendanceTodayContext(
             new Employee
@@ -344,7 +428,8 @@ public sealed class ClockInOutCommandHandlerTests
             UtcNow,
             LocalNow,
             schedule ?? new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
-            "remote",
+            expectedWorkArea,
+            expectedWorkAreaSource,
             new ClockInPolicy { Id = Guid.NewGuid(), RemoteWebEnabled = true },
             policyStatus,
             allowedMethods ?? new AllowedClockInMethods(true, false, false, false, false, null),
