@@ -37,6 +37,19 @@ public class EfEmployeeHierarchyClosureRepository : IEmployeeHierarchyClosureRep
     }
 
     public async Task<IReadOnlyList<Guid>> GetDescendantEmployeeIdsAsync(
+        Guid tenantId,
+        Guid managerEmployeeId,
+        CancellationToken ct = default)
+    {
+        return await _db.EmployeeHierarchyClosures
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.AncestorEmployeeId == managerEmployeeId && c.Depth > 0)
+            .Select(c => c.DescendantEmployeeId)
+            .Distinct()
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetDescendantEmployeeIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> ancestorEmployeeIds, CancellationToken ct = default)
     {
         if (ancestorEmployeeIds.Count == 0)

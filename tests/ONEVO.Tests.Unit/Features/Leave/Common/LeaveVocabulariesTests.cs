@@ -30,4 +30,23 @@ public class LeaveVocabulariesTests
         Assert.Equal("pm", LeaveHalfDayPeriods.Pm);
         Assert.Null(LeaveHalfDayPeriods.None);
     }
+
+    [Fact]
+    public void LeaveAccrualMethods_HasSpecValues()
+    {
+        Assert.Equal("annual", LeaveAccrualMethods.Annual);
+        Assert.Equal("monthly", LeaveAccrualMethods.Monthly);
+        Assert.Equal("daily", LeaveAccrualMethods.Daily);
+        Assert.Contains("annual", LeaveAccrualMethods.All);
+        Assert.Contains("monthly", LeaveAccrualMethods.All);
+        Assert.Contains("daily", LeaveAccrualMethods.All);
+    }
+
+    [Fact]
+    public void LeavePolicyVocabularies_ExposeAllCollectionsForValidators()
+    {
+        Assert.Contains(LeaveApprovalModes.AnyOne, LeaveApprovalModes.All);
+        Assert.Contains(LeaveAccrualStarts.Immediately, LeaveAccrualStarts.All);
+        Assert.Contains(LeaveProrationMethods.CalendarDays, LeaveProrationMethods.All);
+    }
 }

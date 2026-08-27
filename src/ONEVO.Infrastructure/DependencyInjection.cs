@@ -170,11 +170,86 @@ public static class DependencyInjection
         services.AddScoped<EfLegalEntityRepository>();
         services.AddScoped<ILegalEntityRepository>(sp => sp.GetRequiredService<EfLegalEntityRepository>());
         services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
+        services.AddScoped<IClockInPolicyRepository, EfClockInPolicyRepository>();
+        services.AddScoped<IAttendanceReadRepository, EfAttendanceReadRepository>();
         services.AddScoped<
             ONEVO.Application.Features.Leave.Type.RepositoryInterfaces.ILeaveTypeRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Type.EfLeaveTypeRepository>();
-                services.AddScoped<IClockInPolicyRepository, EfClockInPolicyRepository>();
-        services.AddScoped<IAttendanceReadRepository, EfAttendanceReadRepository>();
+
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IAttendanceCorrectionRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceCorrectionRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestReadRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Request.EfLeaveRequestReadRepository>();
+
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces.ILeavePolicyRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Policy.EfLeavePolicyRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces.ILeaveEntitlementRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Entitlement.EfLeaveEntitlementRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.BalanceAudit.RepositoryInterfaces.ILeaveBalanceAuditRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.BalanceAudit.EfLeaveBalanceAuditRepository>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.ILeaveWorkingDayCounter,
+            ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveWorkingDayCounter>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveEntitlementCalculator>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveEntitlementPlanner>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Leave.LeaveYearEndEntitlementJob>();
+        services.AddOptions<ONEVO.Application.Features.Leave.Entitlement.Options.LeaveEntitlementYearOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Entitlement.Options.LeaveEntitlementYearOptions.SectionName))
+            .Validate(options => options.MinimumYear > 0, "Leave entitlement minimum year must be configured.")
+            .Validate(options => options.MaximumYear >= options.MinimumYear, "Leave entitlement maximum year must be after the minimum year.")
+            .ValidateOnStart();
+        services.AddOptions<ONEVO.Application.Features.Leave.Request.Options.LeaveRequestOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Request.Options.LeaveRequestOptions.SectionName))
+            .Validate(options => options.MaximumRequestRangeDays > 0, "Leave request maximum range days must be configured.")
+            .ValidateOnStart();
+        services.AddOptions<ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions.SectionName))
+            .Validate(options =>
+                ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions.AreColorsValid(options.TypeCategoryColors),
+                "Leave:Calendar:TypeCategoryColors must contain #RRGGBB hex colors.")
+            .ValidateOnStart();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Request.EfLeaveRequestRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Calendar.RepositoryInterfaces.ILeaveCalendarRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Calendar.EfLeaveCalendarRepository>();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestDayCalculator>();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Calendar.Helpers.LeaveCalendarRequestProjector>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveHolidayProvider,
+            ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveHolidayProvider>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveCalendarHolidayProvider,
+            ONEVO.Application.Features.Leave.Calendar.Services.NoOpLeaveCalendarHolidayProvider>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveRequestConflictProvider,
+            ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveRequestConflictProvider>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveApproverResolver,
+            ONEVO.Application.Features.Leave.Request.Services.LeaveApproverResolver>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveTeamAbsenceWarningService,
+            ONEVO.Application.Features.Leave.Request.Services.LeaveTeamAbsenceWarningService>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.LeaveRequestSubmissionEvaluator>();
+        services.AddOptions<ONEVO.Application.Features.Leave.Approval.Options.LeaveApprovalOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Approval.Options.LeaveApprovalOptions.SectionName))
+            .ValidateOnStart();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Approval.EfLeaveApprovalRepository>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Approval.Commands.LeaveApprovalDecisionService>();
+        services.AddOptions<ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions.SectionName))
+            .Validate(
+                options => ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions.IsValidTimezone(options.FallbackTimezone),
+                "Leave:Cancellation:FallbackTimezone must be a valid timezone id.")
+            .ValidateOnStart();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Cancellation.Helpers.LeaveCancellationClassifier>();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Cancellation.Helpers.LeaveRequestDayAllocationBuilder>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Cancellation.Helpers.LeaveBusinessDateResolver>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Cancellation.RepositoryInterfaces.ILeaveCancellationRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Cancellation.EfLeaveCancellationRepository>();
 
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();

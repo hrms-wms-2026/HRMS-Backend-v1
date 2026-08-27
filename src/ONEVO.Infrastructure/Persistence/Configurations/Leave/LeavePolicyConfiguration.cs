@@ -15,6 +15,7 @@ public class LeavePolicyConfiguration : IEntityTypeConfiguration<LeavePolicy>
         builder.Property(p => p.Name).HasMaxLength(100).IsRequired();
         builder.Property(p => p.Country).HasMaxLength(100);
         builder.Property(p => p.JobLevel).HasMaxLength(100);
+        builder.Property(p => p.AccrualMethod).HasMaxLength(20).IsRequired();
         builder.Property(p => p.AccrualStart).HasMaxLength(20).IsRequired();
         builder.Property(p => p.ProrationMethod).HasMaxLength(20).IsRequired();
         builder.Property(p => p.ApprovalMode).HasMaxLength(20).IsRequired();

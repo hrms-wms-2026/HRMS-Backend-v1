@@ -151,16 +151,24 @@ public sealed class ClockInOutCommandHandlerTests
     }
 
     [Fact]
-    public async Task ClockIn_RejectsOffDayAndDoesNotPersist()
+    public async Task ClockIn_AllowsConfiguredNonWorkingDayAndPersistsAccurateWorkingDayState()
     {
         var fixture = CreateFixture(schedule: new AttendanceSchedule("configured", false, new(9, 0), new(17, 30), 510));
+        AttendanceRecord? added = null;
+        fixture.Attendance
+            .Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AttendanceRecord?)null);
+        fixture.Attendance
+            .Setup(x => x.AddRecordAsync(It.IsAny<AttendanceRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<AttendanceRecord, CancellationToken>((record, _) => added = record)
+            .Returns(Task.CompletedTask);
 
         var result = await fixture.ClockIn.Handle(new ClockInCommand("web"), CancellationToken.None);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(409, result.StatusCode);
-        Assert.Equal("off_day", result.Error);
-        fixture.Attendance.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(added);
+        Assert.False(added!.ExpectedWorkingDay);
+        fixture.Attendance.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

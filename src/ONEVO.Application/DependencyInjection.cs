@@ -10,6 +10,7 @@ using ONEVO.Application.Features.CoreHr.Onboarding.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
 using ONEVO.Application.Features.DevPlatform.Billing.OutboxHandlers;
 using ONEVO.Application.Features.OrgStructure.OutboxHandlers;
+using ONEVO.Application.Features.Leave.Approval.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Queries.GetBulkOnboardingTemplate;
 using ONEVO.Application.Features.SharedPlatform.TenantIntegrations.Helpers;
 using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
@@ -40,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.Services.IAttendanceTodayStateService,
             ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Commands.AttendanceCorrections.AttendanceCorrectionWorkflow>();
 
         // Outbox message consumers (dispatched by the Infrastructure outbox worker).
         services.AddScoped<IOutboxMessageHandler, TenantOwnerInviteEmailOutboxHandler>();
@@ -59,6 +61,13 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler, EmployeeOnboardingInviteEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, PositionChangeApprovalRequestEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, InvoiceEmailOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler>(_ =>
+            new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveRequestApproved));
+        services.AddScoped<IOutboxMessageHandler>(_ =>
+            new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveRequestRejected));
+        services.AddScoped<IOutboxMessageHandler>(_ =>
+            new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveInformationRequested));
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Leave.Cancellation.Outbox.NoOpLeaveCancellationSideEffectOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
         services.AddScoped<GitHubUserIntegrationAvailability>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
