@@ -169,7 +169,7 @@ public sealed class DefaultRoleSeederTests
         var seeder = new DefaultRoleSeeder(db, new ModuleEntitlementService(db));
         var tenantId = Guid.NewGuid();
         var seededStarterPlanModules = System.Text.Json.JsonSerializer.Deserialize<List<string>>(
-            """["org_structure","core_hr","leave","calendar","time_attendance","activity_monitoring","discrepancy_engine","identity_verification","exception_engine","productivity_analytics","desktop_agent_gateway","worksync_foundation","projects","objectives_milestones","tasks","boards","planning_sprints"]""")!;
+            """["org_structure","core_hr","leave","calendar","time_attendance","monitoring","discrepancy_engine","identity_verification","exception_engine","productivity_analytics","desktop_agent_gateway","worksync_foundation","projects","objectives_milestones","tasks","boards","planning_sprints"]""")!;
 
         seededStarterPlanModules.Should().NotContain(["auth", "configuration", "roles", "notifications"]);
 
