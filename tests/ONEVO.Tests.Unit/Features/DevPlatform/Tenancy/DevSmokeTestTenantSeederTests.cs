@@ -238,7 +238,7 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
         codes.Should().BeEquivalentTo(
             [
                 "org:read", "org:manage", "employees:read", "employees:write", "roles:read",
-                "leave:read", "leave:manage", "leave:approve"
+                "calendar:read", "leave:read", "leave:manage", "leave:approve"
             ]);
     }
 
