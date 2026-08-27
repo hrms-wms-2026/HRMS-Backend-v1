@@ -32,20 +32,31 @@ public sealed class EfAttendanceReadRepository(ApplicationDbContext db) : IAtten
                 x => x.TenantId == tenantId && x.EmployeeId == employeeId && x.Date == date,
                 ct);
 
-    public async Task<IReadOnlyList<AttendanceRecord>> ListRecordsAsync(
+    public async Task<(IReadOnlyList<AttendanceRecord> Items, int TotalCount)> ListRecordsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> employeeIds,
         DateOnly from,
         DateOnly to,
+        int skip,
+        int take,
         CancellationToken ct = default)
-        => await db.AttendanceRecords
+    {
+        var query = db.AttendanceRecords
             .AsNoTracking()
             .Where(x => x.TenantId == tenantId
                 && employeeIds.Contains(x.EmployeeId)
                 && x.Date >= from
-                && x.Date <= to)
+                && x.Date <= to);
+
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
             .OrderByDescending(x => x.Date)
+            .Skip(skip)
+            .Take(take)
             .ToListAsync(ct);
+
+        return (items, totalCount);
+    }
 
     public async Task<IReadOnlyList<BreakRecord>> ListBreaksAsync(
         Guid tenantId,

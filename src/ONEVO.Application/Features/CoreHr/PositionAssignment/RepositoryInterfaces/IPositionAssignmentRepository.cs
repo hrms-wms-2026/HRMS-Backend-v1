@@ -67,6 +67,23 @@ public interface IPositionAssignmentRepository
     Task<IReadOnlyList<PositionActiveHolder>> GetActiveHoldersAsync(
         Guid tenantId, Guid positionId, CancellationToken ct = default);
 
+    /// <summary>Batched GetActivePrimaryAsync: current active PrimaryEmployment assignment per
+    /// employee id, keyed by EmployeeId. Ids with no active primary assignment are absent from
+    /// the result - the ToDictionary(EmployeeId) keying is safe because the query's filter
+    /// (AssignmentKind == PrimaryEmployment, AssignmentStatus == Active) exactly matches the
+    /// unique index ix_position_assignments_one_active_primary_per_employee (unique on
+    /// EmployeeId, filtered to assignment_kind = 'PrimaryEmployment' AND assignment_status =
+    /// 'active'), so at most one row per EmployeeId can match. Same invariant
+    /// GetActivePrimaryAsync itself relies on for its single-row FirstOrDefault.</summary>
+    Task<IReadOnlyDictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment>> GetActivePrimaryByEmployeeIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
+
+    /// <summary>Batched GetActiveHoldersAsync: current active PrimaryEmployment holders per owner
+    /// position id, keyed by PositionId. Same join shape as GetOccupancyPreviewsAsync above.
+    /// Position ids with no active holders are absent from the result.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<PositionActiveHolder>>> GetActiveHoldersByPositionIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> positionIds, CancellationToken ct = default);
+
     /// <summary>Active PrimaryEmployment holders who are themselves active employees with a
     /// user account. Used to pick a concrete checklist assignee (UserId) during onboarding.</summary>
     Task<IReadOnlyList<ChecklistAssignee>> GetChecklistAssigneesAsync(

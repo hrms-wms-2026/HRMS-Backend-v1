@@ -7,7 +7,8 @@ namespace ONEVO.Application.Features.TimeAttendance.Queries.AttendanceCorrection
 public sealed record ListMyAttendanceCorrectionsQuery(
     DateOnly? From,
     DateOnly? To,
-    string? Status) : IRequest<Result<IReadOnlyList<AttendanceCorrectionResponse>>>;
+    string? Status,
+    PagedRequest Paging) : IRequest<Result<PagedResult<AttendanceCorrectionResponse>>>;
 
 public sealed record ListAttendanceCorrectionApprovalsQuery(
     DateOnly? From,

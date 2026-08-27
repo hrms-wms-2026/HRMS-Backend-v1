@@ -83,6 +83,9 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "attendance_correction_request_created",
             "attendance_correction_request_decided",
             "attendance_correction_request_cancelled",
+            "work_area_change_request_created",
+            "work_area_change_request_decided",
+            "work_area_change_request_cancelled",
             "work_project_member_invited",
             "work_project_member_accepted"
         };
