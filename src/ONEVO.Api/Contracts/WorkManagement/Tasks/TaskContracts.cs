@@ -86,3 +86,12 @@ public static class MyTasksViewModelMapper
             t.TaskId, t.ShortId, t.Title, t.DueDate, t.IsOverdue,
             t.ProjectId, t.ProjectName, t.ObjectiveId, t.Priority)).ToList());
 }
+
+public sealed record TaskProgressViewModel(
+    int Completed, int InProgress, int NotStarted, int Overdue, int Total);
+
+public static class TaskProgressViewModelMapper
+{
+    public static TaskProgressViewModel ToViewModel(this TaskProgressResponse dto) =>
+        new(dto.Completed, dto.InProgress, dto.NotStarted, dto.Overdue, dto.Total);
+}

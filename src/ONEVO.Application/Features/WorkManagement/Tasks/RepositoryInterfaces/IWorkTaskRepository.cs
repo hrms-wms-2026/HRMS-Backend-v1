@@ -14,6 +14,13 @@ public sealed record MyTaskRow(
     Guid ObjectiveId,
     string Priority);
 
+/// <summary>The bare fields needed to bucket a caller's assigned task into the Task Progress
+/// donut widget's Completed/Overdue/In Progress/Not Started categories.</summary>
+public sealed record TaskProgressRow(
+    bool MarksTaskComplete,
+    DateOnly? DueDate,
+    int ProgressPercent);
+
 public interface IWorkTaskRepository
 {
     Task AddAsync(WorkTask task, CancellationToken ct = default);
@@ -34,6 +41,10 @@ public interface IWorkTaskRepository
     /// upcomingCutoff - includes every overdue task regardless of age (no lower bound), plus
     /// tasks due within the upcoming window. For the My Tasks dashboard widget.</summary>
     Task<IReadOnlyList<MyTaskRow>> GetMyActiveTasksAsync(Guid tenantId, Guid employeeId, DateOnly upcomingCutoff, CancellationToken ct = default);
+
+    /// <summary>Every not-soft-deleted task assigned to this employee, regardless of due date -
+    /// for the Task Progress dashboard widget's overall completion breakdown.</summary>
+    Task<IReadOnlyList<TaskProgressRow>> GetMyTaskProgressRowsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
     Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default);
 

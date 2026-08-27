@@ -27,6 +27,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskStatus
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.UnassignTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyActiveTasks;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyDeadlines;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskProgress;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskEditRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskCreationRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
@@ -62,6 +63,19 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> MyTasks([FromQuery] int upcomingDays = 7, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetMyActiveTasksQuery(upcomingDays), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Completed/In Progress/Not Started/Overdue breakdown across every task assigned
+    /// to the current employee, for the Task Progress dashboard donut widget.</summary>
+    [HttpGet("my-task-progress")]
+    [RequirePermission("tasks:read-own")]
+    public async Task<IActionResult> MyTaskProgress(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetMyTaskProgressQuery(), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())

@@ -103,6 +103,38 @@ public sealed class EfWorkTaskRepositoryTests
         Assert.Single(result);
     }
 
+    [Fact]
+    public async Task GetMyTaskProgressRowsAsync_ReturnsEveryAssignedTaskRegardlessOfDueDateAndExcludesOtherEmployees()
+    {
+        await using var db = BuildInMemoryDb();
+        var incompleteStatus = MakeStatus(isComplete: false);
+        var completeStatus = MakeStatus(isComplete: true);
+        db.TaskStatuses.AddRange(incompleteStatus, completeStatus);
+        db.Projects.Add(MakeProject());
+
+        var noDueDateTask = MakeTask(incompleteStatus.Id, null);
+        var farFutureTask = MakeTask(incompleteStatus.Id, new DateOnly(2026, 12, 1));
+        var completedTask = MakeTask(completeStatus.Id, new DateOnly(2026, 8, 1));
+        var otherEmployeeTask = MakeTask(incompleteStatus.Id, new DateOnly(2026, 8, 28));
+        db.WorkTasks.AddRange(noDueDateTask, farFutureTask, completedTask, otherEmployeeTask);
+
+        db.TaskAssignments.AddRange(
+            MakeAssignment(noDueDateTask.Id, EmployeeId),
+            MakeAssignment(farFutureTask.Id, EmployeeId),
+            MakeAssignment(completedTask.Id, EmployeeId),
+            MakeAssignment(otherEmployeeTask.Id, Guid.NewGuid()));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfWorkTaskRepository(db);
+        var result = await repository.GetMyTaskProgressRowsAsync(TenantId, EmployeeId, CancellationToken.None);
+
+        Assert.Equal(3, result.Count);
+        Assert.Contains(result, r => r.MarksTaskComplete);
+        Assert.Contains(result, r => !r.MarksTaskComplete && r.DueDate is null);
+        Assert.Contains(result, r => !r.MarksTaskComplete && r.DueDate == new DateOnly(2026, 12, 1));
+    }
+
     private static DomainTaskStatus MakeStatus(bool isComplete) => new()
     {
         Id = Guid.NewGuid(),
