@@ -8,6 +8,7 @@ using ONEVO.Application.Features.TimeAttendance.Commands.ClockOut;
 using ONEVO.Application.Features.TimeAttendance.Commands.EndBreak;
 using ONEVO.Application.Features.TimeAttendance.Commands.StartBreak;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
+using ONEVO.Application.Features.TimeAttendance.Queries;
 using MediatR;
 using Xunit;
 
@@ -93,6 +94,45 @@ public sealed class TimeTrackingControllerTests
         mediator.Verify(x => x.Send(
             It.IsAny<EndBreakCommand>(),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task HistoryDetail_SendsQueryWithEmployeeIdAndDateAndReturnsOk()
+    {
+        var mediator = new Mock<IMediator>();
+        var expected = new AttendanceDayDetailResponse(
+            new AttendanceHistoryRow(
+                Guid.NewGuid(), WorkDate, null, null, null, false, 0, 0, null, null, "present",
+                true, false, false, false),
+            Array.Empty<TimelineEvent>(),
+            null);
+        mediator
+            .Setup(x => x.Send(It.IsAny<GetAttendanceDayDetailQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceDayDetailResponse>.Success(expected));
+        var controller = new TimeTrackingController(mediator.Object);
+
+        var result = await controller.HistoryDetail(EmployeeId, WorkDate, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Same(expected, ok.Value);
+        mediator.Verify(x => x.Send(
+            It.Is<GetAttendanceDayDetailQuery>(q => q.EmployeeId == EmployeeId && q.Date == WorkDate),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task HistoryDetail_ForbiddenResult_ReturnsProblemWith403()
+    {
+        var mediator = new Mock<IMediator>();
+        mediator
+            .Setup(x => x.Send(It.IsAny<GetAttendanceDayDetailQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceDayDetailResponse>.Forbidden());
+        var controller = new TimeTrackingController(mediator.Object);
+
+        var result = await controller.HistoryDetail(EmployeeId, WorkDate, CancellationToken.None);
+
+        var problem = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(403, problem.StatusCode);
     }
 
     [Fact]

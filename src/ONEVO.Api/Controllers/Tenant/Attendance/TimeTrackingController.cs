@@ -92,4 +92,16 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
             ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
+
+    [HttpGet("history-detail")]
+    public async Task<IActionResult> HistoryDetail(
+        [FromQuery] Guid employeeId,
+        [FromQuery] DateOnly date,
+        CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetAttendanceDayDetailQuery(employeeId, date), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
 }
