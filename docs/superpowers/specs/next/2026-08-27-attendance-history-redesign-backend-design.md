@@ -24,9 +24,9 @@ Add one new endpoint that returns everything the detail drawer needs for a singl
 
 ### New endpoint
 
-`GET /api/v1/attendance/time-tracking/history/{employeeId:guid}/{date}/detail`
+`GET /api/v1/attendance/time-tracking/history-detail?employeeId={guid}&date={date}`
 
-Added to `TimeTrackingController` (`C:\onevoNew\HRMS-Backend-v1\src\ONEVO.Api\Controllers\Tenant\Attendance\TimeTrackingController.cs`), alongside `History`/`CoveredHistory`. `date` bound as `DateOnly` (route constraint, same convention as elsewhere).
+Added to `TimeTrackingController` (`C:\onevoNew\HRMS-Backend-v1\src\ONEVO.Api\Controllers\Tenant\Attendance\TimeTrackingController.cs`), alongside `History`/`CoveredHistory`. `employeeId`/`date` are `[FromQuery]`, matching this controller's existing `from`/`to` convention — no other endpoint in the codebase binds `DateOnly` from a route segment, so this avoids introducing a first-of-its-kind pattern for no real benefit.
 
 ### Query and handler
 
