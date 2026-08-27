@@ -83,7 +83,8 @@ public sealed class GetMyWorkPatternQueryHandlerTests
                 new ActivityDailySummary
                 {
                     Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = pastDay,
-                    TotalActiveMinutes = 400, FocusMinutes = 180, TotalMeetingMinutes = 60, CreatedAt = DateTimeOffset.UtcNow
+                    TotalActiveMinutes = 400, FocusMinutes = 180, TotalMeetingMinutes = 60,
+                    TotalIdleMinutes = 45, CreatedAt = DateTimeOffset.UtcNow
                 }
             ]);
 
@@ -94,6 +95,7 @@ public sealed class GetMyWorkPatternQueryHandlerTests
         day.FocusMinutes.Should().Be(180);
         day.MeetingMinutes.Should().Be(60);
         day.AdminMinutes.Should().Be(160); // 400 - 180 - 60
+        day.IdleMinutes.Should().Be(45);
     }
 
     [Fact]
@@ -140,6 +142,12 @@ public sealed class GetMyWorkPatternQueryHandlerTests
                 CapturedAt = baseTime.AddMinutes((i + 1) * 5), ActiveSeconds = 300, IdleSeconds = 0,
                 ForegroundProcessName = "code.exe", CreatedAt = baseTime
             })
+            .Append(new ActivitySnapshot
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, AgentDeviceId = Guid.NewGuid(),
+                CapturedAt = baseTime.AddMinutes(35), ActiveSeconds = 0, IdleSeconds = 300,
+                ForegroundProcessName = null, CreatedAt = baseTime
+            })
             .ToList();
         _snapshots.Setup(x => x.GetAllByEmployeeDateAsync(TenantId, EmployeeId, Today, It.IsAny<CancellationToken>()))
             .ReturnsAsync(snaps);
@@ -155,6 +163,7 @@ public sealed class GetMyWorkPatternQueryHandlerTests
         day.FocusMinutes.Should().Be(30);
         day.MeetingMinutes.Should().Be(2); // 1 meeting sample * 2 min/sample
         day.AdminMinutes.Should().Be(0); // 30 active minutes total, all accounted for by focus
+        day.IdleMinutes.Should().Be(5); // one trailing 300s-idle snapshot
         _summaries.Verify(x => x.GetRangeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 

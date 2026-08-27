@@ -4,6 +4,7 @@ public sealed record WorkPatternDayDto(
     DateOnly Date,
     int FocusMinutes,
     int MeetingMinutes,
-    int AdminMinutes);
+    int AdminMinutes,
+    int IdleMinutes);
 
 public sealed record WorkPatternResponse(IReadOnlyList<WorkPatternDayDto> Days);

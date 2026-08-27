@@ -51,11 +51,11 @@ public sealed class GetMyWorkPatternQueryHandler(
             if (date == today && todayDto is not null)
                 days.Add(todayDto);
             else if (date > today)
-                days.Add(new WorkPatternDayDto(date, 0, 0, 0));
+                days.Add(new WorkPatternDayDto(date, 0, 0, 0, 0));
             else if (pastSummaries.TryGetValue(date, out var summary))
-                days.Add(ToDto(date, summary.FocusMinutes, summary.TotalMeetingMinutes, summary.TotalActiveMinutes));
+                days.Add(ToDto(date, summary.FocusMinutes, summary.TotalMeetingMinutes, summary.TotalActiveMinutes, summary.TotalIdleMinutes));
             else
-                days.Add(new WorkPatternDayDto(date, 0, 0, 0));
+                days.Add(new WorkPatternDayDto(date, 0, 0, 0, 0));
         }
 
         return Result<WorkPatternResponse>.Success(new WorkPatternResponse(days));
@@ -69,19 +69,20 @@ public sealed class GetMyWorkPatternQueryHandler(
             .Where(s => s.Type == ActivityTimelineBuilder.FocusType)
             .Sum(s => (int)(s.EndedAt - s.StartedAt).TotalMinutes);
         var activeMinutes = snaps.Sum(s => s.ActiveSeconds) / 60;
+        var idleMinutes = snaps.Sum(s => s.IdleSeconds) / 60;
 
         var meetingSignals = await meetings.GetAllByEmployeeDateAsync(tenantId, employeeId, today, ct);
         var meetingMinutes = meetingSignals.Count(s => s.IsMeetingAppRunning) * MeetingMinutesPerSample;
 
-        return ToDto(today, focusMinutes, meetingMinutes, activeMinutes);
+        return ToDto(today, focusMinutes, meetingMinutes, activeMinutes, idleMinutes);
     }
 
     // Focus and meeting minutes are computed from independent signal streams and are not
     // guaranteed disjoint (e.g. a focus streak spanning a meeting), so Admin can't go negative -
     // clamp rather than model the true overlap, which would need redesigning the signal pipeline.
-    private static WorkPatternDayDto ToDto(DateOnly date, int focusMinutes, int meetingMinutes, int activeMinutes)
+    private static WorkPatternDayDto ToDto(DateOnly date, int focusMinutes, int meetingMinutes, int activeMinutes, int idleMinutes)
     {
         var adminMinutes = Math.Max(0, activeMinutes - focusMinutes - meetingMinutes);
-        return new WorkPatternDayDto(date, focusMinutes, meetingMinutes, adminMinutes);
+        return new WorkPatternDayDto(date, focusMinutes, meetingMinutes, adminMinutes, idleMinutes);
     }
 }
