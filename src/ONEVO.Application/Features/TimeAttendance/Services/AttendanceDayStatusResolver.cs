@@ -21,6 +21,7 @@ public static class AttendanceDayStatusResolver
         string policyStatus,
         AttendanceRecord? record,
         bool hasApprovedLeave,
+        bool hasOpenBreak,
         int? breakAllowanceMinutes,
         int breakUsedMinutes,
         DateTimeOffset localNow)
@@ -69,6 +70,19 @@ public static class AttendanceDayStatusResolver
                     "worked_on_non_working_day",
                     "Worked on a non-working day",
                     "warning",
+                    shouldHaveClockedIn,
+                    0,
+                    false);
+            }
+
+            if (hasOpenBreak && record.ActualEnd is null)
+            {
+                return new AttendanceDayStatusResolution(
+                    AttendanceRecord.StatusOnBreak,
+                    "On break",
+                    null,
+                    null,
+                    null,
                     shouldHaveClockedIn,
                     0,
                     false);

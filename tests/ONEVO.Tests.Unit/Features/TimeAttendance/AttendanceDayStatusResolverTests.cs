@@ -81,10 +81,43 @@ public sealed class AttendanceDayStatusResolverTests
         result.AttentionSeverity.Should().Be("critical");
     }
 
+    [Fact]
+    public void OpenBreakWithinAllowanceReturnsOnBreakStatusInsteadOfWorking()
+    {
+        var record = new AttendanceRecord { ActualStart = LocalNow };
+        var result = Resolve(
+            new AttendanceSchedule("configured", true, new(9, 0), new(17, 0), 480),
+            record,
+            false,
+            hasOpenBreak: true,
+            breakAllowance: 45,
+            breakUsed: 5);
+
+        result.Status.Should().Be(AttendanceRecord.StatusOnBreak);
+        result.StatusLabel.Should().Be("On break");
+        result.IsOverBreakAllowance.Should().BeFalse();
+    }
+
+    [Fact]
+    public void OpenBreakBeyondAllowanceStillReturnsOverBreakStatus()
+    {
+        var record = new AttendanceRecord { ActualStart = LocalNow };
+        var result = Resolve(
+            new AttendanceSchedule("configured", true, new(9, 0), new(17, 0), 480),
+            record,
+            false,
+            hasOpenBreak: true,
+            breakAllowance: 30,
+            breakUsed: 45);
+
+        result.Status.Should().Be(AttendanceRecord.StatusOverBreak);
+    }
+
     private static AttendanceDayStatusResolution Resolve(
         AttendanceSchedule schedule,
         AttendanceRecord? record,
         bool hasApprovedLeave,
+        bool hasOpenBreak = false,
         int? breakAllowance = null,
         int breakUsed = 0)
         => AttendanceDayStatusResolver.Resolve(
@@ -92,6 +125,7 @@ public sealed class AttendanceDayStatusResolverTests
             "configured",
             record,
             hasApprovedLeave,
+            hasOpenBreak,
             breakAllowance,
             breakUsed,
             LocalNow);

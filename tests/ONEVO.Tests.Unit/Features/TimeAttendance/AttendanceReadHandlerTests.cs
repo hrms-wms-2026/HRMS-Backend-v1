@@ -177,6 +177,57 @@ public sealed class AttendanceReadHandlerTests
     }
 
     [Fact]
+    public async Task Today_WhileClockedIn_ComputesLiveWorkedMinutesInsteadOfStoredZero()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T12:00:00+00:00");
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, ActualStart = DateTimeOffset.Parse("2026-08-21T10:00:00+00:00"), WorkedMinutes = 0 });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.TotalWorkedMinutes.Should().Be(120);
+    }
+
+    [Fact]
+    public async Task Today_WhileOnOpenBreak_StatusIsOnBreakNotWorking()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T12:00:00+00:00");
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, ActualStart = DateTimeOffset.Parse("2026-08-21T10:00:00+00:00") });
+        fixture.Attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BreakRecord { TenantId = TenantId, EmployeeId = EmployeeId, BreakStart = DateTimeOffset.Parse("2026-08-21T11:55:00+00:00") }]);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.AttendanceStatus.Should().Be("on_break");
+        result.Value.AttendanceStatusLabel.Should().Be("On break");
+    }
+
+    [Fact]
+    public async Task MyHistory_TodayRowWithOpenBreak_DoesNotInflateOverageToEndOfDay()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:05:00+00:00");
+        var record = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            EmployeeId = EmployeeId,
+            Date = new(2026, 8, 21),
+            ActualStart = DateTimeOffset.Parse("2026-08-21T04:00:00+00:00")
+        };
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { EmployeeId })), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<AttendanceRecord> { record }, 1));
+        fixture.Attendance.Setup(x => x.ListBreaksForEmployeesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BreakRecord { TenantId = TenantId, EmployeeId = EmployeeId, BreakStart = DateTimeOffset.Parse("2026-08-21T10:00:00+00:00") }]);
+
+        var result = await fixture.Handler.Handle(
+            new GetMyAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), new PagedRequest()), CancellationToken.None);
+
+        result.Value!.Items[0].IsOverBreakAllowance.Should().BeFalse();
+        result.Value.Items[0].TotalWorkedMinutes.Should().Be(360);
+    }
+
+    [Fact]
     public async Task Today_NoBreakAllowance_ReturnsNullRemainingAndDisablesStart()
     {
         var fixture = CreateFixture();
@@ -408,7 +459,15 @@ public sealed class AttendanceReadHandlerTests
             authority.Object,
             expectedWorkAreas.Object);
         return new Fixture(
-            new AttendanceReadHandler(currentUser.Object, employees.Object, attendance.Object, authority.Object, todayState, activitySummaries: activitySummaries.Object),
+            new AttendanceReadHandler(
+                currentUser.Object,
+                employees.Object,
+                attendance.Object,
+                authority.Object,
+                todayState,
+                legalEntities: legalEntities.Object,
+                dateTimeProvider: dateTime.Object,
+                activitySummaries: activitySummaries.Object),
             attendance,
             policies,
             authority,

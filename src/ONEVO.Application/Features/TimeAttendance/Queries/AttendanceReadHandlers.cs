@@ -240,9 +240,11 @@ public sealed class AttendanceReadHandler(
                 record.ScheduledEnd,
                 record.RequiredWorkMinutes);
             var dayWindow = AttendanceTodayStateService.GetLocalDayWindow(record.Date, timezone);
-            var breakUsedMinutes = breaksByEmployee.TryGetValue(record.EmployeeId, out var employeeBreaks)
-                ? AttendanceTodayStateService.CalculateBreakUsage(
-                    employeeBreaks, dayWindow, dayWindow.End)
+            var now = dateTimeProvider?.UtcNow ?? DateTimeOffset.UtcNow;
+            var hasEmployeeBreaks = breaksByEmployee.TryGetValue(record.EmployeeId, out var employeeBreaks);
+            var hasOpenBreak = hasEmployeeBreaks && employeeBreaks!.Any(breakRecord => breakRecord.BreakEnd is null);
+            var breakUsedMinutes = hasEmployeeBreaks
+                ? AttendanceTodayStateService.CalculateBreakUsage(employeeBreaks!, dayWindow, now)
                 : record.BreakMinutes;
             var localNow = record.Date.ToDateTime(
                 record.ScheduledStart ?? TimeOnly.MinValue,
@@ -252,6 +254,7 @@ public sealed class AttendanceReadHandler(
                 "configured",
                 record,
                 hasApprovedLeave,
+                hasOpenBreak,
                 legalEntity?.BreakDurationMinutes,
                 breakUsedMinutes,
                 new DateTimeOffset(localNow, TimeSpan.Zero));
@@ -264,7 +267,7 @@ public sealed class AttendanceReadHandler(
                 record.ActualEnd,
                 record.ActualStart is not null && record.ActualEnd is null,
                 record.BreakMinutes,
-                record.WorkedMinutes,
+                AttendanceTodayStateService.CalculateWorkedMinutes(record, breakUsedMinutes, now),
                 NormalizeWorkMode(record.ExpectedWorkArea),
                 record.AttendanceSource,
                 status.Status,
