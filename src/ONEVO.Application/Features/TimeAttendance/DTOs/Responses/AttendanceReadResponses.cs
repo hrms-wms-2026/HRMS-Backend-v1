@@ -1,3 +1,5 @@
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
+
 namespace ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 
 public sealed record AllowedClockInMethods(
@@ -77,3 +79,13 @@ public sealed record AttendanceHistoryRow(
     string? AttentionSeverity = null,
     int BreakOverageMinutes = 0,
     bool IsOverBreakAllowance = false);
+
+public sealed record TimelineEvent(
+    string EventType,
+    DateTimeOffset Timestamp,
+    string Source);
+
+public sealed record AttendanceDayDetailResponse(
+    AttendanceHistoryRow Summary,
+    IReadOnlyList<TimelineEvent> TimelineEvents,
+    ActivityDailySummaryDto? DailyActivity);
