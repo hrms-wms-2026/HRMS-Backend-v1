@@ -234,6 +234,7 @@ public class PermissionSeeder : IHostedService
 
         // Tasks
         Perm("tasks:read", "View tasks.", "work_management"),
+        Perm("tasks:read-own", "View your own assigned tasks.", "work_management"),
         Perm("tasks:write", "Create and edit tasks.", "work_management"),
         Perm("tasks:approve", "Approve task completions.", "work_management"),
         Perm("tasks:delete", "Delete tasks.", "work_management"),

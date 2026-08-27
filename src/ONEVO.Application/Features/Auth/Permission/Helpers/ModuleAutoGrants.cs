@@ -12,6 +12,7 @@ public static class ModuleAutoGrants
             ["calendar"]   = ["calendar:read"],
             ["monitoring"] = ["activity:read:self"],
             ["workforce"]  = ["workforce:dashboard"],
+            ["work_management"] = ["tasks:read-own"],
         };
 
     private static readonly HashSet<string> AllCodes =
