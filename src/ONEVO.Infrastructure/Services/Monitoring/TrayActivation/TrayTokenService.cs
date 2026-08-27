@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.IdentityModel.Tokens;
 using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 
@@ -46,6 +47,14 @@ public class TrayTokenService : ITrayTokenService
             signingCredentials: creds);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    public string GenerateOpaqueToken(int byteLength)
+    {
+        if (byteLength <= 0)
+            throw new ArgumentOutOfRangeException(nameof(byteLength));
+
+        return WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(byteLength));
     }
 
     public string GenerateRawRefreshToken()

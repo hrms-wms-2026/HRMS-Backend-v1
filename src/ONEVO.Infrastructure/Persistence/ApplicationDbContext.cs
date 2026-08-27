@@ -94,6 +94,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<TrayActivationCode> TrayActivationCodes => Set<TrayActivationCode>();
     public DbSet<TrayDeviceRegistration> TrayDeviceRegistrations => Set<TrayDeviceRegistration>();
     public DbSet<TrayDeviceRefreshToken> TrayDeviceRefreshTokens => Set<TrayDeviceRefreshToken>();
+    public DbSet<TrayDeviceAuthorization> TrayDeviceAuthorizations => Set<TrayDeviceAuthorization>();
 
     // Monitoring - Employee Check-In
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();

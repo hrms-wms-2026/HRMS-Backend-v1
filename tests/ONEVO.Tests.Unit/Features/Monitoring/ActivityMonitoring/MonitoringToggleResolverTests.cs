@@ -95,10 +95,10 @@ public class MonitoringToggleResolverTests
     }
 
     [Fact]
-    public void Minutes_No_override_anywhere_returns_default_five()
+    public void Minutes_No_override_anywhere_returns_default_two()
     {
         MonitoringToggleResolution.ResolveMinutes(null, null, null, null, null)
-            .Should().Be(5);
+            .Should().Be(2);
     }
 
     [Fact]

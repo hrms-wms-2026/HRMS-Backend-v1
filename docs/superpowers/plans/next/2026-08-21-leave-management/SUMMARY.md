@@ -4,7 +4,7 @@
 **Companion (frontend):** `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-08-21-leave-management/SUMMARY.md`
 **Source of truth for product behaviour:** `C:\HR\leave-management-complete.md`
 
-This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`), Phase 2 (`part-2-leave-policies.md`), Phase 3 (`part-3-entitlements-and-balances.md`), Phase 4 (`part-4-request-submission.md`), Phase 5 (`part-5-approval-workflow.md`), Phase 6 (`part-6-cancellation.md`), and Phase 7 (`part-7-team-calendar.md`) — Phase 8+ are scoped here (entities/endpoints/files/dependencies/exit-criteria) but not yet broken into bite-sized TDD steps. Write each remaining part's full TDD file when that phase starts, following `part-1`'s pattern.
+This is a 10-phase build (0-9), one deliverable slice per phase, backend and frontend paired where a screen exists. Written in full for Phase 0+1 (`part-1-schema-and-leave-types.md`), Phase 2 (`part-2-leave-policies.md`), Phase 3 (`part-3-entitlements-and-balances.md`), Phase 4 (`part-4-request-submission.md`), Phase 5 (`part-5-approval-workflow.md`), Phase 6 (`part-6-cancellation.md`), Phase 7 (`part-7-team-calendar.md`), Phase 8 (`part-8-balance-audit-and-year-end.md`), and Phase 9 (`part-9-hardening.md`) — all 10 phases now have a written plan. Phases 8 and 9 are written but not yet executed.
 
 **Every phase's exit criteria includes a live run against the real dev DB** (`DevSmokeTestTenantSeeder`'s acme/dapi tenants), not just a green test suite — see the design doc's Testing note.
 
@@ -83,17 +83,21 @@ This is a 10-phase build (0-9), one deliverable slice per phase, backend and fro
 
 ## Phase 8 — Balance Audit surfacing + bulk generate polish + year-end job
 
-- Backend: `GET /api/v1/leave/balance-audit` (append-only read, filters), year-end carry-forward + forfeiture background job (uses Phase 3's pure calculation helper), CSV export endpoints (entitlement generation results, balance export).
-- Frontend: audit trail panel on Entitlements screen, CSV export buttons.
-- **Depends on:** Phase 3.
+**Status:** written in full, see `part-8-balance-audit-and-year-end.md`. Not yet executed.
+
+- Backend: `GET /api/v1/leave/balance-audit` (append-only read, filters) + CSV export, `POST /api/v1/leave/entitlements/generate/preview/export` (CSV export of the existing Phase 3 preview — no new planning logic), and `LeaveYearEndEntitlementJob` (`BackgroundService`, daily-checked, triggers once per Jan 1 UTC per tenant) — the carry-forward/forfeiture math is 100% reused from Phase 3's `LeaveEntitlementCalculator`/`LeaveEntitlementPlanner`; this phase only adds the automatic trigger and the read/export surface. The job does not go through `IMediator`/`GenerateEntitlementsCommand` since that handler depends on `ICurrentUser`, which is unavailable in a background job's DI scope — it calls the planner/repository directly instead, following the same admin-mode + `ITenantContextSwitcher.SwitchToTenantAsync` per-tenant pattern already used by `BulkOnboardingBatchProcessor`.
+- Frontend: audit trail panel on Entitlements screen, CSV export buttons (not written yet — backend only in `part-8`).
+- **Depends on:** Phase 3 (already shipped — `LeaveEntitlementCalculator`, `LeaveEntitlementPlanner`, and `LeaveBalanceAudit` writes are all live).
 
 ## Phase 9 — Hardening
 
-- Full `ONEVO.Tests.Architecture` pass (dependency direction, tenant isolation, no controller-to-DbContext) for every new `Leave` namespace.
-- Coverage check against the 70%+ target (architecture skill NFR).
-- Frontend: retire the 2026-08-17 mocked `LeaveApiService`/fixtures entirely — this plan's real `leave-request-api.service.ts` replaces it; delete the old fixture files once `/time-off/*` routes are live.
-- Perf pass on `GET /leave/balances` (All Balances, N+1 risk — batched entitlement + used/pending aggregation, matching the `CountActiveEmployeesByDepartmentIdsAsync` batched-query pattern already used in Department).
-- Full live-dev-DB run of every phase's golden path in one sitting (Priya's worked example from spec §7, end to end).
+**Status:** written in full, see `part-9-hardening.md`. Not yet executed. Audited against the real shipped code on 2026-08-23 — 3 of the original 5 speculative bullets below turned out to be non-issues or stale; `part-9` has the corrected scope and reasoning:
+
+- Architecture test coverage: **real gap found** — `LeaveTypesControllerArchitectureTests.cs` doesn't exist (every other Leave controller has one). `part-9` Task 1 adds it.
+- Coverage check against the 70%+ target: **never actually measured** — `part-9` Task 2 runs it and closes any gap found.
+- Perf on `GET /leave/balances` (All Balances, N+1 risk): **audited, not a bug** — `ListAllBalancesQueryHandler`/`LeaveBalanceMapping.MapAsync` already batches the policy lookup in one call regardless of row count. `part-9` Task 3 adds a regression-guard test instead of a fix.
+- Frontend: retire the 2026-08-17 mocked `LeaveApiService`/fixtures — **stale assumption, corrected**. Nothing was ever built from that sketch (zero Leave files in the frontend repo as of 2026-08-23), so there's nothing to retire. `part-9` Task 5 fixes this plan folder's own wording instead of doing invented cleanup.
+- Full live-dev-DB run of Priya's worked example (spec §7), end to end: **still genuinely needed** — `part-9` Task 4, scripted step by step, with an explicit dependency note on Phase 8's year-end job for the final carry-forward/forfeiture step.
 
 ---
 

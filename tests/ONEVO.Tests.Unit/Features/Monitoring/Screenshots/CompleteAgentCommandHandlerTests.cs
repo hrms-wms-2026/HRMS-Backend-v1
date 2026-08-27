@@ -3,10 +3,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.Commands.CompleteAgentCommand;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 using ONEVO.Tests.Unit.Fakes;
@@ -19,6 +21,8 @@ public class CompleteAgentCommandHandlerTests
     private readonly Mock<IEvidenceAssetRepository> _assetsRepo = new();
     private readonly Mock<ITrayActivationRepository> _trayRepo = new();
     private readonly Mock<ITrayCurrentDevice> _device = new();
+    private readonly Mock<ITenantRepository> _tenants = new();
+    private readonly Mock<ITenantContextSwitcher> _tenantSwitcher = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly FakeUnitOfWork _uow = new();
 
@@ -29,12 +33,20 @@ public class CompleteAgentCommandHandlerTests
 
     public CompleteAgentCommandHandlerTests()
     {
+        _device.Setup(d => d.IsAuthenticated).Returns(true);
         _device.Setup(d => d.TenantId).Returns(_tenantId);
         _device.Setup(d => d.DeviceRegistrationId).Returns(_deviceId);
         _device.Setup(d => d.UserId).Returns(_userId);
 
         _trayRepo.Setup(r => r.FindActiveDeviceAsync(_deviceId, _tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TrayDeviceRegistration { Id = _deviceId, TenantId = _tenantId, UserId = _userId, IsActive = true, ActivatedAt = DateTimeOffset.UtcNow, CreatedAt = DateTimeOffset.UtcNow });
+
+        _tenants.Setup(t => t.GetByIdAsync(_tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant
+            {
+                Id = _tenantId, Name = "Test Tenant", Slug = "test-tenant",
+                CompanySizeRange = "1-10", Status = TenantStatus.Active
+            });
     }
 
     private CompleteAgentCommandHandler CreateHandler() => new(
@@ -42,6 +54,8 @@ public class CompleteAgentCommandHandlerTests
         _assetsRepo.Object,
         _trayRepo.Object,
         _device.Object,
+        _tenants.Object,
+        _tenantSwitcher.Object,
         _clock,
         _uow,
         NullLogger<CompleteAgentCommandHandler>.Instance);
