@@ -27,7 +27,9 @@ using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 
 using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
@@ -304,8 +306,11 @@ public static class DependencyInjection
         services.AddScoped<IProjectCategoryRepository>(sp => sp.GetRequiredService<EfProjectCategoryRepository>());
         services.AddScoped<EfProjectRepository>();
         services.AddScoped<IProjectRepository>(sp => sp.GetRequiredService<EfProjectRepository>());
-        services.AddScoped<EfObjectiveRepository>();
+                services.AddScoped<EfObjectiveRepository>();
         services.AddScoped<IObjectiveRepository>(sp => sp.GetRequiredService<EfObjectiveRepository>());
+        services.AddScoped<EfCalendarEventRepository>();
+        services.AddScoped<ICalendarEventRepository>(sp => sp.GetRequiredService<EfCalendarEventRepository>());
+
         services.AddScoped<EfTaskStatusRepository>();
         services.AddScoped<ITaskStatusRepository>(sp => sp.GetRequiredService<EfTaskStatusRepository>());
         services.AddScoped<EfTaskCategoryRepository>();
@@ -318,8 +323,17 @@ public static class DependencyInjection
         services.AddScoped<ITaskAssignmentRepository>(sp => sp.GetRequiredService<EfTaskAssignmentRepository>());
         services.AddScoped<EfTaskCreationRequestRepository>();
         services.AddScoped<ITaskCreationRequestRepository>(sp => sp.GetRequiredService<EfTaskCreationRequestRepository>());
-        services.AddScoped<EfTaskEditRequestRepository>();
+                services.AddScoped<EfTaskEditRequestRepository>();
         services.AddScoped<ITaskEditRequestRepository>(sp => sp.GetRequiredService<EfTaskEditRequestRepository>());
+        services.AddScoped<EfTaskEditLogRepository>();
+        services.AddScoped<ITaskEditLogRepository>(sp => sp.GetRequiredService<EfTaskEditLogRepository>());
+        services.AddScoped<EfTaskStatusChangeLogRepository>();
+        services.AddScoped<ITaskStatusChangeLogRepository>(sp => sp.GetRequiredService<EfTaskStatusChangeLogRepository>());
+        services.AddScoped<EfTaskClockingSessionRepository>();
+        services.AddScoped<ITaskClockingSessionRepository>(sp => sp.GetRequiredService<EfTaskClockingSessionRepository>());
+        services.AddScoped<EfTaskPercentageLogRepository>();
+        services.AddScoped<ITaskPercentageLogRepository>(sp => sp.GetRequiredService<EfTaskPercentageLogRepository>());
+
         services.AddScoped<EfNotificationRepository>();
         services.AddScoped<INotificationRepository>(sp => sp.GetRequiredService<EfNotificationRepository>());
         services.AddScoped<EfObjectiveChangeRequestRepository>();
