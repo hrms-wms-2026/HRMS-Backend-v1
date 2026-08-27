@@ -6,6 +6,7 @@ using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivi
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailySummary;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivitySnapshots;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetMyActivityTimeline;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetMyWorkPattern;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.ActivityMonitoring;
 
@@ -105,6 +106,25 @@ public class MonitoringActivityController : ControllerBase
         CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetMyActivityTimelineQuery(date), ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Self-service: Focus / Meeting / Admin minutes per day for the current employee across
+    /// [from, to]. Past days come from the daily aggregation job; today is computed live.
+    /// </summary>
+    [HttpGet("my-work-pattern")]
+    [RequirePermission("activity:read:self")]
+    public async Task<IActionResult> GetMyWorkPattern(
+        [FromQuery] DateOnly from,
+        [FromQuery] DateOnly to,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetMyWorkPatternQuery(from, to), ct);
 
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
