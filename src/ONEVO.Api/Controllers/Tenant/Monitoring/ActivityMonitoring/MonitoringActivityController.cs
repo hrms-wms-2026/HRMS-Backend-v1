@@ -5,6 +5,7 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailyRange;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailySummary;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivitySnapshots;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetMyActivityTimeline;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.ActivityMonitoring;
 
@@ -86,6 +87,24 @@ public class MonitoringActivityController : ControllerBase
             From = from,
             To = to
         }, ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Self-service: Focus/Idle timeline for the current employee's own activity on a given
+    /// date (defaults to today, UTC day bounds).
+    /// </summary>
+    [HttpGet("my-timeline")]
+    [RequirePermission("activity:read:self")]
+    public async Task<IActionResult> GetMyTimeline(
+        [FromQuery] DateOnly? date,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetMyActivityTimelineQuery(date), ct);
 
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);

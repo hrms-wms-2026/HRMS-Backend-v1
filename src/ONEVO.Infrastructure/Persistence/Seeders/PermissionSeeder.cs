@@ -116,6 +116,7 @@ public class PermissionSeeder : IHostedService
 
         // Monitoring
         Perm("monitoring:read", "View monitoring data.", "monitoring"),
+        Perm("activity:read:self", "View your own activity timeline.", "monitoring"),
 
         // Attendance
         Perm("attendance:read", "View attendance records for all employees in scope.", "core_hr"),
