@@ -20,7 +20,17 @@ payload and switches tenant context mid-request via the existing `ITenantContext
 - Token fields (`access_token_encrypted`, `refresh_token_encrypted`, `sync_token_encrypted`, `delta_link_encrypted`) use `IEncryptionService.EncryptBytes(string)`/`DecryptBytes(byte[])` → `bytea` columns. Never returned by any API response.
 - Snake_case DB columns via the existing `UseSnakeCaseNamingConvention()` EF convention — entity properties are PascalCase as usual, no manual column-name overrides needed.
 - No Hangfire. Background job shape mirrors `src/ONEVO.Infrastructure/Services/Monitoring/Screenshots/AgentCommandExpiryJob.cs` (simplest existing example) and `src/ONEVO.Infrastructure/Services/WorkManagement/SprintLifecycleJob.cs`.
-- Module key: register `"calendar"` in `ModuleCatalogSeeder.cs` (owns `calendar:read`/`calendar:write`/`calendar:admin`) so the module-entitlement/auto-grant machinery (see prior session's `ModuleAutoGrants`/`ModuleEntitlementService` work) can gate it per subscription plan like every other module. `calendar:read` is a `ModuleAutoGrants` self-service entry (every employee gets read access to their own calendar data once the module is active); `calendar:write`/`calendar:admin` remain explicit `RolePermission` grants, not auto-granted.
+- Module/permission plumbing already exists end-to-end — verified 2026-08-28, no seeder task
+  needed: `calendar:read`/`calendar:write`/`calendar:admin` are already in `PermissionSeeder.cs`
+  under the `"calendar"` module; `"calendar"` is already a `ModuleCatalogSeeder.cs` entry
+  (`Phase = "phase_1"`) with all three permissions in its ownership list; `calendar:read` is
+  already a `ModuleAutoGrants` self-service entry; `"calendar"` is already in the
+  `starter_51_200` plan's `IncludedModulesJson`. `RequirePermission("calendar:...")` on the new
+  controller actions is all that's needed — nothing to seed.
+- Branch the implementation off `feature/calendar-oauth-scopes` (not bare `development`) —
+  `development` still has the `SubscriptionPlanConfiguration.cs` `"activity_monitoring"` module-
+  key bug that an earlier session fixed on that branch lineage; building fresh off `development`
+  would silently reintroduce it for local testing.
 
 ---
 
