@@ -63,6 +63,19 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         await using var assert = CreateContext();
         var codes = await assert.NotificationTemplates.Select(t => t.Code).ToListAsync();
 
+        Assert.Contains("work_task_creation_request_created", codes);
+        Assert.Contains("work_task_edit_request_decided", codes);
+        Assert.Contains("work_sprint_completed", codes);
+        Assert.Contains("work_sprint_incomplete", codes);
+        Assert.Contains("work_sprint_achieved", codes);
+        Assert.Contains("leave_request_approved", codes);
+        Assert.Contains("leave_request_rejected", codes);
+        Assert.Contains("leave_request_information_requested", codes);
+        Assert.Contains("leave_request_next_approval_required", codes);
+        Assert.Contains("leave_request_cancelled_by_employee", codes);
+        Assert.Contains("leave_request_cancelled_by_hr", codes);
+        Assert.Contains("leave_request_partially_cancelled", codes);
+        Assert.Equal(23, codes.Count);
         var expectedCodes = new[]
         {
             "work_task_creation_request_created",

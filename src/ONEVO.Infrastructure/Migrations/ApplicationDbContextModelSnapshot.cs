@@ -5783,6 +5783,96 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("agent_commands", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.InactivityCaptureAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AgentDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agent_device_id");
+
+                    b.Property<DateTimeOffset?>("CapturedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("captured_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DecisionAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decision_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<Guid?>("EvidenceAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("evidence_asset_id");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("failure_code");
+
+                    b.Property<int>("IdleDurationSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("idle_duration_seconds");
+
+                    b.Property<DateTimeOffset>("IdleStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("idle_started_at");
+
+                    b.Property<int>("MonitorCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("monitor_count");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("outcome");
+
+                    b.Property<string>("PolicyVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("policy_version");
+
+                    b.Property<DateTimeOffset>("PromptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("prompted_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("WorkSessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("work_session_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_inactivity_capture_attempts");
+
+                    b.HasIndex("AgentDeviceId")
+                        .HasDatabaseName("ix_inactivity_capture_attempts_agent_device_id");
+
+                    b.HasIndex("EvidenceAssetId")
+                        .HasDatabaseName("ix_inactivity_capture_attempts_evidence_asset_id");
+
+                    b.HasIndex("TenantId", "EmployeeId", "PromptedAt")
+                        .HasDatabaseName("ix_inactivity_capture_attempts_tenant_employee_prompted");
+
+                    b.ToTable("inactivity_capture_attempts", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.MonitoringEvidenceAsset", b =>
                 {
                     b.Property<Guid>("Id")
@@ -6191,6 +6281,111 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("tray_activation_codes", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.TrayDeviceAuthorization", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_at");
+
+                    b.Property<Guid?>("ApprovedTenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("approved_tenant_id");
+
+                    b.Property<Guid?>("ApprovedUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("approved_user_id");
+
+                    b.Property<string>("ClientVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("client_version");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consumed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DeviceCodeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("device_code_hash");
+
+                    b.Property<string>("DeviceFingerprintHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("device_fingerprint_hash");
+
+                    b.Property<string>("DeviceName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("device_name");
+
+                    b.Property<string>("DeviceOs")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("device_os");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTimeOffset?>("LastPolledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_polled_at");
+
+                    b.Property<int>("PollViolationCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("poll_violation_count");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("UserCodeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("user_code_hash");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tray_device_authorizations");
+
+                    b.HasIndex("DeviceCodeHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_tray_device_authorizations_device_code_hash");
+
+                    b.HasIndex("DeviceFingerprintHash", "CreatedAt")
+                        .HasDatabaseName("ix_tray_device_authorizations_device_fingerprint_hash_created_");
+
+                    b.HasIndex("Status", "ExpiresAt")
+                        .HasDatabaseName("ix_tray_device_authorizations_status_expires_at");
+
+                    b.HasIndex("UserCodeHash", "Status", "ExpiresAt")
+                        .HasDatabaseName("ix_tray_device_authorizations_user_code_hash_status_expires_at");
+
+                    b.ToTable("tray_device_authorizations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_tray_device_authorizations_approval_identity", "status NOT IN ('Approved', 'Consumed') OR (approved_tenant_id IS NOT NULL AND approved_user_id IS NOT NULL AND approved_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_tray_device_authorizations_consumed_at", "consumed_at IS NULL OR status = 'Consumed'");
+                        });
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.TrayDeviceRefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -6311,6 +6506,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "UserId", "IsActive")
                         .HasDatabaseName("ix_tray_device_registrations_tenant_id_user_id_is_active");
+
+                    b.HasIndex("TenantId", "UserId", "IsActive", "LastSeenAt")
+                        .HasDatabaseName("ix_tray_device_registrations_tenant_id_user_id_is_active_last_");
 
                     b.ToTable("tray_device_registrations", (string)null);
                 });
@@ -12220,6 +12418,22 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_agent_commands_tray_device_registrations_agent_device_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.InactivityCaptureAttempt", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.TrayDeviceRegistration", null)
+                        .WithMany()
+                        .HasForeignKey("AgentDeviceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_inactivity_capture_attempts_tray_device_registrations_agent");
+
+                    b.HasOne("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.MonitoringEvidenceAsset", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_inactivity_capture_attempts_monitoring_evidence_assets_evid");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.Screenshots.Entities.MonitoringEvidenceAsset", b =>

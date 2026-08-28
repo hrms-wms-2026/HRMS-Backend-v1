@@ -3,6 +3,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
+using ONEVO.Domain.Features.Monitoring.TrayActivation.Enums;
 using ONEVO.Infrastructure.Persistence;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.Monitoring.TrayActivation;
@@ -34,15 +35,81 @@ public class EfTrayActivationRepository : ITrayActivationRepository
     {
         var now = _clock.UtcNow;
         return await _db.TrayActivationCodes
-            .FirstOrDefaultAsync(c => c.CodeHash == codeHash
-                && c.UsedAt == null
-                && c.ExpiresAt > now, ct);
+            .FromSqlInterpolated($"SELECT * FROM tray_activation_codes WHERE code_hash = {codeHash} AND used_at IS NULL AND expires_at > {now} FOR UPDATE")
+            .AsTracking()
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task MarkCodeUsedAsync(TrayActivationCode code, CancellationToken ct)
     {
         code.UsedAt = _clock.UtcNow;
         await Task.CompletedTask;
+    }
+
+    public async Task RevokeActiveRegistrationsForIdentityAsync(
+        Guid tenantId,
+        Guid userId,
+        string deviceFingerprint,
+        string reason,
+        CancellationToken ct)
+    {
+        var now = _clock.UtcNow;
+        var registrationIds = await _db.TrayDeviceRegistrations
+            .Where(d => d.TenantId == tenantId
+                && d.UserId == userId
+                && d.DeviceFingerprint == deviceFingerprint
+                && d.IsActive)
+            .Select(d => d.Id)
+            .ToListAsync(ct);
+
+        if (registrationIds.Count == 0)
+            return;
+
+        await _db.TrayDeviceRefreshTokens
+            .Where(t => registrationIds.Contains(t.DeviceRegistrationId) && !t.IsRevoked)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.IsRevoked, true)
+                .SetProperty(t => t.RevokedAt, now)
+                .SetProperty(t => t.RevokedReason, reason), ct);
+
+        await _db.TrayDeviceRegistrations
+            .Where(d => registrationIds.Contains(d.Id) && d.IsActive)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.IsActive, false)
+                .SetProperty(d => d.DeactivatedAt, now), ct);
+    }
+
+    public async Task<int> CountRecentDeviceAuthorizationRequestsAsync(
+        string deviceFingerprintHash, DateTimeOffset since, CancellationToken ct)
+    {
+        return await _db.TrayDeviceAuthorizations
+            .CountAsync(a => a.DeviceFingerprintHash == deviceFingerprintHash && a.CreatedAt >= since, ct);
+    }
+
+    public async Task AddDeviceAuthorizationAsync(
+        TrayDeviceAuthorization authorization, CancellationToken ct)
+    {
+        await _db.TrayDeviceAuthorizations.AddAsync(authorization, ct);
+    }
+
+    public async Task<TrayDeviceAuthorization?> FindDeviceAuthorizationForApprovalAsync(
+        Guid requestId, string userCodeHash, CancellationToken ct)
+    {
+        var now = _clock.UtcNow;
+        return await _db.TrayDeviceAuthorizations
+            .FirstOrDefaultAsync(a => a.Id == requestId
+                && a.UserCodeHash == userCodeHash
+                && a.Status == DeviceAuthorizationStatus.Pending
+                && a.ExpiresAt > now, ct);
+    }
+
+    public async Task<TrayDeviceAuthorization?> LockDeviceAuthorizationForPollAsync(
+        string deviceCodeHash, CancellationToken ct)
+    {
+        return await _db.TrayDeviceAuthorizations
+            .FromSqlInterpolated($"SELECT * FROM tray_device_authorizations WHERE device_code_hash = {deviceCodeHash} FOR UPDATE")
+            .AsTracking()
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task AddDeviceRegistrationAsync(TrayDeviceRegistration device, CancellationToken ct)
@@ -91,6 +158,18 @@ public class EfTrayActivationRepository : ITrayActivationRepository
             .FirstOrDefaultAsync(d => d.Id == deviceRegistrationId
                 && d.TenantId == tenantId
                 && d.IsActive, ct);
+    }
+
+    public async Task<TrayDeviceRegistration?> FindLatestActiveDeviceForUserAsync(
+        Guid userId, Guid tenantId, CancellationToken ct)
+    {
+        return await _db.TrayDeviceRegistrations
+            .Where(d => d.UserId == userId
+                && d.TenantId == tenantId
+                && d.IsActive
+                && d.LastSeenAt != null)
+            .OrderByDescending(d => d.LastSeenAt)
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task UpdateDeviceLastSeenAsync(

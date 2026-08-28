@@ -16,6 +16,7 @@ public class TrayDeviceRegistrationConfiguration : IEntityTypeConfiguration<Tray
         builder.Property(t => t.DeviceFingerprint).HasMaxLength(512).IsRequired();
 
         builder.HasIndex(t => new { t.TenantId, t.UserId, t.IsActive });
+        builder.HasIndex(t => new { t.TenantId, t.UserId, t.IsActive, t.LastSeenAt });
         builder.HasIndex(t => t.DeviceFingerprint);
     }
 }

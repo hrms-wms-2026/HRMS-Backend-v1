@@ -10,6 +10,20 @@ public interface ITrayActivationRepository
     // Exchange endpoint: tenantId unknown at call time — hash is globally unique
     Task<TrayActivationCode?> FindActiveCodeByHashAsync(string codeHash, CancellationToken ct);
     Task MarkCodeUsedAsync(TrayActivationCode code, CancellationToken ct);
+    Task RevokeActiveRegistrationsForIdentityAsync(
+        Guid tenantId,
+        Guid userId,
+        string deviceFingerprint,
+        string reason,
+        CancellationToken ct);
+
+    Task<int> CountRecentDeviceAuthorizationRequestsAsync(
+        string deviceFingerprintHash, DateTimeOffset since, CancellationToken ct);
+    Task AddDeviceAuthorizationAsync(TrayDeviceAuthorization authorization, CancellationToken ct);
+    Task<TrayDeviceAuthorization?> FindDeviceAuthorizationForApprovalAsync(
+        Guid requestId, string userCodeHash, CancellationToken ct);
+    Task<TrayDeviceAuthorization?> LockDeviceAuthorizationForPollAsync(
+        string deviceCodeHash, CancellationToken ct);
 
     Task AddDeviceRegistrationAsync(TrayDeviceRegistration device, CancellationToken ct);
     Task AddRefreshTokenAsync(TrayDeviceRefreshToken token, CancellationToken ct);
@@ -19,6 +33,7 @@ public interface ITrayActivationRepository
     Task RevokeAllRefreshTokensForDeviceAsync(Guid deviceRegistrationId, string reason, CancellationToken ct);
 
     Task<TrayDeviceRegistration?> FindActiveDeviceAsync(Guid deviceRegistrationId, Guid tenantId, CancellationToken ct);
+    Task<TrayDeviceRegistration?> FindLatestActiveDeviceForUserAsync(Guid userId, Guid tenantId, CancellationToken ct);
     Task UpdateDeviceLastSeenAsync(Guid deviceRegistrationId, DateTimeOffset lastSeenAt, CancellationToken ct);
     Task DeactivateDeviceAsync(Guid deviceRegistrationId, DateTimeOffset deactivatedAt, CancellationToken ct);
 

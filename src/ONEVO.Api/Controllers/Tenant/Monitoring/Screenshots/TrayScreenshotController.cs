@@ -2,12 +2,15 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Application.Features.Monitoring.Screenshots.Commands.CompleteAgentCommand;
+using ONEVO.Application.Features.Monitoring.Screenshots.Commands.SubmitInactivityCaptureAttempt;
 using ONEVO.Application.Features.Monitoring.Screenshots.Commands.SubmitPeriodicScreenshot;
 using ONEVO.Application.Features.Monitoring.Screenshots.DTOs.Requests;
 using ONEVO.Application.Features.Monitoring.Screenshots.Queries.GetPendingCommands;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.Helpers;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.Screenshots;
@@ -24,15 +27,41 @@ public class TrayScreenshotController : ControllerBase
     private readonly IMediator _mediator;
     private readonly IFileStorageService _fileStorage;
     private readonly ITrayCurrentDevice _device;
+    private readonly ITenantRepository _tenants;
+    private readonly ITenantContextSwitcher _tenantSwitcher;
 
     public TrayScreenshotController(
         IMediator mediator,
         IFileStorageService fileStorage,
-        ITrayCurrentDevice device)
+        ITrayCurrentDevice device,
+        ITenantRepository tenants,
+        ITenantContextSwitcher tenantSwitcher)
     {
         _mediator = mediator;
         _fileStorage = fileStorage;
         _device = device;
+        _tenants = tenants;
+        _tenantSwitcher = tenantSwitcher;
+    }
+
+    /// <summary>
+    /// Tray requests hit the base host (system mode), not a tenant subdomain, so no middleware
+    /// has set PostgreSQL RLS tenant context yet. Every action here that touches tenant-owned
+    /// data must call this first — see IngestActivitySnapshotsCommandHandler for the same pattern
+    /// used by MediatR-based Tray handlers.
+    /// </summary>
+    private async Task<IActionResult?> SwitchToDeviceTenantAsync(CancellationToken ct)
+    {
+        if (!_device.IsAuthenticated || _device.TenantId == Guid.Empty)
+            return Problem("A valid tray device token is required.", statusCode: 401);
+
+        var tenant = await _tenants.GetByIdAsync(_device.TenantId, ct);
+        if (tenant is null)
+            return Problem("Tenant not found.", statusCode: 401);
+
+        await _tenantSwitcher.SwitchToTenantAsync(
+            new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
+        return null;
     }
 
     /// <summary>
@@ -100,6 +129,9 @@ public class TrayScreenshotController : ControllerBase
         if (file is null || file.Length == 0)
             return Problem("File is required.", statusCode: 400);
 
+        if (await SwitchToDeviceTenantAsync(ct) is { } tenantError)
+            return tenantError;
+
         var result = await _fileStorage.UploadAsync(
             _device.TenantId,
             _device.UserId,
@@ -135,6 +167,60 @@ public class TrayScreenshotController : ControllerBase
         var result = await _mediator.Send(
             new SubmitPeriodicScreenshotCommand(
                 file.FileName, file.ContentType, file.OpenReadStream(), capturedAt),
+            ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(new { id = result.Value });
+    }
+
+    /// <summary>
+    /// Records the outcome of one five-minute inactivity Allow/Skip prompt from
+    /// InactivityScreenshotCollector — with a JPEG only when the outcome is "captured".
+    /// Field names must match ONEVO.Agent.Service.Api.InactivityAttemptFormFields exactly.
+    /// </summary>
+    /// <response code="200">Attempt recorded (or already captured — a stable "captured" state).</response>
+    /// <response code="400">Validation failed (see detail): bad outcome, missing/extra file, idle too short.</response>
+    /// <response code="403">Policy no longer allows screenshot capture for this employee.</response>
+    /// <response code="409">This attempt id was already recorded (idempotent retry — safe to stop retrying).</response>
+    [HttpPost("inactivity-attempts")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> SubmitInactivityAttempt(
+        [FromForm(Name = "attemptId")] Guid attemptId,
+        [FromForm(Name = "policyVersion")] string policyVersion,
+        [FromForm(Name = "idleStartedAt")] DateTimeOffset idleStartedAt,
+        [FromForm(Name = "promptedAt")] DateTimeOffset promptedAt,
+        [FromForm(Name = "decisionAt")] DateTimeOffset? decisionAt,
+        [FromForm(Name = "capturedAt")] DateTimeOffset? capturedAt,
+        [FromForm(Name = "idleDurationSeconds")] int idleDurationSeconds,
+        [FromForm(Name = "monitorCount")] int monitorCount,
+        [FromForm(Name = "outcome")] string outcome,
+        [FromForm(Name = "failureCode")] string? failureCode,
+        [FromForm(Name = "contentType")] string? contentType,
+        [FromForm(Name = "sha256")] string? sha256,
+        IFormFile? file,
+        CancellationToken ct)
+    {
+        var result = await _mediator.Send(
+            new SubmitInactivityCaptureAttemptCommand(
+                attemptId,
+                policyVersion,
+                idleStartedAt,
+                promptedAt,
+                decisionAt,
+                capturedAt,
+                idleDurationSeconds,
+                monitorCount,
+                outcome,
+                failureCode,
+                contentType,
+                sha256,
+                file?.OpenReadStream()),
             ct);
 
         if (!result.IsSuccess)

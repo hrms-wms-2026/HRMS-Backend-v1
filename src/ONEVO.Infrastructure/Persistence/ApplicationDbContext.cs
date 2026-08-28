@@ -96,6 +96,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<TrayActivationCode> TrayActivationCodes => Set<TrayActivationCode>();
     public DbSet<TrayDeviceRegistration> TrayDeviceRegistrations => Set<TrayDeviceRegistration>();
     public DbSet<TrayDeviceRefreshToken> TrayDeviceRefreshTokens => Set<TrayDeviceRefreshToken>();
+    public DbSet<TrayDeviceAuthorization> TrayDeviceAuthorizations => Set<TrayDeviceAuthorization>();
 
     // Monitoring - Employee Check-In
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
@@ -124,6 +125,7 @@ public class ApplicationDbContext : DbContext
     // Monitoring - Screenshots & agent commands
     public DbSet<MonitoringEvidenceAsset> MonitoringEvidenceAssets => Set<MonitoringEvidenceAsset>();
     public DbSet<AgentCommand> AgentCommands => Set<AgentCommand>();
+    public DbSet<InactivityCaptureAttempt> InactivityCaptureAttempts => Set<InactivityCaptureAttempt>();
 
     // Infrastructure
     public DbSet<User> Users => Set<User>();

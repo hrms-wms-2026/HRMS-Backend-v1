@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
@@ -19,6 +20,8 @@ public class SubmitPeriodicScreenshotCommandHandler
     private readonly IEvidenceAssetRepository _assets;
     private readonly ITrayActivationRepository _trayRepo;
     private readonly ITrayCurrentDevice _device;
+    private readonly ITenantRepository _tenants;
+    private readonly ITenantContextSwitcher _tenantSwitcher;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<SubmitPeriodicScreenshotCommandHandler> _logger;
@@ -28,6 +31,8 @@ public class SubmitPeriodicScreenshotCommandHandler
         IEvidenceAssetRepository assets,
         ITrayActivationRepository trayRepo,
         ITrayCurrentDevice device,
+        ITenantRepository tenants,
+        ITenantContextSwitcher tenantSwitcher,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
         ILogger<SubmitPeriodicScreenshotCommandHandler> logger)
@@ -36,6 +41,8 @@ public class SubmitPeriodicScreenshotCommandHandler
         _assets = assets;
         _trayRepo = trayRepo;
         _device = device;
+        _tenants = tenants;
+        _tenantSwitcher = tenantSwitcher;
         _clock = clock;
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -43,6 +50,27 @@ public class SubmitPeriodicScreenshotCommandHandler
 
     public async Task<Result<Guid>> Handle(SubmitPeriodicScreenshotCommand request, CancellationToken ct)
     {
+        if (!_device.IsAuthenticated
+            || _device.TenantId == Guid.Empty
+            || _device.UserId == Guid.Empty
+            || _device.DeviceRegistrationId == Guid.Empty)
+        {
+            return Result<Guid>.Failure("A valid tray device token is required.", 401);
+        }
+
+        var tenant = await _tenants.GetByIdAsync(_device.TenantId, ct);
+        if (tenant is null)
+            return Result<Guid>.Failure("Tenant not found.", 401);
+
+        // Tray requests hit the base host (system mode), not a tenant subdomain, so no
+        // middleware has set tenant context yet. Without this, PostgreSQL RLS rejects the
+        // file_upload_reservations/file_records/monitoring_evidence_assets writes below with
+        // 42501 — see IngestActivitySnapshotsCommandHandler for the same pattern. Must happen
+        // before the upload call, since BeginReservationAsync writes a tenant-owned row too.
+        await _tenantSwitcher.SwitchToTenantAsync(
+            new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null),
+            ct);
+
         var tenantId = _device.TenantId;
         var deviceId = _device.DeviceRegistrationId;
 

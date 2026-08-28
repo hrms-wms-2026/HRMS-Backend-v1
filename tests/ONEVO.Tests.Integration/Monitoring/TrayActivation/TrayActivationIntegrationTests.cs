@@ -190,8 +190,31 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         second.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a consumed code must be rejected on replay");
     }
 
+        [Fact]
+    public async Task ManualExchange_StillConsumesCodeAndReturnsCredentialsAtomically()
+    {
+        var user = await SeedActiveUserAsync(
+            "exchange-atomic-test", "exchange-atomic@test.dev", "AtomicPass1!");
+        var session = await LoginAndGetSessionAsync(user);
+        var code = await GenerateCodeAsync(session);
+
+        var first = await PostExchangeAsync(code, "Atomic Laptop", "Windows 11", "fp-atomic");
+        var second = await PostExchangeAsync(code, "Atomic Laptop", "Windows 11", "fp-atomic");
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        second.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        (await db.TrayDeviceRegistrations.CountAsync(d => d.UserId == user.UserId))
+            .Should().Be(1);
+        (await db.TrayDeviceRefreshTokens.CountAsync(t => t.UserId == user.UserId))
+            .Should().Be(1);
+    }
+
     [Fact]
     public async Task Exchange_RawCodeNeverStoredInDb_OnlyHashPersisted()
+
     {
         var user = await SeedActiveUserAsync("exchange-hash-test", "exchange-hash@test.dev", "HashPass1!");
         var session = await LoginAndGetSessionAsync(user);
