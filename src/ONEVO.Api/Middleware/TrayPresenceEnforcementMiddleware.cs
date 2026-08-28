@@ -23,19 +23,19 @@ public sealed class TrayPresenceEnforcementMiddleware
         var options = context.RequestServices.GetRequiredService<IOptions<TrayPresenceOptions>>().Value;
         var principal = context.User;
 
-        if (tenantContext.ContextMode != TenantContextMode.Tenant
-            || principal.Identity?.IsAuthenticated != true
-            || endpoint?.Metadata.GetMetadata<IAllowAnonymous>() is not null
-            || endpoint?.Metadata.GetMetadata<AllowWithoutActiveTrayAttribute>() is not null
-            || principal.FindFirstValue("token_type") == TrayDeviceTokenType
-            || string.Equals(options.Mode, "Off", StringComparison.OrdinalIgnoreCase))
+        var isEligibleForEnforcement = tenantContext.ContextMode == TenantContextMode.Tenant
+            && principal.Identity?.IsAuthenticated == true
+            && endpoint?.Metadata.GetMetadata<IAllowAnonymous>() is null
+            && endpoint?.Metadata.GetMetadata<AllowWithoutActiveTrayAttribute>() is null
+            && principal.FindFirstValue("token_type") != TrayDeviceTokenType;
+
+        var shouldEnforce = isEligibleForEnforcement
+            && string.Equals(options.Mode, "Enforce", StringComparison.OrdinalIgnoreCase);
+
+        if (!shouldEnforce)
         {
-            if (string.Equals(options.Mode, "Observe", StringComparison.OrdinalIgnoreCase)
-                && tenantContext.ContextMode == TenantContextMode.Tenant
-                && principal.Identity?.IsAuthenticated == true
-                && endpoint?.Metadata.GetMetadata<IAllowAnonymous>() is null
-                && endpoint?.Metadata.GetMetadata<AllowWithoutActiveTrayAttribute>() is null
-                && principal.FindFirstValue("token_type") != TrayDeviceTokenType)
+            if (isEligibleForEnforcement
+                && string.Equals(options.Mode, "Observe", StringComparison.OrdinalIgnoreCase))
             {
                 await LogObserveResultAsync(context, tenantContext, options, logger);
             }
