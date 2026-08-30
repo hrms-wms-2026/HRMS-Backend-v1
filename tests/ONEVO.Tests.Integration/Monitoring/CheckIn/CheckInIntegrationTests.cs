@@ -5,7 +5,9 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
@@ -290,6 +292,7 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
         var tenant = await db.Tenants.SingleAsync(t => t.Id == tenantId);
+        var legalEntity = await db.LegalEntities.SingleAsync(le => le.TenantId == tenantId);
         var user = new User
         {
             Id = Guid.NewGuid(),
@@ -302,6 +305,23 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
         };
 
         db.Users.Add(user);
+        db.Employees.Add(new Employee
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            UserId = user.Id,
+            LegalEntityId = legalEntity.Id,
+            EmployeeNumber = Guid.NewGuid().ToString("N")[..8],
+            FirstName = "Second",
+            LastName = "User",
+            Email = email,
+            EmploymentTypeId = 1,
+            EmploymentStatusId = 1,
+            WorkModeId = 1,
+            HireDate = new DateOnly(2025, 1, 1),
+            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedById = user.Id
+        });
         await db.SaveChangesAsync();
 
         return new SeedResult(tenantId, user.Id, email, password, tenant.Slug);
@@ -340,8 +360,38 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
             IsActive = true
         };
 
+        var legalEntity = new LegalEntity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            Name = $"{tenantSlug} Company",
+            CountryCode = "US",
+            CurrencyCode = "USD",
+            IsActive = true,
+            IsPrimary = true
+        };
+        var employee = new Employee
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            UserId = user.Id,
+            LegalEntityId = legalEntity.Id,
+            EmployeeNumber = Guid.NewGuid().ToString("N")[..8],
+            FirstName = "Test",
+            LastName = "User",
+            Email = email,
+            EmploymentTypeId = 1,
+            EmploymentStatusId = 1,
+            WorkModeId = 1,
+            HireDate = new DateOnly(2025, 1, 1),
+            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedById = user.Id
+        };
+
         db.Tenants.Add(tenant);
         db.Users.Add(user);
+        db.LegalEntities.Add(legalEntity);
+        db.Employees.Add(employee);
         await db.SaveChangesAsync();
 
         return new SeedResult(tenant.Id, user.Id, email, password, tenantSlug);

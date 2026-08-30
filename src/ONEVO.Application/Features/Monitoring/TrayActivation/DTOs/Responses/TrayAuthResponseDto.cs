@@ -9,4 +9,5 @@ public record TrayAuthResponseDto(
     [property: JsonPropertyName("refresh_expires_in_seconds")] int RefreshExpiresInSeconds,
     [property: JsonPropertyName("employee_name")] string? EmployeeName = null,
     [property: JsonPropertyName("employee_email")] string? EmployeeEmail = null,
-    [property: JsonPropertyName("employee_number")] string? EmployeeNumber = null);
+    [property: JsonPropertyName("employee_number")] string? EmployeeNumber = null,
+    [property: JsonPropertyName("employee_profile_status")] string EmployeeProfileStatus = "resolved");

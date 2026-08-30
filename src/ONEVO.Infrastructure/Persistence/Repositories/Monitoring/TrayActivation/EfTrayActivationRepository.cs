@@ -190,11 +190,29 @@ public class EfTrayActivationRepository : ITrayActivationRepository
                 .SetProperty(d => d.DeactivatedAt, deactivatedAt), ct);
     }
 
-    public async Task<TrayEmployeeProfile?> FindEmployeeProfileAsync(Guid userId, Guid tenantId, CancellationToken ct)
+    public async Task<TrayEmployeeProfile?> FindEmployeeProfileAsync(
+        Guid userId, Guid tenantId, Guid? legalEntityId, CancellationToken ct)
     {
-        return await _db.Employees
-            .Where(e => e.UserId == userId && e.TenantId == tenantId)
+        var query =
+            from employee in _db.Employees.AsNoTracking()
+            join status in _db.EmploymentStatuses.AsNoTracking()
+                on employee.EmploymentStatusId equals status.Id
+            where employee.UserId == userId
+                && employee.TenantId == tenantId
+                && status.Code == "active"
+            select employee;
+
+        if (legalEntityId.HasValue)
+            query = query.Where(employee => employee.LegalEntityId == legalEntityId.Value);
+
+        var profiles = await query
+            .OrderBy(employee => employee.Id)
             .Select(e => new TrayEmployeeProfile(e.FirstName, e.LastName, e.Email, e.EmployeeNumber))
-            .FirstOrDefaultAsync(ct);
+            .Take(2)
+            .ToListAsync(ct);
+
+        // A legacy device without company context is allowed to display an employee profile only
+        // when the active employee is unambiguous. Never select a default row arbitrarily.
+        return profiles.Count == 1 ? profiles[0] : null;
     }
 }

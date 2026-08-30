@@ -42,7 +42,8 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
         if (!_device.IsAuthenticated
             || _device.TenantId == Guid.Empty
             || _device.UserId == Guid.Empty
-            || _device.DeviceRegistrationId == Guid.Empty)
+            || _device.DeviceRegistrationId == Guid.Empty
+            || _device.LegalEntityId is null)
         {
             return Result<TrayAgentPolicyDto>.Failure("A valid tray device token is required.", 401);
         }
@@ -57,35 +58,42 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
 
         var tenantId = _device.TenantId;
         var employeeId = _device.UserId;
+        var legalEntityId = _device.LegalEntityId.Value;
 
+        var locationEnabled = await _toggles.IsEnabledAsync(
+            tenantId, employeeId, legalEntityId, MonitoringCapability.WorkLocationVerification, cancellationToken);
         var activityEnabled = await _toggles.IsEnabledAsync(
-            tenantId, employeeId, MonitoringCapability.ActivityMonitoring, cancellationToken);
+            tenantId, employeeId, legalEntityId, MonitoringCapability.ActivityMonitoring, cancellationToken);
+
         var appUsageEnabled = await _toggles.IsEnabledAsync(
-            tenantId, employeeId, MonitoringCapability.ApplicationTracking, cancellationToken);
+            tenantId, employeeId, legalEntityId, MonitoringCapability.ApplicationTracking, cancellationToken);
         var screenshotEnabled = await _toggles.IsEnabledAsync(
-            tenantId, employeeId, MonitoringCapability.ScreenshotCapture, cancellationToken);
+            tenantId, employeeId, legalEntityId, MonitoringCapability.ScreenshotCapture, cancellationToken);
         var autoScreenshotEnabled = await _toggles.IsEnabledAsync(
-            tenantId, employeeId, MonitoringCapability.AutoScreenshotCapture, cancellationToken);
+            tenantId, employeeId, legalEntityId, MonitoringCapability.AutoScreenshotCapture, cancellationToken);
         var cameraEnabled = await _toggles.IsEnabledAsync(
-            tenantId, employeeId, MonitoringCapability.IdentityVerification, cancellationToken);
+            tenantId, employeeId, legalEntityId, MonitoringCapability.IdentityVerification, cancellationToken);
         var idleThresholdMinutes = await _toggles.GetIdleThresholdMinutesAsync(
-            tenantId, employeeId, cancellationToken);
+            tenantId, employeeId, legalEntityId, cancellationToken);
 
         var inactivityEnabled = activityEnabled && screenshotEnabled && autoScreenshotEnabled;
         var now = _clock.UtcNow;
 
         return Result<TrayAgentPolicyDto>.Success(new TrayAgentPolicyDto(
-            ComputeVersion(activityEnabled, appUsageEnabled, screenshotEnabled, autoScreenshotEnabled, cameraEnabled, idleThresholdMinutes),
+            ComputeVersion(locationEnabled, activityEnabled, appUsageEnabled, screenshotEnabled, autoScreenshotEnabled, cameraEnabled, idleThresholdMinutes),
             activityEnabled,
             appUsageEnabled,
             screenshotEnabled,
             inactivityEnabled,
             cameraEnabled,
             idleThresholdMinutes,
-            now.Add(PolicyValidity)));
+            now.Add(PolicyValidity),
+            EffectiveScope: "employee",
+            LocationTrackingEnabled: locationEnabled));
     }
 
     internal static string ComputeVersion(
+        bool locationEnabled,
         bool activityEnabled,
         bool appUsageEnabled,
         bool screenshotEnabled,
@@ -94,7 +102,7 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
         int idleThresholdMinutes)
     {
         var fingerprint =
-            $"{activityEnabled}:{appUsageEnabled}:{screenshotEnabled}:{autoScreenshotEnabled}:{cameraEnabled}:{idleThresholdMinutes}";
+            $"{locationEnabled}:{activityEnabled}:{appUsageEnabled}:{screenshotEnabled}:{autoScreenshotEnabled}:{cameraEnabled}:{idleThresholdMinutes}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint)))[..16];
     }
 }

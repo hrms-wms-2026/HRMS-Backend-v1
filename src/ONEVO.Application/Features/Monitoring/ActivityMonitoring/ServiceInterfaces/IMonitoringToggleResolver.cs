@@ -23,6 +23,13 @@ public interface IMonitoringToggleResolver
         MonitoringCapability capability,
         CancellationToken ct = default);
 
+    Task<bool> IsEnabledAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid legalEntityId,
+        MonitoringCapability capability,
+        CancellationToken ct = default);
+
     /// <summary>
     /// Resolves the effective idle-inactivity threshold, in minutes, for the given employee -
     /// same employee → role → position → department → tenant → default(5) chain as
@@ -31,5 +38,11 @@ public interface IMonitoringToggleResolver
     Task<int> GetIdleThresholdMinutesAsync(
         Guid tenantId,
         Guid employeeId,
+        CancellationToken ct = default);
+
+    Task<int> GetIdleThresholdMinutesAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid legalEntityId,
         CancellationToken ct = default);
 }

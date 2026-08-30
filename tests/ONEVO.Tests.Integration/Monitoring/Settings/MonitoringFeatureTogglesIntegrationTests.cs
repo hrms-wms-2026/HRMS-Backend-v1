@@ -6,7 +6,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.E2E;
@@ -108,7 +110,9 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
     public async Task Put_ActivityMonitoringTrue_ResolverReflectsChange()
     {
         var session = await SeedAdminUserAndLoginAsync("mft-resolver");
-        var employeeId = Guid.NewGuid(); // resolver falls back to tenant toggle when no employee override exists
+        // Resolves via the admin's own Employee row: no employee-level override exists, so this
+        // falls through to the legal-entity default the PUT below just wrote.
+        var employeeId = session.UserId;
 
         using var putReq = new HttpRequestMessage(HttpMethod.Put, "/api/v1/monitoring/settings");
         putReq.Headers.Host = session.TenantHost;
@@ -131,7 +135,7 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
     public async Task Put_IdleThresholdMinutes_ResolverReflectsChange()
     {
         var session = await SeedAdminUserAndLoginAsync("mft-idle-threshold");
-        var employeeId = Guid.NewGuid();
+        var employeeId = session.UserId;
 
         using var putReq = new HttpRequestMessage(HttpMethod.Put, "/api/v1/monitoring/settings");
         putReq.Headers.Host = session.TenantHost;
@@ -251,10 +255,39 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
             AssignedAt = now, AssignedBy = userId
         });
 
+        var legalEntity = new LegalEntity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            Name = $"{slug} Company",
+            CountryCode = "US",
+            CurrencyCode = "USD",
+            IsActive = true,
+            IsPrimary = true
+        };
+        db.LegalEntities.Add(legalEntity);
+        db.Employees.Add(new Employee
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            UserId = userId,
+            LegalEntityId = legalEntity.Id,
+            EmployeeNumber = Guid.NewGuid().ToString("N")[..8],
+            FirstName = "Test",
+            LastName = "Admin",
+            Email = $"{slug}@test.dev",
+            EmploymentTypeId = 1,
+            EmploymentStatusId = 1,
+            WorkModeId = 1,
+            HireDate = new DateOnly(2025, 1, 1),
+            CreatedAt = now,
+            CreatedById = userId
+        });
+
         await db.SaveChangesAsync();
 
         var sessionInfo = await LoginAndGetSessionAsync(userId, $"{slug}@test.dev", "TestPass1!", slug);
-        return sessionInfo with { TenantId = tenant.Id };
+        return sessionInfo with { TenantId = tenant.Id, UserId = userId };
     }
 
     private async Task<SessionInfo> LoginAndGetSessionAsync(Guid userId, string email, string password, string tenantSlug)
@@ -279,6 +312,7 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
             $"onevo_session={sessionValue}; onevo_csrf={csrfCookieValue}",
             csrfHeader,
             $"{tenantSlug}.localhost",
+            Guid.Empty,
             Guid.Empty);
     }
 
@@ -333,5 +367,6 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
         throw new InvalidOperationException($"Cookie '{cookieName}' not found in response.");
     }
 
-    private sealed record SessionInfo(string CookieHeader, string CsrfHeader, string TenantHost, Guid TenantId);
+    private sealed record SessionInfo(
+        string CookieHeader, string CsrfHeader, string TenantHost, Guid TenantId, Guid UserId);
 }

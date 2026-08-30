@@ -87,6 +87,7 @@ public sealed class PollDeviceAuthorizationCommandHandler
                 new TrayEnrollmentRequest(
                     authorization.ApprovedTenantId.Value,
                     authorization.ApprovedUserId.Value,
+                    authorization.ApprovedLegalEntityId,
                     authorization.DeviceName,
                     authorization.DeviceOs,
                     request.DeviceFingerprint),

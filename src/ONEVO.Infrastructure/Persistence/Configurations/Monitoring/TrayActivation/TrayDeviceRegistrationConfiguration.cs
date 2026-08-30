@@ -18,5 +18,10 @@ public class TrayDeviceRegistrationConfiguration : IEntityTypeConfiguration<Tray
         builder.HasIndex(t => new { t.TenantId, t.UserId, t.IsActive });
         builder.HasIndex(t => new { t.TenantId, t.UserId, t.IsActive, t.LastSeenAt });
         builder.HasIndex(t => t.DeviceFingerprint);
+
+        builder.HasOne<ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity>()
+            .WithMany()
+            .HasForeignKey(t => t.LegalEntityId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

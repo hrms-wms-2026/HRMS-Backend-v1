@@ -14,6 +14,7 @@ public class TrayDeviceAuthorization
     public DeviceAuthorizationStatus Status { get; set; } = DeviceAuthorizationStatus.Pending;
     public Guid? ApprovedTenantId { get; set; }
     public Guid? ApprovedUserId { get; set; }
+    public Guid? ApprovedLegalEntityId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? ApprovedAt { get; set; }

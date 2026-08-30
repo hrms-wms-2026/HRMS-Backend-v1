@@ -35,6 +35,10 @@ public sealed class ApproveDeviceAuthorizationCommandHandler
         if (!_currentUser.IsAuthenticated)
             return Result.Forbidden("Authentication required.");
 
+        if (_currentUser.LegalEntityId is not Guid legalEntityId)
+            return Result.UnprocessableEntity(
+                "Select an active company before approving this device.");
+
         var authorization = await _repository.FindDeviceAuthorizationForApprovalAsync(
             request.RequestId,
             _tokenService.HashToken(request.UserCode),
@@ -46,6 +50,7 @@ public sealed class ApproveDeviceAuthorizationCommandHandler
         authorization.Status = Domain.Features.Monitoring.TrayActivation.Enums.DeviceAuthorizationStatus.Approved;
         authorization.ApprovedTenantId = _currentUser.TenantId;
         authorization.ApprovedUserId = _currentUser.UserId;
+        authorization.ApprovedLegalEntityId = legalEntityId;
         authorization.ApprovedAt = _clock.UtcNow;
         await _unitOfWork.SaveChangesAsync(ct);
         return Result.Success();

@@ -49,6 +49,7 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
             Id = Guid.NewGuid(),
             TenantId = request.TenantId,
             UserId = request.UserId,
+            LegalEntityId = request.LegalEntityId,
             DeviceName = request.DeviceName,
             DeviceOs = request.DeviceOs,
             DeviceFingerprint = request.DeviceFingerprint,
@@ -75,9 +76,9 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
         await _repository.AddRefreshTokenAsync(refreshToken, ct);
 
         var accessToken = _tokenService.GenerateAccessToken(
-            device.Id, request.UserId, request.TenantId);
-        var (employeeName, employeeEmail, employeeNumber) = await ResolveEmployeeIdentityAsync(
-            request.UserId, request.TenantId, ct);
+            device.Id, request.UserId, request.TenantId, request.LegalEntityId);
+        var (employeeName, employeeEmail, employeeNumber, profileStatus) = await ResolveEmployeeIdentityAsync(
+            request.UserId, request.TenantId, request.LegalEntityId, ct);
 
         return new TrayAuthResponseDto(
             accessToken,
@@ -86,35 +87,40 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
             RefreshTokenExpiresInSeconds,
             employeeName,
             employeeEmail,
-            employeeNumber);
+            employeeNumber,
+            profileStatus);
     }
 
-    private async Task<(string? Name, string? Email, string? Number)> ResolveEmployeeIdentityAsync(
+    private async Task<(string? Name, string? Email, string? Number, string Status)> ResolveEmployeeIdentityAsync(
         Guid userId,
         Guid tenantId,
+        Guid? legalEntityId,
         CancellationToken ct)
     {
         var tenant = await _tenantRepository.GetByIdAsync(tenantId, ct);
         if (tenant is null)
-            return (null, null, null);
+            return (null, null, null, "profile_unavailable");
 
         await _tenantSwitcher.SwitchToTenantAsync(
             new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
 
-        var profile = await _repository.FindEmployeeProfileAsync(userId, tenantId, ct);
+        var profile = await _repository.FindEmployeeProfileAsync(userId, tenantId, legalEntityId, ct);
         if (profile is not null)
         {
             return (
                 FullNameOrNull(profile.FirstName, profile.LastName),
                 profile.Email,
-                profile.EmployeeNumber);
+                profile.EmployeeNumber,
+                "resolved");
         }
 
         var user = await _userRepository.GetByIdAsync(userId, ct);
         if (user is not null)
-            return (FullNameOrNull(user.FirstName, user.LastName), user.Email, null);
+            return (FullNameOrNull(user.FirstName, user.LastName), user.Email, null,
+                legalEntityId.HasValue ? "profile_unavailable" : "company_context_required");
 
-        return (null, null, null);
+        return (null, null, null,
+            legalEntityId.HasValue ? "profile_unavailable" : "company_context_required");
     }
 
     private static string? FullNameOrNull(string first, string last)
