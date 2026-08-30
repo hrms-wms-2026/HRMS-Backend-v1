@@ -6,7 +6,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.E2E;
@@ -249,6 +251,35 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
         {
             TenantId = tenant.Id, UserId = userId, RoleId = roleId,
             AssignedAt = now, AssignedBy = userId
+        });
+
+        var legalEntity = new LegalEntity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            Name = $"{slug} Company",
+            CountryCode = "US",
+            CurrencyCode = "USD",
+            IsActive = true,
+            IsPrimary = true
+        };
+        db.LegalEntities.Add(legalEntity);
+        db.Employees.Add(new Employee
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            UserId = userId,
+            LegalEntityId = legalEntity.Id,
+            EmployeeNumber = Guid.NewGuid().ToString("N")[..8],
+            FirstName = "Test",
+            LastName = "Admin",
+            Email = $"{slug}@test.dev",
+            EmploymentTypeId = 1,
+            EmploymentStatusId = 1,
+            WorkModeId = 1,
+            HireDate = new DateOnly(2025, 1, 1),
+            CreatedAt = now,
+            CreatedById = userId
         });
 
         await db.SaveChangesAsync();

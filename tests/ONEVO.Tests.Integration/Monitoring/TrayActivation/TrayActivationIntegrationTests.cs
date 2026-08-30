@@ -247,7 +247,8 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Test User");
         doc.RootElement.GetProperty("employee_email").GetString().Should().Be("refresh-valid@test.dev");
         doc.RootElement.TryGetProperty("employee_number", out var numberProp).Should().BeTrue();
-        numberProp.ValueKind.Should().Be(JsonValueKind.Null);
+        numberProp.ValueKind.Should().Be(JsonValueKind.String);
+        numberProp.GetString().Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
