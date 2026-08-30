@@ -21,6 +21,7 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _deviceId = Guid.NewGuid();
+    private readonly Guid _legalEntityId = Guid.NewGuid();
 
     public GetEffectiveTrayPolicyQueryHandlerTests()
     {
@@ -28,6 +29,7 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
         _device.Setup(d => d.TenantId).Returns(_tenantId);
         _device.Setup(d => d.UserId).Returns(_userId);
         _device.Setup(d => d.DeviceRegistrationId).Returns(_deviceId);
+        _device.Setup(d => d.LegalEntityId).Returns(_legalEntityId);
 
         _tenants.Setup(t => t.GetByIdAsync(_tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Tenant
@@ -48,12 +50,12 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
 
     private void Set(MonitoringCapability capability, bool enabled) =>
         _toggles.Setup(t => t.IsEnabledAsync(
-                _tenantId, _userId, capability, It.IsAny<CancellationToken>()))
+                _tenantId, _userId, _legalEntityId, capability, It.IsAny<CancellationToken>()))
             .ReturnsAsync(enabled);
 
     private void SetIdleThreshold(int minutes) =>
         _toggles.Setup(t => t.GetIdleThresholdMinutesAsync(
-                _tenantId, _userId, It.IsAny<CancellationToken>()))
+                _tenantId, _userId, _legalEntityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(minutes);
 
     [Fact]

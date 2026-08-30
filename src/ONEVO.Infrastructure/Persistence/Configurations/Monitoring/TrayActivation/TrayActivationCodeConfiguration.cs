@@ -18,6 +18,11 @@ public class TrayActivationCodeConfiguration : IEntityTypeConfiguration<TrayActi
         builder.HasIndex(t => t.CodeHash).IsUnique();
         builder.HasIndex(t => new { t.UserId, t.TenantId, t.CreatedAt });
 
+        builder.HasOne<ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity>()
+            .WithMany()
+            .HasForeignKey(t => t.LegalEntityId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.Ignore(t => t.IsValid);
     }
 }

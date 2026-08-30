@@ -28,6 +28,11 @@ public class TrayDeviceAuthorizationConfiguration : IEntityTypeConfiguration<Tra
         builder.HasIndex(t => new { t.DeviceFingerprintHash, t.CreatedAt });
         builder.HasIndex(t => new { t.Status, t.ExpiresAt });
 
+        builder.HasOne<ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity>()
+            .WithMany()
+            .HasForeignKey(t => t.ApprovedLegalEntityId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.ToTable(table =>
         {
             table.HasCheckConstraint(

@@ -30,4 +30,9 @@ public class TrayCurrentDeviceService : ITrayCurrentDevice
         Guid.TryParse(User?.FindFirstValue("tenant_id"), out var id)
             ? id
             : Guid.Empty;
+
+    public Guid? LegalEntityId =>
+        Guid.TryParse(User?.FindFirstValue("legal_entity_id"), out var id)
+            ? id
+            : null;
 }

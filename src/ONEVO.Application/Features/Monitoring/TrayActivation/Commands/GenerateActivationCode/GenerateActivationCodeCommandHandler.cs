@@ -40,6 +40,10 @@ public class GenerateActivationCodeCommandHandler
         var tenantId = _currentUser.TenantId;
         var now = _clock.UtcNow;
 
+        if (_currentUser.LegalEntityId is not Guid legalEntityId)
+            return Result<ActivationCodeResponseDto>.UnprocessableEntity(
+                "Select an active company before creating a tray activation code.");
+
         var recentCount = await _repository.CountRecentCodesForUserAsync(
             userId, tenantId, now.AddHours(-1), cancellationToken);
 
@@ -55,6 +59,7 @@ public class GenerateActivationCodeCommandHandler
             Id = Guid.NewGuid(),
             TenantId = tenantId,
             UserId = userId,
+            LegalEntityId = legalEntityId,
             CodeHash = codeHash,
             ExpiresAt = now.Add(CodeLifetime),
             CreatedAt = now

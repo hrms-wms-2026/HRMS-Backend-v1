@@ -17,6 +17,7 @@ public class TrayEnrollmentServiceTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid UserId = Guid.NewGuid();
+    private static readonly Guid LegalEntityId = Guid.NewGuid();
     private static readonly DateTimeOffset Now = new(2026, 8, 27, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -34,6 +35,7 @@ public class TrayEnrollmentServiceTests
         repository.Verify(r => r.AddDeviceRegistrationAsync(
             It.Is<TrayDeviceRegistration>(d => d.TenantId == TenantId
                 && d.UserId == UserId
+                && d.LegalEntityId == LegalEntityId
                 && d.IsActive
                 && d.DeviceName == request.DeviceName
                 && d.DeviceOs == request.DeviceOs
@@ -51,7 +53,8 @@ public class TrayEnrollmentServiceTests
     public async Task IssueAsync_ReturnsEmployeeProfile_WhenEmployeeExists()
     {
         var repository = new Mock<ITrayActivationRepository>();
-        repository.Setup(r => r.FindEmployeeProfileAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+        repository.Setup(r => r.FindEmployeeProfileAsync(
+                UserId, TenantId, LegalEntityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TrayEmployeeProfile("Ada", "Lovelace", "ada@example.com", "EMP-001"));
         var service = CreateService(repository, TokenService());
 
@@ -95,6 +98,7 @@ public class TrayEnrollmentServiceTests
     private static TrayEnrollmentRequest Request() => new(
         TenantId,
         UserId,
+        LegalEntityId,
         "DESKTOP-7K2Q",
         "Windows 11",
         "fingerprint");
@@ -122,7 +126,8 @@ public class TrayEnrollmentServiceTests
         var tokens = new Mock<ITrayTokenService>();
         tokens.Setup(t => t.GenerateRawRefreshToken()).Returns("raw-refresh-token");
         tokens.Setup(t => t.HashToken("raw-refresh-token")).Returns("refresh-token-hash");
-        tokens.Setup(t => t.GenerateAccessToken(It.IsAny<Guid>(), UserId, TenantId)).Returns("access-token");
+        tokens.Setup(t => t.GenerateAccessToken(
+            It.IsAny<Guid>(), UserId, TenantId, LegalEntityId)).Returns("access-token");
         return tokens;
     }
 }

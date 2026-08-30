@@ -57,6 +57,7 @@ public class ExchangeActivationCodeCommandHandler
                 new TrayEnrollmentRequest(
                     activationCode.TenantId,
                     activationCode.UserId,
+                    activationCode.LegalEntityId,
                     request.DeviceName,
                     request.DeviceOs,
                     request.DeviceFingerprint),

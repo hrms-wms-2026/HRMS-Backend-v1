@@ -38,7 +38,8 @@ public interface ITrayActivationRepository
     Task DeactivateDeviceAsync(Guid deviceRegistrationId, DateTimeOffset deactivatedAt, CancellationToken ct);
 
     /// <summary>HR profile for display purposes only — returns null if the user has no linked Employee row yet.</summary>
-    Task<TrayEmployeeProfile?> FindEmployeeProfileAsync(Guid userId, Guid tenantId, CancellationToken ct);
+    Task<TrayEmployeeProfile?> FindEmployeeProfileAsync(
+        Guid userId, Guid tenantId, Guid? legalEntityId, CancellationToken ct);
 }
 
 public sealed record TrayEmployeeProfile(string FirstName, string LastName, string Email, string EmployeeNumber);

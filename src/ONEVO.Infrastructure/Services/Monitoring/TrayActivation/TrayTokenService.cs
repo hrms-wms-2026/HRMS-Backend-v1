@@ -26,7 +26,8 @@ public class TrayTokenService : ITrayTokenService
         _audience = section["Audience"] ?? "onevo-tray-app";
     }
 
-    public string GenerateAccessToken(Guid deviceRegistrationId, Guid userId, Guid tenantId)
+    public string GenerateAccessToken(
+        Guid deviceRegistrationId, Guid userId, Guid tenantId, Guid? legalEntityId)
     {
         var claims = new List<Claim>
         {
@@ -35,6 +36,9 @@ public class TrayTokenService : ITrayTokenService
             new("tenant_id", tenantId.ToString()),
             new("token_type", "tray_device")
         };
+
+        if (legalEntityId.HasValue)
+            claims.Add(new Claim("legal_entity_id", legalEntityId.Value.ToString()));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_secret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

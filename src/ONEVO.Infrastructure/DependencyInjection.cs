@@ -260,6 +260,9 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Cancellation.EfLeaveCancellationRepository>();
 
         services.AddScoped<IExpectedWorkAreaResolver, ExpectedWorkAreaResolver>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.IMonitoringPolicyConfigurationService,
+            ONEVO.Infrastructure.Services.Monitoring.Settings.MonitoringPolicyConfigurationService>();
 
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
