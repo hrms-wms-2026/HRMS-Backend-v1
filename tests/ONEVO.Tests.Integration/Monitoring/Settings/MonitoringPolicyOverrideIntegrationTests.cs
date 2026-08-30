@@ -104,12 +104,13 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
     public async Task Resolve_CompanyDefaultOnly_Resolves()
     {
         var tenantId = Guid.NewGuid();
-        await SeedTenantOnlyAsync(tenantId, "prec-company");
+        var (employee, _) = await SeedTenantAndEmployeeAsync(
+            tenantId, "prec-company", departmentId: null, assignToPosition: false);
         await SeedCompanyToggleAsync(tenantId, activityMonitoring: true);
 
         using var scope = _factory.Services.CreateScope();
         var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
-        var enabled = await resolver.IsEnabledAsync(tenantId, Guid.NewGuid(), MonitoringCapability.ActivityMonitoring);
+        var enabled = await resolver.IsEnabledAsync(tenantId, employee.UserId, MonitoringCapability.ActivityMonitoring);
 
         enabled.Should().BeTrue();
     }
