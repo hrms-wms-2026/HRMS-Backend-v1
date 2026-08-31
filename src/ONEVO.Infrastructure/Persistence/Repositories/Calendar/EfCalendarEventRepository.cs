@@ -24,12 +24,37 @@ public class EfCalendarEventRepository : ICalendarEventRepository
     {
         return await _db.CalendarEvents.AsNoTracking()
             .Where(e => e.TenantId == tenantId
+                        && !e.IsRecurrenceCancelled
+                        && (e.RecurrenceParentId != null || e.Recurrence == CalendarRecurrences.None)
                         && e.StartDate <= to && e.EndDate >= from
                         && (e.CreatedById == userId
                             || (employeeId != null && _db.CalendarEventParticipants.Any(p => p.EventId == e.Id && p.EmployeeId == employeeId))))
             .OrderBy(e => e.StartDate)
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<CalendarEvent>> GetRecurringMastersForCallerAsync(
+        Guid tenantId, Guid userId, Guid? employeeId, DateTimeOffset to, CancellationToken ct = default)
+    {
+        return await _db.CalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId
+                        && e.Recurrence != CalendarRecurrences.None
+                        && e.RecurrenceParentId == null
+                        && e.StartDate <= to
+                        && (e.CreatedById == userId
+                            || (employeeId != null && _db.CalendarEventParticipants.Any(p => p.EventId == e.Id && p.EmployeeId == employeeId))))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<CalendarEvent>> GetChildrenForMasterAsync(Guid tenantId, Guid masterId, CancellationToken ct = default)
+        => await _db.CalendarEvents
+            .Where(e => e.TenantId == tenantId && e.RecurrenceParentId == masterId)
+            .ToListAsync(ct);
+
+    public async Task<CalendarEvent?> GetTrackedChildByOriginalStartAsync(
+        Guid tenantId, Guid masterId, DateTimeOffset originalStart, CancellationToken ct = default)
+        => await _db.CalendarEvents.FirstOrDefaultAsync(
+            e => e.TenantId == tenantId && e.RecurrenceParentId == masterId && e.RecurrenceOriginalStart == originalStart, ct);
 
     public async Task AddParticipantsAsync(IReadOnlyList<CalendarEventParticipant> participants, CancellationToken ct = default)
         => await _db.CalendarEventParticipants.AddRangeAsync(participants, ct);

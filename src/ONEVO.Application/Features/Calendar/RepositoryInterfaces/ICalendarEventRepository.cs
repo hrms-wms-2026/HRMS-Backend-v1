@@ -8,10 +8,28 @@ public interface ICalendarEventRepository
     Task<CalendarEvent?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<CalendarEvent?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
-    /// <summary>Events in [from, to] where the caller is the creator (by UserId) or a
-    /// participant (by EmployeeId) - the two ways of "owning" a calendar event in this pass.</summary>
+    /// <summary>Events in [from, to] where the caller is the creator or a participant. Excludes
+    /// recurring masters (Recurrence != "none" AND RecurrenceParentId == null) - those are
+    /// expanded into virtual occurrences separately, never returned as their own literal row, to
+    /// avoid double-counting a master's first occurrence. Excludes cancellation markers always.</summary>
     Task<IReadOnlyList<CalendarEvent>> GetInDateRangeForCallerAsync(
         Guid tenantId, Guid userId, Guid? employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
+    /// <summary>Recurring master rows the caller created or participates in, whose series could
+    /// produce an occurrence at or before `to` - the caller expands each one's RecurrenceRule to
+    /// find which occurrences actually fall in the query's [from, to] window.</summary>
+    Task<IReadOnlyList<CalendarEvent>> GetRecurringMastersForCallerAsync(
+        Guid tenantId, Guid userId, Guid? employeeId, DateTimeOffset to, CancellationToken ct = default);
+
+    /// <summary>Every detached-occurrence and cancellation-marker row belonging to one master -
+    /// tracked, since both the query-merge (read-only) and this-and-following re-parent (write)
+    /// call sites use it.</summary>
+    Task<IReadOnlyList<CalendarEvent>> GetChildrenForMasterAsync(Guid tenantId, Guid masterId, CancellationToken ct = default);
+
+    /// <summary>The tracked child row (detached or cancellation-marker) for one exact occurrence,
+    /// or null if that occurrence has never been edited/cancelled before.</summary>
+    Task<CalendarEvent?> GetTrackedChildByOriginalStartAsync(
+        Guid tenantId, Guid masterId, DateTimeOffset originalStart, CancellationToken ct = default);
 
     Task AddParticipantsAsync(IReadOnlyList<CalendarEventParticipant> participants, CancellationToken ct = default);
     void Update(CalendarEvent calendarEvent);
