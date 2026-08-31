@@ -42,6 +42,17 @@ public interface ICalendarEventRepository
     /// employee isn't a participant on this event.</summary>
     Task<CalendarEventParticipant?> GetTrackedParticipantAsync(
         Guid tenantId, Guid eventId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>Same shape as GetInDateRangeForCallerAsync, but scoped to one specific employee's
+    /// participation rather than the current caller - used for conflict-checking a participant
+    /// who is not the person making the request.</summary>
+    Task<IReadOnlyList<CalendarEvent>> GetInDateRangeForEmployeeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+
+    /// <summary>Same shape as GetRecurringMastersForCallerAsync, scoped to one specific employee's
+    /// participation.</summary>
+    Task<IReadOnlyList<CalendarEvent>> GetRecurringMastersForEmployeeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset to, CancellationToken ct = default);
     void Update(CalendarEvent calendarEvent);
     void Remove(CalendarEvent calendarEvent);
 }

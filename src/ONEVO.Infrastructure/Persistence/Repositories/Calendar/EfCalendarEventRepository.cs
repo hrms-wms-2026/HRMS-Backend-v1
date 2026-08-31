@@ -73,6 +73,31 @@ public class EfCalendarEventRepository : ICalendarEventRepository
         => await _db.CalendarEventParticipants.FirstOrDefaultAsync(
             p => p.TenantId == tenantId && p.EventId == eventId && p.EmployeeId == employeeId, ct);
 
+    public async Task<IReadOnlyList<CalendarEvent>> GetInDateRangeForEmployeeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+    {
+        return await _db.CalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId
+                        && !e.IsRecurrenceCancelled
+                        && (e.RecurrenceParentId != null || e.Recurrence == CalendarRecurrences.None)
+                        && e.StartDate <= to && e.EndDate >= from
+                        && _db.CalendarEventParticipants.Any(p => p.EventId == e.Id && p.EmployeeId == employeeId))
+            .OrderBy(e => e.StartDate)
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<CalendarEvent>> GetRecurringMastersForEmployeeAsync(
+        Guid tenantId, Guid employeeId, DateTimeOffset to, CancellationToken ct = default)
+    {
+        return await _db.CalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId
+                        && e.Recurrence != CalendarRecurrences.None
+                        && e.RecurrenceParentId == null
+                        && e.StartDate <= to
+                        && _db.CalendarEventParticipants.Any(p => p.EventId == e.Id && p.EmployeeId == employeeId))
+            .ToListAsync(ct);
+    }
+
     public void Update(CalendarEvent calendarEvent) => _db.CalendarEvents.Update(calendarEvent);
     public void Remove(CalendarEvent calendarEvent) => _db.CalendarEvents.Remove(calendarEvent);
 }

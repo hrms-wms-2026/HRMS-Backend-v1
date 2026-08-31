@@ -9,6 +9,7 @@ using ONEVO.Application.Features.Calendar.Commands.DeleteCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.EditRecurringOccurrence;
 using ONEVO.Application.Features.Calendar.Commands.RespondToCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.UpdateCalendarEvent;
+using ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts;
 using ONEVO.Application.Features.Calendar.Queries.GetCalendarEvents;
 
 namespace ONEVO.Api.Controllers.Tenant.Calendar;
@@ -102,6 +103,16 @@ public class CalendarController : ControllerBase
         var result = await _mediator.Send(new RespondToCalendarEventCommand(id, request.ResponseStatus), ct);
         return result.IsSuccess
             ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("check-conflicts")]
+    [RequirePermission("calendar:read")]
+    public async Task<IActionResult> CheckConflicts([FromBody] CheckCalendarConflictsRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new CheckCalendarConflictsQuery(request.ParticipantEmployeeIds, request.StartDate, request.EndDate), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }

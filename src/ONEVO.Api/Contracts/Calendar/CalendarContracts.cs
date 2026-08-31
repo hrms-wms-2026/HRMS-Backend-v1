@@ -1,4 +1,5 @@
 using ONEVO.Application.Features.Calendar.DTOs.Responses;
+using ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts;
 
 namespace ONEVO.Api.Contracts.Calendar;
 
@@ -13,6 +14,10 @@ public sealed record UpdateCalendarEventRequest(
     string Recurrence);
 
 public sealed record RespondToCalendarEventRequest(string ResponseStatus);
+
+public sealed record CheckCalendarConflictsRequest(IReadOnlyList<Guid> ParticipantEmployeeIds, DateTimeOffset StartDate, DateTimeOffset EndDate);
+public sealed record CalendarConflictViewModel(Guid EmployeeId, string EmployeeName, Guid ConflictingEventId, string ConflictingEventTitle);
+public sealed record CalendarConflictsViewModel(IReadOnlyList<CalendarConflictViewModel> Conflicts);
 
 public sealed record EditRecurringOccurrenceRequest(
     DateTimeOffset OriginalStart, string Scope, string Title, string? Description,
@@ -42,4 +47,10 @@ public static class CalendarEventViewModelMapper
 
     public static CalendarEventsViewModel ToViewModel(this CalendarEventsResponse dto) =>
         new(dto.Events.Select(e => e.ToViewModel()).ToList());
+}
+
+public static class CalendarConflictsViewModelMapper
+{
+    public static CalendarConflictsViewModel ToViewModel(this CalendarConflictsResponse dto) =>
+        new(dto.Conflicts.Select(c => new CalendarConflictViewModel(c.EmployeeId, c.EmployeeName, c.ConflictingEventId, c.ConflictingEventTitle)).ToList());
 }
