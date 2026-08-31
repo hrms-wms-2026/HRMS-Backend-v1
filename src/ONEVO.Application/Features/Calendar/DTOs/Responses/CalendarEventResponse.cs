@@ -1,5 +1,7 @@
 namespace ONEVO.Application.Features.Calendar.DTOs.Responses;
 
+public sealed record CalendarEventParticipantSummary(Guid EmployeeId, string EmployeeName, string ResponseStatus);
+
 public sealed record CalendarEventItem(
     Guid Id,
     string Title,
@@ -19,6 +21,7 @@ public sealed record CalendarEventItem(
     Guid CreatedById,
     bool IsRecurringOccurrence = false,
     Guid? RecurrenceMasterId = null,
-    DateTimeOffset? OriginalStart = null);
+    DateTimeOffset? OriginalStart = null,
+    IReadOnlyList<CalendarEventParticipantSummary>? Participants = null);
 
 public sealed record CalendarEventsResponse(IReadOnlyList<CalendarEventItem> Events);

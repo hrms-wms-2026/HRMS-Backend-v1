@@ -32,6 +32,11 @@ public interface ICalendarEventRepository
         Guid tenantId, Guid masterId, DateTimeOffset originalStart, CancellationToken ct = default);
 
     Task AddParticipantsAsync(IReadOnlyList<CalendarEventParticipant> participants, CancellationToken ct = default);
+
+    /// <summary>Every participant row for the given events, grouped by EventId - used to attach
+    /// participant summaries to items returned from GetCalendarEventsQueryHandler.</summary>
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventParticipant>>> GetParticipantsForEventsAsync(
+        Guid tenantId, IReadOnlyList<Guid> eventIds, CancellationToken ct = default);
     void Update(CalendarEvent calendarEvent);
     void Remove(CalendarEvent calendarEvent);
 }

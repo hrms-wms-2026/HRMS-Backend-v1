@@ -6,6 +6,7 @@ using ONEVO.Application.Features.Calendar.DTOs.Responses;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Application.Features.Calendar.Queries.GetCalendarEvents;
 
@@ -29,10 +30,19 @@ public sealed class GetCalendarEventsQueryHandler(
         var realRows = await events.GetInDateRangeForCallerAsync(
             tenantId, currentUser.UserId, employee?.Id, request.From, request.To, ct);
 
-        var items = realRows.Select(e => new CalendarEventItem(
-            e.Id, e.Title, e.Description, e.StartDate, e.EndDate, e.SourceType, e.Color,
-            e.Recurrence, e.IsAllDay, e.Timezone, e.EventStatus, e.IsPrivate, e.Location,
-            e.MeetingLink, e.ExternalSource, e.CreatedById)).ToList();
+        var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, realRows.Select(e => e.Id).ToList(), ct);
+
+        var items = new List<CalendarEventItem>();
+        foreach (var e in realRows)
+        {
+            var participants = participantsByEvent.TryGetValue(e.Id, out var p)
+                ? await ResolveParticipantSummariesAsync(p, tenantId, ct)
+                : [];
+            items.Add(new CalendarEventItem(
+                e.Id, e.Title, e.Description, e.StartDate, e.EndDate, e.SourceType, e.Color,
+                e.Recurrence, e.IsAllDay, e.Timezone, e.EventStatus, e.IsPrivate, e.Location,
+                e.MeetingLink, e.ExternalSource, e.CreatedById, Participants: participants));
+        }
 
         var masters = await events.GetRecurringMastersForCallerAsync(tenantId, currentUser.UserId, employee?.Id, request.To, ct);
 
@@ -41,6 +51,11 @@ public sealed class GetCalendarEventsQueryHandler(
             var children = await events.GetChildrenForMasterAsync(tenantId, master.Id, ct);
             var occurrenceStarts = expander.Expand(master.RecurrenceRule!, master.StartDate, request.From, request.To);
             var duration = master.EndDate - master.StartDate;
+
+            var masterParticipantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [master.Id], ct);
+            var masterParticipants = masterParticipantsByEvent.TryGetValue(master.Id, out var mp)
+                ? await ResolveParticipantSummariesAsync(mp, tenantId, ct)
+                : [];
 
             foreach (var occurrenceStart in occurrenceStarts)
             {
@@ -54,10 +69,24 @@ public sealed class GetCalendarEventsQueryHandler(
                     master.SourceType, master.Color, master.Recurrence, master.IsAllDay, master.Timezone,
                     master.EventStatus, master.IsPrivate, master.Location, master.MeetingLink,
                     master.ExternalSource, master.CreatedById,
-                    IsRecurringOccurrence: true, RecurrenceMasterId: master.Id, OriginalStart: occurrenceStart));
+                    IsRecurringOccurrence: true, RecurrenceMasterId: master.Id, OriginalStart: occurrenceStart,
+                    Participants: masterParticipants));
             }
         }
 
         return Result<CalendarEventsResponse>.Success(new CalendarEventsResponse(items.OrderBy(i => i.StartDate).ToList()));
+    }
+
+    private async Task<IReadOnlyList<CalendarEventParticipantSummary>> ResolveParticipantSummariesAsync(
+        IReadOnlyList<CalendarEventParticipant> participants, Guid tenantId, CancellationToken ct)
+    {
+        var summaries = new List<CalendarEventParticipantSummary>();
+        foreach (var p in participants)
+        {
+            var employee = await employees.GetByIdAsync(tenantId, p.EmployeeId, ct);
+            summaries.Add(new CalendarEventParticipantSummary(
+                p.EmployeeId, employee is null ? "Unknown" : $"{employee.FirstName} {employee.LastName}", p.ResponseStatus));
+        }
+        return summaries;
     }
 }

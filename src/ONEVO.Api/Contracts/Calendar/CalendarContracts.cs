@@ -17,12 +17,15 @@ public sealed record EditRecurringOccurrenceRequest(
     DateTimeOffset StartDate, DateTimeOffset EndDate, bool IsAllDay, string? Timezone,
     string? Location, string? MeetingLink, string? Color);
 
+public sealed record CalendarEventParticipantSummaryViewModel(Guid EmployeeId, string EmployeeName, string ResponseStatus);
+
 public sealed record CalendarEventViewModel(
     Guid Id, string Title, string? Description, DateTimeOffset StartDate, DateTimeOffset EndDate,
     string SourceType, string? Color, string Recurrence, bool IsAllDay, string? Timezone,
     string? EventStatus, bool IsPrivate, string? Location, string? MeetingLink,
     string? ExternalSource, Guid CreatedById,
-    bool IsRecurringOccurrence = false, Guid? RecurrenceMasterId = null, DateTimeOffset? OriginalStart = null);
+    bool IsRecurringOccurrence = false, Guid? RecurrenceMasterId = null, DateTimeOffset? OriginalStart = null,
+    IReadOnlyList<CalendarEventParticipantSummaryViewModel>? Participants = null);
 
 public sealed record CalendarEventsViewModel(IReadOnlyList<CalendarEventViewModel> Events);
 
@@ -32,7 +35,8 @@ public static class CalendarEventViewModelMapper
         dto.Id, dto.Title, dto.Description, dto.StartDate, dto.EndDate, dto.SourceType, dto.Color,
         dto.Recurrence, dto.IsAllDay, dto.Timezone, dto.EventStatus, dto.IsPrivate, dto.Location,
         dto.MeetingLink, dto.ExternalSource, dto.CreatedById,
-        dto.IsRecurringOccurrence, dto.RecurrenceMasterId, dto.OriginalStart);
+        dto.IsRecurringOccurrence, dto.RecurrenceMasterId, dto.OriginalStart,
+        dto.Participants?.Select(p => new CalendarEventParticipantSummaryViewModel(p.EmployeeId, p.EmployeeName, p.ResponseStatus)).ToList());
 
     public static CalendarEventsViewModel ToViewModel(this CalendarEventsResponse dto) =>
         new(dto.Events.Select(e => e.ToViewModel()).ToList());

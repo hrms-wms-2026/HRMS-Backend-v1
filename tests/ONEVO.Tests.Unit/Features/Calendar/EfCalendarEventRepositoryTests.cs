@@ -183,6 +183,27 @@ public sealed class EfCalendarEventRepositoryTests
         Assert.Null(notFound);
     }
 
+    [Fact]
+    public async Task GetParticipantsForEventsAsync_ReturnsParticipantsGroupedByEventId()
+    {
+        await using var db = BuildInMemoryDb(new Mock<ICurrentUser>().Object);
+        var event1 = Guid.NewGuid();
+        var event2 = Guid.NewGuid();
+        db.CalendarEventParticipants.AddRange(
+            new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = event1, EmployeeId = Guid.NewGuid(), ResponseStatus = CalendarEventParticipantStatuses.Pending, CreatedAt = DateTimeOffset.UtcNow },
+            new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = event1, EmployeeId = Guid.NewGuid(), ResponseStatus = CalendarEventParticipantStatuses.Accepted, CreatedAt = DateTimeOffset.UtcNow },
+            new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = event2, EmployeeId = Guid.NewGuid(), ResponseStatus = CalendarEventParticipantStatuses.Pending, CreatedAt = DateTimeOffset.UtcNow }
+        );
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfCalendarEventRepository(db);
+        var result = await repository.GetParticipantsForEventsAsync(TenantId, [event1, event2], CancellationToken.None);
+
+        Assert.Equal(2, result[event1].Count);
+        Assert.Single(result[event2]);
+    }
+
     private static CalendarEvent MakeEvent(DateTimeOffset startDate) => new()
     {
         Id = Guid.NewGuid(), TenantId = TenantId, Title = "Event", StartDate = startDate,
