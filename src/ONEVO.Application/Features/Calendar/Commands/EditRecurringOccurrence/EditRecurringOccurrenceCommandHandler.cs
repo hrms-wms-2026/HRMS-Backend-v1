@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.DTOs.Responses;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Application.Features.Calendar.Commands.EditRecurringOccurrence;
@@ -11,6 +12,8 @@ namespace ONEVO.Application.Features.Calendar.Commands.EditRecurringOccurrence;
 public sealed class EditRecurringOccurrenceCommandHandler(
     ICurrentUser currentUser,
     ICalendarEventRepository events,
+    ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
+    ICalendarNotificationSender notifications,
     IUnitOfWork unitOfWork)
     : IRequestHandler<EditRecurringOccurrenceCommand, Result<CalendarEventItem>>
 {
@@ -48,6 +51,16 @@ public sealed class EditRecurringOccurrenceCommandHandler(
         ApplyFields(master, request);
         events.Update(master);
         await unitOfWork.SaveChangesAsync(ct);
+
+        var participantsByEvent = await events.GetParticipantsForEventsAsync(master.TenantId, [master.Id], ct);
+        var participantEmployeeIds = participantsByEvent.TryGetValue(master.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
+        if (participantEmployeeIds.Count > 0)
+        {
+            var callerEmployee = await employees.GetDefaultForUserAsync(master.TenantId, currentUser.UserId, ct);
+            var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
+            await notifications.NotifyEventUpdatedAsync(master.TenantId, master.Title, participantEmployeeIds, organizerName, ct);
+        }
+
         return Result<CalendarEventItem>.Success(ToItem(master, isOccurrence: false, masterId: null, originalStart: null));
     }
 

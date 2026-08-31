@@ -4,7 +4,9 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Commands.EditRecurringOccurrence;
 using ONEVO.Application.Features.Calendar.DTOs.Responses;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Calendar;
@@ -19,6 +21,8 @@ public sealed class EditRecurringOccurrenceCommandHandlerTests
 
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<ICalendarEventRepository> _events = new();
+    private readonly Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository> _employees = new();
+    private readonly Mock<ICalendarNotificationSender> _notifications = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
     private EditRecurringOccurrenceCommandHandler BuildSut()
@@ -26,13 +30,17 @@ public sealed class EditRecurringOccurrenceCommandHandlerTests
         _currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         _currentUser.SetupGet(x => x.UserId).Returns(UserId);
+        _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = UserId, FirstName = "Ada", LastName = "Owner" });
+        _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>());
         _unitOfWork
             .Setup(x => x.ExecuteInTransactionAsync(
                 It.IsAny<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CalendarEventItem>>>>(),
                 It.IsAny<CancellationToken>()))
             .Returns<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CalendarEventItem>>>, CancellationToken>(
                 (action, ct) => action(ct));
-        return new EditRecurringOccurrenceCommandHandler(_currentUser.Object, _events.Object, _unitOfWork.Object);
+        return new EditRecurringOccurrenceCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _unitOfWork.Object);
     }
 
     private static CalendarEvent MakeMaster() => new()
@@ -89,6 +97,27 @@ public sealed class EditRecurringOccurrenceCommandHandlerTests
         Assert.Equal("New Title", master.Title);
         _events.Verify(x => x.Update(master), Times.Once);
         _events.Verify(x => x.AddAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_AllEventsWithParticipants_NotifiesThem()
+    {
+        var sut = BuildSut();
+        var master = MakeMaster();
+        var participantId = Guid.NewGuid();
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, MasterId, It.IsAny<CancellationToken>())).ReturnsAsync(master);
+        _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(MasterId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>
+            {
+                [MasterId] = [new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = MasterId, EmployeeId = participantId, ResponseStatus = CalendarEventParticipantStatuses.Accepted }]
+            });
+
+        var result = await sut.Handle(MakeCommand(RecurrenceEditScope.AllEvents), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _notifications.Verify(x => x.NotifyEventUpdatedAsync(
+            TenantId, "New Title", It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
+            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

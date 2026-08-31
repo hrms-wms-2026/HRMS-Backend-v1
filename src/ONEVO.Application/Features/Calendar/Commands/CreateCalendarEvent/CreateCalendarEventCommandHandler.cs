@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.DTOs.Responses;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Application.Features.Calendar.Commands.CreateCalendarEvent;
@@ -11,6 +12,8 @@ namespace ONEVO.Application.Features.Calendar.Commands.CreateCalendarEvent;
 public sealed class CreateCalendarEventCommandHandler(
     ICurrentUser currentUser,
     ICalendarEventRepository events,
+    ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
+    ICalendarNotificationSender notifications,
     IUnitOfWork unitOfWork)
     : IRequestHandler<CreateCalendarEventCommand, Result<CalendarEventItem>>
 {
@@ -50,6 +53,12 @@ public sealed class CreateCalendarEventCommandHandler(
                     ResponseStatus = CalendarEventParticipantStatuses.Pending
                 }).ToList();
                 await events.AddParticipantsAsync(participants, innerCt);
+
+                var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, innerCt);
+                var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
+                await notifications.NotifyParticipantsAddedAsync(
+                    tenantId, calendarEvent.Title, calendarEvent.StartDate, calendarEvent.Location,
+                    request.ParticipantEmployeeIds, organizerName, innerCt);
             }
 
             await unitOfWork.SaveChangesAsync(innerCt);

@@ -4,7 +4,9 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Commands.UpdateCalendarEvent;
 using ONEVO.Application.Features.Calendar.DTOs.Responses;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Calendar;
@@ -18,6 +20,8 @@ public sealed class UpdateCalendarEventCommandHandlerTests
 
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<ICalendarEventRepository> _events = new();
+    private readonly Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository> _employees = new();
+    private readonly Mock<ICalendarNotificationSender> _notifications = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
     private UpdateCalendarEventCommandHandler BuildSut()
@@ -25,13 +29,17 @@ public sealed class UpdateCalendarEventCommandHandlerTests
         _currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         _currentUser.SetupGet(x => x.UserId).Returns(UserId);
+        _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = UserId, FirstName = "Ada", LastName = "Owner" });
+        _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>());
         _unitOfWork
             .Setup(x => x.ExecuteInTransactionAsync(
                 It.IsAny<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CalendarEventItem>>>>(),
                 It.IsAny<CancellationToken>()))
             .Returns<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CalendarEventItem>>>, CancellationToken>(
                 (action, ct) => action(ct));
-        return new UpdateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _unitOfWork.Object);
+        return new UpdateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _unitOfWork.Object);
     }
 
     [Fact]
@@ -80,6 +88,30 @@ public sealed class UpdateCalendarEventCommandHandlerTests
         Assert.Equal("New Title", existing.Title);
         Assert.Equal(CalendarRecurrences.Weekly, existing.Recurrence);
         _events.Verify(x => x.Update(existing), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_OwnerWithParticipants_NotifiesThem()
+    {
+        var sut = BuildSut();
+        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Old", StartDate = Start, EndDate = Start.AddMinutes(30) };
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+        var participantId = Guid.NewGuid();
+        _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.Is<IReadOnlyList<Guid>>(ids => ids.Contains(EventId)), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>
+            {
+                [EventId] = [new CalendarEventParticipant { Id = Guid.NewGuid(), TenantId = TenantId, EventId = EventId, EmployeeId = participantId, ResponseStatus = CalendarEventParticipantStatuses.Accepted }]
+            });
+
+        var result = await sut.Handle(
+            new UpdateCalendarEventCommand(EventId, "New Title", null, Start.AddHours(2), Start.AddHours(3), false, "UTC", null, null, null, CalendarRecurrences.None),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _notifications.Verify(x => x.NotifyEventUpdatedAsync(
+            TenantId, "New Title", It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
+            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

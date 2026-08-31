@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Application.Features.Calendar.Commands.CancelRecurringOccurrence;
@@ -10,6 +11,8 @@ namespace ONEVO.Application.Features.Calendar.Commands.CancelRecurringOccurrence
 public sealed class CancelRecurringOccurrenceCommandHandler(
     ICurrentUser currentUser,
     ICalendarEventRepository events,
+    ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
+    ICalendarNotificationSender notifications,
     IUnitOfWork unitOfWork)
     : IRequestHandler<CancelRecurringOccurrenceCommand, Result>
 {
@@ -49,6 +52,16 @@ public sealed class CancelRecurringOccurrenceCommandHandler(
         }
 
         await unitOfWork.SaveChangesAsync(ct);
+
+        var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [master.Id], ct);
+        var participantEmployeeIds = participantsByEvent.TryGetValue(master.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];
+        if (participantEmployeeIds.Count > 0)
+        {
+            var callerEmployee = await employees.GetDefaultForUserAsync(tenantId, currentUser.UserId, ct);
+            var organizerName = callerEmployee is null ? "Someone" : $"{callerEmployee.FirstName} {callerEmployee.LastName}";
+            await notifications.NotifyEventCancelledAsync(tenantId, master.Title, participantEmployeeIds, organizerName, ct);
+        }
+
         return Result.Success();
     }
 }

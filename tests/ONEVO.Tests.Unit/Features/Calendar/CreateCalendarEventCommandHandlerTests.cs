@@ -4,7 +4,9 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Commands.CreateCalendarEvent;
 using ONEVO.Application.Features.Calendar.DTOs.Responses;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Calendar;
@@ -17,6 +19,8 @@ public sealed class CreateCalendarEventCommandHandlerTests
 
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<ICalendarEventRepository> _events = new();
+    private readonly Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository> _employees = new();
+    private readonly Mock<ICalendarNotificationSender> _notifications = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
     private CreateCalendarEventCommandHandler BuildSut()
@@ -24,20 +28,22 @@ public sealed class CreateCalendarEventCommandHandlerTests
         _currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         _currentUser.SetupGet(x => x.UserId).Returns(UserId);
+        _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = UserId, FirstName = "Ada", LastName = "Owner" });
         _unitOfWork
             .Setup(x => x.ExecuteInTransactionAsync(
                 It.IsAny<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CalendarEventItem>>>>(),
                 It.IsAny<CancellationToken>()))
             .Returns<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CalendarEventItem>>>, CancellationToken>(
                 (action, ct) => action(ct));
-        return new CreateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _unitOfWork.Object);
+        return new CreateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _unitOfWork.Object);
     }
 
     [Fact]
     public async Task Handle_Unauthenticated_ReturnsForbidden()
     {
         _currentUser.SetupGet(x => x.IsAuthenticated).Returns(false);
-        var sut = new CreateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _unitOfWork.Object);
+        var sut = new CreateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _unitOfWork.Object);
 
         var result = await sut.Handle(
             new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, "UTC", null, null, null, CalendarRecurrences.None, []),
@@ -66,6 +72,25 @@ public sealed class CreateCalendarEventCommandHandlerTests
         _events.Verify(x => x.AddParticipantsAsync(
             It.Is<IReadOnlyList<CalendarEventParticipant>>(p => p.Count == 1 && p[0].EmployeeId == participantId),
             It.IsAny<CancellationToken>()), Times.Once);
+        _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
+            TenantId, "Sprint Planning", Start, "Room 4",
+            It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 1 && ids[0] == participantId),
+            "Ada Owner", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_NoParticipants_DoesNotNotify()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand("Solo block", null, Start, Start.AddHours(1), false, "UTC", null, null, null, CalendarRecurrences.None, []),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _notifications.Verify(x => x.NotifyParticipantsAddedAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<string?>(),
+            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
