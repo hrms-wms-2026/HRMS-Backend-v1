@@ -12,6 +12,11 @@ public sealed record UpdateCalendarEventRequest(
     bool IsAllDay, string? Timezone, string? Location, string? MeetingLink, string? Color,
     string Recurrence);
 
+public sealed record EditRecurringOccurrenceRequest(
+    DateTimeOffset OriginalStart, string Scope, string Title, string? Description,
+    DateTimeOffset StartDate, DateTimeOffset EndDate, bool IsAllDay, string? Timezone,
+    string? Location, string? MeetingLink, string? Color);
+
 public sealed record CalendarEventViewModel(
     Guid Id, string Title, string? Description, DateTimeOffset StartDate, DateTimeOffset EndDate,
     string SourceType, string? Color, string Recurrence, bool IsAllDay, string? Timezone,

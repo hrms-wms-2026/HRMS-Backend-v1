@@ -3,8 +3,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.Calendar;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Features.Calendar.Commands.CancelRecurringOccurrence;
 using ONEVO.Application.Features.Calendar.Commands.CreateCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.DeleteCalendarEvent;
+using ONEVO.Application.Features.Calendar.Commands.EditRecurringOccurrence;
 using ONEVO.Application.Features.Calendar.Commands.UpdateCalendarEvent;
 using ONEVO.Application.Features.Calendar.Queries.GetCalendarEvents;
 
@@ -61,6 +63,32 @@ public class CalendarController : ControllerBase
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new DeleteCalendarEventCommand(id), ct);
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPut("{id:guid}/occurrence")]
+    [RequirePermission("calendar:write")]
+    public async Task<IActionResult> EditOccurrence(Guid id, [FromBody] EditRecurringOccurrenceRequest request, CancellationToken ct)
+    {
+        if (!Enum.TryParse<RecurrenceEditScope>(request.Scope, ignoreCase: true, out var scope))
+            return Problem("Invalid scope. Expected 'ThisEventOnly' or 'AllEvents'.", statusCode: 400);
+
+        var result = await _mediator.Send(new EditRecurringOccurrenceCommand(
+            id, request.OriginalStart, scope, request.Title, request.Description, request.StartDate,
+            request.EndDate, request.IsAllDay, request.Timezone, request.Location, request.MeetingLink, request.Color), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpDelete("{id:guid}/occurrence")]
+    [RequirePermission("calendar:write")]
+    public async Task<IActionResult> CancelOccurrence(Guid id, [FromQuery] DateTimeOffset originalStart, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new CancelRecurringOccurrenceCommand(id, originalStart), ct);
         return result.IsSuccess
             ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
