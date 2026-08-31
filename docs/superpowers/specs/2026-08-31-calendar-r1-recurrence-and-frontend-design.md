@@ -12,16 +12,17 @@ This is the frozen R1 scope agreed with the user — nothing here moves to a lat
 
 **In scope:**
 - Navigation: replace the existing `/calendar` route's `loadPlaceholder` with a real `modules/calendar` feature module. Sidebar item and route path (`/calendar`) already exist and are unchanged.
-- Calendar UI: month view only (previous/next month, jump to today, selected-date highlight), multiple events per day, all-day event styling, day-cell overflow ("+3 more").
+- Calendar UI: **Month, Week, Day, and Agenda views, all in this release** (revised from the original R1 freeze — see "Scope revision" below). Month view: previous/next month, jump to today, selected-date highlight, multiple events per day, all-day event styling, day-cell overflow ("+3 more") - already built and shipped on `feature/calendar-frontend-module`. Week/Day views: a real hourly grid (not a simplified list) - an all-day row above the grid, timed events positioned by start/end time within the grid, overlapping events packed side-by-side (classic calendar column-packing), a current-time indicator line when the visible range includes today. Agenda view: a flat list of upcoming events grouped by date, no grid. A view-switcher (Month/Week/Day/Agenda) in the page header; navigation controls (previous/next/today) adapt their step size to the active view.
 - Event CRUD: create, edit, delete, with title/description/start/end/all-day/location/meeting link/color/participants — all already built in Calendar Core; the frontend consumes the existing API.
 - Recurrence: Does not repeat / Daily / Weekly / Monthly, each optionally "Ends never" or "Ends on [date]". RRULE-based expansion server-side. Per-occurrence edit ("this event only"), per-occurrence cancellation, and whole-series edit ("all events"). "This and following" split is supported by the data model and command layer (needed for the edit-mode command's correctness) even though the R1 UI only exposes "this event" and "all events" as user-facing choices — see Frontend section.
+
+**Scope revision (post-Month-view ship):** the original R1 freeze deferred Week/Day/Agenda views to a later phase, and a follow-up user decision reversed that - all three now ship in this same release. Week/Day were explicitly asked for as a *full* hourly grid (Google-Calendar-style, with overlap-packing), not the simpler list-per-day layout initially proposed as a lower-effort alternative.
 
 **Explicitly not in R1 (unchanged from the user's freeze — no further discussion needed):**
 - A custom RRULE builder (arbitrary `BYDAY` multi-day-of-week, `BYSETPOS`, etc.) in the UI.
 - Calendar sharing, multiple calendars, invitation/RSVP response workflow (participant rows are created but there's still no accept/reject UI — same deferral as the original Calendar Core spec).
 - External Google/Outlook sync.
-- Drag-and-drop rescheduling.
-- Week/Day/Agenda views (the architecture leaves room for them, see Frontend Architecture, but only Month is built now).
+- Drag-and-drop rescheduling (Week/Day view shows events at their real time position, but moving them by dragging is not built - editing time still goes through the event form modal).
 
 ## Global Constraints
 
@@ -136,7 +137,41 @@ modules/calendar/
     └── recurrence-rule.util.ts         - pure functions: buildRruleString(frequency, endMode, untilDate) -> string | null, and a tiny display helper (e.g. "Weekly until Dec 31, 2026") for the event details panel
 ```
 
-This mirrors the "view-independent core" the user asked for: `CalendarPageComponent` owns a `view: 'month' | 'week' | 'day' | 'agenda'` signal (only `'month'` is ever set in R1 — no UI control offers the others yet), and `calendar.store.ts`'s `load(from, to)` takes an arbitrary range, so adding Week/Day later means adding a new `ui/calendar-week-grid` component and a range calculation for it, with zero changes to `data-access`/`state`.
+This mirrors the "view-independent core" the user asked for: `CalendarPageComponent` owns a `view` signal, and `CalendarEventStore.loadEvents(from, to)` takes an arbitrary range - adding Week/Day/Agenda means adding new `ui/` view components and a range calculation per view, with zero changes to `data-access`/`state`. (As actually shipped, file names differ slightly from the sketch above: `state/calendar-event.store.ts`, `ui/calendar-event-form-modal/`, `ui/calendar-month-grid/`, `ui/calendar-participant-picker/`, `feature/calendar-page/` - the shape and responsibilities are unchanged.)
+
+### Week/Day/Agenda Views (scope revision)
+
+Added after Month view shipped: the user reversed the original R1 deferral and asked for all three, with Week/Day as a **full hourly grid** (Google-Calendar-style), not a simplified list.
+
+**Shared positioning logic** - `utils/calendar-hour-grid.util.ts`:
+```ts
+export interface PositionedEvent {
+  readonly event: CalendarEventResponse;
+  readonly top: number;    // 0-1 fraction of the 24h grid height
+  readonly height: number; // 0-1 fraction
+  readonly left: number;   // 0-1 fraction of the day-column width
+  readonly width: number;  // 0-1 fraction
+}
+
+/** Timed (non-all-day) events for ONE day, laid out with the standard calendar
+ * column-packing algorithm: events sorted by start time; each event reuses the first
+ * "column" whose most recent event has already ended, else opens a new column. Width/left
+ * are then divided evenly across however many columns a mutually-overlapping cluster needed. */
+export function layoutDayEvents(events: readonly CalendarEventResponse[], dayStart: Date): readonly PositionedEvent[];
+```
+This is a pure function, independently unit-testable with plain Date/array fixtures - no DOM, no Angular TestBed needed for its core cases.
+
+**`ui/calendar-hour-grid/`** (shared by Week and Day views): renders a fixed 24-hour axis (labels every hour, e.g. "9 AM"), one column per day in the visible range, an **all-day row** above the hourly area for `isAllDay` events (same chip style as the month grid), positioned event blocks from `layoutDayEvents` inside each column (`[style.top.%]`/`[style.height.%]`/`[style.left.%]`/`[style.width.%]` bound to the 0-1 fractions × 100), and a **current-time indicator** - a thin horizontal line at `(now.hours*60+now.minutes)/1440` from the top, rendered only in the column whose date is today. Clicking an empty area of a column computes the clicked time from the click's Y offset and opens the create-event form pre-filled with that date/time; clicking a positioned event block opens it for edit (same `eventClick` output pattern as the month grid).
+
+**`feature/calendar-week-view/`**: 7-day range starting Monday of the visible week, hosts `calendar-hour-grid` with 7 columns.
+
+**`feature/calendar-day-view/`**: 1-day range, hosts `calendar-hour-grid` with 1 column (same component, narrower).
+
+**`feature/calendar-agenda-view/`**: no grid - a flat list of events across a range (30 days forward from the cursor date), grouped under date-header rows, sorted chronologically; reuses the month grid's event-chip styling for each list row rather than introducing a third visual style.
+
+**View switcher**: `CalendarPageComponent`'s `view` signal widens to `'month' | 'week' | 'day' | 'agenda'`, driven by a tab control in the page header. Range calculation and the Prev/Today/Next step size both depend on `view()`: month → `buildMonthGrid`'s 42-day span, week → the 7 days of the visible week, day → the single visible date, agenda → a 30-day forward window from the cursor. All four views share the same `CalendarEventStore`/`CalendarEventApiService`/`CalendarEventFormModalComponent` - only the range passed to `loadEvents` and the rendering component change per view.
+
+Drag-and-drop rescheduling of a positioned event block is explicitly out of scope even with the hourly grid in place - moving an event's time still goes through the event form modal.
 
 ### Recurrence UI (R1)
 
