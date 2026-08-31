@@ -84,7 +84,10 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "attendance_correction_request_decided",
             "attendance_correction_request_cancelled",
             "work_project_member_invited",
-            "work_project_member_accepted"
+            "work_project_member_accepted",
+            "calendar_event_participant_added",
+            "calendar_event_updated",
+            "calendar_event_cancelled"
         };
 
         Assert.Equal(
