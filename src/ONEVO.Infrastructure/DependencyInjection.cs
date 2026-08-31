@@ -8,6 +8,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Infrastructure.Persistence.Repositories.Calendar;
 using ONEVO.Infrastructure.Services.Calendar;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
@@ -311,6 +312,7 @@ public static class DependencyInjection
         services.AddScoped<EfCalendarEventRepository>();
         services.AddScoped<ICalendarEventRepository>(sp => sp.GetRequiredService<EfCalendarEventRepository>());
         services.AddScoped<ICalendarRecurrenceExpander, IcalNetRecurrenceExpander>();
+        services.AddScoped<ICalendarNotificationSender, CalendarNotificationSender>();
         services.AddScoped<EfSprintRepository>();
         services.AddScoped<ISprintRepository>(sp => sp.GetRequiredService<EfSprintRepository>());
         services.AddScoped<EfTaskAssignmentRepository>();
