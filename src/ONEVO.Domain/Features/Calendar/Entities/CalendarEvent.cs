@@ -54,4 +54,7 @@ public class CalendarEvent : BaseEntity
     public string? ExternalAttendeesJson { get; set; }
     public string? RecurrenceRule { get; set; }
     public DateTimeOffset? ExternalUpdatedAt { get; set; }
+    public Guid? RecurrenceParentId { get; set; }
+    public DateTimeOffset? RecurrenceOriginalStart { get; set; }
+    public bool IsRecurrenceCancelled { get; set; }
 }

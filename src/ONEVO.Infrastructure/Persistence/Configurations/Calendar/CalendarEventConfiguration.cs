@@ -30,5 +30,13 @@ public class CalendarEventConfiguration : IEntityTypeConfiguration<CalendarEvent
 
         builder.HasIndex(e => new { e.TenantId, e.CreatedById })
             .HasDatabaseName("ix_calendar_events_tenant_id_created_by_id");
+
+        builder.HasIndex(e => new { e.TenantId, e.RecurrenceParentId })
+            .HasDatabaseName("ix_calendar_events_tenant_id_recurrence_parent_id");
+
+        builder.HasOne<CalendarEvent>()
+            .WithMany()
+            .HasForeignKey(e => e.RecurrenceParentId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
