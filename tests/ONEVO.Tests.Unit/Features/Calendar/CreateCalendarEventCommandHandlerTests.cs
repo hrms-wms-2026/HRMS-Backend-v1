@@ -80,4 +80,31 @@ public sealed class CreateCalendarEventCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
     }
+
+    [Fact]
+    public async Task Handle_RecurringWithoutRecurrenceRule_ReturnsFailure()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, "UTC", null, null, null, CalendarRecurrences.Weekly, []),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_RecurringWithRecurrenceRule_SetsItOnTheEntity()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand("Standup", null, Start, Start.AddMinutes(30), false, "UTC", null, null, null,
+                CalendarRecurrences.Weekly, [], RecurrenceRule: "FREQ=WEEKLY"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _events.Verify(x => x.AddAsync(It.Is<CalendarEvent>(e => e.RecurrenceRule == "FREQ=WEEKLY"), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

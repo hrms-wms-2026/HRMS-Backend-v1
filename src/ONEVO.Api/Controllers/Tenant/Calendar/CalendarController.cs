@@ -36,7 +36,7 @@ public class CalendarController : ControllerBase
         var result = await _mediator.Send(new CreateCalendarEventCommand(
             request.Title, request.Description, request.StartDate, request.EndDate, request.IsAllDay,
             request.Timezone, request.Location, request.MeetingLink, request.Color, request.Recurrence,
-            request.ParticipantEmployeeIds), ct);
+            request.ParticipantEmployeeIds, request.RecurrenceRule), ct);
 
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())

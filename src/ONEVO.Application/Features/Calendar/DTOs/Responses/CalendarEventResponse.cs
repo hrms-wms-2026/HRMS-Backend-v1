@@ -16,6 +16,9 @@ public sealed record CalendarEventItem(
     string? Location,
     string? MeetingLink,
     string? ExternalSource,
-    Guid CreatedById);
+    Guid CreatedById,
+    bool IsRecurringOccurrence = false,
+    Guid? RecurrenceMasterId = null,
+    DateTimeOffset? OriginalStart = null);
 
 public sealed record CalendarEventsResponse(IReadOnlyList<CalendarEventItem> Events);

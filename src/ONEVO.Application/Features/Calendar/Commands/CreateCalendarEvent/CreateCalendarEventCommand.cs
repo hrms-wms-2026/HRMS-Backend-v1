@@ -15,4 +15,5 @@ public sealed record CreateCalendarEventCommand(
     string? MeetingLink,
     string? Color,
     string Recurrence,
-    IReadOnlyList<Guid> ParticipantEmployeeIds) : IRequest<Result<CalendarEventItem>>;
+    IReadOnlyList<Guid> ParticipantEmployeeIds,
+    string? RecurrenceRule = null) : IRequest<Result<CalendarEventItem>>;

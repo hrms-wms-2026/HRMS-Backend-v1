@@ -25,6 +25,9 @@ public sealed class CreateCalendarEventCommandHandler(
         if (string.IsNullOrWhiteSpace(request.Title))
             return Result<CalendarEventItem>.Failure("Title is required.", 400);
 
+        if (request.Recurrence != CalendarRecurrences.None && string.IsNullOrWhiteSpace(request.RecurrenceRule))
+            return Result<CalendarEventItem>.Failure("RecurrenceRule is required when Recurrence is not 'none'.", 400);
+
         var tenantId = currentUser.TenantId;
 
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
@@ -35,7 +38,7 @@ public sealed class CreateCalendarEventCommandHandler(
                 Description = request.Description, StartDate = request.StartDate, EndDate = request.EndDate,
                 SourceType = CalendarEventSourceTypes.Manual, IsAllDay = request.IsAllDay,
                 Timezone = request.Timezone, Location = request.Location, MeetingLink = request.MeetingLink,
-                Color = request.Color, Recurrence = request.Recurrence
+                Color = request.Color, Recurrence = request.Recurrence, RecurrenceRule = request.RecurrenceRule
             };
             await events.AddAsync(calendarEvent, innerCt);
 
