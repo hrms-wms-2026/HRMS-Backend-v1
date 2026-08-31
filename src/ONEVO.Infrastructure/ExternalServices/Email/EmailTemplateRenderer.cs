@@ -35,6 +35,7 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             "employee_onboarding_invite" => RenderEmployeeOnboardingInvite(fields),
             "position_change_approval_request" => RenderPositionChangeApprovalRequest(fields),
             "invoice_email" => RenderInvoiceEmail(fields),
+            "calendar_event_invite" => RenderCalendarEventInvite(fields),
             _ => throw new InvalidOperationException(
                 $"Unknown email template '{templateId}'. Add a case in EmailTemplateRenderer.")
         };
@@ -319,6 +320,27 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
 
         var builder = new UriBuilder(parsed) { Host = $"{tenantSlug}.{parsed.Host}" };
         return builder.Uri.ToString();
+    }
+
+    private RenderedEmail RenderCalendarEventInvite(IReadOnlyDictionary<string, object?> f)
+    {
+        var recipientName = Get(f, "recipientName");
+        var eventTitle = Get(f, "eventTitle");
+        var startDateUtc = Get(f, "startDateUtc");
+        var location = Get(f, "location");
+        var organizerName = Get(f, "organizerName");
+
+        var subject = $"You're invited: {eventTitle}";
+        var locationLine = string.IsNullOrWhiteSpace(location) ? "" : $"<p>Location: {Escape(location)}</p>";
+        var html = $"""
+            <!doctype html><html><body>
+              <p>Hi {Escape(recipientName)},</p>
+              <p>{Escape(organizerName)} added you to <strong>{Escape(eventTitle)}</strong>, starting {Escape(startDateUtc)}.</p>
+              {locationLine}
+            </body></html>
+            """;
+        var text = $"Hi {recipientName},\n{organizerName} added you to \"{eventTitle}\", starting {startDateUtc}.{(string.IsNullOrWhiteSpace(location) ? "" : $"\nLocation: {location}")}";
+        return new RenderedEmail(subject, html, text);
     }
 
     private static string Get(

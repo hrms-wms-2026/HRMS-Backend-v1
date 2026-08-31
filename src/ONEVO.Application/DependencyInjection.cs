@@ -69,6 +69,7 @@ public static class DependencyInjection
             new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveInformationRequested));
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Leave.Cancellation.Outbox.NoOpLeaveCancellationSideEffectOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarEventInviteEmailOutboxHandler>();
         services.AddScoped<GitHubUserIntegrationAvailability>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 

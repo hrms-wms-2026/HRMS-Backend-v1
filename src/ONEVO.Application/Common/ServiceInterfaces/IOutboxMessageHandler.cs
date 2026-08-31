@@ -41,4 +41,5 @@ public static class OutboxMessageTypes
     public const string LeaveInformationRequested = "leave_information_requested";
     public const string LeaveRequestCancelled = "leave_request_cancelled";
     public const string WorkNotification = "work_notification";
+    public const string CalendarEventInviteEmail = "calendar_event_invite_email";
 }
