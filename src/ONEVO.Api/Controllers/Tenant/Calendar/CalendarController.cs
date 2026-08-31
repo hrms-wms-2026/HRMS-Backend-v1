@@ -7,6 +7,7 @@ using ONEVO.Application.Features.Calendar.Commands.CancelRecurringOccurrence;
 using ONEVO.Application.Features.Calendar.Commands.CreateCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.DeleteCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.EditRecurringOccurrence;
+using ONEVO.Application.Features.Calendar.Commands.RespondToCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.UpdateCalendarEvent;
 using ONEVO.Application.Features.Calendar.Queries.GetCalendarEvents;
 
@@ -89,6 +90,16 @@ public class CalendarController : ControllerBase
     public async Task<IActionResult> CancelOccurrence(Guid id, [FromQuery] DateTimeOffset originalStart, CancellationToken ct)
     {
         var result = await _mediator.Send(new CancelRecurringOccurrenceCommand(id, originalStart), ct);
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("{id:guid}/respond")]
+    [RequirePermission("calendar:read")]
+    public async Task<IActionResult> Respond(Guid id, [FromBody] RespondToCalendarEventRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new RespondToCalendarEventCommand(id, request.ResponseStatus), ct);
         return result.IsSuccess
             ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

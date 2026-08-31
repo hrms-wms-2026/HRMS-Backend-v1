@@ -68,6 +68,11 @@ public class EfCalendarEventRepository : ICalendarEventRepository
         return rows.GroupBy(p => p.EventId).ToDictionary(g => g.Key, g => (IReadOnlyList<CalendarEventParticipant>)g.ToList());
     }
 
+    public async Task<CalendarEventParticipant?> GetTrackedParticipantAsync(
+        Guid tenantId, Guid eventId, Guid employeeId, CancellationToken ct = default)
+        => await _db.CalendarEventParticipants.FirstOrDefaultAsync(
+            p => p.TenantId == tenantId && p.EventId == eventId && p.EmployeeId == employeeId, ct);
+
     public void Update(CalendarEvent calendarEvent) => _db.CalendarEvents.Update(calendarEvent);
     public void Remove(CalendarEvent calendarEvent) => _db.CalendarEvents.Remove(calendarEvent);
 }

@@ -37,6 +37,11 @@ public interface ICalendarEventRepository
     /// participant summaries to items returned from GetCalendarEventsQueryHandler.</summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<CalendarEventParticipant>>> GetParticipantsForEventsAsync(
         Guid tenantId, IReadOnlyList<Guid> eventIds, CancellationToken ct = default);
+
+    /// <summary>The tracked participant row for one (event, employee) pair, or null if that
+    /// employee isn't a participant on this event.</summary>
+    Task<CalendarEventParticipant?> GetTrackedParticipantAsync(
+        Guid tenantId, Guid eventId, Guid employeeId, CancellationToken ct = default);
     void Update(CalendarEvent calendarEvent);
     void Remove(CalendarEvent calendarEvent);
 }
