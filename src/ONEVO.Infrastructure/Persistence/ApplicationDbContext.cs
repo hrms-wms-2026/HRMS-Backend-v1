@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
 using ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities;
@@ -287,6 +288,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();
     public DbSet<NotificationTemplate> NotificationTemplates => Set<NotificationTemplate>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
+    public DbSet<CalendarEventParticipant> CalendarEventParticipants => Set<CalendarEventParticipant>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
