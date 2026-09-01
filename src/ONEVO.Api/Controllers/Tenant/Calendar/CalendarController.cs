@@ -11,6 +11,7 @@ using ONEVO.Application.Features.Calendar.Commands.RespondToCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.UpdateCalendarEvent;
 using ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts;
 using ONEVO.Application.Features.Calendar.Queries.GetCalendarEvents;
+using ONEVO.Application.Features.Calendar.Queries.GetMyEffectiveTimezone;
 
 namespace ONEVO.Api.Controllers.Tenant.Calendar;
 
@@ -103,6 +104,16 @@ public class CalendarController : ControllerBase
         var result = await _mediator.Send(new RespondToCalendarEventCommand(id, request.ResponseStatus), ct);
         return result.IsSuccess
             ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("my-timezone")]
+    [RequirePermission("calendar:read")]
+    public async Task<IActionResult> GetMyTimezone(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetMyEffectiveTimezoneQuery(), ct);
+        return result.IsSuccess
+            ? Ok(new MyEffectiveTimezoneViewModel(result.Value!.Timezone))
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

@@ -313,6 +313,7 @@ public static class DependencyInjection
         services.AddScoped<ICalendarEventRepository>(sp => sp.GetRequiredService<EfCalendarEventRepository>());
         services.AddScoped<ICalendarRecurrenceExpander, IcalNetRecurrenceExpander>();
         services.AddScoped<ICalendarNotificationSender, CalendarNotificationSender>();
+        services.AddScoped<ICalendarTimezoneResolver, CalendarTimezoneResolver>();
         services.AddScoped<EfSprintRepository>();
         services.AddScoped<ISprintRepository>(sp => sp.GetRequiredService<EfSprintRepository>());
         services.AddScoped<EfTaskAssignmentRepository>();

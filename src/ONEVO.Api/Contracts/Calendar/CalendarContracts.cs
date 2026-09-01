@@ -15,6 +15,8 @@ public sealed record UpdateCalendarEventRequest(
 
 public sealed record RespondToCalendarEventRequest(string ResponseStatus);
 
+public sealed record MyEffectiveTimezoneViewModel(string Timezone);
+
 public sealed record CheckCalendarConflictsRequest(IReadOnlyList<Guid> ParticipantEmployeeIds, DateTimeOffset StartDate, DateTimeOffset EndDate);
 public sealed record CalendarConflictViewModel(Guid EmployeeId, string EmployeeName, Guid ConflictingEventId, string ConflictingEventTitle);
 public sealed record CalendarConflictsViewModel(IReadOnlyList<CalendarConflictViewModel> Conflicts);
