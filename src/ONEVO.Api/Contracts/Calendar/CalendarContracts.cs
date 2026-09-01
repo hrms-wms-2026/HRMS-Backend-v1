@@ -5,12 +5,12 @@ namespace ONEVO.Api.Contracts.Calendar;
 
 public sealed record CreateCalendarEventRequest(
     string Title, string? Description, DateTimeOffset StartDate, DateTimeOffset EndDate,
-    bool IsAllDay, string? Timezone, string? Location, string? MeetingLink, string? Color,
+    bool IsAllDay, string? Location, string? MeetingLink, string? Color,
     string Recurrence, IReadOnlyList<Guid> ParticipantEmployeeIds, string? RecurrenceRule = null);
 
 public sealed record UpdateCalendarEventRequest(
     string Title, string? Description, DateTimeOffset StartDate, DateTimeOffset EndDate,
-    bool IsAllDay, string? Timezone, string? Location, string? MeetingLink, string? Color,
+    bool IsAllDay, string? Location, string? MeetingLink, string? Color,
     string Recurrence);
 
 public sealed record RespondToCalendarEventRequest(string ResponseStatus);
@@ -23,7 +23,7 @@ public sealed record CalendarConflictsViewModel(IReadOnlyList<CalendarConflictVi
 
 public sealed record EditRecurringOccurrenceRequest(
     DateTimeOffset OriginalStart, string Scope, string Title, string? Description,
-    DateTimeOffset StartDate, DateTimeOffset EndDate, bool IsAllDay, string? Timezone,
+    DateTimeOffset StartDate, DateTimeOffset EndDate, bool IsAllDay,
     string? Location, string? MeetingLink, string? Color);
 
 public sealed record CalendarEventParticipantSummaryViewModel(Guid EmployeeId, string EmployeeName, string ResponseStatus);

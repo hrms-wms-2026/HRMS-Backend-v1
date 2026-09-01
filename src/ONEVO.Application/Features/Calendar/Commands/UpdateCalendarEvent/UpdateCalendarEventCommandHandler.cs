@@ -39,7 +39,6 @@ public sealed class UpdateCalendarEventCommandHandler(
             existing.StartDate = request.StartDate;
             existing.EndDate = request.EndDate;
             existing.IsAllDay = request.IsAllDay;
-            existing.Timezone = request.Timezone;
             existing.Location = request.Location;
             existing.MeetingLink = request.MeetingLink;
             existing.Color = request.Color;

@@ -40,7 +40,7 @@ public class CalendarController : ControllerBase
     {
         var result = await _mediator.Send(new CreateCalendarEventCommand(
             request.Title, request.Description, request.StartDate, request.EndDate, request.IsAllDay,
-            request.Timezone, request.Location, request.MeetingLink, request.Color, request.Recurrence,
+            request.Location, request.MeetingLink, request.Color, request.Recurrence,
             request.ParticipantEmployeeIds, request.RecurrenceRule), ct);
 
         return result.IsSuccess
@@ -54,7 +54,7 @@ public class CalendarController : ControllerBase
     {
         var result = await _mediator.Send(new UpdateCalendarEventCommand(
             id, request.Title, request.Description, request.StartDate, request.EndDate, request.IsAllDay,
-            request.Timezone, request.Location, request.MeetingLink, request.Color, request.Recurrence), ct);
+            request.Location, request.MeetingLink, request.Color, request.Recurrence), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
@@ -80,7 +80,7 @@ public class CalendarController : ControllerBase
 
         var result = await _mediator.Send(new EditRecurringOccurrenceCommand(
             id, request.OriginalStart, scope, request.Title, request.Description, request.StartDate,
-            request.EndDate, request.IsAllDay, request.Timezone, request.Location, request.MeetingLink, request.Color), ct);
+            request.EndDate, request.IsAllDay, request.Location, request.MeetingLink, request.Color), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())

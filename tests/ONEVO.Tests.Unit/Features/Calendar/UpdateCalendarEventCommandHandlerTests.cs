@@ -50,7 +50,7 @@ public sealed class UpdateCalendarEventCommandHandlerTests
             .ReturnsAsync((CalendarEvent?)null);
 
         var result = await sut.Handle(
-            new UpdateCalendarEventCommand(EventId, "Title", null, Start, Start.AddHours(1), false, "UTC", null, null, null, CalendarRecurrences.None),
+            new UpdateCalendarEventCommand(EventId, "Title", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -65,7 +65,7 @@ public sealed class UpdateCalendarEventCommandHandlerTests
             .ReturnsAsync(new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = Guid.NewGuid(), Title = "Old" });
 
         var result = await sut.Handle(
-            new UpdateCalendarEventCommand(EventId, "New Title", null, Start, Start.AddHours(1), false, "UTC", null, null, null, CalendarRecurrences.None),
+            new UpdateCalendarEventCommand(EventId, "New Title", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -81,7 +81,7 @@ public sealed class UpdateCalendarEventCommandHandlerTests
             .ReturnsAsync(existing);
 
         var result = await sut.Handle(
-            new UpdateCalendarEventCommand(EventId, "New Title", "New desc", Start.AddHours(2), Start.AddHours(3), false, "UTC", "Room 1", null, "#ff0000", CalendarRecurrences.Weekly),
+            new UpdateCalendarEventCommand(EventId, "New Title", "New desc", Start.AddHours(2), Start.AddHours(3), false, "Room 1", null, "#ff0000", CalendarRecurrences.Weekly),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -105,7 +105,7 @@ public sealed class UpdateCalendarEventCommandHandlerTests
             });
 
         var result = await sut.Handle(
-            new UpdateCalendarEventCommand(EventId, "New Title", null, Start.AddHours(2), Start.AddHours(3), false, "UTC", null, null, null, CalendarRecurrences.None),
+            new UpdateCalendarEventCommand(EventId, "New Title", null, Start.AddHours(2), Start.AddHours(3), false, null, null, null, CalendarRecurrences.None),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -120,10 +120,25 @@ public sealed class UpdateCalendarEventCommandHandlerTests
         var sut = BuildSut();
 
         var result = await sut.Handle(
-            new UpdateCalendarEventCommand(EventId, "Title", null, Start, Start.AddHours(-1), false, "UTC", null, null, null, CalendarRecurrences.None),
+            new UpdateCalendarEventCommand(EventId, "Title", null, Start, Start.AddHours(-1), false, null, null, null, CalendarRecurrences.None),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_Owner_DoesNotChangeTimezone()
+    {
+        var sut = BuildSut();
+        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Old", StartDate = Start, EndDate = Start.AddMinutes(30), Timezone = "Asia/Colombo" };
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+
+        await sut.Handle(
+            new UpdateCalendarEventCommand(EventId, "New Title", null, Start.AddHours(2), Start.AddHours(3), false, null, null, null, CalendarRecurrences.None),
+            CancellationToken.None);
+
+        Assert.Equal("Asia/Colombo", existing.Timezone);
     }
 }

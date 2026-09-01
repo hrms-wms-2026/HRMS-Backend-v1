@@ -14,6 +14,7 @@ public sealed class CreateCalendarEventCommandHandler(
     ICalendarEventRepository events,
     ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
     ICalendarNotificationSender notifications,
+    ICalendarTimezoneResolver timezoneResolver,
     IUnitOfWork unitOfWork)
     : IRequestHandler<CreateCalendarEventCommand, Result<CalendarEventItem>>
 {
@@ -35,12 +36,13 @@ public sealed class CreateCalendarEventCommandHandler(
 
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
+            var organizerTimezone = await timezoneResolver.ResolveForUserAsync(tenantId, currentUser.UserId, innerCt);
             var calendarEvent = new CalendarEvent
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, Title = request.Title.Trim(),
                 Description = request.Description, StartDate = request.StartDate, EndDate = request.EndDate,
-                SourceType = CalendarEventSourceTypes.Manual, IsAllDay = request.IsAllDay,
-                Timezone = request.Timezone, Location = request.Location, MeetingLink = request.MeetingLink,
+                SourceType = CalendarEventSourceTypes.Manual, IsAllDay = request.IsAllDay, Timezone = organizerTimezone,
+                Location = request.Location, MeetingLink = request.MeetingLink,
                 Color = request.Color, Recurrence = request.Recurrence, RecurrenceRule = request.RecurrenceRule
             };
             await events.AddAsync(calendarEvent, innerCt);

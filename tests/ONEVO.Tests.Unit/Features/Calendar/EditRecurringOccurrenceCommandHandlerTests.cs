@@ -53,7 +53,7 @@ public sealed class EditRecurringOccurrenceCommandHandlerTests
 
     private EditRecurringOccurrenceCommand MakeCommand(RecurrenceEditScope scope) => new(
         MasterId, OriginalStart, scope, "New Title", "New desc",
-        OriginalStart.AddHours(1), OriginalStart.AddHours(1).AddMinutes(30), false, "UTC", "Room 2", null, "#ff0000");
+        OriginalStart.AddHours(1), OriginalStart.AddHours(1).AddMinutes(30), false, "Room 2", null, "#ff0000");
 
     [Fact]
     public async Task Handle_NotOwner_ReturnsForbidden()
@@ -100,6 +100,19 @@ public sealed class EditRecurringOccurrenceCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_AllEvents_DoesNotChangeTimezone()
+    {
+        var sut = BuildSut();
+        var master = MakeMaster();
+        master.Timezone = "Asia/Colombo";
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, MasterId, It.IsAny<CancellationToken>())).ReturnsAsync(master);
+
+        await sut.Handle(MakeCommand(RecurrenceEditScope.AllEvents), CancellationToken.None);
+
+        Assert.Equal("Asia/Colombo", master.Timezone);
+    }
+
+    [Fact]
     public async Task Handle_AllEventsWithParticipants_NotifiesThem()
     {
         var sut = BuildSut();
@@ -135,6 +148,21 @@ public sealed class EditRecurringOccurrenceCommandHandlerTests
         _events.Verify(x => x.AddAsync(It.Is<CalendarEvent>(e =>
             e.RecurrenceParentId == MasterId && e.RecurrenceOriginalStart == OriginalStart && e.Title == "New Title"),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ThisEventOnly_NewDetachedChild_InheritsMasterTimezone()
+    {
+        var sut = BuildSut();
+        var master = MakeMaster();
+        master.Timezone = "Asia/Colombo";
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, MasterId, It.IsAny<CancellationToken>())).ReturnsAsync(master);
+        _events.Setup(x => x.GetTrackedChildByOriginalStartAsync(TenantId, MasterId, OriginalStart, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CalendarEvent?)null);
+
+        await sut.Handle(MakeCommand(RecurrenceEditScope.ThisEventOnly), CancellationToken.None);
+
+        _events.Verify(x => x.AddAsync(It.Is<CalendarEvent>(e => e.Timezone == "Asia/Colombo"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

@@ -74,7 +74,7 @@ public sealed class EditRecurringOccurrenceCommandHandler(
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, RecurrenceParentId = master.Id,
                 RecurrenceOriginalStart = request.OriginalStart, Recurrence = CalendarRecurrences.None,
-                SourceType = master.SourceType
+                SourceType = master.SourceType, Timezone = master.Timezone
             };
             ApplyFields(child, request);
             await events.AddAsync(child, ct);
@@ -102,7 +102,8 @@ public sealed class EditRecurringOccurrenceCommandHandler(
             var newMaster = new CalendarEvent
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, RecurrenceParentId = null,
-                Recurrence = master.Recurrence, RecurrenceRule = originalRule, SourceType = master.SourceType
+                Recurrence = master.Recurrence, RecurrenceRule = originalRule, SourceType = master.SourceType,
+                Timezone = master.Timezone
             };
             ApplyFields(newMaster, request);
             await events.AddAsync(newMaster, innerCt);
@@ -128,7 +129,6 @@ public sealed class EditRecurringOccurrenceCommandHandler(
         target.StartDate = request.StartDate;
         target.EndDate = request.EndDate;
         target.IsAllDay = request.IsAllDay;
-        target.Timezone = request.Timezone;
         target.Location = request.Location;
         target.MeetingLink = request.MeetingLink;
         target.Color = request.Color;

@@ -10,7 +10,6 @@ public sealed record CreateCalendarEventCommand(
     DateTimeOffset StartDate,
     DateTimeOffset EndDate,
     bool IsAllDay,
-    string? Timezone,
     string? Location,
     string? MeetingLink,
     string? Color,

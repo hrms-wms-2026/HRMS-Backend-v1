@@ -11,7 +11,6 @@ public sealed record UpdateCalendarEventCommand(
     DateTimeOffset StartDate,
     DateTimeOffset EndDate,
     bool IsAllDay,
-    string? Timezone,
     string? Location,
     string? MeetingLink,
     string? Color,

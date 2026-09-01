@@ -21,6 +21,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
     private readonly Mock<ICalendarEventRepository> _events = new();
     private readonly Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository> _employees = new();
     private readonly Mock<ICalendarNotificationSender> _notifications = new();
+    private readonly Mock<ICalendarTimezoneResolver> _timezoneResolver = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
     private CreateCalendarEventCommandHandler BuildSut()
@@ -30,23 +31,24 @@ public sealed class CreateCalendarEventCommandHandlerTests
         _currentUser.SetupGet(x => x.UserId).Returns(UserId);
         _employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = UserId, FirstName = "Ada", LastName = "Owner" });
+        _timezoneResolver.Setup(x => x.ResolveForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync("Asia/Colombo");
         _unitOfWork
             .Setup(x => x.ExecuteInTransactionAsync(
                 It.IsAny<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CalendarEventItem>>>>(),
                 It.IsAny<CancellationToken>()))
             .Returns<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CalendarEventItem>>>, CancellationToken>(
                 (action, ct) => action(ct));
-        return new CreateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _unitOfWork.Object);
+        return new CreateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _timezoneResolver.Object, _unitOfWork.Object);
     }
 
     [Fact]
     public async Task Handle_Unauthenticated_ReturnsForbidden()
     {
         _currentUser.SetupGet(x => x.IsAuthenticated).Returns(false);
-        var sut = new CreateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _unitOfWork.Object);
+        var sut = new CreateCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _timezoneResolver.Object, _unitOfWork.Object);
 
         var result = await sut.Handle(
-            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, "UTC", null, null, null, CalendarRecurrences.None, []),
+            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None, []),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -61,7 +63,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
 
         var result = await sut.Handle(
             new CreateCalendarEventCommand(
-                "Sprint Planning", "Plan the sprint", Start, Start.AddHours(1), false, "UTC",
+                "Sprint Planning", "Plan the sprint", Start, Start.AddHours(1), false,
                 "Room 4", null, "#2563EB", CalendarRecurrences.None, [participantId]),
             CancellationToken.None);
 
@@ -84,7 +86,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
         var sut = BuildSut();
 
         var result = await sut.Handle(
-            new CreateCalendarEventCommand("Solo block", null, Start, Start.AddHours(1), false, "UTC", null, null, null, CalendarRecurrences.None, []),
+            new CreateCalendarEventCommand("Solo block", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None, []),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -99,7 +101,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
         var sut = BuildSut();
 
         var result = await sut.Handle(
-            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(-1), false, "UTC", null, null, null, CalendarRecurrences.None, []),
+            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(-1), false, null, null, null, CalendarRecurrences.None, []),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -112,7 +114,7 @@ public sealed class CreateCalendarEventCommandHandlerTests
         var sut = BuildSut();
 
         var result = await sut.Handle(
-            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, "UTC", null, null, null, CalendarRecurrences.Weekly, []),
+            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.Weekly, []),
             CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -125,11 +127,24 @@ public sealed class CreateCalendarEventCommandHandlerTests
         var sut = BuildSut();
 
         var result = await sut.Handle(
-            new CreateCalendarEventCommand("Standup", null, Start, Start.AddMinutes(30), false, "UTC", null, null, null,
+            new CreateCalendarEventCommand("Standup", null, Start, Start.AddMinutes(30), false, null, null, null,
                 CalendarRecurrences.Weekly, [], RecurrenceRule: "FREQ=WEEKLY"),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         _events.Verify(x => x.AddAsync(It.Is<CalendarEvent>(e => e.RecurrenceRule == "FREQ=WEEKLY"), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SetsTimezoneFromResolver()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            new CreateCalendarEventCommand("Title", null, Start, Start.AddHours(1), false, null, null, null, CalendarRecurrences.None, []),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _events.Verify(x => x.AddAsync(It.Is<CalendarEvent>(e => e.Timezone == "Asia/Colombo"), It.IsAny<CancellationToken>()), Times.Once);
     }
 }
