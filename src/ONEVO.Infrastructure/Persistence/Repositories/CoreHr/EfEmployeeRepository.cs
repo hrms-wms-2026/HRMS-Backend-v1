@@ -228,6 +228,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                             hasOpenBreak,
                             row.legalEntity?.BreakDurationMinutes,
                             breakUsedMinutes,
+                            resolution.LocalNow,
                             resolution.LocalNow);
                     var attendanceSummary = resolution is null || !isActive
                         ? null

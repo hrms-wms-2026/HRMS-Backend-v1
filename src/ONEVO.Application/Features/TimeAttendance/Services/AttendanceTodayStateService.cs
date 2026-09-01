@@ -113,7 +113,8 @@ public sealed class AttendanceTodayStateService(
             breakState.HasOpenBreak,
             context.LegalEntity.BreakDurationMinutes,
             breakUsage,
-            context.LocalNow);
+            context.LocalNow,
+            context.UtcNow);
         var actions = ResolveActions(
             attendanceRecord,
             context.Schedule,
@@ -122,6 +123,23 @@ public sealed class AttendanceTodayStateService(
             context.LegalEntity.BreakDurationMinutes);
         var shouldHaveClockedIn = attendanceState.ShouldHaveClockedIn;
         var messages = BuildMessages(context.Schedule, context.PolicyStatus, breakState);
+
+        // Today's own row (fetched above by WorkDate) can't reveal a session left open on an
+        // earlier day - clock-in/out always write to that day's own row, so a forgotten
+        // clock-out from a prior day is otherwise invisible until the employee happens to open
+        // that old day's history. Surface it here so it's seen before they clock in again.
+        var staleOpenRecord = await attendance.GetAnyOpenRecordAsync(
+            currentUser.TenantId, context.Employee.Id, ct);
+        var hasStalePriorDay = staleOpenRecord is not null
+            && staleOpenRecord.Date != context.WorkDate
+            && staleOpenRecord.ActualStart is DateTimeOffset staleStart
+            && context.UtcNow - staleStart >= AttendanceDayStatusResolver.MissingClockOutThreshold;
+        var effectiveAttentionType = hasStalePriorDay ? "missing_clock_out" : attendanceState.AttentionType;
+        var effectiveAttentionLabel = hasStalePriorDay
+            ? $"Still shown as clocked in from {staleOpenRecord!.Date:MMM d} — confirm the actual clock-out time"
+            : attendanceState.AttentionLabel;
+        var effectiveAttentionSeverity = hasStalePriorDay ? "critical" : attendanceState.AttentionSeverity;
+        var attentionWorkDate = hasStalePriorDay ? staleOpenRecord!.Date : (DateOnly?)null;
         var visibility = await authority.ResolveVisibilityAsync(
             new EmployeeAuthorityVisibilityRequest(
                 currentUser.UserId,
@@ -170,12 +188,13 @@ public sealed class AttendanceTodayStateService(
             context.AllowedClockInMethods,
             messages,
             attendanceState.StatusLabel,
-            attendanceState.AttentionType,
-            attendanceState.AttentionLabel,
-            attendanceState.AttentionSeverity,
+            effectiveAttentionType,
+            effectiveAttentionLabel,
+            effectiveAttentionSeverity,
             attendanceState.BreakOverageMinutes,
             attendanceState.IsOverBreakAllowance,
-            effectiveExpectedWorkAreaSource));
+            effectiveExpectedWorkAreaSource,
+            attentionWorkDate));
     }
 
     private async Task<PolicyResolution> ResolvePolicyAsync(
@@ -285,6 +304,12 @@ public sealed class AttendanceTodayStateService(
     {
         if (record?.ActualStart is not DateTimeOffset start || record.ActualEnd is not null)
             return record?.WorkedMinutes ?? 0;
+
+        // Past the missing-clock-out threshold we no longer know how long the employee
+        // actually worked, so stop projecting a live elapsed count that would keep growing
+        // forever. Fall back to the last persisted value until a correction resolves it.
+        if (now - start >= AttendanceDayStatusResolver.MissingClockOutThreshold)
+            return record.WorkedMinutes;
 
         return Math.Max(0, (int)(now - start).TotalMinutes - breakUsedMinutes);
     }
