@@ -29,6 +29,12 @@ public class CurrentUserService : ICurrentUser
     // has already switched into a specific tenant via ITenantContextSwitcher.SwitchToTenantAsync,
     // which sets this same scoped ITenantContext). Falling back only when HttpContext is null
     // never changes behavior on a real authenticated request.
+    //
+    // This fallback applies to TenantId ONLY. Every other member of this class (UserId,
+    // Permissions, IsAuthenticated, Email, and the session/legal-entity fields) stays
+    // Guid.Empty/false/empty/null outside an HTTP request, by design - there is no ambient
+    // equivalent of "current user identity" the way there is for tenant. Do not extend this
+    // pattern to those members without an explicit ambient identity concept to back it.
     public Guid TenantId
     {
         get

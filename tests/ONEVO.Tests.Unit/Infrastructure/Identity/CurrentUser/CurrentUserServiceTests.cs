@@ -17,7 +17,7 @@ public sealed class CurrentUserServiceTests
         var expectedTenantId = Guid.NewGuid();
         tenantContext.Setup(t => t.TenantId).Returns(expectedTenantId);
 
-        var sut = new ONEVO.Infrastructure.Identity.CurrentUser.CurrentUserService(
+        var sut = new CurrentUserService(
             httpContextAccessor.Object, tenantContext.Object);
 
         Assert.Equal(expectedTenantId, sut.TenantId);
@@ -38,7 +38,7 @@ public sealed class CurrentUserServiceTests
         var tenantContext = new Mock<ITenantContext>();
         tenantContext.Setup(t => t.TenantId).Returns(Guid.NewGuid()); // must be ignored
 
-        var sut = new ONEVO.Infrastructure.Identity.CurrentUser.CurrentUserService(
+        var sut = new CurrentUserService(
             httpContextAccessor.Object, tenantContext.Object);
 
         Assert.Equal(claimTenantId, sut.TenantId);
@@ -56,10 +56,10 @@ public sealed class CurrentUserServiceTests
         httpContextAccessor.Setup(a => a.HttpContext).Returns((HttpContext?)null);
         var tenantContextAccessor = new ONEVO.Infrastructure.Identity.Tenancy.TenantContextAccessor();
         var tenantId = Guid.NewGuid();
-        tenantContextAccessor.Resolve(new ONEVO.Application.Common.ServiceInterfaces.TenantRegistryEntry(
+        tenantContextAccessor.Resolve(new TenantRegistryEntry(
             tenantId, "acme", ONEVO.Domain.Features.InfrastructureModule.Entities.TenantStatus.Active, PlanCode: null));
 
-        var sut = new ONEVO.Infrastructure.Identity.CurrentUser.CurrentUserService(
+        var sut = new CurrentUserService(
             httpContextAccessor.Object, tenantContextAccessor);
 
         Assert.Equal(tenantId, sut.TenantId);
