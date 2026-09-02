@@ -13,6 +13,8 @@ public sealed class CalendarEventConfiguration : IEntityTypeConfiguration<Calend
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).HasMaxLength(255).IsRequired();
         builder.Property(e => e.Color).HasMaxLength(7).IsRequired();
+        builder.Property(e => e.StartDate).HasColumnName("start_date").IsRequired();
+        builder.Property(e => e.EndDate).HasColumnName("end_date").IsRequired();
         builder.Property(e => e.Status).HasMaxLength(20).IsRequired();
 
         builder.HasIndex(e => new { e.TenantId, e.ProjectId, e.Status })

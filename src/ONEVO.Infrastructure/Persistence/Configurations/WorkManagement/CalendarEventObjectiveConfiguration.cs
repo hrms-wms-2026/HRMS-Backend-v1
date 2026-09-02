@@ -12,8 +12,8 @@ public sealed class CalendarEventObjectiveConfiguration : IEntityTypeConfigurati
         builder.ToTable("calendar_event_objectives");
         builder.HasKey(e => e.Id);
 
+        // Not unique: a module (objective) may be a whole-member of many active events (spec §2, R1).
         builder.HasIndex(e => new { e.CalendarEventId, e.ObjectiveId })
-            .IsUnique()
             .HasDatabaseName("ix_calendar_event_objectives_event_objective");
         builder.HasIndex(e => e.ObjectiveId)
             .HasDatabaseName("ix_calendar_event_objectives_objective_id");
