@@ -152,6 +152,12 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "attendance_late_clockin_daily_summary",
+                InAppTitleTemplate = "Late clock-in summary for {{date}}",
+                InAppBodyTemplate = "{{lateCount}} employee(s) clocked in late today: {{lateEmployees}}."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "work_area_change_request_created",
                 InAppTitleTemplate = "Work-area change requested",
                 InAppBodyTemplate = "{{employeeName}} requested {{requestedWorkArea}} work for {{date}}."
