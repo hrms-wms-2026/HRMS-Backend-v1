@@ -220,16 +220,7 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-        // Requests are submitted as _owner (owner-a@leave-req.test), so the employee record must
-        // be linked to that same UserId - the API resolves "current user" -> employee by UserId,
-        // not by legal entity membership alone.
-        var ownerUserId = await db.Users
-            .Where(u => u.TenantId == tenantId && u.Email == "owner-a@leave-req.test")
-            .Select(u => u.Id)
-            .SingleAsync();
-
-        var existing = await db.Employees.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.UserId == ownerUserId);
+        var existing = await db.Employees.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.LegalEntityId == legalEntityId);
         if (existing is not null)
         {
             if (existing.HireDate.Year < 1900)
@@ -245,7 +236,7 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         {
             Id = employeeId,
             TenantId = tenantId,
-            UserId = ownerUserId,
+            UserId = Guid.NewGuid(),
             EmployeeNumber = "EMP-LEAVE-001",
             FirstName = "Priya",
             LastName = "Nair",

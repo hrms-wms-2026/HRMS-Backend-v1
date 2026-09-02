@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
@@ -150,22 +151,14 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Exchange_UserWithoutEmployeeRecord_FallsBackToUserNameAndEmail()
+    public async Task Generate_UserWithoutEmployeeRecord_FailsClosed()
     {
         var user = await SeedActiveUserAsync(
-            "exchange-noemp-test", "exchange-noemp@test.dev", "NoEmpPass1!");
+            "exchange-noemp-test", "exchange-noemp@test.dev", "NoEmpPass1!", withEmployee: false);
         var session = await LoginAndGetSessionAsync(user);
-        var code = await GenerateCodeAsync(session);
+        var response = await PostGenerateAsync(session);
 
-        var response = await PostExchangeAsync(code, "My Laptop", "Windows 11", "fp-device-noemp");
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Test User");
-        doc.RootElement.GetProperty("employee_email").GetString().Should().Be("exchange-noemp@test.dev");
-        doc.RootElement.TryGetProperty("employee_number", out var numberProp).Should().BeTrue();
-        numberProp.ValueKind.Should().Be(JsonValueKind.Null);
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
     }
 
     [Fact]
@@ -190,8 +183,31 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         second.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a consumed code must be rejected on replay");
     }
 
+        [Fact]
+    public async Task ManualExchange_StillConsumesCodeAndReturnsCredentialsAtomically()
+    {
+        var user = await SeedActiveUserAsync(
+            "exchange-atomic-test", "exchange-atomic@test.dev", "AtomicPass1!");
+        var session = await LoginAndGetSessionAsync(user);
+        var code = await GenerateCodeAsync(session);
+
+        var first = await PostExchangeAsync(code, "Atomic Laptop", "Windows 11", "fp-atomic");
+        var second = await PostExchangeAsync(code, "Atomic Laptop", "Windows 11", "fp-atomic");
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        second.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        (await db.TrayDeviceRegistrations.CountAsync(d => d.UserId == user.UserId))
+            .Should().Be(1);
+        (await db.TrayDeviceRefreshTokens.CountAsync(t => t.UserId == user.UserId))
+            .Should().Be(1);
+    }
+
     [Fact]
     public async Task Exchange_RawCodeNeverStoredInDb_OnlyHashPersisted()
+
     {
         var user = await SeedActiveUserAsync("exchange-hash-test", "exchange-hash@test.dev", "HashPass1!");
         var session = await LoginAndGetSessionAsync(user);
@@ -231,7 +247,8 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Test User");
         doc.RootElement.GetProperty("employee_email").GetString().Should().Be("refresh-valid@test.dev");
         doc.RootElement.TryGetProperty("employee_number", out var numberProp).Should().BeTrue();
-        numberProp.ValueKind.Should().Be(JsonValueKind.Null);
+        numberProp.ValueKind.Should().Be(JsonValueKind.String);
+        numberProp.GetString().Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -328,7 +345,8 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
-    private async Task<SeedResult> SeedActiveUserAsync(string tenantSlug, string email, string password)
+    private async Task<SeedResult> SeedActiveUserAsync(
+        string tenantSlug, string email, string password, bool withEmployee = true)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -354,6 +372,24 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
 
         db.Tenants.Add(tenant);
         db.Users.Add(user);
+        if (withEmployee)
+        {
+            var legalEntity = new LegalEntity
+            {
+                Id = Guid.NewGuid(), TenantId = tenant.Id, Name = $"{tenantSlug} Company",
+                CountryCode = "US", CurrencyCode = "USD", IsActive = true, IsPrimary = true
+            };
+            db.LegalEntities.Add(legalEntity);
+            db.Employees.Add(new Employee
+            {
+                Id = Guid.NewGuid(), TenantId = tenant.Id, UserId = user.Id,
+                LegalEntityId = legalEntity.Id, EmployeeNumber = Guid.NewGuid().ToString("N")[..8],
+                FirstName = "Test", LastName = "User", Email = email,
+                EmploymentTypeId = 1, EmploymentStatusId = 1, WorkModeId = 1,
+                HireDate = new DateOnly(2025, 1, 1), CreatedAt = DateTimeOffset.UtcNow,
+                CreatedById = user.Id
+            });
+        }
         await db.SaveChangesAsync();
 
         return new SeedResult(tenant.Id, user.Id, email, password, tenantSlug);
@@ -366,22 +402,11 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        db.Add(new Employee
-        {
-            Id = Guid.NewGuid(),
-            TenantId = seed.TenantId,
-            UserId = seed.UserId,
-            EmployeeNumber = employeeNumber,
-            FirstName = "Priya",
-            LastName = "Employee",
-            Email = "priya.employee@test.dev",
-            EmploymentTypeId = 1,
-            EmploymentStatusId = 1,
-            WorkModeId = 1,
-            HireDate = new DateOnly(2025, 1, 1),
-            CreatedAt = DateTimeOffset.UtcNow,
-            CreatedById = seed.UserId
-        });
+        var employee = await db.Employees.SingleAsync(e => e.UserId == seed.UserId);
+        employee.EmployeeNumber = employeeNumber;
+        employee.FirstName = "Priya";
+        employee.LastName = "Employee";
+        employee.Email = "priya.employee@test.dev";
         await db.SaveChangesAsync();
 
         return seed;

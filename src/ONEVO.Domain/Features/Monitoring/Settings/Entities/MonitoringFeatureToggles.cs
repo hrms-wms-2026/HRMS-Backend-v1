@@ -3,13 +3,14 @@ using ONEVO.Domain.Common;
 namespace ONEVO.Domain.Features.Monitoring.Settings.Entities;
 
 /// <summary>
-/// Tenant-level ON/OFF switches for monitoring capabilities.
-/// Unique on tenant_id.
+/// Legal-entity-level ON/OFF switches for monitoring capabilities. A null LegalEntityId is a
+/// retained tenant fallback for backward compatibility only.
 /// </summary>
 public class MonitoringFeatureToggles : ITenantOwnedEntity
 {
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
+    public Guid? LegalEntityId { get; set; }
     public bool ActivityMonitoring { get; set; }
     public bool ApplicationTracking { get; set; }
     public bool DocumentTracking { get; set; }

@@ -30,7 +30,13 @@ public class GetMonitoringFeatureTogglesQueryHandler
         if (tenantId == Guid.Empty)
             return Result<MonitoringFeatureTogglesResponse>.Forbidden("Tenant context missing.");
 
-        var entity = await _toggles.GetByTenantIdAsync(tenantId, ct);
+        if (_currentUser.LegalEntityId is not Guid legalEntityId
+            || !await _toggles.LegalEntityExistsAsync(tenantId, legalEntityId, ct))
+            return Result<MonitoringFeatureTogglesResponse>.UnprocessableEntity(
+                "Select an active company before viewing monitoring settings.");
+
+        var entity = await _toggles.GetByLegalEntityIdAsync(
+            tenantId, legalEntityId, includeTenantFallback: true, ct);
         return Result<MonitoringFeatureTogglesResponse>.Success(MonitoringFeatureTogglesMapper.ToResponse(entity));
     }
 }

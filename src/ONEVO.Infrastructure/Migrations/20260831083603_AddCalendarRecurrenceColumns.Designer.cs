@@ -1390,21 +1390,21 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
-                        .HasName("pk_calendar_events");
+                        .HasName("pk_personal_calendar_events");
 
                     b.HasIndex("RecurrenceParentId")
-                        .HasDatabaseName("ix_calendar_events_recurrence_parent_id");
+                        .HasDatabaseName("ix_personal_calendar_events_recurrence_parent_id");
 
                     b.HasIndex("TenantId", "CreatedById")
-                        .HasDatabaseName("ix_calendar_events_tenant_id_created_by_id");
+                        .HasDatabaseName("ix_personal_calendar_events_tenant_id_created_by_id");
 
                     b.HasIndex("TenantId", "RecurrenceParentId")
-                        .HasDatabaseName("ix_calendar_events_tenant_id_recurrence_parent_id");
+                        .HasDatabaseName("ix_personal_calendar_events_tenant_id_recurrence_parent_id");
 
                     b.HasIndex("TenantId", "StartDate", "EndDate")
-                        .HasDatabaseName("ix_calendar_events_tenant_id_start_date_end_date");
+                        .HasDatabaseName("ix_personal_calendar_events_tenant_id_start_date_end_date");
 
-                    b.ToTable("calendar_events", (string)null);
+                    b.ToTable("personal_calendar_events", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipant", b =>
@@ -11242,7 +11242,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("RecurrenceParentId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_calendar_events_calendar_events_recurrence_parent_id");
+                        .HasConstraintName("fk_personal_calendar_events_recurrence_parent_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.AccessGrantRequest", b =>

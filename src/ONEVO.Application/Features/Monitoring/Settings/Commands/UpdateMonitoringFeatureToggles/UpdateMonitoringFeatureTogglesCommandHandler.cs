@@ -42,8 +42,14 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
             return Result<MonitoringFeatureTogglesResponse>.Forbidden(
                 "You do not have permission to configure monitoring settings.");
 
+        if (_currentUser.LegalEntityId is not Guid legalEntityId
+            || !await _toggles.LegalEntityExistsAsync(tenantId, legalEntityId, ct))
+            return Result<MonitoringFeatureTogglesResponse>.UnprocessableEntity(
+                "Select an active company before configuring monitoring settings.");
+
         var now = _clock.UtcNow;
-        var existing = await _toggles.GetByTenantIdAsync(tenantId, ct);
+        var existing = await _toggles.GetByLegalEntityIdAsync(
+            tenantId, legalEntityId, includeTenantFallback: false, ct);
 
         if (existing is not null)
         {
@@ -68,6 +74,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
             {
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
+                LegalEntityId = legalEntityId,
                 ActivityMonitoring = request.ActivityMonitoring,
                 ApplicationTracking = request.ApplicationTracking,
                 DocumentTracking = request.DocumentTracking,

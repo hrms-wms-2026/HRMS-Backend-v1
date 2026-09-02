@@ -5,6 +5,9 @@ using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailySummary;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -21,46 +24,51 @@ public sealed class AttendanceReadHandler(
     IAttendanceTodayStateService todayState,
     ILeaveRequestReadRepository? leaveRequests = null,
     ILegalEntityRepository? legalEntities = null,
-    IDateTimeProvider? dateTimeProvider = null)
+    IDateTimeProvider? dateTimeProvider = null,
+    IActivityDailySummaryRepository? activitySummaries = null)
     : IRequestHandler<GetAttendanceTodayQuery, Result<AttendanceTodayResponse>>,
-      IRequestHandler<GetMyAttendanceHistoryQuery, Result<IReadOnlyList<AttendanceHistoryRow>>>,
-      IRequestHandler<GetCoveredAttendanceHistoryQuery, Result<IReadOnlyList<AttendanceHistoryRow>>>
+      IRequestHandler<GetMyAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
+      IRequestHandler<GetCoveredAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
+      IRequestHandler<GetAttendanceDayDetailQuery, Result<AttendanceDayDetailResponse>>
 {
     private const string AttendanceReadPermission = "attendance:read";
 
     public Task<Result<AttendanceTodayResponse>> Handle(GetAttendanceTodayQuery _, CancellationToken ct)
         => todayState.GetTodayAsync(ct);
 
-    public async Task<Result<IReadOnlyList<AttendanceHistoryRow>>> Handle(
+    public async Task<Result<PagedResult<AttendanceHistoryRow>>> Handle(
         GetMyAttendanceHistoryQuery query, CancellationToken ct)
     {
         var validation = ValidateRange(query.From, query.To);
         if (validation is not null)
-            return Result<IReadOnlyList<AttendanceHistoryRow>>.Failure(validation);
+            return Result<PagedResult<AttendanceHistoryRow>>.Failure(validation);
 
         var employee = await employees.GetDefaultForUserAsync(currentUser.TenantId, currentUser.UserId, ct);
         if (employee is null)
-            return Result<IReadOnlyList<AttendanceHistoryRow>>.NotFound("Current employee record was not found.");
+            return Result<PagedResult<AttendanceHistoryRow>>.NotFound("Current employee record was not found.");
 
-        var records = await attendance.ListRecordsAsync(
-            currentUser.TenantId, [employee.Id], query.From, query.To, ct);
-        return Result<IReadOnlyList<AttendanceHistoryRow>>.Success(
-            await BuildRowsAsync(records, includeEmployee: false, employee.LegalEntityId, employee.Id, ct));
+        var pageNumber = query.Paging.PageNumber < 1 ? 1 : query.Paging.PageNumber;
+        var skip = (pageNumber - 1) * query.Paging.PageSize;
+        var (records, totalCount) = await attendance.ListRecordsAsync(
+            currentUser.TenantId, [employee.Id], query.From, query.To, skip, query.Paging.PageSize, ct);
+        var rows = await BuildRowsAsync(records, includeEmployee: false, employee.LegalEntityId, employee.Id, ct);
+        return Result<PagedResult<AttendanceHistoryRow>>.Success(
+            new PagedResult<AttendanceHistoryRow>(rows, pageNumber, query.Paging.PageSize, totalCount));
     }
 
-    public async Task<Result<IReadOnlyList<AttendanceHistoryRow>>> Handle(
+    public async Task<Result<PagedResult<AttendanceHistoryRow>>> Handle(
         GetCoveredAttendanceHistoryQuery query, CancellationToken ct)
     {
         if (!currentUser.IsAuthenticated || !currentUser.HasPermission(AttendanceReadPermission))
-            return Result<IReadOnlyList<AttendanceHistoryRow>>.Forbidden();
+            return Result<PagedResult<AttendanceHistoryRow>>.Forbidden();
 
         var validation = ValidateRange(query.From, query.To);
         if (validation is not null)
-            return Result<IReadOnlyList<AttendanceHistoryRow>>.Failure(validation);
+            return Result<PagedResult<AttendanceHistoryRow>>.Failure(validation);
 
         var actor = await employees.GetDefaultForUserAsync(currentUser.TenantId, currentUser.UserId, ct);
         if (actor?.LegalEntityId is null)
-            return Result<IReadOnlyList<AttendanceHistoryRow>>.NotFound("Current employee record was not found.");
+            return Result<PagedResult<AttendanceHistoryRow>>.NotFound("Current employee record was not found.");
 
         var visibility = await authority.ResolveVisibilityAsync(
             new EmployeeAuthorityVisibilityRequest(
@@ -74,7 +82,7 @@ public sealed class AttendanceReadHandler(
         if (query.EmployeeId is Guid requestedEmployeeId)
         {
             if (!visibility.EmployeeIds.Contains(requestedEmployeeId))
-                return Result<IReadOnlyList<AttendanceHistoryRow>>.Forbidden();
+                return Result<PagedResult<AttendanceHistoryRow>>.Forbidden();
 
             employeeIds = [requestedEmployeeId];
         }
@@ -83,10 +91,92 @@ public sealed class AttendanceReadHandler(
             employeeIds = visibility.EmployeeIds;
         }
 
-        var records = await attendance.ListRecordsAsync(
-            currentUser.TenantId, employeeIds, query.From, query.To, ct);
-        return Result<IReadOnlyList<AttendanceHistoryRow>>.Success(
-            await BuildRowsAsync(records, includeEmployee: true, actor.LegalEntityId, actor.Id, ct));
+        var pageNumber = query.Paging.PageNumber < 1 ? 1 : query.Paging.PageNumber;
+        var skip = (pageNumber - 1) * query.Paging.PageSize;
+        var (records, totalCount) = await attendance.ListRecordsAsync(
+            currentUser.TenantId, employeeIds, query.From, query.To, skip, query.Paging.PageSize, ct);
+        var rows = await BuildRowsAsync(records, includeEmployee: true, actor.LegalEntityId, actor.Id, ct);
+        return Result<PagedResult<AttendanceHistoryRow>>.Success(
+            new PagedResult<AttendanceHistoryRow>(rows, pageNumber, query.Paging.PageSize, totalCount));
+    }
+
+    public async Task<Result<AttendanceDayDetailResponse>> Handle(
+        GetAttendanceDayDetailQuery query, CancellationToken ct)
+    {
+        if (!currentUser.IsAuthenticated)
+            return Result<AttendanceDayDetailResponse>.Forbidden();
+
+        var actor = await employees.GetDefaultForUserAsync(currentUser.TenantId, currentUser.UserId, ct);
+        if (actor is null)
+            return Result<AttendanceDayDetailResponse>.NotFound("Current employee record was not found.");
+
+        var isSelf = query.EmployeeId == actor.Id;
+        bool canSeeActivity;
+
+        if (isSelf)
+        {
+            canSeeActivity = true;
+        }
+        else
+        {
+            if (!currentUser.HasPermission(AttendanceReadPermission))
+                return Result<AttendanceDayDetailResponse>.Forbidden();
+            if (actor.LegalEntityId is null)
+                return Result<AttendanceDayDetailResponse>.NotFound("Current employee record was not found.");
+
+            var visibility = await authority.ResolveVisibilityAsync(
+                new EmployeeAuthorityVisibilityRequest(
+                    currentUser.UserId,
+                    actor.LegalEntityId.Value,
+                    AttendanceReadPermission,
+                    IncludeSelf: true,
+                    EmployeeAuthorityPurpose.TimeTrackingRead), ct);
+
+            if (!visibility.EmployeeIds.Contains(query.EmployeeId))
+                return Result<AttendanceDayDetailResponse>.Forbidden();
+
+            canSeeActivity = currentUser.HasPermission("monitoring:read");
+        }
+
+        var record = await attendance.GetRecordAsync(currentUser.TenantId, query.EmployeeId, query.Date, ct);
+        if (record is null)
+            return Result<AttendanceDayDetailResponse>.NotFound("No attendance record was found for this date.");
+
+        var rows = await BuildRowsAsync([record], includeEmployee: !isSelf, actor.LegalEntityId, actor.Id, ct);
+        var summary = rows[0];
+
+        var legalEntity = legalEntities is not null && actor.LegalEntityId is Guid entityId
+            ? await legalEntities.GetByIdForTenantAsync(currentUser.TenantId, entityId, ct)
+            : null;
+        var timezone = TryFindTimezone(legalEntity?.Timezone ?? record.ScheduleTimezone);
+        var dayWindow = AttendanceTodayStateService.GetLocalDayWindow(query.Date, timezone);
+        var breaks = await attendance.ListBreaksAsync(
+            currentUser.TenantId, query.EmployeeId, dayWindow.Start, dayWindow.End, ct)
+            ?? Array.Empty<BreakRecord>();
+
+        var timelineEvents = new List<TimelineEvent>();
+        if (record.ActualStart is DateTimeOffset clockIn)
+            timelineEvents.Add(new TimelineEvent("ClockIn", clockIn, record.AttendanceSource ?? "web"));
+        foreach (var breakRecord in breaks)
+        {
+            timelineEvents.Add(new TimelineEvent("BreakStart", breakRecord.BreakStart, breakRecord.AutoDetected ? "desktop_tray" : "web"));
+            if (breakRecord.BreakEnd is DateTimeOffset breakEnd)
+                timelineEvents.Add(new TimelineEvent("BreakEnd", breakEnd, breakRecord.AutoDetected ? "desktop_tray" : "web"));
+        }
+        if (record.ActualEnd is DateTimeOffset clockOut)
+            timelineEvents.Add(new TimelineEvent("ClockOut", clockOut, record.AttendanceSource ?? "web"));
+        timelineEvents = timelineEvents.OrderBy(item => item.Timestamp).ToList();
+
+        ActivityDailySummaryDto? dailyActivity = null;
+        if (canSeeActivity && activitySummaries is not null)
+        {
+            var activityEntity = await activitySummaries.GetAsync(currentUser.TenantId, query.EmployeeId, query.Date, ct);
+            if (activityEntity is not null)
+                dailyActivity = GetActivityDailySummaryQueryHandler.Map(activityEntity);
+        }
+
+        return Result<AttendanceDayDetailResponse>.Success(
+            new AttendanceDayDetailResponse(summary, timelineEvents, dailyActivity));
     }
 
     private async Task<IReadOnlyList<AttendanceHistoryRow>> BuildRowsAsync(
@@ -150,9 +240,11 @@ public sealed class AttendanceReadHandler(
                 record.ScheduledEnd,
                 record.RequiredWorkMinutes);
             var dayWindow = AttendanceTodayStateService.GetLocalDayWindow(record.Date, timezone);
-            var breakUsedMinutes = breaksByEmployee.TryGetValue(record.EmployeeId, out var employeeBreaks)
-                ? AttendanceTodayStateService.CalculateBreakUsage(
-                    employeeBreaks, dayWindow, dayWindow.End)
+            var now = dateTimeProvider?.UtcNow ?? DateTimeOffset.UtcNow;
+            var hasEmployeeBreaks = breaksByEmployee.TryGetValue(record.EmployeeId, out var employeeBreaks);
+            var hasOpenBreak = hasEmployeeBreaks && employeeBreaks!.Any(breakRecord => breakRecord.BreakEnd is null);
+            var breakUsedMinutes = hasEmployeeBreaks
+                ? AttendanceTodayStateService.CalculateBreakUsage(employeeBreaks!, dayWindow, now)
                 : record.BreakMinutes;
             var localNow = record.Date.ToDateTime(
                 record.ScheduledStart ?? TimeOnly.MinValue,
@@ -162,6 +254,7 @@ public sealed class AttendanceReadHandler(
                 "configured",
                 record,
                 hasApprovedLeave,
+                hasOpenBreak,
                 legalEntity?.BreakDurationMinutes,
                 breakUsedMinutes,
                 new DateTimeOffset(localNow, TimeSpan.Zero));
@@ -174,7 +267,7 @@ public sealed class AttendanceReadHandler(
                 record.ActualEnd,
                 record.ActualStart is not null && record.ActualEnd is null,
                 record.BreakMinutes,
-                record.WorkedMinutes,
+                AttendanceTodayStateService.CalculateWorkedMinutes(record, breakUsedMinutes, now),
                 NormalizeWorkMode(record.ExpectedWorkArea),
                 record.AttendanceSource,
                 status.Status,

@@ -8,7 +8,7 @@ namespace ONEVO.Infrastructure.Migrations
     /// <inheritdoc />
     public partial class AddCalendarCore : Migration
     {
-        private static readonly string[] TenantTables = ["calendar_events", "calendar_event_participants"];
+        private static readonly string[] TenantTables = ["personal_calendar_events", "calendar_event_participants"];
 
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -35,7 +35,7 @@ namespace ONEVO.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "calendar_events",
+                name: "personal_calendar_events",
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -69,7 +69,7 @@ namespace ONEVO.Infrastructure.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("pk_calendar_events", x => x.id);
+                    table.PrimaryKey("pk_personal_calendar_events", x => x.id);
                 });
 
             migrationBuilder.CreateIndex(
@@ -84,13 +84,13 @@ namespace ONEVO.Infrastructure.Migrations
                 columns: new[] { "tenant_id", "employee_id" });
 
             migrationBuilder.CreateIndex(
-                name: "ix_calendar_events_tenant_id_created_by_id",
-                table: "calendar_events",
+                name: "ix_personal_calendar_events_tenant_id_created_by_id",
+                table: "personal_calendar_events",
                 columns: new[] { "tenant_id", "created_by_id" });
 
             migrationBuilder.CreateIndex(
-                name: "ix_calendar_events_tenant_id_start_date_end_date",
-                table: "calendar_events",
+                name: "ix_personal_calendar_events_tenant_id_start_date_end_date",
+                table: "personal_calendar_events",
                 columns: new[] { "tenant_id", "start_date", "end_date" });
 
             foreach (var table in TenantTables)
@@ -133,7 +133,7 @@ namespace ONEVO.Infrastructure.Migrations
                 name: "calendar_event_participants");
 
             migrationBuilder.DropTable(
-                name: "calendar_events");
+                name: "personal_calendar_events");
         }
     }
 }

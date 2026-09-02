@@ -42,6 +42,7 @@ public static class DependencyInjection
             ONEVO.Application.Features.TimeAttendance.Services.IAttendanceTodayStateService,
             ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService>();
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Commands.AttendanceCorrections.AttendanceCorrectionWorkflow>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Commands.WorkAreaChangeRequests.WorkAreaChangeRequestWorkflow>();
 
         // Outbox message consumers (dispatched by the Infrastructure outbox worker).
         services.AddScoped<IOutboxMessageHandler, TenantOwnerInviteEmailOutboxHandler>();
@@ -68,9 +69,13 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler>(_ =>
             new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveInformationRequested));
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Leave.Cancellation.Outbox.NoOpLeaveCancellationSideEffectOutboxHandler>();
+                services.AddScoped<GitHubUserIntegrationAvailability>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.TrayActivation.Services.ITrayEnrollmentService,
+            ONEVO.Application.Features.Monitoring.TrayActivation.Services.TrayEnrollmentService>();
+
         services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarEventInviteEmailOutboxHandler>();
-        services.AddScoped<GitHubUserIntegrationAvailability>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 
         services.AddScoped<

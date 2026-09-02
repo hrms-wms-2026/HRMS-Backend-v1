@@ -53,7 +53,7 @@ public static class ObjectiveViewModelMapper
     {
         Items = response.Items.Select(i => new ObjectiveMemberItemViewModel
         {
-            EmployeeId = i.EmployeeId, IsHead = i.IsHead, Pending = i.Pending,
+            EmployeeId = i.EmployeeId, Name = i.Name, IsHead = i.IsHead, Pending = i.Pending,
             InviteType = i.InviteType, InvitationId = i.InvitationId, SinceOrInvitedAt = i.SinceOrInvitedAt
         }).ToList()
     };

@@ -14,7 +14,20 @@ public class EfMonitoringFeatureTogglesRepository : IMonitoringFeatureTogglesRep
     public async Task<MonitoringFeatureToggles?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
         await _db.MonitoringFeatureToggles
             .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId, ct);
+            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.LegalEntityId == null, ct);
+
+    public async Task<MonitoringFeatureToggles?> GetByLegalEntityIdAsync(
+        Guid tenantId, Guid legalEntityId, bool includeTenantFallback, CancellationToken ct = default)
+    {
+        var exact = await _db.MonitoringFeatureToggles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.LegalEntityId == legalEntityId, ct);
+        return exact ?? (includeTenantFallback ? await GetByTenantIdAsync(tenantId, ct) : null);
+    }
+
+    public Task<bool> LegalEntityExistsAsync(Guid tenantId, Guid legalEntityId, CancellationToken ct = default) =>
+        _db.LegalEntities.AsNoTracking().AnyAsync(
+            entity => entity.Id == legalEntityId && entity.TenantId == tenantId && entity.IsActive, ct);
 
     public async Task AddAsync(MonitoringFeatureToggles toggles, CancellationToken ct = default) =>
         await _db.MonitoringFeatureToggles.AddAsync(toggles, ct);

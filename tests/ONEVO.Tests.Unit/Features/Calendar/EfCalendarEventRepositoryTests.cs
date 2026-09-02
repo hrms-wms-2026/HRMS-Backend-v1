@@ -30,16 +30,16 @@ public sealed class EfCalendarEventRepositoryTests
 
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
         var inRange = MakeEvent(startDate: new DateTimeOffset(2026, 9, 10, 9, 0, 0, TimeSpan.Zero));
-        db.CalendarEvents.Add(inRange);
+        db.PersonalCalendarEvents.Add(inRange);
         await db.SaveChangesAsync();
 
         var outOfRange = MakeEvent(startDate: new DateTimeOffset(2026, 10, 5, 9, 0, 0, TimeSpan.Zero));
-        db.CalendarEvents.Add(outOfRange);
+        db.PersonalCalendarEvents.Add(outOfRange);
         await db.SaveChangesAsync();
 
         currentUser.SetupGet(x => x.UserId).Returns(Guid.NewGuid());
         var otherUsers = MakeEvent(startDate: new DateTimeOffset(2026, 9, 15, 9, 0, 0, TimeSpan.Zero));
-        db.CalendarEvents.Add(otherUsers);
+        db.PersonalCalendarEvents.Add(otherUsers);
         await db.SaveChangesAsync();
 
         db.ChangeTracker.Clear();
@@ -56,7 +56,7 @@ public sealed class EfCalendarEventRepositoryTests
     {
         await using var db = BuildInMemoryDb(new Mock<ICurrentUser>().Object);
         var event1 = MakeEvent(startDate: new DateTimeOffset(2026, 9, 12, 9, 0, 0, TimeSpan.Zero));
-        db.CalendarEvents.Add(event1);
+        db.PersonalCalendarEvents.Add(event1);
         db.CalendarEventParticipants.Add(new CalendarEventParticipant
         {
             Id = Guid.NewGuid(), TenantId = TenantId, EventId = event1.Id, EmployeeId = EmployeeId,
@@ -79,18 +79,18 @@ public sealed class EfCalendarEventRepositoryTests
         var master = MakeEvent(startDate: new DateTimeOffset(2026, 9, 10, 9, 0, 0, TimeSpan.Zero));
         master.Recurrence = CalendarRecurrences.Weekly;
         master.RecurrenceRule = "FREQ=WEEKLY";
-        db.CalendarEvents.Add(master);
+        db.PersonalCalendarEvents.Add(master);
 
         var cancelledChild = MakeEvent(startDate: new DateTimeOffset(2026, 9, 17, 9, 0, 0, TimeSpan.Zero));
         cancelledChild.RecurrenceParentId = master.Id;
         cancelledChild.RecurrenceOriginalStart = cancelledChild.StartDate;
         cancelledChild.IsRecurrenceCancelled = true;
-        db.CalendarEvents.Add(cancelledChild);
+        db.PersonalCalendarEvents.Add(cancelledChild);
 
         var detachedChild = MakeEvent(startDate: new DateTimeOffset(2026, 9, 24, 10, 0, 0, TimeSpan.Zero));
         detachedChild.RecurrenceParentId = master.Id;
         detachedChild.RecurrenceOriginalStart = new DateTimeOffset(2026, 9, 24, 9, 0, 0, TimeSpan.Zero);
-        db.CalendarEvents.Add(detachedChild);
+        db.PersonalCalendarEvents.Add(detachedChild);
 
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
@@ -114,19 +114,19 @@ public sealed class EfCalendarEventRepositoryTests
         var mine = MakeEvent(startDate: new DateTimeOffset(2026, 9, 5, 9, 0, 0, TimeSpan.Zero));
         mine.Recurrence = CalendarRecurrences.Weekly;
         mine.RecurrenceRule = "FREQ=WEEKLY";
-        db.CalendarEvents.Add(mine);
+        db.PersonalCalendarEvents.Add(mine);
         await db.SaveChangesAsync();
 
         currentUser.SetupGet(x => x.UserId).Returns(Guid.NewGuid());
         var someoneElses = MakeEvent(startDate: new DateTimeOffset(2026, 9, 6, 9, 0, 0, TimeSpan.Zero));
         someoneElses.Recurrence = CalendarRecurrences.Weekly;
         someoneElses.RecurrenceRule = "FREQ=WEEKLY";
-        db.CalendarEvents.Add(someoneElses);
+        db.PersonalCalendarEvents.Add(someoneElses);
 
         var startsTooLate = MakeEvent(startDate: RangeEnd.AddDays(5));
         startsTooLate.Recurrence = CalendarRecurrences.Weekly;
         startsTooLate.RecurrenceRule = "FREQ=WEEKLY";
-        db.CalendarEvents.Add(startsTooLate);
+        db.PersonalCalendarEvents.Add(startsTooLate);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -148,7 +148,7 @@ public sealed class EfCalendarEventRepositoryTests
         child2.RecurrenceParentId = masterId;
         child2.IsRecurrenceCancelled = true;
         var unrelated = MakeEvent(startDate: new DateTimeOffset(2026, 9, 24, 9, 0, 0, TimeSpan.Zero));
-        db.CalendarEvents.AddRange(child1, child2, unrelated);
+        db.PersonalCalendarEvents.AddRange(child1, child2, unrelated);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -169,7 +169,7 @@ public sealed class EfCalendarEventRepositoryTests
         var child = MakeEvent(startDate: originalStart);
         child.RecurrenceParentId = masterId;
         child.RecurrenceOriginalStart = originalStart;
-        db.CalendarEvents.Add(child);
+        db.PersonalCalendarEvents.Add(child);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 

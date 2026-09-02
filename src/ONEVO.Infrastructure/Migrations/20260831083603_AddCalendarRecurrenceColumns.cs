@@ -13,38 +13,38 @@ namespace ONEVO.Infrastructure.Migrations
         {
             migrationBuilder.AddColumn<bool>(
                 name: "is_recurrence_cancelled",
-                table: "calendar_events",
+                table: "personal_calendar_events",
                 type: "boolean",
                 nullable: false,
                 defaultValue: false);
 
             migrationBuilder.AddColumn<DateTimeOffset>(
                 name: "recurrence_original_start",
-                table: "calendar_events",
+                table: "personal_calendar_events",
                 type: "timestamp with time zone",
                 nullable: true);
 
             migrationBuilder.AddColumn<Guid>(
                 name: "recurrence_parent_id",
-                table: "calendar_events",
+                table: "personal_calendar_events",
                 type: "uuid",
                 nullable: true);
 
             migrationBuilder.CreateIndex(
-                name: "ix_calendar_events_recurrence_parent_id",
-                table: "calendar_events",
+                name: "ix_personal_calendar_events_recurrence_parent_id",
+                table: "personal_calendar_events",
                 column: "recurrence_parent_id");
 
             migrationBuilder.CreateIndex(
-                name: "ix_calendar_events_tenant_id_recurrence_parent_id",
-                table: "calendar_events",
+                name: "ix_personal_calendar_events_tenant_id_recurrence_parent_id",
+                table: "personal_calendar_events",
                 columns: new[] { "tenant_id", "recurrence_parent_id" });
 
             migrationBuilder.AddForeignKey(
-                name: "fk_calendar_events_calendar_events_recurrence_parent_id",
-                table: "calendar_events",
+                name: "fk_personal_calendar_events_recurrence_parent_id",
+                table: "personal_calendar_events",
                 column: "recurrence_parent_id",
-                principalTable: "calendar_events",
+                principalTable: "personal_calendar_events",
                 principalColumn: "id",
                 onDelete: ReferentialAction.Cascade);
         }
@@ -53,28 +53,28 @@ namespace ONEVO.Infrastructure.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(
-                name: "fk_calendar_events_calendar_events_recurrence_parent_id",
-                table: "calendar_events");
+                name: "fk_personal_calendar_events_recurrence_parent_id",
+                table: "personal_calendar_events");
 
             migrationBuilder.DropIndex(
-                name: "ix_calendar_events_recurrence_parent_id",
-                table: "calendar_events");
+                name: "ix_personal_calendar_events_recurrence_parent_id",
+                table: "personal_calendar_events");
 
             migrationBuilder.DropIndex(
-                name: "ix_calendar_events_tenant_id_recurrence_parent_id",
-                table: "calendar_events");
+                name: "ix_personal_calendar_events_tenant_id_recurrence_parent_id",
+                table: "personal_calendar_events");
 
             migrationBuilder.DropColumn(
                 name: "is_recurrence_cancelled",
-                table: "calendar_events");
+                table: "personal_calendar_events");
 
             migrationBuilder.DropColumn(
                 name: "recurrence_original_start",
-                table: "calendar_events");
+                table: "personal_calendar_events");
 
             migrationBuilder.DropColumn(
                 name: "recurrence_parent_id",
-                table: "calendar_events");
+                table: "personal_calendar_events");
         }
     }
 }

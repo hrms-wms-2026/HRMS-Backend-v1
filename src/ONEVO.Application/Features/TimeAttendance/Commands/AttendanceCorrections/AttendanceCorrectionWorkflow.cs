@@ -177,19 +177,22 @@ public sealed class AttendanceCorrectionWorkflow(
         }
     }
 
-    public async Task<Result<IReadOnlyList<AttendanceCorrectionResponse>>> ListMyAsync(
+    public async Task<Result<PagedResult<AttendanceCorrectionResponse>>> ListMyAsync(
         ListMyAttendanceCorrectionsQuery request, CancellationToken ct)
     {
         var context = await ResolveEmployeeContextAsync(ct);
         if (!context.IsSuccess)
-            return Result<IReadOnlyList<AttendanceCorrectionResponse>>.Failure(context.Error!, context.StatusCode ?? 400);
+            return Result<PagedResult<AttendanceCorrectionResponse>>.Failure(context.Error!, context.StatusCode ?? 400);
 
         var value = context.Value!;
-        var rows = await corrections.ListMyAsync(currentUser.TenantId, value.Employee.Id,
-            request.From, request.To, request.Status, ct);
-        return Result<IReadOnlyList<AttendanceCorrectionResponse>>.Success(
-            rows.Select(row => ToResponse(row, value.Employee,
-                ResolveTimezone(value.LegalEntity, row.WorkDate))).ToArray());
+        var pageNumber = request.Paging.PageNumber < 1 ? 1 : request.Paging.PageNumber;
+        var skip = (pageNumber - 1) * request.Paging.PageSize;
+        var (rows, totalCount) = await corrections.ListMyAsync(currentUser.TenantId, value.Employee.Id,
+            request.From, request.To, request.Status, skip, request.Paging.PageSize, ct);
+        var items = rows.Select(row => ToResponse(row, value.Employee,
+            ResolveTimezone(value.LegalEntity, row.WorkDate))).ToArray();
+        return Result<PagedResult<AttendanceCorrectionResponse>>.Success(
+            new PagedResult<AttendanceCorrectionResponse>(items, pageNumber, request.Paging.PageSize, totalCount));
     }
 
     public async Task<Result<IReadOnlyList<AttendanceCorrectionResponse>>> ListApprovalsAsync(
@@ -466,7 +469,7 @@ public sealed class AttendanceCorrectionWorkflow(
             && (await leaveRequests.ListApprovedCoveringAsync(currentUser.TenantId,
                 [record.EmployeeId], record.Date, record.Date, ct)).Count > 0;
         var resolved = AttendanceDayStatusResolver.Resolve(schedule, policyStatus, record, hasApprovedLeave,
-            breakAllowanceMinutes, record.BreakMinutes, dateTime.UtcNow);
+            hasOpenBreak: false, breakAllowanceMinutes, record.BreakMinutes, dateTime.UtcNow);
         record.Status = resolved.Status;
         record.UpdatedAt = dateTime.UtcNow;
     }
@@ -606,9 +609,9 @@ public sealed class CancelAttendanceCorrectionCommandHandler(AttendanceCorrectio
 }
 
 public sealed class ListMyAttendanceCorrectionsQueryHandler(AttendanceCorrectionWorkflow workflow)
-    : IRequestHandler<ListMyAttendanceCorrectionsQuery, Result<IReadOnlyList<AttendanceCorrectionResponse>>>
+    : IRequestHandler<ListMyAttendanceCorrectionsQuery, Result<PagedResult<AttendanceCorrectionResponse>>>
 {
-    public Task<Result<IReadOnlyList<AttendanceCorrectionResponse>>> Handle(ListMyAttendanceCorrectionsQuery request, CancellationToken ct)
+    public Task<Result<PagedResult<AttendanceCorrectionResponse>>> Handle(ListMyAttendanceCorrectionsQuery request, CancellationToken ct)
         => workflow.ListMyAsync(request, ct);
 }
 

@@ -11,18 +11,18 @@ public class EfCalendarEventRepository : ICalendarEventRepository
     public EfCalendarEventRepository(ApplicationDbContext db) => _db = db;
 
     public async Task AddAsync(CalendarEvent calendarEvent, CancellationToken ct = default)
-        => await _db.CalendarEvents.AddAsync(calendarEvent, ct);
+        => await _db.PersonalCalendarEvents.AddAsync(calendarEvent, ct);
 
     public async Task<CalendarEvent?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
-        => await _db.CalendarEvents.AsNoTracking().FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == id, ct);
+        => await _db.PersonalCalendarEvents.AsNoTracking().FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == id, ct);
 
     public async Task<CalendarEvent?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
-        => await _db.CalendarEvents.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == id, ct);
+        => await _db.PersonalCalendarEvents.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == id, ct);
 
     public async Task<IReadOnlyList<CalendarEvent>> GetInDateRangeForCallerAsync(
         Guid tenantId, Guid userId, Guid? employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
     {
-        return await _db.CalendarEvents.AsNoTracking()
+        return await _db.PersonalCalendarEvents.AsNoTracking()
             .Where(e => e.TenantId == tenantId
                         && !e.IsRecurrenceCancelled
                         && (e.RecurrenceParentId != null || e.Recurrence == CalendarRecurrences.None)
@@ -36,7 +36,7 @@ public class EfCalendarEventRepository : ICalendarEventRepository
     public async Task<IReadOnlyList<CalendarEvent>> GetRecurringMastersForCallerAsync(
         Guid tenantId, Guid userId, Guid? employeeId, DateTimeOffset to, CancellationToken ct = default)
     {
-        return await _db.CalendarEvents.AsNoTracking()
+        return await _db.PersonalCalendarEvents.AsNoTracking()
             .Where(e => e.TenantId == tenantId
                         && e.Recurrence != CalendarRecurrences.None
                         && e.RecurrenceParentId == null
@@ -47,13 +47,13 @@ public class EfCalendarEventRepository : ICalendarEventRepository
     }
 
     public async Task<IReadOnlyList<CalendarEvent>> GetChildrenForMasterAsync(Guid tenantId, Guid masterId, CancellationToken ct = default)
-        => await _db.CalendarEvents
+        => await _db.PersonalCalendarEvents
             .Where(e => e.TenantId == tenantId && e.RecurrenceParentId == masterId)
             .ToListAsync(ct);
 
     public async Task<CalendarEvent?> GetTrackedChildByOriginalStartAsync(
         Guid tenantId, Guid masterId, DateTimeOffset originalStart, CancellationToken ct = default)
-        => await _db.CalendarEvents.FirstOrDefaultAsync(
+        => await _db.PersonalCalendarEvents.FirstOrDefaultAsync(
             e => e.TenantId == tenantId && e.RecurrenceParentId == masterId && e.RecurrenceOriginalStart == originalStart, ct);
 
     public async Task AddParticipantsAsync(IReadOnlyList<CalendarEventParticipant> participants, CancellationToken ct = default)
@@ -76,7 +76,7 @@ public class EfCalendarEventRepository : ICalendarEventRepository
     public async Task<IReadOnlyList<CalendarEvent>> GetInDateRangeForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
     {
-        return await _db.CalendarEvents.AsNoTracking()
+        return await _db.PersonalCalendarEvents.AsNoTracking()
             .Where(e => e.TenantId == tenantId
                         && !e.IsRecurrenceCancelled
                         && (e.RecurrenceParentId != null || e.Recurrence == CalendarRecurrences.None)
@@ -89,7 +89,7 @@ public class EfCalendarEventRepository : ICalendarEventRepository
     public async Task<IReadOnlyList<CalendarEvent>> GetRecurringMastersForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset to, CancellationToken ct = default)
     {
-        return await _db.CalendarEvents.AsNoTracking()
+        return await _db.PersonalCalendarEvents.AsNoTracking()
             .Where(e => e.TenantId == tenantId
                         && e.Recurrence != CalendarRecurrences.None
                         && e.RecurrenceParentId == null
@@ -98,6 +98,6 @@ public class EfCalendarEventRepository : ICalendarEventRepository
             .ToListAsync(ct);
     }
 
-    public void Update(CalendarEvent calendarEvent) => _db.CalendarEvents.Update(calendarEvent);
-    public void Remove(CalendarEvent calendarEvent) => _db.CalendarEvents.Remove(calendarEvent);
+    public void Update(CalendarEvent calendarEvent) => _db.PersonalCalendarEvents.Update(calendarEvent);
+    public void Remove(CalendarEvent calendarEvent) => _db.PersonalCalendarEvents.Remove(calendarEvent);
 }

@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Infrastructure.Persistence;
@@ -24,18 +26,62 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         _cache = cache;
     }
 
+    /// <summary>
+    /// Resolves "the employee" for a capability/threshold lookup. Every caller (all Monitoring
+    /// command/query handlers, verified by grep) passes a User.Id sourced from the tray device
+    /// identity, not a real Employee.Id - a user may own more than one Employee row for a
+    /// multi-company user, so this defers to the same deterministic "default employee for this
+    /// user" resolution TenantDatabaseTicketStore uses to seed a session's active company
+    /// (most-recent active PrimaryEmployment assignment), instead of picking an arbitrary row.
+    /// Deliberately does NOT also try matching by Employee.Id: doing so would risk resolving the
+    /// wrong person if a User.Id ever collided with an unrelated Employee.Id (both are Guids in
+    /// the same tenant's id space), for a case that has no real caller today.
+    /// </summary>
+    private async Task<Employee?> ResolveEmployeeAsync(
+        Guid tenantId, Guid userId, Guid? legalEntityId, CancellationToken ct)
+    {
+        var query =
+            from employee in _db.Employees.AsNoTracking()
+            join status in _db.EmploymentStatuses.AsNoTracking()
+                on employee.EmploymentStatusId equals status.Id
+            where employee.TenantId == tenantId
+                && employee.UserId == userId
+                && status.Code == "active"
+            select employee;
+
+        if (legalEntityId.HasValue)
+            return await query.SingleOrDefaultAsync(
+                employee => employee.LegalEntityId == legalEntityId.Value, ct);
+
+        // Legacy tray tokens have no company claim. Resolve only an unambiguous active employee.
+        var candidates = await query.OrderBy(employee => employee.Id).Take(2).ToListAsync(ct);
+        return candidates.Count == 1 ? candidates[0] : null;
+    }
+
     public async Task<bool> IsEnabledAsync(
         Guid tenantId,
         Guid employeeId,
         MonitoringCapability capability,
         CancellationToken ct = default)
     {
-        var cacheKey = $"tenant:{tenantId}:monitoring-toggle:employee:{employeeId}:{capability}";
+        return await IsEnabledCoreAsync(tenantId, employeeId, null, capability, ct);
+    }
+
+    public Task<bool> IsEnabledAsync(
+        Guid tenantId, Guid userId, Guid legalEntityId, MonitoringCapability capability,
+        CancellationToken ct = default) =>
+        IsEnabledCoreAsync(tenantId, userId, legalEntityId, capability, ct);
+
+    private async Task<bool> IsEnabledCoreAsync(
+        Guid tenantId, Guid userId, Guid? legalEntityId, MonitoringCapability capability,
+        CancellationToken ct)
+    {
+        var cacheKey = $"tenant:{tenantId}:monitoring-toggle:user:{userId}:legal-entity:{legalEntityId}:{capability}";
         var cached = await _cache.GetAsync<bool?>(cacheKey, ct);
         if (cached.HasValue)
             return cached.Value;
 
-        var resolved = await ResolveAsync(tenantId, employeeId, capability, ct);
+        var resolved = await ResolveAsync(tenantId, userId, legalEntityId, capability, ct);
         await _cache.SetAsync(cacheKey, resolved, CacheTtl, ct);
         return resolved;
     }
@@ -45,34 +91,54 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         Guid employeeId,
         CancellationToken ct = default)
     {
-        var cacheKey = $"tenant:{tenantId}:monitoring-toggle:employee:{employeeId}:idle-threshold-minutes";
+        return await GetIdleThresholdMinutesCoreAsync(tenantId, employeeId, null, ct);
+    }
+
+    public Task<int> GetIdleThresholdMinutesAsync(
+        Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default) =>
+        GetIdleThresholdMinutesCoreAsync(tenantId, userId, legalEntityId, ct);
+
+    private async Task<int> GetIdleThresholdMinutesCoreAsync(
+        Guid tenantId, Guid userId, Guid? legalEntityId, CancellationToken ct)
+    {
+        var cacheKey = $"tenant:{tenantId}:monitoring-toggle:user:{userId}:legal-entity:{legalEntityId}:idle-threshold-minutes";
         var cached = await _cache.GetAsync<int?>(cacheKey, ct);
         if (cached.HasValue)
             return cached.Value;
 
-        var resolved = await ResolveMinutesAsync(tenantId, employeeId, ct);
+        var resolved = await ResolveMinutesAsync(tenantId, userId, legalEntityId, ct);
         await _cache.SetAsync(cacheKey, resolved, CacheTtl, ct);
         return resolved;
     }
 
-    private async Task<int> ResolveMinutesAsync(Guid tenantId, Guid employeeId, CancellationToken ct)
+    private async Task<int> ResolveMinutesAsync(
+        Guid tenantId, Guid userId, Guid? legalEntityId, CancellationToken ct)
     {
+        var employee = await ResolveEmployeeAsync(tenantId, userId, legalEntityId, ct);
+        if (employee is null)
+            return MonitoringToggleResolution.DefaultIdleThresholdMinutes;
+
         // 1. Employee-level override
         var employeeOverride = await _db.EmployeeMonitoringOverrides
             .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.EmployeeId == employeeId, ct);
+            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.EmployeeId == employee.Id, ct);
         var employeeMinutes = employeeOverride?.IdleThresholdMinutes;
 
         // 2. Policy overrides: role > position > department
-        var employee = await _db.Employees
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                e => e.TenantId == tenantId && (e.UserId == employeeId || e.Id == employeeId),
-                ct);
-
         Guid? departmentId = employee?.DepartmentId;
-        Guid? positionId = null; // TODO: resolve via position_assignments once it exists
-        Guid userIdForRoles = employee?.UserId ?? employeeId;
+        Guid? positionId = employee is null
+            ? null
+            : await _db.PositionAssignments
+                .AsNoTracking()
+                .Where(a => a.EmployeeId == employee.Id
+                    && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                    && a.AssignmentStatus == PositionAssignmentStatus.Active
+                    && a.EffectiveFrom <= DateOnly.FromDateTime(DateTime.UtcNow)
+                    && (a.EffectiveTo == null || a.EffectiveTo >= DateOnly.FromDateTime(DateTime.UtcNow)))
+                .OrderByDescending(a => a.EffectiveFrom)
+                .Select(a => (Guid?)a.PositionId)
+                .FirstOrDefaultAsync(ct);
+        Guid userIdForRoles = employee!.UserId;
 
         var roleIds = await _db.UserRoles
             .AsNoTracking()
@@ -118,10 +184,13 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
             }
         }
 
-        // 3. Tenant-level toggle row (null row or null column → fall through to hardcoded default)
+        // 3. Legal-entity default, then retained tenant fallback.
         var toggles = await _db.MonitoringFeatureToggles
             .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId, ct);
+            .Where(t => t.TenantId == tenantId
+                && (t.LegalEntityId == employee.LegalEntityId || t.LegalEntityId == null))
+            .OrderByDescending(t => t.LegalEntityId == employee.LegalEntityId)
+            .FirstOrDefaultAsync(ct);
         var tenantMinutes = toggles?.IdleThresholdMinutes;
 
         return MonitoringToggleResolution.ResolveMinutes(
@@ -130,30 +199,39 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
 
     private async Task<bool> ResolveAsync(
         Guid tenantId,
-        Guid employeeId,
+        Guid userId,
+        Guid? legalEntityId,
         MonitoringCapability capability,
         CancellationToken ct)
     {
+        var employee = await ResolveEmployeeAsync(tenantId, userId, legalEntityId, ct);
+        if (employee is null)
+            return false;
+
         // 1. Employee-level override
         var employeeOverride = await _db.EmployeeMonitoringOverrides
             .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.EmployeeId == employeeId, ct);
+            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.EmployeeId == employee.Id, ct);
         bool? employeeValue = employeeOverride is null
             ? null
             : GetCapability(employeeOverride, capability);
 
         // 2. Policy overrides: role > position > department
-        // EmployeeId in Phase 1 may be UserId (tray identity). Prefer Employee.UserId match,
-        // then fall back to Employee.Id match for true CoreHR employee ids.
-        var employee = await _db.Employees
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                e => e.TenantId == tenantId && (e.UserId == employeeId || e.Id == employeeId),
-                ct);
-
+        // EmployeeId in Phase 1 may be UserId (tray identity) or a real Employee.Id.
         Guid? departmentId = employee?.DepartmentId;
-        Guid? positionId = null; // TODO: resolve via position_assignments once it exists
-        Guid userIdForRoles = employee?.UserId ?? employeeId;
+        Guid? positionId = employee is null
+            ? null
+            : await _db.PositionAssignments
+                .AsNoTracking()
+                .Where(a => a.EmployeeId == employee.Id
+                    && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                    && a.AssignmentStatus == PositionAssignmentStatus.Active
+                    && a.EffectiveFrom <= DateOnly.FromDateTime(DateTime.UtcNow)
+                    && (a.EffectiveTo == null || a.EffectiveTo >= DateOnly.FromDateTime(DateTime.UtcNow)))
+                .OrderByDescending(a => a.EffectiveFrom)
+                .Select(a => (Guid?)a.PositionId)
+                .FirstOrDefaultAsync(ct);
+        Guid userIdForRoles = employee!.UserId;
 
         var roleIds = await _db.UserRoles
             .AsNoTracking()
@@ -199,10 +277,13 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
             }
         }
 
-        // 3. Tenant-level toggles (null row → false safe default)
+        // 3. Legal-entity default, then retained tenant fallback.
         var toggles = await _db.MonitoringFeatureToggles
             .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId, ct);
+            .Where(t => t.TenantId == tenantId
+                && (t.LegalEntityId == employee.LegalEntityId || t.LegalEntityId == null))
+            .OrderByDescending(t => t.LegalEntityId == employee.LegalEntityId)
+            .FirstOrDefaultAsync(ct);
         bool? tenantValue = toggles is null ? null : GetCapability(toggles, capability);
 
         return MonitoringToggleResolution.Resolve(

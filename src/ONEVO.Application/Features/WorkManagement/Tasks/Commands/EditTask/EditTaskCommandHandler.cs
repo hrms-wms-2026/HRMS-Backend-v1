@@ -1,13 +1,16 @@
+using System.Text.Json;
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
 
@@ -19,10 +22,14 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
     private readonly IObjectiveAllocationSlackCalculator _slack;
     private readonly ISprintRepository _sprints;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICallerIdentityResolver _identity;
+    private readonly ITaskEditLogRepository _editLogs;
+    private readonly ITaskPercentageLogRepository _percentageLogs;
 
     public EditTaskCommandHandler(
         ICurrentUser currentUser, IWorkTaskRepository tasks, IObjectiveRepository objectives,
-        IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork, ISprintRepository sprints)
+        IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork, ISprintRepository sprints,
+        ICallerIdentityResolver identity, ITaskEditLogRepository editLogs, ITaskPercentageLogRepository percentageLogs)
     {
         _currentUser = currentUser;
         _tasks = tasks;
@@ -30,6 +37,9 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         _slack = slack;
         _unitOfWork = unitOfWork;
         _sprints = sprints;
+        _identity = identity;
+        _editLogs = editLogs;
+        _percentageLogs = percentageLogs;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(EditTaskCommand request, CancellationToken ct)
@@ -38,6 +48,10 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
             return Result<WorkTaskResponse>.Forbidden("Authentication required.");
 
         var tenantId = _currentUser.TenantId;
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, _currentUser.UserId, ct);
+        if (callerEmployeeId is null)
+            return Result<WorkTaskResponse>.Forbidden("No employee record for the current user.");
+
         var task = await _tasks.GetTrackedByIdForTenantAsync(tenantId, request.TaskId, ct);
         if (task is null)
             return Result<WorkTaskResponse>.NotFound("Task not found.");
@@ -61,15 +75,60 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
                     InsufficientAllocationResponseJson.Serialize(new InsufficientAllocationResponse(slack)));
         }
 
+        var oldValues = new Dictionary<string, object?>();
+        var newValues = new Dictionary<string, object?>();
+        void TrackChange(string field, object? oldValue, object? newValue)
+        {
+            if (Equals(oldValue, newValue)) return;
+            oldValues[field] = oldValue;
+            newValues[field] = newValue;
+        }
+
+        TrackChange("title", task.Title, request.Title.Trim());
+        TrackChange("description", task.Description, request.Description?.Trim());
+        TrackChange("priority", task.Priority, request.Priority);
+        TrackChange("dueDate", task.DueDate, request.DueDate);
+        TrackChange("estimatedHours", task.EstimatedHours, request.EstimatedHours);
+        TrackChange("storyPoints", task.StoryPoints, request.StoryPoints);
+        if (request.ProgressPercent.HasValue)
+            TrackChange("progressPercent", task.ProgressPercent, request.ProgressPercent.Value);
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
+            var now = DateTimeOffset.UtcNow;
             task.Title = request.Title.Trim();
             task.Description = request.Description?.Trim();
             task.Priority = request.Priority;
             task.DueDate = request.DueDate;
             task.EstimatedHours = request.EstimatedHours;
             task.StoryPoints = request.StoryPoints;
-            task.UpdatedAt = DateTimeOffset.UtcNow;
+
+            if (request.ProgressPercent.HasValue && request.ProgressPercent.Value != task.ProgressPercent)
+            {
+                var previousPercent = task.ProgressPercent;
+                task.ProgressPercent = request.ProgressPercent.Value;
+                await _percentageLogs.AddAsync(new TaskPercentageLog
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
+                    EmployeeId = callerEmployeeId.Value, PreviousPercent = previousPercent,
+                    NewPercent = task.ProgressPercent, Source = TaskPercentageLogSources.ManualEdit,
+                    ClockingSessionId = null, Reason = request.Reason?.Trim(), ChangedAt = now
+                }, innerCt);
+            }
+
+            task.UpdatedAt = now;
+
+            if (newValues.Count > 0)
+            {
+                await _editLogs.AddAsync(new TaskEditLog
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
+                    EmployeeId = callerEmployeeId.Value, Source = TaskEditLogSources.Direct,
+                    OldValuesJson = JsonSerializer.Serialize(oldValues),
+                    NewValuesJson = JsonSerializer.Serialize(newValues),
+                    Reason = request.Reason?.Trim(), ChangedAt = now
+                }, innerCt);
+            }
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 

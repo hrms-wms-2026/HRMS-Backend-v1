@@ -25,6 +25,7 @@ public class AttendanceRecord : ITenantOwnedEntity
     public const string StatusNonWorkingDay = "non_working_day";
     public const string StatusWorkedOnNonWorkingDay = "worked_on_non_working_day";
     public const string StatusOverBreak = "over_break";
+    public const string StatusOnBreak = "on_break";
 
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }

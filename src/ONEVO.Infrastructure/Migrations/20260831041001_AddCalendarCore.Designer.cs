@@ -1378,15 +1378,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id")
-                        .HasName("pk_calendar_events");
+                        .HasName("pk_personal_calendar_events");
 
                     b.HasIndex("TenantId", "CreatedById")
-                        .HasDatabaseName("ix_calendar_events_tenant_id_created_by_id");
+                        .HasDatabaseName("ix_personal_calendar_events_tenant_id_created_by_id");
 
                     b.HasIndex("TenantId", "StartDate", "EndDate")
-                        .HasDatabaseName("ix_calendar_events_tenant_id_start_date_end_date");
+                        .HasDatabaseName("ix_personal_calendar_events_tenant_id_start_date_end_date");
 
-                    b.ToTable("calendar_events", (string)null);
+                    b.ToTable("personal_calendar_events", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipant", b =>
