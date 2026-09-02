@@ -60,6 +60,13 @@ public class EfLegalEntityRepository : ILegalEntityRepository
         return result;
     }
 
+    public async Task<IReadOnlyList<LegalEntity>> ListActiveForTenantAsync(Guid tenantId, CancellationToken ct = default)
+        => await _db.LegalEntities
+            .AsNoTracking()
+            .Where(entity => entity.TenantId == tenantId && entity.IsActive)
+            .OrderBy(entity => entity.Name)
+            .ToListAsync(ct);
+
     public async Task<LegalEntity?> GetAccessibleByIdAsync(
         Guid tenantId, Guid id, Guid userId, bool hasManagementAccess, CancellationToken ct = default)
     {

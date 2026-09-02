@@ -234,6 +234,28 @@ public sealed class EfLegalEntityRepositoryTests
     }
 
     [Fact]
+    public async Task ListActiveForTenantAsync_ReturnsOnlyActiveEntitiesForThatTenant()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var inactive = CreateLegalEntity(tenantId, "Inactive Co");
+        inactive.IsActive = false;
+        db.LegalEntities.AddRange(
+            CreateLegalEntity(tenantId, "Active Co"),
+            inactive,
+            CreateLegalEntity(otherTenantId, "Other Tenant Co"));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfLegalEntityRepository(db);
+        var result = await repository.ListActiveForTenantAsync(tenantId, CancellationToken.None);
+
+        Assert.Single(result);
+        Assert.Equal("Active Co", result[0].Name);
+    }
+
+    [Fact]
     public async Task GetByIdForTenantAsync_ReturnsEntity_WhenTenantAndIdMatch()
     {
         await using var db = BuildInMemoryDb();

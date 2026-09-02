@@ -30,6 +30,11 @@ public interface ILegalEntityRepository
 
     Task<LegalEntity?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    // Cross-tenant background jobs (no acting user) need every active legal entity for one tenant.
+    // ListAccessibleAsync always requires a userId even on its management-access branch, so it isn't
+    // usable from a BackgroundService.
+    Task<IReadOnlyList<LegalEntity>> ListActiveForTenantAsync(Guid tenantId, CancellationToken ct = default);
+
     Task<LegalEntity?> GetPrimaryByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
 
     Task AddAsync(LegalEntity legalEntity, CancellationToken ct = default);
