@@ -155,6 +155,10 @@ public sealed class LateClockInDailySummaryJob : BackgroundService
                 _logger.LogWarning(ex,
                     "Late clock-in daily summary failed for legal entity {LegalEntityId} in tenant {TenantId}; will retry next tick.",
                     legalEntity.Id, tenant.Id);
+                // Same tenant DbContext is reused for later legal entities. A thrown
+                // ExecuteInTransactionAsync rolls back but leaves Added entities tracked;
+                // Clear prevents a later LE's SaveChangesAsync from persisting them.
+                services.GetRequiredService<ONEVO.Infrastructure.Persistence.ApplicationDbContext>().ChangeTracker.Clear();
             }
         }
     }
@@ -207,6 +211,10 @@ public sealed class LateClockInDailySummaryJob : BackgroundService
 
         if (byRecipient.Count == 0)
             return;
+
+        var template = await notifications.GetTemplateByCodeAsync(TemplateCode, ct);
+        if (template is null)
+            throw new InvalidOperationException($"Notification template '{TemplateCode}' is not seeded.");
 
         var relatedEntityId = BuildRelatedEntityId(legalEntity.Id, workDate);
 
