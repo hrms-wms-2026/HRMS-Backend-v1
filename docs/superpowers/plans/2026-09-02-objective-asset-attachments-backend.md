@@ -31,7 +31,9 @@
 **Interfaces:**
 - Produces: `EntityAssetOwnerTypes.Objective` (`"objective"`), `UploadPurposeCatalog.ObjectiveAsset` (`"objective_asset"`) — used by Tasks 3–5.
 
-**Why this task exists:** `UploadPurposePolicy.ValidateUpload` checks `AllowedExtensions`/`AllowedContentTypes` from `UploadPurposeCatalog`, but *also* runs every upload through a second, independent check — `ContentTypeMatchesExtension`, a hardcoded `switch` that currently only recognizes `.png/.jpg/.jpeg/.webp/.pdf/.doc/.docx`. If we only add the new purpose rule without extending this switch, every `.gif`, `.xls`, `.xlsx`, and `.zip` upload — exactly the file types this feature needs — would pass the allow-list check and then fail the `_ => false` fallthrough, rejected with "contentType does not match file extension". Both changes are required together.
+**Why this task exists:** `UploadPurposePolicy.ValidateUpload` checks `AllowedExtensions`/`AllowedContentTypes` from `UploadPurposeCatalog`, but *also* runs every upload through a second, independent check — `ContentTypeMatchesExtension`, a hardcoded `switch` that currently only recognizes `.png/.jpg/.jpeg/.webp/.pdf/.doc/.docx`, one content-type per extension. If we only add the new purpose rule without extending this switch, every `.gif`, `.xls`, `.xlsx`, and `.zip` upload — exactly the file types this feature needs — would pass the allow-list check and then fail the `_ => false` fallthrough, rejected with "contentType does not match file extension". Both changes are required together.
+
+**A single-content-type-per-extension check isn't enough for `.zip`/`.xls`/`.xlsx` specifically:** browsers are inconsistent about what `File.type` (and therefore the multipart `Content-Type` the client sends) reports for these three extensions — Chrome on Windows commonly reports `.zip` as `application/x-zip-compressed` rather than `application/zip`, and both `.xls`/`.xlsx` frequently arrive as the generic `application/octet-stream` when the OS has no specific association registered. `.gif`/`.pdf`/`.doc`/`.docx` don't have this problem (MIME detection for those is reliable cross-browser), so only the three risky extensions get a multi-value check — everything else keeps the existing single-value pattern.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -47,6 +49,15 @@ Add to `tests/ONEVO.Tests.Unit/Features/Storage/File/UploadPurposePolicyTests.cs
     }
 
     [Fact]
+    public void ValidateUpload_AcceptsZipReportedAsXZipCompressed()
+    {
+        // Chrome on Windows commonly reports this instead of application/zip.
+        var result = _policy.ValidateUpload("objective_asset", "archive.zip", "application/x-zip-compressed", 1024);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
     public void ValidateUpload_AcceptsValidObjectiveAssetXlsxUpload()
     {
         var result = _policy.ValidateUpload(
@@ -57,11 +68,38 @@ Add to `tests/ONEVO.Tests.Unit/Features/Storage/File/UploadPurposePolicyTests.cs
     }
 
     [Fact]
+    public void ValidateUpload_AcceptsXlsxReportedAsOctetStream()
+    {
+        // Browsers frequently fall back to this generic type for .xls/.xlsx.
+        var result = _policy.ValidateUpload("objective_asset", "budget.xlsx", "application/octet-stream", 1024);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void ValidateUpload_AcceptsValidObjectiveAssetXlsUpload()
+    {
+        var result = _policy.ValidateUpload("objective_asset", "budget.xls", "application/vnd.ms-excel", 1024);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
     public void ValidateUpload_AcceptsValidObjectiveAssetGifUpload()
     {
         var result = _policy.ValidateUpload("objective_asset", "diagram.gif", "image/gif", 1024);
 
         Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public void ValidateUpload_RejectsOctetStreamForNonRiskyExtension()
+    {
+        // application/octet-stream is only an accepted fallback for .zip/.xls/.xlsx,
+        // not for every extension — a .pdf claiming octet-stream must still fail.
+        var result = _policy.ValidateUpload("objective_asset", "plan.pdf", "application/octet-stream", 1024);
+
+        Assert.False(result.IsSuccess);
     }
 
     [Fact]
@@ -108,7 +146,11 @@ In `src/ONEVO.Application/Features/Storage/File/Helpers/UploadPurposeCatalog.cs`
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.ms-excel",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/zip"
+        "application/zip", "application/x-zip-compressed",
+        // Accepted as a fallback the browser reports for .zip/.xls/.xlsx specifically
+        // (see ContentTypeMatchesExtension) — not a blanket allowance, since that
+        // second check still restricts which extensions may use it.
+        "application/octet-stream"
     };
 
     private static readonly IReadOnlyList<string> ObjectiveAssetExtensions = new[]
@@ -143,11 +185,20 @@ In `src/ONEVO.Infrastructure/Services/Storage/File/UploadPurposePolicy.cs`, exte
             ".docx" => contentType.Equals(
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 StringComparison.OrdinalIgnoreCase),
-            ".xls" => contentType.Equals("application/vnd.ms-excel", StringComparison.OrdinalIgnoreCase),
+            // .xls/.xlsx/.zip each accept a second, commonly-reported fallback content
+            // type alongside their canonical one — browsers are inconsistent about
+            // what they send for these three extensions specifically (see Task 1's
+            // "Why this task exists" note). Every other extension keeps a single
+            // exact match, unchanged.
+            ".xls" => contentType.Equals("application/vnd.ms-excel", StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase),
             ".xlsx" => contentType.Equals(
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                StringComparison.OrdinalIgnoreCase),
-            ".zip" => contentType.Equals("application/zip", StringComparison.OrdinalIgnoreCase),
+                StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase),
+            ".zip" => contentType.Equals("application/zip", StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("application/x-zip-compressed", StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase),
             _ => false
         };
     }
