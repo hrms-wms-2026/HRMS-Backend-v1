@@ -16,4 +16,5 @@ public enum EmployeeAuthorityPurpose
     OnboardingApproval,
     OffboardingApproval,
     EmployeeLifecycleApproval,
+    AttendanceLateNotification,
 }
