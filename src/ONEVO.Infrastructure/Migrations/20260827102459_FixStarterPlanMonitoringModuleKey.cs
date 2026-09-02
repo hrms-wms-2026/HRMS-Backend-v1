@@ -16,7 +16,7 @@ namespace ONEVO.Infrastructure.Migrations
                 keyColumn: "id",
                 keyValue: new Guid("a1b2c3d4-0001-0001-0001-000000000001"),
                 column: "included_modules_json",
-                value: "[\"org_structure\",\"core_hr\",\"leave\",\"calendar\",\"time_attendance\",\"monitoring\",\"discrepancy_engine\",\"identity_verification\",\"exception_engine\",\"productivity_analytics\",\"desktop_agent_gateway\",\"worksync_foundation\",\"projects\",\"objectives_milestones\",\"tasks\",\"boards\",\"planning_sprints\"]");
+                value: "[\"org_structure\",\"core_hr\",\"leave\",\"calendar\",\"time_attendance\",\"activity_monitoring\",\"discrepancy_engine\",\"identity_verification\",\"exception_engine\",\"productivity_analytics\",\"desktop_agent_gateway\",\"worksync_foundation\",\"projects\",\"objectives_milestones\",\"tasks\",\"boards\",\"planning_sprints\"]");
         }
 
         /// <inheritdoc />
@@ -27,7 +27,7 @@ namespace ONEVO.Infrastructure.Migrations
                 keyColumn: "id",
                 keyValue: new Guid("a1b2c3d4-0001-0001-0001-000000000001"),
                 column: "included_modules_json",
-                value: "[\"org_structure\",\"core_hr\",\"leave\",\"calendar\",\"time_attendance\",\"activity_monitoring\",\"discrepancy_engine\",\"identity_verification\",\"exception_engine\",\"productivity_analytics\",\"desktop_agent_gateway\",\"worksync_foundation\",\"projects\",\"objectives_milestones\",\"tasks\",\"boards\",\"planning_sprints\"]");
+                value: "[\"org_structure\",\"core_hr\",\"leave\",\"calendar\",\"time_attendance\",\"monitoring\",\"discrepancy_engine\",\"identity_verification\",\"exception_engine\",\"productivity_analytics\",\"desktop_agent_gateway\",\"worksync_foundation\",\"projects\",\"objectives_milestones\",\"tasks\",\"boards\",\"planning_sprints\"]");
         }
     }
 }

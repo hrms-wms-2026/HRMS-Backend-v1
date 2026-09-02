@@ -111,7 +111,7 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         modules.Should().BeEquivalentTo(
         [
             "org_structure", "core_hr", "leave", "calendar", "time_attendance",
-            "monitoring", "discrepancy_engine", "identity_verification",
+            "activity_monitoring", "discrepancy_engine", "identity_verification",
             "exception_engine", "productivity_analytics", "desktop_agent_gateway",
             "worksync_foundation", "projects", "objectives_milestones", "tasks", "boards",
             "planning_sprints"
