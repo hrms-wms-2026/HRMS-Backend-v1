@@ -114,11 +114,25 @@ public sealed class UploadPurposePolicy : IUploadPurposePolicy
             ".png" => contentType.Equals("image/png", StringComparison.OrdinalIgnoreCase),
             ".jpg" or ".jpeg" => contentType.Equals("image/jpeg", StringComparison.OrdinalIgnoreCase),
             ".webp" => contentType.Equals("image/webp", StringComparison.OrdinalIgnoreCase),
+            ".gif" => contentType.Equals("image/gif", StringComparison.OrdinalIgnoreCase),
             ".pdf" => contentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase),
             ".doc" => contentType.Equals("application/msword", StringComparison.OrdinalIgnoreCase),
             ".docx" => contentType.Equals(
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 StringComparison.OrdinalIgnoreCase),
+            // .xls/.xlsx/.zip each accept a second, commonly-reported fallback content
+            // type alongside their canonical one — browsers are inconsistent about
+            // what they send for these three extensions specifically. Every other
+            // extension keeps a single exact match, unchanged.
+            ".xls" => contentType.Equals("application/vnd.ms-excel", StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase),
+            ".xlsx" => contentType.Equals(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase),
+            ".zip" => contentType.Equals("application/zip", StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("application/x-zip-compressed", StringComparison.OrdinalIgnoreCase)
+                || contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase),
             _ => false
         };
     }
