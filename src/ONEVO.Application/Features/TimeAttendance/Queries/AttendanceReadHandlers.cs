@@ -257,7 +257,8 @@ public sealed class AttendanceReadHandler(
                 hasOpenBreak,
                 legalEntity?.BreakDurationMinutes,
                 breakUsedMinutes,
-                new DateTimeOffset(localNow, TimeSpan.Zero));
+                new DateTimeOffset(localNow, TimeSpan.Zero),
+                now);
 
             return new AttendanceHistoryRow(
                 record.Id,

@@ -32,6 +32,19 @@ public sealed class EfAttendanceReadRepository(ApplicationDbContext db) : IAtten
                 x => x.TenantId == tenantId && x.EmployeeId == employeeId && x.Date == date,
                 ct);
 
+    public Task<AttendanceRecord?> GetAnyOpenRecordAsync(
+        Guid tenantId,
+        Guid employeeId,
+        CancellationToken ct = default)
+        => db.AttendanceRecords
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId
+                && x.EmployeeId == employeeId
+                && x.ActualStart != null
+                && x.ActualEnd == null)
+            .OrderByDescending(x => x.ActualStart)
+            .FirstOrDefaultAsync(ct);
+
     public async Task<(IReadOnlyList<AttendanceRecord> Items, int TotalCount)> ListRecordsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> employeeIds,

@@ -16,6 +16,12 @@ public sealed record AttendanceDayStatusResolution(
 
 public static class AttendanceDayStatusResolver
 {
+    // A single continuous clock-in longer than this is treated as an unresolved missing
+    // clock-out rather than a real in-progress shift. It's deliberately duration-based (not
+    // tied to midnight or a calendar-day boundary) so a legitimate overnight/night-shift
+    // session in progress is never flagged while it's still plausibly real work.
+    public static readonly TimeSpan MissingClockOutThreshold = TimeSpan.FromHours(16);
+
     public static AttendanceDayStatusResolution Resolve(
         AttendanceSchedule schedule,
         string policyStatus,
@@ -24,7 +30,8 @@ public static class AttendanceDayStatusResolver
         bool hasOpenBreak,
         int? breakAllowanceMinutes,
         int breakUsedMinutes,
-        DateTimeOffset localNow)
+        DateTimeOffset localNow,
+        DateTimeOffset now)
     {
         var isOverBreakAllowance = breakAllowanceMinutes is int allowance
             && breakUsedMinutes > allowance;
@@ -49,6 +56,21 @@ public static class AttendanceDayStatusResolver
 
         if (record?.ActualStart is not null)
         {
+            var isMissingClockOut = record.ActualEnd is null
+                && now - record.ActualStart.Value >= MissingClockOutThreshold;
+            if (isMissingClockOut)
+            {
+                return new AttendanceDayStatusResolution(
+                    AttendanceRecord.StatusMissingClockOut,
+                    "Missing clock-out",
+                    "missing_clock_out",
+                    "Still shown as clocked in — confirm the actual clock-out time",
+                    "critical",
+                    shouldHaveClockedIn,
+                    0,
+                    false);
+            }
+
             if (hasApprovedLeave)
             {
                 return new AttendanceDayStatusResolution(
