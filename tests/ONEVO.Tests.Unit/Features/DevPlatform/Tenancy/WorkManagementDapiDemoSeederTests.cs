@@ -116,7 +116,7 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
     private static readonly string[] CanonicalPhase1Modules =
     [
         "org_structure", "core_hr", "leave", "calendar", "time_attendance",
-        "activity_monitoring", "discrepancy_engine", "identity_verification",
+        "monitoring", "discrepancy_engine", "identity_verification",
         "exception_engine", "productivity_analytics", "desktop_agent_gateway",
         "worksync_foundation", "projects", "objectives_milestones", "tasks",
         "boards", "planning_sprints"
@@ -197,7 +197,7 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
             .ToListAsync();
 
         role.Name.Should().Be("Work Management Team Member");
-        grantedCodes.Should().HaveCount(22); // every Permission row tagged Module == "work_management"
+        grantedCodes.Should().HaveCount(23); // every Permission row tagged Module == "work_management"
         grantedCodes.Should().NotContain(code => code.Contains("employees:"));
         grantedCodes.Should().NotContain(code => code.Contains("payroll"));
     }

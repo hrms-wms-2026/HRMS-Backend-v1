@@ -116,6 +116,7 @@ public class PermissionSeeder : IHostedService
 
         // Monitoring
         Perm("monitoring:read", "View monitoring data.", "activity_monitoring"),
+        Perm("activity:read:self", "View your own activity timeline.", "activity_monitoring"),
 
         // Attendance
         Perm("attendance:read", "View attendance records for all employees in scope.", "core_hr"),
@@ -234,6 +235,7 @@ public class PermissionSeeder : IHostedService
 
         // Tasks
         Perm("tasks:read", "View tasks.", "work_management"),
+        Perm("tasks:read-own", "View your own assigned tasks.", "work_management"),
         Perm("tasks:write", "Create and edit tasks.", "work_management"),
         Perm("tasks:approve", "Approve task completions.", "work_management"),
         Perm("tasks:delete", "Delete tasks.", "work_management"),

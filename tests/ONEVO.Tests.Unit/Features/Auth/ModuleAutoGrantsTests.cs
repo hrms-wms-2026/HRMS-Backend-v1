@@ -56,4 +56,8 @@ public sealed class ModuleAutoGrantsTests
         foreach (var m in modules)
             ModuleAutoGrants.GetForModules([m]).Should().NotBeEmpty(because: $"module '{m}' must have auto-grants");
     }
+
+    [Fact]
+    public void WorkManagementModule_GrantsTasksReadOwn()
+        => ModuleAutoGrants.GetForModules(["work_management"]).Should().Contain("tasks:read-own");
 }

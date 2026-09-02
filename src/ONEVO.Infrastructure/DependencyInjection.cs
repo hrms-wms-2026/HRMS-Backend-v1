@@ -6,6 +6,11 @@ using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
+using ONEVO.Infrastructure.Persistence.Repositories.Calendar;
+using ONEVO.Infrastructure.Services.Calendar;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
@@ -311,8 +316,9 @@ public static class DependencyInjection
         services.AddScoped<IProjectRepository>(sp => sp.GetRequiredService<EfProjectRepository>());
                 services.AddScoped<EfObjectiveRepository>();
         services.AddScoped<IObjectiveRepository>(sp => sp.GetRequiredService<EfObjectiveRepository>());
-        services.AddScoped<EfCalendarEventRepository>();
-        services.AddScoped<ICalendarEventRepository>(sp => sp.GetRequiredService<EfCalendarEventRepository>());
+        services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.EfCalendarEventRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.EfCalendarEventRepository>());
 
         services.AddScoped<EfTaskStatusRepository>();
         services.AddScoped<ITaskStatusRepository>(sp => sp.GetRequiredService<EfTaskStatusRepository>());
@@ -320,6 +326,12 @@ public static class DependencyInjection
         services.AddScoped<ITaskCategoryRepository>(sp => sp.GetRequiredService<EfTaskCategoryRepository>());
         services.AddScoped<EfWorkTaskRepository>();
         services.AddScoped<IWorkTaskRepository>(sp => sp.GetRequiredService<EfWorkTaskRepository>());
+        services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>();
+        services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.ICalendarEventRepository>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>());
+        services.AddScoped<ICalendarRecurrenceExpander, IcalNetRecurrenceExpander>();
+        services.AddScoped<ICalendarNotificationSender, CalendarNotificationSender>();
+        services.AddScoped<ICalendarTimezoneResolver, CalendarTimezoneResolver>();
         services.AddScoped<EfSprintRepository>();
         services.AddScoped<ISprintRepository>(sp => sp.GetRequiredService<EfSprintRepository>());
         services.AddScoped<EfTaskAssignmentRepository>();
