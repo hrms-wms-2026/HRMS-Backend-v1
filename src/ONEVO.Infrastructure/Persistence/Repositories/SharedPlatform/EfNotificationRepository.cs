@@ -43,4 +43,14 @@ public class EfNotificationRepository : INotificationRepository
 
     public async Task<bool> AnyTemplatesExistAsync(CancellationToken ct = default)
         => await _db.NotificationTemplates.AnyAsync(ct);
+
+    public async Task<bool> ExistsAsync(
+        Guid tenantId, Guid recipientUserId, string templateCode,
+        string relatedEntityType, Guid relatedEntityId, CancellationToken ct = default)
+        => await _db.Notifications.AsNoTracking().AnyAsync(n =>
+            n.TenantId == tenantId
+            && n.RecipientUserId == recipientUserId
+            && n.TemplateCode == templateCode
+            && n.RelatedEntityType == relatedEntityType
+            && n.RelatedEntityId == relatedEntityId, ct);
 }

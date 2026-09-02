@@ -12,4 +12,10 @@ public interface INotificationRepository
     Task<NotificationTemplate?> GetTemplateByCodeAsync(string code, CancellationToken ct = default);
     Task AddTemplateRangeAsync(IReadOnlyList<NotificationTemplate> templates, CancellationToken ct = default);
     Task<bool> AnyTemplatesExistAsync(CancellationToken ct = default);
+
+    // Idempotency guard for jobs that may be retried or restarted: has this exact
+    // (recipient, template, related entity) notification already been sent?
+    Task<bool> ExistsAsync(
+        Guid tenantId, Guid recipientUserId, string templateCode,
+        string relatedEntityType, Guid relatedEntityId, CancellationToken ct = default);
 }
