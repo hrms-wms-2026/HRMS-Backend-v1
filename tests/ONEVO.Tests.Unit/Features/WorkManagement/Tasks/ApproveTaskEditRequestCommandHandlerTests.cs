@@ -193,7 +193,8 @@ public class ApproveTaskEditRequestCommandHandlerTests
                         new Mock<INotificationDispatcher>().Object,
             unitOfWork.Object,
             editLogRepository.Object,
-            percentageLogRepository.Object);
+            percentageLogRepository.Object,
+            CalendarEventRepositoryMocks.Empty().Object);
 
         return (handler, task, tasks, requests, editLogs, percentageLogs);
 

@@ -124,5 +124,41 @@ public sealed class EfCalendarEventRepository : ICalendarEventRepository
             _db.CalendarEventTasks.RemoveRange(memberships);
     }
 
+    public async Task<IReadOnlyList<ActiveEventWindow>> ListActiveEventWindowsForObjectiveAsync(
+        Guid tenantId, Guid objectiveId, CancellationToken ct = default)
+        => await (
+            from link in _db.CalendarEventObjectives.AsNoTracking()
+            join calendarEvent in _db.CalendarEvents.AsNoTracking()
+                on link.CalendarEventId equals calendarEvent.Id
+            where link.ObjectiveId == objectiveId
+                && calendarEvent.TenantId == tenantId
+                && calendarEvent.Status == CalendarEventStatuses.Active
+            select new ActiveEventWindow(calendarEvent.Id, calendarEvent.Name, calendarEvent.StartDate, calendarEvent.EndDate))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<ActiveEventWindow>> ListActiveEventWindowsForTaskAsync(
+        Guid tenantId, Guid taskId, Guid objectiveId, CancellationToken ct = default)
+    {
+        var direct =
+            from link in _db.CalendarEventTasks.AsNoTracking()
+            join calendarEvent in _db.CalendarEvents.AsNoTracking()
+                on link.CalendarEventId equals calendarEvent.Id
+            where link.TaskId == taskId
+                && calendarEvent.TenantId == tenantId
+                && calendarEvent.Status == CalendarEventStatuses.Active
+            select new ActiveEventWindow(calendarEvent.Id, calendarEvent.Name, calendarEvent.StartDate, calendarEvent.EndDate);
+
+        var viaModule =
+            from link in _db.CalendarEventObjectives.AsNoTracking()
+            join calendarEvent in _db.CalendarEvents.AsNoTracking()
+                on link.CalendarEventId equals calendarEvent.Id
+            where link.ObjectiveId == objectiveId
+                && calendarEvent.TenantId == tenantId
+                && calendarEvent.Status == CalendarEventStatuses.Active
+            select new ActiveEventWindow(calendarEvent.Id, calendarEvent.Name, calendarEvent.StartDate, calendarEvent.EndDate);
+
+        return await direct.Concat(viaModule).Distinct().ToListAsync(ct);
+    }
+
     public void Update(CalendarEvent calendarEvent) => _db.CalendarEvents.Update(calendarEvent);
 }

@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -20,6 +21,7 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
+    private readonly ICalendarEventRepository _calendarEvents;
 
     public GetProjectTasksQueryHandler(
         ICurrentUser currentUser,
@@ -29,7 +31,8 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         IPermissionResolver permissionResolver,
         IWorkTaskRepository tasks,
         ITaskAssignmentRepository assignments,
-        ITaskClockingSessionRepository sessions)
+        ITaskClockingSessionRepository sessions,
+        ICalendarEventRepository calendarEvents)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -39,6 +42,7 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         _tasks = tasks;
         _assignments = assignments;
         _sessions = sessions;
+        _calendarEvents = calendarEvents;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetProjectTasksQuery request, CancellationToken ct)
@@ -74,10 +78,24 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             .GroupBy(a => a.TaskId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(a => a.EmployeeId).ToList());
 
+        // People filter (spec §6.2): keep only tasks assigned to one of the requested employees.
+        if (request.AssigneeEmployeeIds is { Count: > 0 } wantedAssignees)
+        {
+            var wantedSet = wantedAssignees.ToHashSet();
+            items = items
+                .Where(t => assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()).Any(wantedSet.Contains))
+                .ToList();
+        }
+
         var openSessions = await _sessions.GetOpenSessionsForTasksAsync(
             tenantId, items.Select(task => task.Id).ToList(), ct);
         var totalLoggedMinutes = await _sessions.GetTotalClosedSessionMinutesForTasksAsync(
             tenantId, items.Select(task => task.Id).ToList(), ct);
+
+        var eventLinkByTaskId = (await _calendarEvents.ListActiveTaskLinksForTasksAsync(
+                tenantId, items.Select(task => task.Id).ToList(), ct))
+            .GroupBy(l => l.TaskId)
+            .ToDictionary(g => g.Key, g => g.First());
 
         var responses = items.Select(t => new WorkTaskResponse(
             t.Id, t.ObjectiveId, t.ShortId, t.Title, t.Description, t.CategoryId, t.StatusId,
@@ -85,7 +103,9 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()),
             openSessions.TryGetValue(t.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
             openSession?.ClockInAt,
-            totalLoggedMinutes.GetValueOrDefault(t.Id, 0))).ToList();
+            totalLoggedMinutes.GetValueOrDefault(t.Id, 0),
+            eventLinkByTaskId.TryGetValue(t.Id, out var eventLink) ? eventLink.CalendarEventId : (Guid?)null,
+            eventLink?.EventName)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

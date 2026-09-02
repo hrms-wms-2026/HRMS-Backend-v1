@@ -3,6 +3,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
@@ -25,11 +26,13 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
     private readonly ICallerIdentityResolver _identity;
     private readonly ITaskEditLogRepository _editLogs;
     private readonly ITaskPercentageLogRepository _percentageLogs;
+    private readonly ICalendarEventRepository _calendarEvents;
 
     public EditTaskCommandHandler(
         ICurrentUser currentUser, IWorkTaskRepository tasks, IObjectiveRepository objectives,
         IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork, ISprintRepository sprints,
-        ICallerIdentityResolver identity, ITaskEditLogRepository editLogs, ITaskPercentageLogRepository percentageLogs)
+        ICallerIdentityResolver identity, ITaskEditLogRepository editLogs, ITaskPercentageLogRepository percentageLogs,
+        ICalendarEventRepository calendarEvents)
     {
         _currentUser = currentUser;
         _tasks = tasks;
@@ -40,6 +43,7 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         _identity = identity;
         _editLogs = editLogs;
         _percentageLogs = percentageLogs;
+        _calendarEvents = calendarEvents;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(EditTaskCommand request, CancellationToken ct)
@@ -61,6 +65,23 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
             var sprint = await _sprints.GetByIdForTenantAsync(tenantId, task.SprintId.Value, ct);
             if (sprint is not null && sprint.Status == SprintStatuses.Achieved)
                 return Result<WorkTaskResponse>.Forbidden("This task's sprint has been achieved and is now frozen.");
+        }
+
+        // R3: a member of an active event cannot have its due date moved outside that event's window.
+        if (request.DueDate != task.DueDate)
+        {
+            var windows = await _calendarEvents.ListActiveEventWindowsForTaskAsync(tenantId, task.Id, task.ObjectiveId, ct);
+            if (windows.Count > 0)
+            {
+                if (request.DueDate is null)
+                    return Result<WorkTaskResponse>.Conflict(
+                        $"This task is in active event(s) {string.Join(", ", windows.Select(w => w.Name))}; a due date is required.");
+                var bad = windows.Where(w => request.DueDate < w.StartDate || request.DueDate > w.EndDate).ToList();
+                if (bad.Count > 0)
+                    return Result<WorkTaskResponse>.Conflict(
+                        $"Due date {request.DueDate:yyyy-MM-dd} is outside event window(s): " +
+                        $"{string.Join(", ", bad.Select(w => $"{w.Name} {w.StartDate:yyyy-MM-dd}..{w.EndDate:yyyy-MM-dd}"))}. Widen the event first.");
+            }
         }
 
         if (request.EstimatedHours.HasValue && request.EstimatedHours.Value != task.EstimatedHours)

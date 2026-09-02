@@ -92,7 +92,8 @@ public sealed class GetProjectTasksQueryHandlerTests
 
         return new GetProjectTasksQueryHandler(
             currentUser.Object, identity.Object, projects.Object, members.Object,
-            permissions.Object, taskRepository.Object, assignmentRepository.Object, sessionRepository.Object);
+            permissions.Object, taskRepository.Object, assignmentRepository.Object, sessionRepository.Object,
+            CalendarEventRepositoryMocks.Empty().Object);
     }
 
     [Fact]

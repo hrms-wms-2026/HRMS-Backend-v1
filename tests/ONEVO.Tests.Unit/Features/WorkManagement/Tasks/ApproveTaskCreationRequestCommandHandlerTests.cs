@@ -121,7 +121,8 @@ public class ApproveTaskCreationRequestCommandHandlerTests
 
         var handler = new ApproveTaskCreationRequestCommandHandler(
             currentUser.Object, identity.Object, requests.Object, objectives.Object, projects.Object,
-            tasks.Object, statuses.Object, categories.Object, slack, membership.Object, notifications.Object, unitOfWork.Object, sprints.Object);
+            tasks.Object, statuses.Object, categories.Object, slack, membership.Object, notifications.Object, unitOfWork.Object, sprints.Object,
+            CalendarEventRepositoryMocks.Empty().Object);
         return (handler, tasks, requests);
     }
 

@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
@@ -28,12 +29,14 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
     private readonly IObjectiveAllocationSlackCalculator _slack;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly ICalendarEventRepository _calendarEvents;
 
     public CreateTaskCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
         IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
         ISprintRepository sprints, ITaskCategoryRepository categories, IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork,
-        IMilestoneMembershipCoordinator membership)
+        IMilestoneMembershipCoordinator membership,
+        ICalendarEventRepository calendarEvents)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -46,6 +49,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         _slack = slack;
         _unitOfWork = unitOfWork;
         _membership = membership;
+        _calendarEvents = calendarEvents;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(CreateTaskCommand request, CancellationToken ct)
@@ -70,6 +74,21 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         var project = await _projects.GetByIdForTenantAsync(tenantId, objective.ProjectId, ct);
         if (project is null || !project.IsActive)
             return Result<WorkTaskResponse>.NotFound("Project not found.");
+
+        // D-B: a task created in a module that a whole-module event covers must have a due date
+        // inside every such event's window (spec §5.7).
+        var eventWindows = await _calendarEvents.ListActiveEventWindowsForObjectiveAsync(tenantId, objective.Id, ct);
+        if (eventWindows.Count > 0)
+        {
+            if (request.DueDate is null)
+                return Result<WorkTaskResponse>.Conflict(
+                    $"This module is in active event(s) {string.Join(", ", eventWindows.Select(w => w.Name))}; a due date is required.");
+            var bad = eventWindows.Where(w => request.DueDate < w.StartDate || request.DueDate > w.EndDate).ToList();
+            if (bad.Count > 0)
+                return Result<WorkTaskResponse>.Conflict(
+                    $"Due date {request.DueDate:yyyy-MM-dd} is outside event window(s): " +
+                    $"{string.Join(", ", bad.Select(w => $"{w.Name} {w.StartDate:yyyy-MM-dd}..{w.EndDate:yyyy-MM-dd}"))}. Widen the event first.");
+        }
 
         var statuses = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
         var defaultStatus = statuses.Where(s => !s.MarksTaskComplete).OrderBy(s => s.DisplayOrder).FirstOrDefault();

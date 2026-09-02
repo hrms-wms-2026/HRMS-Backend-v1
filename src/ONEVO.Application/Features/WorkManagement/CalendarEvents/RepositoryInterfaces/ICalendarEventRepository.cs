@@ -14,6 +14,9 @@ public sealed record ActiveEventHeader(Guid EventId, string Name, string Color, 
 /// for the "partial" grouping on the project-calendar read.</summary>
 public sealed record ActiveEventTaskMembership(Guid EventId, Guid TaskId, Guid ObjectiveId);
 
+/// <summary>The [Start, End] window of an active event a task belongs to (spec §2, R2/R3).</summary>
+public sealed record ActiveEventWindow(Guid EventId, string Name, DateOnly StartDate, DateOnly EndDate);
+
 public interface ICalendarEventRepository
 {
     Task AddAsync(CalendarEvent calendarEvent, CancellationToken ct = default);
@@ -28,6 +31,8 @@ public interface ICalendarEventRepository
     Task<IReadOnlyList<ActiveEventTaskMembership>> ListActiveTaskMembershipsForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
     Task<IReadOnlyList<ActiveCalendarEventMembership>> ListActiveMembershipsForObjectivesAsync(Guid tenantId, IReadOnlyCollection<Guid> objectiveIds, CancellationToken ct = default);
     Task<IReadOnlyList<ActiveCalendarEventTaskLink>> ListActiveTaskLinksForTasksAsync(Guid tenantId, IReadOnlyCollection<Guid> taskIds, CancellationToken ct = default);
+    Task<IReadOnlyList<ActiveEventWindow>> ListActiveEventWindowsForTaskAsync(Guid tenantId, Guid taskId, Guid objectiveId, CancellationToken ct = default);
+    Task<IReadOnlyList<ActiveEventWindow>> ListActiveEventWindowsForObjectiveAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
     void RemoveMemberships(IReadOnlyCollection<CalendarEventObjective> memberships);
     void RemoveTaskMemberships(IReadOnlyCollection<CalendarEventTask> memberships);
     void Update(CalendarEvent calendarEvent);

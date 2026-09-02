@@ -7,7 +7,8 @@ public sealed record WorkTaskResponse(
     Guid CategoryId, Guid StatusId, string Priority, int? StoryPoints,
     DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent,
     Guid? SprintId, IReadOnlyList<Guid>? AssigneeEmployeeIds = null, Guid? OpenClockSessionEmployeeId = null,
-    DateTimeOffset? OpenClockSessionClockInAt = null, int TotalLoggedMinutes = 0);
+    DateTimeOffset? OpenClockSessionClockInAt = null, int TotalLoggedMinutes = 0,
+    Guid? ActiveEventId = null, string? ActiveEventName = null);
 
 public sealed record TaskCreationRequestResponse(
     Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt);

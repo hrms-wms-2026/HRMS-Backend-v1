@@ -36,7 +36,8 @@ public class EditTaskCommandHandlerTests
         Sprint? sprint = null,
         string title = "Old",
         string priority = WorkTaskPriorities.Medium,
-        int progressPercent = 0)
+        int progressPercent = 0,
+        Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -93,7 +94,8 @@ public class EditTaskCommandHandlerTests
 
         var handler = new EditTaskCommandHandler(
             currentUser.Object, tasks.Object, objectives.Object, slack, unitOfWork.Object, sprints.Object,
-            identity.Object, editLogRepository.Object, percentageLogRepository.Object);
+            identity.Object, editLogRepository.Object, percentageLogRepository.Object,
+            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object);
 
         return (handler, tasks, editLogs, callerEmployeeId, task, percentageLogs);
     }
@@ -284,5 +286,48 @@ public class EditTaskCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Empty(editLogs);
+    }
+
+    private static Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>
+        CalendarWithTaskWindow(DateOnly start, DateOnly end)
+    {
+        var mock = CalendarEventRepositoryMocks.Empty();
+        mock.Setup(x => x.ListActiveEventWindowsForTaskAsync(
+                TenantId, TaskId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ActiveEventWindow(
+                    Guid.NewGuid(), "Release", start, end)
+            });
+        return mock;
+    }
+
+    [Fact]
+    public async Task Handle_DueDateOutsideActiveEventWindow_Rejected()
+    {
+        var (handler, _, _, _, _, _) = Build(
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m,
+            calendarEvents: CalendarWithTaskWindow(new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31)));
+        var command = new EditTaskCommand(TaskId, "New Title", null, "medium",
+            new DateOnly(2026, 4, 5), null, null, null, null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_DueDateWithinActiveEventWindow_Succeeds()
+    {
+        var (handler, _, _, _, _, _) = Build(
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m,
+            calendarEvents: CalendarWithTaskWindow(new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31)));
+        var command = new EditTaskCommand(TaskId, "New Title", null, "medium",
+            new DateOnly(2026, 3, 20), null, null, null, null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
     }
 }
