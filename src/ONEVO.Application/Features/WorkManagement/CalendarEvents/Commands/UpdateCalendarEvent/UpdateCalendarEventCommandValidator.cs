@@ -10,14 +10,22 @@ public sealed class UpdateCalendarEventCommandValidator : AbstractValidator<Upda
     public UpdateCalendarEventCommandValidator()
     {
         RuleFor(x => x.Id).NotEqual(Guid.Empty).WithMessage("Calendar event is required.");
-        RuleFor(x => x).Must(x => x.Name is not null || x.Color is not null || x.ObjectiveIds is not null)
+        RuleFor(x => x).Must(x =>
+                x.Name is not null || x.Color is not null || x.StartDate is not null
+                || x.EndDate is not null || x.ObjectiveIds is not null || x.TaskIds is not null)
             .WithMessage("At least one event field must be supplied.");
         RuleFor(x => x.Name).NotEmpty().MaximumLength(255).When(x => x.Name is not null);
         RuleFor(x => x.Color).Must(color => HexColor.IsMatch(color ?? string.Empty))
             .When(x => x.Color is not null)
             .WithMessage("Color must be a hex value in the form #RRGGBB.");
+        RuleFor(x => x.EndDate).GreaterThanOrEqualTo(x => x.StartDate!.Value)
+            .When(x => x.StartDate is not null && x.EndDate is not null)
+            .WithMessage("End date must be on or after the start date.");
         RuleForEach(x => x.ObjectiveIds!).NotEqual(Guid.Empty)
             .When(x => x.ObjectiveIds is not null)
             .WithMessage("Objective ids must not be empty.");
+        RuleForEach(x => x.TaskIds!).NotEqual(Guid.Empty)
+            .When(x => x.TaskIds is not null)
+            .WithMessage("Task ids must not be empty.");
     }
 }

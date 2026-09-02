@@ -2,9 +2,13 @@ using ONEVO.Application.Features.WorkManagement.CalendarEvents.DTOs.Responses;
 
 namespace ONEVO.Api.Contracts.WorkManagement.CalendarEvents;
 
-public sealed record CreateCalendarEventRequest(string Name, string Color, List<Guid> ObjectiveIds);
+public sealed record CreateCalendarEventRequest(
+    string Name, string Color, DateOnly StartDate, DateOnly EndDate,
+    List<Guid> ObjectiveIds, List<Guid> TaskIds);
 
-public sealed record UpdateCalendarEventRequest(string? Name, string? Color, List<Guid>? ObjectiveIds);
+public sealed record UpdateCalendarEventRequest(
+    string? Name, string? Color, DateOnly? StartDate, DateOnly? EndDate,
+    List<Guid>? ObjectiveIds, List<Guid>? TaskIds);
 
 public sealed record ProjectCalendarItemViewModel(
     Guid ObjectiveId,
@@ -25,7 +29,10 @@ public sealed record CalendarEventViewModel(
     string Name,
     string Color,
     string Status,
+    DateOnly StartDate,
+    DateOnly EndDate,
     IReadOnlyList<Guid> ObjectiveIds,
+    IReadOnlyList<Guid> TaskIds,
     DateTimeOffset CreatedAt,
     Guid? ArchivedById,
     DateTimeOffset? ArchivedAt);
@@ -39,5 +46,6 @@ public static class CalendarViewModelMapper
 
     public static CalendarEventViewModel ToViewModel(this CalendarEventResponse response)
         => new(response.Id, response.ProjectId, response.Name, response.Color, response.Status,
-            response.ObjectiveIds, response.CreatedAt, response.ArchivedById, response.ArchivedAt);
+            response.StartDate, response.EndDate, response.ObjectiveIds, response.TaskIds,
+            response.CreatedAt, response.ArchivedById, response.ArchivedAt);
 }

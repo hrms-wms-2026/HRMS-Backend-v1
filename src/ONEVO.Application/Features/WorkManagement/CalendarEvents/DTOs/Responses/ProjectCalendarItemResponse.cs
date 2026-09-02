@@ -19,7 +19,10 @@ public sealed record CalendarEventResponse(
     string Name,
     string Color,
     string Status,
+    DateOnly StartDate,
+    DateOnly EndDate,
     IReadOnlyList<Guid> ObjectiveIds,
+    IReadOnlyList<Guid> TaskIds,
     DateTimeOffset CreatedAt,
     Guid? ArchivedById,
     DateTimeOffset? ArchivedAt);

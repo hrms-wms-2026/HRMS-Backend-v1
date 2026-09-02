@@ -8,5 +8,8 @@ public sealed record CreateCalendarEventCommand(
     Guid ProjectId,
     string Name,
     string Color,
-    IReadOnlyList<Guid> ObjectiveIds)
+    DateOnly StartDate,
+    DateOnly EndDate,
+    IReadOnlyList<Guid> ObjectiveIds,
+    IReadOnlyList<Guid> TaskIds)
     : IRequest<Result<CalendarEventResponse>>;

@@ -7,7 +7,9 @@ using ONEVO.Application.Features.WorkManagement.CalendarEvents.Commands.CreateCa
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.CalendarEvents.Commands.UpdateCalendarEvent;
 
@@ -16,6 +18,7 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
+    private readonly IWorkTaskRepository _tasks;
     private readonly ICalendarEventRepository _calendarEvents;
     private readonly IUnitOfWork _unitOfWork;
 
@@ -23,12 +26,14 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
         IObjectiveRepository objectives,
+        IWorkTaskRepository tasks,
         ICalendarEventRepository calendarEvents,
         IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
+        _tasks = tasks;
         _calendarEvents = calendarEvents;
         _unitOfWork = unitOfWork;
     }
@@ -46,6 +51,11 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
         if (calendarEvent.Status != CalendarEventStatuses.Active)
             return Result<CalendarEventResponse>.Failure("Archived calendar events cannot be edited.");
 
+        var startDate = request.StartDate ?? calendarEvent.StartDate;
+        var endDate = request.EndDate ?? calendarEvent.EndDate;
+        if (endDate < startDate)
+            return Result<CalendarEventResponse>.Failure("End date must be on or after the start date.");
+
         var currentMemberships = await _calendarEvents.ListMembershipsForEventAsync(calendarEvent.Id, ct);
         var objectiveIds = request.ObjectiveIds is null
             ? currentMemberships.Select(m => m.ObjectiveId).Distinct().ToList()
@@ -57,23 +67,45 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
         if (invalidObjectiveIds.Count > 0)
             return Result<CalendarEventResponse>.NotFound($"Objective(s) not found in project: {string.Join(", ", invalidObjectiveIds)}.");
 
-        if (request.ObjectiveIds is not null)
-        {
-            var activeMemberships = await _calendarEvents.ListActiveMembershipsForObjectivesAsync(tenantId, objectiveIds, ct);
-            var conflicts = activeMemberships
-                .Where(m => m.CalendarEventId != calendarEvent.Id)
-                .GroupBy(m => m.ObjectiveId)
-                .Select(g => g.Key)
-                .Distinct()
-                .ToList();
-            if (conflicts.Count > 0)
-                return Result<CalendarEventResponse>.Conflict($"Objective(s) already belong to another active calendar event: {string.Join(", ", conflicts)}.");
-        }
+        var currentTaskLinks = await _calendarEvents.ListTaskMembershipsForEventAsync(calendarEvent.Id, ct);
+        var desiredTaskIds = request.TaskIds is null
+            ? currentTaskLinks.Select(l => l.TaskId).Distinct().ToList()
+            : request.TaskIds.Distinct().ToList();
+
+        var projectTasks = await _tasks.GetByProjectAsync(tenantId, calendarEvent.ProjectId, ct);
+        var projectTaskById = projectTasks.ToDictionary(t => t.Id);
+        var missingTasks = desiredTaskIds.Where(id => !projectTaskById.ContainsKey(id)).ToList();
+        if (missingTasks.Count > 0)
+            return Result<CalendarEventResponse>.NotFound($"Task(s) not found in project: {string.Join(", ", missingTasks)}.");
+
+        var moduleTasks = new List<WorkTask>();
+        foreach (var objectiveId in objectiveIds)
+            moduleTasks.AddRange(await _tasks.GetByObjectiveIdAsync(tenantId, objectiveId, ct));
+
+        var memberTasks = moduleTasks
+            .Concat(desiredTaskIds.Select(id => projectTaskById[id]))
+            .GroupBy(t => t.Id).Select(g => g.First()).ToList();
+
+        // R2/R3: re-validate every member task against the (possibly new) window.
+        var outOfWindow = memberTasks
+            .Where(t => t.DueDate is null || t.DueDate < startDate || t.DueDate > endDate)
+            .Select(t => t.ShortId).ToList();
+        if (outOfWindow.Count > 0)
+            return Result<CalendarEventResponse>.Conflict(
+                $"Task(s) fall outside the event window {startDate:yyyy-MM-dd}..{endDate:yyyy-MM-dd}: {string.Join(", ", outOfWindow)}. Widen the event or remove them.");
+
+        // R1: a member task must not already belong to a *different* active event.
+        var alreadyLinked = await _calendarEvents.ListActiveTaskLinksForTasksAsync(
+            tenantId, memberTasks.Select(t => t.Id).ToList(), ct);
+        var foreignLinks = alreadyLinked.Where(l => l.CalendarEventId != calendarEvent.Id).ToList();
+        if (foreignLinks.Count > 0)
+            return Result<CalendarEventResponse>.Conflict(
+                $"Task(s) already belong to another active event: {string.Join(", ", foreignLinks.Select(l => l.EventName).Distinct())}.");
 
         var desiredObjectiveIds = objectiveIds.ToHashSet();
-        var membershipsToRemove = currentMemberships.Where(m => !desiredObjectiveIds.Contains(m.ObjectiveId)).ToList();
         var existingObjectiveIds = currentMemberships.Select(m => m.ObjectiveId).ToHashSet();
         var now = DateTimeOffset.UtcNow;
+        var membershipsToRemove = currentMemberships.Where(m => !desiredObjectiveIds.Contains(m.ObjectiveId)).ToList();
         var membershipsToAdd = objectiveIds
             .Where(id => !existingObjectiveIds.Contains(id))
             .Select(id => new CalendarEventObjective
@@ -85,20 +117,38 @@ public sealed class UpdateCalendarEventCommandHandler : IRequestHandler<UpdateCa
             })
             .ToList();
 
+        var desiredTaskIdSet = desiredTaskIds.ToHashSet();
+        var existingTaskIds = currentTaskLinks.Select(l => l.TaskId).ToHashSet();
+        var taskLinksToRemove = currentTaskLinks.Where(l => !desiredTaskIdSet.Contains(l.TaskId)).ToList();
+        var taskLinksToAdd = desiredTaskIds
+            .Where(id => !existingTaskIds.Contains(id))
+            .Select(id => new CalendarEventTask
+            {
+                Id = Guid.NewGuid(),
+                CalendarEventId = calendarEvent.Id,
+                TaskId = id,
+                AddedAt = now
+            })
+            .ToList();
+
         calendarEvent.Name = request.Name is null ? calendarEvent.Name : request.Name.Trim();
         calendarEvent.Color = request.Color is null ? calendarEvent.Color : request.Color.Trim();
+        calendarEvent.StartDate = startDate;
+        calendarEvent.EndDate = endDate;
 
         await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             _calendarEvents.Update(calendarEvent);
             _calendarEvents.RemoveMemberships(membershipsToRemove);
             await _calendarEvents.AddMembershipsAsync(membershipsToAdd, innerCt);
+            _calendarEvents.RemoveTaskMemberships(taskLinksToRemove);
+            await _calendarEvents.AddTaskMembershipsAsync(taskLinksToAdd, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
             return true;
         }, ct);
 
         return Result<CalendarEventResponse>.Success(
-            CreateCalendarEventCommandHandler.ToResponse(calendarEvent, objectiveIds));
+            CreateCalendarEventCommandHandler.ToResponse(calendarEvent, objectiveIds, desiredTaskIds));
     }
 
     private async Task<ActorResult> ResolveActorAsync(CancellationToken ct)
