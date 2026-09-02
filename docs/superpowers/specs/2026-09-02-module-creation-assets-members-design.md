@@ -1,8 +1,12 @@
 # Module / Sub-Module Creation Screen — Assets, Members, Date Range Picker
 
-Date: 2026-09-02
+Date: 2026-09-02 (revised 2026-09-02 after implementation-planning research — see "Revision" notes below)
 Status: Approved
 Repos affected: `HRMS-Backend-v1` (this repo — asset storage/API), `Hrms--Web-application---front-end---v1` (companion copy of this spec — screen redesign)
+
+**Base branches (neither repo has this feature area on `main`):**
+- Backend: `feature/wm-approval-hours-and-component-tuning`
+- Frontend: `feature/employee-management-phase1-foundation`
 
 ## Goal
 
@@ -25,31 +29,31 @@ A Members section (search + add + designate one owner) is also added, reusing ex
 
 ## Backend design
 
-### New table: `objective_assets`
+### Revision (found during implementation planning)
 
-Additive-only migration, no existing tables modified:
+The original plan below assumed a brand-new `objective_assets` join table. Research turned up an existing generic, tenant-scoped, polymorphic file-attachment table already in the schema — `entity_assets` (entity: `EntityAsset`, in `ONEVO.Domain.Features.Storage.EntityAssets`), keyed by `OwnerType` + `OwnerId` + `AssetPurpose` + `FileRecordId`, currently used only for Project logo/banner (`EntityAssetOwnerTypes.Project = "project"`). It has **no DB-level constraint tying it to `"project"`** — `OwnerType` is a plain indexed `varchar(50)`. Reusing it for objective assets means:
 
-| column | type | notes |
-|---|---|---|
-| `id` | uuid, PK | |
-| `objective_id` | uuid, FK → objectives | cascade delete with parent objective |
-| `file_record_id` | uuid, FK → `file_records` | |
-| `uploaded_by_employee_id` | uuid | |
-| `created_at` | timestamptz | |
+- **No new migration/table at all.** Just add `Objective = "objective"` to `EntityAssetOwnerTypes` (`src/ONEVO.Application/Common/Constants/EntityAssetOwnerTypes.cs`) and a new purpose constant (e.g. `ObjectiveAsset`) to `UploadPurposeCatalog`.
+- Two new methods needed on `IEntityAssetRepository` (currently only has `AddAsync` and `GetPrimaryFileIdsByOwnerAsync`, which assumes one "primary" asset per owner — not our multi-file case): a list-by-owner query and a delete-by-id method, implemented in `EfEntityAssetRepository`.
+- Uploads still go through the same `IFileStorageService.UploadAsync`, same as every other upload feature (Cloudflare R2-backed).
 
-RLS policy mirrors the tenant-isolation pattern already used for `file_records` / `file_upload_reservations`.
+This is strictly less work than the original table and more consistent with how the codebase already models file attachments — adopted as the design.
 
 ### New file-storage purpose
 
-Register `"objective-asset"` as a purpose with the existing `IFileStorageService` (the same service every other upload feature — avatars, legal-entity logos, face scans — already goes through; storage backend is Cloudflare R2). No new storage infrastructure needed.
+Register `"objective-asset"` as a purpose with `IFileStorageService`/`UploadPurposeCatalog`.
 
 ### New endpoints
 
-- `POST /api/objectives/{id}/assets` — multipart, one file per call. Uploads via `IFileStorageService.UploadAsync` with purpose `objective-asset`, inserts the `objective_assets` join row, returns `{id, fileName, sizeBytes, contentType, uploadedAt, downloadUrl}`.
-- `DELETE /api/objectives/{id}/assets/{assetId}` — removes the join row (follow the same soft/hard-delete convention as `RemoveLegalEntityLogoCommandHandler`).
-- `GET /api/objectives/{id}` (existing detail endpoint) — response gains an `assets: AssetDto[]` array.
+Route prefix confirmed as `api/v1/work/objectives` (not `api/objectives` as originally assumed), matching `ObjectivesController`'s existing `[Route("api/v1/work/objectives")]`.
+
+- `POST /api/v1/work/objectives/{id}/assets` — `[FromForm]`, multipart, one file per call (mirrors `ProjectsController.Create`'s `[FromForm] CreateProjectFormRequest` + `IFormFile` pattern). Uploads via `IFileStorageService.UploadAsync` with purpose `objective-asset`, inserts an `entity_assets` row (`OwnerType = "objective"`, `OwnerId = objectiveId`, `IsPrimary = false`), returns `{id, fileName, sizeBytes, contentType, uploadedAt, downloadUrl}`.
+- `DELETE /api/v1/work/objectives/{id}/assets/{assetId}` — deletes the `entity_assets` row only (the underlying `file_records` row is never touched from feature code anywhere in this codebase — confirmed via `RemoveLegalEntityLogoCommandHandler`, which only clears an FK and explicitly comments that file cleanup is out of scope for feature handlers). Same convention here.
+- `GET /api/v1/work/objectives/{id}` (existing detail endpoint) — response gains an `assets: ObjectiveAssetResponse[]` array, populated only in `GetObjectiveByIdQueryHandler` (the create-flow response can default to an empty array, since assets are uploaded via a separate call after creation — see Frontend design below).
 
 **Why per-asset endpoints instead of extending `CreateObjectiveRequest` to multipart:** keeps the existing create/update contracts untouched (no breaking change for other callers), and the same two endpoints serve both the create flow (called right after the objective is created) and the edit flow (called immediately on file pick) — one code path instead of two.
+
+**`IFileStorageService` has no delete method** — confirmed by reading the interface. The delete endpoint above only ever removes the join row, matching every existing "remove attachment" handler in this codebase.
 
 ### Validation defaults (confirmed)
 
@@ -71,9 +75,11 @@ One dropzone + "Browse files" button accepting documents/images/ZIP together. Se
 
 **Edit mode:** the objective already exists, so files upload immediately on selection via the same endpoint; removing an asset calls `DELETE /objectives/{id}/assets/{assetId}` immediately (no "save to confirm" step).
 
-### Members section
+### Members section — **create mode only**
 
-Reuse the existing `employee-picker` + `member-management-popup` pattern already proven in `project-form-modal.component.ts`: search box opens the picker, selected members render as cards, clicking a card's "Owner" toggle sets `headEmployeeId` locally; everyone else becomes a `memberInvitations` entry on submit. Both fields already exist on `CreateObjectiveRequestDto` — this is frontend wiring only, no backend change needed for members.
+Reuse the `app-employee-picker` pattern exactly as `project-form-modal.component.ts` drives it (non-inline modal, `pickerOpen` signal, `onMemberPicked`): search opens the picker, selected members render as cards, clicking a card's "Owner" toggle sets `headEmployeeId` locally; everyone else becomes a `memberInvitations` entry on submit. Both fields already exist on `CreateObjectiveRequestDto` (confirmed unused by any current caller — this feature is the first) — frontend wiring only, no backend change.
+
+**Scope boundary:** `EditObjectiveRequestDto` has no `headEmployeeId`/`memberInvitations` fields, and editing an objective's membership already has a separate, established flow (`app-member-management-popup` with `scope="objective"`, wired into `milestone-tree-tab.component.html` outside this form). The Members section is added to `sub-module-form` **only in `mode="create"`** — edit mode (`mode="edit"`, titled "Module settings") keeps using the existing separate member-management popup, not duplicated inside this form. No backend change to `EditObjectiveRequestDto` is in scope.
 
 ### Date fields
 
@@ -81,7 +87,7 @@ Replace the two native `type="date"` inputs with the existing shared `app-date-r
 
 ## Testing
 
-- Backend: unit tests for the new command/handlers (upload asset, delete asset), integration test for the full create-objective → upload-asset → fetch-detail round trip, migration up/down check.
+- Backend: unit tests for the new command/handlers (upload asset, delete asset), integration test for the full create-objective → upload-asset → fetch-detail round trip. No migration to test — `entity_assets` already exists.
 - Frontend: component tests for the new asset-upload component (stage/upload/remove/error-retry states in both create and edit mode), and for the members wiring (owner toggle, invitation list building) — following the existing test patterns already used for `sub-module-form.component.ts` and `project-form-modal.component.ts`.
 
 ## Assumptions carried into implementation
