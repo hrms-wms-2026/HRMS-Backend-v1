@@ -47,7 +47,8 @@ public sealed record AttendanceTodayResponse(
     string? AttentionSeverity = null,
     int BreakOverageMinutes = 0,
     bool IsOverBreakAllowance = false,
-    string? ExpectedWorkAreaSource = null);
+    string? ExpectedWorkAreaSource = null,
+    DateOnly? AttentionWorkDate = null);
 
 public sealed record AttendanceHistoryEmployee(
     Guid EmployeeId,

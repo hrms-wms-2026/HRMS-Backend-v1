@@ -226,7 +226,7 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
             CommercialModel = "subscription",
             BillingCurrency = "USD",
             CompanySizeRange = "1-10",
-            SelectedModulesJson = """["monitoring"]""",
+            SelectedModulesJson = """["activity_monitoring"]""",
             CurrentPeriodStart = DateOnly.FromDateTime(now.UtcDateTime),
             CurrentPeriodEnd = DateOnly.FromDateTime(now.UtcDateTime.AddMonths(1)),
             ContractStartDate = DateOnly.FromDateTime(now.UtcDateTime),
