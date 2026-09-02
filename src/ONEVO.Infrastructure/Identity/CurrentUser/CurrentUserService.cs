@@ -8,9 +8,13 @@ namespace ONEVO.Infrastructure.Identity.CurrentUser;
 public class CurrentUserService : ICurrentUser
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ITenantContext _tenantContext;
 
-    public CurrentUserService(IHttpContextAccessor httpContextAccessor)
-        => _httpContextAccessor = httpContextAccessor;
+    public CurrentUserService(IHttpContextAccessor httpContextAccessor, ITenantContext tenantContext)
+    {
+        _httpContextAccessor = httpContextAccessor;
+        _tenantContext = tenantContext;
+    }
 
     public Guid UserId
     {
@@ -21,11 +25,18 @@ public class CurrentUserService : ICurrentUser
         }
     }
 
+    // No HttpContext means this is running outside a web request (e.g. a BackgroundService that
+    // has already switched into a specific tenant via ITenantContextSwitcher.SwitchToTenantAsync,
+    // which sets this same scoped ITenantContext). Falling back only when HttpContext is null
+    // never changes behavior on a real authenticated request.
     public Guid TenantId
     {
         get
         {
-            var value = _httpContextAccessor.HttpContext?.User?.FindFirstValue("tenant_id");
+            if (_httpContextAccessor.HttpContext is null)
+                return _tenantContext.TenantId;
+
+            var value = _httpContextAccessor.HttpContext.User?.FindFirstValue("tenant_id");
             return Guid.TryParse(value, out var id) ? id : Guid.Empty;
         }
     }
