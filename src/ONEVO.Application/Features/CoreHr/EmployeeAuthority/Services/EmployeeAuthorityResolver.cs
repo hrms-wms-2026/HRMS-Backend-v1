@@ -301,7 +301,11 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
         var subjectPrimaryByEmployeeId = await _positionAssignmentRepository.GetActivePrimaryByEmployeeIdsAsync(
             tenantId, subjects.Select(s => s.Id).ToList(), cancellationToken);
 
-        // Phase 2: coverage rows for every covered position/department the subjects touch.
+        // Phase 2: coverage rows for every covered position/department the subjects touch, plus
+        // the company-wide coverage tier (mirrors ResolveApproverAsync's final fallback). Unlike
+        // position/department coverage, company-wide coverage is not keyed per subject - it is a
+        // single legal-entity-scoped row set, so it is fetched once here (no per-subject loop, no
+        // N+1 risk) and reused for every subject in Phase 5.
         var subjectPositionIds = subjectPrimaryByEmployeeId.Values.Select(pa => pa.PositionId).Distinct().ToList();
         var subjectDepartmentIds = subjects.Where(s => s.DepartmentId is not null)
             .Select(s => s.DepartmentId!.Value).Distinct().ToList();
@@ -310,13 +314,20 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
             tenantId, request.LegalEntityId, subjectPositionIds, cancellationToken);
         var departmentCoverageByCoveredDepartmentId = await _positionRepository.ListActiveDepartmentCoverageByCoveredDepartmentIdsAsync(
             tenantId, request.LegalEntityId, subjectDepartmentIds, cancellationToken);
+        var companyCoverage = await _positionRepository.ListActiveCoverageByCoveredTargetAsync(
+            tenantId, request.LegalEntityId, ManagementCoverageRecord.TargetCompany,
+            coveredPositionId: null, coveredDepartmentId: null, excludingRecordId: null, cancellationToken);
 
         // Phase 3: owner positions, their active holders, and ancestor chains for every subject
         // plus every holder discovered - a holder's ancestor chain tells us whether they are a
         // subordinate of a given subject (holder in descendants(subject) iff subject in
-        // ancestors(holder)), avoiding a separate descendant-expansion query entirely.
+        // ancestors(holder)), avoiding a separate descendant-expansion query entirely. The
+        // companyCoverage rows' owner positions MUST be folded into this same union - every
+        // downstream lookup (holders, active-in-legal-entity, ancestor chains) for the Phase 5
+        // company-wide tier is backed by this one set, same as the other three tiers.
         var ownerPositionIds = positionCoverageByCoveredPositionId.Values.SelectMany(rows => rows)
             .Concat(departmentCoverageByCoveredDepartmentId.Values.SelectMany(rows => rows))
+            .Concat(companyCoverage)
             .Select(r => r.OwnerPositionId).Distinct().ToList();
 
         var ownerPositionsById = (await _positionRepository.GetByIdsAsync(tenantId, ownerPositionIds, cancellationToken))
@@ -349,7 +360,8 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
             allPermissionUserIds, request.RequiredPermission, now, cancellationToken);
 
         // Phase 5: replay ResolveApproverAsync's exact priority walk in memory, per subject - no
-        // further database calls from here on.
+        // further database calls from here on. Tier order matches ResolveApproverAsync exactly:
+        // position coverage -> department coverage -> reporting-line -> company-wide coverage.
         var eligible = new List<Guid>();
         foreach (var subject in subjects)
         {
@@ -386,6 +398,14 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
                     approverUserId = ancestorEmployee.UserId;
                     break;
                 }
+            }
+
+            if (approverUserId is null && companyCoverage.Count > 0)
+            {
+                approverUserId = TryResolveFromCoverageInMemory(
+                    companyCoverage, subject.Id, ownerPositionsById, holdersByOwnerPositionId,
+                    ancestorChainsByEmployeeId, activeHolderIdsInLegalEntity, resolvableEmployeesById,
+                    userIdsWithPermission);
             }
 
             if (approverUserId == _currentUser.UserId)

@@ -1229,6 +1229,47 @@ public sealed class EmployeeAuthorityResolverTests
         Assert.Equal(new[] { subject.Id }, result);
     }
 
+    [Fact] // New. Equivalence: a subject who resolves via company-wide coverage in
+           // ResolveApproverAsync also shows up as eligible in ResolveApprovalInboxScopeAsync for
+           // the same reviewer - restores the documented per-candidate equivalence between the
+           // two methods for the new company-wide tier (the tier ResolveApproverAsync gained in
+           // the prior change, which ResolveApprovalInboxScopeAsync had not yet been taught).
+    public async Task InboxScope_CompanyWideCoverageOwner_IsIncluded_MatchingResolveApproverAsync()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId); // no manager, no position/department coverage
+
+        var reviewerUserId = Guid.NewGuid();
+        var hrPosition = graph.AddPosition(legalEntityId);
+        var hrOwner = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(hrOwner.Id, hrPosition.Id);
+        graph.AddCoverage(
+            legalEntityId, hrPosition.Id, ManagementCoverageRecord.TargetCompany,
+            coveredPositionId: null, coveredDepartmentId: null, ownerOrder: 1);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        // First, confirm ResolveApproverAsync itself resolves the subject to this reviewer via
+        // company-wide coverage - this is the behavior ResolveApprovalInboxScopeAsync must match.
+        var directResolver = graph.BuildResolver();
+        var route = await directResolver.ResolveApproverAsync(new EmployeeApprovalRouteRequest(
+            subject.Id, legalEntityId, AttendanceApprove, EmployeeAuthorityPurpose.AttendanceCorrectionApproval));
+        Assert.True(route.IsSuccess);
+        Assert.Equal(reviewerUserId, route.Value!.ApproverUserId);
+        Assert.Equal(EmployeeApprovalRouteSource.CompanyCoverage, route.Value.Source);
+
+        // Then confirm the batch inbox-scope resolver agrees: the same candidate is eligible for
+        // the same reviewer.
+        var inboxResolver = graph.BuildResolver(currentUserId: reviewerUserId);
+        var result = await inboxResolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.AttendanceCorrectionApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { subject.Id }, result);
+    }
+
     [Fact] // Inbox scope: candidate whose upward reporting-line approver is the reviewer is included
            // when no coverage tier resolves anyone.
     public async Task InboxScope_UpwardReportingLineApprover_IsIncluded()
@@ -1289,16 +1330,21 @@ public sealed class EmployeeAuthorityResolverTests
         Assert.Empty(result);
     }
 
-    [Fact] // Inbox scope: a candidate merely visible to the reviewer (company-wide coverage) but not
-           // exactly approvable (ResolveApproverAsync only checks Position/Department coverage and
-           // the reporting line, never company-wide coverage) is excluded.
-    public async Task InboxScope_MerelyVisibleCandidate_IsExcluded()
+    [Fact] // Updated. Company-wide coverage now doubles as both a visibility grant AND (since the
+           // company-wide-coverage fallback was added to ResolveApproverAsync, and this task
+           // restored the matching tier in ResolveApprovalInboxScopeAsync) an approval-routing
+           // tier - so a candidate whose only path to the reviewer is company-wide coverage is
+           // both visible AND approvable, not merely visible. Formerly named
+           // InboxScope_MerelyVisibleCandidate_IsExcluded and asserted the opposite; that encoded
+           // the pre-fix gap between ResolveApproverAsync (4 tiers) and
+           // ResolveApprovalInboxScopeAsync (3 tiers) as expected behavior.
+    public async Task InboxScope_CompanyWideCoverageCandidate_IsBothVisibleAndApprovable()
     {
         var graph = new EmployeeAuthorityTestGraph();
         var legalEntityId = Guid.NewGuid();
 
         var subject = graph.AddEmployee(legalEntityId);
-        // No primary assignment, no department, no manager - not routable to anyone.
+        // No primary assignment, no department, no manager - not routable via any other tier.
 
         var reviewerUserId = Guid.NewGuid();
         var reviewerPosition = graph.AddPosition(legalEntityId);
@@ -1319,7 +1365,7 @@ public sealed class EmployeeAuthorityResolverTests
                 EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
             CancellationToken.None);
 
-        Assert.DoesNotContain(subject.Id, result);
+        Assert.Contains(subject.Id, result); // company-wide coverage now also resolves approval routing
     }
 
     [Fact] // Inbox scope: subject/self is excluded even if self-covering.
@@ -1755,6 +1801,39 @@ public sealed class EmployeeAuthorityResolverTests
             subject.Id, legalEntityId, AttendanceApprove, EmployeeAuthorityPurpose.AttendanceCorrectionApproval));
 
         Assert.False(route.IsSuccess);
+    }
+
+    [Fact] // New. Subordinate-exclusion guard applies to the company-wide coverage tier too - a
+           // company-wide owner who is actually the subject's own subordinate must never be
+           // selected, proving the guard is enforced at this call site and not merely inferred
+           // from the guard already covering the other three tiers.
+    public async Task Approval_NeverSelectsSubordinate_ViaCompanyWideCoverage()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var subordinatePosition = graph.AddPosition(legalEntityId);
+        var subordinate = graph.AddEmployee(legalEntityId);
+        graph.AddPrimaryAssignment(subordinate.Id, subordinatePosition.Id);
+        graph.SetManager(subordinate.Id, subject.Id); // subordinate reports to subject
+
+        // Misconfigured coverage: subordinate's position is (incorrectly) named as the sole
+        // company-wide coverage owner - no position/department coverage exists for the subject,
+        // so company-wide coverage is the only tier that could resolve anyone here.
+        graph.AddCoverage(
+            legalEntityId, subordinatePosition.Id, ManagementCoverageRecord.TargetCompany,
+            coveredPositionId: null, coveredDepartmentId: null, ownerOrder: 1);
+        graph.GrantPermission(subordinate.UserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver();
+        var result = await resolver.ResolveApproverAsync(new EmployeeApprovalRouteRequest(
+            subject.Id, legalEntityId, AttendanceApprove, EmployeeAuthorityPurpose.AttendanceCorrectionApproval));
+
+        Assert.False(result.IsSuccess);
     }
 
     /// <summary>Builds an N-level owner chain above subject: level 1 is subject's direct manager
