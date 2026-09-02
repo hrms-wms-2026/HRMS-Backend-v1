@@ -26,17 +26,20 @@ public sealed class StartDeviceAuthorizationCommandHandler
     private readonly ITrayTokenService _tokenService;
     private readonly IDateTimeProvider _clock;
     private readonly IConfiguration _configuration;
+    private readonly IUnitOfWork _unitOfWork;
 
     public StartDeviceAuthorizationCommandHandler(
         ITrayActivationRepository repository,
         ITrayTokenService tokenService,
         IDateTimeProvider clock,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IUnitOfWork unitOfWork)
     {
         _repository = repository;
         _tokenService = tokenService;
         _clock = clock;
         _configuration = configuration;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<Result<StartDeviceAuthorizationResponseDto>> Handle(
@@ -72,6 +75,7 @@ public sealed class StartDeviceAuthorizationCommandHandler
         };
 
         await _repository.AddDeviceAuthorizationAsync(authorization, ct);
+        await _unitOfWork.SaveChangesAsync(ct);
 
         var baseUrl = (_configuration["Urls:AppBaseUrl"] ?? "https://localhost").TrimEnd('/');
         var verificationUri = $"{baseUrl}/device/activate";
