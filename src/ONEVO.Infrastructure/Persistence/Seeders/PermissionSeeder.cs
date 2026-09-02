@@ -115,7 +115,7 @@ public class PermissionSeeder : IHostedService
         Perm("calendar:read", "View company and team calendars.", "calendar"),
 
         // Monitoring
-        Perm("monitoring:read", "View monitoring data.", "monitoring"),
+        Perm("monitoring:read", "View monitoring data.", "activity_monitoring"),
 
         // Attendance
         Perm("attendance:read", "View attendance records for all employees in scope.", "core_hr"),
@@ -189,7 +189,7 @@ public class PermissionSeeder : IHostedService
         Perm("analytics:write", "Create and save custom analytics views.", "analytics"),
 
         // Monitoring
-        Perm("monitoring:configure", "Enable/disable monitoring features, set employee overrides.", "monitoring"),
+        Perm("monitoring:configure", "Enable/disable monitoring features, set employee overrides.", "activity_monitoring"),
 
         // Exceptions
         Perm("exceptions:view", "View exception alerts.", "exceptions"),
@@ -206,10 +206,10 @@ public class PermissionSeeder : IHostedService
         Perm("workforce:manage", "Manage workforce intelligence settings.", "workforce"),
 
         // Agent Gateway
-        Perm("agent:command", "Send commands to agents.", "monitoring"),
-        Perm("agent:manage", "Manage agent configurations.", "monitoring"),
-        Perm("agent:register", "Register new agents.", "monitoring"),
-        Perm("agent:view-health", "View agent health and status.", "monitoring"),
+        Perm("agent:command", "Send commands to agents.", "desktop_agent_gateway"),
+        Perm("agent:manage", "Manage agent configurations.", "desktop_agent_gateway"),
+        Perm("agent:register", "Register new agents.", "desktop_agent_gateway"),
+        Perm("agent:view-health", "View agent health and status.", "desktop_agent_gateway"),
 
         // Documents
         Perm("documents:read", "View documents.", "documents"),
