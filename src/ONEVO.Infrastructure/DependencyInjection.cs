@@ -205,6 +205,7 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveEntitlementCalculator>();
         services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveEntitlementPlanner>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Leave.LeaveYearEndEntitlementJob>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.TimeAttendance.LateClockInDailySummaryJob>();
         services.AddOptions<ONEVO.Application.Features.Leave.Entitlement.Options.LeaveEntitlementYearOptions>()
             .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Entitlement.Options.LeaveEntitlementYearOptions.SectionName))
             .Validate(options => options.MinimumYear > 0, "Leave entitlement minimum year must be configured.")
