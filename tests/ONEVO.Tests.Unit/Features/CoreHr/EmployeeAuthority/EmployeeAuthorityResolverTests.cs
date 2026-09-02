@@ -1,4 +1,5 @@
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.EmployeeAuthority;
@@ -1683,6 +1684,77 @@ public sealed class EmployeeAuthorityResolverTests
         Assert.NotEmpty(graph.CallCounts);
         Assert.All(graph.CallCounts.Values, count => Assert.True(count <= 2,
             $"expected each batch repository method to be called at most twice regardless of candidate count, was {count}"));
+    }
+
+    [Fact] // New. Company-wide coverage resolves as approver when no position/department/reporting-line match exists.
+    public async Task Approval_ResolvesCompanyWideCoverage_WhenNoOtherTierMatches()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId); // no manager, no position/department coverage
+
+        var hrPosition = graph.AddPosition(legalEntityId);
+        var hrOwner = graph.AddEmployee(legalEntityId);
+        graph.AddPrimaryAssignment(hrOwner.Id, hrPosition.Id);
+        graph.GrantPermission(hrOwner.UserId, AttendanceApprove);
+
+        graph.AddCoverage(
+            legalEntityId, hrPosition.Id, ManagementCoverageRecord.TargetCompany,
+            coveredPositionId: null, coveredDepartmentId: null, ownerOrder: 1);
+
+        var resolver = graph.BuildResolver();
+        var route = await resolver.ResolveApproverAsync(new EmployeeApprovalRouteRequest(
+            subject.Id, legalEntityId, AttendanceApprove, EmployeeAuthorityPurpose.AttendanceCorrectionApproval));
+
+        Assert.True(route.IsSuccess);
+        Assert.Equal(hrOwner.UserId, route.Value!.ApproverUserId);
+        Assert.Equal(EmployeeApprovalRouteSource.CompanyCoverage, route.Value.Source);
+    }
+
+    [Fact] // New. Company-wide coverage is not used when a nearer tier already resolves.
+    public async Task Approval_PrefersReportingLine_OverCompanyWideCoverage()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var managerPosition = graph.AddPosition(legalEntityId);
+        var manager = graph.AddEmployee(legalEntityId);
+        graph.AddPrimaryAssignment(manager.Id, managerPosition.Id);
+        graph.GrantPermission(manager.UserId, AttendanceApprove);
+
+        var subject = graph.AddEmployee(legalEntityId);
+        graph.SetManager(subject.Id, manager.Id);
+
+        var hrPosition = graph.AddPosition(legalEntityId);
+        var hrOwner = graph.AddEmployee(legalEntityId);
+        graph.AddPrimaryAssignment(hrOwner.Id, hrPosition.Id);
+        graph.GrantPermission(hrOwner.UserId, AttendanceApprove);
+        graph.AddCoverage(
+            legalEntityId, hrPosition.Id, ManagementCoverageRecord.TargetCompany,
+            coveredPositionId: null, coveredDepartmentId: null, ownerOrder: 1);
+
+        var resolver = graph.BuildResolver();
+        var route = await resolver.ResolveApproverAsync(new EmployeeApprovalRouteRequest(
+            subject.Id, legalEntityId, AttendanceApprove, EmployeeAuthorityPurpose.AttendanceCorrectionApproval));
+
+        Assert.True(route.IsSuccess);
+        Assert.Equal(manager.UserId, route.Value!.ApproverUserId);
+        Assert.Equal(EmployeeApprovalRouteSource.ReportingLine, route.Value.Source);
+    }
+
+    [Fact] // New. Still fails when nobody, including company-wide coverage, is configured.
+    public async Task Approval_StillFails_WhenNoCoverageAtAll()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var subject = graph.AddEmployee(legalEntityId);
+
+        var resolver = graph.BuildResolver();
+        var route = await resolver.ResolveApproverAsync(new EmployeeApprovalRouteRequest(
+            subject.Id, legalEntityId, AttendanceApprove, EmployeeAuthorityPurpose.AttendanceCorrectionApproval));
+
+        Assert.False(route.IsSuccess);
     }
 
     /// <summary>Builds an N-level owner chain above subject: level 1 is subject's direct manager

@@ -247,6 +247,20 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
                 request.RequiredPermission, request.Purpose, EmployeeApprovalRouteSource.ReportingLine, null));
         }
 
+        // Final fallback: a manually configured company-wide coverage owner (ClockInPolicy calls
+        // this concept "management_coverage_owner"), used only when nobody in the subject's
+        // position/department coverage or reporting line qualifies. Reuses the same coverage
+        // resolution helper as the tiers above - the only difference is the covered-target type.
+        var companyCoverage = await _positionRepository.ListActiveCoverageByCoveredTargetAsync(
+            tenantId, request.LegalEntityId, ManagementCoverageRecord.TargetCompany,
+            coveredPositionId: null, coveredDepartmentId: null, excludingRecordId: null, cancellationToken);
+
+        var companyRoute = await TryResolveFromCoverageAsync(
+            tenantId, request, companyCoverage, subject.Id, descendantSet,
+            EmployeeApprovalRouteSource.CompanyCoverage, now, cancellationToken);
+        if (companyRoute is not null)
+            return Result<EmployeeApprovalRoute>.Success(companyRoute);
+
         return Result<EmployeeApprovalRoute>.UnprocessableEntity(
             "No eligible approver was found for this employee and action.");
     }
