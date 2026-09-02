@@ -469,7 +469,7 @@ public sealed class AttendanceCorrectionWorkflow(
             && (await leaveRequests.ListApprovedCoveringAsync(currentUser.TenantId,
                 [record.EmployeeId], record.Date, record.Date, ct)).Count > 0;
         var resolved = AttendanceDayStatusResolver.Resolve(schedule, policyStatus, record, hasApprovedLeave,
-            hasOpenBreak: false, breakAllowanceMinutes, record.BreakMinutes, dateTime.UtcNow);
+            hasOpenBreak: false, breakAllowanceMinutes, record.BreakMinutes, dateTime.UtcNow, dateTime.UtcNow);
         record.Status = resolved.Status;
         record.UpdatedAt = dateTime.UtcNow;
     }
