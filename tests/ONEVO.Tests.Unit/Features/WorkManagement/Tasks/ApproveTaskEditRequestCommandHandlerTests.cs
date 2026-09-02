@@ -57,7 +57,8 @@ public class ApproveTaskEditRequestCommandHandlerTests
         bool authenticated = true,
         bool employeeExists = true,
         bool taskExists = true,
-        bool objectiveExists = true)
+        bool objectiveExists = true,
+        Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null)
 
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
@@ -194,7 +195,7 @@ public class ApproveTaskEditRequestCommandHandlerTests
             unitOfWork.Object,
             editLogRepository.Object,
             percentageLogRepository.Object,
-            CalendarEventRepositoryMocks.Empty().Object);
+            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object);
 
         return (handler, task, tasks, requests, editLogs, percentageLogs);
 
@@ -450,6 +451,28 @@ public class ApproveTaskEditRequestCommandHandlerTests
         Assert.Equal("Original title", task.Title);
         tasks.Verify(x => x.GetActiveAllocationSumByObjectiveIdAsync(
             It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
+        requests.Verify(x => x.Update(It.IsAny<TaskEditRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_ApprovedDueDateOutsideActiveEventWindow_Rejected()
+    {
+        var calendarEvents = CalendarEventRepositoryMocks.Empty();
+        calendarEvents.Setup(x => x.ListActiveEventWindowsForTaskAsync(
+                TenantId, TaskId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ActiveEventWindow(
+                    Guid.NewGuid(), "Release", new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31))
+            });
+
+        var (handler, task, tasks, requests, _, _) = Build(
+            requestedDueDate: new DateOnly(2026, 4, 15), calendarEvents: calendarEvents);
+
+        var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
         requests.Verify(x => x.Update(It.IsAny<TaskEditRequest>()), Times.Never);
     }
 }

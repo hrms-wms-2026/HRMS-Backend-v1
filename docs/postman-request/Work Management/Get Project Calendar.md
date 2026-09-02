@@ -5,7 +5,12 @@
 
 ## Description
 
-Returns every Objective in the project for the project-wide calendar. `canEdit` is false for callers without effective-manager access, achieved Objectives, and the project Default Objective. Active calendar-event membership supplies `calendarEventId` and `calendarEventColor`.
+Returns the project calendar as `{ modules, bands }`. `modules` is one row per Objective
+(module dates unchanged) plus its `events` array: a `"whole"` link when the module itself
+is an event member (`tasksInEventCount` == the module's task total), or a `"partial"` link
+when only some of its tasks are directly linked (`tasksInEventCount` == that count).
+`bands` is one entry per active Event with its date window; `canEdit` on a band is true
+when the caller is an effective manager of any Objective contributing to the Event.
 
 ## Request
 
@@ -16,21 +21,43 @@ No body. `projectId` is a path parameter.
 `200 OK`
 
 ```json
-[
-  {
-    "objectiveId": "guid",
-    "projectId": "guid",
-    "parentObjectiveId": "guid|null",
-    "title": "Design Phase",
-    "startDate": "2026-01-01",
-    "endDate": "2026-03-01",
-    "isActive": true,
-    "isAchieved": false,
-    "canEdit": true,
-    "calendarEventId": "guid|null",
-    "calendarEventColor": "#RRGGBB|null"
-  }
-]
+{
+  "modules": [
+    {
+      "objectiveId": "guid",
+      "projectId": "guid",
+      "parentObjectiveId": "guid|null",
+      "title": "Design Phase",
+      "startDate": "2026-01-01",
+      "endDate": "2026-03-01",
+      "isActive": true,
+      "isAchieved": false,
+      "canEdit": true,
+      "events": [
+        {
+          "eventId": "guid",
+          "eventName": "Q3 Launch",
+          "eventColor": "#RRGGBB",
+          "eventStartDate": "2026-03-01",
+          "eventEndDate": "2026-03-31",
+          "membership": "whole|partial",
+          "tasksInEventCount": 3,
+          "taskTotalCount": 5
+        }
+      ]
+    }
+  ],
+  "bands": [
+    {
+      "eventId": "guid",
+      "name": "Q3 Launch",
+      "color": "#RRGGBB",
+      "startDate": "2026-03-01",
+      "endDate": "2026-03-31",
+      "canEdit": true
+    }
+  ]
+}
 ```
 
 ## Errors
@@ -43,4 +70,4 @@ No body. `projectId` is a path parameter.
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/CalendarController.cs`
 Handler: `src/ONEVO.Application/Features/WorkManagement/CalendarEvents/Queries/GetProjectCalendar/GetProjectCalendarQueryHandler.cs`
-Plan: `docs/superpowers/specs/next/2026-08-25-work-management-project-calendar-design.md`
+Spec: `docs/superpowers/specs/next/2026-09-02-work-management-event-duration-and-hybrid-membership-design.md`

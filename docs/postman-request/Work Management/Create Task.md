@@ -10,6 +10,8 @@
 
 Objective-owner direct create. Blocked with `409` when `estimatedHours` exceeds remaining slack on the Objective (`allocated_hours - child allocated hours - existing task estimated hours`). Non-owners must use the task-creation-request flow instead.
 
+If the Objective is a whole-module member of one or more active calendar Events, `dueDate` becomes **required** and must fall inside every such Event's `[startDate, endDate]` window — otherwise `409`.
+
 ## Request
 
 ```json
@@ -46,9 +48,13 @@ Objective-owner direct create. Blocked with `409` when `estimatedHours` exceeds 
   "estimatedHours": 8,
   "completedHours": 0,
   "progressPercent": 0,
-  "sprintId": null
+  "sprintId": null,
+  "activeEventId": null,
+  "activeEventName": null
 }
 ```
+
+`activeEventId` / `activeEventName` are set when the task is directly linked to an active calendar Event.
 
 ## Errors
 
@@ -57,7 +63,7 @@ Objective-owner direct create. Blocked with `409` when `estimatedHours` exceeds 
 | `400` | Validation failure (title, categoryId, priority, negative hours) |
 | `403` | Not authenticated, no employee record, or caller is not an effective manager of the Objective (its owner, an active member, or the owner/an active member of any ancestor Objective) — non-cascaded, non-owner members must submit a task creation request instead |
 | `404` | Objective, Project, Category, or (when provided) Sprint not found / inactive |
-| `409` | `estimatedHours` exceeds remaining slack; body is `InsufficientAllocationResponse` (`availableSlackHours`, `suggestedAction: "extend_allocation"`). Also returned when the provided Sprint is Achieved (frozen). |
+| `409` | `estimatedHours` exceeds remaining slack; body is `InsufficientAllocationResponse` (`availableSlackHours`, `suggestedAction: "extend_allocation"`). Also returned when the provided Sprint is Achieved (frozen), or when the Objective is in an active Event and `dueDate` is missing or outside the Event window. |
 | `422` | No task statuses configured for this milestone yet |
 
 ## Source
