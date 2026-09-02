@@ -221,6 +221,29 @@ public sealed class EfAttendanceReadRepositoryTests
         db.Entry(result!).State.Should().Be(EntityState.Detached);
     }
 
+    [Fact]
+    public async Task ListByStatusAsync_ReturnsOnlyMatchingTenantDateAndStatus()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var otherTenantId = Guid.NewGuid();
+        var date = new DateOnly(2026, 9, 1);
+
+        db.AttendanceRecords.AddRange(
+            new AttendanceRecord { Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = Guid.NewGuid(), Date = date, Status = AttendanceRecord.StatusLate, LateMinutes = 12, ExpectedWorkingDay = true },
+            new AttendanceRecord { Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = Guid.NewGuid(), Date = date, Status = AttendanceRecord.StatusOnTime, LateMinutes = 0, ExpectedWorkingDay = true },
+            new AttendanceRecord { Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = Guid.NewGuid(), Date = date.AddDays(-1), Status = AttendanceRecord.StatusLate, LateMinutes = 5, ExpectedWorkingDay = true },
+            new AttendanceRecord { Id = Guid.NewGuid(), TenantId = otherTenantId, EmployeeId = Guid.NewGuid(), Date = date, Status = AttendanceRecord.StatusLate, LateMinutes = 20, ExpectedWorkingDay = true });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfAttendanceReadRepository(db);
+        var result = await repository.ListByStatusAsync(tenantId, date, AttendanceRecord.StatusLate, CancellationToken.None);
+
+        Assert.Single(result);
+        Assert.Equal(12, result[0].LateMinutes);
+    }
+
     private static ApplicationDbContext NewDbContext(DbContextOptions<ApplicationDbContext> options)
     {
         var currentUser = new Mock<ICurrentUser>();

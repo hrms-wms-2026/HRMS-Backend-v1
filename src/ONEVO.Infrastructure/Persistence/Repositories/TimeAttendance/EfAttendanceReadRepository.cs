@@ -218,4 +218,11 @@ public sealed class EfAttendanceReadRepository(ApplicationDbContext db) : IAtten
 
         return rows.GroupBy(x => x.EmployeeId).ToDictionary(x => x.Key, x => x.First());
     }
+
+    public async Task<IReadOnlyList<AttendanceRecord>> ListByStatusAsync(
+        Guid tenantId, DateOnly date, string status, CancellationToken ct = default)
+        => await db.AttendanceRecords
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Date == date && x.Status == status)
+            .ToListAsync(ct);
 }

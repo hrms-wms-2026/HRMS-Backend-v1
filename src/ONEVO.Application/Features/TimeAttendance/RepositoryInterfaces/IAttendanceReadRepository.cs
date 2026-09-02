@@ -79,4 +79,7 @@ public interface IAttendanceReadRepository
         Guid legalEntityId,
         IReadOnlyCollection<Guid> employeeIds,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<AttendanceRecord>> ListByStatusAsync(
+        Guid tenantId, DateOnly date, string status, CancellationToken ct = default);
 }
