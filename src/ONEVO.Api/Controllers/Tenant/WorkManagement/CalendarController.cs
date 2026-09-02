@@ -25,7 +25,7 @@ public sealed class CalendarController : ControllerBase
     {
         var result = await _mediator.Send(new GetProjectCalendarQuery(projectId), ct);
         return result.IsSuccess
-            ? Ok(result.Value!.Select(item => item.ToViewModel()).ToList())
+            ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

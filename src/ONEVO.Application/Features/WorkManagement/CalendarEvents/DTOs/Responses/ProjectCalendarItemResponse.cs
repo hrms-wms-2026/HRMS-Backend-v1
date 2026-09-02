@@ -1,5 +1,23 @@
 namespace ONEVO.Application.Features.WorkManagement.CalendarEvents.DTOs.Responses;
 
+public static class ProjectCalendarEventMemberships
+{
+    public const string Whole = "whole";
+    public const string Partial = "partial";
+}
+
+/// <summary>One event a module is drawn against on the project calendar (spec §5.4).
+/// <c>Whole</c> = the module itself is a member; <c>Partial</c> = some of its tasks are.</summary>
+public sealed record ProjectCalendarEventLink(
+    Guid EventId,
+    string EventName,
+    string EventColor,
+    DateOnly EventStartDate,
+    DateOnly EventEndDate,
+    string Membership,
+    int TasksInEventCount,
+    int TaskTotalCount);
+
 public sealed record ProjectCalendarItemResponse(
     Guid ObjectiveId,
     Guid ProjectId,
@@ -10,8 +28,20 @@ public sealed record ProjectCalendarItemResponse(
     bool IsActive,
     bool IsAchieved,
     bool CanEdit,
-    Guid? CalendarEventId,
-    string? CalendarEventColor);
+    IReadOnlyList<ProjectCalendarEventLink> Events);
+
+/// <summary>One translucent band drawn across its date span on the project calendar.</summary>
+public sealed record ProjectCalendarEventBand(
+    Guid EventId,
+    string Name,
+    string Color,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    bool CanEdit);
+
+public sealed record ProjectCalendarResponse(
+    IReadOnlyList<ProjectCalendarItemResponse> Modules,
+    IReadOnlyList<ProjectCalendarEventBand> Bands);
 
 public sealed record CalendarEventResponse(
     Guid Id,

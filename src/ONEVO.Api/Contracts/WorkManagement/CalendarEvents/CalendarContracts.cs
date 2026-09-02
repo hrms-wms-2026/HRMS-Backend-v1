@@ -10,7 +10,17 @@ public sealed record UpdateCalendarEventRequest(
     string? Name, string? Color, DateOnly? StartDate, DateOnly? EndDate,
     List<Guid>? ObjectiveIds, List<Guid>? TaskIds);
 
-public sealed record ProjectCalendarItemViewModel(
+public sealed record ProjectCalendarEventLinkViewModel(
+    Guid EventId,
+    string EventName,
+    string EventColor,
+    DateOnly EventStartDate,
+    DateOnly EventEndDate,
+    string Membership,
+    int TasksInEventCount,
+    int TaskTotalCount);
+
+public sealed record ProjectCalendarModuleViewModel(
     Guid ObjectiveId,
     Guid ProjectId,
     Guid? ParentObjectiveId,
@@ -20,8 +30,19 @@ public sealed record ProjectCalendarItemViewModel(
     bool IsActive,
     bool IsAchieved,
     bool CanEdit,
-    Guid? CalendarEventId,
-    string? CalendarEventColor);
+    IReadOnlyList<ProjectCalendarEventLinkViewModel> Events);
+
+public sealed record ProjectCalendarEventBandViewModel(
+    Guid EventId,
+    string Name,
+    string Color,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    bool CanEdit);
+
+public sealed record ProjectCalendarViewModel(
+    IReadOnlyList<ProjectCalendarModuleViewModel> Modules,
+    IReadOnlyList<ProjectCalendarEventBandViewModel> Bands);
 
 public sealed record CalendarEventViewModel(
     Guid Id,
@@ -39,10 +60,16 @@ public sealed record CalendarEventViewModel(
 
 public static class CalendarViewModelMapper
 {
-    public static ProjectCalendarItemViewModel ToViewModel(this ProjectCalendarItemResponse response)
-        => new(response.ObjectiveId, response.ProjectId, response.ParentObjectiveId, response.Title,
-            response.StartDate, response.EndDate, response.IsActive, response.IsAchieved, response.CanEdit,
-            response.CalendarEventId, response.CalendarEventColor);
+    public static ProjectCalendarViewModel ToViewModel(this ProjectCalendarResponse response)
+        => new(
+            response.Modules.Select(m => new ProjectCalendarModuleViewModel(
+                m.ObjectiveId, m.ProjectId, m.ParentObjectiveId, m.Title,
+                m.StartDate, m.EndDate, m.IsActive, m.IsAchieved, m.CanEdit,
+                m.Events.Select(e => new ProjectCalendarEventLinkViewModel(
+                    e.EventId, e.EventName, e.EventColor, e.EventStartDate, e.EventEndDate,
+                    e.Membership, e.TasksInEventCount, e.TaskTotalCount)).ToList())).ToList(),
+            response.Bands.Select(b => new ProjectCalendarEventBandViewModel(
+                b.EventId, b.Name, b.Color, b.StartDate, b.EndDate, b.CanEdit)).ToList());
 
     public static CalendarEventViewModel ToViewModel(this CalendarEventResponse response)
         => new(response.Id, response.ProjectId, response.Name, response.Color, response.Status,
