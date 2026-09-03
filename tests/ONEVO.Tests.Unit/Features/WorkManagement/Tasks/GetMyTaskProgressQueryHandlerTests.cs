@@ -83,6 +83,28 @@ public sealed class GetMyTaskProgressQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_TaskAt100PercentProgress_CountsAsCompletedEvenWithIncompleteStatus()
+    {
+        // A task can reach 100% progress via the clock-in Push flow without anyone dragging it
+        // to a MarksTaskComplete status column - see EfWorkTaskRepository.GetMyActiveTasksAsync,
+        // which excludes such tasks from "active" for the same reason.
+        var sut = BuildSut();
+        _tasks.Setup(x => x.GetMyTaskProgressRowsAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new TaskProgressRow(MarksTaskComplete: false, DueDate: new DateOnly(2026, 8, 1), ProgressPercent: 100), // pushed to 100%, status never moved, and due date is in the past
+                new TaskProgressRow(MarksTaskComplete: false, DueDate: new DateOnly(2026, 9, 5), ProgressPercent: 75) // still in progress, unaffected
+            ]);
+
+        var result = await sut.Handle(new GetMyTaskProgressQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.Completed);
+        Assert.Equal(0, result.Value.Overdue);
+        Assert.Equal(1, result.Value.InProgress);
+        Assert.Equal(0, result.Value.NotStarted);
+    }
+
+    [Fact]
     public async Task Handle_TaskDueExactlyToday_IsNotOverdue()
     {
         var sut = BuildSut();

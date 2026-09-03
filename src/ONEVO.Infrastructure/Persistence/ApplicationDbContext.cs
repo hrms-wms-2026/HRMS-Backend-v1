@@ -280,6 +280,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Objective> Objectives => Set<Objective>();
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
     public DbSet<CalendarEventObjective> CalendarEventObjectives => Set<CalendarEventObjective>();
+    public DbSet<CalendarEventTask> CalendarEventTasks => Set<CalendarEventTask>();
 
     public DbSet<ObjectiveChangeRequest> ObjectiveChangeRequests => Set<ObjectiveChangeRequest>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();

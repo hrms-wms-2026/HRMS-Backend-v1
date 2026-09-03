@@ -25,7 +25,7 @@ public sealed class CalendarController : ControllerBase
     {
         var result = await _mediator.Send(new GetProjectCalendarQuery(projectId), ct);
         return result.IsSuccess
-            ? Ok(result.Value!.Select(item => item.ToViewModel()).ToList())
+            ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
@@ -34,7 +34,9 @@ public sealed class CalendarController : ControllerBase
     public async Task<IActionResult> CreateEvent(
         Guid projectId, [FromBody] CreateCalendarEventRequest request, CancellationToken ct)
     {
-        var command = new CreateCalendarEventCommand(projectId, request.Name, request.Color, request.ObjectiveIds);
+        var command = new CreateCalendarEventCommand(
+            projectId, request.Name, request.Color, request.StartDate, request.EndDate,
+            request.ObjectiveIds, request.TaskIds);
         var result = await _mediator.Send(command, ct);
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())
@@ -46,7 +48,9 @@ public sealed class CalendarController : ControllerBase
     public async Task<IActionResult> UpdateEvent(
         Guid id, [FromBody] UpdateCalendarEventRequest request, CancellationToken ct)
     {
-        var command = new UpdateCalendarEventCommand(id, request.Name, request.Color, request.ObjectiveIds);
+        var command = new UpdateCalendarEventCommand(
+            id, request.Name, request.Color, request.StartDate, request.EndDate,
+            request.ObjectiveIds, request.TaskIds);
         var result = await _mediator.Send(command, ct);
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())

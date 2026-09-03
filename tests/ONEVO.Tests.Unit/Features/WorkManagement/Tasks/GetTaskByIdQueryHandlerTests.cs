@@ -73,7 +73,8 @@ public sealed class GetTaskByIdQueryHandlerTests
 
         return new GetTaskByIdQueryHandler(
             currentUser.Object, identity.Object, tasks.Object, projects.Object,
-            members.Object, permissions.Object, assignments.Object, sessions.Object);
+            members.Object, permissions.Object, assignments.Object, sessions.Object,
+            CalendarEventRepositoryMocks.Empty().Object);
     }
 
     [Fact]

@@ -145,6 +145,7 @@ public class TrayClockInCommandHandlerTests
             0,
             60,
             "not_started",
+            [],
             "remote",
             AttendanceRecord.StatusOnTime,
             UtcNow,

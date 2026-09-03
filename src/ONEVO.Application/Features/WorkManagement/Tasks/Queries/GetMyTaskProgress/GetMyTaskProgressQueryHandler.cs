@@ -30,7 +30,10 @@ public sealed class GetMyTaskProgressQueryHandler(
         int completed = 0, overdue = 0, inProgress = 0, notStarted = 0;
         foreach (var row in rows)
         {
-            if (row.MarksTaskComplete)
+            // A task can also reach 100% progress via the clock-in Push flow without anyone
+            // dragging it to a MarksTaskComplete status column - see GetMyActiveTasksAsync,
+            // which excludes such tasks from "active" for the same reason.
+            if (row.MarksTaskComplete || row.ProgressPercent >= 100)
                 completed++;
             else if (row.DueDate is { } dueDate && dueDate < today)
                 overdue++;

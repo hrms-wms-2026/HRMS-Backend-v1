@@ -62,6 +62,11 @@ public class EfWorkTaskRepository : IWorkTaskRepository
                   && t.DueDate.HasValue
                   && t.DueDate <= upcomingCutoff
                   && !s.MarksTaskComplete
+                  // A task can also reach 100% progress via the clock-in Push flow (see
+                  // PushTaskCommandHandler) without anyone dragging it to a MarksTaskComplete
+                  // status column - status is a manual/customizable signal, progress is the
+                  // objective one, so either being "done" should exclude it from "my active tasks".
+                  && t.ProgressPercent < 100
                   && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
             orderby t.DueDate
             select new MyTaskRow(t.Id, t.ShortId, t.Title, t.DueDate!.Value, t.ProjectId, p.Name, t.ObjectiveId, t.Priority)

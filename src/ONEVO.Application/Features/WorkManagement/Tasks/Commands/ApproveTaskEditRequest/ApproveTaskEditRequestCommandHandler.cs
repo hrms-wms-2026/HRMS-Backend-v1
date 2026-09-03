@@ -3,6 +3,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
@@ -31,6 +32,7 @@ public class ApproveTaskEditRequestCommandHandler
     private readonly IUnitOfWork _unitOfWork;
     private readonly ITaskEditLogRepository _editLogs;
     private readonly ITaskPercentageLogRepository _percentageLogs;
+    private readonly ICalendarEventRepository _calendarEvents;
 
     public ApproveTaskEditRequestCommandHandler(
         ICurrentUser currentUser,
@@ -44,7 +46,8 @@ public class ApproveTaskEditRequestCommandHandler
         INotificationDispatcher notifications,
         IUnitOfWork unitOfWork,
         ITaskEditLogRepository editLogs,
-        ITaskPercentageLogRepository percentageLogs)
+        ITaskPercentageLogRepository percentageLogs,
+        ICalendarEventRepository calendarEvents)
 
     {
         _currentUser = currentUser;
@@ -59,6 +62,7 @@ public class ApproveTaskEditRequestCommandHandler
         _unitOfWork = unitOfWork;
         _editLogs = editLogs;
         _percentageLogs = percentageLogs;
+        _calendarEvents = calendarEvents;
 
     }
 
@@ -121,6 +125,23 @@ public class ApproveTaskEditRequestCommandHandler
         TrackChange("storyPoints", task.StoryPoints, payload.StoryPoints);
         if (payload.ProgressPercent.HasValue)
             TrackChange("progressPercent", task.ProgressPercent, payload.ProgressPercent.Value);
+
+        // R3: an approved due-date change must not push a member task outside its active event window.
+        if (payload.DueDate != task.DueDate)
+        {
+            var windows = await _calendarEvents.ListActiveEventWindowsForTaskAsync(tenantId, task.Id, task.ObjectiveId, ct);
+            if (windows.Count > 0)
+            {
+                if (payload.DueDate is null)
+                    return Result<WorkTaskResponse>.Conflict(
+                        $"This task is in active event(s) {string.Join(", ", windows.Select(w => w.Name))}; a due date is required.");
+                var bad = windows.Where(w => payload.DueDate < w.StartDate || payload.DueDate > w.EndDate).ToList();
+                if (bad.Count > 0)
+                    return Result<WorkTaskResponse>.Conflict(
+                        $"Due date {payload.DueDate:yyyy-MM-dd} is outside event window(s): " +
+                        $"{string.Join(", ", bad.Select(w => $"{w.Name} {w.StartDate:yyyy-MM-dd}..{w.EndDate:yyyy-MM-dd}"))}. Widen the event first.");
+            }
+        }
 
         if (payload.EstimatedHours.HasValue && payload.EstimatedHours.Value != task.EstimatedHours)
 

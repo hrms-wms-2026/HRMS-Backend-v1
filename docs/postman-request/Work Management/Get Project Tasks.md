@@ -13,9 +13,16 @@ Sprint (`sprintId: null`); sprint filtering is intentionally left to the fronten
 or `*` see all project tasks, while other callers see only tasks for Objectives returned by their active project
 membership.
 
+Optional query parameter `assigneeEmployeeIds` (repeatable) filters the result to tasks assigned to one of the
+given employees; omitting it or passing none returns all tasks.
+
 ## Request
 
 No body. `projectId` is a path parameter.
+
+```
+GET /api/v1/work/projects/{projectId}/tasks?assigneeEmployeeIds=emp-guid-1&assigneeEmployeeIds=emp-guid-2
+```
 
 ## Response
 
@@ -38,10 +45,14 @@ No body. `projectId` is a path parameter.
     "completedHours": 0,
     "progressPercent": 0,
     "sprintId": null,
-    "assigneeEmployeeIds": []
+    "assigneeEmployeeIds": [],
+    "activeEventId": null,
+    "activeEventName": null
   }
 ]
 ```
+
+`activeEventId` / `activeEventName` are populated when the task is directly linked to an active calendar Event.
 
 ## Errors
 

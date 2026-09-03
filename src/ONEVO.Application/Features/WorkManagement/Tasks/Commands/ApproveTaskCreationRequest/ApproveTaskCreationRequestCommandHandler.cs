@@ -3,6 +3,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
@@ -32,12 +33,14 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICalendarEventRepository _calendarEvents;
 
     public ApproveTaskCreationRequestCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, ITaskCreationRequestRepository requests,
         IObjectiveRepository objectives, IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
         ITaskCategoryRepository categories, IObjectiveAllocationSlackCalculator slack, IMilestoneMembershipCoordinator membership,
-        INotificationDispatcher notifications, IUnitOfWork unitOfWork, ISprintRepository sprints)
+        INotificationDispatcher notifications, IUnitOfWork unitOfWork, ISprintRepository sprints,
+        ICalendarEventRepository calendarEvents)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -52,6 +55,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
         _membership = membership;
         _notifications = notifications;
         _unitOfWork = unitOfWork;
+        _calendarEvents = calendarEvents;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(ApproveTaskCreationRequestCommand request, CancellationToken ct)
@@ -83,6 +87,20 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
         var category = await _categories.GetByIdForTenantAsync(tenantId, payload.CategoryId, ct);
         if (category is null || category.ProjectId != objective.ProjectId)
             return Result<WorkTaskResponse>.NotFound("Category not found.");
+
+        // D-B: a task materialised into a module covered by a whole-module event must fall in-window.
+        var eventWindows = await _calendarEvents.ListActiveEventWindowsForObjectiveAsync(tenantId, objective.Id, ct);
+        if (eventWindows.Count > 0)
+        {
+            if (payload.DueDate is null)
+                return Result<WorkTaskResponse>.Conflict(
+                    $"This module is in active event(s) {string.Join(", ", eventWindows.Select(w => w.Name))}; a due date is required.");
+            var bad = eventWindows.Where(w => payload.DueDate < w.StartDate || payload.DueDate > w.EndDate).ToList();
+            if (bad.Count > 0)
+                return Result<WorkTaskResponse>.Conflict(
+                    $"Due date {payload.DueDate:yyyy-MM-dd} is outside event window(s): " +
+                    $"{string.Join(", ", bad.Select(w => $"{w.Name} {w.StartDate:yyyy-MM-dd}..{w.EndDate:yyyy-MM-dd}"))}. Widen the event first.");
+        }
 
         if (payload.SprintId is not null)
         {

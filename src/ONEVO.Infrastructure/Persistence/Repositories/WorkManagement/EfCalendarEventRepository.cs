@@ -19,6 +19,12 @@ public sealed class EfCalendarEventRepository : ICalendarEventRepository
             await _db.CalendarEventObjectives.AddRangeAsync(memberships, ct);
     }
 
+    public async Task AddTaskMembershipsAsync(IReadOnlyCollection<CalendarEventTask> memberships, CancellationToken ct = default)
+    {
+        if (memberships.Count > 0)
+            await _db.CalendarEventTasks.AddRangeAsync(memberships, ct);
+    }
+
     public async Task<CalendarEvent?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.CalendarEvents.AsNoTracking()
             .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == id, ct);
@@ -34,6 +40,28 @@ public sealed class EfCalendarEventRepository : ICalendarEventRepository
             .Where(m => m.CalendarEventId == calendarEventId)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<CalendarEventTask>> ListTaskMembershipsForEventAsync(Guid calendarEventId, CancellationToken ct = default)
+        => await _db.CalendarEventTasks.AsNoTracking()
+            .Where(m => m.CalendarEventId == calendarEventId)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<ActiveCalendarEventTaskLink>> ListActiveTaskLinksForTasksAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> taskIds, CancellationToken ct = default)
+    {
+        if (taskIds.Count == 0)
+            return Array.Empty<ActiveCalendarEventTaskLink>();
+
+        return await (
+            from link in _db.CalendarEventTasks.AsNoTracking()
+            join calendarEvent in _db.CalendarEvents.AsNoTracking()
+                on link.CalendarEventId equals calendarEvent.Id
+            where taskIds.Contains(link.TaskId)
+                && calendarEvent.TenantId == tenantId
+                && calendarEvent.Status == CalendarEventStatuses.Active
+            select new ActiveCalendarEventTaskLink(calendarEvent.Id, link.TaskId, calendarEvent.Name))
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<ActiveCalendarEventMembership>> ListActiveMembershipsForProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
         => await (
             from membership in _db.CalendarEventObjectives.AsNoTracking()
@@ -43,6 +71,28 @@ public sealed class EfCalendarEventRepository : ICalendarEventRepository
                 && calendarEvent.ProjectId == projectId
                 && calendarEvent.Status == CalendarEventStatuses.Active
             select new ActiveCalendarEventMembership(calendarEvent.Id, membership.ObjectiveId, calendarEvent.Color))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<ActiveEventHeader>> ListActiveEventHeadersForProjectAsync(
+        Guid tenantId, Guid projectId, CancellationToken ct = default)
+        => await _db.CalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.ProjectId == projectId && e.Status == CalendarEventStatuses.Active)
+            .OrderBy(e => e.CreatedAt)
+            .Select(e => new ActiveEventHeader(e.Id, e.Name, e.Color, e.StartDate, e.EndDate))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<ActiveEventTaskMembership>> ListActiveTaskMembershipsForProjectAsync(
+        Guid tenantId, Guid projectId, CancellationToken ct = default)
+        => await (
+            from link in _db.CalendarEventTasks.AsNoTracking()
+            join calendarEvent in _db.CalendarEvents.AsNoTracking()
+                on link.CalendarEventId equals calendarEvent.Id
+            join task in _db.WorkTasks.AsNoTracking()
+                on link.TaskId equals task.Id
+            where calendarEvent.TenantId == tenantId
+                && calendarEvent.ProjectId == projectId
+                && calendarEvent.Status == CalendarEventStatuses.Active
+            select new ActiveEventTaskMembership(calendarEvent.Id, link.TaskId, task.ObjectiveId))
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<ActiveCalendarEventMembership>> ListActiveMembershipsForObjectivesAsync(
@@ -66,6 +116,48 @@ public sealed class EfCalendarEventRepository : ICalendarEventRepository
     {
         if (memberships.Count > 0)
             _db.CalendarEventObjectives.RemoveRange(memberships);
+    }
+
+    public void RemoveTaskMemberships(IReadOnlyCollection<CalendarEventTask> memberships)
+    {
+        if (memberships.Count > 0)
+            _db.CalendarEventTasks.RemoveRange(memberships);
+    }
+
+    public async Task<IReadOnlyList<ActiveEventWindow>> ListActiveEventWindowsForObjectiveAsync(
+        Guid tenantId, Guid objectiveId, CancellationToken ct = default)
+        => await (
+            from link in _db.CalendarEventObjectives.AsNoTracking()
+            join calendarEvent in _db.CalendarEvents.AsNoTracking()
+                on link.CalendarEventId equals calendarEvent.Id
+            where link.ObjectiveId == objectiveId
+                && calendarEvent.TenantId == tenantId
+                && calendarEvent.Status == CalendarEventStatuses.Active
+            select new ActiveEventWindow(calendarEvent.Id, calendarEvent.Name, calendarEvent.StartDate, calendarEvent.EndDate))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<ActiveEventWindow>> ListActiveEventWindowsForTaskAsync(
+        Guid tenantId, Guid taskId, Guid objectiveId, CancellationToken ct = default)
+    {
+        var direct =
+            from link in _db.CalendarEventTasks.AsNoTracking()
+            join calendarEvent in _db.CalendarEvents.AsNoTracking()
+                on link.CalendarEventId equals calendarEvent.Id
+            where link.TaskId == taskId
+                && calendarEvent.TenantId == tenantId
+                && calendarEvent.Status == CalendarEventStatuses.Active
+            select new ActiveEventWindow(calendarEvent.Id, calendarEvent.Name, calendarEvent.StartDate, calendarEvent.EndDate);
+
+        var viaModule =
+            from link in _db.CalendarEventObjectives.AsNoTracking()
+            join calendarEvent in _db.CalendarEvents.AsNoTracking()
+                on link.CalendarEventId equals calendarEvent.Id
+            where link.ObjectiveId == objectiveId
+                && calendarEvent.TenantId == tenantId
+                && calendarEvent.Status == CalendarEventStatuses.Active
+            select new ActiveEventWindow(calendarEvent.Id, calendarEvent.Name, calendarEvent.StartDate, calendarEvent.EndDate);
+
+        return await direct.Concat(viaModule).Distinct().ToListAsync(ct);
     }
 
     public void Update(CalendarEvent calendarEvent) => _db.CalendarEvents.Update(calendarEvent);

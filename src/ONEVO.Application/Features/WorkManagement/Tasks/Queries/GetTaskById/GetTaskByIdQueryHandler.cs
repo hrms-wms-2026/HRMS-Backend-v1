@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -20,6 +21,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
     private readonly IPermissionResolver _permissionResolver;
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
+    private readonly ICalendarEventRepository _calendarEvents;
 
     public GetTaskByIdQueryHandler(
         ICurrentUser currentUser,
@@ -29,7 +31,8 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
         ITaskAssignmentRepository assignments,
-        ITaskClockingSessionRepository sessions)
+        ITaskClockingSessionRepository sessions,
+        ICalendarEventRepository calendarEvents)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -39,6 +42,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         _permissionResolver = permissionResolver;
         _assignments = assignments;
         _sessions = sessions;
+        _calendarEvents = calendarEvents;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(GetTaskByIdQuery request, CancellationToken ct)
@@ -80,13 +84,18 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         var openSessions = await _sessions.GetOpenSessionsForTasksAsync(tenantId, new[] { task.Id }, ct);
         var totalLoggedMinutes = await _sessions.GetTotalClosedSessionMinutesForTasksAsync(tenantId, new[] { task.Id }, ct);
 
+        var activeEventLink = (await _calendarEvents.ListActiveTaskLinksForTasksAsync(tenantId, new[] { task.Id }, ct))
+            .FirstOrDefault();
+
         var response = new WorkTaskResponse(
             task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description, task.CategoryId, task.StatusId,
             task.Priority, task.StoryPoints, task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
             assigneeIds,
             openSessions.TryGetValue(task.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
             openSession?.ClockInAt,
-            totalLoggedMinutes.GetValueOrDefault(task.Id, 0));
+            totalLoggedMinutes.GetValueOrDefault(task.Id, 0),
+            activeEventLink?.CalendarEventId,
+            activeEventLink?.EventName);
 
         return Result<WorkTaskResponse>.Success(response);
     }
