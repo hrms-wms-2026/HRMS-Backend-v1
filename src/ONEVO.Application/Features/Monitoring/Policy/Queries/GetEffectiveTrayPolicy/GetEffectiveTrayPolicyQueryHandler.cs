@@ -7,6 +7,7 @@ using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Policy.DTOs;
+using ONEVO.Application.Features.TimeAttendance.Services;
 
 namespace ONEVO.Application.Features.Monitoring.Policy.Queries.GetEffectiveTrayPolicy;
 
@@ -20,19 +21,22 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
     private readonly ITenantContextSwitcher _tenantSwitcher;
     private readonly IMonitoringToggleResolver _toggles;
     private readonly IDateTimeProvider _clock;
+    private readonly IAttendanceTodayStateService _todayState;
 
     public GetEffectiveTrayPolicyQueryHandler(
         ITrayCurrentDevice device,
         ITenantRepository tenants,
         ITenantContextSwitcher tenantSwitcher,
         IMonitoringToggleResolver toggles,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IAttendanceTodayStateService todayState)
     {
         _device = device;
         _tenants = tenants;
         _tenantSwitcher = tenantSwitcher;
         _toggles = toggles;
         _clock = clock;
+        _todayState = todayState;
     }
 
     public async Task<Result<TrayAgentPolicyDto>> Handle(
@@ -79,8 +83,12 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
         var inactivityEnabled = activityEnabled && screenshotEnabled && autoScreenshotEnabled;
         var now = _clock.UtcNow;
 
+        var todayContextResult = await _todayState.ResolveContextAsync(tenantId, employeeId, cancellationToken);
+        var trayClockInEnabled = todayContextResult.IsSuccess
+            && todayContextResult.Value!.AllowedClockInMethods.DesktopTray;
+
         return Result<TrayAgentPolicyDto>.Success(new TrayAgentPolicyDto(
-            ComputeVersion(locationEnabled, activityEnabled, appUsageEnabled, screenshotEnabled, autoScreenshotEnabled, cameraEnabled, idleThresholdMinutes),
+            ComputeVersion(locationEnabled, activityEnabled, appUsageEnabled, screenshotEnabled, autoScreenshotEnabled, cameraEnabled, idleThresholdMinutes, trayClockInEnabled),
             activityEnabled,
             appUsageEnabled,
             screenshotEnabled,
@@ -89,7 +97,8 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
             idleThresholdMinutes,
             now.Add(PolicyValidity),
             EffectiveScope: "employee",
-            LocationTrackingEnabled: locationEnabled));
+            LocationTrackingEnabled: locationEnabled,
+            TrayClockInEnabled: trayClockInEnabled));
     }
 
     internal static string ComputeVersion(
@@ -99,10 +108,11 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
         bool screenshotEnabled,
         bool autoScreenshotEnabled,
         bool cameraEnabled,
-        int idleThresholdMinutes)
+        int idleThresholdMinutes,
+        bool trayClockInEnabled)
     {
         var fingerprint =
-            $"{locationEnabled}:{activityEnabled}:{appUsageEnabled}:{screenshotEnabled}:{autoScreenshotEnabled}:{cameraEnabled}:{idleThresholdMinutes}";
+            $"{locationEnabled}:{activityEnabled}:{appUsageEnabled}:{screenshotEnabled}:{autoScreenshotEnabled}:{cameraEnabled}:{idleThresholdMinutes}:{trayClockInEnabled}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint)))[..16];
     }
 }

@@ -22,7 +22,12 @@ public sealed class ClockInCommandHandler(
         if (!contextResult.IsSuccess)
             return ToTodayFailure(contextResult);
 
-        var context = contextResult.Value!;
+        return await HandleForContextAsync(contextResult.Value!, request.Source, ct);
+    }
+
+    public async Task<Result<AttendanceTodayResponse>> HandleForContextAsync(
+        AttendanceTodayContext context, string sourceRaw, CancellationToken ct)
+    {
         if (context.Schedule.Status != "configured")
             return Result<AttendanceTodayResponse>.Conflict("schedule_not_configured");
 
@@ -32,11 +37,14 @@ public sealed class ClockInCommandHandler(
         if (context.PolicyStatus == "configuration_conflict")
             return Result<AttendanceTodayResponse>.Conflict("multiple_active_company_policies");
 
-        if (!context.AllowedClockInMethods.Web)
+        var source = sourceRaw.Trim().ToLowerInvariant();
+        var allowed = source == AttendanceRecord.SourceWeb
+            ? context.AllowedClockInMethods.Web
+            : context.AllowedClockInMethods.DesktopTray;
+        if (!allowed)
             return Result<AttendanceTodayResponse>.Forbidden(
-                "Clock-in source web is not allowed by the active policy.");
+                $"Clock-in source {source} is not allowed by the active policy.");
 
-        var source = request.Source.Trim().ToLowerInvariant();
         try
         {
             var mutation = await unitOfWork.ExecuteInTransactionAsync(
