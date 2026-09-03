@@ -285,6 +285,7 @@ public class ModuleCatalogSeeder : IHostedService
             new { Module = "work_management", Perm = "projects:read" },
             new { Module = "work_management", Perm = "projects:access" },
             new { Module = "work_management", Perm = "tasks:read" },
+            new { Module = "work_management", Perm = "tasks:read-own" },
             new { Module = "work_management", Perm = "tasks:write" },
             new { Module = "work_management", Perm = "tasks:approve" },
             new { Module = "work_management", Perm = "tasks:delete" },

@@ -43,6 +43,9 @@ public class TransactionalEmailService : IEmailService
     public Task SendAdminPasswordResetAsync(string to, string resetToken, CancellationToken ct = default)
         => SendTemplateAsync(to, "admin_password_reset", new { reset_token = resetToken }, ct);
 
+    public Task SendCalendarEventInviteAsync(string to, string recipientName, string eventTitle, DateTimeOffset startDateUtc, string? location, string organizerName, CancellationToken ct = default)
+        => SendTemplateAsync(to, "calendar_event_invite", new { recipientName, eventTitle, startDateUtc, location, organizerName }, ct);
+
     public Task SendAdminPasswordChangedAsync(string to, CancellationToken ct = default)
         => SendTemplateAsync(to, "admin_password_changed", new { }, ct);
 

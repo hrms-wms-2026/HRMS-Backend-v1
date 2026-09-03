@@ -30,4 +30,26 @@ public class EfEntityAssetRepository : IEntityAssetRepository
                 ownerIds.Contains(a.OwnerId))
             .ToDictionaryAsync(a => a.OwnerId, a => a.FileRecordId, ct);
     }
+
+    public async Task<IReadOnlyList<EntityAssetWithFile>> ListByOwnerAsync(
+        Guid tenantId, string ownerType, Guid ownerId, CancellationToken ct = default)
+    {
+        return await _db.EntityAssets.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.OwnerType == ownerType && a.OwnerId == ownerId)
+            .Join(_db.FileRecords.AsNoTracking(), a => a.FileRecordId, f => f.Id,
+                (a, f) => new EntityAssetWithFile(a.Id, f.Id, f.OriginalFileName, f.FileSizeBytes, f.ContentType, a.CreatedAt))
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(ct);
+    }
+
+    public async Task<EntityAsset?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        return await _db.EntityAssets.FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == id, ct);
+    }
+
+    public Task DeleteAsync(EntityAsset asset, CancellationToken ct = default)
+    {
+        _db.EntityAssets.Remove(asset);
+        return Task.CompletedTask;
+    }
 }

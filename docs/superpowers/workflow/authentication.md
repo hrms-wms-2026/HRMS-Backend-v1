@@ -140,9 +140,9 @@ sequenceDiagram
 | Stage | Tenant (`sessions`) | Admin (`platform_user_sessions`) |
 |---|---|---|
 | Creation | `TenantDatabaseTicketStore.StoreAsync`; only `SHA-256(key)` persisted | Same pattern |
-| Sliding window | 30 min (`SessionPolicy.SlidingWindow`) | Same policy |
-| Renewal threshold | 15 min | Same |
-| Absolute lifetime | 8 h, hard cap regardless of activity | Same |
+| Sliding window | 30 days (`SessionPolicy.SlidingWindow`) | Same policy |
+| Renewal threshold | 15 min (declared, not currently read anywhere) | Same |
+| Absolute lifetime | 3650 days — effectively unbounded, sized only to keep `DateTimeOffset` arithmetic from overflowing; the sliding window (30 days of inactivity) is what actually ends a session | Same |
 | Last-activity | Updated on every `RenewAsync` | Same |
 | Revocation | `RemoveAsync` sets `IsRevoked=true` | Same + writes `PlatformAuthEvent(SessionRevoked)` |
 | Password-change invalidation | `ResetPasswordCommandHandler` revokes all active `RefreshToken` rows (legacy table; see §12) — **no evidence session rows themselves are force-revoked on password reset** | Not traced |

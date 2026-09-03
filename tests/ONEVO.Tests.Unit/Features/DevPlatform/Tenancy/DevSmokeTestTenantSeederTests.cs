@@ -39,7 +39,7 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
     private static readonly string[] CanonicalPhase1Modules =
     [
         "org_structure", "core_hr", "leave", "calendar", "time_attendance",
-        "activity_monitoring", "discrepancy_engine", "identity_verification",
+        "monitoring", "discrepancy_engine", "identity_verification",
         "exception_engine", "productivity_analytics", "desktop_agent_gateway",
         "worksync_foundation", "projects", "objectives_milestones", "tasks",
         "boards", "planning_sprints"

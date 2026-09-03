@@ -50,6 +50,17 @@ public class TrayEnrollmentServiceTests
     }
 
     [Fact]
+    public async Task IssueAsync_ReturnsTenantSlug()
+    {
+        var repository = new Mock<ITrayActivationRepository>();
+        var service = CreateService(repository, TokenService());
+
+        var result = await service.IssueAsync(Request(), CancellationToken.None);
+
+        result.TenantSlug.Should().Be("acme");
+    }
+
+    [Fact]
     public async Task IssueAsync_ReturnsEmployeeProfile_WhenEmployeeExists()
     {
         var repository = new Mock<ITrayActivationRepository>();

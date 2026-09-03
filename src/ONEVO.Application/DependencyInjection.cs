@@ -75,7 +75,7 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.TrayEnrollmentService>();
 
         services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
-        
+        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarEventInviteEmailOutboxHandler>();
         services.AddScoped<GetBulkOnboardingTemplateQueryHandler>();
 
         services.AddScoped<

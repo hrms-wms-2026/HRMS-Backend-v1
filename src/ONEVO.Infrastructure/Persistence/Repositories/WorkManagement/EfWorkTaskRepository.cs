@@ -52,6 +52,33 @@ public class EfWorkTaskRepository : IWorkTaskRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<MyTaskRow>> GetMyActiveTasksAsync(Guid tenantId, Guid employeeId, DateOnly upcomingCutoff, CancellationToken ct = default)
+    {
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            join p in _db.Projects.AsNoTracking() on t.ProjectId equals p.Id
+            where t.TenantId == tenantId
+                  && t.DueDate.HasValue
+                  && t.DueDate <= upcomingCutoff
+                  && !s.MarksTaskComplete
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+            orderby t.DueDate
+            select new MyTaskRow(t.Id, t.ShortId, t.Title, t.DueDate!.Value, t.ProjectId, p.Name, t.ObjectiveId, t.Priority)
+        ).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<TaskProgressRow>> GetMyTaskProgressRowsAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await (
+            from t in _db.WorkTasks.AsNoTracking()
+            join s in _db.TaskStatuses.AsNoTracking() on t.StatusId equals s.Id
+            where t.TenantId == tenantId
+                  && _db.TaskAssignments.Any(a => a.TaskId == t.Id && a.EmployeeId == employeeId)
+            select new TaskProgressRow(s.MarksTaskComplete, t.DueDate, t.ProgressPercent)
+        ).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking().Where(t => t.TenantId == tenantId && t.SprintId == sprintId).ToListAsync(ct);
 
