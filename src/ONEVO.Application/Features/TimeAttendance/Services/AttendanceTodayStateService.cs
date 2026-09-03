@@ -20,6 +20,7 @@ public sealed class AttendanceTodayStateService(
     IAttendanceReadRepository attendance,
     IEmployeeAuthorityResolver authority,
     IExpectedWorkAreaResolver expectedWorkAreas,
+    ITenantContext diagTenantContext,
     ILeaveRequestReadRepository? leaveRequests = null)
     : IAttendanceTodayStateService
 {
@@ -40,7 +41,9 @@ public sealed class AttendanceTodayStateService(
         if (tenantId == Guid.Empty)
             return Result<AttendanceTodayContext>.Forbidden("Tenant context missing.");
 
+        Console.WriteLine($"[DIAG2] Before employee lookup: tenantId(param)={tenantId} userId(param)={userId} diagTenantContext.ContextMode={diagTenantContext.ContextMode} diagTenantContext.TenantId={diagTenantContext.TenantId} diagTenantContext.IsResolved={diagTenantContext.IsResolved}");
         var employee = await employees.GetDefaultForUserAsync(tenantId, userId, ct);
+        Console.WriteLine($"[DIAG2] employee.Id={employee?.Id} employee.LegalEntityId={employee?.LegalEntityId}");
         if (employee?.LegalEntityId is null)
             return Result<AttendanceTodayContext>.NotFound("Current employee record was not found.");
 
