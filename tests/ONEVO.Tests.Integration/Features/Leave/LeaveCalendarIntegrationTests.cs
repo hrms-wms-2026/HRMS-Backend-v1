@@ -136,7 +136,9 @@ public sealed class LeaveCalendarIntegrationTests : IAsyncLifetime
         }
 
         var leaveTypeId = Guid.NewGuid();
-        var leaveTypeCode = $"{FixtureCodePrefix}-{Guid.NewGuid():N}"[..24].ToUpperInvariant();
+        // leave_types.code is varchar(20) (LeaveTypeConfiguration) - keep the generated code
+        // within that bound or SaveChanges throws 22001 "value too long".
+        var leaveTypeCode = $"{FixtureCodePrefix}-{Guid.NewGuid():N}"[..20].ToUpperInvariant();
         db.LeaveTypes.Add(new LeaveType
         {
             Id = leaveTypeId,
