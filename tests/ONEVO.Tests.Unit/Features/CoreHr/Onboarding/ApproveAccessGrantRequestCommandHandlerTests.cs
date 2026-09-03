@@ -662,6 +662,10 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(1);
 
+        public void ClearTracking()
+        {
+        }
+
         public async Task<TResult> ExecuteInTransactionAsync<TResult>(
             Func<CancellationToken, Task<TResult>> operation,
             CancellationToken cancellationToken = default)

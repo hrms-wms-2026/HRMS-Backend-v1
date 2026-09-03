@@ -8,6 +8,9 @@ public sealed class FakeUnitOfWork : IUnitOfWork
     public int SaveCallCount { get; private set; }
     public int TransactionCallCount { get; private set; }
     public bool IsInTransaction { get; private set; }
+    public int ClearTrackingCallCount { get; private set; }
+
+    public void ClearTracking() => ClearTrackingCallCount++;
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

@@ -38,7 +38,7 @@ public sealed class LateClockInDailySummaryJob : BackgroundService
 
     private readonly IServiceProvider _services;
     private readonly ILogger<LateClockInDailySummaryJob> _logger;
-    private readonly Dictionary<Guid, DateOnly> _lastRunLocalDateByLegalEntity = new();
+    private readonly Dictionary<Guid, DateOnly> _lastRunShiftDateByLegalEntity = new();
 
     public LateClockInDailySummaryJob(IServiceProvider services, ILogger<LateClockInDailySummaryJob> logger)
     {
@@ -103,8 +103,13 @@ public sealed class LateClockInDailySummaryJob : BackgroundService
                 await using var tenantScope = _services.CreateAsyncScope();
                 await ProcessTenantAsync(tenantScope.ServiceProvider, tenant, ct);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
+                // A plain catch here would also swallow ct.ThrowIfCancellationRequested() (or any
+                // cancellation-aware call) firing mid-loop during a graceful shutdown and log it as
+                // a false "failed for tenant" warning. When cancellation is what's happening, let
+                // it propagate so ExecuteAsync's own OperationCanceledException handler deals with
+                // it as a normal shutdown instead.
                 _logger.LogWarning(ex, "Late clock-in daily summary failed for tenant {TenantId}; skipping.", tenant.Id);
             }
         }
@@ -131,34 +136,64 @@ public sealed class LateClockInDailySummaryJob : BackgroundService
                 || resolution.Schedule.Start is not { } shiftStart)
                 continue;
 
-            var dueAt = shiftStart.ToTimeSpan() + OffsetFromShiftStart;
-            var alreadyRunToday = _lastRunLocalDateByLegalEntity.TryGetValue(legalEntity.Id, out var lastRun)
-                && lastRun == resolution.WorkDate;
-            if (resolution.LocalNow.TimeOfDay < dueAt || alreadyRunToday)
+            // resolution.WorkDate and resolution.LocalNow both come from the SAME Resolve() call,
+            // so LocalNow.DateTime always falls inside [WorkDate 00:00, WorkDate 23:59:59.999] -
+            // it can never reach or exceed WorkDate's midnight boundary. That means naively
+            // comparing "today's shift start + offset" (which lands on WorkDate+1 whenever
+            // shiftStart is late enough that shiftStart + OffsetFromShiftStart >= 24h, e.g. any
+            // shiftStart at or after 22:00 for a 2h offset) against LocalNow is unconditionally
+            // true forever: the legal entity would be skipped on every tick, permanently, since by
+            // the time "WorkDate+1" actually arrives, WorkDate itself has already been recomputed
+            // to be that same later day (today's shift start has moved a day forward too).
+            //
+            // Instead, resolve the MOST RECENT occurrence of the daily-recurring shift start
+            // relative to LocalNow: if today's shift start hasn't happened yet (LocalNow is in the
+            // early-morning window before shiftStart), the relevant occurrence is yesterday's. The
+            // due instant and the work date whose late records we check are both derived from that
+            // occurrence, not from resolution.WorkDate directly - so an overnight shift's due check
+            // survives the WorkDate rollover instead of being evaluated against a shift that hasn't
+            // started yet.
+            //
+            // Note: resolution.Schedule.IsWorkingDay is still gated on TODAY's DayOfWeek (from
+            // AttendanceScheduleResolver), not shiftWorkDate's. For the early-morning window where
+            // shiftWorkDate is yesterday, those two can disagree (e.g. today is a non-working day
+            // but yesterday's overnight shift still needs its catch-up check) - that's a pre-existing
+            // mismatch in how the resolver defines "today", out of scope for this fix.
+            var todayShiftStart = resolution.WorkDate.ToDateTime(shiftStart);
+            var mostRecentShiftStart = todayShiftStart <= resolution.LocalNow.DateTime
+                ? todayShiftStart
+                : todayShiftStart.AddDays(-1);
+            var dueAt = mostRecentShiftStart + OffsetFromShiftStart;
+            var shiftWorkDate = DateOnly.FromDateTime(mostRecentShiftStart);
+
+            var alreadyRunForShiftDate = _lastRunShiftDateByLegalEntity.TryGetValue(legalEntity.Id, out var lastRun)
+                && lastRun == shiftWorkDate;
+            if (resolution.LocalNow.DateTime < dueAt || alreadyRunForShiftDate)
                 continue;
 
             try
             {
-                await RunForLegalEntityAsync(services, tenant.Id, legalEntity, resolution.WorkDate, ct);
+                await RunForLegalEntityAsync(services, tenant.Id, legalEntity, shiftWorkDate, ct);
                 // Only recorded on success: a transient failure (DB blip, one bad row) should be
                 // retried on the next 15-minute tick for the rest of today, not silently skipped
                 // until tomorrow. The DB-level ExistsAsync check in RunForLegalEntityAsync makes a
                 // retry after partial success safe (already-sent recipients are not re-notified).
-                _lastRunLocalDateByLegalEntity[legalEntity.Id] = resolution.WorkDate;
+                _lastRunShiftDateByLegalEntity[legalEntity.Id] = shiftWorkDate;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 // One legal entity's failure must not stop the rest of this tenant's legal
                 // entities (or the rest of this tenant's tick) from being processed - same
                 // per-unit isolation as LeaveYearEndEntitlementJob.RunForYearAsync's per-tenant
-                // try/catch.
+                // try/catch. The `when` guard (see the matching one in RunTickAsync) keeps a
+                // cancellation firing mid-loop from being misreported as a legal-entity failure.
                 _logger.LogWarning(ex,
                     "Late clock-in daily summary failed for legal entity {LegalEntityId} in tenant {TenantId}; will retry next tick.",
                     legalEntity.Id, tenant.Id);
                 // Same tenant DbContext is reused for later legal entities. A thrown
                 // ExecuteInTransactionAsync rolls back but leaves Added entities tracked;
-                // Clear prevents a later LE's SaveChangesAsync from persisting them.
-                services.GetRequiredService<ONEVO.Infrastructure.Persistence.ApplicationDbContext>().ChangeTracker.Clear();
+                // ClearTracking() prevents a later LE's SaveChangesAsync from persisting them.
+                services.GetRequiredService<IUnitOfWork>().ClearTracking();
             }
         }
     }
