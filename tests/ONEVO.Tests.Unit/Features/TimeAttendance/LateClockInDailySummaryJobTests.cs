@@ -1,3 +1,5 @@
+using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -13,6 +15,8 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Notifications.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
+using ONEVO.Infrastructure.Persistence;
+using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Services.TimeAttendance;
 using Xunit;
 
@@ -153,9 +157,96 @@ public sealed class LateClockInDailySummaryJobTests
             Times.Never);
     }
 
-    private static LegalEntity CreateLegalEntity(TimeOnly workStartTime) => new()
+    [Fact]
+    public async Task RunTickAsync_IsolatesLegalEntityFailure_ClearsChangeTracker_AndStillProcessesNextLegalEntity()
     {
-        Id = LegalEntityId, TenantId = TenantId, Name = "Test Co", CountryCode = "US", CurrencyCode = "USD",
+        var legalEntity1 = CreateLegalEntity(workStartTime: new TimeOnly(9, 0), id: LegalEntityId); // due at 11:00 UTC, now is 12:00
+        var legalEntity2Id = Guid.NewGuid();
+        var legalEntity2 = CreateLegalEntity(workStartTime: new TimeOnly(9, 0), id: legalEntity2Id);
+
+        var failingEmployee = CreateEmployee(legalEntity1.Id, "Fail", "First");
+        var okEmployee = CreateEmployee(legalEntity2.Id, "Second", "Ok");
+        var failingRecord = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = failingEmployee.Id,
+            Date = DateOnly.FromDateTime(UtcNow.UtcDateTime), Status = AttendanceRecord.StatusLate, LateMinutes = 20
+        };
+        var okRecord = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = okEmployee.Id,
+            Date = DateOnly.FromDateTime(UtcNow.UtcDateTime), Status = AttendanceRecord.StatusLate, LateMinutes = 10
+        };
+
+        var (provider, mocks) = BuildProvider(
+            legalEntities: new List<LegalEntity> { legalEntity1, legalEntity2 },
+            lateRecords: new List<AttendanceRecord> { failingRecord, okRecord },
+            employeesById: new Dictionary<Guid, Employee>
+            {
+                [failingEmployee.Id] = failingEmployee,
+                [okEmployee.Id] = okEmployee,
+            });
+
+        var okApproverUserId = Guid.NewGuid();
+
+        // Legal entity 1's late employee blows up while resolving an approver - simulating a
+        // transient failure inside RunForLegalEntityAsync, e.g. a DB blip.
+        mocks.Authority
+            .Setup(a => a.ResolveApproverAsync(
+                It.Is<EmployeeApprovalRouteRequest>(r => r.LegalEntityId == legalEntity1.Id),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("simulated approver-resolution failure for legal entity 1"));
+
+        // Legal entity 2's late employee resolves normally and must still be notified.
+        mocks.Authority
+            .Setup(a => a.ResolveApproverAsync(
+                It.Is<EmployeeApprovalRouteRequest>(r => r.LegalEntityId == legalEntity2.Id),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ONEVO.Application.Common.Models.Result<EmployeeApprovalRoute>.Success(
+                new EmployeeApprovalRoute(Guid.NewGuid(), okApproverUserId, Guid.NewGuid(),
+                    "attendance:read", EmployeeAuthorityPurpose.AttendanceLateNotification,
+                    EmployeeApprovalRouteSource.ReportingLine, null)));
+
+        // Simulate what a rolled-back ExecuteInTransactionAsync leaves behind: an Added-but-
+        // never-saved entity still tracked by the tenant-scoped DbContext. Without the job's
+        // ChangeTracker.Clear() call in its per-legal-entity catch block, this entity would
+        // still be sitting in the tracker after legal entity 1 fails, and would remain there
+        // (a real DbContext never clears the tracker on its own) through legal entity 2's
+        // processing.
+        var dbContext = provider.GetRequiredService<ApplicationDbContext>();
+        dbContext.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = failingEmployee.Id,
+            Date = DateOnly.FromDateTime(UtcNow.UtcDateTime), Status = AttendanceRecord.StatusLate, LateMinutes = 20
+        });
+        Assert.NotEmpty(dbContext.ChangeTracker.Entries());
+
+        var job = new LateClockInDailySummaryJob(provider, NullLogger<LateClockInDailySummaryJob>.Instance);
+
+        await job.RunTickAsync(CancellationToken.None); // must not throw despite legal entity 1 failing
+
+        // Legal entity 2 must still have been processed despite legal entity 1 throwing.
+        mocks.Dispatcher.Verify(d => d.SendTemplatedAsync(
+            TenantId, okApproverUserId, "attendance_late_clockin_daily_summary",
+            It.Is<IReadOnlyDictionary<string, string>>(p => p["lateCount"] == "1" && p["lateEmployees"].Contains("Second Ok")),
+            "attendance_late_daily_summary", It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        // Legal entity 1's failure must never have been notified for.
+        mocks.Dispatcher.Verify(d => d.SendTemplatedAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(),
+            It.Is<IReadOnlyDictionary<string, string>>(p => p["lateEmployees"].Contains("Fail First")),
+            It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        // The change tracker must have been cleared after legal entity 1's failure - proving
+        // the job's ChangeTracker.Clear() call actually ran and actually removed the leaked
+        // entity, not merely that RunTickAsync happened not to crash.
+        Assert.Empty(dbContext.ChangeTracker.Entries());
+    }
+
+    private static LegalEntity CreateLegalEntity(TimeOnly workStartTime, Guid? id = null) => new()
+    {
+        Id = id ?? LegalEntityId, TenantId = TenantId, Name = "Test Co", CountryCode = "US", CurrencyCode = "USD",
         IsActive = true, Timezone = "UTC", WorkStartTime = workStartTime, WorkEndTime = workStartTime.AddHours(8),
         StandardWorkingDays = "[1,2,3,4,5,6,7]"
     };
@@ -235,7 +326,30 @@ public sealed class LateClockInDailySummaryJobTests
         services.AddSingleton(unitOfWork.Object);
         services.AddSingleton(clock.Object);
         services.AddSingleton(switcher.Object);
+        // Real (EF Core InMemory-backed) ApplicationDbContext so that
+        // ProcessTenantAsync's per-legal-entity catch block can successfully
+        // GetRequiredService<ApplicationDbContext>() and call ChangeTracker.Clear() -
+        // matching production DI (services.AddDbContext<ApplicationDbContext>() in
+        // DependencyInjection.cs), unlike the fully-mocked repositories used elsewhere
+        // in this test class. Registered unconditionally so this gap can't resurface
+        // silently in a future test that happens to exercise that catch block.
+        services.AddSingleton(BuildInMemoryDbContext());
 
         return (services.BuildServiceProvider(), new Mocks(attendanceRepo, authority, dispatcher, notifications));
+    }
+
+    private static ApplicationDbContext BuildInMemoryDbContext()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var currentUser = new Mock<ICurrentUser>();
+        var dateTime = new Mock<IDateTimeProvider>();
+        var publisher = new Mock<IPublisher>();
+        var tenantContext = new Mock<ITenantContext>();
+        return new ApplicationDbContext(options,
+            new AuditableEntityInterceptor(currentUser.Object, dateTime.Object),
+            new SoftDeleteInterceptor(dateTime.Object),
+            new DomainEventDispatchInterceptor(publisher.Object),
+            tenantContext.Object);
     }
 }
