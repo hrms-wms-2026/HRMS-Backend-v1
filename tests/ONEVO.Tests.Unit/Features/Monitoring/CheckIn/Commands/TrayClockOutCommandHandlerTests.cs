@@ -138,6 +138,7 @@ public class TrayClockOutCommandHandlerTests
             0,
             60,
             "not_started",
+            [],
             "remote",
             AttendanceRecord.StatusClockedOut,
             UtcNow.AddHours(-8),
