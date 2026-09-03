@@ -17,7 +17,8 @@ public static class LegalEntityMapper
             entity.CompanyCode,
             entity.LogoFileId,
             entity.IsActive,
-            entity.IsPrimary);
+            entity.IsPrimary,
+            entity.CountryCode);
     }
 
     public static LegalEntityGeneralSettingsResponse ToGeneralSettingsResponse(LegalEntity entity)

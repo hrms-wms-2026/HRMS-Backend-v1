@@ -6,4 +6,5 @@ public record LegalEntityListItemResponse(
     string? CompanyCode,
     Guid? LogoFileId,
     bool IsActive,
-    bool IsPrimary);
+    bool IsPrimary,
+    string CountryCode);
