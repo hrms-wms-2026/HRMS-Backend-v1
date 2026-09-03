@@ -8912,3 +8912,1681 @@ FROM outbox_messages AS o
 WHERE o.status = 'pending' AND o.next_attempt_at <= @now
 ORDER BY o.created_at
 LIMIT @p
+[16:58:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:58:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:58:41 INF] Executed DbCommand (3ms) [Parameters=[@p='?', @ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @now='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+UPDATE agent_commands AS a
+SET status = @p
+WHERE (@ef_filter__p2 OR a.tenant_id = @ef_filter__CurrentTenantId) AND a.status = 'pending' AND a.expires_at <= @now
+[16:58:43 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[16:58:50 INF] Request starting HTTP/1.1 GET https://localhost:7229/api/v1/monitoring/tray/attendance-status - null null
+[16:58:50 INF] Request starting HTTP/1.1 POST https://localhost:7229/api/v1/monitoring/activation/heartbeat - null 0
+[16:58:50 INF] Request starting HTTP/1.1 GET https://localhost:7229/api/v1/monitoring/tray/notifications/pending - null null
+[16:58:50 INF] Executing endpoint 'ONEVO.Api.Controllers.Tenant.Monitoring.Notifications.TrayNotificationsController.GetPending (ONEVO.Api)'
+[16:58:50 INF] Executing endpoint 'ONEVO.Api.Controllers.Tenant.Monitoring.CheckIn.TrayAttendanceController.GetAttendanceStatus (ONEVO.Api)'
+[16:58:50 INF] Executing endpoint 'ONEVO.Api.Controllers.Tenant.Monitoring.TrayActivation.MonitoringActivationController.Heartbeat (ONEVO.Api)'
+[16:58:50 INF] Route matched with {action = "GetPending", controller = "TrayNotifications"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.IActionResult] GetPending(System.Threading.CancellationToken) on controller ONEVO.Api.Controllers.Tenant.Monitoring.Notifications.TrayNotificationsController (ONEVO.Api).
+[16:58:50 INF] Route matched with {action = "GetAttendanceStatus", controller = "TrayAttendance"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.IActionResult] GetAttendanceStatus(System.Threading.CancellationToken) on controller ONEVO.Api.Controllers.Tenant.Monitoring.CheckIn.TrayAttendanceController (ONEVO.Api).
+[16:58:50 INF] Route matched with {action = "Heartbeat", controller = "MonitoringActivation"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.IActionResult] Heartbeat(System.Threading.CancellationToken) on controller ONEVO.Api.Controllers.Tenant.Monitoring.TrayActivation.MonitoringActivationController (ONEVO.Api).
+[16:58:50 INF] Handling GetPendingTrayNotificationsQuery for user b3bd83af-009d-4f61-b8ad-e6733a63f0cd in tenant 6b0874ab-71db-401f-859f-bdd50c1317fb
+[16:58:50 INF] Handling RecordTrayHeartbeatCommand for user b3bd83af-009d-4f61-b8ad-e6733a63f0cd in tenant 6b0874ab-71db-401f-859f-bdd50c1317fb
+[16:58:50 INF] Handling GetTrayAttendanceStatusQuery for user b3bd83af-009d-4f61-b8ad-e6733a63f0cd in tenant 6b0874ab-71db-401f-859f-bdd50c1317fb
+[16:58:50 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @deviceRegistrationId='?' (DbType = Guid), @tenantId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT t.id, t.activated_at, t.created_at, t.deactivated_at, t.device_fingerprint, t.device_name, t.device_os, t.is_active, t.last_seen_at, t.legal_entity_id, t.tenant_id, t.user_id
+FROM tray_device_registrations AS t
+WHERE (@ef_filter__p2 OR t.tenant_id = @ef_filter__CurrentTenantId) AND t.id = @deviceRegistrationId AND t.tenant_id = @tenantId AND t.is_active
+LIMIT 1
+[16:58:50 INF] Executed DbCommand (3ms) [Parameters=[@id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT t.id, t.company_size_range, t.created_at, t.industry_profile, t.name, t.settings_json, t.slug, t.status, t.subscription_plan_id, t.updated_at
+FROM tenants AS t
+WHERE t.id = @id
+LIMIT 1
+[16:58:50 INF] Executed DbCommand (3ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employeeId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.created_at, m.delivered_to_tray_at, m.employee_id, m.message, m.metadata_json, m.read_at, m.tenant_id, m.title, m.type
+FROM monitoring_notifications AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND m.employee_id = @employeeId AND m.delivered_to_tray_at IS NULL AND m.type IN ('BreakReminder', 'LongIdleAlert')
+ORDER BY m.created_at
+[16:58:50 INF] Handled GetPendingTrayNotificationsQuery
+[16:58:50 INF] Executing OkObjectResult, writing value of type '<>f__AnonymousType10`1[[System.Collections.Generic.List`1[[ONEVO.Application.Features.Monitoring.Notifications.DTOs.Responses.TrayNotificationDto, ONEVO.Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]'.
+[16:58:50 INF] Executed action ONEVO.Api.Controllers.Tenant.Monitoring.Notifications.TrayNotificationsController.GetPending (ONEVO.Api) in 5.8802ms
+[16:58:50 INF] Executed endpoint 'ONEVO.Api.Controllers.Tenant.Monitoring.Notifications.TrayNotificationsController.GetPending (ONEVO.Api)'
+[16:58:50 INF] HTTP GET /api/v1/monitoring/tray/notifications/pending responded 200 in 6.2426 ms
+[16:58:50 INF] Request finished HTTP/1.1 GET https://localhost:7229/api/v1/monitoring/tray/notifications/pending - 200 null application/json; charset=utf-8 6.3744ms
+[16:58:50 INF] Executed DbCommand (3ms) [Parameters=[@p='?' (DbType = DateTime), @ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @deviceRegistrationId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+UPDATE tray_device_registrations AS t
+SET last_seen_at = @p
+WHERE (@ef_filter__p2 OR t.tenant_id = @ef_filter__CurrentTenantId) AND t.id = @deviceRegistrationId
+[16:58:50 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.avatar_file_id, e.created_at, e.created_by_id, e.date_of_birth, e.deleted_at, e.department_id, e.display_timezone, e.email, e.employee_number, e.employment_status_id, e.employment_type_id, e.first_name, e.gender, e.hire_date, e.is_deleted, e.last_name, e.legal_entity_id, e.nationality_id, e.phone, e.probation_end_date, e.tenant_id, e.termination_date, e.updated_at, e.user_id, e.work_mode_id, e.xmin
+FROM employees AS e
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND NOT (e.is_deleted) AND e.tenant_id = @tenantId AND e.user_id = @userId
+[16:58:50 INF] Handled RecordTrayHeartbeatCommand
+[16:58:50 INF] Request starting HTTP/1.1 POST https://localhost:7229/api/v1/monitoring/activation/refresh - application/json; charset=utf-8 null
+[16:58:50 INF] Executing StatusCodeResult, setting HTTP status code 204
+[16:58:50 INF] Executed action ONEVO.Api.Controllers.Tenant.Monitoring.TrayActivation.MonitoringActivationController.Heartbeat (ONEVO.Api) in 6.5929ms
+[16:58:50 INF] Executed endpoint 'ONEVO.Api.Controllers.Tenant.Monitoring.TrayActivation.MonitoringActivationController.Heartbeat (ONEVO.Api)'
+[16:58:50 INF] HTTP POST /api/v1/monitoring/activation/heartbeat responded 204 in 7.2198 ms
+[16:58:50 INF] Request finished HTTP/1.1 POST https://localhost:7229/api/v1/monitoring/activation/heartbeat - 204 null null 7.3329ms
+[16:58:50 INF] Executing endpoint 'ONEVO.Api.Controllers.Tenant.Monitoring.TrayActivation.MonitoringActivationController.Refresh (ONEVO.Api)'
+[16:58:50 INF] Route matched with {action = "Refresh", controller = "MonitoringActivation"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.IActionResult] Refresh(RefreshRequest, System.Threading.CancellationToken) on controller ONEVO.Api.Controllers.Tenant.Monitoring.TrayActivation.MonitoringActivationController (ONEVO.Api).
+[16:58:50 INF] Executed DbCommand (4ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT l.id, l.break_duration_minutes, l.company_code, l.country_code, l.created_at, l.currency_code, l.date_format, l.default_language, l.email, l.financial_year_start_month, l.week_start_day, l.is_active, l.is_primary, l.logo_file_id, l.name, l.parent_legal_entity_id, l.phone_number, l.registration_number, l.standard_working_days, l.tax_registration_number, l.tenant_id, l.time_format, l.timezone, l.updated_at, l.vat_gst_number, l.website, l.work_end_time, l.work_start_time
+FROM legal_entities AS l
+WHERE (@ef_filter__p2 OR l.tenant_id = @ef_filter__CurrentTenantId) AND l.tenant_id = @tenantId AND l.id = @id
+LIMIT 1
+[16:58:50 INF] Executed DbCommand (5ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @legalEntityId='?' (DbType = Guid), @employeeId='?' (DbType = Guid), @date='?' (DbType = Date)], CommandType='Text', CommandTimeout='30']
+SELECT w.id, w.current_expected_work_area, w.date, w.employee_id, w.legal_entity_id, w.reason, w.requested_at, w.requested_work_area, w.review_comment, w.reviewed_at, w.reviewed_by_id, w.status, w.tenant_id
+FROM work_area_change_requests AS w
+WHERE (@ef_filter__p2 OR w.tenant_id = @ef_filter__CurrentTenantId) AND w.tenant_id = @tenantId AND w.legal_entity_id = @legalEntityId AND w.employee_id = @employeeId AND w.date = @date AND w.status = 'approved'
+[16:58:50 INF] Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT w.id, w.code, w.is_active, w.label
+FROM work_modes AS w
+WHERE w.is_active
+ORDER BY w.label
+[16:58:50 INF] Executed DbCommand (8ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @legalEntityId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT c.id, c.allowed_radius_meters, c.correction_requires_approval, c.created_at, c.created_by_id, c.department_ids, c.effective_from, c.effective_to, c.either_biometric_enabled, c.either_location_check_required, c.either_photo_required, c.either_source_rule, c.either_tray_enabled, c.either_web_enabled, c.employee_ids, c.field_biometric_enabled, c.field_photo_requirement, c.field_tray_enabled, c.field_web_enabled, c.is_active, c.legal_entity_id, c.location_verification_required, c.name, c.notification_recipient_resolver, c.onsite_biometric_enabled, c.onsite_photo_required, c.onsite_tray_enabled, c.onsite_web_enabled, c.position_ids, c.remote_biometric_enabled, c.remote_photo_required, c.remote_tray_enabled, c.remote_web_enabled, c.scope_type, c.tenant_id, c.updated_at, c1.id, c1.clock_in_policy_id, c1.created_at, c1.is_active, c1.late_arrival_minute, c1.multiplier, c1.tenant_id, c1.time_off_type_id, c1.updated_at
+FROM clock_in_policies AS c
+LEFT JOIN (
+    SELECT c0.id, c0.clock_in_policy_id, c0.created_at, c0.is_active, c0.late_arrival_minute, c0.multiplier, c0.tenant_id, c0.time_off_type_id, c0.updated_at
+    FROM clock_in_late_deduction_rules AS c0
+    WHERE @ef_filter__p2 OR c0.tenant_id = @ef_filter__CurrentTenantId
+) AS c1 ON c.id = c1.clock_in_policy_id
+WHERE (@ef_filter__p2 OR c.tenant_id = @ef_filter__CurrentTenantId) AND c.tenant_id = @tenantId AND c.legal_entity_id = @legalEntityId AND c.is_active
+ORDER BY c.is_active DESC, c.name, c.id, c1.late_arrival_minute
+[16:58:50 INF] Executed DbCommand (2ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employeeId='?' (DbType = Guid), @date='?' (DbType = Date)], CommandType='Text', CommandTimeout='30']
+SELECT a.id, a.actual_end, a.actual_start, a.attendance_source, a.break_minutes, a.created_at, a.date, a.employee_id, a.expected_work_area, a.expected_working_day, a.holiday_name, a.is_holiday, a.late_minutes, a.required_work_minutes, a.schedule_timezone, a.scheduled_end, a.scheduled_start, a.status, a.tenant_id, a.updated_at, a.work_time_type, a.worked_minutes
+FROM attendance_records AS a
+WHERE (@ef_filter__p2 OR a.tenant_id = @ef_filter__CurrentTenantId) AND a.tenant_id = @tenantId AND a.employee_id = @employeeId AND a.date = @date
+LIMIT 2
+[16:58:50 INF] Handled GetTrayAttendanceStatusQuery
+[16:58:50 INF] Executing OkObjectResult, writing value of type 'ONEVO.Application.Features.Monitoring.CheckIn.DTOs.TrayAttendanceStatusDto'.
+[16:58:50 INF] Executed action ONEVO.Api.Controllers.Tenant.Monitoring.CheckIn.TrayAttendanceController.GetAttendanceStatus (ONEVO.Api) in 31.0329ms
+[16:58:50 INF] Executed endpoint 'ONEVO.Api.Controllers.Tenant.Monitoring.CheckIn.TrayAttendanceController.GetAttendanceStatus (ONEVO.Api)'
+[16:58:50 INF] HTTP GET /api/v1/monitoring/tray/attendance-status responded 200 in 31.7303 ms
+[16:58:50 INF] Request finished HTTP/1.1 GET https://localhost:7229/api/v1/monitoring/tray/attendance-status - 200 null application/json; charset=utf-8 31.9621ms
+[16:58:50 INF] Handling RefreshTrayTokenCommand for user 00000000-0000-0000-0000-000000000000 in tenant 00000000-0000-0000-0000-000000000000
+[16:58:50 INF] Executed DbCommand (3ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tokenHash='?', @now='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+SELECT t.id, t.created_at, t.device_registration_id, t.expires_at, t.is_revoked, t.revoked_at, t.revoked_reason, t.tenant_id, t.token_hash, t.user_id
+FROM tray_device_refresh_tokens AS t
+WHERE (@ef_filter__p2 OR t.tenant_id = @ef_filter__CurrentTenantId) AND t.token_hash = @tokenHash AND NOT (t.is_revoked) AND t.expires_at > @now
+LIMIT 1
+[16:58:50 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @deviceRegistrationId='?' (DbType = Guid), @tenantId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT t.id, t.activated_at, t.created_at, t.deactivated_at, t.device_fingerprint, t.device_name, t.device_os, t.is_active, t.last_seen_at, t.legal_entity_id, t.tenant_id, t.user_id
+FROM tray_device_registrations AS t
+WHERE (@ef_filter__p2 OR t.tenant_id = @ef_filter__CurrentTenantId) AND t.id = @deviceRegistrationId AND t.tenant_id = @tenantId AND t.is_active
+LIMIT 1
+[16:58:50 INF] Executed DbCommand (1ms) [Parameters=[@p='?' (DbType = DateTime), @ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @deviceRegistrationId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+UPDATE tray_device_registrations AS t
+SET last_seen_at = @p
+WHERE (@ef_filter__p2 OR t.tenant_id = @ef_filter__CurrentTenantId) AND t.id = @deviceRegistrationId
+[16:58:50 INF] Executed DbCommand (1ms) [Parameters=[@p3='?' (DbType = Guid), @p0='?' (DbType = Boolean), @p1='?' (DbType = DateTime), @p2='?', @p4='?' (DbType = Guid), @p5='?' (DbType = DateTime), @p6='?' (DbType = Guid), @p7='?' (DbType = DateTime), @p8='?' (DbType = Boolean), @p9='?' (DbType = DateTime), @p10='?', @p11='?' (DbType = Guid), @p12='?', @p13='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+UPDATE tray_device_refresh_tokens SET is_revoked = @p0, revoked_at = @p1, revoked_reason = @p2
+WHERE id = @p3;
+INSERT INTO tray_device_refresh_tokens (id, created_at, device_registration_id, expires_at, is_revoked, revoked_at, revoked_reason, tenant_id, token_hash, user_id)
+VALUES (@p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13);
+[16:58:50 INF] Executed DbCommand (0ms) [Parameters=[@id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT t.id, t.company_size_range, t.created_at, t.industry_profile, t.name, t.settings_json, t.slug, t.status, t.subscription_plan_id, t.updated_at
+FROM tenants AS t
+WHERE t.id = @id
+LIMIT 1
+[16:58:50 INF] Executed DbCommand (7ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @userId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @legalEntityId_Value='?' (DbType = Guid), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT e.first_name, e.last_name, e.email, e.employee_number
+FROM employees AS e
+INNER JOIN employment_statuses AS e0 ON e.employment_status_id = e0.id
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND NOT (e.is_deleted) AND e.user_id = @userId AND e.tenant_id = @tenantId AND e0.code = 'active' AND e.legal_entity_id = @legalEntityId_Value
+ORDER BY e.id
+LIMIT @p
+[16:58:50 INF] Handled RefreshTrayTokenCommand
+[16:58:50 INF] Executing OkObjectResult, writing value of type 'ONEVO.Application.Features.Monitoring.TrayActivation.DTOs.Responses.TrayAuthResponseDto'.
+[16:58:50 INF] Executed action ONEVO.Api.Controllers.Tenant.Monitoring.TrayActivation.MonitoringActivationController.Refresh (ONEVO.Api) in 107.6902ms
+[16:58:50 INF] Executed endpoint 'ONEVO.Api.Controllers.Tenant.Monitoring.TrayActivation.MonitoringActivationController.Refresh (ONEVO.Api)'
+[16:58:50 INF] HTTP POST /api/v1/monitoring/activation/refresh responded 200 in 112.0119 ms
+[16:58:50 INF] Request finished HTTP/1.1 POST https://localhost:7229/api/v1/monitoring/activation/refresh - 200 null application/json; charset=utf-8 112.1688ms
+[16:58:51 INF] Request starting HTTP/1.1 GET https://localhost:7229/api/v1/monitoring/tray/policy - null null
+[16:58:51 INF] Executing endpoint 'ONEVO.Api.Controllers.Tenant.Monitoring.Policy.TrayMonitoringPolicyController.GetEffectivePolicy (ONEVO.Api)'
+[16:58:51 INF] Route matched with {action = "GetEffectivePolicy", controller = "TrayMonitoringPolicy"}. Executing controller action with signature System.Threading.Tasks.Task`1[Microsoft.AspNetCore.Mvc.IActionResult] GetEffectivePolicy(System.Threading.CancellationToken) on controller ONEVO.Api.Controllers.Tenant.Monitoring.Policy.TrayMonitoringPolicyController (ONEVO.Api).
+[16:58:51 INF] Handling GetEffectiveTrayPolicyQuery for user b3bd83af-009d-4f61-b8ad-e6733a63f0cd in tenant 6b0874ab-71db-401f-859f-bdd50c1317fb
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT t.id, t.company_size_range, t.created_at, t.industry_profile, t.name, t.settings_json, t.slug, t.status, t.subscription_plan_id, t.updated_at
+FROM tenants AS t
+WHERE t.id = @id
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (5ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userId='?' (DbType = Guid), @legalEntityId_Value='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.avatar_file_id, e.created_at, e.created_by_id, e.date_of_birth, e.deleted_at, e.department_id, e.display_timezone, e.email, e.employee_number, e.employment_status_id, e.employment_type_id, e.first_name, e.gender, e.hire_date, e.is_deleted, e.last_name, e.legal_entity_id, e.nationality_id, e.phone, e.probation_end_date, e.tenant_id, e.termination_date, e.updated_at, e.user_id, e.work_mode_id, e.xmin
+FROM employees AS e
+INNER JOIN employment_statuses AS e0 ON e.employment_status_id = e0.id
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND NOT (e.is_deleted) AND e.tenant_id = @tenantId AND e.user_id = @userId AND e0.code = 'active' AND e.legal_entity_id = @legalEntityId_Value
+LIMIT 2
+[16:58:51 INF] Executed DbCommand (2ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.activity_monitoring, e.application_tracking, e.auto_screenshot_capture, e.biometric, e.communication_tracking, e.created_at, e.device_tracking, e.document_tracking, e.employee_id, e.identity_verification, e.idle_threshold_minutes, e.meeting_detection, e.override_reason, e.screenshot_capture, e.set_by_id, e.tenant_id, e.updated_at, e.work_location_verification
+FROM employee_monitoring_overrides AS e
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND e.tenant_id = @tenantId AND e.employee_id = @employee_Id
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (4ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT p.position_id
+FROM position_assignments AS p
+WHERE (@ef_filter__p2 OR p.tenant_id = @ef_filter__CurrentTenantId) AND NOT (p.is_deleted) AND p.employee_id = @employee_Id AND p.assignment_kind = 'PrimaryEmployment' AND p.assignment_status = 'active' AND p.effective_from <= CAST(now() AT TIME ZONE 'UTC' AS date) AND (p.effective_to IS NULL OR p.effective_to >= CAST(now() AT TIME ZONE 'UTC' AS date))
+ORDER BY p.effective_from DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (5ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userIdForRoles='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT u.role_id
+FROM user_roles AS u
+INNER JOIN (
+    SELECT r.id, r.is_deleted
+    FROM roles AS r
+    WHERE (@ef_filter__p2 OR r.tenant_id = @ef_filter__CurrentTenantId) AND NOT (r.is_deleted)
+) AS r0 ON u.role_id = r0.id
+WHERE NOT (r0.is_deleted) AND (@ef_filter__p2 OR u.tenant_id = @ef_filter__CurrentTenantId) AND u.tenant_id = @tenantId AND u.user_id = @userIdForRoles
+[16:58:51 INF] Executed DbCommand (9ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @scopeIds='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.meeting_detection, m.override_reason, m.scope_id, m.scope_type, m.screenshot_capture, m.set_by_id, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_policy_overrides AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND m.scope_id = ANY (@scopeIds)
+[16:58:51 INF] Executed DbCommand (3ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_LegalEntityId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.legal_entity_id, m.meeting_detection, m.screenshot_capture, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_feature_toggles AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND (m.legal_entity_id = @employee_LegalEntityId OR m.legal_entity_id IS NULL)
+ORDER BY m.legal_entity_id = @employee_LegalEntityId AND m.legal_entity_id IS NOT NULL DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (1ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userId='?' (DbType = Guid), @legalEntityId_Value='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.avatar_file_id, e.created_at, e.created_by_id, e.date_of_birth, e.deleted_at, e.department_id, e.display_timezone, e.email, e.employee_number, e.employment_status_id, e.employment_type_id, e.first_name, e.gender, e.hire_date, e.is_deleted, e.last_name, e.legal_entity_id, e.nationality_id, e.phone, e.probation_end_date, e.tenant_id, e.termination_date, e.updated_at, e.user_id, e.work_mode_id, e.xmin
+FROM employees AS e
+INNER JOIN employment_statuses AS e0 ON e.employment_status_id = e0.id
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND NOT (e.is_deleted) AND e.tenant_id = @tenantId AND e.user_id = @userId AND e0.code = 'active' AND e.legal_entity_id = @legalEntityId_Value
+LIMIT 2
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.activity_monitoring, e.application_tracking, e.auto_screenshot_capture, e.biometric, e.communication_tracking, e.created_at, e.device_tracking, e.document_tracking, e.employee_id, e.identity_verification, e.idle_threshold_minutes, e.meeting_detection, e.override_reason, e.screenshot_capture, e.set_by_id, e.tenant_id, e.updated_at, e.work_location_verification
+FROM employee_monitoring_overrides AS e
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND e.tenant_id = @tenantId AND e.employee_id = @employee_Id
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT p.position_id
+FROM position_assignments AS p
+WHERE (@ef_filter__p2 OR p.tenant_id = @ef_filter__CurrentTenantId) AND NOT (p.is_deleted) AND p.employee_id = @employee_Id AND p.assignment_kind = 'PrimaryEmployment' AND p.assignment_status = 'active' AND p.effective_from <= CAST(now() AT TIME ZONE 'UTC' AS date) AND (p.effective_to IS NULL OR p.effective_to >= CAST(now() AT TIME ZONE 'UTC' AS date))
+ORDER BY p.effective_from DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userIdForRoles='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT u.role_id
+FROM user_roles AS u
+INNER JOIN (
+    SELECT r.id, r.is_deleted
+    FROM roles AS r
+    WHERE (@ef_filter__p2 OR r.tenant_id = @ef_filter__CurrentTenantId) AND NOT (r.is_deleted)
+) AS r0 ON u.role_id = r0.id
+WHERE NOT (r0.is_deleted) AND (@ef_filter__p2 OR u.tenant_id = @ef_filter__CurrentTenantId) AND u.tenant_id = @tenantId AND u.user_id = @userIdForRoles
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @scopeIds='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.meeting_detection, m.override_reason, m.scope_id, m.scope_type, m.screenshot_capture, m.set_by_id, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_policy_overrides AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND m.scope_id = ANY (@scopeIds)
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_LegalEntityId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.legal_entity_id, m.meeting_detection, m.screenshot_capture, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_feature_toggles AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND (m.legal_entity_id = @employee_LegalEntityId OR m.legal_entity_id IS NULL)
+ORDER BY m.legal_entity_id = @employee_LegalEntityId AND m.legal_entity_id IS NOT NULL DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (1ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userId='?' (DbType = Guid), @legalEntityId_Value='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.avatar_file_id, e.created_at, e.created_by_id, e.date_of_birth, e.deleted_at, e.department_id, e.display_timezone, e.email, e.employee_number, e.employment_status_id, e.employment_type_id, e.first_name, e.gender, e.hire_date, e.is_deleted, e.last_name, e.legal_entity_id, e.nationality_id, e.phone, e.probation_end_date, e.tenant_id, e.termination_date, e.updated_at, e.user_id, e.work_mode_id, e.xmin
+FROM employees AS e
+INNER JOIN employment_statuses AS e0 ON e.employment_status_id = e0.id
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND NOT (e.is_deleted) AND e.tenant_id = @tenantId AND e.user_id = @userId AND e0.code = 'active' AND e.legal_entity_id = @legalEntityId_Value
+LIMIT 2
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.activity_monitoring, e.application_tracking, e.auto_screenshot_capture, e.biometric, e.communication_tracking, e.created_at, e.device_tracking, e.document_tracking, e.employee_id, e.identity_verification, e.idle_threshold_minutes, e.meeting_detection, e.override_reason, e.screenshot_capture, e.set_by_id, e.tenant_id, e.updated_at, e.work_location_verification
+FROM employee_monitoring_overrides AS e
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND e.tenant_id = @tenantId AND e.employee_id = @employee_Id
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT p.position_id
+FROM position_assignments AS p
+WHERE (@ef_filter__p2 OR p.tenant_id = @ef_filter__CurrentTenantId) AND NOT (p.is_deleted) AND p.employee_id = @employee_Id AND p.assignment_kind = 'PrimaryEmployment' AND p.assignment_status = 'active' AND p.effective_from <= CAST(now() AT TIME ZONE 'UTC' AS date) AND (p.effective_to IS NULL OR p.effective_to >= CAST(now() AT TIME ZONE 'UTC' AS date))
+ORDER BY p.effective_from DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userIdForRoles='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT u.role_id
+FROM user_roles AS u
+INNER JOIN (
+    SELECT r.id, r.is_deleted
+    FROM roles AS r
+    WHERE (@ef_filter__p2 OR r.tenant_id = @ef_filter__CurrentTenantId) AND NOT (r.is_deleted)
+) AS r0 ON u.role_id = r0.id
+WHERE NOT (r0.is_deleted) AND (@ef_filter__p2 OR u.tenant_id = @ef_filter__CurrentTenantId) AND u.tenant_id = @tenantId AND u.user_id = @userIdForRoles
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @scopeIds='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.meeting_detection, m.override_reason, m.scope_id, m.scope_type, m.screenshot_capture, m.set_by_id, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_policy_overrides AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND m.scope_id = ANY (@scopeIds)
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_LegalEntityId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.legal_entity_id, m.meeting_detection, m.screenshot_capture, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_feature_toggles AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND (m.legal_entity_id = @employee_LegalEntityId OR m.legal_entity_id IS NULL)
+ORDER BY m.legal_entity_id = @employee_LegalEntityId AND m.legal_entity_id IS NOT NULL DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userId='?' (DbType = Guid), @legalEntityId_Value='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.avatar_file_id, e.created_at, e.created_by_id, e.date_of_birth, e.deleted_at, e.department_id, e.display_timezone, e.email, e.employee_number, e.employment_status_id, e.employment_type_id, e.first_name, e.gender, e.hire_date, e.is_deleted, e.last_name, e.legal_entity_id, e.nationality_id, e.phone, e.probation_end_date, e.tenant_id, e.termination_date, e.updated_at, e.user_id, e.work_mode_id, e.xmin
+FROM employees AS e
+INNER JOIN employment_statuses AS e0 ON e.employment_status_id = e0.id
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND NOT (e.is_deleted) AND e.tenant_id = @tenantId AND e.user_id = @userId AND e0.code = 'active' AND e.legal_entity_id = @legalEntityId_Value
+LIMIT 2
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.activity_monitoring, e.application_tracking, e.auto_screenshot_capture, e.biometric, e.communication_tracking, e.created_at, e.device_tracking, e.document_tracking, e.employee_id, e.identity_verification, e.idle_threshold_minutes, e.meeting_detection, e.override_reason, e.screenshot_capture, e.set_by_id, e.tenant_id, e.updated_at, e.work_location_verification
+FROM employee_monitoring_overrides AS e
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND e.tenant_id = @tenantId AND e.employee_id = @employee_Id
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT p.position_id
+FROM position_assignments AS p
+WHERE (@ef_filter__p2 OR p.tenant_id = @ef_filter__CurrentTenantId) AND NOT (p.is_deleted) AND p.employee_id = @employee_Id AND p.assignment_kind = 'PrimaryEmployment' AND p.assignment_status = 'active' AND p.effective_from <= CAST(now() AT TIME ZONE 'UTC' AS date) AND (p.effective_to IS NULL OR p.effective_to >= CAST(now() AT TIME ZONE 'UTC' AS date))
+ORDER BY p.effective_from DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userIdForRoles='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT u.role_id
+FROM user_roles AS u
+INNER JOIN (
+    SELECT r.id, r.is_deleted
+    FROM roles AS r
+    WHERE (@ef_filter__p2 OR r.tenant_id = @ef_filter__CurrentTenantId) AND NOT (r.is_deleted)
+) AS r0 ON u.role_id = r0.id
+WHERE NOT (r0.is_deleted) AND (@ef_filter__p2 OR u.tenant_id = @ef_filter__CurrentTenantId) AND u.tenant_id = @tenantId AND u.user_id = @userIdForRoles
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @scopeIds='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.meeting_detection, m.override_reason, m.scope_id, m.scope_type, m.screenshot_capture, m.set_by_id, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_policy_overrides AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND m.scope_id = ANY (@scopeIds)
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_LegalEntityId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.legal_entity_id, m.meeting_detection, m.screenshot_capture, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_feature_toggles AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND (m.legal_entity_id = @employee_LegalEntityId OR m.legal_entity_id IS NULL)
+ORDER BY m.legal_entity_id = @employee_LegalEntityId AND m.legal_entity_id IS NOT NULL DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userId='?' (DbType = Guid), @legalEntityId_Value='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.avatar_file_id, e.created_at, e.created_by_id, e.date_of_birth, e.deleted_at, e.department_id, e.display_timezone, e.email, e.employee_number, e.employment_status_id, e.employment_type_id, e.first_name, e.gender, e.hire_date, e.is_deleted, e.last_name, e.legal_entity_id, e.nationality_id, e.phone, e.probation_end_date, e.tenant_id, e.termination_date, e.updated_at, e.user_id, e.work_mode_id, e.xmin
+FROM employees AS e
+INNER JOIN employment_statuses AS e0 ON e.employment_status_id = e0.id
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND NOT (e.is_deleted) AND e.tenant_id = @tenantId AND e.user_id = @userId AND e0.code = 'active' AND e.legal_entity_id = @legalEntityId_Value
+LIMIT 2
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.activity_monitoring, e.application_tracking, e.auto_screenshot_capture, e.biometric, e.communication_tracking, e.created_at, e.device_tracking, e.document_tracking, e.employee_id, e.identity_verification, e.idle_threshold_minutes, e.meeting_detection, e.override_reason, e.screenshot_capture, e.set_by_id, e.tenant_id, e.updated_at, e.work_location_verification
+FROM employee_monitoring_overrides AS e
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND e.tenant_id = @tenantId AND e.employee_id = @employee_Id
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT p.position_id
+FROM position_assignments AS p
+WHERE (@ef_filter__p2 OR p.tenant_id = @ef_filter__CurrentTenantId) AND NOT (p.is_deleted) AND p.employee_id = @employee_Id AND p.assignment_kind = 'PrimaryEmployment' AND p.assignment_status = 'active' AND p.effective_from <= CAST(now() AT TIME ZONE 'UTC' AS date) AND (p.effective_to IS NULL OR p.effective_to >= CAST(now() AT TIME ZONE 'UTC' AS date))
+ORDER BY p.effective_from DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userIdForRoles='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT u.role_id
+FROM user_roles AS u
+INNER JOIN (
+    SELECT r.id, r.is_deleted
+    FROM roles AS r
+    WHERE (@ef_filter__p2 OR r.tenant_id = @ef_filter__CurrentTenantId) AND NOT (r.is_deleted)
+) AS r0 ON u.role_id = r0.id
+WHERE NOT (r0.is_deleted) AND (@ef_filter__p2 OR u.tenant_id = @ef_filter__CurrentTenantId) AND u.tenant_id = @tenantId AND u.user_id = @userIdForRoles
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @scopeIds='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.meeting_detection, m.override_reason, m.scope_id, m.scope_type, m.screenshot_capture, m.set_by_id, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_policy_overrides AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND m.scope_id = ANY (@scopeIds)
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_LegalEntityId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.legal_entity_id, m.meeting_detection, m.screenshot_capture, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_feature_toggles AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND (m.legal_entity_id = @employee_LegalEntityId OR m.legal_entity_id IS NULL)
+ORDER BY m.legal_entity_id = @employee_LegalEntityId AND m.legal_entity_id IS NOT NULL DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userId='?' (DbType = Guid), @legalEntityId_Value='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.avatar_file_id, e.created_at, e.created_by_id, e.date_of_birth, e.deleted_at, e.department_id, e.display_timezone, e.email, e.employee_number, e.employment_status_id, e.employment_type_id, e.first_name, e.gender, e.hire_date, e.is_deleted, e.last_name, e.legal_entity_id, e.nationality_id, e.phone, e.probation_end_date, e.tenant_id, e.termination_date, e.updated_at, e.user_id, e.work_mode_id, e.xmin
+FROM employees AS e
+INNER JOIN employment_statuses AS e0 ON e.employment_status_id = e0.id
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND NOT (e.is_deleted) AND e.tenant_id = @tenantId AND e.user_id = @userId AND e0.code = 'active' AND e.legal_entity_id = @legalEntityId_Value
+LIMIT 2
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.activity_monitoring, e.application_tracking, e.auto_screenshot_capture, e.biometric, e.communication_tracking, e.created_at, e.device_tracking, e.document_tracking, e.employee_id, e.identity_verification, e.idle_threshold_minutes, e.meeting_detection, e.override_reason, e.screenshot_capture, e.set_by_id, e.tenant_id, e.updated_at, e.work_location_verification
+FROM employee_monitoring_overrides AS e
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND e.tenant_id = @tenantId AND e.employee_id = @employee_Id
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT p.position_id
+FROM position_assignments AS p
+WHERE (@ef_filter__p2 OR p.tenant_id = @ef_filter__CurrentTenantId) AND NOT (p.is_deleted) AND p.employee_id = @employee_Id AND p.assignment_kind = 'PrimaryEmployment' AND p.assignment_status = 'active' AND p.effective_from <= CAST(now() AT TIME ZONE 'UTC' AS date) AND (p.effective_to IS NULL OR p.effective_to >= CAST(now() AT TIME ZONE 'UTC' AS date))
+ORDER BY p.effective_from DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userIdForRoles='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT u.role_id
+FROM user_roles AS u
+INNER JOIN (
+    SELECT r.id, r.is_deleted
+    FROM roles AS r
+    WHERE (@ef_filter__p2 OR r.tenant_id = @ef_filter__CurrentTenantId) AND NOT (r.is_deleted)
+) AS r0 ON u.role_id = r0.id
+WHERE NOT (r0.is_deleted) AND (@ef_filter__p2 OR u.tenant_id = @ef_filter__CurrentTenantId) AND u.tenant_id = @tenantId AND u.user_id = @userIdForRoles
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @scopeIds='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.meeting_detection, m.override_reason, m.scope_id, m.scope_type, m.screenshot_capture, m.set_by_id, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_policy_overrides AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND m.scope_id = ANY (@scopeIds)
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_LegalEntityId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.legal_entity_id, m.meeting_detection, m.screenshot_capture, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_feature_toggles AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND (m.legal_entity_id = @employee_LegalEntityId OR m.legal_entity_id IS NULL)
+ORDER BY m.legal_entity_id = @employee_LegalEntityId AND m.legal_entity_id IS NOT NULL DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (1ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userId='?' (DbType = Guid), @legalEntityId_Value='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.avatar_file_id, e.created_at, e.created_by_id, e.date_of_birth, e.deleted_at, e.department_id, e.display_timezone, e.email, e.employee_number, e.employment_status_id, e.employment_type_id, e.first_name, e.gender, e.hire_date, e.is_deleted, e.last_name, e.legal_entity_id, e.nationality_id, e.phone, e.probation_end_date, e.tenant_id, e.termination_date, e.updated_at, e.user_id, e.work_mode_id, e.xmin
+FROM employees AS e
+INNER JOIN employment_statuses AS e0 ON e.employment_status_id = e0.id
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND NOT (e.is_deleted) AND e.tenant_id = @tenantId AND e.user_id = @userId AND e0.code = 'active' AND e.legal_entity_id = @legalEntityId_Value
+LIMIT 2
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.activity_monitoring, e.application_tracking, e.auto_screenshot_capture, e.biometric, e.communication_tracking, e.created_at, e.device_tracking, e.document_tracking, e.employee_id, e.identity_verification, e.idle_threshold_minutes, e.meeting_detection, e.override_reason, e.screenshot_capture, e.set_by_id, e.tenant_id, e.updated_at, e.work_location_verification
+FROM employee_monitoring_overrides AS e
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND e.tenant_id = @tenantId AND e.employee_id = @employee_Id
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @employee_Id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT p.position_id
+FROM position_assignments AS p
+WHERE (@ef_filter__p2 OR p.tenant_id = @ef_filter__CurrentTenantId) AND NOT (p.is_deleted) AND p.employee_id = @employee_Id AND p.assignment_kind = 'PrimaryEmployment' AND p.assignment_status = 'active' AND p.effective_from <= CAST(now() AT TIME ZONE 'UTC' AS date) AND (p.effective_to IS NULL OR p.effective_to >= CAST(now() AT TIME ZONE 'UTC' AS date))
+ORDER BY p.effective_from DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userIdForRoles='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT u.role_id
+FROM user_roles AS u
+INNER JOIN (
+    SELECT r.id, r.is_deleted
+    FROM roles AS r
+    WHERE (@ef_filter__p2 OR r.tenant_id = @ef_filter__CurrentTenantId) AND NOT (r.is_deleted)
+) AS r0 ON u.role_id = r0.id
+WHERE NOT (r0.is_deleted) AND (@ef_filter__p2 OR u.tenant_id = @ef_filter__CurrentTenantId) AND u.tenant_id = @tenantId AND u.user_id = @userIdForRoles
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @scopeIds='?' (DbType = Object)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.meeting_detection, m.override_reason, m.scope_id, m.scope_type, m.screenshot_capture, m.set_by_id, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_policy_overrides AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND m.scope_id = ANY (@scopeIds)
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @employee_LegalEntityId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT m.id, m.activity_monitoring, m.application_tracking, m.auto_screenshot_capture, m.biometric, m.communication_tracking, m.created_at, m.device_tracking, m.document_tracking, m.identity_verification, m.idle_threshold_minutes, m.legal_entity_id, m.meeting_detection, m.screenshot_capture, m.tenant_id, m.updated_at, m.work_location_verification
+FROM monitoring_feature_toggles AS m
+WHERE (@ef_filter__p2 OR m.tenant_id = @ef_filter__CurrentTenantId) AND m.tenant_id = @tenantId AND (m.legal_entity_id = @employee_LegalEntityId OR m.legal_entity_id IS NULL)
+ORDER BY m.legal_entity_id = @employee_LegalEntityId AND m.legal_entity_id IS NOT NULL DESC
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @userId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT e.id, e.avatar_file_id, e.created_at, e.created_by_id, e.date_of_birth, e.deleted_at, e.department_id, e.display_timezone, e.email, e.employee_number, e.employment_status_id, e.employment_type_id, e.first_name, e.gender, e.hire_date, e.is_deleted, e.last_name, e.legal_entity_id, e.nationality_id, e.phone, e.probation_end_date, e.tenant_id, e.termination_date, e.updated_at, e.user_id, e.work_mode_id, e.xmin
+FROM employees AS e
+WHERE (@ef_filter__p2 OR e.tenant_id = @ef_filter__CurrentTenantId) AND NOT (e.is_deleted) AND e.tenant_id = @tenantId AND e.user_id = @userId
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @id='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT l.id, l.break_duration_minutes, l.company_code, l.country_code, l.created_at, l.currency_code, l.date_format, l.default_language, l.email, l.financial_year_start_month, l.week_start_day, l.is_active, l.is_primary, l.logo_file_id, l.name, l.parent_legal_entity_id, l.phone_number, l.registration_number, l.standard_working_days, l.tax_registration_number, l.tenant_id, l.time_format, l.timezone, l.updated_at, l.vat_gst_number, l.website, l.work_end_time, l.work_start_time
+FROM legal_entities AS l
+WHERE (@ef_filter__p2 OR l.tenant_id = @ef_filter__CurrentTenantId) AND l.tenant_id = @tenantId AND l.id = @id
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @legalEntityId='?' (DbType = Guid), @employeeId='?' (DbType = Guid), @date='?' (DbType = Date)], CommandType='Text', CommandTimeout='30']
+SELECT w.id, w.current_expected_work_area, w.date, w.employee_id, w.legal_entity_id, w.reason, w.requested_at, w.requested_work_area, w.review_comment, w.reviewed_at, w.reviewed_by_id, w.status, w.tenant_id
+FROM work_area_change_requests AS w
+WHERE (@ef_filter__p2 OR w.tenant_id = @ef_filter__CurrentTenantId) AND w.tenant_id = @tenantId AND w.legal_entity_id = @legalEntityId AND w.employee_id = @employeeId AND w.date = @date AND w.status = 'approved'
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+SELECT w.id, w.code, w.is_active, w.label
+FROM work_modes AS w
+WHERE w.is_active
+ORDER BY w.label
+[16:58:51 INF] Executed DbCommand (1ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @tenantId='?' (DbType = Guid), @legalEntityId='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']
+SELECT c.id, c.allowed_radius_meters, c.correction_requires_approval, c.created_at, c.created_by_id, c.department_ids, c.effective_from, c.effective_to, c.either_biometric_enabled, c.either_location_check_required, c.either_photo_required, c.either_source_rule, c.either_tray_enabled, c.either_web_enabled, c.employee_ids, c.field_biometric_enabled, c.field_photo_requirement, c.field_tray_enabled, c.field_web_enabled, c.is_active, c.legal_entity_id, c.location_verification_required, c.name, c.notification_recipient_resolver, c.onsite_biometric_enabled, c.onsite_photo_required, c.onsite_tray_enabled, c.onsite_web_enabled, c.position_ids, c.remote_biometric_enabled, c.remote_photo_required, c.remote_tray_enabled, c.remote_web_enabled, c.scope_type, c.tenant_id, c.updated_at, c1.id, c1.clock_in_policy_id, c1.created_at, c1.is_active, c1.late_arrival_minute, c1.multiplier, c1.tenant_id, c1.time_off_type_id, c1.updated_at
+FROM clock_in_policies AS c
+LEFT JOIN (
+    SELECT c0.id, c0.clock_in_policy_id, c0.created_at, c0.is_active, c0.late_arrival_minute, c0.multiplier, c0.tenant_id, c0.time_off_type_id, c0.updated_at
+    FROM clock_in_late_deduction_rules AS c0
+    WHERE @ef_filter__p2 OR c0.tenant_id = @ef_filter__CurrentTenantId
+) AS c1 ON c.id = c1.clock_in_policy_id
+WHERE (@ef_filter__p2 OR c.tenant_id = @ef_filter__CurrentTenantId) AND c.tenant_id = @tenantId AND c.legal_entity_id = @legalEntityId AND c.is_active
+ORDER BY c.is_active DESC, c.name, c.id, c1.late_arrival_minute
+[16:58:51 INF] Handled GetEffectiveTrayPolicyQuery
+[16:58:51 INF] Executing OkObjectResult, writing value of type 'ONEVO.Application.Features.Monitoring.Policy.DTOs.TrayAgentPolicyDto'.
+[16:58:51 INF] Executed action ONEVO.Api.Controllers.Tenant.Monitoring.Policy.TrayMonitoringPolicyController.GetEffectivePolicy (ONEVO.Api) in 151.1149ms
+[16:58:51 INF] Executed endpoint 'ONEVO.Api.Controllers.Tenant.Monitoring.Policy.TrayMonitoringPolicyController.GetEffectivePolicy (ONEVO.Api)'
+[16:58:51 INF] HTTP GET /api/v1/monitoring/tray/policy responded 200 in 158.0049 ms
+[16:58:51 INF] Request finished HTTP/1.1 GET https://localhost:7229/api/v1/monitoring/tray/policy - 200 null application/json; charset=utf-8 158.2143ms
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:58:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:58:53 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[16:58:54 INF] Request starting HTTP/2 POST https://localhost:7229/hubs/agent-commands/negotiate?negotiateVersion=1 - null 0
+[16:58:54 INF] HTTP POST /hubs/agent-commands/negotiate responded 404 in 0.1929 ms
+[16:58:54 INF] Request finished HTTP/2 POST https://localhost:7229/hubs/agent-commands/negotiate?negotiateVersion=1 - 404 0 null 0.3665ms
+[16:58:54 INF] Request reached the end of the middleware pipeline without being handled by application code. Request path: POST https://localhost:7229/hubs/agent-commands/negotiate, Response status code: 404
+[16:59:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:59:01 INF] Executed DbCommand (1ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:59:03 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[16:59:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:59:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:59:13 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[16:59:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:59:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:59:23 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[16:59:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:59:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:59:33 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[16:59:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:59:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:59:43 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[16:59:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:59:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[16:59:53 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:00:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:00:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:00:03 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:00:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:00:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:00:13 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:00:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:00:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:00:23 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:00:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:00:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:00:33 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:00:41 INF] Executed DbCommand (0ms) [Parameters=[@p='?', @ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @now='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+UPDATE agent_commands AS a
+SET status = @p
+WHERE (@ef_filter__p2 OR a.tenant_id = @ef_filter__CurrentTenantId) AND a.status = 'pending' AND a.expires_at <= @now
+[17:00:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:00:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:00:43 INF] Executed DbCommand (2ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:00:51 INF] Executed DbCommand (1ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:00:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:00:53 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:01:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:01:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:01:03 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:01:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:01:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:01:13 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:01:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:01:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:01:23 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:01:31 INF] Executed DbCommand (1ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:01:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:01:33 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:01:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:01:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:01:43 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:01:51 INF] Executed DbCommand (1ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:01:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:01:53 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:02:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:02:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:02:03 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:02:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:02:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:02:13 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:02:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:02:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:02:23 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:02:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:02:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:02:33 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:02:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:02:41 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @status='?'], CommandType='Text', CommandTimeout='30']
+SELECT s.id, s.achieved_at, s.completed_at, s.created_at, s.created_by_id, s.deleted_at, s.end_date, s.is_deleted, s.is_manually_overridden, s.name, s.objective_id, s.project_id, s.start_date, s.status, s.tenant_id, s.updated_at
+FROM sprints AS s
+WHERE (@ef_filter__p2 OR s.tenant_id = @ef_filter__CurrentTenantId) AND NOT (s.is_deleted) AND s.status = @status AND NOT (s.is_manually_overridden)
+[17:02:41 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @sinceUtc='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+SELECT DISTINCT d.tenant_id AS "TenantId", d.employee_id AS "EmployeeId"
+FROM device_state_snapshots AS d
+WHERE (@ef_filter__p2 OR d.tenant_id = @ef_filter__CurrentTenantId) AND d.captured_at >= @sinceUtc
+[17:02:41 INF] Wellness rule evaluation finished. EmployeesScanned=0 NotificationsCreated=0
+[17:02:41 INF] Executed DbCommand (0ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @status='?'], CommandType='Text', CommandTimeout='30']
+SELECT s.id, s.achieved_at, s.completed_at, s.created_at, s.created_by_id, s.deleted_at, s.end_date, s.is_deleted, s.is_manually_overridden, s.name, s.objective_id, s.project_id, s.start_date, s.status, s.tenant_id, s.updated_at
+FROM sprints AS s
+WHERE (@ef_filter__p2 OR s.tenant_id = @ef_filter__CurrentTenantId) AND NOT (s.is_deleted) AND s.status = @status AND NOT (s.is_manually_overridden)
+[17:02:41 INF] Executed DbCommand (5ms) [Parameters=[@p='?', @ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @now='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+UPDATE agent_commands AS a
+SET status = @p
+WHERE (@ef_filter__p2 OR a.tenant_id = @ef_filter__CurrentTenantId) AND a.status = 'pending' AND a.expires_at <= @now
+[17:02:41 INF] Executed DbCommand (4ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:02:43 INF] Executed DbCommand (3ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:02:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:02:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:02:54 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:03:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:03:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:03:04 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:03:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:03:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:03:14 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:03:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:03:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:03:24 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:03:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:03:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:03:34 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:03:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:03:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:03:44 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:03:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:03:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:03:54 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:04:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:04:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:04:04 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:04:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:04:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:04:14 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:04:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:04:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:04:24 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:04:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:04:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:04:34 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:04:41 INF] Executed DbCommand (1ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:04:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:04:41 INF] Executed DbCommand (3ms) [Parameters=[@p='?', @ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @now='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+UPDATE agent_commands AS a
+SET status = @p
+WHERE (@ef_filter__p2 OR a.tenant_id = @ef_filter__CurrentTenantId) AND a.status = 'pending' AND a.expires_at <= @now
+[17:04:44 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:04:51 INF] Executed DbCommand (2ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:04:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:04:54 INF] Executed DbCommand (2ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:05:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:05:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:05:04 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:05:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:05:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:05:14 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:05:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:05:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:05:24 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:05:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:05:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:05:34 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:05:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:05:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:05:44 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:05:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:05:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:05:54 INF] Executed DbCommand (1ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:06:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:06:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:06:04 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:06:11 INF] Executed DbCommand (1ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:06:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:06:14 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:06:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:06:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:06:24 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:06:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:06:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:06:34 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:06:41 INF] Executed DbCommand (1ms) [Parameters=[@p='?', @ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @now='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+UPDATE agent_commands AS a
+SET status = @p
+WHERE (@ef_filter__p2 OR a.tenant_id = @ef_filter__CurrentTenantId) AND a.status = 'pending' AND a.expires_at <= @now
+[17:06:41 INF] Executed DbCommand (1ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:06:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:06:44 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:06:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:06:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:06:54 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:07:01 INF] Executed DbCommand (1ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:07:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:07:04 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:07:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:07:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:07:14 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:07:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:07:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:07:24 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:07:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:07:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:07:34 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:07:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:07:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:07:41 INF] Executed DbCommand (3ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @sinceUtc='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+SELECT DISTINCT d.tenant_id AS "TenantId", d.employee_id AS "EmployeeId"
+FROM device_state_snapshots AS d
+WHERE (@ef_filter__p2 OR d.tenant_id = @ef_filter__CurrentTenantId) AND d.captured_at >= @sinceUtc
+[17:07:41 INF] Wellness rule evaluation finished. EmployeesScanned=0 NotificationsCreated=0
+[17:07:41 INF] Executed DbCommand (1ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @status='?'], CommandType='Text', CommandTimeout='30']
+SELECT s.id, s.achieved_at, s.completed_at, s.created_at, s.created_by_id, s.deleted_at, s.end_date, s.is_deleted, s.is_manually_overridden, s.name, s.objective_id, s.project_id, s.start_date, s.status, s.tenant_id, s.updated_at
+FROM sprints AS s
+WHERE (@ef_filter__p2 OR s.tenant_id = @ef_filter__CurrentTenantId) AND NOT (s.is_deleted) AND s.status = @status AND NOT (s.is_manually_overridden)
+[17:07:41 INF] Executed DbCommand (2ms) [Parameters=[@ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @status='?'], CommandType='Text', CommandTimeout='30']
+SELECT s.id, s.achieved_at, s.completed_at, s.created_at, s.created_by_id, s.deleted_at, s.end_date, s.is_deleted, s.is_manually_overridden, s.name, s.objective_id, s.project_id, s.start_date, s.status, s.tenant_id, s.updated_at
+FROM sprints AS s
+WHERE (@ef_filter__p2 OR s.tenant_id = @ef_filter__CurrentTenantId) AND NOT (s.is_deleted) AND s.status = @status AND NOT (s.is_manually_overridden)
+[17:07:44 INF] Executed DbCommand (2ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:07:51 INF] Executed DbCommand (3ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:07:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:07:54 INF] Executed DbCommand (1ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:08:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:08:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:08:04 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:08:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:08:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:08:15 INF] Executed DbCommand (4ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:08:21 INF] Executed DbCommand (6ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:08:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:08:25 INF] Executed DbCommand (28ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:08:31 INF] Executed DbCommand (1ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:08:31 INF] Executed DbCommand (41ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:08:35 INF] Executed DbCommand (3ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:08:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:08:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:08:41 INF] Executed DbCommand (4ms) [Parameters=[@p='?', @ef_filter__p2='?' (DbType = Boolean), @ef_filter__CurrentTenantId='?' (DbType = Guid), @now='?' (DbType = DateTime)], CommandType='Text', CommandTimeout='30']
+UPDATE agent_commands AS a
+SET status = @p
+WHERE (@ef_filter__p2 OR a.tenant_id = @ef_filter__CurrentTenantId) AND a.status = 'pending' AND a.expires_at <= @now
+[17:08:45 INF] Executed DbCommand (112ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:08:51 INF] Executed DbCommand (2ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:08:51 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:08:55 INF] Executed DbCommand (3ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:09:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:09:01 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:09:05 INF] Executed DbCommand (1ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:09:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:09:11 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:09:15 INF] Executed DbCommand (2ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:09:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:09:21 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:09:25 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:09:31 INF] Executed DbCommand (1ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:09:31 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:09:35 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p
+[17:09:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:09:41 INF] Executed DbCommand (0ms) [Parameters=[@status='?'], CommandType='Text', CommandTimeout='30']
+SELECT b.id, b.column_mapping_json, b.completed_at, b.created_at, b.created_by_id, b.created_by_user_id, b.default_checklist_template_id, b.default_employment_type, b.default_work_mode_id, b.deleted_at, b.invalid_rows, b.is_deleted, b.legal_entity_id, b.original_file_name, b.resolution_state_json, b.selected_draft_ids_json, b.status, b.tenant_id, b.total_rows, b.updated_at, b.valid_rows, b.xmin
+FROM bulk_onboarding_batches AS b
+WHERE b.status = @status
+ORDER BY b.created_at
+LIMIT 1
+[17:09:45 INF] Executed DbCommand (0ms) [Parameters=[@now='?' (DbType = DateTime), @p='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+SELECT o.id, o.attempt_count, o.created_at, o.encrypted_payload, o.last_error, o.next_attempt_at, o.processed_at, o.status, o.tenant_id, o.type
+FROM outbox_messages AS o
+WHERE o.status = 'pending' AND o.next_attempt_at <= @now
+ORDER BY o.created_at
+LIMIT @p

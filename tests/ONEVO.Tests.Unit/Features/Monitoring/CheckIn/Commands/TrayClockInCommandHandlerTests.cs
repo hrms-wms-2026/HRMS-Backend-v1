@@ -1,6 +1,8 @@
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.Commands.TrayClockIn;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Commands.ClockIn;
@@ -8,6 +10,7 @@ using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 using Xunit;
@@ -23,6 +26,17 @@ public class TrayClockInCommandHandlerTests
     private static readonly DateOnly WorkDate = new(2026, 8, 21);
     private static readonly DateTimeOffset UtcNow = new(2026, 8, 21, 17, 30, 0, TimeSpan.Zero);
 
+    private static (Mock<ITenantRepository> Tenants, Mock<ITenantContextSwitcher> Switcher) CreateTenantMocks()
+    {
+        var tenants = new Mock<ITenantRepository>();
+        tenants.Setup(t => t.GetByIdAsync(TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = TenantId, Slug = "dapi" });
+        var switcher = new Mock<ITenantContextSwitcher>();
+        switcher.Setup(s => s.SwitchToTenantAsync(It.IsAny<TenantRegistryEntry>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        return (tenants, switcher);
+    }
+
     private static TrayClockInCommandHandler CreateSut(
         Mock<ITrayCurrentDevice> device,
         Mock<IAttendanceTodayStateService> todayState,
@@ -31,7 +45,8 @@ public class TrayClockInCommandHandlerTests
         device.Setup(d => d.IsAuthenticated).Returns(true);
         device.Setup(d => d.TenantId).Returns(TenantId);
         device.Setup(d => d.UserId).Returns(UserId);
-        return new TrayClockInCommandHandler(device.Object, todayState.Object, inner);
+        var (tenants, switcher) = CreateTenantMocks();
+        return new TrayClockInCommandHandler(device.Object, todayState.Object, inner, tenants.Object, switcher.Object);
     }
 
     [Fact]
@@ -40,7 +55,8 @@ public class TrayClockInCommandHandlerTests
         var device = new Mock<ITrayCurrentDevice>();
         device.Setup(d => d.IsAuthenticated).Returns(false);
         var todayState = new Mock<IAttendanceTodayStateService>();
-        var sut = new TrayClockInCommandHandler(device.Object, todayState.Object, inner: null!);
+        var (tenants, switcher) = CreateTenantMocks();
+        var sut = new TrayClockInCommandHandler(device.Object, todayState.Object, inner: null!, tenants.Object, switcher.Object);
 
         var result = await sut.Handle(new TrayClockInCommand(), CancellationToken.None);
 
@@ -72,7 +88,7 @@ public class TrayClockInCommandHandlerTests
             .ReturnsAsync(Result<AttendanceTodayContext>.Success(context));
 
         var innerTodayState = new Mock<IAttendanceTodayStateService>();
-        innerTodayState.Setup(t => t.GetTodayAsync(It.IsAny<CancellationToken>()))
+        innerTodayState.Setup(t => t.GetTodayAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<AttendanceTodayResponse>.Success(CreateTodayResponse()));
         var attendance = new Mock<IAttendanceReadRepository>();
         attendance.Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))

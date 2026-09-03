@@ -55,7 +55,7 @@ public sealed class ClockInOutCommandHandlerTests
         Assert.Equal(840, added.LateMinutes);
         Assert.Equal(AttendanceRecord.StatusLate, added.Status);
         Assert.Equal("web", added.AttendanceSource);
-        fixture.TodayState.Verify(x => x.GetTodayAsync(It.IsAny<CancellationToken>()), Times.Once);
+        fixture.TodayState.Verify(x => x.GetTodayAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -464,7 +464,7 @@ public sealed class ClockInOutCommandHandlerTests
 
         var todayState = new Mock<IAttendanceTodayStateService>();
         todayState.Setup(x => x.ResolveContextAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Result<AttendanceTodayContext>.Success(context));
-        todayState.Setup(x => x.GetTodayAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Result<AttendanceTodayResponse>.Success(CreateTodayResponse()));
+        todayState.Setup(x => x.GetTodayAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(Result<AttendanceTodayResponse>.Success(CreateTodayResponse()));
 
         var attendance = new Mock<IAttendanceReadRepository>();
         attendance.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
