@@ -179,6 +179,7 @@ public sealed class AttendanceTodayStateService(
             breakUsage,
             breakState.RemainingMinutes,
             breakState.State,
+            breakRecords.Select(b => new AttendanceTodayBreakInterval(b.BreakStart, b.BreakEnd)).ToArray(),
             NormalizeWorkMode(effectiveExpectedWorkArea),
             attendanceState.Status,
             attendanceRecord?.ActualStart,

@@ -177,6 +177,7 @@ public sealed class TimeTrackingControllerTests
             0,
             60,
             "ended",
+            [],
             "remote",
             "clocked_out",
             null,

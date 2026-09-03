@@ -115,6 +115,36 @@ public sealed class EfWorkTaskRepositoryTests
     }
 
     [Fact]
+    public async Task GetMyActiveTasksAsync_ExcludesTaskAt100PercentProgressEvenWithIncompleteStatus()
+    {
+        // A task can reach 100% via the clock-in Push flow without its status ever being moved
+        // to a MarksTaskComplete column (see PushTaskCommandHandler) - this must not linger as
+        // an "active" task just because nobody dragged the board card.
+        await using var db = BuildInMemoryDb();
+        var incompleteStatus = MakeStatus(isComplete: false);
+        db.TaskStatuses.Add(incompleteStatus);
+        db.Projects.Add(MakeProject());
+
+        var pushedToDoneTask = MakeTask(incompleteStatus.Id, new DateOnly(2026, 8, 1));
+        pushedToDoneTask.ProgressPercent = 100;
+        var stillInProgressTask = MakeTask(incompleteStatus.Id, new DateOnly(2026, 8, 1));
+        stillInProgressTask.ProgressPercent = 75;
+        db.WorkTasks.AddRange(pushedToDoneTask, stillInProgressTask);
+
+        db.TaskAssignments.AddRange(
+            MakeAssignment(pushedToDoneTask.Id, EmployeeId),
+            MakeAssignment(stillInProgressTask.Id, EmployeeId));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfWorkTaskRepository(db);
+        var result = await repository.GetMyActiveTasksAsync(TenantId, EmployeeId, Cutoff, CancellationToken.None);
+
+        Assert.Single(result);
+        Assert.Equal(stillInProgressTask.Id, result[0].Id);
+    }
+
+    [Fact]
     public async Task GetMyActiveTasksAsync_IncludesTaskDueExactlyAtCutoff()
     {
         await using var db = BuildInMemoryDb();

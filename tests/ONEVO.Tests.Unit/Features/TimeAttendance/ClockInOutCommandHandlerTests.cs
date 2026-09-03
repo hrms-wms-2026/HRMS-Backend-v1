@@ -502,6 +502,7 @@ public sealed class ClockInOutCommandHandlerTests
             0,
             60,
             "ended",
+            [],
             "remote",
             AttendanceRecord.StatusClockedOut,
             null,

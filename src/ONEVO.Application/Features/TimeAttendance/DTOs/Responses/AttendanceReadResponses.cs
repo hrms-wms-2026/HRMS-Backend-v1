@@ -10,6 +10,10 @@ public sealed record AllowedClockInMethods(
     bool LocationRequired,
     int? AllowedRadiusMeters);
 
+public sealed record AttendanceTodayBreakInterval(
+    DateTimeOffset StartedAt,
+    DateTimeOffset? EndedAt);
+
 public sealed record AttendanceTodayResponse(
     Guid EmployeeId,
     Guid LegalEntityId,
@@ -27,6 +31,7 @@ public sealed record AttendanceTodayResponse(
     int BreakUsedMinutes,
     int? BreakRemainingMinutes,
     string BreakState,
+    IReadOnlyList<AttendanceTodayBreakInterval> Breaks,
     string? ExpectedWorkMode,
     string AttendanceStatus,
     DateTimeOffset? ClockInAt,
