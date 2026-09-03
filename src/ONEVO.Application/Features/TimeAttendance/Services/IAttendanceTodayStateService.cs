@@ -11,6 +11,9 @@ public interface IAttendanceTodayStateService
     Task<Result<AttendanceTodayResponse>> GetTodayAsync(CancellationToken ct = default);
 
     Task<Result<AttendanceTodayContext>> ResolveContextAsync(CancellationToken ct = default);
+
+    Task<Result<AttendanceTodayContext>> ResolveContextAsync(
+        Guid tenantId, Guid userId, CancellationToken ct = default);
 }
 
 public sealed record AttendanceTodayContext(
