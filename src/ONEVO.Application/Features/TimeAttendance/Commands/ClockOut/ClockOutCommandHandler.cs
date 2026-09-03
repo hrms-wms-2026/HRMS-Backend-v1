@@ -43,7 +43,7 @@ public sealed class ClockOutCommandHandler(
                 "Attendance for this work day was just updated by another request. Please refresh and try again.");
         }
 
-        return await todayState.GetTodayAsync(ct);
+        return await todayState.GetTodayAsync(context.Employee.TenantId, context.Employee.UserId, ct);
     }
 
     private async Task<Result<bool>> MutateAsync(

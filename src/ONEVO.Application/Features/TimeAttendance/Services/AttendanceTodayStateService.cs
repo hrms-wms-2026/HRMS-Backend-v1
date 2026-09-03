@@ -64,7 +64,7 @@ public sealed class AttendanceTodayStateService(
                 expectedAreaResult.StatusCode ?? 409);
 
         var expectedArea = expectedAreaResult.Value;
-        var policy = await ResolvePolicyAsync(legalEntity.Id, workDate, NormalizeWorkMode(expectedArea.WorkArea), ct);
+        var policy = await ResolvePolicyAsync(tenantId, legalEntity.Id, workDate, NormalizeWorkMode(expectedArea.WorkArea), ct);
 
         return Result<AttendanceTodayContext>.Success(new AttendanceTodayContext(
             employee,
@@ -83,24 +83,33 @@ public sealed class AttendanceTodayStateService(
             GetLocalDayWindow(workDate, zone)));
     }
 
-    public async Task<Result<AttendanceTodayResponse>> GetTodayAsync(CancellationToken ct = default)
+    public Task<Result<AttendanceTodayResponse>> GetTodayAsync(CancellationToken ct = default)
     {
-        var contextResult = await ResolveContextAsync(ct);
+        if (!currentUser.IsAuthenticated)
+            return Task.FromResult(Result<AttendanceTodayResponse>.Forbidden());
+
+        return GetTodayAsync(currentUser.TenantId, currentUser.UserId, ct);
+    }
+
+    public async Task<Result<AttendanceTodayResponse>> GetTodayAsync(
+        Guid tenantId, Guid userId, CancellationToken ct = default)
+    {
+        var contextResult = await ResolveContextAsync(tenantId, userId, ct);
         if (!contextResult.IsSuccess)
             return Result<AttendanceTodayResponse>.Failure(contextResult.Error!, contextResult.StatusCode ?? 400);
 
         var context = contextResult.Value!;
         var attendanceRecord = await attendance.GetRecordAsync(
-            currentUser.TenantId, context.Employee.Id, context.WorkDate, ct);
+            tenantId, context.Employee.Id, context.WorkDate, ct);
         var breakRecords = await attendance.ListBreaksAsync(
-            currentUser.TenantId,
+            tenantId,
             context.Employee.Id,
             context.LocalDayWindow.Start,
             context.LocalDayWindow.End,
             ct);
         var hasApprovedLeave = leaveRequests is not null
             && (await leaveRequests.ListApprovedCoveringAsync(
-                currentUser.TenantId,
+                tenantId,
                 [context.Employee.Id],
                 context.WorkDate,
                 context.WorkDate,
@@ -135,7 +144,7 @@ public sealed class AttendanceTodayStateService(
         // clock-out from a prior day is otherwise invisible until the employee happens to open
         // that old day's history. Surface it here so it's seen before they clock in again.
         var staleOpenRecord = await attendance.GetAnyOpenRecordAsync(
-            currentUser.TenantId, context.Employee.Id, ct);
+            tenantId, context.Employee.Id, ct);
         var hasStalePriorDay = staleOpenRecord is not null
             && staleOpenRecord.Date != context.WorkDate
             && staleOpenRecord.ActualStart is DateTimeOffset staleStart
@@ -148,7 +157,7 @@ public sealed class AttendanceTodayStateService(
         var attentionWorkDate = hasStalePriorDay ? staleOpenRecord!.Date : (DateOnly?)null;
         var visibility = await authority.ResolveVisibilityAsync(
             new EmployeeAuthorityVisibilityRequest(
-                currentUser.UserId,
+                userId,
                 context.LegalEntity.Id,
                 AttendanceReadPermission,
                 IncludeSelf: true,
@@ -204,10 +213,10 @@ public sealed class AttendanceTodayStateService(
     }
 
     private async Task<PolicyResolution> ResolvePolicyAsync(
-        Guid legalEntityId, DateOnly workDate, string? workMode, CancellationToken ct)
+        Guid tenantId, Guid legalEntityId, DateOnly workDate, string? workMode, CancellationToken ct)
     {
         var active = (await policies.ListByLegalEntityAsync(
-                currentUser.TenantId, legalEntityId, includeInactive: false, ct))
+                tenantId, legalEntityId, includeInactive: false, ct))
             .Where(policy => policy.IsActive
                 && policy.ScopeType == ClockInPolicy.ScopeFullCompany
                 && policy.EffectiveFrom <= workDate
