@@ -22,7 +22,12 @@ public sealed class ClockOutCommandHandler(
         if (!contextResult.IsSuccess)
             return ToTodayFailure(contextResult);
 
-        var context = contextResult.Value!;
+        return await HandleForContextAsync(contextResult.Value!, ct);
+    }
+
+    public async Task<Result<AttendanceTodayResponse>> HandleForContextAsync(
+        AttendanceTodayContext context, CancellationToken ct)
+    {
         try
         {
             var mutation = await unitOfWork.ExecuteInTransactionAsync(

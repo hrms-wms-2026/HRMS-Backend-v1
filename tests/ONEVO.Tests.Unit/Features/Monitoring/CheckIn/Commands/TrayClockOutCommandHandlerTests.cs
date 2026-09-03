@@ -1,0 +1,155 @@
+using Moq;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.Commands.TrayClockOut;
+using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Commands.ClockOut;
+using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.Monitoring.CheckIn.Commands;
+
+public class TrayClockOutCommandHandlerTests
+{
+    private static readonly Guid TenantId = Guid.NewGuid();
+    private static readonly Guid UserId = Guid.NewGuid();
+    private static readonly Guid EmployeeId = Guid.NewGuid();
+    private static readonly Guid LegalEntityId = Guid.NewGuid();
+    private static readonly DateOnly WorkDate = new(2026, 8, 21);
+    private static readonly DateTimeOffset UtcNow = new(2026, 8, 21, 17, 30, 0, TimeSpan.Zero);
+
+    private static TrayClockOutCommandHandler CreateSut(
+        Mock<ITrayCurrentDevice> device,
+        Mock<IAttendanceTodayStateService> todayState,
+        ClockOutCommandHandler inner)
+    {
+        device.Setup(d => d.IsAuthenticated).Returns(true);
+        device.Setup(d => d.TenantId).Returns(TenantId);
+        device.Setup(d => d.UserId).Returns(UserId);
+        return new TrayClockOutCommandHandler(device.Object, todayState.Object, inner);
+    }
+
+    [Fact]
+    public async Task Handle_NotAuthenticated_ReturnsFailure()
+    {
+        var device = new Mock<ITrayCurrentDevice>();
+        device.Setup(d => d.IsAuthenticated).Returns(false);
+        var todayState = new Mock<IAttendanceTodayStateService>();
+        var sut = new TrayClockOutCommandHandler(device.Object, todayState.Object, inner: null!);
+
+        var result = await sut.Handle(new TrayClockOutCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(401, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_ContextResolutionFails_PropagatesFailure()
+    {
+        var device = new Mock<ITrayCurrentDevice>();
+        var todayState = new Mock<IAttendanceTodayStateService>();
+        todayState.Setup(t => t.ResolveContextAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.NotFound("no employee"));
+        var sut = CreateSut(device, todayState, inner: null!);
+
+        var result = await sut.Handle(new TrayClockOutCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task Handle_ContextResolves_DelegatesToInnerHandler()
+    {
+        var device = new Mock<ITrayCurrentDevice>();
+        var context = BuildContext();
+        var todayState = new Mock<IAttendanceTodayStateService>();
+        todayState.Setup(t => t.ResolveContextAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(context));
+
+        var innerTodayState = new Mock<IAttendanceTodayStateService>();
+        innerTodayState.Setup(t => t.GetTodayAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayResponse>.Success(CreateTodayResponse()));
+        var record = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            EmployeeId = EmployeeId,
+            Date = WorkDate,
+            ActualStart = UtcNow.AddHours(-8),
+            RequiredWorkMinutes = 480,
+            Status = AttendanceRecord.StatusActive
+        };
+        var attendance = new Mock<IAttendanceReadRepository>();
+        attendance.Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(record);
+        attendance.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        var unitOfWork = new Mock<IUnitOfWork>();
+        unitOfWork
+            .Setup(x => x.ExecuteInTransactionAsync(
+                It.IsAny<Func<CancellationToken, Task<Result<bool>>>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((Func<CancellationToken, Task<Result<bool>>> operation, CancellationToken ct) => operation(ct));
+        var inner = new ClockOutCommandHandler(innerTodayState.Object, attendance.Object, unitOfWork.Object);
+
+        var sut = CreateSut(device, todayState, inner);
+
+        var result = await sut.Handle(new TrayClockOutCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(UtcNow, record.ActualEnd);
+    }
+
+    private static AttendanceTodayContext BuildContext() => new(
+        new Employee { Id = EmployeeId, TenantId = TenantId, UserId = UserId, LegalEntityId = LegalEntityId, WorkModeId = 1 },
+        new LegalEntity { Id = LegalEntityId, TenantId = TenantId, Timezone = "Asia/Colombo" },
+        "Asia/Colombo",
+        TimeZoneInfo.FindSystemTimeZoneById("Asia/Colombo"),
+        WorkDate,
+        UtcNow,
+        UtcNow,
+        new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
+        AttendanceRecord.WorkAreaRemote,
+        "active_employee_work_mode",
+        new ClockInPolicy { Id = Guid.NewGuid(), RemoteTrayEnabled = true },
+        "configured",
+        new AllowedClockInMethods(false, true, false, false, false, null),
+        new AttendanceLocalDayWindow(UtcNow.AddHours(-8), UtcNow.AddHours(16)));
+
+    private static AttendanceTodayResponse CreateTodayResponse()
+        => new(
+            EmployeeId,
+            LegalEntityId,
+            WorkDate,
+            "Asia/Colombo",
+            "configured",
+            "configured",
+            true,
+            false,
+            null,
+            "09:00",
+            "17:30",
+            510,
+            60,
+            0,
+            60,
+            "not_started",
+            "remote",
+            AttendanceRecord.StatusClockedOut,
+            UtcNow.AddHours(-8),
+            UtcNow,
+            480,
+            "tray",
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            new AllowedClockInMethods(false, true, false, false, false, null),
+            []);
+}
