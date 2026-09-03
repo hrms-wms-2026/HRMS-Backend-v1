@@ -49,7 +49,8 @@ public class ApproveTaskCreationRequestCommandHandlerTests
 
     private (ApproveTaskCreationRequestCommandHandler Handler, Mock<IWorkTaskRepository> Tasks, Mock<ITaskCreationRequestRepository> Requests) BuildApprove(
         decimal allocatedHours, decimal existingTaskSum, decimal requestedHours, Guid? callerEmployeeId = null, bool sprintLess = false,
-        bool? callerIsEffectiveManager = null, bool categoryExists = true, Guid? categoryProjectId = null)
+        bool? callerIsEffectiveManager = null, bool categoryExists = true, Guid? categoryProjectId = null,
+        Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
         var currentUser = new Mock<ICurrentUser>();
@@ -121,7 +122,8 @@ public class ApproveTaskCreationRequestCommandHandlerTests
 
         var handler = new ApproveTaskCreationRequestCommandHandler(
             currentUser.Object, identity.Object, requests.Object, objectives.Object, projects.Object,
-            tasks.Object, statuses.Object, categories.Object, slack, membership.Object, notifications.Object, unitOfWork.Object, sprints.Object);
+            tasks.Object, statuses.Object, categories.Object, slack, membership.Object, notifications.Object, unitOfWork.Object, sprints.Object,
+            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object);
         return (handler, tasks, requests);
     }
 
@@ -210,6 +212,28 @@ public class ApproveTaskCreationRequestCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
+        tasks.Verify(x => x.AddAsync(It.IsAny<WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
+        requests.Verify(x => x.Update(It.IsAny<TaskCreationRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_ObjectiveInActiveEvent_PayloadHasNoDueDate_Rejected()
+    {
+        var calendarEvents = CalendarEventRepositoryMocks.Empty();
+        calendarEvents.Setup(x => x.ListActiveEventWindowsForObjectiveAsync(
+                TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ActiveEventWindow(
+                    Guid.NewGuid(), "Release", new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31))
+            });
+
+        var (handler, tasks, requests) = BuildApprove(
+            allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, calendarEvents: calendarEvents);
+        var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
         tasks.Verify(x => x.AddAsync(It.IsAny<WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
         requests.Verify(x => x.Update(It.IsAny<TaskCreationRequest>()), Times.Never);
     }

@@ -44,10 +44,18 @@ public sealed class CloseCalendarEventCommandHandler : IRequestHandler<CloseCale
         if (calendarEvent is null)
             return Result<CalendarEventResponse>.NotFound("Calendar event not found.");
         if (calendarEvent.Status == CalendarEventStatuses.Archived)
+        {
+            var archivedMemberships = await _calendarEvents.ListMembershipsForEventAsync(calendarEvent.Id, ct);
+            var archivedTaskLinks = await _calendarEvents.ListTaskMembershipsForEventAsync(calendarEvent.Id, ct);
             return Result<CalendarEventResponse>.Success(
-                CreateCalendarEventCommandHandler.ToResponse(calendarEvent, Array.Empty<Guid>()));
+                CreateCalendarEventCommandHandler.ToResponse(
+                    calendarEvent,
+                    archivedMemberships.Select(m => m.ObjectiveId).ToList(),
+                    archivedTaskLinks.Select(l => l.TaskId).ToList()));
+        }
 
         var memberships = await _calendarEvents.ListMembershipsForEventAsync(calendarEvent.Id, ct);
+        var taskLinks = await _calendarEvents.ListTaskMembershipsForEventAsync(calendarEvent.Id, ct);
         calendarEvent.Status = CalendarEventStatuses.Archived;
         calendarEvent.ArchivedById = employeeId.Value;
         calendarEvent.ArchivedAt = DateTimeOffset.UtcNow;
@@ -60,6 +68,9 @@ public sealed class CloseCalendarEventCommandHandler : IRequestHandler<CloseCale
         }, ct);
 
         return Result<CalendarEventResponse>.Success(
-            CreateCalendarEventCommandHandler.ToResponse(calendarEvent, memberships.Select(m => m.ObjectiveId).ToList()));
+            CreateCalendarEventCommandHandler.ToResponse(
+                calendarEvent,
+                memberships.Select(m => m.ObjectiveId).ToList(),
+                taskLinks.Select(l => l.TaskId).ToList()));
     }
 }

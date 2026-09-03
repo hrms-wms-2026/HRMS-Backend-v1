@@ -5,7 +5,11 @@
 
 ## Description
 
-Updates an active Event's name, color, and/or Objective membership. When `objectiveIds` is supplied it replaces the active membership set. Objective dates are never changed.
+Updates an active Event's name, color, date window, and/or membership. When
+`objectiveIds` (whole-module links) or `taskIds` (individual task links) is supplied it
+replaces that membership set; `[]` clears it; omitting it keeps the current set. A
+date-only edit re-validates the current members against the new window. Module dates
+are never changed.
 
 ## Request
 
@@ -15,25 +19,28 @@ Updates an active Event's name, color, and/or Objective membership. When `object
 {
   "name": "Q3 Launch Updated",
   "color": "#27AE60",
-  "objectiveIds": ["objective-guid-1", "objective-guid-3"]
+  "startDate": "2026-03-05",
+  "endDate": "2026-04-05",
+  "objectiveIds": ["objective-guid-1"],
+  "taskIds": []
 }
 ```
 
 ## Response
 
-`200 OK` with the updated Event and its Objective ids.
+`200 OK` with the updated Event (`startDate`, `endDate`, `objectiveIds`, `taskIds`, ...).
 
 ## Errors
 
 | Status | Cause |
 |---|---|
-| `400` | Invalid or empty update payload, invalid name/color, or archived Event |
+| `400` | Empty payload, invalid name/color, `endDate` before `startDate`, or archived Event |
 | `403` | Not authenticated, tenant context missing, or permission denied |
-| `404` | Event not found or selected Objective is not found in the Event's project |
-| `409` | One or more selected Objectives already belong to another active Event |
+| `404` | Event not found, or a selected Objective/Task is not in the Event's project |
+| `409` | A member task's due date falls outside the (new) window - including a window narrowed by this edit (R2/R3), or a newly-added task already belongs to another active Event (R1) |
 
 ## Source
 
 Controller: `src/ONEVO.Api/Controllers/Tenant/WorkManagement/CalendarController.cs`
 Handler: `src/ONEVO.Application/Features/WorkManagement/CalendarEvents/Commands/UpdateCalendarEvent/UpdateCalendarEventCommandHandler.cs`
-Plan: `docs/superpowers/specs/next/2026-08-25-work-management-project-calendar-design.md`
+Spec: `docs/superpowers/specs/next/2026-09-02-work-management-event-duration-and-hybrid-membership-design.md`

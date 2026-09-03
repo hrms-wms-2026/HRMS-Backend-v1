@@ -10,6 +10,8 @@
 
 Edits task fields. Increasing `estimatedHours` re-runs the slack check (the task's current hours are excluded from the sum).
 
+If the task belongs to an active calendar Event (directly, or via a whole-module link on its Objective), a `dueDate` change that would move it outside that Event's `[startDate, endDate]` window is rejected with `409` — widen the Event first. Clearing `dueDate` on such a task is also `409`. The same guard applies to the approved-edit-request path.
+
 ## Request
 
 ```json
@@ -34,7 +36,7 @@ Edits task fields. Increasing `estimatedHours` re-runs the slack check (the task
 | `400` | Validation failure |
 | `403` | Not authenticated |
 | `404` | Task or Objective not found |
-| `409` | New `estimatedHours` exceeds remaining slack |
+| `409` | New `estimatedHours` exceeds remaining slack, or a `dueDate` change moves an event-member task outside its Event window (or clears the due date) |
 
 ## Source
 

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ONEVO.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260902070300_AddEventDatesAndHybridMembership")]
+    partial class AddEventDatesAndHybridMembership
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1240,232 +1243,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_user_roles_user_id");
 
                     b.ToTable("user_roles", (string)null);
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEvent", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Color")
-                        .HasMaxLength(7)
-                        .HasColumnType("character varying(7)")
-                        .HasColumnName("color");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by_id");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("deleted_at");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<DateTimeOffset>("EndDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("end_date");
-
-                    b.Property<string>("EventStatus")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("event_status");
-
-                    b.Property<string>("ExternalAttendeesJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("external_attendees");
-
-                    b.Property<string>("ExternalId")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("external_id");
-
-                    b.Property<string>("ExternalSource")
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("external_source");
-
-                    b.Property<DateTimeOffset?>("ExternalUpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("external_updated_at");
-
-                    b.Property<bool>("IsAllDay")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_all_day");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_deleted");
-
-                    b.Property<bool>("IsPrivate")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_private");
-
-                    b.Property<bool>("IsRecurrenceCancelled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_recurrence_cancelled");
-
-                    b.Property<string>("Location")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("location");
-
-                    b.Property<string>("MeetingLink")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("meeting_link");
-
-                    b.Property<string>("OrganizerEmail")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("organizer_email");
-
-                    b.Property<string>("OrganizerName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("organizer_name");
-
-                    b.Property<string>("Recurrence")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasDefaultValue("none")
-                        .HasColumnName("recurrence");
-
-                    b.Property<DateTimeOffset?>("RecurrenceOriginalStart")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("recurrence_original_start");
-
-                    b.Property<Guid?>("RecurrenceParentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("recurrence_parent_id");
-
-                    b.Property<string>("RecurrenceRule")
-                        .HasColumnType("text")
-                        .HasColumnName("recurrence_rule");
-
-                    b.Property<Guid?>("SourceId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("source_id");
-
-                    b.Property<string>("SourceType")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("source_type");
-
-                    b.Property<DateTimeOffset>("StartDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("start_date");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<string>("Timezone")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("timezone");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("title");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_personal_calendar_events");
-
-                    b.HasIndex("RecurrenceParentId")
-                        .HasDatabaseName("ix_personal_calendar_events_recurrence_parent_id");
-
-                    b.HasIndex("TenantId", "CreatedById")
-                        .HasDatabaseName("ix_personal_calendar_events_tenant_id_created_by_id");
-
-                    b.HasIndex("TenantId", "RecurrenceParentId")
-                        .HasDatabaseName("ix_personal_calendar_events_tenant_id_recurrence_parent_id");
-
-                    b.HasIndex("TenantId", "StartDate", "EndDate")
-                        .HasDatabaseName("ix_personal_calendar_events_tenant_id_start_date_end_date");
-
-                    b.ToTable("personal_calendar_events", (string)null);
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipant", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by_id");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("deleted_at");
-
-                    b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("employee_id");
-
-                    b.Property<Guid>("EventId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("event_id");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_deleted");
-
-                    b.Property<string>("ResponseReason")
-                        .HasColumnType("text")
-                        .HasColumnName("response_reason");
-
-                    b.Property<string>("ResponseStatus")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasDefaultValue("pending")
-                        .HasColumnName("response_status");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_calendar_event_participants");
-
-                    b.HasIndex("TenantId", "EmployeeId")
-                        .HasDatabaseName("ix_calendar_event_participants_tenant_id_employee_id");
-
-                    b.HasIndex("TenantId", "EventId", "EmployeeId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_calendar_event_participants_one_row_per_employee");
-
-                    b.ToTable("calendar_event_participants", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.AccessGrantRequest", b =>
@@ -8059,7 +7836,7 @@ namespace ONEVO.Infrastructure.Migrations
                             CompanySizeRange = "51-200",
                             CreatedAt = new DateTimeOffset(new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Currency = "USD",
-                            IncludedModulesJson = "[\"org_structure\",\"core_hr\",\"leave\",\"calendar\",\"time_attendance\",\"monitoring\",\"discrepancy_engine\",\"identity_verification\",\"exception_engine\",\"productivity_analytics\",\"desktop_agent_gateway\",\"worksync_foundation\",\"projects\",\"objectives_milestones\",\"tasks\",\"boards\",\"planning_sprints\"]",
+                            IncludedModulesJson = "[\"org_structure\",\"core_hr\",\"leave\",\"calendar\",\"time_attendance\",\"activity_monitoring\",\"discrepancy_engine\",\"identity_verification\",\"exception_engine\",\"productivity_analytics\",\"desktop_agent_gateway\",\"worksync_foundation\",\"projects\",\"objectives_milestones\",\"tasks\",\"boards\",\"planning_sprints\"]",
                             IsActive = true,
                             Name = "Starter - 51-200",
                             PricingUnit = "per_employee",
@@ -11990,15 +11767,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_user_roles_roles_role_id");
 
                     b.Navigation("Role");
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.CalendarEvent", b =>
-                {
-                    b.HasOne("ONEVO.Domain.Features.Calendar.Entities.CalendarEvent", null)
-                        .WithMany()
-                        .HasForeignKey("RecurrenceParentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_personal_calendar_events_recurrence_parent_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.AccessGrantRequest", b =>

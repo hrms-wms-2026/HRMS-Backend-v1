@@ -135,9 +135,10 @@ public class TasksController : ControllerBase
     }
 
     [HttpGet("projects/{projectId:guid}/tasks")]
-    public async Task<IActionResult> GetByProject(Guid projectId, CancellationToken ct)
+    public async Task<IActionResult> GetByProject(
+        Guid projectId, [FromQuery] Guid[]? assigneeEmployeeIds, CancellationToken ct)
     {
-        var result = await _mediator.Send(new GetProjectTasksQuery(projectId), ct);
+        var result = await _mediator.Send(new GetProjectTasksQuery(projectId, assigneeEmployeeIds), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.Select(t => t.ToViewModel()).ToList())

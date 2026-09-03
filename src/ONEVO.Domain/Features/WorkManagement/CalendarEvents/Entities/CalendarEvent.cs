@@ -15,6 +15,8 @@ public class CalendarEvent : ITenantOwnedEntity
     public Guid ProjectId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Color { get; set; } = string.Empty;
+    public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
     public string Status { get; set; } = CalendarEventStatuses.Active;
     public Guid CreatedById { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

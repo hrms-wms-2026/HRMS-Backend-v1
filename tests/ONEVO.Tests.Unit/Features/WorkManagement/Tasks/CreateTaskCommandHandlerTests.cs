@@ -40,7 +40,8 @@ public class CreateTaskCommandHandlerTests
     private (CreateTaskCommandHandler Handler, Mock<IWorkTaskRepository> Tasks, Mock<ISprintRepository> Sprints) BuildHandler(
         Objective objective, decimal existingAllocationSum, string sprintStatus = SprintStatuses.Active,
         Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null,
-        bool categoryExists = true, Guid? categoryProjectId = null)
+        bool categoryExists = true, Guid? categoryProjectId = null,
+        Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? EmployeeId;
 
@@ -106,7 +107,8 @@ public class CreateTaskCommandHandlerTests
 
         var handler = new CreateTaskCommandHandler(
             currentUser.Object, identity.Object, objectives.Object, projects.Object, tasks.Object,
-            statuses.Object, sprints.Object, categories.Object, slackCalculator, unitOfWork.Object, membership.Object);
+            statuses.Object, sprints.Object, categories.Object, slackCalculator, unitOfWork.Object, membership.Object,
+            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object);
         return (handler, tasks, sprints);
     }
 
@@ -248,5 +250,72 @@ public class CreateTaskCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
         tasks.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private static Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>
+        CalendarWithObjectiveWindow(DateOnly start, DateOnly end)
+    {
+        var mock = CalendarEventRepositoryMocks.Empty();
+        mock.Setup(x => x.ListActiveEventWindowsForObjectiveAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ActiveEventWindow(
+                    Guid.NewGuid(), "Release", start, end)
+            });
+        return mock;
+    }
+
+    [Fact]
+    public async Task Handle_IntoWholeModuleEvent_RequiresDueDate()
+    {
+        var (handler, tasks, _) = BuildHandler(
+            Owned(allocatedHours: 100m), existingAllocationSum: 40m,
+            calendarEvents: CalendarWithObjectiveWindow(new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31)));
+        var command = new CreateTaskCommand(ObjectiveId, "Title", null, CategoryId, WorkTaskPriorities.Medium, null, null, null, SprintId: null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_IntoWholeModuleEvent_OutOfWindow_Rejected()
+    {
+        var (handler, _, _) = BuildHandler(
+            Owned(allocatedHours: 100m), existingAllocationSum: 40m,
+            calendarEvents: CalendarWithObjectiveWindow(new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31)));
+        var command = new CreateTaskCommand(ObjectiveId, "Title", null, CategoryId, WorkTaskPriorities.Medium,
+            new DateOnly(2026, 4, 10), null, null, SprintId: null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_IntoWholeModuleEvent_InWindow_Succeeds()
+    {
+        var (handler, _, _) = BuildHandler(
+            Owned(allocatedHours: 100m), existingAllocationSum: 40m,
+            calendarEvents: CalendarWithObjectiveWindow(new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31)));
+        var command = new CreateTaskCommand(ObjectiveId, "Title", null, CategoryId, WorkTaskPriorities.Medium,
+            new DateOnly(2026, 3, 15), null, null, SprintId: null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task Handle_ObjectiveNotInAnyEvent_NoDueDate_Succeeds()
+    {
+        var (handler, _, _) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m);
+        var command = new CreateTaskCommand(ObjectiveId, "Title", null, CategoryId, WorkTaskPriorities.Medium, null, null, null, SprintId: null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
     }
 }

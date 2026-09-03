@@ -243,8 +243,9 @@ public class CreateProjectEndpointTests : IAsyncLifetime
     {
         var created = await SendCreateProjectAsync(_tenantA, _tenantACategoryId, "ByUser List Target", "BYU1");
         var ownerUserId = (await ReadJsonAsync(created)).GetProperty("creatorMembership").GetProperty("userId").GetGuid();
+        var ownerEmployeeId = await ResolveEmployeeIdAsync(_tenantA.TenantId, ownerUserId);
 
-        var response = await _client.SendAsync(BuildGetRequest(_tenantA, $"/api/v1/work/projects?userId={ownerUserId}&pageSize=50"));
+        var response = await _client.SendAsync(BuildGetRequest(_tenantA, $"/api/v1/work/projects?employeeId={ownerEmployeeId}&pageSize=50"));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         var json = await ReadJsonAsync(response);
@@ -423,11 +424,12 @@ public class CreateProjectEndpointTests : IAsyncLifetime
         var sub = await SendCreateObjectiveAsync(_tenantA, defaultObjectiveId, "Member Mgmt Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 10m);
         var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
         var ownerUserId = (await ReadJsonAsync(created)).GetProperty("creatorMembership").GetProperty("userId").GetGuid();
+        var ownerEmployeeId = await ResolveEmployeeIdAsync(_tenantA.TenantId, ownerUserId);
 
-        var addResponse = await SendAddObjectiveMemberAsync(_tenantA, subId, ownerUserId);
+        var addResponse = await SendAddObjectiveMemberAsync(_tenantA, subId, ownerEmployeeId);
         addResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, await addResponse.Content.ReadAsStringAsync());
 
-        var removeHeadResponse = await SendRemoveObjectiveMemberAsync(_tenantA, subId, ownerUserId);
+        var removeHeadResponse = await SendRemoveObjectiveMemberAsync(_tenantA, subId, ownerEmployeeId);
         removeHeadResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest, "cannot remove the current head as a member - use Transfer instead");
     }
 
@@ -571,16 +573,16 @@ public class CreateProjectEndpointTests : IAsyncLifetime
         return await _client.SendAsync(request);
     }
 
-    private async Task<HttpResponseMessage> SendAddObjectiveMemberAsync(TenantSession session, Guid objectiveId, Guid userId)
+    private async Task<HttpResponseMessage> SendAddObjectiveMemberAsync(TenantSession session, Guid objectiveId, Guid employeeId)
     {
-        var body = new { userId };
+        var body = new { employeeId };
         return await SendJsonAsync(HttpMethod.Post, session.Host, $"/api/v1/work/objectives/{objectiveId}/members", body,
             cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
     }
 
-    private async Task<HttpResponseMessage> SendRemoveObjectiveMemberAsync(TenantSession session, Guid objectiveId, Guid userId)
+    private async Task<HttpResponseMessage> SendRemoveObjectiveMemberAsync(TenantSession session, Guid objectiveId, Guid employeeId)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/work/objectives/{objectiveId}/members/{userId}");
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/work/objectives/{objectiveId}/members/{employeeId}");
         request.Headers.Host = session.Host;
         request.Headers.Add("Cookie", session.SessionCookie);
         request.Headers.Add("X-CSRF-Token", session.CsrfHeader);
@@ -644,6 +646,22 @@ public class CreateProjectEndpointTests : IAsyncLifetime
         });
 
         await db.SaveChangesAsync();
+    }
+
+    // The Work Management identity model is employee-centric: /api/v1/work/projects?employeeId=…
+    // and POST …/objectives/{id}/members both key on the caller's employees row, not their
+    // users row. creatorMembership.userId in the create response is still the raw user id, so
+    // tests translate it to the seeded employee id here (same lookup as
+    // SeedSecondMembershipViaExtraObjectiveAsync).
+    private async Task<Guid> ResolveEmployeeIdAsync(Guid tenantId, Guid userId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+        await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenantId, tenantId.ToString(), TenantStatus.Active, null));
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var employee = await db.Employees.SingleAsync(e => e.TenantId == tenantId && e.UserId == userId);
+        return employee.Id;
     }
 
     private async Task<Guid> SeedProjectCategoryAsync(Guid tenantId, string name)

@@ -88,7 +88,7 @@ public class GetObjectiveTreeQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_MilestoneScopedMember_ReturnsOnlyOwnSubtreePlusAncestors()
+    public async Task Handle_MilestoneScopedMember_ReturnsFullTree_IsOwnerScopedToOwnedSubtree()
     {
         var defaultObjective = new Objective { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, IsDefault = true, IsActive = true };
         var myMilestone = new Objective { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ParentObjectiveId = defaultObjective.Id, IsActive = true };
@@ -102,11 +102,15 @@ public class GetObjectiveTreeQueryHandlerTests
         var result = await handler.Handle(new GetObjectiveTreeQuery(ProjectId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        var returnedIds = result.Value!.Select(o => o.Id).ToHashSet();
-        Assert.Contains(defaultObjective.Id, returnedIds); // ancestor context
-        Assert.Contains(myMilestone.Id, returnedIds);       // self
-        Assert.Contains(myChild.Id, returnedIds);            // descendant
-        Assert.DoesNotContain(unrelatedSibling.Id, returnedIds); // NOT a sibling branch
+        var byId = result.Value!.ToDictionary(o => o.Id);
+        // Any active project member sees the WHOLE tree - including sibling branches they don't own.
+        Assert.Equal(4, result.Value!.Count);
+        Assert.Contains(unrelatedSibling.Id, byId.Keys);
+        // IsOwner stays scoped to the owned node + its descendants (drives the UI's editing tools).
+        Assert.True(byId[myMilestone.Id].IsOwner);         // self
+        Assert.True(byId[myChild.Id].IsOwner);              // descendant (cascade)
+        Assert.False(byId[defaultObjective.Id].IsOwner);    // ancestor - view only
+        Assert.False(byId[unrelatedSibling.Id].IsOwner);    // sibling branch - view only
     }
 
     [Fact]
