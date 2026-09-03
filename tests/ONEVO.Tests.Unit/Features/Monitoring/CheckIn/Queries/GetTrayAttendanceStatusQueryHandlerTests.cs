@@ -1,11 +1,14 @@
 using Moq;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.Queries.GetTrayAttendanceStatus;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 using Xunit;
@@ -19,6 +22,17 @@ public class GetTrayAttendanceStatusQueryHandlerTests
     private static readonly Guid EmployeeId = Guid.NewGuid();
     private static readonly Guid LegalEntityId = Guid.NewGuid();
     private static readonly DateOnly WorkDate = DateOnly.FromDateTime(DateTime.UtcNow);
+
+    private static (Mock<ITenantRepository> Tenants, Mock<ITenantContextSwitcher> Switcher) CreateTenantMocks()
+    {
+        var tenants = new Mock<ITenantRepository>();
+        tenants.Setup(t => t.GetByIdAsync(TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant { Id = TenantId, Slug = "dapi" });
+        var switcher = new Mock<ITenantContextSwitcher>();
+        switcher.Setup(s => s.SwitchToTenantAsync(It.IsAny<TenantRegistryEntry>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        return (tenants, switcher);
+    }
 
     [Fact]
     public async Task Handle_OpenAttendanceRecord_ReturnsIsClockedInTrue()
@@ -38,7 +52,8 @@ public class GetTrayAttendanceStatusQueryHandlerTests
         attendance.Setup(a => a.GetRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AttendanceRecord { ActualStart = startedAt, ActualEnd = null });
 
-        var sut = new GetTrayAttendanceStatusQueryHandler(device.Object, todayState.Object, attendance.Object);
+        var (tenants, switcher) = CreateTenantMocks();
+        var sut = new GetTrayAttendanceStatusQueryHandler(device.Object, todayState.Object, attendance.Object, tenants.Object, switcher.Object);
 
         var result = await sut.Handle(new GetTrayAttendanceStatusQuery(), CancellationToken.None);
 
@@ -64,7 +79,8 @@ public class GetTrayAttendanceStatusQueryHandlerTests
         attendance.Setup(a => a.GetRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
             .ReturnsAsync((AttendanceRecord?)null);
 
-        var sut = new GetTrayAttendanceStatusQueryHandler(device.Object, todayState.Object, attendance.Object);
+        var (tenants, switcher) = CreateTenantMocks();
+        var sut = new GetTrayAttendanceStatusQueryHandler(device.Object, todayState.Object, attendance.Object, tenants.Object, switcher.Object);
 
         var result = await sut.Handle(new GetTrayAttendanceStatusQuery(), CancellationToken.None);
 
@@ -81,7 +97,8 @@ public class GetTrayAttendanceStatusQueryHandlerTests
         var todayState = new Mock<IAttendanceTodayStateService>();
         var attendance = new Mock<IAttendanceReadRepository>();
 
-        var sut = new GetTrayAttendanceStatusQueryHandler(device.Object, todayState.Object, attendance.Object);
+        var (tenants, switcher) = CreateTenantMocks();
+        var sut = new GetTrayAttendanceStatusQueryHandler(device.Object, todayState.Object, attendance.Object, tenants.Object, switcher.Object);
 
         var result = await sut.Handle(new GetTrayAttendanceStatusQuery(), CancellationToken.None);
 

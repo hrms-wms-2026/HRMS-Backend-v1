@@ -390,6 +390,8 @@ public class EfEmployeeRepository : IEmployeeRepository
             from empType in typeJoin.DefaultIfEmpty()
             join empStatus in _db.EmploymentStatuses.AsNoTracking() on e.EmploymentStatusId equals empStatus.Id into statusJoin
             from empStatus in statusJoin.DefaultIfEmpty()
+            join workMode in _db.WorkModes.AsNoTracking() on e.WorkModeId equals workMode.Id into workModeJoin
+            from workMode in workModeJoin.DefaultIfEmpty()
             join primaryAssignment in activePrimaryAssignments on e.Id equals primaryAssignment.EmployeeId into paJoin
             from primaryAssignment in paJoin.DefaultIfEmpty()
             join position in _db.Positions.AsNoTracking() on primaryAssignment!.PositionId equals position.Id into posJoin
@@ -398,7 +400,7 @@ public class EfEmployeeRepository : IEmployeeRepository
             from closure in closureJoin.DefaultIfEmpty()
             join manager in _db.Employees.AsNoTracking() on closure!.AncestorEmployeeId equals manager.Id into managerJoin
             from manager in managerJoin.DefaultIfEmpty()
-            select new { e, dept, legalEntity, empType, empStatus, position, manager };
+            select new { e, dept, legalEntity, empType, empStatus, workMode, position, manager };
 
         if (!scope.CanViewAllTenantEmployees)
         {
@@ -429,7 +431,11 @@ public class EfEmployeeRepository : IEmployeeRepository
                 row.empType != null ? row.empType.Label : row.e.EmploymentTypeId.ToString(),
                 row.empStatus != null ? row.empStatus.Code : "active",
                 row.manager != null ? row.manager.Id : (Guid?)null,
-                row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null))
+                row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null,
+                null,
+                null,
+                null,
+                row.workMode != null ? row.workMode.Label : row.e.WorkModeId.ToString()))
             .FirstOrDefaultAsync(ct);
     }
 

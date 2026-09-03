@@ -40,4 +40,5 @@ public record EmployeeListItemResponse(
     /// </summary>
     string? InvitationStatus = null,
     DateTimeOffset? InvitationExpiresAt = null,
-    EmployeeListAttendanceSummaryResponse? AttendanceSummary = null);
+    EmployeeListAttendanceSummaryResponse? AttendanceSummary = null,
+    string? WorkModeLabel = null);

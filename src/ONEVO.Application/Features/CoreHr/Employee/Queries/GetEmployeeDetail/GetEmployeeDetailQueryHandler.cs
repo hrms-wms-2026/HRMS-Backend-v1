@@ -80,7 +80,7 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         var jobInformation = new EmployeeDetailJobInformation(
             visible.EmployeeNumber, existing.LegalEntityId, visible.LegalEntityName, visible.DepartmentName, visible.PositionName,
             visible.PositionId, visible.ReportingManagerName, visible.EmploymentTypeLabel, visible.Status,
-            existing.HireDate, existing.ProbationEndDate);
+            existing.HireDate, existing.ProbationEndDate, visible.WorkModeLabel);
 
         var personalInformation = new EmployeeDetailPersonalInformation(
             existing.FirstName, existing.LastName, existing.Email, existing.Phone, existing.DateOfBirth,
