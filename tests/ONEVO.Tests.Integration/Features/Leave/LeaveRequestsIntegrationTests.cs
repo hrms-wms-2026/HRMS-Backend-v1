@@ -22,6 +22,7 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
 {
     private const string AdminHost = "admin.localhost";
     private const string FixtureUserPassword = "Password123!";
+    private const string OwnerEmail = "owner-a@leave-req.test";
     private static readonly Guid SeededPlanId = new("a1b2c3d4-0001-0001-0001-000000000001");
 
     private readonly CapturingEmailService _email = new();
@@ -70,7 +71,7 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         _adminCsrfToken = adminCookies["admin_csrf"];
         _adminCookie = $"admin_session={adminCookies["admin_session"]}";
 
-        _owner = await ProvisionAndLoginOwnerAsync("leave-req", "Leave Req Co", "owner-a@leave-req.test");
+        _owner = await ProvisionAndLoginOwnerAsync("leave-req", "Leave Req Co", OwnerEmail);
         _tenantId = await GetTenantIdAsync(_owner.Host);
         _noManage = await SeedAndLoginFixtureUserAsync(
             _tenantId, _owner.Host, "reader@leave-req.test", permissionCodes: ["leave:read"], roleName: "Leave Reader");
@@ -220,14 +221,31 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        // The submit-for-self path (POST /api/v1/leave/requests) resolves the CURRENT USER to an
+        // employee row, so the fixture employee must be linked to _owner's users row - a random
+        // UserId leaves _owner employee-less and every own-request submit 404s.
+        var ownerUserId = await db.Users
+            .Where(u => u.TenantId == tenantId && u.Email == OwnerEmail)
+            .Select(u => u.Id)
+            .SingleAsync();
+
         var existing = await db.Employees.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.LegalEntityId == legalEntityId);
         if (existing is not null)
         {
+            var dirty = false;
             if (existing.HireDate.Year < 1900)
             {
                 existing.HireDate = new DateOnly(2024, 1, 1);
-                await db.SaveChangesAsync();
+                dirty = true;
             }
+            if (existing.UserId != ownerUserId)
+            {
+                existing.UserId = ownerUserId;
+                dirty = true;
+            }
+            if (dirty)
+                await db.SaveChangesAsync();
             return existing.Id;
         }
 
@@ -236,7 +254,7 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         {
             Id = employeeId,
             TenantId = tenantId,
-            UserId = Guid.NewGuid(),
+            UserId = ownerUserId,
             EmployeeNumber = "EMP-LEAVE-001",
             FirstName = "Priya",
             LastName = "Nair",
