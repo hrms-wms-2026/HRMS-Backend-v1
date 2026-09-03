@@ -4,4 +4,5 @@ namespace ONEVO.Application.Common.Constants;
 public static class EntityAssetOwnerTypes
 {
     public const string Project = "project";
+    public const string Objective = "objective";
 }

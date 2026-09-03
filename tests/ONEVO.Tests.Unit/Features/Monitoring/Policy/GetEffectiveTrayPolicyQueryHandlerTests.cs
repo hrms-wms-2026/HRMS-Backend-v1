@@ -2,11 +2,17 @@ using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Policy.Queries.GetEffectiveTrayPolicy;
+using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
+using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 
 namespace ONEVO.Tests.Unit.Features.Monitoring.Policy;
 
@@ -16,6 +22,7 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
     private readonly Mock<ITenantRepository> _tenants = new();
     private readonly Mock<ITenantContextSwitcher> _switcher = new();
     private readonly Mock<IMonitoringToggleResolver> _toggles = new();
+    private readonly Mock<IAttendanceTodayStateService> _todayState = new();
     private readonly FrozenClock _clock = new(new DateTimeOffset(2026, 8, 17, 10, 0, 0, TimeSpan.Zero));
 
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -39,6 +46,10 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
                 Slug = "test",
                 Status = TenantStatus.Active
             });
+
+        _todayState.Setup(t => t.ResolveContextAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(BuildContext(
+                allowedMethods: new AllowedClockInMethods(Web: true, DesktopTray: false, Biometric: false, PhotoRequired: false, LocationRequired: false, AllowedRadiusMeters: null))));
     }
 
     private GetEffectiveTrayPolicyQueryHandler CreateSut() => new(
@@ -46,7 +57,24 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
         _tenants.Object,
         _switcher.Object,
         _toggles.Object,
-        _clock);
+        _clock,
+        _todayState.Object);
+
+    private AttendanceTodayContext BuildContext(AllowedClockInMethods allowedMethods) => new(
+        new Employee { Id = Guid.NewGuid(), TenantId = _tenantId, UserId = _userId, LegalEntityId = _legalEntityId },
+        new LegalEntity { Id = _legalEntityId, TenantId = _tenantId, Timezone = "Asia/Colombo" },
+        "Asia/Colombo",
+        TimeZoneInfo.Utc,
+        DateOnly.FromDateTime(_clock.UtcNow.UtcDateTime),
+        _clock.UtcNow,
+        _clock.UtcNow,
+        new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
+        "remote",
+        "active_employee_work_mode",
+        null,
+        "configured",
+        allowedMethods,
+        new AttendanceLocalDayWindow(_clock.UtcNow, _clock.UtcNow.AddDays(1)));
 
     private void Set(MonitoringCapability capability, bool enabled) =>
         _toggles.Setup(t => t.IsEnabledAsync(
@@ -149,6 +177,31 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
         _switcher.Verify(s => s.SwitchToTenantAsync(
             It.Is<TenantRegistryEntry>(e => e.TenantId == _tenantId && e.Slug == "test"),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Employee_work_mode_has_desktop_tray_enabled_returns_tray_clock_in_enabled_true()
+    {
+        _todayState.Setup(t => t.ResolveContextAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(BuildContext(
+                new AllowedClockInMethods(Web: true, DesktopTray: true, Biometric: false, PhotoRequired: false, LocationRequired: false, AllowedRadiusMeters: null))));
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.TrayClockInEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Today_state_resolution_failure_returns_tray_clock_in_enabled_false()
+    {
+        _todayState.Setup(t => t.ResolveContextAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.NotFound("no employee"));
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.TrayClockInEnabled.Should().BeFalse();
     }
 
     private sealed class FrozenClock : IDateTimeProvider

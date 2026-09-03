@@ -77,7 +77,7 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
 
         var accessToken = _tokenService.GenerateAccessToken(
             device.Id, request.UserId, request.TenantId, request.LegalEntityId);
-        var (employeeName, employeeEmail, employeeNumber, profileStatus) = await ResolveEmployeeIdentityAsync(
+        var (employeeName, employeeEmail, employeeNumber, profileStatus, tenantSlug) = await ResolveEmployeeIdentityAsync(
             request.UserId, request.TenantId, request.LegalEntityId, ct);
 
         return new TrayAuthResponseDto(
@@ -88,10 +88,11 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
             employeeName,
             employeeEmail,
             employeeNumber,
-            profileStatus);
+            profileStatus,
+            tenantSlug);
     }
 
-    private async Task<(string? Name, string? Email, string? Number, string Status)> ResolveEmployeeIdentityAsync(
+    private async Task<(string? Name, string? Email, string? Number, string Status, string? TenantSlug)> ResolveEmployeeIdentityAsync(
         Guid userId,
         Guid tenantId,
         Guid? legalEntityId,
@@ -99,7 +100,7 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
     {
         var tenant = await _tenantRepository.GetByIdAsync(tenantId, ct);
         if (tenant is null)
-            return (null, null, null, "profile_unavailable");
+            return (null, null, null, "profile_unavailable", null);
 
         await _tenantSwitcher.SwitchToTenantAsync(
             new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
@@ -111,16 +112,19 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
                 FullNameOrNull(profile.FirstName, profile.LastName),
                 profile.Email,
                 profile.EmployeeNumber,
-                "resolved");
+                "resolved",
+                tenant.Slug);
         }
 
         var user = await _userRepository.GetByIdAsync(userId, ct);
         if (user is not null)
             return (FullNameOrNull(user.FirstName, user.LastName), user.Email, null,
-                legalEntityId.HasValue ? "profile_unavailable" : "company_context_required");
+                legalEntityId.HasValue ? "profile_unavailable" : "company_context_required",
+                tenant.Slug);
 
         return (null, null, null,
-            legalEntityId.HasValue ? "profile_unavailable" : "company_context_required");
+            legalEntityId.HasValue ? "profile_unavailable" : "company_context_required",
+            tenant.Slug);
     }
 
     private static string? FullNameOrNull(string first, string last)

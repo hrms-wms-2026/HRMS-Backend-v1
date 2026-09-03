@@ -187,6 +187,33 @@ public sealed class ClockInOutCommandHandlerTests
     }
 
     [Fact]
+    public async Task HandleForContextAsync_TraySourceWithDesktopTrayDisabled_ReturnsForbidden()
+    {
+        var fixture = CreateFixture(
+            allowedMethods: new AllowedClockInMethods(true, false, false, false, false, null));
+        var context = new AttendanceTodayContext(
+            new Employee { Id = EmployeeId, TenantId = TenantId, UserId = Guid.NewGuid(), LegalEntityId = LegalEntityId, WorkModeId = 1 },
+            new LegalEntity { Id = LegalEntityId, TenantId = TenantId, Timezone = "Asia/Colombo" },
+            "Asia/Colombo",
+            TimeZoneInfo.FindSystemTimeZoneById("Asia/Colombo"),
+            WorkDate,
+            UtcNow,
+            LocalNow,
+            new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
+            AttendanceRecord.WorkAreaRemote,
+            "active_employee_work_mode",
+            new ClockInPolicy { Id = Guid.NewGuid(), RemoteWebEnabled = true },
+            "configured",
+            new AllowedClockInMethods(true, false, false, false, false, null),
+            LocalDayWindow);
+
+        var result = await fixture.ClockIn.HandleForContextAsync(context, "tray", CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
     public void ClockInValidator_RejectsUnsupportedSource()
     {
         var result = new ClockInCommandValidator().Validate(new ClockInCommand("desktop"));

@@ -26,20 +26,26 @@ public sealed class AttendanceTodayStateService(
     private const string AttendanceReadPermission = "attendance:read";
     public const string ExpectedWorkAreaSourceAttendanceSnapshot = "attendance_record_snapshot";
 
-    public async Task<Result<AttendanceTodayContext>> ResolveContextAsync(CancellationToken ct = default)
+    public Task<Result<AttendanceTodayContext>> ResolveContextAsync(CancellationToken ct = default)
     {
         if (!currentUser.IsAuthenticated)
-            return Result<AttendanceTodayContext>.Forbidden();
+            return Task.FromResult(Result<AttendanceTodayContext>.Forbidden());
 
-        if (currentUser.TenantId == Guid.Empty)
+        return ResolveContextAsync(currentUser.TenantId, currentUser.UserId, ct);
+    }
+
+    public async Task<Result<AttendanceTodayContext>> ResolveContextAsync(
+        Guid tenantId, Guid userId, CancellationToken ct = default)
+    {
+        if (tenantId == Guid.Empty)
             return Result<AttendanceTodayContext>.Forbidden("Tenant context missing.");
 
-        var employee = await employees.GetDefaultForUserAsync(currentUser.TenantId, currentUser.UserId, ct);
+        var employee = await employees.GetDefaultForUserAsync(tenantId, userId, ct);
         if (employee?.LegalEntityId is null)
             return Result<AttendanceTodayContext>.NotFound("Current employee record was not found.");
 
         var legalEntity = await legalEntities.GetByIdForTenantAsync(
-            currentUser.TenantId, employee.LegalEntityId.Value, ct);
+            tenantId, employee.LegalEntityId.Value, ct);
         if (legalEntity is null)
             return Result<AttendanceTodayContext>.NotFound("Legal entity was not found.");
 
