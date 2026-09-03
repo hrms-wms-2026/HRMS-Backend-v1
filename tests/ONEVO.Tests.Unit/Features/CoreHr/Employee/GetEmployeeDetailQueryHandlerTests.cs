@@ -54,7 +54,8 @@ public sealed class GetEmployeeDetailQueryHandlerTests
     {
         var visible = new EmployeeListItemResponse(
             _employeeId, "E-001", "Ada Lovelace", "ada@test.dev",
-            null, null, null, null, null, null, "full_time", "active", null, null);
+            null, null, null, null, null, null, "full_time", "active", null, null,
+            WorkModeLabel: "Remote");
         _employeeRepository
             .Setup(r => r.GetByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee
@@ -90,6 +91,18 @@ public sealed class GetEmployeeDetailQueryHandlerTests
         _profile.Verify(
             p => p.GetPrimaryBankDetailAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_IncludesWorkModeLabelFromVisibleEmployeeProjection()
+    {
+        ArrangeVisibleEmployee();
+        _currentUser.Setup(c => c.HasPermission("employees:read:sensitive")).Returns(false);
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Remote", result.Value!.JobInformation.WorkModeLabel);
     }
 
     [Fact]
