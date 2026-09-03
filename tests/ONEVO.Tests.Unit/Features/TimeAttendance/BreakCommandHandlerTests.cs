@@ -472,6 +472,7 @@ public sealed class BreakCommandHandlerTests
             0,
             60,
             "ended",
+            [],
             "remote",
             AttendanceRecord.StatusActive,
             UtcNow.AddHours(-8),
