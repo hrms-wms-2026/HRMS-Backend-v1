@@ -67,4 +67,6 @@ public static class MonitoringErrors
     public const string EnrollmentAttemptAlreadySettled = "Enrollment attempt is no longer pending.";
     public const string EnrollmentAttemptExpired = "Enrollment attempt has expired.";
     public const string LivenessCheckFailed = "Liveness check did not pass.";
+    public const string ReferenceImageMissing =
+        "Liveness session did not return a reference photo; please retry enrollment.";
 }
