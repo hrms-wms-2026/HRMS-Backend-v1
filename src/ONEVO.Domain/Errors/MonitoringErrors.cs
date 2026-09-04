@@ -69,4 +69,6 @@ public static class MonitoringErrors
     public const string LivenessCheckFailed = "Liveness check did not pass.";
     public const string ReferenceImageMissing =
         "Liveness session did not return a reference photo; please retry enrollment.";
+    public const string ReferencePhotoUploadFailed =
+        "Failed to store the enrollment reference photo. Please try again.";
 }

@@ -101,8 +101,7 @@ public class CompleteEnrollmentAttemptCommandHandler
             attempt.FailureReason = $"Reference photo storage failed: {referenceUpload.Error}";
             _attempts.Update(attempt);
             await _attempts.SaveChangesAsync(ct);
-            return Result<BiometricProfileResponse>.Failure(
-                referenceUpload.Error!, referenceUpload.StatusCode ?? 500);
+            return Result<BiometricProfileResponse>.Failure(MonitoringErrors.ReferencePhotoUploadFailed, 500);
         }
 
         attempt.Status = BiometricEnrollmentStatus.Succeeded;

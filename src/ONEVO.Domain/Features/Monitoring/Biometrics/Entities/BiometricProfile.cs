@@ -13,7 +13,7 @@ public class BiometricProfile : ITenantOwnedEntity
     public BiometricProfileStatus Status { get; set; }
     public DateTimeOffset EnrolledAt { get; set; }
 
-    /// <summary>file_records.Id of the reference photo captured at enrollment. Null until Task 3 lands / enrollment completes with a reference image.</summary>
+    /// <summary>file_records.Id of the reference photo captured at enrollment. Null for profiles enrolled before reference-photo capture was introduced, or when no reference image was stored.</summary>
     public Guid? ReferencePhotoFileId { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

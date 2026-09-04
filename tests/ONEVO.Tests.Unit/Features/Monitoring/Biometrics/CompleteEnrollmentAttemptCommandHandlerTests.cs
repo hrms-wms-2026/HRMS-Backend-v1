@@ -10,6 +10,7 @@ using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
 using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Domain.Errors;
 using ONEVO.Domain.Features.Monitoring.Biometrics.Entities;
 using ONEVO.Tests.Unit.Fakes;
 using Xunit;
@@ -187,12 +188,13 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
         _fileStorage.Setup(f => f.UploadAsync(
                 It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<FileRecordDto>.Failure("Storage quota exceeded.", 507));
+            .ReturnsAsync(Result<FileRecordDto>.Failure("Storage quota exceeded.", 409));
 
         var result = await CreateSut().Handle(new CompleteEnrollmentAttemptCommand(_attemptId), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
-        result.StatusCode.Should().Be(507);
+        result.StatusCode.Should().Be(500);
+        result.Error.Should().Be(MonitoringErrors.ReferencePhotoUploadFailed);
         attempt.Status.Should().Be(BiometricEnrollmentStatus.Failed);
         _profiles.Verify(p => p.AddAsync(It.IsAny<BiometricProfile>(), It.IsAny<CancellationToken>()), Times.Never);
     }
