@@ -42,4 +42,11 @@ public interface ITrayActivationRepository
         Guid userId, Guid tenantId, Guid? legalEntityId, CancellationToken ct);
 }
 
-public sealed record TrayEmployeeProfile(string FirstName, string LastName, string Email, string EmployeeNumber);
+public sealed record TrayEmployeeProfile(
+    string FirstName,
+    string LastName,
+    string Email,
+    string EmployeeNumber,
+    string? DepartmentName = null,
+    string? WorkModeLabel = null,
+    string? OfficeName = null);

@@ -193,17 +193,23 @@ public class EfLeaveEntitlementRepository : ILeaveEntitlementRepository
 
     private async Task WriteAsync(Func<Task> mutate, CancellationToken ct)
     {
+        // EnableRetryOnFailure configured - EF Core forbids a user-initiated BeginTransactionAsync
+        // under a retrying execution strategy unless it runs inside ExecuteAsync.
+        var executionStrategy = _db.Database.CreateExecutionStrategy();
         try
         {
-            await using var transaction = _db.Database.IsRelational()
-                ? await _db.Database.BeginTransactionAsync(ct)
-                : null;
+            await executionStrategy.ExecuteAsync(async () =>
+            {
+                await using var transaction = _db.Database.IsRelational()
+                    ? await _db.Database.BeginTransactionAsync(ct)
+                    : null;
 
-            await mutate();
-            await _db.SaveChangesAsync(ct);
+                await mutate();
+                await _db.SaveChangesAsync(ct);
 
-            if (transaction is not null)
-                await transaction.CommitAsync(ct);
+                if (transaction is not null)
+                    await transaction.CommitAsync(ct);
+            });
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {

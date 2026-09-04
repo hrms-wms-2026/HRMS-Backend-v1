@@ -22,6 +22,7 @@ public class LeaveEntitlementsAndBalancesIntegrationTests : IAsyncLifetime
 {
     private const string AdminHost = "admin.localhost";
     private const string FixtureUserPassword = "Password123!";
+    private const string OwnerEmail = "owner-a@leave-ent.test";
     private static readonly Guid SeededPlanId = new("a1b2c3d4-0001-0001-0001-000000000001");
 
     private readonly CapturingEmailService _email = new();
@@ -70,7 +71,7 @@ public class LeaveEntitlementsAndBalancesIntegrationTests : IAsyncLifetime
         _adminCsrfToken = adminCookies["admin_csrf"];
         _adminCookie = $"admin_session={adminCookies["admin_session"]}";
 
-        _owner = await ProvisionAndLoginOwnerAsync("leave-ent", "Leave Ent Co", "owner-a@leave-ent.test");
+        _owner = await ProvisionAndLoginOwnerAsync("leave-ent", "Leave Ent Co", OwnerEmail);
         _tenantId = await GetTenantIdAsync(_owner.Host);
         _noManage = await SeedAndLoginFixtureUserAsync(
             _tenantId, _owner.Host, "reader@leave-ent.test", permissionCodes: ["leave:read"], roleName: "Leave Reader");
@@ -193,14 +194,23 @@ public class LeaveEntitlementsAndBalancesIntegrationTests : IAsyncLifetime
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var existing = await db.Employees.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.LegalEntityId == legalEntityId);
+        var ownerUserId = await db.Users
+            .Where(u => u.TenantId == tenantId && u.Email == OwnerEmail)
+            .Select(u => u.Id)
+            .SingleAsync();
+
+        var existing = await db.Employees.FirstOrDefaultAsync(e =>
+                e.TenantId == tenantId && e.UserId == ownerUserId && e.LegalEntityId == legalEntityId)
+            ?? await db.Employees.FirstOrDefaultAsync(e =>
+                e.TenantId == tenantId && e.UserId == ownerUserId);
+
         if (existing is not null)
         {
+            if (existing.LegalEntityId != legalEntityId)
+                existing.LegalEntityId = legalEntityId;
             if (existing.HireDate.Year < 1900)
-            {
                 existing.HireDate = new DateOnly(2024, 1, 1);
-                await db.SaveChangesAsync();
-            }
+            await db.SaveChangesAsync();
             return existing.Id;
         }
 
@@ -209,11 +219,11 @@ public class LeaveEntitlementsAndBalancesIntegrationTests : IAsyncLifetime
         {
             Id = employeeId,
             TenantId = tenantId,
-            UserId = Guid.NewGuid(),
+            UserId = ownerUserId,
             EmployeeNumber = "EMP-LEAVE-001",
             FirstName = "Priya",
             LastName = "Nair",
-            Email = "priya.leave@test.dev",
+            Email = OwnerEmail,
             LegalEntityId = legalEntityId,
             HireDate = new DateOnly(2024, 1, 1),
             EmploymentStatusId = 1
