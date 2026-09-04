@@ -121,10 +121,50 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
             : new List<string>();
         setCookies.Should().Contain(c => c.StartsWith("onevo_session=", StringComparison.Ordinal));
         setCookies.Should().Contain(c => c.StartsWith("onevo_csrf=", StringComparison.Ordinal));
+        setCookies.Should().Contain(c =>
+            c.StartsWith("onevo_last_tenant=one-match-tenant", StringComparison.Ordinal) &&
+            c.Contains("domain=.localhost", StringComparison.OrdinalIgnoreCase));
         var exchangedBody = await exchanged.Content.ReadAsStringAsync();
         exchangedBody.Should().Contain("\"authenticated\":true");
         exchangedBody.Should().NotContain("\"tenant_id\"");
         exchangedBody.Should().NotContain("\"user_id\"");
+    }
+
+    [Fact]
+    public async Task ExactOneMatch_LogsIn_ThenLogout_ClearsLastTenantHintCookie()
+    {
+        var user = await SeedActiveUserAsync(
+            "logout-hint-tenant", "logouthint@test.onevo.dev", "CorrectPass1!");
+
+        var response = await PostLoginAsync(user.Email, "CorrectPass1!");
+        var legalCompleted = await CompleteLegalAcceptanceAsync(response);
+        var exchanged = await CompleteTenantSessionExchangeAsync(legalCompleted);
+
+        exchanged.StatusCode.Should().Be(HttpStatusCode.OK, await exchanged.Content.ReadAsStringAsync());
+        var exchangeCookies = exchanged.Headers.TryGetValues("Set-Cookie", out var exchangeCookieValues)
+            ? exchangeCookieValues.ToList()
+            : new List<string>();
+        exchangeCookies.Should().Contain(c =>
+            c.StartsWith("onevo_last_tenant=logout-hint-tenant", StringComparison.Ordinal) &&
+            c.Contains("domain=.localhost", StringComparison.OrdinalIgnoreCase));
+
+        var sessionCookie = ExtractCookieValue(exchanged, "onevo_session");
+        var csrfCookie = ExtractCookieValue(exchanged, "onevo_csrf");
+
+        using var logoutRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/logout");
+        logoutRequest.Headers.Host = "logout-hint-tenant.localhost";
+        logoutRequest.Headers.Add("Cookie", $"onevo_session={sessionCookie}; onevo_csrf={csrfCookie}");
+        logoutRequest.Headers.Add("X-CSRF-Token", csrfCookie);
+        var logout = await _client.SendAsync(logoutRequest);
+
+        logout.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var logoutCookies = logout.Headers.TryGetValues("Set-Cookie", out var logoutCookieValues)
+            ? logoutCookieValues.ToList()
+            : new List<string>();
+        logoutCookies.Should().Contain(c =>
+            c.StartsWith("onevo_last_tenant=", StringComparison.Ordinal) &&
+            c.Contains("domain=.localhost", StringComparison.OrdinalIgnoreCase));
+        ExtractCookieValue(logout, "onevo_last_tenant").Should().BeEmpty();
     }
 
     [Fact]
@@ -628,6 +668,9 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
         cookies.Should().NotContain(
             c => c.StartsWith("onevo_csrf=", StringComparison.Ordinal),
             "the base host must never set onevo_csrf");
+        cookies.Should().NotContain(
+            c => c.StartsWith("onevo_last_tenant=", StringComparison.Ordinal),
+            "the last-tenant hint must only be set on a completed sign-in, never a pending gate");
     }
 
     /// <summary>

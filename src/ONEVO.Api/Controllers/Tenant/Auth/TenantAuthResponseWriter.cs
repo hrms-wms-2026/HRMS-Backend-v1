@@ -6,6 +6,9 @@ using ONEVO.Api.Contracts.Auth;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Infrastructure.Identity.Sessions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using ONEVO.Application.Common.ServiceInterfaces;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
@@ -81,6 +84,39 @@ internal static class TenantAuthResponseWriter
             SameSite = SameSiteMode.Strict,
             Path = "/",
             Expires = dto.ExpiresAt
+        });
+
+        var configuration = controller.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        var tenantContext = controller.HttpContext.RequestServices.GetRequiredService<ITenantContext>();
+        var rootDomain = configuration["Tenancy:RootDomain"];
+        if (!string.IsNullOrEmpty(rootDomain) && !string.IsNullOrEmpty(tenantContext.Slug))
+            controller.SetLastTenantHintCookie(tenantContext.Slug, rootDomain, env);
+    }
+
+    public static void SetLastTenantHintCookie(
+        this ControllerBase controller, string tenantSlug, string rootDomain, IWebHostEnvironment env)
+    {
+        controller.Response.Cookies.Append("onevo_last_tenant", tenantSlug, new CookieOptions
+        {
+            HttpOnly = false,
+            Secure = !env.IsDevelopment(),
+            SameSite = SameSiteMode.Lax,
+            Domain = "." + rootDomain,
+            Path = "/",
+            Expires = DateTimeOffset.UtcNow.AddDays(180)
+        });
+    }
+
+    public static void ClearLastTenantHintCookie(
+        this ControllerBase controller, string rootDomain, IWebHostEnvironment env)
+    {
+        controller.Response.Cookies.Delete("onevo_last_tenant", new CookieOptions
+        {
+            HttpOnly = false,
+            Secure = !env.IsDevelopment(),
+            SameSite = SameSiteMode.Lax,
+            Domain = "." + rootDomain,
+            Path = "/"
         });
     }
 
