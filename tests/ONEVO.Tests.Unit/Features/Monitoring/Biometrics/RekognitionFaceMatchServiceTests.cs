@@ -59,7 +59,9 @@ public class RekognitionFaceMatchServiceTests
     [Fact]
     public async Task NonMemoryStreamInput_IsBufferedAndComparedCorrectly()
     {
+        CompareFacesRequest? capturedRequest = null;
         _rekognition.Setup(r => r.CompareFacesAsync(It.IsAny<CompareFacesRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CompareFacesRequest, CancellationToken>((req, _) => capturedRequest = req)
             .ReturnsAsync(new CompareFacesResponse
             {
                 FaceMatches = new List<CompareFacesMatch> { new() { Similarity = 85f } }
@@ -73,5 +75,7 @@ public class RekognitionFaceMatchServiceTests
 
         result.IsMatch.Should().BeTrue();
         result.Similarity.Should().Be(85f);
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.SourceImage.Bytes.ToArray().Should().Equal(new byte[] { 9, 9, 9 });
     }
 }

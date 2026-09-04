@@ -40,12 +40,6 @@ public class RekognitionFaceMatchService : IFaceMatchService
 
     private static async Task<MemoryStream> ToMemoryStreamAsync(Stream input, CancellationToken ct)
     {
-        if (input is MemoryStream ms)
-        {
-            ms.Position = 0;
-            return ms;
-        }
-
         var copy = new MemoryStream();
         await input.CopyToAsync(copy, ct);
         copy.Position = 0;
