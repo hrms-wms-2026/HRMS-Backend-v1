@@ -190,4 +190,30 @@ public class UploadFaceScanCommandHandlerTests
         result.Value!.SimilarityScore.Should().BeNull();
         _faceMatch.Verify(m => m.CompareAsync(It.IsAny<Stream>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Fact]
+    public async Task ProfileHasReferencePhoto_ButOpenReadThrows_SetsFailed_WithoutCallingFaceMatch()
+    {
+        var (checkIn, uploadedFileId) = SetupSuccessfulUploadPath();
+        var referenceFileId = Guid.NewGuid();
+        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BiometricProfile
+            {
+                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _userId,
+                Status = BiometricProfileStatus.Enrolled, ReferencePhotoFileId = referenceFileId
+            });
+        _fileStorage.Setup(f => f.OpenReadAsync(_tenantId, referenceFileId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TimeoutException("R2 request timed out"));
+        _fileStorage.Setup(f => f.OpenReadAsync(_tenantId, uploadedFileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileStreamDto>.Success(new FileStreamDto(new MemoryStream(new byte[] { 2 }), "image/jpeg")));
+
+        var result = await CreateSut().Handle(
+            new UploadFaceScanCommand(checkIn.Id, new MemoryStream(new byte[] { 3 }), "image/jpeg", 3),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Status.Should().Be(MonitoringFaceScanStatus.Failed);
+        result.Value!.SimilarityScore.Should().BeNull();
+        _faceMatch.Verify(m => m.CompareAsync(It.IsAny<Stream>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

@@ -138,27 +138,26 @@ public class UploadFaceScanCommandHandler
         if (profile?.ReferencePhotoFileId is null)
             return (MonitoringFaceScanStatus.NoReferencePhoto, null);
 
-        var referenceRead = await _fileStorage.OpenReadAsync(_device.TenantId, profile.ReferencePhotoFileId.Value, ct);
-        var capturedRead = await _fileStorage.OpenReadAsync(_device.TenantId, capturedFileId, ct);
-
-        if (!referenceRead.IsSuccess || !capturedRead.IsSuccess)
-            return (MonitoringFaceScanStatus.Failed, null);
-
-        await using var referenceStream = referenceRead.Value!.Content;
-        await using var capturedStream = capturedRead.Value!.Content;
-
-        FaceMatchOutcome outcome;
         try
         {
-            outcome = await _faceMatch.CompareAsync(referenceStream, capturedStream, ct);
+            var referenceRead = await _fileStorage.OpenReadAsync(_device.TenantId, profile.ReferencePhotoFileId.Value, ct);
+            var capturedRead = await _fileStorage.OpenReadAsync(_device.TenantId, capturedFileId, ct);
+
+            if (!referenceRead.IsSuccess || !capturedRead.IsSuccess)
+                return (MonitoringFaceScanStatus.Failed, null);
+
+            await using var referenceStream = referenceRead.Value!.Content;
+            await using var capturedStream = capturedRead.Value!.Content;
+
+            var outcome = await _faceMatch.CompareAsync(referenceStream, capturedStream, ct);
+
+            return outcome.IsMatch
+                ? (MonitoringFaceScanStatus.Verified, outcome.Similarity)
+                : (MonitoringFaceScanStatus.NotMatched, outcome.Similarity);
         }
         catch (Exception)
         {
             return (MonitoringFaceScanStatus.Failed, null);
         }
-
-        return outcome.IsMatch
-            ? (MonitoringFaceScanStatus.Verified, outcome.Similarity)
-            : (MonitoringFaceScanStatus.NotMatched, outcome.Similarity);
     }
 }
