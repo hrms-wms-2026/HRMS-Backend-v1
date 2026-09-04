@@ -5,6 +5,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 
 namespace ONEVO.Application.Features.TimeAttendance.Commands.ClockOut;
@@ -12,7 +13,8 @@ namespace ONEVO.Application.Features.TimeAttendance.Commands.ClockOut;
 public sealed class ClockOutCommandHandler(
     IAttendanceTodayStateService todayState,
     IAttendanceReadRepository attendance,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    ITaskClockingSessionRepository taskSessions)
     : IRequestHandler<ClockOutCommand, Result<AttendanceTodayResponse>>
 {
     public async Task<Result<AttendanceTodayResponse>> Handle(
@@ -71,6 +73,11 @@ public sealed class ClockOutCommandHandler(
         if (hasOpenBreak)
             return Result<bool>.Conflict("open_break_must_be_ended_before_clock_out");
 
+        var openTaskSessions = await taskSessions.GetOpenSessionsForEmployeeAsync(
+            context.Employee.TenantId, context.Employee.Id, ct);
+        if (openTaskSessions.Count > 0)
+            return Result<bool>.Conflict(BuildOpenTaskSessionMessage(openTaskSessions));
+
         var completedBreakMinutes = await attendance.SumCompletedBreakMinutesAsync(
             context.Employee.TenantId,
             context.Employee.Id,
@@ -92,6 +99,14 @@ public sealed class ClockOutCommandHandler(
 
         await attendance.SaveChangesAsync(ct);
         return Result<bool>.Success(true);
+    }
+
+    private static string BuildOpenTaskSessionMessage(IReadOnlyList<OpenEmployeeTaskSession> openTaskSessions)
+    {
+        var taskNames = string.Join(", ", openTaskSessions.Select(session => $"'{session.TaskTitle}'"));
+        return openTaskSessions.Count == 1
+            ? $"Task {taskNames} is still running. Push it before clocking out for the day."
+            : $"Tasks {taskNames} are still running. Push them before clocking out for the day.";
     }
 
     private static Result<AttendanceTodayResponse> ToTodayFailure(

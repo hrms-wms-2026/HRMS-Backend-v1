@@ -26,6 +26,16 @@ public class EfTaskClockingSessionRepository : ITaskClockingSessionRepository
                 session => new OpenTaskClockingSessionSummary(session.EmployeeId, session.ClockInAt),
                 ct);
 
+    public async Task<IReadOnlyList<OpenEmployeeTaskSession>> GetOpenSessionsForEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default)
+        => await _db.TaskClockingSessions.AsNoTracking()
+            .Where(session => session.TenantId == tenantId && session.EmployeeId == employeeId && session.ClockOutAt == null)
+            .Join(_db.WorkTasks.AsNoTracking(),
+                session => session.TaskId,
+                task => task.Id,
+                (session, task) => new OpenEmployeeTaskSession(task.Id, task.Title))
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyDictionary<Guid, int>> GetTotalClosedSessionMinutesForTasksAsync(
         Guid tenantId, IReadOnlyList<Guid> taskIds, CancellationToken ct = default)
     {

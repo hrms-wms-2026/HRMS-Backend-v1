@@ -204,9 +204,11 @@ public sealed class TenantSessionExchangeEndpointTests
             .Setup(instance => instance.SignOutAsync(
                 It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<AuthenticationProperties>()))
             .Returns(Task.CompletedTask);
+        var configuration = new ConfigurationBuilder().Build();
         var services = new ServiceCollection();
         services.AddSingleton(authenticationService.Object);
-        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddSingleton(tenantContext.Object);
         // Problem(...) resolves ProblemDetailsFactory from RequestServices; AddMvcCore is the
         // minimal registration that provides it without pulling in unrelated MVC pipeline pieces.
         services.AddLogging();
@@ -227,7 +229,7 @@ public sealed class TenantSessionExchangeEndpointTests
             httpContext.User = new System.Security.Claims.ClaimsPrincipal(oldTicketClaims);
         }
 
-        var controller = new AuthSessionController(mediator.Object, environment.Object, tenantContext.Object, tenantSessionExchange)
+        var controller = new AuthSessionController(mediator.Object, environment.Object, tenantContext.Object, tenantSessionExchange, configuration)
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext }
         };

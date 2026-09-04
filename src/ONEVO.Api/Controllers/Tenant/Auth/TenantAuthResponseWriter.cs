@@ -6,6 +6,9 @@ using ONEVO.Api.Contracts.Auth;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Infrastructure.Identity.Sessions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using ONEVO.Application.Common.ServiceInterfaces;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
@@ -82,6 +85,12 @@ internal static class TenantAuthResponseWriter
             Path = "/",
             Expires = dto.ExpiresAt
         });
+
+        var configuration = controller.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        var tenantContext = controller.HttpContext.RequestServices.GetRequiredService<ITenantContext>();
+        var rootHost = configuration["Tenancy:RootDomain"];
+        if (!string.IsNullOrEmpty(rootHost) && !string.IsNullOrEmpty(tenantContext.Slug))
+            controller.SetLastTenantHintCookie(tenantContext.Slug, rootHost, env);
     }
 
     public static void ClearInvalidTenantSessionCookies(this ControllerBase controller, IWebHostEnvironment env)

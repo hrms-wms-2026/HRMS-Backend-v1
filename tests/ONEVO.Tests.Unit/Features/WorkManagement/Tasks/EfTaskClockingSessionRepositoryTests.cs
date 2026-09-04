@@ -122,6 +122,47 @@ public sealed class EfTaskClockingSessionRepositoryTests
         Assert.False(result.ContainsKey(taskWithNone));
     }
 
+    [Fact]
+    public async Task GetOpenSessionsForEmployeeAsync_ReturnsOnlyThatEmployeesOpenSessionsWithTaskTitle()
+    {
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var otherEmployeeId = Guid.NewGuid();
+        var openTaskId = Guid.NewGuid();
+        var closedTaskId = Guid.NewGuid();
+        await using var db = BuildInMemoryDb();
+        db.WorkTasks.Add(new WorkTask { Id = openTaskId, TenantId = tenantId, Title = "Fix login bug" });
+        db.WorkTasks.Add(new WorkTask { Id = closedTaskId, TenantId = tenantId, Title = "Update API docs" });
+        var repository = new EfTaskClockingSessionRepository(db);
+
+        // Open session for the employee we're querying - should be returned.
+        await repository.AddAsync(new TaskClockingSession
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, TaskId = openTaskId,
+            EmployeeId = employeeId, ClockInAt = DateTimeOffset.UtcNow
+        });
+        // Closed session for the same employee - must not be returned.
+        await repository.AddAsync(new TaskClockingSession
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, TaskId = closedTaskId,
+            EmployeeId = employeeId, ClockInAt = DateTimeOffset.UtcNow.AddHours(-2),
+            ClockOutAt = DateTimeOffset.UtcNow.AddHours(-1), DurationMinutes = 60
+        });
+        // Open session for a different employee - must not be returned.
+        await repository.AddAsync(new TaskClockingSession
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, TaskId = closedTaskId,
+            EmployeeId = otherEmployeeId, ClockInAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var result = await repository.GetOpenSessionsForEmployeeAsync(tenantId, employeeId);
+
+        var session = Assert.Single(result);
+        Assert.Equal(openTaskId, session.TaskId);
+        Assert.Equal("Fix login bug", session.TaskTitle);
+    }
+
     private static ApplicationDbContext BuildInMemoryDb()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
