@@ -88,36 +88,9 @@ internal static class TenantAuthResponseWriter
 
         var configuration = controller.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
         var tenantContext = controller.HttpContext.RequestServices.GetRequiredService<ITenantContext>();
-        var rootDomain = configuration["Tenancy:RootDomain"];
-        if (!string.IsNullOrEmpty(rootDomain) && !string.IsNullOrEmpty(tenantContext.Slug))
-            controller.SetLastTenantHintCookie(tenantContext.Slug, rootDomain, env);
-    }
-
-    public static void SetLastTenantHintCookie(
-        this ControllerBase controller, string tenantSlug, string rootDomain, IWebHostEnvironment env)
-    {
-        controller.Response.Cookies.Append("onevo_last_tenant", tenantSlug, new CookieOptions
-        {
-            HttpOnly = false,
-            Secure = !env.IsDevelopment(),
-            SameSite = SameSiteMode.Lax,
-            Domain = "." + rootDomain,
-            Path = "/",
-            Expires = DateTimeOffset.UtcNow.AddDays(180)
-        });
-    }
-
-    public static void ClearLastTenantHintCookie(
-        this ControllerBase controller, string rootDomain, IWebHostEnvironment env)
-    {
-        controller.Response.Cookies.Delete("onevo_last_tenant", new CookieOptions
-        {
-            HttpOnly = false,
-            Secure = !env.IsDevelopment(),
-            SameSite = SameSiteMode.Lax,
-            Domain = "." + rootDomain,
-            Path = "/"
-        });
+        var rootHost = configuration["Tenancy:RootDomain"];
+        if (!string.IsNullOrEmpty(rootHost) && !string.IsNullOrEmpty(tenantContext.Slug))
+            controller.SetLastTenantHintCookie(tenantContext.Slug, rootHost, env);
     }
 
     public static void ClearInvalidTenantSessionCookies(this ControllerBase controller, IWebHostEnvironment env)
