@@ -509,6 +509,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Common.ServiceInterfaces.IFaceLivenessService,
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceLivenessService>();
+        services.AddScoped<
+            ONEVO.Application.Common.ServiceInterfaces.IFaceMatchService,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceMatchService>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces.IProductivityReportRepository,
