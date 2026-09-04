@@ -139,6 +139,33 @@ public class UploadFaceScanCommandHandlerTests
     }
 
     [Fact]
+    public async Task ProfileHasReferencePhoto_ButFaceMatchThrows_SetsFailed()
+    {
+        var (checkIn, uploadedFileId) = SetupSuccessfulUploadPath();
+        var referenceFileId = Guid.NewGuid();
+        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BiometricProfile
+            {
+                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _userId,
+                Status = BiometricProfileStatus.Enrolled, ReferencePhotoFileId = referenceFileId
+            });
+        _fileStorage.Setup(f => f.OpenReadAsync(_tenantId, referenceFileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileStreamDto>.Success(new FileStreamDto(new MemoryStream(new byte[] { 1 }), "image/jpeg")));
+        _fileStorage.Setup(f => f.OpenReadAsync(_tenantId, uploadedFileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileStreamDto>.Success(new FileStreamDto(new MemoryStream(new byte[] { 2 }), "image/jpeg")));
+        _faceMatch.Setup(m => m.CompareAsync(It.IsAny<Stream>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("no face detected"));
+
+        var result = await CreateSut().Handle(
+            new UploadFaceScanCommand(checkIn.Id, new MemoryStream(new byte[] { 3 }), "image/jpeg", 3),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Status.Should().Be(MonitoringFaceScanStatus.Failed);
+        result.Value!.SimilarityScore.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ProfileHasReferencePhoto_ButOpenReadFails_SetsFailed_WithoutCallingFaceMatch()
     {
         var (checkIn, uploadedFileId) = SetupSuccessfulUploadPath();

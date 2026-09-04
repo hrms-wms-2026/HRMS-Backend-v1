@@ -144,7 +144,19 @@ public class UploadFaceScanCommandHandler
         if (!referenceRead.IsSuccess || !capturedRead.IsSuccess)
             return (MonitoringFaceScanStatus.Failed, null);
 
-        var outcome = await _faceMatch.CompareAsync(referenceRead.Value!.Content, capturedRead.Value!.Content, ct);
+        await using var referenceStream = referenceRead.Value!.Content;
+        await using var capturedStream = capturedRead.Value!.Content;
+
+        FaceMatchOutcome outcome;
+        try
+        {
+            outcome = await _faceMatch.CompareAsync(referenceStream, capturedStream, ct);
+        }
+        catch (Exception)
+        {
+            return (MonitoringFaceScanStatus.Failed, null);
+        }
+
         return outcome.IsMatch
             ? (MonitoringFaceScanStatus.Verified, outcome.Similarity)
             : (MonitoringFaceScanStatus.NotMatched, outcome.Similarity);
