@@ -7,6 +7,7 @@ using ONEVO.Application.Features.TimeAttendance.Commands.ClockOut;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
@@ -427,6 +428,86 @@ public sealed class ClockInOutCommandHandlerTests
         fixture.Attendance.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Fact]
+    public async Task ClockOut_RejectsWhenAnActiveTaskSessionIsOpen()
+    {
+        var fixture = CreateFixture();
+        fixture.Attendance
+            .Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord
+            {
+                Id = Guid.NewGuid(),
+                TenantId = TenantId,
+                EmployeeId = EmployeeId,
+                Date = WorkDate,
+                ActualStart = UtcNow.AddHours(-8),
+                Status = AttendanceRecord.StatusActive
+            });
+        fixture.TaskSessions
+            .Setup(x => x.GetOpenSessionsForEmployeeAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new OpenEmployeeTaskSession(Guid.NewGuid(), "Fix login bug") });
+
+        var result = await fixture.ClockOut.Handle(new ClockOutCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Contains("Fix login bug", result.Error!);
+        Assert.Contains("push", result.Error!, StringComparison.OrdinalIgnoreCase);
+        fixture.Attendance.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ClockOut_RejectsAndNamesAllTasksWhenMultipleActiveTaskSessionsAreOpen()
+    {
+        var fixture = CreateFixture();
+        fixture.Attendance
+            .Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord
+            {
+                Id = Guid.NewGuid(),
+                TenantId = TenantId,
+                EmployeeId = EmployeeId,
+                Date = WorkDate,
+                ActualStart = UtcNow.AddHours(-8),
+                Status = AttendanceRecord.StatusActive
+            });
+        fixture.TaskSessions
+            .Setup(x => x.GetOpenSessionsForEmployeeAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new OpenEmployeeTaskSession(Guid.NewGuid(), "Fix login bug"),
+                new OpenEmployeeTaskSession(Guid.NewGuid(), "Update API docs")
+            });
+
+        var result = await fixture.ClockOut.Handle(new ClockOutCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Contains("Fix login bug", result.Error!);
+        Assert.Contains("Update API docs", result.Error!);
+    }
+
+    [Fact]
+    public async Task ClockOut_IgnoresOpenBreakCheckOrderAndChecksTaskSessionsOnlyAfterAttendanceStateIsValid()
+    {
+        // An open task session must not be checked (or block) when the employee isn't even
+        // clocked in yet - the earlier not_clocked_in guard must still take priority.
+        var fixture = CreateFixture();
+        fixture.Attendance
+            .Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AttendanceRecord?)null);
+        fixture.TaskSessions
+            .Setup(x => x.GetOpenSessionsForEmployeeAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new OpenEmployeeTaskSession(Guid.NewGuid(), "Fix login bug") });
+
+        var result = await fixture.ClockOut.Handle(new ClockOutCommand(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("not_clocked_in", result.Error);
+        fixture.TaskSessions.Verify(x => x.GetOpenSessionsForEmployeeAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static Fixture CreateFixture(
         AttendanceSchedule? schedule = null,
         AllowedClockInMethods? allowedMethods = null,
@@ -476,12 +557,18 @@ public sealed class ClockInOutCommandHandlerTests
                 It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<bool>>> operation, CancellationToken ct) => operation(ct));
 
+        var taskSessions = new Mock<ITaskClockingSessionRepository>();
+        taskSessions
+            .Setup(x => x.GetOpenSessionsForEmployeeAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<OpenEmployeeTaskSession>());
+
         return new Fixture(
             new ClockInCommandHandler(todayState.Object, attendance.Object, unitOfWork.Object),
-            new ClockOutCommandHandler(todayState.Object, attendance.Object, unitOfWork.Object),
+            new ClockOutCommandHandler(todayState.Object, attendance.Object, unitOfWork.Object, taskSessions.Object),
             todayState,
             attendance,
-            unitOfWork);
+            unitOfWork,
+            taskSessions);
     }
 
     private static AttendanceTodayResponse CreateTodayResponse()
@@ -523,6 +610,7 @@ public sealed class ClockInOutCommandHandlerTests
         ClockOutCommandHandler ClockOut,
         Mock<IAttendanceTodayStateService> TodayState,
         Mock<IAttendanceReadRepository> Attendance,
-        Mock<IUnitOfWork> UnitOfWork);
+        Mock<IUnitOfWork> UnitOfWork,
+        Mock<ITaskClockingSessionRepository> TaskSessions);
 }
 

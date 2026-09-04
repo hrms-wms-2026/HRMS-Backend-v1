@@ -9,6 +9,7 @@ using ONEVO.Application.Features.TimeAttendance.Commands.ClockOut;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -110,7 +111,11 @@ public class TrayClockOutCommandHandlerTests
                 It.IsAny<Func<CancellationToken, Task<Result<bool>>>>(),
                 It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<bool>>> operation, CancellationToken ct) => operation(ct));
-        var inner = new ClockOutCommandHandler(innerTodayState.Object, attendance.Object, unitOfWork.Object);
+        var taskSessions = new Mock<ITaskClockingSessionRepository>();
+        taskSessions
+            .Setup(x => x.GetOpenSessionsForEmployeeAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<OpenEmployeeTaskSession>());
+        var inner = new ClockOutCommandHandler(innerTodayState.Object, attendance.Object, unitOfWork.Object, taskSessions.Object);
 
         var sut = CreateSut(device, todayState, inner);
 

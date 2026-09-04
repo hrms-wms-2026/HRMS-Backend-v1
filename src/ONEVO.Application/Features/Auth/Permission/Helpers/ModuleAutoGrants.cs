@@ -10,7 +10,7 @@ public static class ModuleAutoGrants
             ["leave"]      = ["leave:read-own"],
             ["attendance"] = ["attendance:read-own", "attendance:write-own"],
             ["calendar"]   = ["calendar:read"],
-            ["monitoring"] = ["activity:read:self"],
+            ["activity_monitoring"] = ["activity:read:self"],
             ["workforce"]  = ["workforce:dashboard"],
             ["work_management"] = ["tasks:read-own"],
         };

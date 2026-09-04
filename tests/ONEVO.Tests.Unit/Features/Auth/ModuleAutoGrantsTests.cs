@@ -52,7 +52,7 @@ public sealed class ModuleAutoGrantsTests
     [Fact]
     public void AllSixModulesHaveAutoGrants()
     {
-        var modules = new[] { "employees", "leave", "attendance", "calendar", "monitoring", "workforce" };
+        var modules = new[] { "core_hr", "leave", "attendance", "calendar", "activity_monitoring", "workforce" };
         foreach (var m in modules)
             ModuleAutoGrants.GetForModules([m]).Should().NotBeEmpty(because: $"module '{m}' must have auto-grants");
     }
