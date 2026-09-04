@@ -13,6 +13,7 @@ public static class UploadPurposeCatalog
     public const string ProjectCover = "project_cover";
     public const string ProjectBanner = "project_banner";
     public const string MonitoringFaceScan = "monitoring_face_scan";
+    public const string BiometricReferencePhoto = "biometric_reference_photo";
     public const string MonitoringScreenshot = "monitoring_screenshot";
     public const string ObjectiveAsset = "objective_asset";
 
@@ -50,6 +51,7 @@ public static class UploadPurposeCatalog
         [CompanyLogo] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [EmployeeAvatar] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [MonitoringFaceScan] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
+        [BiometricReferencePhoto] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [MonitoringScreenshot] = new UploadPurposeRule(10 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [ProjectCover] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [ProjectBanner] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),

@@ -176,7 +176,9 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
         scanResp.StatusCode.Should().Be(HttpStatusCode.OK, await scanResp.Content.ReadAsStringAsync());
         var scanBody = await scanResp.Content.ReadFromJsonAsync<JsonElement>();
         scanBody.GetProperty("face_scan_id").GetString().Should().NotBeNullOrEmpty();
-        scanBody.GetProperty("status").GetString().Should().Be("available");
+        // No biometric profile is enrolled for this test employee, so verification
+        // short-circuits to "no_reference_photo" rather than the old unconditional "available".
+        scanBody.GetProperty("status").GetString().Should().Be("no_reference_photo");
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
