@@ -19,7 +19,9 @@ public sealed record RespondToCalendarEventRequest(string ResponseStatus);
 public sealed record MyEffectiveTimezoneViewModel(string Timezone);
 
 public sealed record CheckCalendarConflictsRequest(IReadOnlyList<Guid> ParticipantEmployeeIds, DateTimeOffset StartDate, DateTimeOffset EndDate);
-public sealed record CalendarConflictViewModel(Guid EmployeeId, string EmployeeName, Guid ConflictingEventId, string ConflictingEventTitle);
+public sealed record CalendarConflictViewModel(
+    Guid EmployeeId, string EmployeeName, Guid ConflictingEventId, string ConflictingEventTitle,
+    DateTimeOffset OverlapStart, DateTimeOffset OverlapEnd);
 public sealed record CalendarConflictsViewModel(IReadOnlyList<CalendarConflictViewModel> Conflicts);
 
 public sealed record EditRecurringOccurrenceRequest(
@@ -55,7 +57,8 @@ public static class CalendarEventViewModelMapper
 public static class CalendarConflictsViewModelMapper
 {
     public static CalendarConflictsViewModel ToViewModel(this CalendarConflictsResponse dto) =>
-        new(dto.Conflicts.Select(c => new CalendarConflictViewModel(c.EmployeeId, c.EmployeeName, c.ConflictingEventId, c.ConflictingEventTitle)).ToList());
+        new(dto.Conflicts.Select(c => new CalendarConflictViewModel(
+            c.EmployeeId, c.EmployeeName, c.ConflictingEventId, c.ConflictingEventTitle, c.OverlapStart, c.OverlapEnd)).ToList());
 }
 
 public sealed record UpdateHolidayCalendarSettingsRequest(string? OverrideCountryCode, bool HolidaySyncEnabled);
