@@ -14,7 +14,7 @@ public sealed record UpdateCalendarEventRequest(
     bool IsAllDay, string? Location, string? MeetingLink, string? Color,
     string Recurrence);
 
-public sealed record RespondToCalendarEventRequest(string ResponseStatus);
+public sealed record RespondToCalendarEventRequest(string ResponseStatus, string? Reason = null, Guid? NomineeEmployeeId = null);
 
 public sealed record MyEffectiveTimezoneViewModel(string Timezone);
 

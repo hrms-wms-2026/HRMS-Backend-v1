@@ -13,6 +13,7 @@ using ONEVO.Application.Features.Calendar.Commands.UpdateCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.UpdateHolidayCalendarSettings;
 using ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts;
 using ONEVO.Application.Features.Calendar.Queries.GetCalendarEvents;
+using ONEVO.Application.Features.Calendar.Queries.GetEligibleNominees;
 using ONEVO.Application.Features.Calendar.Queries.GetHolidayCalendarSettings;
 using ONEVO.Application.Features.Calendar.Queries.GetMyEffectiveTimezone;
 
@@ -104,9 +105,19 @@ public class CalendarController : ControllerBase
     [RequirePermission("calendar:read")]
     public async Task<IActionResult> Respond(Guid id, [FromBody] RespondToCalendarEventRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new RespondToCalendarEventCommand(id, request.ResponseStatus), ct);
+        var result = await _mediator.Send(new RespondToCalendarEventCommand(id, request.ResponseStatus, request.Reason, request.NomineeEmployeeId), ct);
         return result.IsSuccess
             ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("{id:guid}/eligible-nominees")]
+    [RequirePermission("calendar:read")]
+    public async Task<IActionResult> GetEligibleNominees(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetEligibleNomineesQuery(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
