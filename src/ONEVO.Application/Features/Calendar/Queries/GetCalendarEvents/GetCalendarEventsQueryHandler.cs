@@ -74,7 +74,12 @@ public sealed class GetCalendarEventsQueryHandler(
             }
         }
 
-        return Result<CalendarEventsResponse>.Success(new CalendarEventsResponse(items.OrderBy(i => i.StartDate).ToList()));
+        var withConflictFlags = items.Select(item => item with
+        {
+            HasConflict = items.Any(other => other.Id != item.Id && other.StartDate < item.EndDate && item.StartDate < other.EndDate)
+        }).ToList();
+
+        return Result<CalendarEventsResponse>.Success(new CalendarEventsResponse(withConflictFlags.OrderBy(i => i.StartDate).ToList()));
     }
 
     private async Task<IReadOnlyList<CalendarEventParticipantSummary>> ResolveParticipantSummariesAsync(

@@ -37,7 +37,7 @@ public sealed record CalendarEventViewModel(
     string? EventStatus, bool IsPrivate, string? Location, string? MeetingLink,
     string? ExternalSource, Guid CreatedById,
     bool IsRecurringOccurrence = false, Guid? RecurrenceMasterId = null, DateTimeOffset? OriginalStart = null,
-    IReadOnlyList<CalendarEventParticipantSummaryViewModel>? Participants = null);
+    IReadOnlyList<CalendarEventParticipantSummaryViewModel>? Participants = null, bool HasConflict = false);
 
 public sealed record CalendarEventsViewModel(IReadOnlyList<CalendarEventViewModel> Events);
 
@@ -48,7 +48,8 @@ public static class CalendarEventViewModelMapper
         dto.Recurrence, dto.IsAllDay, dto.Timezone, dto.EventStatus, dto.IsPrivate, dto.Location,
         dto.MeetingLink, dto.ExternalSource, dto.CreatedById,
         dto.IsRecurringOccurrence, dto.RecurrenceMasterId, dto.OriginalStart,
-        dto.Participants?.Select(p => new CalendarEventParticipantSummaryViewModel(p.EmployeeId, p.EmployeeName, p.ResponseStatus)).ToList());
+        dto.Participants?.Select(p => new CalendarEventParticipantSummaryViewModel(p.EmployeeId, p.EmployeeName, p.ResponseStatus)).ToList(),
+        dto.HasConflict);
 
     public static CalendarEventsViewModel ToViewModel(this CalendarEventsResponse dto) =>
         new(dto.Events.Select(e => e.ToViewModel()).ToList());
