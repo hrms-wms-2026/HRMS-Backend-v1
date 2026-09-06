@@ -1,13 +1,7 @@
 using System.Net.Http.Json;
+using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 
 namespace ONEVO.Infrastructure.Services.Calendar;
-
-public sealed record NagerHoliday(DateOnly Date, string Name, bool NationalHoliday);
-
-public interface INagerHolidaysClient
-{
-    Task<IReadOnlyList<NagerHoliday>> GetPublicHolidaysAsync(string countryCode, int year, CancellationToken ct = default);
-}
 
 public sealed class NagerHolidaysClient(HttpClient http) : INagerHolidaysClient
 {

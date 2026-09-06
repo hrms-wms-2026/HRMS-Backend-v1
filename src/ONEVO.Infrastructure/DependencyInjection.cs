@@ -233,15 +233,14 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Calendar.EfLeaveCalendarRepository>();
         services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestDayCalculator>();
         services.AddSingleton<ONEVO.Application.Features.Leave.Calendar.Helpers.LeaveCalendarRequestProjector>();
-        services.AddHttpClient<ONEVO.Infrastructure.Services.Calendar.INagerHolidaysClient,
+        services.AddHttpClient<ONEVO.Application.Features.Calendar.ServiceInterfaces.INagerHolidaysClient,
             ONEVO.Infrastructure.Services.Calendar.NagerHolidaysClient>(client =>
         {
             client.BaseAddress = new Uri("https://nagerholidays.com/api/v4/");
             client.Timeout = TimeSpan.FromSeconds(10);
         });
-        // IHolidayCalendarSettingsRepository is registered further down (search
-        // EfHolidayCalendarSettingsRepository) - both these NagerHolidaysProvider
-        // registrations depend on it being real, not just declared, before the app can start.
+        services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.IHolidayCalendarSettingsRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfHolidayCalendarSettingsRepository>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveHolidayProvider,
             ONEVO.Infrastructure.Services.Calendar.NagerHolidaysProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveCalendarHolidayProvider,

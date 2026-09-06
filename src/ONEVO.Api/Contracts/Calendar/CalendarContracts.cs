@@ -1,5 +1,6 @@
 using ONEVO.Application.Features.Calendar.DTOs.Responses;
 using ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts;
+using ONEVO.Application.Features.Calendar.Queries.GetHolidayCalendarSettings;
 
 namespace ONEVO.Api.Contracts.Calendar;
 
@@ -55,4 +56,17 @@ public static class CalendarConflictsViewModelMapper
 {
     public static CalendarConflictsViewModel ToViewModel(this CalendarConflictsResponse dto) =>
         new(dto.Conflicts.Select(c => new CalendarConflictViewModel(c.EmployeeId, c.EmployeeName, c.ConflictingEventId, c.ConflictingEventTitle)).ToList());
+}
+
+public sealed record UpdateHolidayCalendarSettingsRequest(string? OverrideCountryCode, bool HolidaySyncEnabled);
+
+public sealed record HolidayCalendarSettingsViewModel(
+    Guid Id, Guid LegalEntityId, string DefaultCountryCode, string? OverrideCountryCode,
+    bool HolidaySyncEnabled, int? LastSyncedYear, DateTimeOffset? LastSyncedAt);
+
+public static class HolidayCalendarSettingsViewModelMapper
+{
+    public static HolidayCalendarSettingsViewModel ToViewModel(this HolidayCalendarSettingsResponse dto) => new(
+        dto.Id, dto.LegalEntityId, dto.DefaultCountryCode, dto.OverrideCountryCode,
+        dto.HolidaySyncEnabled, dto.LastSyncedYear, dto.LastSyncedAt);
 }
