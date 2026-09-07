@@ -2,10 +2,15 @@ using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
 using ONEVO.Application.Common.Configuration;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Biometrics.Commands.CompleteEnrollmentAttempt;
 using ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.DTOs.Responses;
+using ONEVO.Application.Features.Storage.File.Helpers;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Domain.Errors;
 using ONEVO.Domain.Features.Monitoring.Biometrics.Entities;
 using ONEVO.Tests.Unit.Fakes;
 using Xunit;
@@ -18,6 +23,7 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
     private readonly Mock<IBiometricProfileRepository> _profiles = new();
     private readonly Mock<ITrayCurrentDevice> _device = new();
     private readonly Mock<IFaceLivenessService> _liveness = new();
+    private readonly Mock<IFileStorageService> _fileStorage = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly BiometricEnrollmentOptions _options = new() { LivenessConfidenceThreshold = 90f, SessionTtlMinutes = 3 };
 
@@ -33,7 +39,7 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
     }
 
     private CompleteEnrollmentAttemptCommandHandler CreateSut() => new(
-        _attempts.Object, _profiles.Object, _device.Object, _liveness.Object, _clock, Options.Create(_options));
+        _attempts.Object, _profiles.Object, _device.Object, _liveness.Object, _fileStorage.Object, _clock, Options.Create(_options));
 
     private BiometricEnrollmentAttempt PendingAttempt(DateTimeOffset createdAt) => new()
     {
@@ -49,9 +55,15 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
         _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(attempt);
         _liveness.Setup(l => l.GetSessionResultAsync("aws-session-123", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new FaceLivenessOutcome("SUCCEEDED", 97.5f));
+            .ReturnsAsync(new FaceLivenessOutcome("SUCCEEDED", 97.5f, new MemoryStream(new byte[] { 1, 2, 3 })));
         _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((BiometricProfile?)null);
+        _fileStorage.Setup(f => f.UploadAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(new FileRecordDto(
+                Guid.NewGuid(), _tenantId, "tenants/x/files/y/z.jpg", "reference-photo.jpg", "z.jpg",
+                "image/jpeg", 3, "checksum", "available", DateTimeOffset.UtcNow)));
 
         var result = await CreateSut().Handle(new CompleteEnrollmentAttemptCommand(_attemptId), CancellationToken.None);
 
@@ -69,7 +81,7 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
         _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(attempt);
         _liveness.Setup(l => l.GetSessionResultAsync("aws-session-123", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new FaceLivenessOutcome("SUCCEEDED", 42f));
+            .ReturnsAsync(new FaceLivenessOutcome("SUCCEEDED", 42f, new MemoryStream(new byte[] { 1, 2, 3 })));
 
         var result = await CreateSut().Handle(new CompleteEnrollmentAttemptCommand(_attemptId), CancellationToken.None);
 
@@ -118,5 +130,72 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(409);
         _liveness.Verify(l => l.GetSessionResultAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task HighConfidenceSuccess_UploadsReferencePhoto_AndSetsFileIdOnProfile()
+    {
+        var attempt = PendingAttempt(_clock.UtcNow);
+        var referenceFileId = Guid.NewGuid();
+        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(attempt);
+        _liveness.Setup(l => l.GetSessionResultAsync("aws-session-123", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FaceLivenessOutcome("SUCCEEDED", 97.5f, new MemoryStream(new byte[] { 1, 2, 3 })));
+        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((BiometricProfile?)null);
+        _fileStorage.Setup(f => f.UploadAsync(
+                _tenantId, _userId, It.IsAny<string>(), "image/jpeg",
+                UploadPurposeCatalog.BiometricReferencePhoto, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(new FileRecordDto(
+                referenceFileId, _tenantId, "tenants/x/files/y/z.jpg", "reference-photo.jpg", "z.jpg",
+                "image/jpeg", 3, "checksum", "available", DateTimeOffset.UtcNow)));
+
+        var result = await CreateSut().Handle(new CompleteEnrollmentAttemptCommand(_attemptId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        _profiles.Verify(p => p.AddAsync(
+            It.Is<BiometricProfile>(bp => bp.ReferencePhotoFileId == referenceFileId),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task MissingReferenceImage_MarksAttemptFailed_ReturnsUnprocessableEntity_WithoutUploading()
+    {
+        var attempt = PendingAttempt(_clock.UtcNow);
+        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(attempt);
+        _liveness.Setup(l => l.GetSessionResultAsync("aws-session-123", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FaceLivenessOutcome("SUCCEEDED", 97.5f, null));
+
+        var result = await CreateSut().Handle(new CompleteEnrollmentAttemptCommand(_attemptId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(422);
+        attempt.Status.Should().Be(BiometricEnrollmentStatus.Failed);
+        _fileStorage.Verify(f => f.UploadAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReferencePhotoUploadFails_MarksAttemptFailed_ReturnsUploadError()
+    {
+        var attempt = PendingAttempt(_clock.UtcNow);
+        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(attempt);
+        _liveness.Setup(l => l.GetSessionResultAsync("aws-session-123", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FaceLivenessOutcome("SUCCEEDED", 97.5f, new MemoryStream(new byte[] { 1, 2, 3 })));
+        _fileStorage.Setup(f => f.UploadAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Failure("Storage quota exceeded.", 409));
+
+        var result = await CreateSut().Handle(new CompleteEnrollmentAttemptCommand(_attemptId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(500);
+        result.Error.Should().Be(MonitoringErrors.ReferencePhotoUploadFailed);
+        attempt.Status.Should().Be(BiometricEnrollmentStatus.Failed);
+        _profiles.Verify(p => p.AddAsync(It.IsAny<BiometricProfile>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

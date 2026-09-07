@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
@@ -67,6 +68,14 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
             // Stub R2 / quota-backed file storage so face-scan tests stay offline.
             services.RemoveAll<IFileStorageService>();
             services.AddSingleton<IFileStorageService, NoOpFileStorageService>();
+
+            // Stub AWS Rekognition-backed face matching: constructing the real
+            // RekognitionFaceMatchService pulls in IAmazonRekognition, whose client
+            // resolves AWS credentials eagerly at construction time and throws when
+            // none are configured (as in CI/local test envs) — this fake keeps DI
+            // resolvable without needing real AWS credentials or making network calls.
+            services.RemoveAll<IFaceMatchService>();
+            services.AddSingleton<IFaceMatchService, NoOpFaceMatchService>();
         });
     }
 
@@ -108,6 +117,12 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
         {
             return Task.FromResult<ResolvedPlatformOAuthAppCredential?>(null);
         }
+    }
+
+    private sealed class NoOpFaceMatchService : IFaceMatchService
+    {
+        public Task<FaceMatchOutcome> CompareAsync(Stream referenceImage, Stream capturedImage, CancellationToken ct)
+            => Task.FromResult(new FaceMatchOutcome(false, 0f));
     }
 
     private sealed class NoOpFileStorageService : IFileStorageService

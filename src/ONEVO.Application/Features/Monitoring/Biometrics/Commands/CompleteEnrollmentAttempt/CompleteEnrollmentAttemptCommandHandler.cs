@@ -6,6 +6,8 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Biometrics.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Domain.Errors;
 using ONEVO.Domain.Features.Monitoring.Biometrics.Entities;
 
@@ -18,6 +20,7 @@ public class CompleteEnrollmentAttemptCommandHandler
     private readonly IBiometricProfileRepository _profiles;
     private readonly ITrayCurrentDevice _device;
     private readonly IFaceLivenessService _liveness;
+    private readonly IFileStorageService _fileStorage;
     private readonly IDateTimeProvider _clock;
     private readonly BiometricEnrollmentOptions _options;
 
@@ -26,6 +29,7 @@ public class CompleteEnrollmentAttemptCommandHandler
         IBiometricProfileRepository profiles,
         ITrayCurrentDevice device,
         IFaceLivenessService liveness,
+        IFileStorageService fileStorage,
         IDateTimeProvider clock,
         IOptions<BiometricEnrollmentOptions> options)
     {
@@ -33,6 +37,7 @@ public class CompleteEnrollmentAttemptCommandHandler
         _profiles = profiles;
         _device = device;
         _liveness = liveness;
+        _fileStorage = fileStorage;
         _clock = clock;
         _options = options.Value;
     }
@@ -77,8 +82,32 @@ public class CompleteEnrollmentAttemptCommandHandler
             return Result<BiometricProfileResponse>.UnprocessableEntity(MonitoringErrors.LivenessCheckFailed);
         }
 
+        if (outcome.ReferenceImageBytes is null)
+        {
+            attempt.Status = BiometricEnrollmentStatus.Failed;
+            attempt.FailureReason = MonitoringErrors.ReferenceImageMissing;
+            _attempts.Update(attempt);
+            await _attempts.SaveChangesAsync(ct);
+            return Result<BiometricProfileResponse>.UnprocessableEntity(MonitoringErrors.LivenessCheckFailed);
+        }
+
+        var referenceUpload = await _fileStorage.UploadAsync(
+            tenantId, employeeId, "reference-photo.jpg", "image/jpeg",
+            UploadPurposeCatalog.BiometricReferencePhoto, outcome.ReferenceImageBytes, ct);
+
+        if (!referenceUpload.IsSuccess)
+        {
+            attempt.Status = BiometricEnrollmentStatus.Failed;
+            attempt.FailureReason = $"Reference photo storage failed: {referenceUpload.Error}";
+            _attempts.Update(attempt);
+            await _attempts.SaveChangesAsync(ct);
+            return Result<BiometricProfileResponse>.Failure(MonitoringErrors.ReferencePhotoUploadFailed, 500);
+        }
+
         attempt.Status = BiometricEnrollmentStatus.Succeeded;
         _attempts.Update(attempt);
+
+        var referencePhotoFileId = referenceUpload.Value!.Id;
 
         var existingProfile = await _profiles.GetByEmployeeIdAsync(tenantId, employeeId, ct);
         BiometricProfile profile;
@@ -87,6 +116,7 @@ public class CompleteEnrollmentAttemptCommandHandler
             existingProfile.Status = BiometricProfileStatus.Enrolled;
             existingProfile.EnrolledAt = now;
             existingProfile.UpdatedAt = now;
+            existingProfile.ReferencePhotoFileId = referencePhotoFileId;
             _profiles.Update(existingProfile);
             profile = existingProfile;
         }
@@ -100,7 +130,8 @@ public class CompleteEnrollmentAttemptCommandHandler
                 Status = BiometricProfileStatus.Enrolled,
                 EnrolledAt = now,
                 CreatedAt = now,
-                UpdatedAt = now
+                UpdatedAt = now,
+                ReferencePhotoFileId = referencePhotoFileId
             };
             await _profiles.AddAsync(profile, ct);
         }

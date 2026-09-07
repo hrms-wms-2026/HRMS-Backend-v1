@@ -12,6 +12,9 @@ public class AwsRekognitionOptions
     /// <summary>Minimum GetFaceLivenessSessionResults confidence (0-100) to accept enrollment.</summary>
     [Range(0, 100)] public float LivenessConfidenceThreshold { get; set; } = 90f;
 
+    /// <summary>Minimum CompareFaces similarity (0-100) to accept a check-in face match.</summary>
+    [Range(0, 100)] public float FaceMatchSimilarityThreshold { get; set; } = 80f;
+
     /// <summary>STS AssumeRole session duration; AWS minimum is 900 seconds.</summary>
     [Range(900, 3600)] public int RoleSessionDurationSeconds { get; set; } = 900;
 

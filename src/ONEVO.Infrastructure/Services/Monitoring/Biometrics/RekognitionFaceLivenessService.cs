@@ -41,7 +41,10 @@ public class RekognitionFaceLivenessService : IFaceLivenessService
         var response = await _rekognition.GetFaceLivenessSessionResultsAsync(
             new GetFaceLivenessSessionResultsRequest { SessionId = sessionId }, ct);
 
-        return new FaceLivenessOutcome(response.Status.Value, response.Confidence ?? 0f);
+        return new FaceLivenessOutcome(
+            response.Status.Value,
+            response.Confidence ?? 0f,
+            response.ReferenceImage?.Bytes);
     }
 
     public async Task<ScopedAwsCredentials> AssumeLivenessRoleAsync(string sessionId, CancellationToken ct)
