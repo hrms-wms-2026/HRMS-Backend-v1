@@ -45,6 +45,22 @@ public class EfNotificationRepository : INotificationRepository
         await _db.MonitoringNotifications.AsNoTracking()
             .CountAsync(n => n.TenantId == tenantId && n.EmployeeId == employeeId, ct);
 
+    public async Task<IReadOnlySet<Guid>> GetEmployeeIdsWithRecentAlertAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, NotificationType type, DateTimeOffset sinceUtc, CancellationToken ct)
+    {
+        if (employeeIds.Count == 0) return new HashSet<Guid>();
+
+        var matches = await _db.MonitoringNotifications
+            .AsNoTracking()
+            .Where(n => n.TenantId == tenantId && employeeIds.Contains(n.EmployeeId)
+                        && n.Type == type && n.CreatedAt >= sinceUtc)
+            .Select(n => n.EmployeeId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        return matches.ToHashSet();
+    }
+
     public void Update(Notification notification) => _db.MonitoringNotifications.Update(notification);
 
     public async Task<int> SaveChangesAsync(CancellationToken ct) => await _db.SaveChangesAsync(ct);

@@ -7,7 +7,8 @@ public record EmployeeDetailResponse(
     IReadOnlyList<EmployeeDetailEmergencyContact> EmergencyContacts,
     EmployeeDetailPayroll? Payroll,
     string? InvitationStatus,
-    DateTimeOffset? InvitationExpiresAt);
+    DateTimeOffset? InvitationExpiresAt,
+    EmployeeListAttendanceSummaryResponse? AttendanceSummary = null);
 
 public record EmployeeDetailJobInformation(
     string EmployeeNumber, Guid? LegalEntityId, string? LegalEntityName, string? DepartmentName, string? PositionName,

@@ -129,7 +129,7 @@ public class CreateClockInPolicyCommandValidatorTests
     private static WorkAreaRulesInput ValidWorkAreaRules()
         => new(
             new WorkAreaSourceRulesInput(true, false, false, false),
-            new WorkAreaSourceRulesInput(false, true, true, true),
+            new RemoteWorkAreaRulesInput(false, true, true, true, false),
             new HybridWorkAreaRulesInput(false, true, true, true, true, ClockInPolicyEntity.HybridSourceEmployeeChoice),
             new FieldWorkAreaRulesInput(false, true, true, ClockInPolicyEntity.FieldPhotoRequired));
 }

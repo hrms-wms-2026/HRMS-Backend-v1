@@ -77,7 +77,16 @@ public sealed class StartDeviceAuthorizationCommandHandler
         await _repository.AddDeviceAuthorizationAsync(authorization, ct);
         await _unitOfWork.SaveChangesAsync(ct);
 
-        var baseUrl = (_configuration["Urls:AppBaseUrl"] ?? "https://localhost").TrimEnd('/');
+        // Fail loudly rather than silently falling back to a hardcoded host: a stale/missing
+        // config value here would otherwise hand every device-pairing link to the wrong origin
+        // (and, in dev, one Chrome refuses via ERR_CERT_COMMON_NAME_INVALID since the mkcert
+        // certs are issued for the real dev domain, not literal "localhost"). Mirrors
+        // TenantSessionExchangeService.BuildContinueUrl's same fail-loud convention for this key.
+        var configuredBaseUrl = _configuration["Urls:AppBaseUrl"];
+        if (string.IsNullOrWhiteSpace(configuredBaseUrl))
+            throw new InvalidOperationException("Urls:AppBaseUrl must be configured to build a device authorization URL.");
+
+        var baseUrl = configuredBaseUrl.TrimEnd('/');
         var verificationUri = $"{baseUrl}/device/activate";
         var completeUri = $"{verificationUri}?request_id={Uri.EscapeDataString(authorization.Id.ToString())}&user_code={Uri.EscapeDataString(userCode)}";
 

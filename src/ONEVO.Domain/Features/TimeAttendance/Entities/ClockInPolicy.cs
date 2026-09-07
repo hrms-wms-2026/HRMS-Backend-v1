@@ -43,6 +43,7 @@ public class ClockInPolicy : ITenantOwnedEntity
     public bool RemoteWebEnabled { get; set; }
     public bool RemoteTrayEnabled { get; set; }
     public bool RemotePhotoRequired { get; set; }
+    public bool RemoteLocationCheckRequired { get; set; }
 
     // Persisted as either_* columns (inventory). API/UI expose this work area as "hybrid".
     public bool EitherBiometricEnabled { get; set; }

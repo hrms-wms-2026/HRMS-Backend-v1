@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Commands.ClockOut.ClockOutCommandHandler>();
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Commands.AttendanceCorrections.AttendanceCorrectionWorkflow>();
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.Commands.WorkAreaChangeRequests.WorkAreaChangeRequestWorkflow>();
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.Commands.LocationChangeRequests.LocationChangeRequestWorkflow>();
 
         // Outbox message consumers (dispatched by the Infrastructure outbox worker).
         services.AddScoped<IOutboxMessageHandler, TenantOwnerInviteEmailOutboxHandler>();

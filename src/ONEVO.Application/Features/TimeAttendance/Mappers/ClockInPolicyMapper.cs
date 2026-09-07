@@ -37,11 +37,12 @@ public static class ClockInPolicyMapper
                     entity.OnsiteWebEnabled,
                     entity.OnsiteTrayEnabled,
                     entity.OnsitePhotoRequired),
-                new WorkAreaSourceRulesResponse(
+                new RemoteWorkAreaRulesResponse(
                     entity.RemoteBiometricEnabled,
                     entity.RemoteWebEnabled,
                     entity.RemoteTrayEnabled,
-                    entity.RemotePhotoRequired),
+                    entity.RemotePhotoRequired,
+                    entity.RemoteLocationCheckRequired),
                 new HybridWorkAreaRulesResponse(
                     entity.EitherBiometricEnabled,
                     entity.EitherWebEnabled,
@@ -89,6 +90,7 @@ public static class ClockInPolicyMapper
         entity.RemoteWebEnabled = rules.Remote.WebEnabled;
         entity.RemoteTrayEnabled = rules.Remote.TrayEnabled;
         entity.RemotePhotoRequired = rules.Remote.PhotoRequired;
+        entity.RemoteLocationCheckRequired = rules.Remote.LocationCheckRequired;
 
         // API/UI "hybrid" maps to inventory either_* persistence columns.
         entity.EitherBiometricEnabled = rules.Hybrid.BiometricEnabled;

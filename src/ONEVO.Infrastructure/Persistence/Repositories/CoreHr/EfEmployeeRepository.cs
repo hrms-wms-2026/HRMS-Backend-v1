@@ -1,12 +1,17 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
@@ -17,16 +22,44 @@ public class EfEmployeeRepository : IEmployeeRepository
     private readonly ApplicationDbContext _db;
     private readonly IAttendanceReadRepository? _attendance;
     private readonly ILeaveRequestReadRepository? _leaveRequests;
+    private readonly IMonitoringToggleResolver? _toggles;
+    private readonly INotificationRepository? _notifications;
+    private readonly ICheckInRepository? _checkIns;
+    private readonly IExpectedWorkAreaResolver? _expectedWorkAreas;
+    private readonly IClockInPolicyRepository? _clockInPolicies;
+    private readonly IEmployeeWorkLocationRepository? _workLocations;
 
     public EfEmployeeRepository(
         ApplicationDbContext db,
         IAttendanceReadRepository? attendance = null,
-        ILeaveRequestReadRepository? leaveRequests = null)
+        ILeaveRequestReadRepository? leaveRequests = null,
+        IMonitoringToggleResolver? toggles = null,
+        INotificationRepository? notifications = null,
+        ICheckInRepository? checkIns = null,
+        IExpectedWorkAreaResolver? expectedWorkAreas = null,
+        IClockInPolicyRepository? clockInPolicies = null,
+        IEmployeeWorkLocationRepository? workLocations = null)
     {
         _db = db;
         _attendance = attendance;
         _leaveRequests = leaveRequests;
+        _toggles = toggles;
+        _notifications = notifications;
+        _checkIns = checkIns;
+        _expectedWorkAreas = expectedWorkAreas;
+        _clockInPolicies = clockInPolicies;
+        _workLocations = workLocations;
     }
+
+    /// <summary>A LongIdleAlert notification is only treated as "still relevant" within this
+    /// window - mirrors WellnessRuleEvaluatorJob's own 1-hour long-idle cooldown, so an alert from
+    /// earlier in the day doesn't keep badging the employee hours after they resumed activity.</summary>
+    private static readonly TimeSpan IdleAlertLookback = TimeSpan.FromHours(1);
+
+    /// <summary>Check-in lookups use this window when deciding whether to show a camera-skip or
+    /// outside-work-location warning - a generous superset of any single work day's local-timezone
+    /// boundary, not a "recency" signal like IdleAlertLookback above.</summary>
+    private static readonly TimeSpan CheckInLookback = TimeSpan.FromHours(24);
 
     /// <summary>
     /// Proven by EmployeesListIntegrationTests against real PostgreSQL (the EF InMemory
@@ -193,7 +226,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                 .GroupBy(record => record.EmployeeId)
                 .ToDictionary(group => group.Key, group => (IReadOnlyList<BreakRecord>)group.ToArray());
 
-            var orderedRows = rows
+            var pagedRows = rows
                 .Select(row =>
                 {
                     scheduleByEmployeeId.TryGetValue(row.e.Id, out var resolution);
@@ -254,6 +287,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                     {
                         Row = row,
                         AttendanceSummary = attendanceSummary,
+                        HasClockedInToday = hasClockedInToday,
                     };
                 })
                 .OrderByDescending(row => GetAttentionPriority(row.AttendanceSummary?.AttentionType))
@@ -261,6 +295,24 @@ public class EfEmployeeRepository : IEmployeeRepository
                 .ThenBy(row => row.Row.e.Id)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
+                .ToList();
+
+            // Phase A monitoring warnings (idle-too-long, camera-verification-skipped): deliberately
+            // scoped to just this page rather than the full filtered set above, to avoid an
+            // O(tenant-size) toggle-resolution fan-out on every list request. That means a row with
+            // one of these warnings does not get bumped into the higher attention-priority sort tier
+            // it would otherwise earn - an accepted Phase A trade-off, not a bug.
+            var monitoringWarnings = await ResolveMonitoringWarningOverridesAsync(
+                tenantId,
+                pagedRows
+                    .Where(row => row.AttendanceSummary is not null)
+                    .Select(row => new PagedEmployeeMonitoringRow(
+                        row.Row.e, row.Row.legalEntity, row.HasClockedInToday, row.AttendanceSummary!))
+                    .ToList(),
+                attendanceOptions.UtcNow,
+                ct);
+
+            var orderedRows = pagedRows
                 .Select(row => new EmployeeListItemResponse(
                     row.Row.e.Id,
                     row.Row.e.EmployeeNumber,
@@ -278,7 +330,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                     row.Row.manager != null ? row.Row.manager.FirstName + " " + row.Row.manager.LastName : null,
                     null,
                     null,
-                    row.AttendanceSummary))
+                    monitoringWarnings.TryGetValue(row.Row.e.Id, out var overridden) ? overridden : row.AttendanceSummary))
                 .ToList();
 
             return (orderedRows, totalCount);
@@ -311,12 +363,173 @@ public class EfEmployeeRepository : IEmployeeRepository
     private static int GetAttentionPriority(string? attentionType)
         => attentionType switch
         {
-            "not_clocked_in" => 4,
-            "over_break" => 3,
-            "worked_during_time_off" => 2,
-            "worked_on_non_working_day" => 1,
+            "not_clocked_in" => 7,
+            "over_break" => 6,
+            "worked_during_time_off" => 5,
+            "worked_on_non_working_day" => 4,
+            "outside_work_location" => 3,
+            "camera_verification_skipped" => 2,
+            "idle_too_long" => 1,
             _ => 0
         };
+
+    private readonly record struct PagedEmployeeMonitoringRow(
+        EmployeeEntity Employee,
+        ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity? LegalEntity,
+        bool HasClockedInToday,
+        EmployeeListAttendanceSummaryResponse AttendanceSummary)
+    {
+        public Guid EmployeeId => Employee.Id;
+        public Guid UserId => Employee.UserId;
+    }
+
+    /// <summary>
+    /// Layers the outside-work-location, idle-too-long and camera-verification-skipped monitoring
+    /// warnings onto rows that have no higher-priority attendance warning already (AttentionType is
+    /// null), in that priority order (matches GetAttentionPriority). Monitoring-only: this never
+    /// blocks or locks anything, it only ever adds a warning badge, matching the same
+    /// attentionType/attentionLabel/attentionSeverity fields already used for over-break/not-clocked-in.
+    /// </summary>
+    private async Task<Dictionary<Guid, EmployeeListAttendanceSummaryResponse>> ResolveMonitoringWarningOverridesAsync(
+        Guid tenantId, IReadOnlyList<PagedEmployeeMonitoringRow> pagedRows, DateTimeOffset now, CancellationToken ct)
+    {
+        var overrides = new Dictionary<Guid, EmployeeListAttendanceSummaryResponse>();
+        if (_notifications is null || _toggles is null || _checkIns is null)
+            return overrides;
+
+        var candidates = pagedRows.Where(row => row.AttendanceSummary.AttentionType is null).ToList();
+        if (candidates.Count == 0)
+            return overrides;
+
+        var candidateUserIds = candidates.Select(row => row.UserId).Distinct().ToArray();
+
+        var idleAlertUserIds = await _notifications.GetEmployeeIdsWithRecentAlertAsync(
+            tenantId, candidateUserIds, NotificationType.LongIdleAlert, now - IdleAlertLookback, ct);
+
+        var clockedInCandidates = candidates.Where(row => row.HasClockedInToday).ToList();
+        var checkInsByUserId = new Dictionary<Guid, List<Domain.Features.Monitoring.CheckIn.Entities.EmployeeCheckIn>>();
+        if (clockedInCandidates.Count > 0)
+        {
+            var checkIns = await _checkIns.ListForUsersInRangeAsync(
+                tenantId, clockedInCandidates.Select(row => row.UserId).Distinct().ToArray(), now - CheckInLookback, now, ct);
+            checkInsByUserId = checkIns
+                .GroupBy(checkIn => checkIn.UserId)
+                .ToDictionary(group => group.Key, group => group.ToList());
+        }
+
+        // The on-site and remote location checks share one "how far is allowed" number: the
+        // resolved ClockInPolicy's AllowedRadiusMeters (same field the Clock-in Policy screen's
+        // "Allowed distance" input already edits) - there is exactly one radius concept in the
+        // product, not a separate one per work mode.
+        var radiusByLegalEntityId = new Dictionary<Guid, int?>();
+        if (_clockInPolicies is not null)
+        {
+            foreach (var legalEntityId in clockedInCandidates
+                .Where(row => row.LegalEntity is not null)
+                .Select(row => row.LegalEntity!.Id)
+                .Distinct())
+            {
+                var policies = await _clockInPolicies.ListByLegalEntityAsync(tenantId, legalEntityId, includeInactive: false, ct);
+                var active = ClockInPolicyResolver.ResolveActiveFullCompanyPolicies(policies, DateOnly.FromDateTime(now.UtcDateTime));
+                radiusByLegalEntityId[legalEntityId] = active.Count == 1 ? active[0].AllowedRadiusMeters : null;
+            }
+        }
+
+        var workLocationsByEmployeeId = _workLocations is not null
+            ? await _workLocations.ListByEmployeeIdsAsync(
+                tenantId, clockedInCandidates.Select(row => row.EmployeeId).Distinct().ToArray(), ct)
+            : new Dictionary<Guid, Domain.Features.TimeAttendance.Entities.EmployeeWorkLocation>();
+
+        foreach (var row in candidates)
+        {
+            if (idleAlertUserIds.Contains(row.UserId))
+            {
+                overrides[row.EmployeeId] = row.AttendanceSummary with
+                {
+                    AttentionType = "idle_too_long",
+                    AttentionSeverity = "warning",
+                    AttentionLabel = "Idle without activity for an extended period during the shift",
+                };
+                continue;
+            }
+
+            checkInsByUserId.TryGetValue(row.UserId, out var userCheckIns);
+
+            if (_expectedWorkAreas is not null && row.HasClockedInToday && row.LegalEntity is not null
+                && radiusByLegalEntityId.GetValueOrDefault(row.LegalEntity.Id) is int radiusMeters
+                && await _toggles.IsEnabledAsync(tenantId, row.UserId, MonitoringCapability.WorkLocationVerification, ct))
+            {
+                var workArea = await ResolveWorkAreaAsync(row, ct);
+                (double Latitude, double Longitude)? referencePoint = workArea switch
+                {
+                    "onsite" when row.LegalEntity is { OfficeLatitude: double officeLat, OfficeLongitude: double officeLon }
+                        => (officeLat, officeLon),
+                    "remote" when workLocationsByEmployeeId.TryGetValue(row.EmployeeId, out var workLocation)
+                        => (workLocation.Latitude, workLocation.Longitude),
+                    _ => null
+                };
+
+                if (referencePoint is not null)
+                {
+                    var located = userCheckIns?.LastOrDefault(c => c.Latitude is not null && c.Longitude is not null);
+                    if (located is null)
+                    {
+                        overrides[row.EmployeeId] = row.AttendanceSummary with
+                        {
+                            AttentionType = "outside_work_location",
+                            AttentionSeverity = "warning",
+                            AttentionLabel = workArea == "onsite"
+                                ? "Clocked in on-site without a captured location"
+                                : "Clocked in without a captured location",
+                        };
+                        continue;
+                    }
+
+                    var distance = GeoDistanceCalculator.DistanceMeters(
+                        located.Latitude!.Value, located.Longitude!.Value,
+                        referencePoint.Value.Latitude, referencePoint.Value.Longitude);
+                    if (distance > radiusMeters)
+                    {
+                        overrides[row.EmployeeId] = row.AttendanceSummary with
+                        {
+                            AttentionType = "outside_work_location",
+                            AttentionSeverity = "warning",
+                            AttentionLabel = workArea == "onsite"
+                                ? "Checked in outside the expected office location"
+                                : "Checked in outside the registered work location",
+                        };
+                        continue;
+                    }
+                }
+            }
+
+            var hasFaceScan = userCheckIns?.Any(c => c.FaceScanId is not null) ?? false;
+            if (row.HasClockedInToday && !hasFaceScan
+                && await _toggles.IsEnabledAsync(tenantId, row.UserId, MonitoringCapability.IdentityVerification, ct))
+            {
+                overrides[row.EmployeeId] = row.AttendanceSummary with
+                {
+                    AttentionType = "camera_verification_skipped",
+                    AttentionSeverity = "warning",
+                    AttentionLabel = "Clocked in without completing the required camera verification",
+                };
+            }
+        }
+
+        return overrides;
+    }
+
+    /// <summary>Resolves this employee's work area for the day via IExpectedWorkAreaResolver -
+    /// "onsite"/"remote"/"either"/"field", or null on any resolution failure (unconfigured work
+    /// mode, conflicting change requests). Only "onsite" and "remote" are ever acted on by the
+    /// location-warning check; hybrid/field employees, like resolution failures, are left alone
+    /// rather than guessed at.</summary>
+    private async Task<string?> ResolveWorkAreaAsync(PagedEmployeeMonitoringRow row, CancellationToken ct)
+    {
+        var result = await _expectedWorkAreas!.ResolveAsync(
+            row.Employee, row.LegalEntity!, row.AttendanceSummary.WorkDate, ct);
+        return result.IsSuccess ? result.Value!.WorkArea : null;
+    }
 
     public async Task<IReadOnlyList<EmployeeListItemResponse>> ListInvitedPendingByInviterAsync(
 

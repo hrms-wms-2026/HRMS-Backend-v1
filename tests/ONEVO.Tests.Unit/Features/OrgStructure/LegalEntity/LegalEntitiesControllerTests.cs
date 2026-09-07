@@ -29,7 +29,7 @@ public sealed class LegalEntitiesControllerTests
     private static LegalEntityGeneralSettingsResponse SampleGeneralSettings(Guid id) => new(
         id, "Acme Lanka", "ACME", null, "REG-001", null, null, null, null, null,
         "LKA", "LKR", "UTC", 1, 1, [1, 2, 3, 4, 5], "en-US", "DD MMM YYYY", "12h", "active",
-        new TimeOnly(9, 0), new TimeOnly(17, 30), 60);
+        new TimeOnly(9, 0), new TimeOnly(17, 30), 60, null, null, null);
 
     [Fact]
     public async Task List_SendsQuery_WithIncludeInactiveValue()
@@ -130,7 +130,7 @@ public sealed class LegalEntitiesControllerTests
         var request = new UpdateLegalEntityGeneralSettingsRequest(
             "Acme Lanka", "ACME", "REG-001", null, null, null, null, null,
             "LKA", "LKR", "UTC", 1, 1, [1, 2, 3, 4, 5], "en-US", "DD MMM YYYY", "12h", "active",
-            new TimeOnly(9, 0), new TimeOnly(17, 30), 60);
+            new TimeOnly(9, 0), new TimeOnly(17, 30), 60, null, null, null);
 
         var result = await _sut.UpdateGeneralSettings(routeId, request, CancellationToken.None);
 

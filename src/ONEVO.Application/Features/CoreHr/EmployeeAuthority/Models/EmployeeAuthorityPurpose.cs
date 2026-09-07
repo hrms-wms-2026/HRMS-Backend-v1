@@ -12,6 +12,7 @@ public enum EmployeeAuthorityPurpose
     TimeTrackingRead,
     AttendanceCorrectionApproval,
     WorkAreaChangeApproval,
+    LocationChangeApproval,
     TimeOffApproval,
     OnboardingApproval,
     OffboardingApproval,

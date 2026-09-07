@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.Queries;
@@ -13,6 +14,7 @@ using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 
@@ -425,6 +427,55 @@ public sealed class AttendanceReadHandlerTests
         result.Value!.DailyActivity.Should().BeNull();
     }
 
+    [Fact]
+    public async Task DayDetail_Self_IncludesCheckInsWithinDayWindow()
+    {
+        var fixture = CreateFixture();
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        var checkIn = new EmployeeCheckIn
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            UserId = UserId,
+            CheckedInAt = DateTimeOffset.Parse("2026-08-21T04:05:00+00:00"),
+            Latitude = 6.9271,
+            Longitude = 79.8612,
+            LocationAccuracy = 12.5,
+            LocationAddress = "Colombo Office"
+        };
+        fixture.CheckIns.Setup(x => x.ListForUserInRangeAsync(TenantId, UserId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([checkIn]);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.CheckIns.Should().ContainSingle();
+        result.Value.CheckIns[0].Latitude.Should().Be(6.9271);
+        result.Value.CheckIns[0].LocationAddress.Should().Be("Colombo Office");
+    }
+
+    [Fact]
+    public async Task DayDetail_OtherEmployee_WithAttendanceReadOnly_DoesNotFetchCheckIns()
+    {
+        var fixture = CreateFixture();
+        var otherId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, otherId]));
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = otherId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, otherId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        fixture.Attendance.Setup(x => x.ListEmployeeIdentitiesAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, AttendanceHistoryEmployee> { [otherId] = new(otherId, "Jane Doe", "EMP-001", "Engineer", "Product", null) });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(otherId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.CheckIns.Should().BeEmpty();
+        fixture.CheckIns.Verify(
+            x => x.ListForUserInRangeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     private static Fixture CreateFixture(string localTimeUtc = "2026-08-21T10:00:00+00:00", string workModeCode = "remote", int employmentTypeId = 1, bool hasMonitoringRead = false)
     {
         var currentUser = new Mock<ICurrentUser>();
@@ -437,6 +488,10 @@ public sealed class AttendanceReadHandlerTests
         var employee = new Employee { Id = EmployeeId, UserId = UserId, TenantId = TenantId, LegalEntityId = LegalEntityId, WorkModeId = 1, EmploymentTypeId = employmentTypeId };
         var legalEntity = new LegalEntity { Id = LegalEntityId, TenantId = TenantId, Timezone = "Asia/Colombo", StandardWorkingDays = "[1,2,3,4,5]", WorkStartTime = new(9, 0), WorkEndTime = new(17, 30), BreakDurationMinutes = 60 };
         var employees = new Mock<IEmployeeRepository>(); employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
+        employees.Setup(x => x.GetByIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(employee);
+        var checkIns = new Mock<ICheckInRepository>();
+        checkIns.Setup(x => x.ListForUserInRangeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<EmployeeCheckIn>());
         var legalEntities = new Mock<ILegalEntityRepository>(); legalEntities.Setup(x => x.GetByIdForTenantAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>())).ReturnsAsync(legalEntity);
         var policies = new Mock<IClockInPolicyRepository>(); policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync([new ClockInPolicy { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1), RemoteWebEnabled = true }]);
         var attendance = new Mock<IAttendanceReadRepository>(); attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>())).ReturnsAsync((AttendanceRecord?)null); attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
@@ -467,12 +522,14 @@ public sealed class AttendanceReadHandlerTests
                 todayState,
                 legalEntities: legalEntities.Object,
                 dateTimeProvider: dateTime.Object,
-                activitySummaries: activitySummaries.Object),
+                activitySummaries: activitySummaries.Object,
+                checkIns: checkIns.Object),
             attendance,
             policies,
             authority,
             legalEntity,
-            activitySummaries);
+            activitySummaries,
+            checkIns);
     }
 
     private static string ToExpectedWorkArea(string workModeCode) => workModeCode switch
@@ -481,5 +538,5 @@ public sealed class AttendanceReadHandlerTests
         _ => workModeCode
     };
 
-    private sealed record Fixture(AttendanceReadHandler Handler, Mock<IAttendanceReadRepository> Attendance, Mock<IClockInPolicyRepository> Policies, Mock<IEmployeeAuthorityResolver> Authority, LegalEntity LegalEntity, Mock<IActivityDailySummaryRepository> ActivitySummaries);
+    private sealed record Fixture(AttendanceReadHandler Handler, Mock<IAttendanceReadRepository> Attendance, Mock<IClockInPolicyRepository> Policies, Mock<IEmployeeAuthorityResolver> Authority, LegalEntity LegalEntity, Mock<IActivityDailySummaryRepository> ActivitySummaries, Mock<ICheckInRepository> CheckIns);
 }

@@ -19,7 +19,7 @@ public class ClockInPolicyMapperTests
 
         ClockInPolicyMapper.ApplyWorkAreaRules(entity, new WorkAreaRulesInput(
             new WorkAreaSourceRulesInput(true, false, false, false),
-            new WorkAreaSourceRulesInput(false, true, true, true),
+            new RemoteWorkAreaRulesInput(false, true, true, true, false),
             new HybridWorkAreaRulesInput(true, true, false, true, true, ClockInPolicyEntity.HybridSourceRemote),
             new FieldWorkAreaRulesInput(false, true, true, ClockInPolicyEntity.FieldPhotoRequired)));
 

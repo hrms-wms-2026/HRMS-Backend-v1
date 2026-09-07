@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailySummary;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -25,7 +26,8 @@ public sealed class AttendanceReadHandler(
     ILeaveRequestReadRepository? leaveRequests = null,
     ILegalEntityRepository? legalEntities = null,
     IDateTimeProvider? dateTimeProvider = null,
-    IActivityDailySummaryRepository? activitySummaries = null)
+    IActivityDailySummaryRepository? activitySummaries = null,
+    ICheckInRepository? checkIns = null)
     : IRequestHandler<GetAttendanceTodayQuery, Result<AttendanceTodayResponse>>,
       IRequestHandler<GetMyAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
       IRequestHandler<GetCoveredAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
@@ -175,8 +177,23 @@ public sealed class AttendanceReadHandler(
                 dailyActivity = GetActivityDailySummaryQueryHandler.Map(activityEntity);
         }
 
+        var checkInLocations = Array.Empty<CheckInLocationDto>() as IReadOnlyList<CheckInLocationDto>;
+        if (canSeeActivity && checkIns is not null)
+        {
+            var targetEmployee = await employees.GetByIdAsync(currentUser.TenantId, query.EmployeeId, ct);
+            if (targetEmployee is not null)
+            {
+                var checkInRecords = await checkIns.ListForUserInRangeAsync(
+                    currentUser.TenantId, targetEmployee.UserId, dayWindow.Start, dayWindow.End, ct);
+                checkInLocations = checkInRecords
+                    .Select(c => new CheckInLocationDto(
+                        c.Id, c.CheckedInAt, c.Latitude, c.Longitude, c.LocationAccuracy, c.LocationAddress))
+                    .ToList();
+            }
+        }
+
         return Result<AttendanceDayDetailResponse>.Success(
-            new AttendanceDayDetailResponse(summary, timelineEvents, dailyActivity));
+            new AttendanceDayDetailResponse(summary, timelineEvents, dailyActivity, checkInLocations));
     }
 
     private async Task<IReadOnlyList<AttendanceHistoryRow>> BuildRowsAsync(

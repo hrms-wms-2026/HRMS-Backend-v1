@@ -4,13 +4,21 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
+using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.CheckIn;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Notifications;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.Employee;
@@ -491,6 +499,481 @@ public sealed class EfEmployeeRepositoryTests
         Assert.Equal(normal.Id, Assert.Single(page2.Items).Id);
         Assert.False(page2.Items[0].AttendanceSummary!.ShowNotClockedInWarning);
     }
+
+    [Fact]
+    public async Task ListVisibleAsync_ShowsIdleWarning_WhenRecentLongIdleAlertExists_AndNoHigherPriorityWarning()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        var now = new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
+            Date = new DateOnly(2026, 8, 21), ActualStart = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero),
+        });
+        db.MonitoringNotifications.Add(new Notification
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.UserId,
+            Type = NotificationType.LongIdleAlert, Title = "Still there?", Message = "idle",
+            CreatedAt = now.AddMinutes(-10),
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        var repo = new EfEmployeeRepository(
+            db, toggles: toggles.Object, notifications: new EfNotificationRepository(db), checkIns: new EfCheckInRepository(db));
+
+        var (items, _) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(now));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.Equal("idle_too_long", summary!.AttentionType);
+        Assert.Equal("warning", summary.AttentionSeverity);
+        toggles.Verify(
+            t => t.IsEnabledAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<MonitoringCapability>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_ShowsCameraSkippedWarning_WhenClockedInWithoutFaceScan_AndCameraRequired()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        var now = new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
+            Date = new DateOnly(2026, 8, 21), ActualStart = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero),
+        });
+        db.EmployeeCheckIns.Add(new EmployeeCheckIn
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, UserId = employee.UserId,
+            DeviceRegistrationId = Guid.NewGuid(), FaceScanId = null,
+            CheckedInAt = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero), CreatedAt = now,
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.IsEnabledAsync(
+                tenantId, employee.UserId, MonitoringCapability.IdentityVerification, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var repo = new EfEmployeeRepository(
+            db, toggles: toggles.Object, notifications: new EfNotificationRepository(db), checkIns: new EfCheckInRepository(db));
+
+        var (items, _) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(now));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.Equal("camera_verification_skipped", summary!.AttentionType);
+        Assert.Equal("warning", summary.AttentionSeverity);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_DoesNotShowCameraWarning_WhenIdentityVerificationNotRequired()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        var now = new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
+            Date = new DateOnly(2026, 8, 21), ActualStart = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero),
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.IsEnabledAsync(
+                tenantId, employee.UserId, MonitoringCapability.IdentityVerification, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var repo = new EfEmployeeRepository(
+            db, toggles: toggles.Object, notifications: new EfNotificationRepository(db), checkIns: new EfCheckInRepository(db));
+
+        var (items, _) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(now));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.Null(summary!.AttentionType);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_KeepsHigherPriorityWarning_OverIdleOrCameraSignals()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        var now = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero);
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        // No attendance record -> not_clocked_in (higher priority than idle/camera).
+        db.MonitoringNotifications.Add(new Notification
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.UserId,
+            Type = NotificationType.LongIdleAlert, Title = "Still there?", Message = "idle",
+            CreatedAt = now.AddMinutes(-10),
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        var repo = new EfEmployeeRepository(
+            db, toggles: toggles.Object, notifications: new EfNotificationRepository(db), checkIns: new EfCheckInRepository(db));
+
+        var (items, _) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(now));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.Equal("not_clocked_in", summary!.AttentionType);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_ShowsOutsideWorkLocationWarning_WhenCheckInFarFromOfficeAndOnsite()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        var now = new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntityWithOffice(tenantId, legalEntityId, officeLat: 6.9271, officeLon: 79.8612));
+        db.ClockInPolicies.Add(NewFullCompanyClockInPolicy(tenantId, legalEntityId, allowedRadiusMeters: 200));
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
+            Date = new DateOnly(2026, 8, 21), ActualStart = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero),
+        });
+        db.EmployeeCheckIns.Add(new EmployeeCheckIn
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, UserId = employee.UserId,
+            DeviceRegistrationId = Guid.NewGuid(), Latitude = 6.8000, Longitude = 79.9000,
+            CheckedInAt = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero), CreatedAt = now,
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.IsEnabledAsync(
+                tenantId, employee.UserId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var expectedWorkAreas = OnsiteExpectedWorkAreaResolver();
+        var repo = new EfEmployeeRepository(
+            db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
+            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
+            clockInPolicies: new EfClockInPolicyRepository(db));
+
+        var (items, _) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(now));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.Equal("outside_work_location", summary!.AttentionType);
+        Assert.Equal("warning", summary.AttentionSeverity);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_ShowsOutsideWorkLocationWarning_WhenOnsiteCheckInHasNoLocation()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        var now = new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntityWithOffice(tenantId, legalEntityId, officeLat: 6.9271, officeLon: 79.8612));
+        db.ClockInPolicies.Add(NewFullCompanyClockInPolicy(tenantId, legalEntityId, allowedRadiusMeters: 200));
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
+            Date = new DateOnly(2026, 8, 21), ActualStart = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero),
+        });
+        // No EmployeeCheckIn row at all - location should have been captured but was not.
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.IsEnabledAsync(
+                tenantId, employee.UserId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        var expectedWorkAreas = OnsiteExpectedWorkAreaResolver();
+        var repo = new EfEmployeeRepository(
+            db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
+            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
+            clockInPolicies: new EfClockInPolicyRepository(db));
+
+        var (items, _) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(now));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.Equal("outside_work_location", summary!.AttentionType);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_DoesNotShowLocationWarning_WhenCheckInWithinRadius()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        var now = new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntityWithOffice(tenantId, legalEntityId, officeLat: 6.9271, officeLon: 79.8612));
+        db.ClockInPolicies.Add(NewFullCompanyClockInPolicy(tenantId, legalEntityId, allowedRadiusMeters: 500));
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
+            Date = new DateOnly(2026, 8, 21), ActualStart = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero),
+        });
+        db.EmployeeCheckIns.Add(new EmployeeCheckIn
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, UserId = employee.UserId,
+            DeviceRegistrationId = Guid.NewGuid(), Latitude = 6.9271, Longitude = 79.8612,
+            CheckedInAt = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero), CreatedAt = now,
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.IsEnabledAsync(
+                tenantId, employee.UserId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        toggles.Setup(t => t.IsEnabledAsync(
+                tenantId, employee.UserId, MonitoringCapability.IdentityVerification, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var expectedWorkAreas = OnsiteExpectedWorkAreaResolver();
+        var repo = new EfEmployeeRepository(
+            db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
+            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
+            clockInPolicies: new EfClockInPolicyRepository(db));
+
+        var (items, _) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(now));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.Null(summary!.AttentionType);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_DoesNotShowLocationWarning_WhenEmployeeExpectedRemote()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        var now = new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntityWithOffice(tenantId, legalEntityId, officeLat: 6.9271, officeLon: 79.8612));
+        db.ClockInPolicies.Add(NewFullCompanyClockInPolicy(tenantId, legalEntityId, allowedRadiusMeters: 200));
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
+            Date = new DateOnly(2026, 8, 21), ActualStart = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero),
+        });
+        db.EmployeeCheckIns.Add(new EmployeeCheckIn
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, UserId = employee.UserId,
+            DeviceRegistrationId = Guid.NewGuid(), Latitude = 6.8000, Longitude = 79.9000,
+            CheckedInAt = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero), CreatedAt = now,
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.IsEnabledAsync(
+                tenantId, employee.UserId, MonitoringCapability.IdentityVerification, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var expectedWorkAreas = new Mock<IExpectedWorkAreaResolver>();
+        expectedWorkAreas.Setup(r => r.ResolveAsync(
+                It.IsAny<EmployeeEntity>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(new ExpectedWorkAreaResolution("remote", "Asia/Colombo", "active_employee_work_mode")));
+        var repo = new EfEmployeeRepository(
+            db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
+            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
+            clockInPolicies: new EfClockInPolicyRepository(db));
+
+        var (items, _) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(now));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.Null(summary!.AttentionType);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_DoesNotShowLocationWarning_WhenOfficeLocationNotConfigured()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        var now = new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        // No office lat/lng configured on this legal entity.
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        db.ClockInPolicies.Add(NewFullCompanyClockInPolicy(tenantId, legalEntityId, allowedRadiusMeters: 200));
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
+            Date = new DateOnly(2026, 8, 21), ActualStart = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero),
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.IsEnabledAsync(
+                tenantId, employee.UserId, MonitoringCapability.IdentityVerification, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var expectedWorkAreas = OnsiteExpectedWorkAreaResolver();
+        var repo = new EfEmployeeRepository(
+            db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
+            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
+            clockInPolicies: new EfClockInPolicyRepository(db));
+
+        var (items, _) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(now));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.Null(summary!.AttentionType);
+        expectedWorkAreas.Verify(
+            r => r.ResolveAsync(It.IsAny<EmployeeEntity>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ListVisibleAsync_DoesNotShowLocationWarning_WhenLocationTrackingToggleDisabled()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        var now = new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntityWithOffice(tenantId, legalEntityId, officeLat: 6.9271, officeLon: 79.8612));
+        db.ClockInPolicies.Add(NewFullCompanyClockInPolicy(tenantId, legalEntityId, allowedRadiusMeters: 200));
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
+            Date = new DateOnly(2026, 8, 21), ActualStart = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero),
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.IsEnabledAsync(
+                tenantId, employee.UserId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        toggles.Setup(t => t.IsEnabledAsync(
+                tenantId, employee.UserId, MonitoringCapability.IdentityVerification, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        var expectedWorkAreas = OnsiteExpectedWorkAreaResolver();
+        var repo = new EfEmployeeRepository(
+            db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
+            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
+            clockInPolicies: new EfClockInPolicyRepository(db));
+
+        var (items, _) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(now));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.Null(summary!.AttentionType);
+    }
+
+    private static Mock<IExpectedWorkAreaResolver> OnsiteExpectedWorkAreaResolver()
+    {
+        var mock = new Mock<IExpectedWorkAreaResolver>();
+        mock.Setup(r => r.ResolveAsync(
+                It.IsAny<EmployeeEntity>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(new ExpectedWorkAreaResolution("onsite", "Asia/Colombo", "active_employee_work_mode")));
+        return mock;
+    }
+
+    private static LegalEntity WorkingLegalEntityWithOffice(
+        Guid tenantId, Guid legalEntityId, double officeLat, double officeLon)
+    {
+        var entity = WorkingLegalEntity(tenantId, legalEntityId);
+        entity.OfficeLatitude = officeLat;
+        entity.OfficeLongitude = officeLon;
+        return entity;
+    }
+
+    /// <summary>The radius for the on-site/remote location checks now comes from ClockInPolicy
+    /// (shared with the "Allowed distance" field on the Clock-in Policy screen), not LegalEntity.</summary>
+    private static ONEVO.Domain.Features.TimeAttendance.Entities.ClockInPolicy NewFullCompanyClockInPolicy(
+        Guid tenantId, Guid legalEntityId, int allowedRadiusMeters) => new()
+    {
+        Id = Guid.NewGuid(),
+        TenantId = tenantId,
+        LegalEntityId = legalEntityId,
+        Name = "Default",
+        ScopeType = ONEVO.Domain.Features.TimeAttendance.Entities.ClockInPolicy.ScopeFullCompany,
+        EffectiveFrom = new DateOnly(2020, 1, 1),
+        AllowedRadiusMeters = allowedRadiusMeters,
+        IsActive = true,
+        CreatedAt = DateTimeOffset.UtcNow,
+        UpdatedAt = DateTimeOffset.UtcNow,
+    };
 
     private static LegalEntity WorkingLegalEntity(Guid tenantId, Guid legalEntityId) => new()
     {

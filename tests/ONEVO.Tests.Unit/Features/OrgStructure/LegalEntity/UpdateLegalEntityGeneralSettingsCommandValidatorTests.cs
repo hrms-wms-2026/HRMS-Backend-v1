@@ -26,6 +26,9 @@ public class UpdateLegalEntityGeneralSettingsCommandValidatorTests
         "active",
         null,
         null,
+        null,
+        null,
+        null,
         null);
 
     [Fact]
@@ -227,5 +230,76 @@ public class UpdateLegalEntityGeneralSettingsCommandValidatorTests
         result.ShouldNotHaveValidationErrorFor(x => x.BreakDurationMinutes);
         result.ShouldNotHaveValidationErrorFor(x => x.WorkStartTime);
         result.ShouldNotHaveValidationErrorFor(x => x.WorkEndTime);
+    }
+
+    [Fact]
+    public void AllOfficeLocationFieldsNull_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            OfficeLatitude = null,
+            OfficeLongitude = null
+        });
+        result.ShouldNotHaveValidationErrorFor(x => x.OfficeLatitude);
+        result.ShouldNotHaveValidationErrorFor(x => x.OfficeLongitude);
+    }
+
+    [Fact]
+    public void AllOfficeLocationFieldsSet_ValidValues_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            OfficeAddress = "1 Galle Face, Colombo",
+            OfficeLatitude = 6.9271,
+            OfficeLongitude = 79.8612
+        });
+        result.ShouldNotHaveAnyValidationErrors();
+    }
+
+    [Fact]
+    public void OnlyOfficeLatitudeProvided_HasErrorForMissingLongitude()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { OfficeLatitude = 6.9271 });
+        result.ShouldHaveValidationErrorFor(x => x.OfficeLongitude);
+    }
+
+    [Fact]
+    public void OnlyOfficeLongitudeProvided_HasErrorForMissingLatitude()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { OfficeLongitude = 79.8612 });
+        result.ShouldHaveValidationErrorFor(x => x.OfficeLatitude);
+    }
+
+    [Theory]
+    [InlineData(-91)]
+    [InlineData(91)]
+    public void OfficeLatitude_OutOfRange_HasError(double latitude)
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            OfficeLatitude = latitude,
+            OfficeLongitude = 79.8612
+        });
+        result.ShouldHaveValidationErrorFor(x => x.OfficeLatitude);
+    }
+
+    [Theory]
+    [InlineData(-181)]
+    [InlineData(181)]
+    public void OfficeLongitude_OutOfRange_HasError(double longitude)
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            OfficeLatitude = 6.9271,
+            OfficeLongitude = longitude
+        });
+        result.ShouldHaveValidationErrorFor(x => x.OfficeLongitude);
+    }
+
+    [Fact]
+    public void OfficeAddressTooLong_HasError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { OfficeAddress = new string('a', 501) });
+        result.ShouldHaveValidationErrorFor(x => x.OfficeAddress);
     }
 }

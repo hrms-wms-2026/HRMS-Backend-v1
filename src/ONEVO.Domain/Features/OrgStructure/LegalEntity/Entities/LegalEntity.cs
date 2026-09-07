@@ -47,6 +47,17 @@ public class LegalEntity : ITenantOwnedEntity
     // WorkEndTime - null means not configured; when set, must be >= 0.
     public int? BreakDurationMinutes { get; set; }
 
+    // Office location, used only to flag (never block) an on-site employee whose
+    // check-in location falls outside the applicable ClockInPolicy's AllowedRadiusMeters of
+    // this point (the radius itself lives on ClockInPolicy, not here, so there is exactly one
+    // "how far is allowed" setting shared by both the onsite and remote location checks). Null
+    // = not configured, meaning the on-site location warning never fires for this legal entity.
+    // Latitude/Longitude are set together or not at all; OfficeAddress is a free-text display
+    // label only, not used in the distance calculation.
+    public string? OfficeAddress { get; set; }
+    public double? OfficeLatitude { get; set; }
+    public double? OfficeLongitude { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
 }
