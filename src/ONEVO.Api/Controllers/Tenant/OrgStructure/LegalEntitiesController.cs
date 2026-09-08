@@ -97,7 +97,10 @@ public class LegalEntitiesController : ControllerBase
                 request.Status,
                 request.WorkStartTime,
                 request.WorkEndTime,
-                request.BreakDurationMinutes),
+                request.BreakDurationMinutes,
+                request.OfficeAddress,
+                request.OfficeLatitude,
+                request.OfficeLongitude),
             ct);
 
         return result.IsSuccess

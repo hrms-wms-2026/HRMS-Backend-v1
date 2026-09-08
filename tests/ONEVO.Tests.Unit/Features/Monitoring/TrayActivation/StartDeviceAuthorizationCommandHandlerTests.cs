@@ -58,6 +58,18 @@ public class StartDeviceAuthorizationCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_MissingAppBaseUrlConfig_ThrowsInsteadOfFallingBackToLocalhost()
+    {
+        _configuration.Setup(c => c["Urls:AppBaseUrl"]).Returns((string?)null);
+
+        var act = async () => await CreateHandler().Handle(
+            new StartDeviceAuthorizationCommand("Laptop", "Windows 11", "fingerprint-1", "1.0.0"), default);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Urls:AppBaseUrl*");
+    }
+
+    [Fact]
     public async Task Handle_RateLimited_DoesNotSave()
     {
         _repository

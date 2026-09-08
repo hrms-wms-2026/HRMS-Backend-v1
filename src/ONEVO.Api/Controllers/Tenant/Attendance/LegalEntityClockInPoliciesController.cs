@@ -153,11 +153,12 @@ public class LegalEntityClockInPoliciesController : ControllerBase
                 rules.Onsite.WebEnabled,
                 rules.Onsite.TrayEnabled,
                 rules.Onsite.PhotoRequired),
-            new WorkAreaSourceRulesInput(
+            new RemoteWorkAreaRulesInput(
                 rules.Remote.BiometricEnabled,
                 rules.Remote.WebEnabled,
                 rules.Remote.TrayEnabled,
-                rules.Remote.PhotoRequired),
+                rules.Remote.PhotoRequired,
+                rules.Remote.LocationCheckRequired),
             new HybridWorkAreaRulesInput(
                 rules.Hybrid.BiometricEnabled,
                 rules.Hybrid.WebEnabled,

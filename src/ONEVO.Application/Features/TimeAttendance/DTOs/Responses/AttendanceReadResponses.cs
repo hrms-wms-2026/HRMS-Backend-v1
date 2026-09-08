@@ -91,7 +91,18 @@ public sealed record TimelineEvent(
     DateTimeOffset Timestamp,
     string Source);
 
+/// <summary>A tray check-in's captured location, read back for the attendance day-detail view.
+/// Gated behind the same monitoring:read visibility as DailyActivity below.</summary>
+public sealed record CheckInLocationDto(
+    Guid Id,
+    DateTimeOffset CheckedInAt,
+    double? Latitude,
+    double? Longitude,
+    double? LocationAccuracy,
+    string? LocationAddress);
+
 public sealed record AttendanceDayDetailResponse(
     AttendanceHistoryRow Summary,
     IReadOnlyList<TimelineEvent> TimelineEvents,
-    ActivityDailySummaryDto? DailyActivity);
+    ActivityDailySummaryDto? DailyActivity,
+    IReadOnlyList<CheckInLocationDto> CheckIns);

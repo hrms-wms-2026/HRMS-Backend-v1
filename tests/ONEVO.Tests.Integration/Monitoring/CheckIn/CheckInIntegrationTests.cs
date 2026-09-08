@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
@@ -74,7 +75,14 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task SubmitCheckIn_WithValidTrayJwt_Returns200AndPersistsRecord()
     {
-        var jwt = await GetTrayJwtAsync("checkin-ok");
+        // Location is only persisted when the tenant has Location tracking (WorkLocationVerification)
+        // turned on - a fresh tenant with no monitoring config defaults every capability to off, so
+        // this must seed an explicit toggle to exercise the "location captured" path.
+        var slug = $"checkin-ok-{Guid.NewGuid():N}"[..20];
+        var user = await SeedActiveUserAsync(slug, $"{slug}@test.dev", "TestPass1!");
+        await EnableWorkLocationVerificationAsync(user.TenantId);
+        var jwt = await GetTrayJwtForUserAsync(user, fingerprint: $"fp-{slug}");
+
         using var req = TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new
         {
             latitude = 6.9271,
@@ -100,6 +108,40 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
         record.Should().NotBeNull();
         record!.Latitude.Should().BeApproximately(6.9271, 0.0001);
         record.DeviceSerialNumber.Should().Be("SN-TEST-001");
+    }
+
+    [Fact]
+    public async Task SubmitCheckIn_WithLocationTrackingDisabled_PersistsRecordWithoutLocation()
+    {
+        // No monitoring config seeded for this tenant -> WorkLocationVerification resolves to its
+        // safe default (off). A location fix sent anyway must not be persisted.
+        var jwt = await GetTrayJwtAsync("checkin-notrack");
+        using var req = TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new
+        {
+            latitude = 6.9271,
+            longitude = 79.8612,
+            location_accuracy = 15.0,
+            location_address = "Colombo, Sri Lanka",
+            device_serial_number = "SN-TEST-002"
+        }, jwt);
+
+        var resp = await _client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("latitude").ValueKind.Should().Be(JsonValueKind.Null);
+        body.GetProperty("device_serial_number").GetString().Should().Be("SN-TEST-002");
+
+        var checkInId = Guid.Parse(body.GetProperty("check_in_id").GetString()!);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var record = await db.EmployeeCheckIns.FindAsync(checkInId);
+        record.Should().NotBeNull();
+        record!.Latitude.Should().BeNull();
+        record.Longitude.Should().BeNull();
+        record.LocationAccuracy.Should().BeNull();
+        record.LocationAddress.Should().BeNull();
+        record.DeviceSerialNumber.Should().Be("SN-TEST-002");
     }
 
     [Fact]
@@ -286,6 +328,20 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
         exchResp.StatusCode.Should().Be(HttpStatusCode.OK, await exchResp.Content.ReadAsStringAsync());
         return (await exchResp.Content.ReadFromJsonAsync<JsonElement>())
             .GetProperty("access_token").GetString()!;
+    }
+
+    private async Task EnableWorkLocationVerificationAsync(Guid tenantId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LegalEntityId = null,
+            WorkLocationVerification = true
+        });
+        await db.SaveChangesAsync();
     }
 
     private async Task<SeedResult> SeedSecondUserInTenantAsync(Guid tenantId, string email, string password)

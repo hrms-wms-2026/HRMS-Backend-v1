@@ -51,7 +51,10 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         string status = "active",
         TimeOnly? workStartTime = null,
         TimeOnly? workEndTime = null,
-        int? breakDurationMinutes = null) => new(
+        int? breakDurationMinutes = null,
+        string? officeAddress = null,
+        double? officeLatitude = null,
+        double? officeLongitude = null) => new(
         id,
         "New Name",
         "NEW",
@@ -69,7 +72,10 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         status,
         workStartTime,
         workEndTime,
-        breakDurationMinutes);
+        breakDurationMinutes,
+        officeAddress,
+        officeLatitude,
+        officeLongitude);
 
     private void SetupNoDuplicates(Guid excludeId)
     {
@@ -228,6 +234,50 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         entity.WorkStartTime.Should().BeNull();
         entity.WorkEndTime.Should().BeNull();
         entity.BreakDurationMinutes.Should().Be(30);
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_PersistsOfficeLocation()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            ValidCommand(
+                entity.Id,
+                officeAddress: "1 Galle Face, Colombo",
+                officeLatitude: 6.9271,
+                officeLongitude: 79.8612),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        entity.OfficeAddress.Should().Be("1 Galle Face, Colombo");
+        entity.OfficeLatitude.Should().Be(6.9271);
+        entity.OfficeLongitude.Should().Be(79.8612);
+        result.Value!.OfficeAddress.Should().Be("1 Galle Face, Colombo");
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_NullOfficeLocation_PersistsNull()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        entity.OfficeAddress = "Old address";
+        entity.OfficeLatitude = 1;
+        entity.OfficeLongitude = 1;
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(ValidCommand(entity.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        entity.OfficeAddress.Should().BeNull();
+        entity.OfficeLatitude.Should().BeNull();
+        entity.OfficeLongitude.Should().BeNull();
     }
 
     [Fact]

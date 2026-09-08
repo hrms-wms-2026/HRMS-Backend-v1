@@ -30,6 +30,11 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
             table.HasCheckConstraint(
                 "ck_legal_entities_break_duration_minutes",
                 "break_duration_minutes IS NULL OR break_duration_minutes >= 0");
+            table.HasCheckConstraint(
+                "ck_legal_entities_office_location",
+                "(office_latitude IS NULL AND office_longitude IS NULL) " +
+                "OR (office_latitude IS NOT NULL AND office_longitude IS NOT NULL " +
+                "AND office_latitude BETWEEN -90 AND 90 AND office_longitude BETWEEN -180 AND 180)");
         });
         builder.HasKey(l => l.Id);
         builder.Property(l => l.Name).HasMaxLength(200).IsRequired();
@@ -80,6 +85,14 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
         // Non-negative enforced by ck_legal_entities_break_duration_minutes
         // above (defense in depth alongside the command validator).
         builder.Property(l => l.BreakDurationMinutes).HasColumnName("break_duration_minutes");
+
+        // Office location for the Phase B on-site location warning (monitoring-only, never
+        // blocks anything). Nullable = not configured; pairing/range enforced by
+        // ck_legal_entities_office_location above (defense in depth alongside the command
+        // validator).
+        builder.Property(l => l.OfficeAddress).HasColumnName("office_address").HasMaxLength(500);
+        builder.Property(l => l.OfficeLatitude).HasColumnName("office_latitude");
+        builder.Property(l => l.OfficeLongitude).HasColumnName("office_longitude");
 
         // Existing index, preserved as-is.
         builder.HasIndex(l => l.TenantId);

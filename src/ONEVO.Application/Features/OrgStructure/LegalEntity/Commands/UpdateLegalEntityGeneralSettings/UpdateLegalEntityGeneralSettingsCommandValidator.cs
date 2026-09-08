@@ -110,5 +110,23 @@ public class UpdateLegalEntityGeneralSettingsCommandValidator
         RuleFor(x => x.BreakDurationMinutes)
             .GreaterThanOrEqualTo(0).WithMessage("Break duration must not be negative.")
             .When(x => x.BreakDurationMinutes is not null);
+
+        RuleFor(x => x.OfficeAddress)
+            .MaximumLength(500).WithMessage("Office address must be 500 characters or fewer.")
+            .When(x => x.OfficeAddress is not null);
+
+        // Office location is all-or-nothing: partially configuring it would leave a
+        // legal entity with a point but no way to know it's really the office - the
+        // on-site location warning simply never fires until both are set. The radius
+        // for that check comes from ClockInPolicy.AllowedRadiusMeters, not from here.
+        RuleFor(x => x.OfficeLatitude)
+            .NotNull().WithMessage("Office latitude and longitude must be set together.")
+            .InclusiveBetween(-90, 90).WithMessage("Office latitude must be between -90 and 90.")
+            .When(x => x.OfficeLongitude is not null);
+
+        RuleFor(x => x.OfficeLongitude)
+            .NotNull().WithMessage("Office latitude and longitude must be set together.")
+            .InclusiveBetween(-180, 180).WithMessage("Office longitude must be between -180 and 180.")
+            .When(x => x.OfficeLatitude is not null);
     }
 }
