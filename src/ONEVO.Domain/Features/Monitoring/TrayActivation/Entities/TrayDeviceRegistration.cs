@@ -7,6 +7,7 @@ public class TrayDeviceRegistration : ITenantOwnedEntity
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid UserId { get; set; }
+    public Guid? LegalEntityId { get; set; }
     public string DeviceName { get; set; } = string.Empty;
     public string DeviceOs { get; set; } = string.Empty;
     public string DeviceFingerprint { get; set; } = string.Empty;

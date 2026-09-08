@@ -73,7 +73,10 @@ public class CreateTaskEditRequestCommandHandler : IRequestHandler<CreateTaskEdi
                 return Result<TaskEditRequestResponse>.Forbidden("This task's sprint has been achieved and is now frozen.");
         }
 
-        var payload = new TaskEditRequestPayload(request.Title.Trim(), request.Description?.Trim(), request.Priority, request.DueDate, request.EstimatedHours, request.StoryPoints);
+                var payload = new TaskEditRequestPayload(
+            request.Title.Trim(), request.Description?.Trim(), request.Priority, request.DueDate,
+            request.EstimatedHours, request.StoryPoints, request.ProgressPercent);
+
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [callerEmployeeId.Value], ct);
         var requesterDisplayName = names.GetValueOrDefault(callerEmployeeId.Value) ?? "A teammate";
 
@@ -83,8 +86,10 @@ public class CreateTaskEditRequestCommandHandler : IRequestHandler<CreateTaskEdi
             var entity = new TaskEditRequest
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
-                RequestedByEmployeeId = callerEmployeeId.Value, PayloadJson = JsonSerializer.Serialize(payload),
-                Status = TaskEditRequestStatuses.Pending, CreatedById = _currentUser.UserId, CreatedAt = now
+                                RequestedByEmployeeId = callerEmployeeId.Value, PayloadJson = JsonSerializer.Serialize(payload),
+                Reason = request.Reason?.Trim(), Status = TaskEditRequestStatuses.Pending,
+                CreatedById = _currentUser.UserId, CreatedAt = now
+
             };
 
             await _requests.AddAsync(entity, innerCt);

@@ -45,6 +45,13 @@ public class GetObjectiveMembersQueryHandlerTests
             .ReturnsAsync(HeadEmployeeId);
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, OtherUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(OtherEmployeeId);
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string>
+            {
+                [HeadEmployeeId] = "Head Employee",
+                [MemberEmployeeId] = "Member Employee",
+                [InvitedEmployeeId] = "Invited Employee"
+            });
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
@@ -84,6 +91,24 @@ public class GetObjectiveMembersQueryHandlerTests
         Assert.Contains(result.Value.Items, i => i.EmployeeId == HeadEmployeeId && i.IsHead && !i.Pending);
         Assert.Contains(result.Value.Items, i => i.EmployeeId == MemberEmployeeId && !i.IsHead && !i.Pending);
         Assert.Contains(result.Value.Items, i => i.EmployeeId == InvitedEmployeeId && i.Pending && i.InviteType == ProjectInvitationTypes.Member);
+    }
+
+    [Fact]
+    public async Task Handle_ResolvesDisplayNamesForEveryMemberAndInvitee()
+    {
+        // Regression test: member Name must be resolved via ResolveDisplayNamesByEmployeeIdAsync
+        // (bypasses the management-coverage-scoped employee lookup, same as Objective.OwnerName),
+        // not left for the client to resolve via GET /employees/{id} - that 403s for most
+        // assignees since coverage is a People-module reporting-chain concept, unrelated to WM
+        // project membership.
+        var handler = BuildHandler(SubObjective());
+
+        var result = await handler.Handle(new GetObjectiveMembersQuery(ObjectiveId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(result.Value!.Items, i => i.EmployeeId == HeadEmployeeId && i.Name == "Head Employee");
+        Assert.Contains(result.Value.Items, i => i.EmployeeId == MemberEmployeeId && i.Name == "Member Employee");
+        Assert.Contains(result.Value.Items, i => i.EmployeeId == InvitedEmployeeId && i.Name == "Invited Employee");
     }
 
     [Fact]

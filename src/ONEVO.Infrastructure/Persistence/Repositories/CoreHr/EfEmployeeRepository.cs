@@ -209,14 +209,15 @@ public class EfEmployeeRepository : IEmployeeRepository
                         && leavesByEmployee.TryGetValue(row.e.Id, out var employeeLeaves)
                         && employeeLeaves.Any(request => request.StartDate <= resolution.WorkDate
                             && request.EndDate >= resolution.WorkDate);
-                    var breakUsedMinutes = resolution is not null
-                        && breaksByEmployee.TryGetValue(row.e.Id, out var employeeBreaks)
-                            ? AttendanceTodayStateService.CalculateBreakUsage(
-                                employeeBreaks,
-                                AttendanceTodayStateService.GetLocalDayWindow(
-                                    resolution.WorkDate, resolution.TimeZone),
-                                resolution.LocalNow)
-                            : 0;
+                    breaksByEmployee.TryGetValue(row.e.Id, out var employeeBreaks);
+                    var breakUsedMinutes = resolution is not null && employeeBreaks is not null
+                        ? AttendanceTodayStateService.CalculateBreakUsage(
+                            employeeBreaks,
+                            AttendanceTodayStateService.GetLocalDayWindow(
+                                resolution.WorkDate, resolution.TimeZone),
+                            resolution.LocalNow)
+                        : 0;
+                    var hasOpenBreak = employeeBreaks?.Any(breakRecord => breakRecord.BreakEnd is null) ?? false;
                     var status = resolution is null
                         ? null
                         : AttendanceDayStatusResolver.Resolve(
@@ -224,8 +225,10 @@ public class EfEmployeeRepository : IEmployeeRepository
                             "configured",
                             record,
                             hasApprovedLeave,
+                            hasOpenBreak,
                             row.legalEntity?.BreakDurationMinutes,
                             breakUsedMinutes,
+                            resolution.LocalNow,
                             resolution.LocalNow);
                     var attendanceSummary = resolution is null || !isActive
                         ? null
@@ -594,6 +597,18 @@ public class EfEmployeeRepository : IEmployeeRepository
                 && employeeIds.Contains(e.Id)
             select e.Id)
             .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, EmployeeEntity>> ListByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return new Dictionary<Guid, EmployeeEntity>();
+
+        var rows = await _db.Employees.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && employeeIds.Contains(e.Id))
+            .ToListAsync(ct);
+        return rows.ToDictionary(e => e.Id);
     }
 
     public async Task AddAsync(EmployeeEntity employee, CancellationToken ct = default)

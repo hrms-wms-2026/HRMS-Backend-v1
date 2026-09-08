@@ -183,15 +183,37 @@ public sealed class AttendanceCorrectionNotificationTests
         fixture.Policies.Setup(x => x.ListByLegalEntityAsync(fixture.TenantId, fixture.LegalEntityId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { fixture.CreatePolicy(approvalRequired: false) });
         fixture.Corrections.Setup(x => x.ListMyAsync(fixture.TenantId, fixture.EmployeeId,
-                It.IsAny<DateOnly?>(), It.IsAny<DateOnly?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { correction });
+                It.IsAny<DateOnly?>(), It.IsAny<DateOnly?>(), It.IsAny<string?>(),
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new[] { correction }, 1));
 
         var result = await fixture.Workflow.ListMyAsync(
-            new ListMyAttendanceCorrectionsQuery(null, null, null), CancellationToken.None);
+            new ListMyAttendanceCorrectionsQuery(null, null, null, new PagedRequest()), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Should().ContainSingle();
-        result.Value![0].ApprovalRequired.Should().BeTrue();
+        result.Value!.Items.Should().ContainSingle();
+        result.Value.Items[0].ApprovalRequired.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ListMy_AppliesPagingAndReturnsPagedResult()
+    {
+        var fixture = new Fixture(approvalRequired: false);
+        var correction = fixture.PendingCorrection();
+        fixture.Corrections.Setup(x => x.ListMyAsync(fixture.TenantId, fixture.EmployeeId,
+                It.IsAny<DateOnly?>(), It.IsAny<DateOnly?>(), It.IsAny<string?>(),
+                20, 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new[] { correction }, 33));
+
+        var result = await fixture.Workflow.ListMyAsync(
+            new ListMyAttendanceCorrectionsQuery(null, null, null, new PagedRequest { PageNumber = 2, PageSize = 20 }),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Items.Should().ContainSingle();
+        result.Value.PageNumber.Should().Be(2);
+        result.Value.TotalCount.Should().Be(33);
+        result.Value.TotalPages.Should().Be(2);
     }
 
     [Fact]

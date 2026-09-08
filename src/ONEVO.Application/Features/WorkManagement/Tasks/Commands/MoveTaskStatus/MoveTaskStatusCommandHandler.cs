@@ -5,8 +5,10 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
@@ -22,6 +24,10 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly ISprintRepository _sprints;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ITaskStatusChangeLogRepository _statusChangeLogs;
+    private readonly ITaskPercentageLogRepository _percentageLogs;
+    private readonly ITaskClockingSessionRepository _clockingSessions;
+    private readonly IProjectRepository _projects;
 
     public MoveTaskStatusCommandHandler(
         ICurrentUser currentUser,
@@ -30,8 +36,13 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         ITaskStatusRepository statuses,
         IObjectiveRepository objectives,
         IMilestoneMembershipCoordinator membership,
-        IUnitOfWork unitOfWork,
-        ISprintRepository sprints)
+                IUnitOfWork unitOfWork,
+        ISprintRepository sprints,
+        ITaskStatusChangeLogRepository statusChangeLogs,
+        ITaskPercentageLogRepository percentageLogs,
+        ITaskClockingSessionRepository clockingSessions,
+        IProjectRepository projects)
+
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -39,8 +50,13 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
         _statuses = statuses;
         _objectives = objectives;
         _membership = membership;
-        _unitOfWork = unitOfWork;
+                _unitOfWork = unitOfWork;
         _sprints = sprints;
+        _statusChangeLogs = statusChangeLogs;
+        _percentageLogs = percentageLogs;
+        _clockingSessions = clockingSessions;
+        _projects = projects;
+
     }
 
     public async Task<Result> Handle(MoveTaskStatusCommand request, CancellationToken ct)
@@ -94,28 +110,102 @@ public class MoveTaskStatusCommandHandler : IRequestHandler<MoveTaskStatusComman
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
+            var now = DateTimeOffset.UtcNow;
+            var fromStatusId = task.StatusId;
             task.StatusId = newStatus.Id;
 
-            if (!wasComplete && willBeComplete)
+                        if (!wasComplete && willBeComplete)
             {
                 task.CompletedHours = task.EstimatedHours ?? 0m;
-                task.CompletedAt = DateTimeOffset.UtcNow;
+                task.CompletedAt = now;
+                var previousPercent = task.ProgressPercent;
                 task.ProgressPercent = 100;
-                objective.CompletedHours += task.CompletedHours;
+                                await CascadeCompletedHoursAsync(tenantId, objective, task.CompletedHours, innerCt);
+
+                await _percentageLogs.AddAsync(new TaskPercentageLog
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
+                    EmployeeId = callerEmployeeId.Value, PreviousPercent = previousPercent, NewPercent = 100,
+                    Source = TaskPercentageLogSources.StatusChange, ClockingSessionId = null, ChangedAt = now
+                }, innerCt);
+
+                // A status-driven completion locks clocking the same way a 100% Push does (spec §4),
+                // but unlike Push there is no caller-supplied session to close - an assignee may still
+                // have this task clocked in when someone else drags it to a complete column. Leaving
+                // that session open would be unclosable forever (Push requires percent > 100, which is
+                // impossible) and would permanently block re-clocking via the partial unique index, even
+                // after a later edit unlocks the task by resetting ProgressPercent below 100.
+                var openSession = await _clockingSessions.GetOpenSessionForTaskAsync(tenantId, task.Id, innerCt);
+                if (openSession is not null)
+                {
+                    var trackedSession = await _clockingSessions.GetTrackedByIdForTenantAsync(tenantId, openSession.Id, innerCt);
+                    if (trackedSession is not null)
+                    {
+                        trackedSession.ClockOutAt = now;
+                        trackedSession.DurationMinutes = (int)(now - trackedSession.ClockInAt).TotalMinutes;
+                        trackedSession.UpdatedAt = now;
+                        _clockingSessions.Update(trackedSession);
+                    }
+                }
             }
+
             else if (wasComplete && !willBeComplete)
             {
-                objective.CompletedHours -= task.CompletedHours;
+                                                var reversedHours = task.CompletedHours;
                 task.CompletedHours = 0m;
+                await CascadeCompletedHoursAsync(tenantId, objective, -reversedHours, innerCt);
+
                 task.CompletedAt = null;
+                var previousPercent = task.ProgressPercent;
                 task.ProgressPercent = 0;
+                await _percentageLogs.AddAsync(new TaskPercentageLog
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
+                    EmployeeId = callerEmployeeId.Value, PreviousPercent = previousPercent, NewPercent = 0,
+                    Source = TaskPercentageLogSources.StatusChange, ClockingSessionId = null, ChangedAt = now
+                }, innerCt);
+
             }
 
-            task.UpdatedAt = DateTimeOffset.UtcNow;
-            objective.UpdatedAt = DateTimeOffset.UtcNow;
+                        await _statusChangeLogs.AddAsync(new TaskStatusChangeLog
+            {
+                Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
+                EmployeeId = callerEmployeeId.Value, FromStatusId = fromStatusId, ToStatusId = newStatus.Id,
+                ChangedAt = now
+            }, innerCt);
+
+            task.UpdatedAt = now;
+            objective.UpdatedAt = now;
 
             await _unitOfWork.SaveChangesAsync(innerCt);
+
             return Result.Success();
         }, ct);
+    }
+
+    private async Task CascadeCompletedHoursAsync(Guid tenantId, Objective startingObjective, decimal delta, CancellationToken ct)
+    {
+        if (delta == 0m)
+            return;
+
+        var current = startingObjective;
+        while (true)
+        {
+            current.CompletedHours += delta;
+
+            if (current.ParentObjectiveId is null)
+            {
+                var project = await _projects.GetTrackedByIdForTenantAsync(tenantId, current.ProjectId, ct);
+                if (project is not null)
+                    project.CompletedHours += delta;
+                return;
+            }
+
+            var parent = await _objectives.GetTrackedByIdForTenantAsync(tenantId, current.ParentObjectiveId.Value, ct);
+            if (parent is null)
+                return;
+
+            current = parent;
+        }
     }
 }

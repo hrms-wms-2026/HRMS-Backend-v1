@@ -36,8 +36,10 @@ public class AuthSessionController : ControllerBase
     /// creates the real, host-scoped tenant session. Tenant-host-only: the tenant is resolved from
     /// the request host by HostTenantResolutionMiddleware, never from the request body/headers.
     /// </summary>
-    [HttpPost("session-exchange")]
+        [HttpPost("session-exchange")]
     [AllowAnonymous]
+    [ONEVO.Api.Middleware.AllowWithoutActiveTray]
+
     public async Task<IActionResult> SessionExchange([FromBody] TenantSessionExchangeRequest request, CancellationToken ct)
     {
         if (_tenantContext.ContextMode != TenantContextMode.Tenant)
@@ -53,8 +55,10 @@ public class AuthSessionController : ControllerBase
     }
 
     /// <summary>Return safe metadata for the current tenant session.</summary>
-    [HttpGet("me")]
+        [HttpGet("me")]
     [Authorize(Policy = "TenantPolicy")]
+    [ONEVO.Api.Middleware.AllowWithoutActiveTray]
+
     public async Task<IActionResult> Me(CancellationToken ct)
     {
         var result = await _mediator.Send(new GetCurrentSessionQuery(), ct);
@@ -65,8 +69,10 @@ public class AuthSessionController : ControllerBase
     }
 
     /// <summary>Logout - revokes the server-side session.</summary>
-    [HttpPost("logout")]
+        [HttpPost("logout")]
     [Authorize(Policy = "TenantPolicy")]
+    [ONEVO.Api.Middleware.AllowWithoutActiveTray]
+
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
         await HttpContext.SignOutAsync("TenantScheme");

@@ -362,6 +362,24 @@ public sealed class EfAuthRepository :
         return hasPermission;
     }
 
+    public async Task<IReadOnlySet<Guid>> ListUserIdsHoldingPermissionAsync(
+        IReadOnlyCollection<Guid> userIds, string permissionCode, DateTimeOffset now, CancellationToken ct = default)
+    {
+        if (userIds.Count == 0)
+            return new HashSet<Guid>();
+
+        var matchingUserIds = await _db.UserRoles
+            .Where(ur => userIds.Contains(ur.UserId) && (ur.ExpiresAt == null || ur.ExpiresAt > now))
+            .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => new { ur.UserId, rp.PermissionId })
+            .Join(_db.Permissions, x => x.PermissionId, p => p.Id, (x, p) => new { x.UserId, p.Code })
+            .Where(x => x.Code == permissionCode)
+            .Select(x => x.UserId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        return matchingUserIds.ToHashSet();
+    }
+
     public async Task<IReadOnlyList<string>> ListRolePermissionCodesAsync(
         Guid userId,
         DateTimeOffset now,

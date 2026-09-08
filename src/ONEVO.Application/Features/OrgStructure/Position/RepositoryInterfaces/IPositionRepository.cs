@@ -114,6 +114,17 @@ public interface IPositionRepository
         Guid? excludingRecordId = null,
         CancellationToken ct = default);
 
+    // Batched variants of ListActiveCoverageByCoveredTargetAsync split by target type (a compound
+    // type+position+department equality doesn't translate to a single IN-list predicate) - each
+    // groups its results by the covered id, ordered OwnerOrder then Id within each group, same as
+    // the single-id version. Used by IEmployeeAuthorityResolver's batch approval-inbox scope
+    // resolution.
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<ManagementCoverageRecord>>> ListActivePositionCoverageByCoveredPositionIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> coveredPositionIds, CancellationToken ct = default);
+
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<ManagementCoverageRecord>>> ListActiveDepartmentCoverageByCoveredDepartmentIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> coveredDepartmentIds, CancellationToken ct = default);
+
     // Access template helpers
     /// <summary>Active access template for the position. Inactive templates are excluded so
     /// routing (RequiresApproval) matches <see cref="GetRequiresApprovalByPositionIdsAsync"/>.</summary>

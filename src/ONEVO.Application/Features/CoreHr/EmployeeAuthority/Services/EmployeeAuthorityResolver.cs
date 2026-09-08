@@ -4,6 +4,7 @@ using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -248,6 +249,181 @@ public sealed class EmployeeAuthorityResolver : IEmployeeAuthorityResolver
 
         return Result<EmployeeApprovalRoute>.UnprocessableEntity(
             "No eligible approver was found for this employee and action.");
+    }
+
+    public async Task<IReadOnlyCollection<Guid>> ResolveApprovalInboxScopeAsync(
+        EmployeeApprovalInboxScopeRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!_currentUser.IsAuthenticated || _currentUser.UserId == Guid.Empty || _currentUser.TenantId == Guid.Empty)
+            return Array.Empty<Guid>();
+        if (request.CandidateEmployeeIds.Count == 0)
+            return Array.Empty<Guid>();
+
+        var tenantId = _currentUser.TenantId;
+        var now = _clock.UtcNow;
+
+        var reviewerEmployee = await _employeeRepository.GetByUserAndLegalEntityAsync(
+            tenantId, _currentUser.UserId, request.LegalEntityId, cancellationToken);
+        if (reviewerEmployee is null)
+            return Array.Empty<Guid>();
+
+        var reviewerHasPermission = await _permissionRepository.UserHasPermissionCodeAsync(
+            _currentUser.UserId, request.RequiredPermission, now, cancellationToken);
+        if (!reviewerHasPermission)
+            return Array.Empty<Guid>();
+
+        var candidateIds = request.CandidateEmployeeIds.Distinct().ToList();
+
+        // Phase 1: subjects + their active primary assignments, one batch each.
+        var subjectsById = await _employeeRepository.ListByIdsAsync(tenantId, candidateIds, cancellationToken);
+        var subjects = candidateIds
+            .Select(id => subjectsById.TryGetValue(id, out var e) ? e : null)
+            .Where(e => e is not null && e!.LegalEntityId == request.LegalEntityId)
+            .Cast<ONEVO.Domain.Features.CoreHr.Entities.Employee>()
+            .ToList();
+        if (subjects.Count == 0)
+            return Array.Empty<Guid>();
+
+        var subjectPrimaryByEmployeeId = await _positionAssignmentRepository.GetActivePrimaryByEmployeeIdsAsync(
+            tenantId, subjects.Select(s => s.Id).ToList(), cancellationToken);
+
+        // Phase 2: coverage rows for every covered position/department the subjects touch.
+        var subjectPositionIds = subjectPrimaryByEmployeeId.Values.Select(pa => pa.PositionId).Distinct().ToList();
+        var subjectDepartmentIds = subjects.Where(s => s.DepartmentId is not null)
+            .Select(s => s.DepartmentId!.Value).Distinct().ToList();
+
+        var positionCoverageByCoveredPositionId = await _positionRepository.ListActivePositionCoverageByCoveredPositionIdsAsync(
+            tenantId, request.LegalEntityId, subjectPositionIds, cancellationToken);
+        var departmentCoverageByCoveredDepartmentId = await _positionRepository.ListActiveDepartmentCoverageByCoveredDepartmentIdsAsync(
+            tenantId, request.LegalEntityId, subjectDepartmentIds, cancellationToken);
+
+        // Phase 3: owner positions, their active holders, and ancestor chains for every subject
+        // plus every holder discovered - a holder's ancestor chain tells us whether they are a
+        // subordinate of a given subject (holder in descendants(subject) iff subject in
+        // ancestors(holder)), avoiding a separate descendant-expansion query entirely.
+        var ownerPositionIds = positionCoverageByCoveredPositionId.Values.SelectMany(rows => rows)
+            .Concat(departmentCoverageByCoveredDepartmentId.Values.SelectMany(rows => rows))
+            .Select(r => r.OwnerPositionId).Distinct().ToList();
+
+        var ownerPositionsById = (await _positionRepository.GetByIdsAsync(tenantId, ownerPositionIds, cancellationToken))
+            .ToDictionary(p => p.Id);
+        var holdersByOwnerPositionId = await _positionAssignmentRepository.GetActiveHoldersByPositionIdsAsync(
+            tenantId, ownerPositionIds, cancellationToken);
+
+        var allHolderEmployeeIds = holdersByOwnerPositionId.Values.SelectMany(h => h)
+            .Select(h => h.EmployeeId).Distinct().ToList();
+        var ancestorLookupIds = subjects.Select(s => s.Id).Concat(allHolderEmployeeIds).Distinct().ToList();
+        var ancestorChainsByEmployeeId = await _closureRepository.GetAncestorChainsAsync(
+            tenantId, ancestorLookupIds, cancellationToken);
+
+        // Phase 4: every employee a holder or a reporting-line ancestor could resolve to, plus
+        // their active-primary-assignment status (needed for the reporting-line tier's "ancestor
+        // must have an active primary assignment" gate) and permission grants - all batched over
+        // the full id union discovered so far, one call each, regardless of candidate count.
+        var allAncestorIds = ancestorChainsByEmployeeId.Values.SelectMany(chain => chain).Distinct().ToList();
+        var resolvableEmployeeIds = allHolderEmployeeIds.Concat(allAncestorIds).Distinct().ToList();
+
+        var activeHolderIdsInLegalEntity = (await _employeeRepository.ListActiveEmployeeIdsByIdsAsync(
+            tenantId, request.LegalEntityId, allHolderEmployeeIds, cancellationToken)).ToHashSet();
+        var resolvableEmployeesById = await _employeeRepository.ListByIdsAsync(
+            tenantId, resolvableEmployeeIds, cancellationToken);
+        var ancestorPrimaryByEmployeeId = await _positionAssignmentRepository.GetActivePrimaryByEmployeeIdsAsync(
+            tenantId, allAncestorIds, cancellationToken);
+
+        var allPermissionUserIds = resolvableEmployeesById.Values.Select(e => e.UserId).Distinct().ToList();
+        var userIdsWithPermission = await _permissionRepository.ListUserIdsHoldingPermissionAsync(
+            allPermissionUserIds, request.RequiredPermission, now, cancellationToken);
+
+        // Phase 5: replay ResolveApproverAsync's exact priority walk in memory, per subject - no
+        // further database calls from here on.
+        var eligible = new List<Guid>();
+        foreach (var subject in subjects)
+        {
+            Guid? approverUserId = null;
+
+            if (subjectPrimaryByEmployeeId.TryGetValue(subject.Id, out var primary)
+                && positionCoverageByCoveredPositionId.TryGetValue(primary.PositionId, out var positionCoverage))
+            {
+                approverUserId = TryResolveFromCoverageInMemory(
+                    positionCoverage, subject.Id, ownerPositionsById, holdersByOwnerPositionId,
+                    ancestorChainsByEmployeeId, activeHolderIdsInLegalEntity, resolvableEmployeesById,
+                    userIdsWithPermission);
+            }
+
+            if (approverUserId is null && subject.DepartmentId is { } departmentId
+                && departmentCoverageByCoveredDepartmentId.TryGetValue(departmentId, out var departmentCoverage))
+            {
+                approverUserId = TryResolveFromCoverageInMemory(
+                    departmentCoverage, subject.Id, ownerPositionsById, holdersByOwnerPositionId,
+                    ancestorChainsByEmployeeId, activeHolderIdsInLegalEntity, resolvableEmployeesById,
+                    userIdsWithPermission);
+            }
+
+            if (approverUserId is null && ancestorChainsByEmployeeId.TryGetValue(subject.Id, out var ownAncestors))
+            {
+                foreach (var ancestorEmployeeId in ownAncestors)
+                {
+                    if (!resolvableEmployeesById.TryGetValue(ancestorEmployeeId, out var ancestorEmployee)
+                        || ancestorEmployee.LegalEntityId != request.LegalEntityId
+                        || !userIdsWithPermission.Contains(ancestorEmployee.UserId)
+                        || !ancestorPrimaryByEmployeeId.ContainsKey(ancestorEmployeeId))
+                        continue;
+
+                    approverUserId = ancestorEmployee.UserId;
+                    break;
+                }
+            }
+
+            if (approverUserId == _currentUser.UserId)
+                eligible.Add(subject.Id);
+        }
+
+        return eligible;
+    }
+
+    private static Guid? TryResolveFromCoverageInMemory(
+        IReadOnlyList<ManagementCoverageRecord> records,
+        Guid subjectEmployeeId,
+        IReadOnlyDictionary<Guid, ONEVO.Domain.Features.OrgStructure.Entities.Position> ownerPositionsById,
+        IReadOnlyDictionary<Guid, IReadOnlyList<PositionActiveHolder>> holdersByOwnerPositionId,
+        IReadOnlyDictionary<Guid, IReadOnlyList<Guid>> ancestorChainsByEmployeeId,
+        IReadOnlyCollection<Guid> activeHolderIdsInLegalEntity,
+        IReadOnlyDictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.Employee> resolvableEmployeesById,
+        IReadOnlyCollection<Guid> userIdsWithPermission)
+    {
+        foreach (var record in records)
+        {
+            if (!ownerPositionsById.TryGetValue(record.OwnerPositionId, out var ownerPosition) || !ownerPosition.IsActive)
+                continue;
+            if (!holdersByOwnerPositionId.TryGetValue(record.OwnerPositionId, out var holders))
+                continue;
+
+            var resolvedHolder = holders.Count switch
+            {
+                0 => null,
+                1 => holders[0],
+                _ => record.ResponsibleEmployeeId is { } chosenId
+                    ? holders.FirstOrDefault(h => h.EmployeeId == chosenId)
+                    : null,
+            };
+            if (resolvedHolder is null)
+                continue;
+            if (resolvedHolder.EmployeeId == subjectEmployeeId)
+                continue;
+            // holder in descendants(subject) iff subject in ancestors(holder).
+            if (ancestorChainsByEmployeeId.TryGetValue(resolvedHolder.EmployeeId, out var holderAncestors)
+                && holderAncestors.Contains(subjectEmployeeId))
+                continue;
+            if (!activeHolderIdsInLegalEntity.Contains(resolvedHolder.EmployeeId))
+                continue;
+            if (!resolvableEmployeesById.TryGetValue(resolvedHolder.EmployeeId, out var candidateEmployee))
+                continue;
+            if (!userIdsWithPermission.Contains(candidateEmployee.UserId))
+                continue;
+
+            return candidateEmployee.UserId;
+        }
+        return null;
     }
 
     /// <summary>Walks one ordered set of coverage records (already sorted by OwnerOrder ascending)

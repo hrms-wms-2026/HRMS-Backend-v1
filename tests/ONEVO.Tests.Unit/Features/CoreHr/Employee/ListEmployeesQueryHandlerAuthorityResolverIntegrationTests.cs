@@ -314,6 +314,9 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         public Task<IReadOnlyList<Guid>> ListActiveEmployeeIdsByIdsAsync(
             Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
             => throw new NotImplementedException();
+        public Task<IReadOnlyDictionary<Guid, EmployeeEntity>> ListByIdsAsync(
+            Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+            => throw new NotImplementedException();
         public Task AddAsync(EmployeeEntity employee, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => throw new NotImplementedException();
     }

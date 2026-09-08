@@ -103,6 +103,73 @@ public sealed class TenantSessionExchangeEndpointTests
     }
 
     [Fact]
+    public async Task SessionExchange_BrowserAlreadyHasValidSessionCookie_SignsOutOldSessionBeforeSigningInFresh()
+    {
+        // Regression test: a browser that still holds a valid onevo_session cookie (e.g. logging
+        // in again without logging out first) must have that old ticket cleared before the new
+        // one is issued. Without this, SignInAsync always issues a fresh onevo_csrf cookie but the
+        // old onevo_session cookie/session survives untouched, so the new CSRF cookie can never
+        // match the still-active old session's stored csrf_token_hash - permanently failing CSRF
+        // validation (including on the app's own logout button) until that stale cookie expires.
+        var tenantId = Guid.NewGuid();
+        var sessionDto = new LoginResponseDto(
+            CsrfToken: "raw-csrf",
+            CsrfTokenHash: "hash-csrf",
+            ExpiresAt: DateTimeOffset.UtcNow.AddHours(8),
+            User: User,
+            Permissions: ["people.read"],
+            ActiveModules: ["people"],
+            Workspace: Workspace);
+
+        var tenantSessionExchange = new Mock<ITenantSessionExchangeService>();
+        tenantSessionExchange
+            .Setup(s => s.ConsumeAsync("good-code", tenantId, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(sessionDto));
+
+        var (controller, authenticationService) = CreateController(
+            tenantSessionExchange.Object, TenantContextMode.Tenant, tenantId, alreadyAuthenticated: true);
+
+        await controller.SessionExchange(new TenantSessionExchangeRequest("good-code"), CancellationToken.None);
+
+        authenticationService.Verify(
+            a => a.SignOutAsync(It.IsAny<HttpContext>(), "TenantScheme", It.IsAny<AuthenticationProperties>()),
+            Times.Once);
+        authenticationService.Verify(
+            a => a.SignInAsync(
+                It.IsAny<HttpContext>(), "TenantScheme", It.IsAny<System.Security.Claims.ClaimsPrincipal>(),
+                It.IsAny<AuthenticationProperties>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task SessionExchange_BrowserHasNoExistingSession_DoesNotCallSignOutAsync()
+    {
+        var tenantId = Guid.NewGuid();
+        var sessionDto = new LoginResponseDto(
+            CsrfToken: "raw-csrf",
+            CsrfTokenHash: "hash-csrf",
+            ExpiresAt: DateTimeOffset.UtcNow.AddHours(8),
+            User: User,
+            Permissions: ["people.read"],
+            ActiveModules: ["people"],
+            Workspace: Workspace);
+
+        var tenantSessionExchange = new Mock<ITenantSessionExchangeService>();
+        tenantSessionExchange
+            .Setup(s => s.ConsumeAsync("good-code", tenantId, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<LoginResponseDto>.Success(sessionDto));
+
+        var (controller, authenticationService) = CreateController(
+            tenantSessionExchange.Object, TenantContextMode.Tenant, tenantId, alreadyAuthenticated: false);
+
+        await controller.SessionExchange(new TenantSessionExchangeRequest("good-code"), CancellationToken.None);
+
+        authenticationService.Verify(
+            a => a.SignOutAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<AuthenticationProperties>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task SessionExchange_DoesNotAcceptTenantSlugOrIdFromRequestBody()
     {
         // TenantSessionExchangeRequest only ever carries "code" - the tenant is resolved solely
@@ -116,7 +183,8 @@ public sealed class TenantSessionExchangeEndpointTests
         ITenantSessionExchangeService tenantSessionExchange,
         TenantContextMode contextMode,
         Guid? tenantId = null,
-        string? remoteIp = null)
+        string? remoteIp = null,
+        bool alreadyAuthenticated = false)
     {
         var mediator = new Mock<IMediator>();
         var environment = new Mock<IWebHostEnvironment>();
@@ -132,6 +200,10 @@ public sealed class TenantSessionExchangeEndpointTests
                 It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<System.Security.Claims.ClaimsPrincipal>(),
                 It.IsAny<AuthenticationProperties>()))
             .Returns(Task.CompletedTask);
+        authenticationService
+            .Setup(instance => instance.SignOutAsync(
+                It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<AuthenticationProperties>()))
+            .Returns(Task.CompletedTask);
         var services = new ServiceCollection();
         services.AddSingleton(authenticationService.Object);
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
@@ -143,6 +215,17 @@ public sealed class TenantSessionExchangeEndpointTests
         var httpContext = new DefaultHttpContext { RequestServices = services.BuildServiceProvider() };
         if (remoteIp is not null)
             httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(remoteIp);
+
+        // Simulates a browser that still carries a valid (but stale) onevo_session cookie from an
+        // earlier login: automatic authentication middleware would have already populated
+        // HttpContext.User from that old ticket by the time the controller action runs.
+        if (alreadyAuthenticated)
+        {
+            var oldTicketClaims = new System.Security.Claims.ClaimsIdentity(
+                [new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, Guid.NewGuid().ToString())],
+                "TenantScheme");
+            httpContext.User = new System.Security.Claims.ClaimsPrincipal(oldTicketClaims);
+        }
 
         var controller = new AuthSessionController(mediator.Object, environment.Object, tenantContext.Object, tenantSessionExchange)
         {

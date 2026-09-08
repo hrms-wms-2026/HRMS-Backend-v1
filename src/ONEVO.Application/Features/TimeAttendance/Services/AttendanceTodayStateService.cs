@@ -3,7 +3,6 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
@@ -20,11 +19,12 @@ public sealed class AttendanceTodayStateService(
     IClockInPolicyRepository policies,
     IAttendanceReadRepository attendance,
     IEmployeeAuthorityResolver authority,
-    IWorkModeRepository workModes,
+    IExpectedWorkAreaResolver expectedWorkAreas,
     ILeaveRequestReadRepository? leaveRequests = null)
     : IAttendanceTodayStateService
 {
     private const string AttendanceReadPermission = "attendance:read";
+    public const string ExpectedWorkAreaSourceAttendanceSnapshot = "attendance_record_snapshot";
 
     public async Task<Result<AttendanceTodayContext>> ResolveContextAsync(CancellationToken ct = default)
     {
@@ -50,8 +50,15 @@ public sealed class AttendanceTodayStateService(
         var workDate = scheduleResolution.WorkDate;
         var localNow = scheduleResolution.LocalNow;
         var schedule = scheduleResolution.Schedule;
-        var workMode = await ResolveWorkModeAsync(employee.WorkModeId, ct);
-        var policy = await ResolvePolicyAsync(legalEntity.Id, workDate, workMode, ct);
+
+        var expectedAreaResult = await expectedWorkAreas.ResolveAsync(employee, legalEntity, workDate, ct);
+        if (!expectedAreaResult.IsSuccess || expectedAreaResult.Value is null)
+            return Result<AttendanceTodayContext>.Failure(
+                expectedAreaResult.Error ?? "The expected work area could not be resolved.",
+                expectedAreaResult.StatusCode ?? 409);
+
+        var expectedArea = expectedAreaResult.Value;
+        var policy = await ResolvePolicyAsync(legalEntity.Id, workDate, NormalizeWorkMode(expectedArea.WorkArea), ct);
 
         return Result<AttendanceTodayContext>.Success(new AttendanceTodayContext(
             employee,
@@ -62,7 +69,8 @@ public sealed class AttendanceTodayStateService(
             utcNow,
             localNow,
             schedule,
-            workMode,
+            expectedArea.WorkArea,
+            expectedArea.Source,
             policy.Policy,
             policy.Status,
             policy.AllowedMethods,
@@ -102,9 +110,11 @@ public sealed class AttendanceTodayStateService(
             context.PolicyStatus,
             attendanceRecord,
             hasApprovedLeave,
+            breakState.HasOpenBreak,
             context.LegalEntity.BreakDurationMinutes,
             breakUsage,
-            context.LocalNow);
+            context.LocalNow,
+            context.UtcNow);
         var actions = ResolveActions(
             attendanceRecord,
             context.Schedule,
@@ -113,6 +123,23 @@ public sealed class AttendanceTodayStateService(
             context.LegalEntity.BreakDurationMinutes);
         var shouldHaveClockedIn = attendanceState.ShouldHaveClockedIn;
         var messages = BuildMessages(context.Schedule, context.PolicyStatus, breakState);
+
+        // Today's own row (fetched above by WorkDate) can't reveal a session left open on an
+        // earlier day - clock-in/out always write to that day's own row, so a forgotten
+        // clock-out from a prior day is otherwise invisible until the employee happens to open
+        // that old day's history. Surface it here so it's seen before they clock in again.
+        var staleOpenRecord = await attendance.GetAnyOpenRecordAsync(
+            currentUser.TenantId, context.Employee.Id, ct);
+        var hasStalePriorDay = staleOpenRecord is not null
+            && staleOpenRecord.Date != context.WorkDate
+            && staleOpenRecord.ActualStart is DateTimeOffset staleStart
+            && context.UtcNow - staleStart >= AttendanceDayStatusResolver.MissingClockOutThreshold;
+        var effectiveAttentionType = hasStalePriorDay ? "missing_clock_out" : attendanceState.AttentionType;
+        var effectiveAttentionLabel = hasStalePriorDay
+            ? $"Still shown as clocked in from {staleOpenRecord!.Date:MMM d} — confirm the actual clock-out time"
+            : attendanceState.AttentionLabel;
+        var effectiveAttentionSeverity = hasStalePriorDay ? "critical" : attendanceState.AttentionSeverity;
+        var attentionWorkDate = hasStalePriorDay ? staleOpenRecord!.Date : (DateOnly?)null;
         var visibility = await authority.ResolveVisibilityAsync(
             new EmployeeAuthorityVisibilityRequest(
                 currentUser.UserId,
@@ -120,6 +147,14 @@ public sealed class AttendanceTodayStateService(
                 AttendanceReadPermission,
                 IncludeSelf: true,
                 EmployeeAuthorityPurpose.TimeTrackingRead), ct);
+
+        // Once an attendance row exists, its persisted ExpectedWorkArea is the historical
+        // snapshot for the day and takes precedence over today's live resolution, which may have
+        // moved on (e.g. a later approval for a different date, or a policy change).
+        var effectiveExpectedWorkArea = attendanceRecord?.ExpectedWorkArea ?? context.ExpectedWorkArea;
+        var effectiveExpectedWorkAreaSource = attendanceRecord is not null
+            ? ExpectedWorkAreaSourceAttendanceSnapshot
+            : context.ExpectedWorkAreaSource;
 
         return Result<AttendanceTodayResponse>.Success(new AttendanceTodayResponse(
             context.Employee.Id,
@@ -138,11 +173,11 @@ public sealed class AttendanceTodayStateService(
             breakUsage,
             breakState.RemainingMinutes,
             breakState.State,
-            context.WorkMode,
+            NormalizeWorkMode(effectiveExpectedWorkArea),
             attendanceState.Status,
             attendanceRecord?.ActualStart,
             attendanceRecord?.ActualEnd,
-            attendanceRecord?.WorkedMinutes ?? 0,
+            CalculateWorkedMinutes(attendanceRecord, breakUsage, context.LocalNow),
             attendanceRecord?.AttendanceSource,
             actions.CanClockIn,
             actions.CanClockOut,
@@ -153,17 +188,13 @@ public sealed class AttendanceTodayStateService(
             context.AllowedClockInMethods,
             messages,
             attendanceState.StatusLabel,
-            attendanceState.AttentionType,
-            attendanceState.AttentionLabel,
-            attendanceState.AttentionSeverity,
+            effectiveAttentionType,
+            effectiveAttentionLabel,
+            effectiveAttentionSeverity,
             attendanceState.BreakOverageMinutes,
-            attendanceState.IsOverBreakAllowance));
-    }
-
-    private async Task<string?> ResolveWorkModeAsync(int workModeId, CancellationToken ct)
-    {
-        var mode = (await workModes.ListActiveAsync(ct)).FirstOrDefault(x => x.Id == workModeId);
-        return NormalizeWorkMode(mode?.Code);
+            attendanceState.IsOverBreakAllowance,
+            effectiveExpectedWorkAreaSource,
+            attentionWorkDate));
     }
 
     private async Task<PolicyResolution> ResolvePolicyAsync(
@@ -267,6 +298,20 @@ public sealed class AttendanceTodayStateService(
             if (end <= start) return 0;
             return (int)Math.Max(0, (end - start).TotalMinutes);
         });
+    }
+
+    public static int CalculateWorkedMinutes(AttendanceRecord? record, int breakUsedMinutes, DateTimeOffset now)
+    {
+        if (record?.ActualStart is not DateTimeOffset start || record.ActualEnd is not null)
+            return record?.WorkedMinutes ?? 0;
+
+        // Past the missing-clock-out threshold we no longer know how long the employee
+        // actually worked, so stop projecting a live elapsed count that would keep growing
+        // forever. Fall back to the last persisted value until a correction resolves it.
+        if (now - start >= AttendanceDayStatusResolver.MissingClockOutThreshold)
+            return record.WorkedMinutes;
+
+        return Math.Max(0, (int)(now - start).TotalMinutes - breakUsedMinutes);
     }
 
     public static AttendanceLocalDayWindow GetLocalDayWindow(DateOnly date, TimeZoneInfo zone)

@@ -100,6 +100,46 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment>> GetActivePrimaryByEmployeeIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return new Dictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment>();
+
+        var rows = await _db.PositionAssignments.AsNoTracking()
+            .Where(pa => pa.TenantId == tenantId
+                && employeeIds.Contains(pa.EmployeeId)
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active)
+            .ToListAsync(ct);
+        return rows.ToDictionary(pa => pa.EmployeeId);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<PositionActiveHolder>>> GetActiveHoldersByPositionIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> positionIds, CancellationToken ct = default)
+    {
+        if (positionIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<PositionActiveHolder>>();
+
+        var rows = await (
+            from pa in _db.PositionAssignments.AsNoTracking()
+            join e in _db.Employees.AsNoTracking() on pa.EmployeeId equals e.Id
+            where pa.TenantId == tenantId
+                && positionIds.Contains(pa.PositionId)
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active
+            select new { pa.PositionId, EmployeeId = e.Id, e.FirstName, e.LastName, e.Email, e.AvatarFileId })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(row => row.PositionId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<PositionActiveHolder>)g
+                    .Select(row => new PositionActiveHolder(row.EmployeeId, row.FirstName, row.LastName, row.Email, row.AvatarFileId))
+                    .ToList());
+    }
+
     public async Task<IReadOnlyList<ChecklistAssignee>> GetChecklistAssigneesAsync(
         Guid tenantId, Guid positionId, CancellationToken ct = default)
     {

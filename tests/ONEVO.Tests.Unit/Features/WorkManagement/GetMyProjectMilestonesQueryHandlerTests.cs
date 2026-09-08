@@ -212,10 +212,12 @@ public class GetMyProjectMilestonesQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerIsNotOwner_IsOwnerFalse()
+    public async Task Handle_CallerIsNotOwnerAndNotAnEffectiveManager_IsOwnerFalse()
     {
+        // Removed (inactive) direct membership, caller doesn't own the milestone or any ancestor
+        // in the fetched objective set - no path grants effective-manager rights.
         var (handler, _) = BuildHandler(
-            new List<ProjectMember> { Membership(MilestoneId) },
+            new List<ProjectMember> { Membership(MilestoneId, isActive: false) },
             new List<Objective> { Milestone() },
             OwnerAndManagerNames);
 
@@ -223,6 +225,61 @@ public class GetMyProjectMilestonesQueryHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.False(Assert.Single(result.Value!).IsOwner);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsActiveNonOwnerMember_IsOwnerTrue()
+    {
+        // Per the cascading-ownership design (IMilestoneMembershipCoordinator.IsEffectiveManagerAsync),
+        // an active member of an objective - not just its literal owner - has full manager rights on it.
+        var (handler, _) = BuildHandler(
+            new List<ProjectMember> { Membership(MilestoneId, isActive: true) },
+            new List<Objective> { Milestone() },
+            OwnerAndManagerNames);
+
+        var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(Assert.Single(result.Value!).IsOwner);
+    }
+
+    [Fact]
+    public async Task Handle_ActiveMemberOfAncestor_CascadesToChildObjectiveWithNoDirectRow()
+    {
+        // The actual bug: caller is only ever added to the parent (Default) objective, never
+        // directly to the child milestone - but effective-manager rights cascade down, so the
+        // child must still appear here (this is what feeds Board/Backlog's Module picker).
+        var (handler, _) = BuildHandler(
+            new List<ProjectMember> { Membership(DefaultObjectiveId, isActive: true) },
+            new List<Objective> { DefaultObjective(), Milestone() },
+            OwnerAndManagerNames);
+
+        var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Count);
+        var child = result.Value!.Single(m => m.ObjectiveId == MilestoneId);
+        Assert.True(child.IsOwner);
+        Assert.True(child.MembershipIsActive);
+        Assert.Null(child.MembershipRemovedAt);
+    }
+
+    [Fact]
+    public async Task Handle_CallerOwnsAncestorButHasNoMembershipRowAnywhere_ChildStillIncluded()
+    {
+        // Ownership (Objective.OwnerId) can be set without a project_members row ever existing
+        // for that employee (e.g. TransferObjectiveHead) - cascade must still work off OwnerId.
+        var (handler, _) = BuildHandler(
+            new List<ProjectMember>(),
+            new List<Objective> { DefaultObjective(), Milestone() },
+            OwnerAndManagerNames,
+            callerId: OwnerId);
+
+        var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Count);
+        Assert.All(result.Value!, m => Assert.True(m.IsOwner));
     }
 
     [Fact]

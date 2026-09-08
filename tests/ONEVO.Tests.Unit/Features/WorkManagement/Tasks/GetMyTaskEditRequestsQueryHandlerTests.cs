@@ -44,9 +44,11 @@ public class GetMyTaskEditRequestsQueryHandlerTests
             });
 
         var firstPayload = new TaskEditRequestPayload(
-            "First update", null, WorkTaskPriorities.High, null, null, null);
+                        "First update", null, WorkTaskPriorities.High, null, null, null, null);
+
         var secondPayload = new TaskEditRequestPayload(
-            "Second update", null, WorkTaskPriorities.Low, null, null, null);
+                        "Second update", null, WorkTaskPriorities.Low, null, null, null, null);
+
         var pending = new List<TaskEditRequest>
         {
             new()

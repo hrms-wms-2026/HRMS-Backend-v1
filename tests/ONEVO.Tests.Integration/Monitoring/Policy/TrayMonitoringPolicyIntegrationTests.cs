@@ -3,9 +3,12 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
 using Testcontainers.PostgreSql;
@@ -106,18 +109,53 @@ public sealed class TrayMonitoringPolicyIntegrationTests : IAsyncLifetime
         body.GetProperty("inactivity_screenshot_enabled").GetBoolean().Should().BeFalse();
     }
 
-    private async Task SeedTogglesAsync(Guid tenantId, bool activity, bool screenshot, bool autoScreenshot)
+    /// <summary>
+    /// The tray endpoint serves TrayAgentPolicyDto, which carries the newly-added
+    /// LocationTrackingEnabled/EffectiveScope fields. Proves both round-trip through the
+    /// full resolver + JSON contract, not just that the DTO record has the properties.
+    /// </summary>
+    [Fact]
+    public async Task GetPolicy_WithWorkLocationVerificationOn_ReturnsLocationAndScopeFields()
+    {
+        var slug = $"pol-loc-{Guid.NewGuid():N}"[..20];
+        var user = await SeedActiveUserAsync(slug, $"{slug}@test.dev", "TestPass1!");
+        await SeedTogglesAsync(user.TenantId, activity: true, screenshot: false, autoScreenshot: false, workLocationVerification: true);
+        var jwt = await GetTrayJwtForUserAsync(user, $"fp-{slug}");
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/v1/monitoring/tray/policy");
+        req.Headers.Host = "localhost";
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
+
+        var resp = await _client.SendAsync(req);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("location_tracking_enabled").GetBoolean().Should().BeTrue();
+        body.GetProperty("effective_scope").GetString().Should().Be("employee");
+    }
+
+    private Task SeedTogglesAsync(Guid tenantId, bool activity, bool screenshot, bool autoScreenshot) =>
+        SeedTogglesAsync(tenantId, activity, screenshot, autoScreenshot, workLocationVerification: false);
+
+    private async Task SeedTogglesAsync(
+        Guid tenantId, bool activity, bool screenshot, bool autoScreenshot, bool workLocationVerification)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var legalEntityId = await db.LegalEntities
+            .Where(entity => entity.TenantId == tenantId && entity.IsPrimary)
+            .Select(entity => entity.Id)
+            .SingleAsync();
         db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
+            LegalEntityId = legalEntityId,
             ActivityMonitoring = activity,
             ApplicationTracking = true,
             ScreenshotCapture = screenshot,
             AutoScreenshotCapture = autoScreenshot,
+            WorkLocationVerification = workLocationVerification,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         });
@@ -177,6 +215,21 @@ public sealed class TrayMonitoringPolicyIntegrationTests : IAsyncLifetime
 
         db.Tenants.Add(tenant);
         db.Users.Add(user);
+        var legalEntity = new LegalEntity
+        {
+            Id = Guid.NewGuid(), TenantId = tenant.Id, Name = $"{tenantSlug} Company",
+            CountryCode = "US", CurrencyCode = "USD", IsActive = true, IsPrimary = true
+        };
+        db.LegalEntities.Add(legalEntity);
+        db.Employees.Add(new Employee
+        {
+            Id = Guid.NewGuid(), TenantId = tenant.Id, UserId = user.Id,
+            LegalEntityId = legalEntity.Id, EmployeeNumber = Guid.NewGuid().ToString("N")[..8],
+            FirstName = "Test", LastName = "User", Email = email,
+            EmploymentTypeId = 1, EmploymentStatusId = 1, WorkModeId = 1,
+            HireDate = new DateOnly(2025, 1, 1), CreatedAt = DateTimeOffset.UtcNow,
+            CreatedById = user.Id
+        });
         await db.SaveChangesAsync();
 
         return new SeedResult(tenant.Id, user.Id, email, password, tenantSlug);

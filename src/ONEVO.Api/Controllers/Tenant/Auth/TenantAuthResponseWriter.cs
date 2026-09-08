@@ -50,6 +50,15 @@ internal static class TenantAuthResponseWriter
     public static async Task SignInAsync(
         this ControllerBase controller, LoginResponseDto dto, IWebHostEnvironment env)
     {
+        // A browser calling login/session-exchange while it still holds a valid onevo_session
+        // cookie (e.g. re-login without logging out first) must not be left with that old
+        // session's cookie dangling: SignInAsync only issues a fresh onevo_csrf cookie below, so
+        // an un-cleared old onevo_session cookie would keep resolving to a session whose stored
+        // csrf_token_hash can never match the new onevo_csrf value, permanently failing CSRF
+        // checks (including logout) for that browser. Signing out first guarantees a clean pair.
+        if (controller.User.Identity?.IsAuthenticated == true)
+            await controller.HttpContext.SignOutAsync("TenantScheme");
+
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, dto.User!.UserId.ToString())

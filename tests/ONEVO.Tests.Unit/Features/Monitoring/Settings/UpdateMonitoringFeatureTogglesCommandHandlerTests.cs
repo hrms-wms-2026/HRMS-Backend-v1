@@ -16,12 +16,16 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     private readonly Mock<ICacheService> _cache = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid LegalEntityId = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly DateTimeOffset FixedNow = new(2026, 8, 17, 12, 0, 0, TimeSpan.Zero);
 
     private UpdateMonitoringFeatureTogglesCommandHandler BuildSut(bool hasPermission = true)
     {
         _currentUser.SetupGet(c => c.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(c => c.TenantId).Returns(TenantId);
+        _currentUser.SetupGet(c => c.LegalEntityId).Returns(LegalEntityId);
+        _toggles.Setup(r => r.LegalEntityExistsAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         _currentUser.Setup(c => c.HasPermission("monitoring:configure")).Returns(hasPermission);
         _dateTimeProvider.SetupGet(d => d.UtcNow).Returns(FixedNow);
         return new UpdateMonitoringFeatureTogglesCommandHandler(
@@ -45,7 +49,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     [Fact]
     public async Task Handle_NoExistingRow_CreatesNewRow()
     {
-        _toggles.Setup(r => r.GetByTenantIdAsync(TenantId, It.IsAny<CancellationToken>()))
+        _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync((MonitoringFeatureToggles?)null);
         MonitoringFeatureToggles? added = null;
         _toggles.Setup(r => r.AddAsync(It.IsAny<MonitoringFeatureToggles>(), It.IsAny<CancellationToken>()))
@@ -58,6 +62,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
         result.IsSuccess.Should().BeTrue();
         added.Should().NotBeNull();
         added!.TenantId.Should().Be(TenantId);
+        added.LegalEntityId.Should().Be(LegalEntityId);
         added.ActivityMonitoring.Should().BeTrue();
         added.CreatedAt.Should().Be(FixedNow);
         added.UpdatedAt.Should().Be(FixedNow);
@@ -76,7 +81,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
             CreatedAt = FixedNow.AddDays(-10),
             UpdatedAt = FixedNow.AddDays(-10)
         };
-        _toggles.Setup(r => r.GetByTenantIdAsync(TenantId, It.IsAny<CancellationToken>()))
+        _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existing);
         var sut = BuildSut();
 
@@ -92,7 +97,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     [Fact]
     public async Task Handle_NoExistingRow_PersistsIdleThresholdMinutes()
     {
-        _toggles.Setup(r => r.GetByTenantIdAsync(TenantId, It.IsAny<CancellationToken>()))
+        _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync((MonitoringFeatureToggles?)null);
         MonitoringFeatureToggles? added = null;
         _toggles.Setup(r => r.AddAsync(It.IsAny<MonitoringFeatureToggles>(), It.IsAny<CancellationToken>()))
@@ -136,7 +141,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
     [Fact]
     public async Task Handle_ValidRequest_InvalidatesTenantToggleCachePrefix()
     {
-        _toggles.Setup(r => r.GetByTenantIdAsync(TenantId, It.IsAny<CancellationToken>()))
+        _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync((MonitoringFeatureToggles?)null);
         var sut = BuildSut();
 

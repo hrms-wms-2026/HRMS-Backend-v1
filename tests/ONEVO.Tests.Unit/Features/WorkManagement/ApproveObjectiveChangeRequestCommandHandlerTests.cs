@@ -289,8 +289,62 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
         objectives.Verify(x => x.Update(It.Is<Objective>(o => o.Id == approverObjective.Id)), Times.Never);
     }
 
+        [Fact]
+    public async Task Handle_ExtendAllocation_UsesApproverEditedAmountWhenProvided()
+    {
+        var childObjective = ChildObjective(allocatedHours: 60m);
+        var approverObjective = ApproverObjective(allocatedHours: 100m);
+        var (handler, objectives) = BuildWithSlack(
+            changeRequest: ExtendAllocationRequest(childObjective.Id, requestedAdditionalHours: 20m),
+            childObjective, approverObjective, approverSlack: 40m);
+
+        var result = await handler.Handle(
+            new ApproveObjectiveChangeRequestCommand(RequestId, ApprovedAdditionalHours: 12m),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        objectives.Verify(x => x.Update(It.Is<Objective>(o => o.Id == childObjective.Id && o.AllocatedHours == 72m)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ExtendAllocation_ApprovedAmountExceedingSlackReturnsConflict()
+    {
+        var childObjective = ChildObjective(allocatedHours: 60m);
+        var approverObjective = ApproverObjective(allocatedHours: 100m);
+        var (handler, objectives) = BuildWithSlack(
+            changeRequest: ExtendAllocationRequest(childObjective.Id, requestedAdditionalHours: 10m),
+            childObjective, approverObjective, approverSlack: 20m);
+
+        var result = await handler.Handle(
+            new ApproveObjectiveChangeRequestCommand(RequestId, ApprovedAdditionalHours: 21m),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_ExtendAllocation_NonPositiveApprovedAmountReturnsFailure()
+    {
+        var childObjective = ChildObjective(allocatedHours: 60m);
+        var approverObjective = ApproverObjective(allocatedHours: 100m);
+        var (handler, objectives) = BuildWithSlack(
+            changeRequest: ExtendAllocationRequest(childObjective.Id, requestedAdditionalHours: 10m),
+            childObjective, approverObjective, approverSlack: 20m);
+
+        var result = await handler.Handle(
+            new ApproveObjectiveChangeRequestCommand(RequestId, ApprovedAdditionalHours: 0m),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
+    }
+
     [Fact]
     public async Task Handle_ExtendAllocation_ApproverInsufficientSlack_ReturnsConflictAndLeavesRequestPending()
+
     {
         var childObjective = ChildObjective(allocatedHours: 60m);
         var approverObjective = ApproverObjective(allocatedHours: 100m);

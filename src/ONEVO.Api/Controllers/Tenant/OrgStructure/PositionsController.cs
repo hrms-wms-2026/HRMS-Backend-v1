@@ -8,7 +8,6 @@ using ONEVO.Application.Features.OrgStructure.Commands.CheckPositionArchive;
 using ONEVO.Application.Features.OrgStructure.Commands.CreatePosition;
 using ONEVO.Application.Features.OrgStructure.Commands.RestorePosition;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdatePosition;
-using ONEVO.Api.Contracts.OrgStructure.Positions;
 using ONEVO.Application.Features.OrgStructure.Queries.GetActiveHolders;
 using ONEVO.Application.Features.OrgStructure.Queries.GetPositionById;
 using ONEVO.Application.Features.OrgStructure.Queries.GetPositionTree;

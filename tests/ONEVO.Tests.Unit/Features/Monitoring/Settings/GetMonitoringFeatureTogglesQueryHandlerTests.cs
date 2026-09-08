@@ -14,18 +14,22 @@ public class GetMonitoringFeatureTogglesQueryHandlerTests
     private readonly Mock<ICurrentUser> _currentUser = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid LegalEntityId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
     private GetMonitoringFeatureTogglesQueryHandler BuildSut()
     {
         _currentUser.SetupGet(c => c.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(c => c.TenantId).Returns(TenantId);
+        _currentUser.SetupGet(c => c.LegalEntityId).Returns(LegalEntityId);
+        _toggles.Setup(r => r.LegalEntityExistsAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         return new GetMonitoringFeatureTogglesQueryHandler(_toggles.Object, _currentUser.Object);
     }
 
     [Fact]
     public async Task Handle_NoExistingRow_ReturnsAllFalseDefaults()
     {
-        _toggles.Setup(r => r.GetByTenantIdAsync(TenantId, It.IsAny<CancellationToken>()))
+        _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync((MonitoringFeatureToggles?)null);
         var sut = BuildSut();
 
@@ -34,7 +38,7 @@ public class GetMonitoringFeatureTogglesQueryHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value!.ActivityMonitoring.Should().BeFalse();
         result.Value.Biometric.Should().BeFalse();
-        result.Value.IdleThresholdMinutes.Should().Be(5); // default when no row exists
+        result.Value.IdleThresholdMinutes.Should().Be(2); // default when no row exists
         result.Value.UpdatedAt.Should().BeNull();
     }
 
@@ -42,7 +46,7 @@ public class GetMonitoringFeatureTogglesQueryHandlerTests
     public async Task Handle_ExistingRow_ReturnsMappedValues()
     {
         var updatedAt = new DateTimeOffset(2026, 8, 17, 10, 0, 0, TimeSpan.Zero);
-        _toggles.Setup(r => r.GetByTenantIdAsync(TenantId, It.IsAny<CancellationToken>()))
+        _toggles.Setup(r => r.GetByLegalEntityIdAsync(TenantId, LegalEntityId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MonitoringFeatureToggles
             {
                 Id = Guid.NewGuid(),

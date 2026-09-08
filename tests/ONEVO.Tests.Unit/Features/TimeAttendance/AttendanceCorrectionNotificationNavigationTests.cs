@@ -17,6 +17,7 @@ public sealed class AttendanceCorrectionNotificationNavigationTests
         viewModel.Destination.Should().NotBeNull();
         viewModel.Destination!.NotificationType.Should().Be("attendance_correction_request_created");
         viewModel.Destination.AttendanceCorrectionId.Should().Be(CorrectionId);
+        viewModel.Destination.WorkAreaChangeRequestId.Should().BeNull();
         viewModel.Destination.DestinationKey.Should().Be("attendance_correction_approval");
         viewModel.Destination.IsNavigable.Should().BeTrue();
         viewModel.Destination.LegalEntityId.Should().BeNull();
@@ -33,6 +34,39 @@ public sealed class AttendanceCorrectionNotificationNavigationTests
 
         viewModel.Destination.Should().NotBeNull();
         viewModel.Destination!.AttendanceCorrectionId.Should().Be(CorrectionId);
+        viewModel.Destination.WorkAreaChangeRequestId.Should().BeNull();
+        viewModel.Destination.DestinationKey.Should().BeNull();
+        viewModel.Destination.IsNavigable.Should().BeFalse();
+    }
+
+    [Fact]
+    public void WorkAreaApprovalRequest_UsesWorkAreaIdAndApprovalDestination()
+    {
+        var viewModel = Notification(
+            "work_area_change_request_created",
+            relatedType: "work_area_change_request",
+            relatedId: CorrectionId).ToViewModel();
+
+        viewModel.Destination.Should().NotBeNull();
+        viewModel.Destination!.WorkAreaChangeRequestId.Should().Be(CorrectionId);
+        viewModel.Destination.AttendanceCorrectionId.Should().BeNull();
+        viewModel.Destination.DestinationKey.Should().Be("work_area_change_approval");
+        viewModel.Destination.IsNavigable.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("work_area_change_request_decided")]
+    [InlineData("work_area_change_request_cancelled")]
+    public void WorkAreaDecisionNotifications_AreNonNavigableAndKeepWorkAreaId(string templateCode)
+    {
+        var viewModel = Notification(
+            templateCode,
+            relatedType: "work_area_change_request",
+            relatedId: CorrectionId).ToViewModel();
+
+        viewModel.Destination.Should().NotBeNull();
+        viewModel.Destination!.WorkAreaChangeRequestId.Should().Be(CorrectionId);
+        viewModel.Destination.AttendanceCorrectionId.Should().BeNull();
         viewModel.Destination.DestinationKey.Should().BeNull();
         viewModel.Destination.IsNavigable.Should().BeFalse();
     }

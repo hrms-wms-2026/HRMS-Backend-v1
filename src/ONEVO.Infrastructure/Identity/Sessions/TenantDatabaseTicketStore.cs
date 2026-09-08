@@ -210,6 +210,8 @@ public sealed class TenantDatabaseTicketStore : ITicketStore
             new("session_expires_at", session.ExpiresAt.ToString("O")),
             new("session_id", session.Id.ToString()),
         };
+        if (activeLegalEntityId is Guid legalEntityId)
+            claims.Add(new Claim("legal_entity_id", legalEntityId.ToString()));
         claims.AddRange(permissions.Select(p => new Claim("permission", p)));
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "TenantScheme"));

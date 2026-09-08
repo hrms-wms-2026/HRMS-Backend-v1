@@ -33,6 +33,11 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedHost);
 
 builder.Services.AddApplication();
+builder.Services.Configure<ONEVO.Application.Features.Monitoring.TrayActivation.Options.TrayPresenceOptions>(
+    builder.Configuration.GetSection("TrayPresence"));
+builder.Services.Configure<ONEVO.Application.Features.Monitoring.TrayActivation.Options.TrayInstallerOptions>(
+    builder.Configuration.GetSection("TrayInstaller"));
+
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddMemoryCache();
 builder.Services.AddControllers()
@@ -90,7 +95,10 @@ app.UseAuthentication();
 // Middleware removed as part of cookie auth migration
 app.UseMiddleware<CsrfProtectionMiddleware>();
 app.UseMiddleware<TenantEnforcementMiddleware>();
+app.UseMiddleware<TrayPresenceEnforcementMiddleware>();
+
 app.UseMiddleware<PermissionVersionMiddleware>();
+
 app.UseAuthorization();
 
 app.MapControllers();

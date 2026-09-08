@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.Commands.SubmitPeriodicScreenshot;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
@@ -10,6 +11,7 @@ using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
 using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 using ONEVO.Tests.Unit.Fakes;
@@ -22,6 +24,8 @@ public class SubmitPeriodicScreenshotCommandHandlerTests
     private readonly Mock<IEvidenceAssetRepository> _assetsRepo = new();
     private readonly Mock<ITrayActivationRepository> _trayRepo = new();
     private readonly Mock<ITrayCurrentDevice> _device = new();
+    private readonly Mock<ITenantRepository> _tenants = new();
+    private readonly Mock<ITenantContextSwitcher> _tenantSwitcher = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly FakeUnitOfWork _uow = new();
 
@@ -31,6 +35,7 @@ public class SubmitPeriodicScreenshotCommandHandlerTests
 
     public SubmitPeriodicScreenshotCommandHandlerTests()
     {
+        _device.Setup(d => d.IsAuthenticated).Returns(true);
         _device.Setup(d => d.TenantId).Returns(_tenantId);
         _device.Setup(d => d.DeviceRegistrationId).Returns(_deviceId);
         _device.Setup(d => d.UserId).Returns(_userId);
@@ -41,6 +46,13 @@ public class SubmitPeriodicScreenshotCommandHandlerTests
                 Id = _deviceId, TenantId = _tenantId, UserId = _userId,
                 IsActive = true, ActivatedAt = DateTimeOffset.UtcNow, CreatedAt = DateTimeOffset.UtcNow
             });
+
+        _tenants.Setup(t => t.GetByIdAsync(_tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant
+            {
+                Id = _tenantId, Name = "Test Tenant", Slug = "test-tenant",
+                CompanySizeRange = "1-10", Status = TenantStatus.Active
+            });
     }
 
     private SubmitPeriodicScreenshotCommandHandler CreateHandler() => new(
@@ -48,6 +60,8 @@ public class SubmitPeriodicScreenshotCommandHandlerTests
         _assetsRepo.Object,
         _trayRepo.Object,
         _device.Object,
+        _tenants.Object,
+        _tenantSwitcher.Object,
         _clock,
         _uow,
         NullLogger<SubmitPeriodicScreenshotCommandHandler>.Instance);

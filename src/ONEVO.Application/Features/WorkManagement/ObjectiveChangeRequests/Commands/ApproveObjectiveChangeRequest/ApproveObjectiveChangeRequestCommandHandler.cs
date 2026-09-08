@@ -138,12 +138,18 @@ public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<Appro
                     if (approverOwnObjective is null)
                         return Result.Failure("Approver's own milestone could not be resolved.", 422);
 
+                                        var approvedAdditionalHours = request.ApprovedAdditionalHours
+                        ?? extendPayload.RequestedAdditionalHours;
+                    if (approvedAdditionalHours <= 0m)
+                        return Result.Failure("Approved additional hours must be greater than zero.", 400);
+
                     var approverSlack = await _slack.CalculateAsync(tenantId, approverOwnObjective, ct: innerCt);
-                    if (extendPayload.RequestedAdditionalHours > approverSlack)
+                    if (approvedAdditionalHours > approverSlack)
+
                         return Result.Conflict(
                             "You don't have enough allocation yourself to approve this. Request more from your own reporting manager first, then return to approve this request.");
 
-                    objective.AllocatedHours += extendPayload.RequestedAdditionalHours;
+                    objective.AllocatedHours += approvedAdditionalHours;
                     objective.UpdatedAt = now;
 
                     var extendRequester = await _membership.GetActiveAssigneeAsync(tenantId, changeRequest.RequestedById, innerCt);

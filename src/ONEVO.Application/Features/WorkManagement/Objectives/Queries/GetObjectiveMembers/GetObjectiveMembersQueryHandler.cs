@@ -74,11 +74,24 @@ public class GetObjectiveMembersQueryHandler : IRequestHandler<GetObjectiveMembe
         var activeMembers = await _members.ListActiveForObjectiveAsync(tenantId, objective.Id, ct);
         var pendingInvites = await _invitations.ListPendingForObjectiveAsync(tenantId, objective.Id, ct);
 
+        // Resolved the same way Objective.OwnerName is: bypasses the management-coverage-scoped
+        // GET /employees/{id} check (GetEmployeeQueryHandler/EmployeeVisibilityScopeResolver),
+        // which 403s for most task assignees since coverage is a People-module reporting-chain
+        // concept unrelated to WM project membership. Without this, every member outside the
+        // caller's coverage would be unresolvable to a display name on the client.
+        var employeeIds = activeMembers.Select(m => m.EmployeeId)
+            .Concat(pendingInvites.Select(i => i.InvitedEmployeeId))
+            .Distinct()
+            .ToList();
+        var namesByEmployeeId = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, employeeIds, ct);
+
         var items = new List<ObjectiveMemberItemResponse>();
         items.AddRange(activeMembers.Select(m => new ObjectiveMemberItemResponse(
-            m.EmployeeId, IsHead: m.EmployeeId == objective.OwnerId, Pending: false, InviteType: null, InvitationId: null, SinceOrInvitedAt: m.JoinedAt)));
+            m.EmployeeId, namesByEmployeeId.GetValueOrDefault(m.EmployeeId), IsHead: m.EmployeeId == objective.OwnerId,
+            Pending: false, InviteType: null, InvitationId: null, SinceOrInvitedAt: m.JoinedAt)));
         items.AddRange(pendingInvites.Select(i => new ObjectiveMemberItemResponse(
-            i.InvitedEmployeeId, IsHead: false, Pending: true, InviteType: i.InviteType, InvitationId: i.Id, SinceOrInvitedAt: i.CreatedAt)));
+            i.InvitedEmployeeId, namesByEmployeeId.GetValueOrDefault(i.InvitedEmployeeId), IsHead: false,
+            Pending: true, InviteType: i.InviteType, InvitationId: i.Id, SinceOrInvitedAt: i.CreatedAt)));
 
         return Result<ObjectiveMemberListResponse>.Success(new ObjectiveMemberListResponse(items));
     }

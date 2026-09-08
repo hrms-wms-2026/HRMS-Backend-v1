@@ -22,15 +22,22 @@ public sealed class EfAttendanceCorrectionRepository(ApplicationDbContext db) : 
         => db.AttendanceCorrections.AsNoTracking().SingleOrDefaultAsync(
             x => x.TenantId == tenantId && x.Id == id, ct);
 
-    public async Task<IReadOnlyList<AttendanceCorrection>> ListMyAsync(
+    public async Task<(IReadOnlyList<AttendanceCorrection> Items, int TotalCount)> ListMyAsync(
         Guid tenantId, Guid employeeId, DateOnly? from, DateOnly? to, string? status,
-        CancellationToken ct = default)
+        int skip, int take, CancellationToken ct = default)
     {
         var query = FromDateFiltered(tenantId, employeeId, from, to);
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(x => x.Status == status);
 
-        return await query.OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
+            .OrderByDescending(x => x.CreatedAt)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(ct);
+
+        return (items, totalCount);
     }
 
     public async Task<IReadOnlyList<AttendanceCorrection>> ListApprovalInboxAsync(

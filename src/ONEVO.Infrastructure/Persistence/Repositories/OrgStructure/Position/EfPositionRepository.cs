@@ -420,6 +420,44 @@ public class EfPositionRepository : IPositionRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<ManagementCoverageRecord>>> ListActivePositionCoverageByCoveredPositionIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> coveredPositionIds, CancellationToken ct = default)
+    {
+        if (coveredPositionIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<ManagementCoverageRecord>>();
+
+        var rows = await _db.ManagementCoverageRecords.AsNoTracking()
+            .Where(m => m.TenantId == tenantId
+                && m.LegalEntityId == legalEntityId
+                && m.CoveredTargetType == ManagementCoverageRecord.TargetPosition
+                && m.CoveredPositionId != null && coveredPositionIds.Contains(m.CoveredPositionId!.Value)
+                && m.Status == ManagementCoverageRecord.StatusActive)
+            .OrderBy(m => m.OwnerOrder).ThenBy(m => m.Id)
+            .ToListAsync(ct);
+
+        return rows.GroupBy(m => m.CoveredPositionId!.Value)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<ManagementCoverageRecord>)g.ToList());
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<ManagementCoverageRecord>>> ListActiveDepartmentCoverageByCoveredDepartmentIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> coveredDepartmentIds, CancellationToken ct = default)
+    {
+        if (coveredDepartmentIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<ManagementCoverageRecord>>();
+
+        var rows = await _db.ManagementCoverageRecords.AsNoTracking()
+            .Where(m => m.TenantId == tenantId
+                && m.LegalEntityId == legalEntityId
+                && m.CoveredTargetType == ManagementCoverageRecord.TargetDepartment
+                && m.CoveredDepartmentId != null && coveredDepartmentIds.Contains(m.CoveredDepartmentId!.Value)
+                && m.Status == ManagementCoverageRecord.StatusActive)
+            .OrderBy(m => m.OwnerOrder).ThenBy(m => m.Id)
+            .ToListAsync(ct);
+
+        return rows.GroupBy(m => m.CoveredDepartmentId!.Value)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<ManagementCoverageRecord>)g.ToList());
+    }
+
     public async Task<ManagementCoverageRecord?> GetCoverageRecordByIdAsync(
         Guid tenantId, Guid id, CancellationToken ct = default)
     {

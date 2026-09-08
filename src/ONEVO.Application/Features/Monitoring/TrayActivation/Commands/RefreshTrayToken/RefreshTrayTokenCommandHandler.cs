@@ -94,19 +94,24 @@ public class RefreshTrayTokenCommandHandler
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         var accessToken = _tokenService.GenerateAccessToken(
-            device.Id, existingToken.UserId, existingToken.TenantId);
+            device.Id, existingToken.UserId, existingToken.TenantId, device.LegalEntityId);
 
-        var (employeeName, employeeEmail, employeeNumber) = await ResolveEmployeeIdentityAsync(
-            existingToken.UserId, existingToken.TenantId, cancellationToken);
+        var identity = await ResolveEmployeeIdentityAsync(
+            existingToken.UserId, existingToken.TenantId, device.LegalEntityId, cancellationToken);
 
         return Result<TrayAuthResponseDto>.Success(new TrayAuthResponseDto(
             accessToken,
             AccessTokenExpiresInSeconds,
             newRawToken,
             RefreshTokenExpiresInSeconds,
-            employeeName,
-            employeeEmail,
-            employeeNumber));
+            identity.Name,
+            identity.Email,
+            identity.Number,
+            identity.Status,
+            identity.Department,
+            identity.WorkMode,
+            identity.Office,
+            identity.Organization));
     }
 
     /// <summary>
@@ -119,25 +124,31 @@ public class RefreshTrayTokenCommandHandler
     /// identity fields simply stay null; the refresh token has already rotated, so this must not
     /// fail the whole refresh.
     /// </summary>
-    private async Task<(string? Name, string? Email, string? Number)> ResolveEmployeeIdentityAsync(
-        Guid userId, Guid tenantId, CancellationToken ct)
+    private async Task<(string? Name, string? Email, string? Number, string Status, string? Department, string? WorkMode, string? Office, string? Organization)> ResolveEmployeeIdentityAsync(
+        Guid userId, Guid tenantId, Guid? legalEntityId, CancellationToken ct)
     {
         var tenant = await _tenantRepository.GetByIdAsync(tenantId, ct);
         if (tenant is null)
-            return (null, null, null);
+            return (null, null, null, "profile_unavailable", null, null, null, null);
 
         await _tenantSwitcher.SwitchToTenantAsync(
             new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
 
-        var profile = await _repository.FindEmployeeProfileAsync(userId, tenantId, ct);
+        var organization = string.IsNullOrWhiteSpace(tenant.Name) ? null : tenant.Name;
+        var profile = await _repository.FindEmployeeProfileAsync(userId, tenantId, legalEntityId, ct);
         if (profile is not null)
-            return (FullNameOrNull(profile.FirstName, profile.LastName), profile.Email, profile.EmployeeNumber);
+            return (FullNameOrNull(profile.FirstName, profile.LastName), profile.Email, profile.EmployeeNumber, "resolved",
+                profile.DepartmentName, profile.WorkModeLabel, profile.OfficeName, organization);
 
         var user = await _userRepository.GetByIdAsync(userId, ct);
         if (user is not null)
-            return (FullNameOrNull(user.FirstName, user.LastName), user.Email, null);
+            return (FullNameOrNull(user.FirstName, user.LastName), user.Email, null,
+                legalEntityId.HasValue ? "profile_unavailable" : "company_context_required",
+                null, null, null, organization);
 
-        return (null, null, null);
+        return (null, null, null,
+            legalEntityId.HasValue ? "profile_unavailable" : "company_context_required",
+            null, null, null, organization);
     }
 
     private static string? FullNameOrNull(string first, string last)

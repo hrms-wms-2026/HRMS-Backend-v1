@@ -17,11 +17,18 @@ public interface IAttendanceReadRepository
         DateOnly date,
         CancellationToken ct = default);
 
-    Task<IReadOnlyList<AttendanceRecord>> ListRecordsAsync(
+    Task<AttendanceRecord?> GetAnyOpenRecordAsync(
+        Guid tenantId,
+        Guid employeeId,
+        CancellationToken ct = default);
+
+    Task<(IReadOnlyList<AttendanceRecord> Items, int TotalCount)> ListRecordsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> employeeIds,
         DateOnly from,
         DateOnly to,
+        int skip,
+        int take,
         CancellationToken ct = default);
 
     Task<IReadOnlyList<BreakRecord>> ListBreaksAsync(

@@ -19,4 +19,17 @@ public interface IEmployeeAuthorityResolver
     Task<Result<EmployeeApprovalRoute>> ResolveApproverAsync(
         EmployeeApprovalRouteRequest request,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Narrows a bounded candidate set to exactly the employees for whom the authenticated
+    /// reviewer (ICurrentUser.UserId) is the current exact approver - identical per-candidate
+    /// results to calling ResolveApproverAsync for each candidate and keeping only those whose
+    /// ApproverUserId equals the reviewer. Reviewer and tenant identity are both server-derived
+    /// from ICurrentUser; there is no reviewer-identity parameter on the request. Fails closed
+    /// (returns an empty collection) when the caller is unauthenticated, has no active employee
+    /// record in the requested legal entity, or lacks RequiredPermission.
+    /// </summary>
+    Task<IReadOnlyCollection<Guid>> ResolveApprovalInboxScopeAsync(
+        EmployeeApprovalInboxScopeRequest request,
+        CancellationToken cancellationToken = default);
 }

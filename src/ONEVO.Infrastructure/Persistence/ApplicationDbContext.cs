@@ -30,7 +30,9 @@ using ONEVO.Domain.Features.Monitoring.WorkSessions.Entities;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.Storage.Quota.Entities;
+using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
 using ONEVO.Domain.Features.WorkManagement.Labels.Entities;
+
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
@@ -94,6 +96,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<TrayActivationCode> TrayActivationCodes => Set<TrayActivationCode>();
     public DbSet<TrayDeviceRegistration> TrayDeviceRegistrations => Set<TrayDeviceRegistration>();
     public DbSet<TrayDeviceRefreshToken> TrayDeviceRefreshTokens => Set<TrayDeviceRefreshToken>();
+    public DbSet<TrayDeviceAuthorization> TrayDeviceAuthorizations => Set<TrayDeviceAuthorization>();
 
     // Monitoring - Employee Check-In
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
@@ -122,6 +125,7 @@ public class ApplicationDbContext : DbContext
     // Monitoring - Screenshots & agent commands
     public DbSet<MonitoringEvidenceAsset> MonitoringEvidenceAssets => Set<MonitoringEvidenceAsset>();
     public DbSet<AgentCommand> AgentCommands => Set<AgentCommand>();
+    public DbSet<InactivityCaptureAttempt> InactivityCaptureAttempts => Set<InactivityCaptureAttempt>();
 
     // Infrastructure
     public DbSet<User> Users => Set<User>();
@@ -263,14 +267,18 @@ public class ApplicationDbContext : DbContext
     public DbSet<PresenceSession> PresenceSessions => Set<PresenceSession>();
     public DbSet<BreakRecord> BreakRecords => Set<BreakRecord>();
     public DbSet<AttendanceCorrection> AttendanceCorrections => Set<AttendanceCorrection>();
+    public DbSet<WorkAreaChangeRequest> WorkAreaChangeRequests => Set<WorkAreaChangeRequest>();
 
     // Storage - EntityAssets (Phase 1 entity_assets, scoped to owner_type "project" for now)
     public DbSet<EntityAsset> EntityAssets => Set<EntityAsset>();
 
     // Work Management - Foundation slice
     public DbSet<ProjectCategory> ProjectCategories => Set<ProjectCategory>();
-    public DbSet<Project> Projects => Set<Project>();
+        public DbSet<Project> Projects => Set<Project>();
     public DbSet<Objective> Objectives => Set<Objective>();
+    public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
+    public DbSet<CalendarEventObjective> CalendarEventObjectives => Set<CalendarEventObjective>();
+
     public DbSet<ObjectiveChangeRequest> ObjectiveChangeRequests => Set<ObjectiveChangeRequest>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
     public DbSet<ProjectMemberInvitation> ProjectMemberInvitations => Set<ProjectMemberInvitation>();
@@ -284,7 +292,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<Sprint> Sprints => Set<Sprint>();
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
     public DbSet<TaskCreationRequest> TaskCreationRequests => Set<TaskCreationRequest>();
-    public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();
+        public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();
+    public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
+    public DbSet<TaskStatusChangeLog> TaskStatusChangeLogs => Set<TaskStatusChangeLog>();
+    public DbSet<TaskClockingSession> TaskClockingSessions => Set<TaskClockingSession>();
+    public DbSet<TaskPercentageLog> TaskPercentageLogs => Set<TaskPercentageLog>();
+
     public DbSet<NotificationTemplate> NotificationTemplates => Set<NotificationTemplate>();
     public DbSet<Notification> Notifications => Set<Notification>();
 

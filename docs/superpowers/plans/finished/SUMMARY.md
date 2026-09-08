@@ -2,7 +2,7 @@
 
 **Purpose:** Completed plans and point-in-time audit/fix reports. Everything here was moved from the flat `plans/` folder on 2026-08-06 as part of the `finished/` + `next/` restructure (see `docs/superpowers/rules/FILE_CREATION_RULES.md`). Files were **not** re-split or content-edited during the move — only relocated, per the migration rule (existing files get moved + status-tagged, not retroactively restructured into parts). The `plans/kajaa/` personal folder was also dissolved into this structure the same day — its 3 finished plans now live here too (see "From `kajaa/`" below).
 
-**Last updated:** 2026-08-16
+**Last updated:** 2026-08-27
 
 ## Layout: date subfolders
 
@@ -99,6 +99,9 @@ Each entry's **Related:** line is a wiki-link (`[[bare-filename]]`, no extension
 - `2026-08-04/2026-08-04-work-management-projects-edit-delete-view.md` (from `kajaa/`) — Work Management Slice 2: `PUT`/`DELETE`/`GET`-by-id/`GET mine`/`GET ?userId=` on `ProjectsController`. Executed 2026-08-05.
 
 `plans/kajaa/` was dissolved into this structure on 2026-08-06 — `plans/` now has only `finished/` and `next/` as its two status folders, per user request.
+
+**`2026-08-27/`** (1)
+- `2026-08-27-attendance-history-redesign-backend.md` — Attendance day-detail query/DTO aggregation and `GET .../history-detail` endpoint; 3390/3390 unit tests passed and API build succeeded. Related: [[2026-08-27-attendance-history-redesign-backend-design]] (its spec)
 
 ## Open items
 

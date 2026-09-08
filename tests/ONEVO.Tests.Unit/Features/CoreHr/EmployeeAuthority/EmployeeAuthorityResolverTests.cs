@@ -954,6 +954,737 @@ public sealed class EmployeeAuthorityResolverTests
         Assert.False(result.IsSuccess);
     }
 
+    // ---------------------------------------------------------------------
+    // Approval-inbox scope (ResolveApprovalInboxScopeAsync) - Part 1 Final Hardening
+    // ---------------------------------------------------------------------
+
+    [Fact] // Inbox scope: unauthenticated caller fails closed (empty result).
+    public async Task InboxScope_UnauthenticatedReviewer_FailsClosed()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var candidate = graph.AddEmployee(legalEntityId).Id;
+        var resolver = graph.BuildResolver(isAuthenticated: false);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { candidate }),
+            CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact] // Inbox scope: reviewer with no active employee row in the requested legal entity fails closed.
+    public async Task InboxScope_ReviewerWithoutActiveEmployeeInLegalEntity_FailsClosed()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var candidate = graph.AddEmployee(legalEntityId).Id;
+        var reviewerUserId = Guid.NewGuid();
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { candidate }),
+            CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact] // Inbox scope: reviewer without the required permission receives no candidates.
+    public async Task InboxScope_ReviewerWithoutRequiredPermission_FailsClosed()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var candidate = graph.AddEmployee(legalEntityId).Id;
+        var reviewerUserId = Guid.NewGuid();
+        graph.AddEmployee(legalEntityId, userId: reviewerUserId); // active employee, no permission granted
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { candidate }),
+            CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact] // Inbox scope: for a rich fixture, the batch result set matches calling ResolveApproverAsync
+           // per candidate and keeping only exact matches to the reviewer - the literal equivalence
+           // requirement this whole correction is built around.
+    public async Task InboxScope_MatchesPerCandidateResolveApproverAsync_OverRichFixture()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var reviewerUserId = Guid.NewGuid();
+
+        var reviewerPosition = graph.AddPosition(legalEntityId);
+        var reviewerHolder = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(reviewerHolder.Id, reviewerPosition.Id);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var otherUserId = Guid.NewGuid();
+        var otherPosition = graph.AddPosition(legalEntityId);
+        var otherHolder = graph.AddEmployee(legalEntityId, userId: otherUserId);
+        graph.AddPrimaryAssignment(otherHolder.Id, otherPosition.Id);
+        graph.GrantPermission(otherUserId, AttendanceApprove);
+
+        var department = graph.AddDepartment();
+
+        var candidateIds = new List<Guid>();
+        for (var i = 0; i < 12; i++)
+        {
+            var candidatePosition = graph.AddPosition(legalEntityId);
+            var candidate = graph.AddEmployee(legalEntityId, departmentId: i % 4 == 2 ? department : null);
+            graph.AddPrimaryAssignment(candidate.Id, candidatePosition.Id);
+            candidateIds.Add(candidate.Id);
+
+            switch (i % 4)
+            {
+                case 0: // position coverage -> reviewer
+                    graph.AddCoverage(legalEntityId, reviewerPosition.Id, "Position", candidatePosition.Id, null, ownerOrder: 1);
+                    break;
+                case 1: // position coverage -> someone else
+                    graph.AddCoverage(legalEntityId, otherPosition.Id, "Position", candidatePosition.Id, null, ownerOrder: 1);
+                    break;
+                case 2: // department coverage -> reviewer
+                    graph.AddCoverage(legalEntityId, reviewerPosition.Id, "Department", null, department, ownerOrder: 1);
+                    break;
+                case 3: // no coverage, no manager -> unroutable
+                    break;
+            }
+        }
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var expected = new List<Guid>();
+        foreach (var candidateId in candidateIds)
+        {
+            var route = await resolver.ResolveApproverAsync(new EmployeeApprovalRouteRequest(
+                candidateId, legalEntityId, AttendanceApprove, EmployeeAuthorityPurpose.WorkAreaChangeApproval),
+                CancellationToken.None);
+            if (route.IsSuccess && route.Value?.ApproverUserId == reviewerUserId)
+                expected.Add(candidateId);
+        }
+
+        var actual = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, candidateIds),
+            CancellationToken.None);
+
+        Assert.Equal(expected.OrderBy(x => x).ToList(), actual.OrderBy(x => x).ToList());
+    }
+
+    [Fact] // Inbox scope: empty candidate set returns empty without a matching route.
+    public async Task InboxScope_EmptyCandidateSet_ReturnsEmpty()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var reviewerUserId = Guid.NewGuid();
+        graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, Array.Empty<Guid>()),
+            CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact] // Inbox scope: reviewer identity comes from ICurrentUser, not any field on the request
+           // (EmployeeApprovalInboxScopeRequest no longer carries a reviewer id at all).
+    public async Task InboxScope_ReviewerIdentityComesFromCurrentUser_NotRequest()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var reviewerUserId = Guid.NewGuid();
+        var reviewerPosition = graph.AddPosition(legalEntityId);
+        var reviewer = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(reviewer.Id, reviewerPosition.Id);
+        graph.AddCoverage(legalEntityId, reviewerPosition.Id, "Position", subjectPosition.Id, null, ownerOrder: 1);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Contains(subject.Id, result);
+    }
+
+    [Fact] // Inbox scope: candidate whose position-coverage primary owner is the reviewer is included.
+    public async Task InboxScope_PositionCoveragePrimaryOwner_IsIncluded()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var reviewerUserId = Guid.NewGuid();
+        var reviewerPosition = graph.AddPosition(legalEntityId);
+        var reviewer = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(reviewer.Id, reviewerPosition.Id);
+        graph.SetManager(subject.Id, reviewer.Id);
+        graph.AddCoverage(legalEntityId, reviewerPosition.Id, "Position", subjectPosition.Id, null, ownerOrder: 1);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { subject.Id }, result);
+    }
+
+    [Fact] // Inbox scope: candidate whose position-coverage backup owner is the reviewer is included
+           // when the primary owner lacks permission.
+    public async Task InboxScope_PositionCoverageBackupOwner_IsIncludedWhenEarlierLevelsUnavailable()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var chain = BuildOwnerChain(graph, legalEntityId, subject.Id, subjectPosition.Id, levels: 2);
+        var reviewerUserId = chain[1].Employee.UserId;
+        graph.GrantPermission(reviewerUserId, AttendanceApprove); // only level 2 (Backup 1) has permission
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { subject.Id }, result);
+    }
+
+    [Fact] // Inbox scope: candidate whose department-coverage owner is the reviewer is included.
+    public async Task InboxScope_DepartmentCoverageOwner_IsIncluded()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var department = graph.AddDepartment();
+
+        var subject = graph.AddEmployee(legalEntityId, departmentId: department);
+
+        var reviewerUserId = Guid.NewGuid();
+        var reviewerPosition = graph.AddPosition(legalEntityId);
+        var reviewer = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(reviewer.Id, reviewerPosition.Id);
+        graph.AddCoverage(legalEntityId, reviewerPosition.Id, "Department", null, department, ownerOrder: 1);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { subject.Id }, result);
+    }
+
+    [Fact] // Inbox scope: a manual coverage owner outside the subject's reporting line is eligible -
+           // manual coverage is authoritative and not required to be a reporting-line ancestor.
+    public async Task InboxScope_ManualCoverageOwnerOutsideReportingLine_IsEligible()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var reviewerUserId = Guid.NewGuid();
+        var hrManagerPosition = graph.AddPosition(legalEntityId);
+        var hrManager = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(hrManager.Id, hrManagerPosition.Id); // no SetManager relationship to subject
+        graph.AddCoverage(legalEntityId, hrManagerPosition.Id, "Position", subjectPosition.Id, null, ownerOrder: 1);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { subject.Id }, result);
+    }
+
+    [Fact] // Inbox scope: candidate whose upward reporting-line approver is the reviewer is included
+           // when no coverage tier resolves anyone.
+    public async Task InboxScope_UpwardReportingLineApprover_IsIncluded()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var reviewerUserId = Guid.NewGuid();
+        var managerPosition = graph.AddPosition(legalEntityId);
+        var manager = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(manager.Id, managerPosition.Id);
+        graph.SetManager(subject.Id, manager.Id);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { subject.Id }, result);
+    }
+
+    [Fact] // Inbox scope: a candidate for whom a different user is the exact approver is excluded.
+    public async Task InboxScope_DifferentExactApprover_IsExcluded()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var otherUserId = Guid.NewGuid();
+        var ownerPosition = graph.AddPosition(legalEntityId);
+        var owner = graph.AddEmployee(legalEntityId, userId: otherUserId);
+        graph.AddPrimaryAssignment(owner.Id, ownerPosition.Id);
+        graph.SetManager(subject.Id, owner.Id);
+        graph.AddCoverage(legalEntityId, ownerPosition.Id, "Position", subjectPosition.Id, null, ownerOrder: 1);
+        graph.GrantPermission(otherUserId, AttendanceApprove);
+
+        var reviewerUserId = Guid.NewGuid();
+        graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact] // Inbox scope: a candidate merely visible to the reviewer (company-wide coverage) but not
+           // exactly approvable (ResolveApproverAsync only checks Position/Department coverage and
+           // the reporting line, never company-wide coverage) is excluded.
+    public async Task InboxScope_MerelyVisibleCandidate_IsExcluded()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        // No primary assignment, no department, no manager - not routable to anyone.
+
+        var reviewerUserId = Guid.NewGuid();
+        var reviewerPosition = graph.AddPosition(legalEntityId);
+        var reviewer = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(reviewer.Id, reviewerPosition.Id);
+        graph.AddCoverage(legalEntityId, reviewerPosition.Id, "Company", null, null, ownerOrder: 1);
+        graph.GrantPermission(reviewerUserId, EmployeesRead);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var visibility = await resolver.ResolveVisibilityAsync(new EmployeeAuthorityVisibilityRequest(
+            reviewerUserId, legalEntityId, EmployeesRead, IncludeSelf: false, EmployeeAuthorityPurpose.EmployeeListRead));
+        Assert.Contains(subject.Id, visibility.EmployeeIds); // sanity: company-wide coverage makes them visible
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.DoesNotContain(subject.Id, result);
+    }
+
+    [Fact] // Inbox scope: subject/self is excluded even if self-covering.
+    public async Task InboxScope_SubjectItself_IsExcluded()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var reviewerUserId = Guid.NewGuid();
+
+        var reviewerPosition = graph.AddPosition(legalEntityId);
+        var reviewer = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(reviewer.Id, reviewerPosition.Id);
+        graph.AddCoverage(legalEntityId, reviewerPosition.Id, "Position", reviewerPosition.Id, null, ownerOrder: 1);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { reviewer.Id }),
+            CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact] // Inbox scope: a reviewer who is a subordinate of the subject is excluded even if
+           // coverage would otherwise resolve to them (reverse-approval guard).
+    public async Task InboxScope_ReviewerWhoIsSubordinateOfSubject_IsExcluded()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var reviewerUserId = Guid.NewGuid();
+        var subordinatePosition = graph.AddPosition(legalEntityId);
+        var subordinate = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(subordinate.Id, subordinatePosition.Id);
+        graph.SetManager(subordinate.Id, subject.Id); // reviewer reports to the subject
+        graph.AddCoverage(legalEntityId, subordinatePosition.Id, "Position", subjectPosition.Id, null, ownerOrder: 1);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact] // Inbox scope: a candidate belonging to a different tenant is excluded.
+    public async Task InboxScope_CrossTenantCandidate_IsExcluded()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var reviewerUserId = Guid.NewGuid();
+        graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var otherTenantSubject = graph.AddEmployee(legalEntityId, tenantIdOverride: Guid.NewGuid());
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { otherTenantSubject.Id }),
+            CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact] // Inbox scope: a candidate in a different legal entity than requested is excluded.
+    public async Task InboxScope_CrossLegalEntityCandidate_IsExcluded()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var otherLegalEntityId = Guid.NewGuid();
+        var reviewerUserId = Guid.NewGuid();
+        graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var otherEntitySubject = graph.AddEmployee(otherLegalEntityId);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { otherEntitySubject.Id }),
+            CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact] // Inbox scope: an inactive candidate is excluded. ResolveApproverAsync does not filter
+           // the SUBJECT's own active status directly - only the resolved HOLDER's - so this is
+           // excluded as a natural consequence of having no active primary assignment, no
+           // department, and no manager edge (the realistic state of an offboarded employee), not
+           // via a new subject-active filter. Adding such a filter to ResolveApproverAsync would be
+           // out of this correction's scope and would break the equivalence test above.
+    public async Task InboxScope_InactiveCandidate_IsExcluded()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var reviewerUserId = Guid.NewGuid();
+        graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var inactiveSubject = graph.AddEmployee(legalEntityId, active: false);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { inactiveSubject.Id }),
+            CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact] // Inbox scope: an inactive reviewer (no active employee row in the legal entity)
+           // receives no candidates - GetByUserAndLegalEntityAsync is active-filtered.
+    public async Task InboxScope_InactiveReviewer_ReceivesNoCandidates()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var reviewerUserId = Guid.NewGuid();
+        graph.AddEmployee(legalEntityId, userId: reviewerUserId, active: false);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var subject = graph.AddEmployee(legalEntityId);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact] // Inbox scope: duplicate candidate ids do not produce duplicate result ids.
+    public async Task InboxScope_DuplicateCandidateIds_DoNotProduceDuplicateResults()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var reviewerUserId = Guid.NewGuid();
+        var reviewerPosition = graph.AddPosition(legalEntityId);
+        var reviewer = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(reviewer.Id, reviewerPosition.Id);
+        graph.AddCoverage(legalEntityId, reviewerPosition.Id, "Position", subjectPosition.Id, null, ownerOrder: 1);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id, subject.Id, subject.Id }),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { subject.Id }, result);
+    }
+
+    [Fact] // Inbox scope: position coverage wins over department coverage for the same candidate.
+    public async Task InboxScope_PositionCoverage_WinsOverDepartmentCoverage()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var department = graph.AddDepartment();
+
+        var subject = graph.AddEmployee(legalEntityId, departmentId: department);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var reviewerUserId = Guid.NewGuid();
+        var reviewerPosition = graph.AddPosition(legalEntityId);
+        var reviewer = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(reviewer.Id, reviewerPosition.Id);
+        graph.AddCoverage(legalEntityId, reviewerPosition.Id, "Position", subjectPosition.Id, null, ownerOrder: 1);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var otherUserId = Guid.NewGuid();
+        var deptOwnerPosition = graph.AddPosition(legalEntityId);
+        var deptOwner = graph.AddEmployee(legalEntityId, userId: otherUserId);
+        graph.AddPrimaryAssignment(deptOwner.Id, deptOwnerPosition.Id);
+        graph.AddCoverage(legalEntityId, deptOwnerPosition.Id, "Department", null, department, ownerOrder: 1);
+        graph.GrantPermission(otherUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { subject.Id }, result);
+    }
+
+    [Fact] // Inbox scope: department coverage wins over the reporting-line fallback for the same
+           // candidate.
+    public async Task InboxScope_DepartmentCoverage_WinsOverReportingLineFallback()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var department = graph.AddDepartment();
+
+        var subject = graph.AddEmployee(legalEntityId, departmentId: department);
+
+        var reviewerUserId = Guid.NewGuid();
+        var reviewerPosition = graph.AddPosition(legalEntityId);
+        var reviewer = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(reviewer.Id, reviewerPosition.Id);
+        graph.AddCoverage(legalEntityId, reviewerPosition.Id, "Department", null, department, ownerOrder: 1);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var otherUserId = Guid.NewGuid();
+        var managerPosition = graph.AddPosition(legalEntityId);
+        var manager = graph.AddEmployee(legalEntityId, userId: otherUserId);
+        graph.AddPrimaryAssignment(manager.Id, managerPosition.Id);
+        graph.SetManager(subject.Id, manager.Id);
+        graph.GrantPermission(otherUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { subject.Id }, result);
+    }
+
+    [Fact] // Inbox scope: a pooled owner position with two active holders and no
+           // ResponsibleEmployeeId resolves to no one (picks no arbitrary holder), so the candidate
+           // is excluded even though the reviewer happens to be one of the holders.
+    public async Task InboxScope_PooledOwnerPositionWithoutResponsibleEmployeeId_PicksNoArbitraryHolder()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var reviewerUserId = Guid.NewGuid();
+        var pooledPosition = graph.AddPosition(legalEntityId);
+        var reviewerHolder = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(reviewerHolder.Id, pooledPosition.Id);
+        var otherHolder = graph.AddEmployee(legalEntityId);
+        graph.AddPrimaryAssignment(otherHolder.Id, pooledPosition.Id);
+        graph.AddCoverage(legalEntityId, pooledPosition.Id, "Position", subjectPosition.Id, null, ownerOrder: 1);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact] // Inbox scope: a pooled owner position with a valid ResponsibleEmployeeId resolves to
+           // that specific holder.
+    public async Task InboxScope_PooledOwnerPositionWithValidResponsibleEmployeeId_ResolvesCorrectly()
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var reviewerUserId = Guid.NewGuid();
+        var pooledPosition = graph.AddPosition(legalEntityId);
+        var reviewerHolder = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(reviewerHolder.Id, pooledPosition.Id);
+        var otherHolder = graph.AddEmployee(legalEntityId);
+        graph.AddPrimaryAssignment(otherHolder.Id, pooledPosition.Id);
+        graph.AddCoverage(legalEntityId, pooledPosition.Id, "Position", subjectPosition.Id, null, ownerOrder: 1,
+            responsibleEmployeeId: reviewerHolder.Id);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { subject.Id }, result);
+    }
+
+    [Theory] // Inbox scope: N-level backup works, not hardcoded to any maximum.
+    [InlineData(5)]
+    [InlineData(12)]
+    public async Task InboxScope_SupportsArbitraryBackupLevels_NoHardcodedMaximum(int levels)
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+
+        var subject = graph.AddEmployee(legalEntityId);
+        var subjectPosition = graph.AddPosition(legalEntityId);
+        graph.AddPrimaryAssignment(subject.Id, subjectPosition.Id);
+
+        var chain = BuildOwnerChain(graph, legalEntityId, subject.Id, subjectPosition.Id, levels);
+        var reviewerUserId = chain[^1].Employee.UserId;
+        graph.GrantPermission(reviewerUserId, AttendanceApprove); // only the last level has permission
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, new[] { subject.Id }),
+            CancellationToken.None);
+
+        Assert.Equal(new[] { subject.Id }, result);
+    }
+
+    [Theory] // Inbox scope: repository call counts stay constant as candidate count grows - proof
+             // the batch refactor doesn't issue one query per candidate.
+    [InlineData(50)]
+    [InlineData(100)]
+    public async Task InboxScope_RepositoryCallCountIsConstant_RegardlessOfCandidateCount(int candidateCount)
+    {
+        var graph = new EmployeeAuthorityTestGraph();
+        var legalEntityId = Guid.NewGuid();
+        var reviewerUserId = Guid.NewGuid();
+        var reviewerPosition = graph.AddPosition(legalEntityId);
+        var reviewerHolder = graph.AddEmployee(legalEntityId, userId: reviewerUserId);
+        graph.AddPrimaryAssignment(reviewerHolder.Id, reviewerPosition.Id);
+        graph.GrantPermission(reviewerUserId, AttendanceApprove);
+
+        var candidateIds = new List<Guid>();
+        for (var i = 0; i < candidateCount; i++)
+        {
+            var candidatePosition = graph.AddPosition(legalEntityId);
+            var candidate = graph.AddEmployee(legalEntityId);
+            graph.AddPrimaryAssignment(candidate.Id, candidatePosition.Id);
+            graph.AddCoverage(legalEntityId, reviewerPosition.Id, "Position", candidatePosition.Id, null, ownerOrder: 1);
+            candidateIds.Add(candidate.Id);
+        }
+
+        var resolver = graph.BuildResolver(currentUserId: reviewerUserId);
+
+        var result = await resolver.ResolveApprovalInboxScopeAsync(
+            new EmployeeApprovalInboxScopeRequest(legalEntityId, AttendanceApprove,
+                EmployeeAuthorityPurpose.WorkAreaChangeApproval, candidateIds),
+            CancellationToken.None);
+
+        Assert.Equal(candidateCount, result.Count);
+        Assert.NotEmpty(graph.CallCounts);
+        Assert.All(graph.CallCounts.Values, count => Assert.True(count <= 2,
+            $"expected each batch repository method to be called at most twice regardless of candidate count, was {count}"));
+    }
+
     /// <summary>Builds an N-level owner chain above subject: level 1 is subject's direct manager
     /// and the position-coverage primary owner (OwnerOrder 1), level 2 is that owner's manager
     /// and Backup 1 (OwnerOrder 2), and so on - mirroring how a real backup chain is both a

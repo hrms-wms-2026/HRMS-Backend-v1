@@ -249,7 +249,10 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
         var response = await SendAsync(HttpMethod.Get, _requesterA.Host, "/api/v1/attendance/corrections/my",
             body: null, cookie: _requesterA.SessionCookie);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var items = await ReadJsonAsync(response);
+        var page = await ReadJsonAsync(response);
+        var items = page.GetProperty("items");
+
+        page.GetProperty("totalCount").GetInt32().Should().Be(2);
 
         var manual = items.EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == manuallyApprovedId);
         var auto = items.EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == autoApprovedId);

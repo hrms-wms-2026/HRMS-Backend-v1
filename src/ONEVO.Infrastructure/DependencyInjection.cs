@@ -24,8 +24,12 @@ using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.BulkOnboarding;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Services;
+
 using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
@@ -176,9 +180,13 @@ public static class DependencyInjection
             ONEVO.Application.Features.Leave.Type.RepositoryInterfaces.ILeaveTypeRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Type.EfLeaveTypeRepository>();
 
-        services.AddScoped<
+                services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IAttendanceCorrectionRepository,
             ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceCorrectionRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IWorkAreaChangeRequestRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfWorkAreaChangeRequestRepository>();
+
         services.AddScoped<
             ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestReadRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Request.EfLeaveRequestReadRepository>();
@@ -251,6 +259,11 @@ public static class DependencyInjection
             ONEVO.Application.Features.Leave.Cancellation.RepositoryInterfaces.ILeaveCancellationRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Cancellation.EfLeaveCancellationRepository>();
 
+        services.AddScoped<IExpectedWorkAreaResolver, ExpectedWorkAreaResolver>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.IMonitoringPolicyConfigurationService,
+            ONEVO.Infrastructure.Services.Monitoring.Settings.MonitoringPolicyConfigurationService>();
+
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
         services.AddScoped<
@@ -296,8 +309,11 @@ public static class DependencyInjection
         services.AddScoped<IProjectCategoryRepository>(sp => sp.GetRequiredService<EfProjectCategoryRepository>());
         services.AddScoped<EfProjectRepository>();
         services.AddScoped<IProjectRepository>(sp => sp.GetRequiredService<EfProjectRepository>());
-        services.AddScoped<EfObjectiveRepository>();
+                services.AddScoped<EfObjectiveRepository>();
         services.AddScoped<IObjectiveRepository>(sp => sp.GetRequiredService<EfObjectiveRepository>());
+        services.AddScoped<EfCalendarEventRepository>();
+        services.AddScoped<ICalendarEventRepository>(sp => sp.GetRequiredService<EfCalendarEventRepository>());
+
         services.AddScoped<EfTaskStatusRepository>();
         services.AddScoped<ITaskStatusRepository>(sp => sp.GetRequiredService<EfTaskStatusRepository>());
         services.AddScoped<EfTaskCategoryRepository>();
@@ -310,8 +326,17 @@ public static class DependencyInjection
         services.AddScoped<ITaskAssignmentRepository>(sp => sp.GetRequiredService<EfTaskAssignmentRepository>());
         services.AddScoped<EfTaskCreationRequestRepository>();
         services.AddScoped<ITaskCreationRequestRepository>(sp => sp.GetRequiredService<EfTaskCreationRequestRepository>());
-        services.AddScoped<EfTaskEditRequestRepository>();
+                services.AddScoped<EfTaskEditRequestRepository>();
         services.AddScoped<ITaskEditRequestRepository>(sp => sp.GetRequiredService<EfTaskEditRequestRepository>());
+        services.AddScoped<EfTaskEditLogRepository>();
+        services.AddScoped<ITaskEditLogRepository>(sp => sp.GetRequiredService<EfTaskEditLogRepository>());
+        services.AddScoped<EfTaskStatusChangeLogRepository>();
+        services.AddScoped<ITaskStatusChangeLogRepository>(sp => sp.GetRequiredService<EfTaskStatusChangeLogRepository>());
+        services.AddScoped<EfTaskClockingSessionRepository>();
+        services.AddScoped<ITaskClockingSessionRepository>(sp => sp.GetRequiredService<EfTaskClockingSessionRepository>());
+        services.AddScoped<EfTaskPercentageLogRepository>();
+        services.AddScoped<ITaskPercentageLogRepository>(sp => sp.GetRequiredService<EfTaskPercentageLogRepository>());
+
         services.AddScoped<EfNotificationRepository>();
         services.AddScoped<INotificationRepository>(sp => sp.GetRequiredService<EfNotificationRepository>());
         services.AddScoped<EfObjectiveChangeRequestRepository>();
@@ -497,6 +522,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IAgentCommandRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfAgentCommandRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IInactivityCaptureAttemptRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfInactivityCaptureAttemptRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
         services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
 
