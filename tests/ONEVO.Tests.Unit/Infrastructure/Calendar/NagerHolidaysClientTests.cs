@@ -9,38 +9,58 @@ namespace ONEVO.Tests.Unit.Infrastructure.Calendar;
 
 public sealed class NagerHolidaysClientTests
 {
-    [Fact]
-    public async Task GetPublicHolidaysAsync_ParsesOnlyNationalHolidays()
+    private static (Mock<HttpMessageHandler> handler, List<HttpRequestMessage> requests) StubHandler(HttpResponseMessage response)
     {
-        const string json = """
-        [
-          {"date":"2026-01-01","localName":"New Year","name":"New Year's Day","countryCode":"AT","nationalHoliday":true},
-          {"date":"2026-05-01","localName":"Staatsfeiertag","name":"State Holiday","countryCode":"AT","nationalHoliday":false}
-        ]
-        """;
+        var requests = new List<HttpRequestMessage>();
         var handler = new Mock<HttpMessageHandler>();
         handler.Protected()
             .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) });
-        var httpClient = new HttpClient(handler.Object) { BaseAddress = new Uri("https://nagerholidays.com/api/v4/") };
-        var sut = new NagerHolidaysClient(httpClient);
+            .Callback<HttpRequestMessage, CancellationToken>((req, _) => requests.Add(req))
+            .ReturnsAsync(response);
+        return (handler, requests);
+    }
 
-        var result = await sut.GetPublicHolidaysAsync("AT", 2026, CancellationToken.None);
+    private static NagerHolidaysClient ClientFor(Mock<HttpMessageHandler> handler) =>
+        new(new HttpClient(handler.Object) { BaseAddress = new Uri("https://date.nager.at/api/v3/") });
 
-        Assert.Single(result);
-        Assert.Equal("New Year's Day", result[0].Name);
-        Assert.True(result[0].NationalHoliday);
+    [Fact]
+    public async Task GetPublicHolidaysAsync_RequestsYearThenCountry_OnTheRealNagerRoute()
+    {
+        var (handler, requests) = StubHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]") });
+        var sut = ClientFor(handler);
+
+        await sut.GetPublicHolidaysAsync("US", 2026, CancellationToken.None);
+
+        Assert.Equal("https://date.nager.at/api/v3/PublicHolidays/2026/US", requests.Single().RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task GetPublicHolidaysAsync_KeepsOnlyNationwidePublicHolidays()
+    {
+        // Real Nager.Date shape: no "nationalHoliday" flag. Nationwide == global:true with "Public" in types.
+        const string json = """
+        [
+          {"date":"2026-01-01","localName":"New Year","name":"New Year's Day","countryCode":"US","global":true,"types":["Public","Bank"]},
+          {"date":"2026-02-12","localName":"Lincoln's Birthday","name":"Lincoln's Birthday","countryCode":"US","global":false,"types":["Public"]},
+          {"date":"2026-11-27","localName":"Day After Thanksgiving","name":"Day After Thanksgiving","countryCode":"US","global":true,"types":["Optional"]}
+        ]
+        """;
+        var (handler, _) = StubHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) });
+        var sut = ClientFor(handler);
+
+        var result = await sut.GetPublicHolidaysAsync("US", 2026, CancellationToken.None);
+
+        var holiday = Assert.Single(result);
+        Assert.Equal("New Year's Day", holiday.Name);
+        Assert.Equal(new DateOnly(2026, 1, 1), holiday.Date);
+        Assert.True(holiday.NationalHoliday);
     }
 
     [Fact]
     public async Task GetPublicHolidaysAsync_UnknownCountry_ReturnsEmptyNotError()
     {
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]") });
-        var httpClient = new HttpClient(handler.Object) { BaseAddress = new Uri("https://nagerholidays.com/api/v4/") };
-        var sut = new NagerHolidaysClient(httpClient);
+        var (handler, _) = StubHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]") });
+        var sut = ClientFor(handler);
 
         var result = await sut.GetPublicHolidaysAsync("ZZ", 2026, CancellationToken.None);
 
@@ -50,12 +70,8 @@ public sealed class NagerHolidaysClientTests
     [Fact]
     public async Task GetPublicHolidaysAsync_ServerError_Throws()
     {
-        var handler = new Mock<HttpMessageHandler>();
-        handler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.InternalServerError));
-        var httpClient = new HttpClient(handler.Object) { BaseAddress = new Uri("https://nagerholidays.com/api/v4/") };
-        var sut = new NagerHolidaysClient(httpClient);
+        var (handler, _) = StubHandler(new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var sut = ClientFor(handler);
 
         await Assert.ThrowsAsync<HttpRequestException>(() => sut.GetPublicHolidaysAsync("AT", 2026, CancellationToken.None));
     }

@@ -236,7 +236,7 @@ public static class DependencyInjection
         services.AddHttpClient<ONEVO.Application.Features.Calendar.ServiceInterfaces.INagerHolidaysClient,
             ONEVO.Infrastructure.Services.Calendar.NagerHolidaysClient>(client =>
         {
-            client.BaseAddress = new Uri("https://nagerholidays.com/api/v4/");
+            client.BaseAddress = new Uri("https://date.nager.at/api/v3/");
             client.Timeout = TimeSpan.FromSeconds(10);
         });
         services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.IHolidayCalendarSettingsRepository,
