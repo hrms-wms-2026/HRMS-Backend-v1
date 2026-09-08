@@ -355,7 +355,7 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
             grantTables.CommandText = $@"
                 GRANT SELECT ON employees, position_assignments, employee_hierarchy_closure,
                     departments, legal_entities, positions, employment_types, employment_statuses,
-                    management_coverage_records, tenants, invitation_tokens,
+                    work_modes, management_coverage_records, tenants, invitation_tokens,
                     roles, role_permissions, user_roles, permissions
                     TO {RestrictedRoleName};
             ";
