@@ -337,6 +337,67 @@ public sealed class AttendanceReadHandlerTests
     }
 
     [Fact]
+    public async Task MonthlySummary_CountsPresentLateEarlyAndMissingClockOut()
+    {
+        var fixture = CreateFixture();
+        var records = new List<AttendanceRecord>
+        {
+            // On time, full day worked.
+            new() {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 3),
+                ExpectedWorkingDay = true, ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30),
+                ActualStart = DateTimeOffset.Parse("2026-08-03T03:30:00+00:00"), ActualEnd = DateTimeOffset.Parse("2026-08-03T12:00:00+00:00")
+            },
+            // Late arrival (clocked in 04:00 local = after 09:00 scheduled start, Colombo is UTC+5:30 so 03:30Z == 09:00 local).
+            new() {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 4),
+                ExpectedWorkingDay = true, ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30),
+                ActualStart = DateTimeOffset.Parse("2026-08-04T04:15:00+00:00"), ActualEnd = DateTimeOffset.Parse("2026-08-04T12:00:00+00:00")
+            },
+            // Early departure (clocked out 11:00 local, before 17:30 scheduled end).
+            new() {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 5),
+                ExpectedWorkingDay = true, ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30),
+                ActualStart = DateTimeOffset.Parse("2026-08-05T03:30:00+00:00"), ActualEnd = DateTimeOffset.Parse("2026-08-05T05:30:00+00:00")
+            },
+            // Missing clock-out (still open after the 16h threshold).
+            new() {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 6),
+                ExpectedWorkingDay = true, ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30),
+                ActualStart = DateTimeOffset.Parse("2026-08-06T03:30:00+00:00"), ActualEnd = null
+            },
+            // Never clocked in — counts toward WorkingDays but not DaysPresent.
+            new() {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 7),
+                ExpectedWorkingDay = true, ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30)
+            }
+        };
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { EmployeeId })), new(2026, 8, 1), new(2026, 8, 7), 0, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((records, records.Count));
+
+        var result = await fixture.Handler.Handle(
+            new GetMyAttendanceMonthlySummaryQuery(new(2026, 8, 1), new(2026, 8, 7)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.WorkingDays.Should().Be(5);
+        result.Value.DaysPresent.Should().Be(4);
+        result.Value.LateArrivals.Should().Be(1);
+        result.Value.EarlyDepartures.Should().Be(1);
+        result.Value.MissingClockOuts.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task MonthlySummary_RangeOverAMonthIsRejected()
+    {
+        var fixture = CreateFixture();
+
+        var result = await fixture.Handler.Handle(
+            new GetMyAttendanceMonthlySummaryQuery(new(2026, 8, 1), new(2026, 10, 1)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task DayDetail_Self_ReturnsSummaryTimelineAndActivityRegardlessOfPermissions()
     {
         var fixture = CreateFixture();

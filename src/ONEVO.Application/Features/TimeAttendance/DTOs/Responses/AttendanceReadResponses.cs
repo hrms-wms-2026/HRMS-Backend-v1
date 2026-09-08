@@ -89,6 +89,13 @@ public sealed record AttendanceHistoryRow(
     string? ScheduledEndTime = null,
     int? RequiredWorkMinutes = null);
 
+public sealed record AttendanceMonthlySummaryResponse(
+    int WorkingDays,
+    int DaysPresent,
+    int LateArrivals,
+    int EarlyDepartures,
+    int MissingClockOuts);
+
 public sealed record TimelineEvent(
     string EventType,
     DateTimeOffset Timestamp,
