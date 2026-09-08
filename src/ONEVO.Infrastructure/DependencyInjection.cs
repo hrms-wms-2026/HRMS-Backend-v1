@@ -435,6 +435,7 @@ public static class DependencyInjection
         services.AddScoped<IUserIntegrationConnectionRepository, EfUserIntegrationConnectionRepository>();
         services.AddDataProtection();
         services.AddSingleton<IOAuthStateProtector, OAuthStateProtector>();
+        services.AddScoped<ICalendarOAuthStateProtector, CalendarOAuthStateProtector>();
         services.AddHttpClient<IGitHubOAuthClient, GitHubOAuthTokenClient>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(15);
