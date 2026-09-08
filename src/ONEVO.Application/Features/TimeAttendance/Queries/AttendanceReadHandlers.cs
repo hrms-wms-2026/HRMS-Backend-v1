@@ -299,7 +299,10 @@ public sealed class AttendanceReadHandler(
                 status.AttentionLabel,
                 status.AttentionSeverity,
                 status.BreakOverageMinutes,
-                status.IsOverBreakAllowance);
+                status.IsOverBreakAllowance,
+                schedule.Start?.ToString("HH:mm"),
+                schedule.End?.ToString("HH:mm"),
+                schedule.RequiredWorkMinutes);
         }).ToList();
     }
 

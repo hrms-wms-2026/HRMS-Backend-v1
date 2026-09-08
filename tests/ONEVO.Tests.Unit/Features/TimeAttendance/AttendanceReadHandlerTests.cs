@@ -312,6 +312,31 @@ public sealed class AttendanceReadHandlerTests
     }
 
     [Fact]
+    public async Task MyHistory_ExposesScheduledStartEndAndRequiredMinutes()
+    {
+        var fixture = CreateFixture();
+        var record = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            EmployeeId = EmployeeId,
+            Date = new(2026, 8, 21),
+            ScheduledStart = new TimeOnly(9, 0),
+            ScheduledEnd = new TimeOnly(17, 30),
+            RequiredWorkMinutes = 480
+        };
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { EmployeeId })), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<AttendanceRecord> { record }, 1));
+
+        var result = await fixture.Handler.Handle(
+            new GetMyAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), new PagedRequest()), CancellationToken.None);
+
+        result.Value!.Items[0].ScheduledStartTime.Should().Be("09:00");
+        result.Value.Items[0].ScheduledEndTime.Should().Be("17:30");
+        result.Value.Items[0].RequiredWorkMinutes.Should().Be(480);
+    }
+
+    [Fact]
     public async Task DayDetail_Self_ReturnsSummaryTimelineAndActivityRegardlessOfPermissions()
     {
         var fixture = CreateFixture();

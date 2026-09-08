@@ -84,7 +84,10 @@ public sealed record AttendanceHistoryRow(
     string? AttentionLabel = null,
     string? AttentionSeverity = null,
     int BreakOverageMinutes = 0,
-    bool IsOverBreakAllowance = false);
+    bool IsOverBreakAllowance = false,
+    string? ScheduledStartTime = null,
+    string? ScheduledEndTime = null,
+    int? RequiredWorkMinutes = null);
 
 public sealed record TimelineEvent(
     string EventType,
