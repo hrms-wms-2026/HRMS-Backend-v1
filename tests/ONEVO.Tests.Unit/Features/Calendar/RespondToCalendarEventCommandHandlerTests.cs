@@ -103,12 +103,22 @@ public sealed class RespondToCalendarEventCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
 
+        var calls = new List<string>();
+        _notifications.Setup(n => n.NotifyResolutionRequestedAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("notify")).Returns(Task.CompletedTask);
+        _unitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("save")).ReturnsAsync(1);
+
         var resultWithReason = await sut.Handle(new RespondToCalendarEventCommand(EventId, "ResolutionRequested", Reason: "Need to check with my team"), CancellationToken.None);
         Assert.True(resultWithReason.IsSuccess);
         Assert.Equal(CalendarEventParticipantStatuses.ResolutionRequested, participant.ResponseStatus);
         Assert.Equal("Need to check with my team", participant.ResponseReason);
         _notifications.Verify(n => n.NotifyResolutionRequestedAsync(
             TenantId, OrganizerUserId, "Payroll review", "Ada Lovelace", "Need to check with my team", It.IsAny<CancellationToken>()), Times.Once);
+        // The outbox row staged by the notification sender is only persisted by the handler's
+        // SaveChanges, so the notify call must happen before it - not after.
+        Assert.Equal(new[] { "notify", "save" }, calls);
     }
 
     [Fact]
@@ -132,6 +142,13 @@ public sealed class RespondToCalendarEventCommandHandlerTests
         _employeeRepo.Setup(x => x.GetByIdAsync(TenantId, coParticipantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Employee { Id = coParticipantId, TenantId = TenantId, FirstName = "Grace", LastName = "Hopper" });
 
+        var calls = new List<string>();
+        _notifications.Setup(n => n.NotifyReplacementNominatedAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("notify")).Returns(Task.CompletedTask);
+        _unitOfWork.Setup(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Add("save")).ReturnsAsync(1);
+
         var invalidResult = await sut.Handle(new RespondToCalendarEventCommand(EventId, "ReplacementNominated", NomineeEmployeeId: someOutsiderId), CancellationToken.None);
         Assert.False(invalidResult.IsSuccess);
 
@@ -140,5 +157,7 @@ public sealed class RespondToCalendarEventCommandHandlerTests
         Assert.Equal(CalendarEventParticipantStatuses.ReplacementNominated, participant.ResponseStatus);
         _notifications.Verify(n => n.NotifyReplacementNominatedAsync(
             TenantId, OrganizerUserId, "Payroll review", "Ada Lovelace", "Grace Hopper", It.IsAny<CancellationToken>()), Times.Once);
+        // Notify must run before the persisting SaveChanges, otherwise the staged outbox row is lost.
+        Assert.Equal(new[] { "notify", "save" }, calls);
     }
 }

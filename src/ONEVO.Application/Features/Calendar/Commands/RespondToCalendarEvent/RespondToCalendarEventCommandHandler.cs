@@ -62,8 +62,10 @@ public sealed class RespondToCalendarEventCommandHandler(
 
         participant.ResponseStatus = normalizedStatus;
         participant.ResponseReason = request.Reason;
-        await unitOfWork.SaveChangesAsync(ct);
 
+        // Enqueue the organizer notification BEFORE the single SaveChanges below: the notification
+        // sender only stages an outbox row (no save of its own), so it has to ride along with the
+        // participant update's save - otherwise it is silently dropped.
         if (normalizedStatus is CalendarEventParticipantStatuses.ResolutionRequested or CalendarEventParticipantStatuses.ReplacementNominated)
         {
             var calendarEvent = await events.GetByIdForTenantAsync(tenantId, request.EventId, ct);
@@ -76,6 +78,8 @@ public sealed class RespondToCalendarEventCommandHandler(
                     await notifications.NotifyReplacementNominatedAsync(tenantId, calendarEvent.CreatedById, calendarEvent.Title, responderName, nomineeName!, ct);
             }
         }
+
+        await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();
     }
