@@ -128,7 +128,7 @@ public sealed class AttendanceTodayLeaveAwareTests
                 ? [new LeaveRequest
                 {
                     Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
-                    StartDate = WorkDate, EndDate = WorkDate, Status = "approved"
+                    StartAt = new DateTimeOffset(WorkDate, TimeOnly.MinValue, TimeSpan.Zero), EndAt = new DateTimeOffset(WorkDate, new TimeOnly(18, 0), TimeSpan.Zero), Status = "approved"
                 }]
                 : []);
         var dateTime = new Mock<IDateTimeProvider>();

@@ -29,10 +29,10 @@ public class RecalculateEntitlementCommandHandlerTests
             EmployeeId = employee.Id,
             LeaveTypeId = leaveTypeId,
             Year = 2026,
-            TotalDays = 10m,
-            UsedDays = 2m,
-            PendingDays = 1m,
-            CarriedForwardDays = 0m,
+            TotalHours = 10m,
+            UsedHours = 2m,
+            PendingHours = 1m,
+            CarriedForwardHours = 0m,
             Source = LeaveEntitlementSources.Auto
         };
 
@@ -51,6 +51,8 @@ public class RecalculateEntitlementCommandHandlerTests
             .ReturnsAsync(employee);
         policies.Setup(x => x.ListActiveAggregatesByLegalEntityIdsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), 2026, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, LeavePolicyAggregate> { [legalEntityId] = policy });
+        policies.Setup(x => x.ListActiveLegalEntitiesByIdsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([PreviewGenerateEntitlementsQueryHandlerTests.CreateLegalEntity(tenantId, legalEntityId)]);
         entitlements.Setup(x => x.ListPreviousYearAsync(tenantId, 2025, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<(Guid, Guid), LeaveEntitlement>());
         entitlements.Setup(x => x.SaveWithAuditAsync(entitlement, It.IsAny<ONEVO.Domain.Features.Leave.BalanceAudit.Entities.LeaveBalanceAudit>(), It.IsAny<CancellationToken>()))
@@ -72,8 +74,8 @@ public class RecalculateEntitlementCommandHandlerTests
         var result = await handler.Handle(new RecalculateEntitlementCommand(entitlement.Id, true), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        entitlement.TotalDays.Should().Be(14m);
-        entitlement.UsedDays.Should().Be(2m);
-        entitlement.PendingDays.Should().Be(1m);
+        entitlement.TotalHours.Should().Be(112.00m);
+        entitlement.UsedHours.Should().Be(2m);
+        entitlement.PendingHours.Should().Be(1m);
     }
 }

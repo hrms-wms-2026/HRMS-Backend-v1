@@ -49,7 +49,7 @@ public sealed class CancelLeaveRequestCommandHandler
     private readonly LeaveBusinessDateResolver _businessDateResolver;
     private readonly LeaveCancellationClassifier _classifier;
     private readonly LeaveRequestDayAllocationBuilder _allocationBuilder;
-    private readonly LeaveRequestDayCalculator _dayCalculator;
+    private readonly LeaveRequestHourCalculator _hourCalculator;
     private readonly ILeaveHolidayProvider _holidays;
     private readonly ILeavePolicyRepository _policies;
     private readonly IOutboxWriter _outbox;
@@ -64,7 +64,7 @@ public sealed class CancelLeaveRequestCommandHandler
         LeaveBusinessDateResolver businessDateResolver,
         LeaveCancellationClassifier classifier,
         LeaveRequestDayAllocationBuilder allocationBuilder,
-        LeaveRequestDayCalculator dayCalculator,
+        LeaveRequestHourCalculator hourCalculator,
         ILeaveHolidayProvider holidays,
         ILeavePolicyRepository policies,
         IOutboxWriter outbox,
@@ -78,7 +78,7 @@ public sealed class CancelLeaveRequestCommandHandler
         _businessDateResolver = businessDateResolver;
         _classifier = classifier;
         _allocationBuilder = allocationBuilder;
-        _dayCalculator = dayCalculator;
+        _hourCalculator = hourCalculator;
         _holidays = holidays;
         _policies = policies;
         _outbox = outbox;
@@ -254,38 +254,46 @@ public sealed class CancelLeaveRequestCommandHandler
     private async Task<IReadOnlyList<LeaveRequestDayAllocation>> BuildLegacyAllocationsAsync(
         LeaveCancellationState state, DateTimeOffset now, CancellationToken ct)
     {
-        IReadOnlyCollection<int> workingDays = [];
-        if (state.Employee.LegalEntityId is Guid legalEntityId)
+        var legalEntity = state.LegalEntity;
+        if (legalEntity?.WorkStartTime is null || legalEntity.WorkEndTime is null)
+            return [];
+
+        IReadOnlyCollection<int> workingDays;
+        try
         {
-            var policies = await _policies.ListActiveAggregatesByLegalEntityIdsAsync(
-                _currentUser.TenantId, [legalEntityId], state.Request.StartAt.Year, ct);
-            if (policies.TryGetValue(legalEntityId, out var policy))
-            {
-                var assignment = policy.LegalEntities.FirstOrDefault(x => x.Assignment.LegalEntityId == legalEntityId);
-                try
-                {
-                    workingDays = LegalEntityMapper.ParseStandardWorkingDays(assignment?.StandardWorkingDaysJson ?? "[]");
-                }
-                catch (Exception)
-                {
-                    workingDays = [];
-                }
-            }
+            workingDays = LegalEntityMapper.ParseStandardWorkingDays(legalEntity.StandardWorkingDays);
+        }
+        catch (Exception)
+        {
+            workingDays = [];
         }
 
-        var startDate = DateOnly.FromDateTime(state.Request.StartAt.UtcDateTime);
-        var endDate = DateOnly.FromDateTime(state.Request.EndAt.UtcDateTime);
+        var zone = LeaveCancellationOptions.ResolveTimezone(legalEntity.Timezone) ?? TimeZoneInfo.Utc;
+        // LeaveRequestHourCalculator is a naive clock-time helper: pass local wall time with Offset Zero.
+        var startLocal = LeaveRequestHourCalculator.ToNaiveLocalClock(state.Request.StartAt, zone);
+        var endLocal = LeaveRequestHourCalculator.ToNaiveLocalClock(state.Request.EndAt, zone);
+        var startDate = DateOnly.FromDateTime(startLocal.UtcDateTime);
+        var endDate = DateOnly.FromDateTime(endLocal.UtcDateTime);
         var holidays = await _holidays.ListHolidaysAsync(
             _currentUser.TenantId, state.Employee.LegalEntityId, startDate, endDate, ct);
-        var calculated = _dayCalculator.Calculate(new LeaveRequestDayCalculationInput(
-            startDate, endDate, null, workingDays, holidays));
-        if (calculated.CountedDates.Count == 0)
+        var calculated = _hourCalculator.Calculate(new LeaveRequestHourCalculationInput(
+            startLocal,
+            endLocal,
+            legalEntity.WorkStartTime.Value,
+            legalEntity.WorkEndTime.Value,
+            legalEntity.BreakDurationMinutes ?? 0,
+            workingDays,
+            holidays));
+        if (calculated.CountedShiftStartDates.Count == 0)
             return [];
 
         try
         {
             var drafts = _allocationBuilder.Build(
-                calculated.CountedDates, state.Request.PaidHours, state.Request.UnpaidHours);
+                calculated.CountedShiftStartDates,
+                calculated.HoursByShiftStartDate,
+                state.Request.PaidHours,
+                state.Request.UnpaidHours);
             return _allocationBuilder.ToEntities(_currentUser.TenantId, state.Request.Id, drafts, now);
         }
         catch (InvalidOperationException)

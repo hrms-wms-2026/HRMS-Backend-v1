@@ -46,25 +46,25 @@ public class LeaveApprovalDecisionServiceTests
     }
 
     [Fact]
-    public async Task ApproveAsync_WhenAnyOneApproves_MovesPaidDaysFromPendingToUsed()
+    public async Task ApproveAsync_WhenAnyOneApproves_MovesPaidHoursFromPendingToUsed()
     {
         var harness = Harness.Create(LeaveRequestStatuses.Pending, paidDays: 3m, pendingDays: 3m, usedDays: 5m);
         var result = await harness.Sut.ApproveAsync(harness.Request.Id, "ok", CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
-        harness.Entitlement.PendingDays.Should().Be(0m);
-        harness.Entitlement.UsedDays.Should().Be(8m);
+        harness.Entitlement.PendingHours.Should().Be(0m);
+        harness.Entitlement.UsedHours.Should().Be(8m);
         harness.Request.Status.Should().Be(LeaveRequestStatuses.Approved);
         harness.Audits.Should().ContainSingle(a => a.ChangeType == LeaveBalanceChangeTypes.Deduction);
     }
 
     [Fact]
-    public async Task RejectAsync_ReleasesPendingPaidDaysWithoutUsedDeduction()
+    public async Task RejectAsync_ReleasesPendingPaidHoursWithoutUsedDeduction()
     {
         var harness = Harness.Create(LeaveRequestStatuses.Pending, paidDays: 2m, pendingDays: 2m, usedDays: 4m);
         var result = await harness.Sut.RejectAsync(harness.Request.Id, "coverage", CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
-        harness.Entitlement.PendingDays.Should().Be(0m);
-        harness.Entitlement.UsedDays.Should().Be(4m);
+        harness.Entitlement.PendingHours.Should().Be(0m);
+        harness.Entitlement.UsedHours.Should().Be(4m);
         harness.Request.Status.Should().Be(LeaveRequestStatuses.Rejected);
         harness.Audits.Should().BeEmpty();
     }
@@ -77,7 +77,7 @@ public class LeaveApprovalDecisionServiceTests
         result.IsSuccess.Should().BeTrue();
         harness.Request.Status.Should().Be(LeaveRequestStatuses.InformationRequested);
         harness.Approver.Status.Should().Be(LeaveRequestApproverStatuses.InformationRequested);
-        harness.Entitlement.PendingDays.Should().Be(2m);
+        harness.Entitlement.PendingHours.Should().Be(2m);
     }
 
     [Fact]
@@ -124,11 +124,11 @@ public class LeaveApprovalDecisionServiceTests
                 TenantId = tenantId,
                 EmployeeId = subjectId,
                 LeaveTypeId = Guid.NewGuid(),
-                StartDate = new DateOnly(2026, 9, 14),
-                EndDate = new DateOnly(2026, 9, 14),
-                TotalDays = paidDays,
-                PaidDays = paidDays,
-                UnpaidDays = 0m,
+                StartAt = new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero),
+                EndAt = new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.Zero),
+                TotalHours = paidDays,
+                PaidHours = paidDays,
+                UnpaidHours = 0m,
                 Status = status
             };
             Approver = new LeaveRequestApprover
@@ -147,10 +147,10 @@ public class LeaveApprovalDecisionServiceTests
                 EmployeeId = Request.EmployeeId,
                 LeaveTypeId = Request.LeaveTypeId,
                 Year = 2026,
-                TotalDays = 20m,
-                UsedDays = usedDays,
-                PendingDays = pendingDays,
-                CarriedForwardDays = 0m,
+                TotalHours = 20m,
+                UsedHours = usedDays,
+                PendingHours = pendingDays,
+                CarriedForwardHours = 0m,
                 Source = LeaveEntitlementSources.Auto
             };
 

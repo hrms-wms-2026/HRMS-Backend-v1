@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -7,6 +8,7 @@ using ONEVO.Application.Features.Leave.Entitlement.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Request.Helpers;
 using ONEVO.Application.Features.OrgStructure.Mappers;
 using ONEVO.Domain.Features.Leave.BalanceAudit.Entities;
 using ONEVO.Domain.Features.Leave.Common;
@@ -70,11 +72,20 @@ public class RecalculateEntitlementCommandHandler
 
         var assignment = policy.LegalEntities.First(x => x.Assignment.LegalEntityId == legalEntityId);
         var workingDays = LegalEntityMapper.ParseStandardWorkingDays(assignment.StandardWorkingDaysJson);
+        var legalEntities = await _policies.ListActiveLegalEntitiesByIdsAsync(tenantId, [legalEntityId], ct);
+        var legalEntity = legalEntities.FirstOrDefault();
+        var workHours = WorkDayHoursCalculator.TryCompute(
+            legalEntity?.WorkStartTime, legalEntity?.WorkEndTime, legalEntity?.BreakDurationMinutes);
+        if (workHours is null or <= 0m)
+            return Result<LeaveEntitlementResponse>.Failure(LeaveRequestMessages.WorkWindowRequired);
+
         var previous = await _entitlements.ListPreviousYearAsync(
             tenantId, entitlement.Year - 1, [entitlement.EmployeeId], ct);
-        var priorRemaining = previous.TryGetValue((entitlement.EmployeeId, entitlement.LeaveTypeId), out var prior)
+        var priorRemainingHours = previous.TryGetValue((entitlement.EmployeeId, entitlement.LeaveTypeId), out var prior)
             ? LeaveEntitlementMapper.Remaining(prior)
             : 0m;
+        var priorRemainingDays = decimal.Round(
+            priorRemainingHours / workHours.Value, 1, MidpointRounding.AwayFromZero);
 
         var now = _dateTimeProvider.UtcNow;
         var calculation = _calculator.Calculate(new LeaveEntitlementCalculationInput(
@@ -82,7 +93,7 @@ public class RecalculateEntitlementCommandHandler
             employee.HireDate,
             employee.ProbationEndDate,
             typeRule.Rule.AnnualEntitlementDays,
-            priorRemaining,
+            priorRemainingDays,
             typeRule.Rule.CarryForwardMaxDays,
             typeRule.Rule.CarryForwardExpiryMonths,
             policy.Policy.AccrualMethod,
@@ -98,19 +109,23 @@ public class RecalculateEntitlementCommandHandler
         if (calculation.SkipReason is not null)
             return Result<LeaveEntitlementResponse>.Failure(calculation.SkipReason);
 
+        var totalHours = decimal.Round(calculation.TotalDays * workHours.Value, 2, MidpointRounding.AwayFromZero);
+        var carryHours = decimal.Round(
+            calculation.CarriedForwardDays * workHours.Value, 2, MidpointRounding.AwayFromZero);
+
         var oldBalance = LeaveEntitlementMapper.Remaining(entitlement);
         var newBalance = LeaveEntitlementMapper.Remaining(
-            calculation.TotalDays, calculation.CarriedForwardDays, entitlement.UsedHours, entitlement.PendingHours);
+            totalHours, carryHours, entitlement.UsedHours, entitlement.PendingHours);
 
         if (newBalance < 0m && !request.ConfirmNegativeRemaining)
         {
             return Result<LeaveEntitlementResponse>.Conflict(
                 LeaveEntitlementMessages.NegativeRemaining(
-                    calculation.TotalDays + calculation.CarriedForwardDays, entitlement.UsedHours));
+                    totalHours + carryHours, entitlement.UsedHours));
         }
 
-        entitlement.TotalHours = calculation.TotalDays;
-        entitlement.CarriedForwardHours = calculation.CarriedForwardDays;
+        entitlement.TotalHours = totalHours;
+        entitlement.CarriedForwardHours = carryHours;
         entitlement.UpdatedAt = now;
 
         var audit = new LeaveBalanceAudit

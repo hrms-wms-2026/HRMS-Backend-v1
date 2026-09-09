@@ -13,19 +13,28 @@ public sealed record LeaveRequestHourCalculationInput(
 
 public sealed record LeaveRequestHourCalculationResult(
     decimal TotalHours,
-    IReadOnlyList<DateOnly> CountedShiftStartDates);
+    IReadOnlyList<DateOnly> CountedShiftStartDates,
+    IReadOnlyList<decimal> HoursByShiftStartDate);
 
 public sealed class LeaveRequestHourCalculator
 {
+    public static DateTimeOffset ToNaiveLocalClock(DateTimeOffset value, TimeZoneInfo zone)
+    {
+        var local = TimeZoneInfo.ConvertTime(value, zone);
+        return new DateTimeOffset(
+            local.Year, local.Month, local.Day, local.Hour, local.Minute, local.Second, local.Millisecond, TimeSpan.Zero);
+    }
+
     public LeaveRequestHourCalculationResult Calculate(LeaveRequestHourCalculationInput input)
     {
         if (input.EndAt <= input.StartAt)
-            return new(0m, []);
+            return new(0m, [], []);
 
         var workDayHours = WorkDayHoursCalculator.Compute(input.WorkStart, input.WorkEnd, input.BreakMinutes);
         var working = input.StandardWorkingDays.ToHashSet();
         var holidays = input.HolidayDates.ToHashSet();
         var counted = new List<DateOnly>();
+        var hoursByDate = new List<decimal>();
         decimal total = 0m;
 
         var fromDate = DateOnly.FromDateTime(input.StartAt.UtcDateTime);
@@ -50,12 +59,14 @@ public sealed class LeaveRequestHourCalculator
 
             var overlapHours = (decimal)(overlapEnd - overlapStart).TotalHours;
             var fullHours = (decimal)(shiftEndDto - shiftStartDto).TotalHours;
-            total += overlapHours >= fullHours - 0.01m
+            var charged = overlapHours >= fullHours - 0.01m
                 ? workDayHours
                 : decimal.Round(overlapHours, 2, MidpointRounding.AwayFromZero);
+            total += charged;
             counted.Add(date);
+            hoursByDate.Add(charged);
         }
 
-        return new(decimal.Round(total, 2, MidpointRounding.AwayFromZero), counted);
+        return new(decimal.Round(total, 2, MidpointRounding.AwayFromZero), counted, hoursByDate);
     }
 }

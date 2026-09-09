@@ -67,7 +67,7 @@ public class AdjustEntitlementCommandHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         capturedAudit!.ChangeType.Should().Be(LeaveBalanceChangeTypes.Adjustment);
-        capturedAudit.DaysChanged.Should().Be(3m);
+        capturedAudit.HoursChanged.Should().Be(3m);
         capturedAudit.BalanceAfter.Should().Be(10m);
         result.Error.Should().BeNull();
     }
@@ -80,10 +80,10 @@ public class AdjustEntitlementCommandHandlerTests
         EmployeeId = Guid.NewGuid(),
         LeaveTypeId = Guid.NewGuid(),
         Year = 2026,
-        TotalDays = totalDays,
-        UsedDays = usedDays,
-        PendingDays = pendingDays,
-        CarriedForwardDays = carriedForwardDays,
+        TotalHours = totalDays,
+        UsedHours = usedDays,
+        PendingHours = pendingDays,
+        CarriedForwardHours = carriedForwardDays,
         Source = LeaveEntitlementSources.Auto
     };
 }

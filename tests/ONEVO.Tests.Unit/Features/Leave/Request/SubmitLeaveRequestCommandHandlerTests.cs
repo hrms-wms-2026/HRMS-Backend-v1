@@ -42,7 +42,7 @@ public class SubmitLeaveRequestCommandHandlerTests
 
         var saved = await db.LeaveRequestDayAllocations.Where(x => x.LeaveRequestId == request.Id).ToListAsync();
         saved.Should().HaveCount(3);
-        saved.Sum(x => x.PaidUnit).Should().Be(3m);
+        saved.Sum(x => x.PaidHoursUnit).Should().Be(3m);
         saved.Should().OnlyContain(x => x.Status == LeaveRequestDayAllocationStatuses.Active);
     }
 
@@ -61,11 +61,11 @@ public class SubmitLeaveRequestCommandHandlerTests
 
         await repo.AddPendingRequestAsync(new LeaveRequestWriteSet(
             request, [], [],
-            [Allocation(tenantId, request.Id, request.StartDate, 0.5m)],
+            [Allocation(tenantId, request.Id, DateOnly.FromDateTime(request.StartAt.UtcDateTime), 0.5m)],
             entitlement), CancellationToken.None);
 
         var saved = await db.LeaveRequestDayAllocations.SingleAsync();
-        saved.DayUnit.Should().Be(0.5m);
+        saved.HoursUnit.Should().Be(0.5m);
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class SubmitLeaveRequestCommandHandlerTests
 
         var act = () => repo.AddPendingRequestAsync(new LeaveRequestWriteSet(
             overlapping, [], [],
-            [Allocation(tenantId, overlapping.Id, overlapping.StartDate, 1m)],
+            [Allocation(tenantId, overlapping.Id, DateOnly.FromDateTime(overlapping.StartAt.UtcDateTime), 1m)],
             entitlement), CancellationToken.None);
 
         await act.Should().ThrowAsync<InvalidOperationException>();
@@ -117,10 +117,10 @@ public class SubmitLeaveRequestCommandHandlerTests
         TenantId = tenantId,
         EmployeeId = Guid.NewGuid(),
         LeaveTypeId = Guid.NewGuid(),
-        StartDate = new DateOnly(2026, 9, 14),
-        EndDate = new DateOnly(2026, 9, 14),
-        TotalDays = days,
-        PaidDays = days,
+        StartAt = new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero),
+        EndAt = new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.Zero),
+        TotalHours = days,
+        PaidHours = days,
         Status = LeaveRequestStatuses.Pending
     };
 
@@ -131,8 +131,8 @@ public class SubmitLeaveRequestCommandHandlerTests
         EmployeeId = request.EmployeeId,
         LeaveTypeId = request.LeaveTypeId,
         Year = 2026,
-        TotalDays = 20m,
-        PendingDays = pending,
+        TotalHours = 20m,
+        PendingHours = pending,
         Source = LeaveEntitlementSources.Auto
     };
 
@@ -142,9 +142,9 @@ public class SubmitLeaveRequestCommandHandlerTests
         TenantId = tenantId,
         LeaveRequestId = requestId,
         LeaveDate = date,
-        DayUnit = unit,
-        PaidUnit = unit,
-        UnpaidUnit = 0m,
+        HoursUnit = unit,
+        PaidHoursUnit = unit,
+        UnpaidHoursUnit = 0m,
         Status = LeaveRequestDayAllocationStatuses.Active
     };
 }

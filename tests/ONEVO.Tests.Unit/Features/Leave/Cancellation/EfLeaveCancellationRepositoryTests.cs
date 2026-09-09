@@ -38,7 +38,7 @@ public class EfLeaveCancellationRepositoryTests
         var request = new LeaveRequest
         {
             Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id, LeaveTypeId = leaveType.Id,
-            StartDate = new DateOnly(2026, 9, 14), EndDate = new DateOnly(2026, 9, 14), TotalDays = 1m, PaidDays = 1m,
+            StartAt = new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero), EndAt = new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.Zero), TotalHours = 1m, PaidHours = 1m,
             Status = LeaveRequestStatuses.Pending
         };
         var approver = new LeaveRequestApprover
@@ -73,12 +73,12 @@ public class EfLeaveCancellationRepositoryTests
             new LeaveRequestDayAllocation
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, LeaveRequestId = requestId,
-                LeaveDate = new DateOnly(2026, 9, 16), DayUnit = 1m, Status = LeaveRequestDayAllocationStatuses.Active
+                LeaveDate = new DateOnly(2026, 9, 16), HoursUnit = 1m, Status = LeaveRequestDayAllocationStatuses.Active
             },
             new LeaveRequestDayAllocation
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, LeaveRequestId = requestId,
-                LeaveDate = new DateOnly(2026, 9, 14), DayUnit = 1m, Status = LeaveRequestDayAllocationStatuses.Cancelled
+                LeaveDate = new DateOnly(2026, 9, 14), HoursUnit = 1m, Status = LeaveRequestDayAllocationStatuses.Cancelled
             });
         await db.SaveChangesAsync();
 

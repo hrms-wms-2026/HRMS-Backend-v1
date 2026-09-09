@@ -23,7 +23,7 @@ public class LeaveRequestsControllerTests
         var controller = new LeaveRequestsController(mediator.Object);
 
         var response = await controller.Submit(new SubmitLeaveRequestRequest(
-            Guid.NewGuid(), new DateOnly(2026, 8, 18), new DateOnly(2026, 8, 18), null, null, null), CancellationToken.None);
+            Guid.NewGuid(), new DateTimeOffset(2026, 8, 18, 9, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 8, 18, 18, 0, 0, TimeSpan.Zero), null, null), CancellationToken.None);
 
         response.Should().BeOfType<OkObjectResult>();
         mediator.Verify(x => x.Send(It.Is<SubmitLeaveRequestCommand>(c => !c.IsOnBehalfRequest), It.IsAny<CancellationToken>()), Times.Once);
@@ -44,7 +44,8 @@ public class LeaveRequestsControllerTests
 
     private static LeaveRequestResponse SampleResponse() => new(
         Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Annual Leave", "AL",
-        new DateOnly(2026, 8, 18), new DateOnly(2026, 8, 18), null, 1m, 1m, 0m, "pending", false, null,
+        new DateTimeOffset(2026, 8, 18, 9, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 8, 18, 18, 0, 0, TimeSpan.Zero),
+        1m, 1m, 0m, "pending", false, null,
         new LeaveRequestBalanceImpactResponse(10m, 1m, 9m), [], new LeaveRequestConflictSnapshotResponse([], [], null),
         DateTimeOffset.UtcNow);
 }

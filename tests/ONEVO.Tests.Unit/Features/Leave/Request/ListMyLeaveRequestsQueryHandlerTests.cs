@@ -25,9 +25,9 @@ public class ListMyLeaveRequestsQueryHandlerTests
             TenantId = tenantId,
             EmployeeId = employee.Id,
             LeaveTypeId = Guid.NewGuid(),
-            StartDate = new DateOnly(2026, 8, 18),
-            EndDate = new DateOnly(2026, 8, 18),
-            TotalDays = 1m,
+            StartAt = new DateTimeOffset(2026, 8, 18, 9, 0, 0, TimeSpan.Zero),
+            EndAt = new DateTimeOffset(2026, 8, 18, 18, 0, 0, TimeSpan.Zero),
+            TotalHours = 1m,
             Status = LeaveRequestStatuses.Pending,
             CreatedAt = DateTimeOffset.UtcNow
         };

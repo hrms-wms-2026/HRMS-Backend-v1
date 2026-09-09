@@ -13,18 +13,22 @@ public sealed class LeaveRequestDayAllocationBuilder
 {
     public IReadOnlyList<LeaveRequestDayAllocationDraft> Build(
         IReadOnlyList<DateOnly> countedDates,
+        IReadOnlyList<decimal> hoursUnits,
         decimal paidHours,
         decimal unpaidHours)
     {
+        if (countedDates.Count != hoursUnits.Count)
+            throw new InvalidOperationException("Leave day allocations do not match the request total.");
+
         var paidRemaining = paidHours;
         var rows = new List<LeaveRequestDayAllocationDraft>();
 
-        foreach (var date in countedDates)
+        for (var i = 0; i < countedDates.Count; i++)
         {
-            const decimal unit = 1m;
+            var unit = hoursUnits[i];
             var paid = Math.Min(unit, Math.Max(0m, paidRemaining));
             paidRemaining -= paid;
-            rows.Add(new LeaveRequestDayAllocationDraft(date, unit, paid, unit - paid));
+            rows.Add(new LeaveRequestDayAllocationDraft(countedDates[i], unit, paid, unit - paid));
         }
 
         var total = rows.Sum(x => x.HoursUnit);

@@ -101,6 +101,7 @@ public sealed class SubmitLeaveRequestCommandHandler
 
         var allocationDrafts = _allocationBuilder.Build(
             draft.CountedDates,
+            draft.HoursByDate,
             draft.PaidHours,
             draft.UnpaidHours);
         var dayAllocations = _allocationBuilder.ToEntities(
