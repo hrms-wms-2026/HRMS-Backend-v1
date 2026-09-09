@@ -235,9 +235,17 @@ namespace ONEVO.Infrastructure.Migrations
                 BEGIN
                   IF EXISTS (
                     SELECT 1 FROM leave_requests
-                    WHERE start_at = TIMESTAMPTZ '0001-01-01 00:00:00+00'
+                    WHERE start_at <= TIMESTAMPTZ '0001-01-01 00:00:00+00'
+                       OR end_at   <= TIMESTAMPTZ '0001-01-01 00:00:00+00'
                   ) THEN
-                    RAISE EXCEPTION 'LeaveHourlyLedger backfill left default start_at values';
+                    RAISE EXCEPTION 'LeaveHourlyLedger backfill left default start_at/end_at values';
+                  END IF;
+
+                  IF EXISTS (
+                    SELECT 1 FROM leave_requests
+                    WHERE total_days <> 0 AND total_hours = 0
+                  ) THEN
+                    RAISE EXCEPTION 'LeaveHourlyLedger backfill left zero total_hours for non-zero total_days on leave_requests';
                   END IF;
 
                   IF EXISTS (
