@@ -538,6 +538,8 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Settings.EfMonitoringFeatureTogglesRepository>();
         services.AddHostedService<
             ONEVO.Infrastructure.Services.Monitoring.Notifications.WellnessRuleEvaluatorJob>();
+        services.AddHostedService<
+            ONEVO.Infrastructure.Services.Monitoring.Notifications.LocationRuleEvaluatorJob>();
 
         // Monitoring - Screenshots
         services.AddScoped<
