@@ -11,7 +11,7 @@ namespace ONEVO.Api.Controllers.Public.Calendar;
 public class CalendarOAuthCallbackController(IMediator mediator) : ControllerBase
 {
     [HttpGet("{provider}/callback")]
-    public async Task<IActionResult> Callback(string provider, [FromQuery] string code, [FromQuery] string state, CancellationToken ct)
+    public async Task<IActionResult> Callback(string provider, [FromQuery] string? code, [FromQuery] string? error, [FromQuery] string state, CancellationToken ct)
     {
         var result = await mediator.Send(new CompleteCalendarConnectionCommand(provider, code, state), ct);
         return result.IsSuccess

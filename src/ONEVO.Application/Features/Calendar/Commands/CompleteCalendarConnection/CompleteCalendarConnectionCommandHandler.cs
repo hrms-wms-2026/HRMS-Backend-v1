@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MediatR;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -22,7 +23,8 @@ public sealed class CompleteCalendarConnectionCommandHandler(
     IExternalCalendarConnectionRepository connections,
     IEncryptionService encryption,
     IUnitOfWork unitOfWork,
-    IConfiguration configuration)
+    IConfiguration configuration,
+    ILogger<CompleteCalendarConnectionCommandHandler> logger)
     : IRequestHandler<CompleteCalendarConnectionCommand, Result<string>>
 {
     public async Task<Result<string>> Handle(CompleteCalendarConnectionCommand request, CancellationToken ct)
@@ -50,29 +52,48 @@ public sealed class CompleteCalendarConnectionCommandHandler(
 
         var errorRedirect = BuildRedirect("connectionError=1");
 
+        // The provider redirects here with no `code` at all when the user denies consent
+        // (or on other provider-side error reasons) — we already have a valid tenant at this
+        // point, so send them back to the app instead of surfacing a raw 400.
+        if (string.IsNullOrEmpty(request.Code))
+            return Result<string>.Success(errorRedirect);
+
         try
         {
-            return await CompleteConnectionAsync(request, state, tenant, errorRedirect, BuildRedirect, ct);
+            return await CompleteConnectionAsync(request, request.Code, state, tenant, errorRedirect, BuildRedirect, ct);
         }
-        catch
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Calendar OAuth callback failed after tenant switch. TenantId={TenantId} UserId={UserId} Provider={Provider}",
+                tenant.Id, state.UserId, request.Provider);
             return Result<string>.Success(errorRedirect);
         }
     }
 
     private async Task<Result<string>> CompleteConnectionAsync(
-        CompleteCalendarConnectionCommand request, CalendarOAuthState state, Tenant tenant,
+        CompleteCalendarConnectionCommand request, string code, CalendarOAuthState state, Tenant tenant,
         string errorRedirect, Func<string, string> buildRedirect, CancellationToken ct)
     {
         var app = await appResolver.GetActiveAppForProviderAsync(request.Provider, ct);
         var credential = await appResolver.GetActiveCredentialForProviderAsync(request.Provider, ct);
         if (app is null || credential is null)
+        {
+            logger.LogWarning(
+                "Calendar OAuth callback found no active OAuth app/credential for provider. TenantId={TenantId} UserId={UserId} Provider={Provider}",
+                tenant.Id, state.UserId, request.Provider);
             return Result<string>.Success(errorRedirect);
+        }
 
         var callbackBaseUrl = (configuration["Urls:CalendarOAuthCallbackBaseUrl"] ?? string.Empty).TrimEnd('/');
         var redirectUri = $"{callbackBaseUrl}/api/v1/calendar/connections/{request.Provider}/callback";
 
-        var tokens = await tokenExchangeClient.ExchangeCodeAsync(app.TokenUrl, credential.ClientId, credential.ClientSecret, request.Code, redirectUri, ct);
+        var tokens = await tokenExchangeClient.ExchangeCodeAsync(app.TokenUrl, credential.ClientId, credential.ClientSecret, code, redirectUri, ct);
         var account = await tokenExchangeClient.GetAccountAsync(request.Provider, tokens.AccessToken, ct);
 
         var externalSource = request.Provider.Equals("google", StringComparison.OrdinalIgnoreCase)
@@ -102,7 +123,12 @@ public sealed class CompleteCalendarConnectionCommandHandler(
             else
             {
                 if (tokens.RefreshToken is null)
+                {
+                    logger.LogWarning(
+                        "Calendar OAuth callback received no refresh token for a new connection. TenantId={TenantId} UserId={UserId} Provider={Provider}",
+                        tenant.Id, state.UserId, request.Provider);
                     return Result<string>.Success(errorRedirect);
+                }
 
                 await connections.AddAsync(new ExternalCalendarConnection
                 {
