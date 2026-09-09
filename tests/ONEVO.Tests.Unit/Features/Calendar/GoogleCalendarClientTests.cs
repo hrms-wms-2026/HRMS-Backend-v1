@@ -71,8 +71,36 @@ public sealed class GoogleCalendarClientTests
         Assert.Equal("evt-allday", allDay.Id);
         Assert.True(allDay.IsAllDay);
         Assert.Null(allDay.Timezone);
-        Assert.Equal(DateTimeOffset.Parse("2026-09-11"), allDay.Start);
-        Assert.Equal(DateTimeOffset.Parse("2026-09-12"), allDay.End);
+        Assert.Equal(new DateTimeOffset(2026, 9, 11, 0, 0, 0, TimeSpan.Zero), allDay.Start);
+        Assert.Equal(new DateTimeOffset(2026, 9, 12, 0, 0, 0, TimeSpan.Zero), allDay.End);
+    }
+
+    [Fact]
+    public async Task ListEventsAsync_ParsesCancelledStubEvent_WithoutThrowing()
+    {
+        var handler = new StubHandler(_ => JsonResponse(new
+        {
+            items = new object[]
+            {
+                new
+                {
+                    id = "evt-cancelled",
+                    kind = "calendar#event",
+                    etag = "\"etag-cancelled\"",
+                    status = "cancelled"
+                }
+            },
+            nextSyncToken = "sync-token-456"
+        }));
+        var sut = new GoogleCalendarClient(new HttpClient(handler));
+
+        var result = await sut.ListEventsAsync("at-1", "primary", "prior-sync-token", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(7), CancellationToken.None);
+
+        Assert.Single(result.Events);
+        var cancelled = result.Events[0];
+        Assert.Equal("evt-cancelled", cancelled.Id);
+        Assert.Equal("\"etag-cancelled\"", cancelled.Etag);
+        Assert.True(cancelled.IsCancelled);
     }
 
     [Fact]

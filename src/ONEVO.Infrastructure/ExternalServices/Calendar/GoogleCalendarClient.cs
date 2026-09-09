@@ -83,12 +83,28 @@ public sealed class GoogleCalendarClient(HttpClient httpClient) : IGoogleCalenda
     private static GoogleCalendarEventDto ParseEvent(JsonElement item)
     {
         var status = item.TryGetProperty("status", out var s) ? s.GetString() : null;
+
+        if (status == "cancelled")
+        {
+            return new GoogleCalendarEventDto(
+                Id: item.GetProperty("id").GetString()!,
+                Etag: item.TryGetProperty("etag", out var cancelledEtag) ? cancelledEtag.GetString() : null,
+                Title: string.Empty,
+                Description: null,
+                Start: DateTimeOffset.MinValue,
+                End: DateTimeOffset.MinValue,
+                IsAllDay: false,
+                Timezone: null,
+                Location: null,
+                IsCancelled: true);
+        }
+
         var start = item.GetProperty("start");
         var end = item.GetProperty("end");
         var isAllDay = start.TryGetProperty("date", out _);
 
         DateTimeOffset ParseWhen(JsonElement whenElement) => isAllDay
-            ? DateTimeOffset.Parse(whenElement.GetProperty("date").GetString()!)
+            ? new DateTimeOffset(DateOnly.Parse(whenElement.GetProperty("date").GetString()!).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
             : DateTimeOffset.Parse(whenElement.GetProperty("dateTime").GetString()!);
 
         return new GoogleCalendarEventDto(

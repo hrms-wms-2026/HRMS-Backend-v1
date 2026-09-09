@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Infrastructure.ExternalServices.Calendar;
 using Xunit;
@@ -119,5 +120,90 @@ public sealed class MicrosoftGraphCalendarClientTests
         Assert.Equal("New Meeting", result.Title);
         Assert.Equal("HQ", result.Location);
         Assert.False(result.IsAllDay);
+    }
+
+    [Fact]
+    public async Task ListEventsAsync_ParsesRemovedDeltaEvent_WithoutThrowing()
+    {
+        const string responseJson = """
+        {
+          "value": [
+            {
+              "id": "evt-removed",
+              "@removed": { "reason": "deleted" }
+            }
+          ],
+          "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=xyz789"
+        }
+        """;
+        var handler = new StubHandler(_ => RawJsonResponse(responseJson));
+        var sut = new MicrosoftGraphCalendarClient(new HttpClient(handler));
+
+        var result = await sut.ListEventsAsync("at-1", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(7), CancellationToken.None);
+
+        Assert.Single(result.Events);
+        var removed = result.Events[0];
+        Assert.Equal("evt-removed", removed.Id);
+        Assert.True(removed.IsCancelled);
+    }
+
+    [Fact]
+    public async Task CreateEventAsync_SendsInstantConvertedToUtc_RegardlessOfSuppliedTimezone()
+    {
+        const string responseJson = """
+        {
+          "id": "evt-new",
+          "subject": "IST Meeting",
+          "body": { "contentType": "text", "content": "Kickoff" },
+          "isAllDay": false,
+          "location": { "displayName": "HQ" },
+          "start": { "dateTime": "2026-09-15T13:00:00", "timeZone": "UTC" },
+          "end": { "dateTime": "2026-09-15T14:00:00", "timeZone": "UTC" },
+          "isCancelled": false
+        }
+        """;
+        HttpRequestMessage? capturedRequest = null;
+        string? capturedBody = null;
+        var handler = new StubHandler(request =>
+        {
+            capturedRequest = request;
+            capturedBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+            return RawJsonResponse(responseJson);
+        });
+        var sut = new MicrosoftGraphCalendarClient(new HttpClient(handler));
+
+        // IST offset (+05:30) deliberately paired with a mismatched Timezone label (Pacific Standard Time)
+        // to prove the client converts the actual instant to UTC rather than trusting e.Timezone.
+        var istOffset = TimeSpan.FromHours(5.5);
+        var toCreate = new GraphEventDto(
+            Id: string.Empty,
+            Etag: null,
+            Title: "IST Meeting",
+            Description: "Kickoff",
+            Start: new DateTimeOffset(2026, 9, 15, 18, 30, 0, istOffset),
+            End: new DateTimeOffset(2026, 9, 15, 19, 30, 0, istOffset),
+            IsAllDay: false,
+            Timezone: "Pacific Standard Time",
+            Location: "HQ",
+            IsCancelled: false);
+
+        await sut.CreateEventAsync("at-1", toCreate, CancellationToken.None);
+
+        Assert.NotNull(capturedRequest);
+        Assert.NotNull(capturedBody);
+        using var doc = JsonDocument.Parse(capturedBody!);
+        var root = doc.RootElement;
+
+        var expectedStartUtc = toCreate.Start.UtcDateTime.ToString("s");
+        var expectedEndUtc = toCreate.End.UtcDateTime.ToString("s");
+
+        Assert.Equal(expectedStartUtc, root.GetProperty("start").GetProperty("dateTime").GetString());
+        Assert.Equal("UTC", root.GetProperty("start").GetProperty("timeZone").GetString());
+        Assert.Equal(expectedEndUtc, root.GetProperty("end").GetProperty("dateTime").GetString());
+        Assert.Equal("UTC", root.GetProperty("end").GetProperty("timeZone").GetString());
+
+        // Sanity: the UTC-converted wall-clock digits must differ from the raw IST wall-clock digits,
+        // proving an actual conversion happened rather than a pass-through of e.Start's local digits.
+        Assert.NotEqual(toCreate.Start.ToString("s"), root.GetProperty("start").GetProperty("dateTime").GetString());
     }
 }

@@ -65,14 +65,29 @@ public sealed class MicrosoftGraphCalendarClient(HttpClient httpClient) : IMicro
             ["body"] = new Dictionary<string, object?> { ["contentType"] = "text", ["content"] = e.Description ?? string.Empty },
             ["isAllDay"] = e.IsAllDay,
             ["location"] = new Dictionary<string, object?> { ["displayName"] = e.Location },
-            ["start"] = new Dictionary<string, object?> { ["dateTime"] = e.Start.ToString("s"), ["timeZone"] = e.Timezone ?? "UTC" },
-            ["end"] = new Dictionary<string, object?> { ["dateTime"] = e.End.ToString("s"), ["timeZone"] = e.Timezone ?? "UTC" }
+            ["start"] = new Dictionary<string, object?> { ["dateTime"] = e.Start.UtcDateTime.ToString("s"), ["timeZone"] = "UTC" },
+            ["end"] = new Dictionary<string, object?> { ["dateTime"] = e.End.UtcDateTime.ToString("s"), ["timeZone"] = "UTC" }
         };
         return JsonSerializer.Serialize(payload);
     }
 
     private static GraphEventDto ParseEvent(JsonElement item)
     {
+        if (item.TryGetProperty("@removed", out _))
+        {
+            return new GraphEventDto(
+                Id: item.GetProperty("id").GetString()!,
+                Etag: null,
+                Title: string.Empty,
+                Description: null,
+                Start: DateTimeOffset.MinValue,
+                End: DateTimeOffset.MinValue,
+                IsAllDay: false,
+                Timezone: null,
+                Location: null,
+                IsCancelled: true);
+        }
+
         var start = item.GetProperty("start");
         var end = item.GetProperty("end");
         var timezone = start.TryGetProperty("timeZone", out var tz) ? tz.GetString() : null;
