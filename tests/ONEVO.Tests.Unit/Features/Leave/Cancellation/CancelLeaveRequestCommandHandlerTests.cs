@@ -27,7 +27,7 @@ public class CancelLeaveRequestCommandHandlerTests
     [Fact]
     public async Task Handle_EmployeeCancelsOwnPending_ReleasesPendingWithoutAudit()
     {
-        var harness = Harness.Create(LeaveRequestStatuses.Pending, paidDays: 2m, pendingDays: 2m, usedDays: 4m);
+        var harness = Harness.Create(LeaveRequestStatuses.Pending, paidHours: 2m, pendingHours: 2m, usedHours: 4m);
         var result = await harness.Sut.Handle(new CancelLeaveRequestCommand(harness.Request.Id, null, null, null), CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
         harness.Entitlement.PendingHours.Should().Be(0m);
@@ -40,7 +40,7 @@ public class CancelLeaveRequestCommandHandlerTests
     [Fact]
     public async Task Handle_EmployeeCancelsInformationRequested_MarksApproverCancelled()
     {
-        var harness = Harness.Create(LeaveRequestStatuses.InformationRequested, paidDays: 1m, pendingDays: 1m, usedDays: 0m);
+        var harness = Harness.Create(LeaveRequestStatuses.InformationRequested, paidHours: 1m, pendingHours: 1m, usedHours: 0m);
         harness.Approver.Status = LeaveRequestApproverStatuses.InformationRequested;
         var result = await harness.Sut.Handle(new CancelLeaveRequestCommand(harness.Request.Id, null, null, null), CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
@@ -110,9 +110,9 @@ public class CancelLeaveRequestCommandHandlerTests
     {
         var harness = Harness.Create(
             LeaveRequestStatuses.Approved,
-            paidDays: 3m,
-            pendingDays: 0m,
-            usedDays: 8m,
+            paidHours: 3m,
+            pendingHours: 0m,
+            usedHours: 8m,
             start: new DateOnly(2026, 9, 14),
             end: new DateOnly(2026, 9, 16),
             businessDate: new DateOnly(2026, 8, 22));
@@ -128,23 +128,23 @@ public class CancelLeaveRequestCommandHandlerTests
     {
         var harness = Harness.Create(
             LeaveRequestStatuses.Approved,
-            paidDays: 3m,
-            pendingDays: 0m,
-            usedDays: 3m,
+            paidHours: 24m,
+            pendingHours: 0m,
+            usedHours: 24m,
             start: new DateOnly(2026, 8, 20),
             end: new DateOnly(2026, 8, 22),
             businessDate: new DateOnly(2026, 8, 21));
         harness.Allocations.AddRange(
         [
-            Allocation(harness, new DateOnly(2026, 8, 20), 1m),
-            Allocation(harness, new DateOnly(2026, 8, 21), 1m),
-            Allocation(harness, new DateOnly(2026, 8, 22), 1m)
+            Allocation(harness, new DateOnly(2026, 8, 20), 8m),
+            Allocation(harness, new DateOnly(2026, 8, 21), 8m),
+            Allocation(harness, new DateOnly(2026, 8, 22), 8m)
         ]);
         var result = await harness.Sut.Handle(new CancelLeaveRequestCommand(harness.Request.Id, null, null, null), CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
         result.Value!.IsPartialCancellation.Should().BeTrue();
-        result.Value.RestoredUsedHours.Should().Be(2m);
-        harness.Entitlement.UsedHours.Should().Be(1m);
+        result.Value.RestoredUsedHours.Should().Be(16m);
+        harness.Entitlement.UsedHours.Should().Be(8m);
         harness.Allocations.Count(a => a.Status == LeaveRequestDayAllocationStatuses.Cancelled).Should().Be(2);
         harness.Allocations.Single(a => a.LeaveDate == new DateOnly(2026, 8, 20)).Status.Should().Be(LeaveRequestDayAllocationStatuses.Active);
     }
@@ -154,24 +154,24 @@ public class CancelLeaveRequestCommandHandlerTests
     {
         var harness = Harness.Create(
             LeaveRequestStatuses.Approved,
-            paidDays: 1m,
-            pendingDays: 0m,
-            usedDays: 1m,
+            paidHours: 8m,
+            pendingHours: 0m,
+            usedHours: 8m,
             start: new DateOnly(2026, 8, 20),
             end: new DateOnly(2026, 8, 21),
             businessDate: new DateOnly(2026, 8, 21));
         harness.Allocations.AddRange(
         [
-            Allocation(harness, new DateOnly(2026, 8, 20), 1m),
+            Allocation(harness, new DateOnly(2026, 8, 20), 8m),
             new LeaveRequestDayAllocation
             {
                 Id = Guid.NewGuid(),
                 TenantId = harness.TenantId,
                 LeaveRequestId = harness.Request.Id,
                 LeaveDate = new DateOnly(2026, 8, 21),
-                HoursUnit = 1m,
+                HoursUnit = 8m,
                 PaidHoursUnit = 0m,
-                UnpaidHoursUnit = 1m,
+                UnpaidHoursUnit = 8m,
                 Status = LeaveRequestDayAllocationStatuses.Active
             }
         ]);
@@ -206,14 +206,14 @@ public class CancelLeaveRequestCommandHandlerTests
             It.IsAny<IReadOnlyDictionary<string, string>>(), "leave_request", harness.Request.Id, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    private static LeaveRequestDayAllocation Allocation(Harness harness, DateOnly date, decimal paid) => new()
+    private static LeaveRequestDayAllocation Allocation(Harness harness, DateOnly date, decimal hours) => new()
     {
         Id = Guid.NewGuid(),
         TenantId = harness.TenantId,
         LeaveRequestId = harness.Request.Id,
         LeaveDate = date,
-        HoursUnit = 1m,
-        PaidHoursUnit = paid,
+        HoursUnit = hours,
+        PaidHoursUnit = hours,
         UnpaidHoursUnit = 0m,
         Status = LeaveRequestDayAllocationStatuses.Active
     };
@@ -238,9 +238,9 @@ public class CancelLeaveRequestCommandHandlerTests
             string status,
             bool ownerIsCaller,
             bool hrPermission,
-            decimal paidDays,
-            decimal pendingDays,
-            decimal usedDays,
+            decimal paidHours,
+            decimal pendingHours,
+            decimal usedHours,
             DateOnly start,
             DateOnly end,
             DateOnly businessDate)
@@ -279,8 +279,8 @@ public class CancelLeaveRequestCommandHandlerTests
                 LeaveTypeId = Guid.NewGuid(),
                 StartAt = new DateTimeOffset(start, TimeOnly.MinValue, TimeSpan.Zero),
                 EndAt = new DateTimeOffset(end, new TimeOnly(18, 0), TimeSpan.Zero),
-                TotalHours = paidDays,
-                PaidHours = paidDays,
+                TotalHours = paidHours,
+                PaidHours = paidHours,
                 UnpaidHours = 0m,
                 Status = status
             };
@@ -301,8 +301,8 @@ public class CancelLeaveRequestCommandHandlerTests
                 LeaveTypeId = Request.LeaveTypeId,
                 Year = start.Year,
                 TotalHours = 20m,
-                UsedHours = usedDays,
-                PendingHours = pendingDays,
+                UsedHours = usedHours,
+                PendingHours = pendingHours,
                 CarriedForwardHours = 0m,
                 Source = LeaveEntitlementSources.Auto
             };
@@ -383,9 +383,9 @@ public class CancelLeaveRequestCommandHandlerTests
             string status,
             bool ownerIsCaller = true,
             bool hrPermission = false,
-            decimal paidDays = 1m,
-            decimal pendingDays = 1m,
-            decimal usedDays = 0m,
+            decimal paidHours = 1m,
+            decimal pendingHours = 1m,
+            decimal usedHours = 0m,
             DateOnly? start = null,
             DateOnly? end = null,
             DateOnly? businessDate = null)
@@ -393,9 +393,9 @@ public class CancelLeaveRequestCommandHandlerTests
                 status,
                 ownerIsCaller,
                 hrPermission,
-                paidDays,
-                pendingDays,
-                usedDays,
+                paidHours,
+                pendingHours,
+                usedHours,
                 start ?? new DateOnly(2026, 9, 14),
                 end ?? new DateOnly(2026, 9, 14),
                 businessDate ?? new DateOnly(2026, 8, 22));

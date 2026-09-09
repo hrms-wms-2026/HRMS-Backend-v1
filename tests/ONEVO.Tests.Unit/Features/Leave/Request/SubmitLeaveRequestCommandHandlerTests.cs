@@ -23,16 +23,16 @@ public class SubmitLeaveRequestCommandHandlerTests
     {
         await using var db = BuildDb();
         var tenantId = Guid.NewGuid();
-        var request = Request(tenantId, 3m);
+        var request = Request(tenantId, 24m);
         var entitlement = Entitlement(tenantId, request, pending: 0m);
         db.LeaveEntitlements.Add(entitlement);
         await db.SaveChangesAsync();
 
         var allocations = new[]
         {
-            Allocation(tenantId, request.Id, new DateOnly(2026, 9, 14), 1m),
-            Allocation(tenantId, request.Id, new DateOnly(2026, 9, 15), 1m),
-            Allocation(tenantId, request.Id, new DateOnly(2026, 9, 16), 1m)
+            Allocation(tenantId, request.Id, new DateOnly(2026, 9, 14), 8m),
+            Allocation(tenantId, request.Id, new DateOnly(2026, 9, 15), 8m),
+            Allocation(tenantId, request.Id, new DateOnly(2026, 9, 16), 8m)
         };
         var clock = new Mock<IDateTimeProvider>();
         clock.SetupGet(x => x.UtcNow).Returns(DateTimeOffset.UtcNow);
@@ -42,16 +42,18 @@ public class SubmitLeaveRequestCommandHandlerTests
 
         var saved = await db.LeaveRequestDayAllocations.Where(x => x.LeaveRequestId == request.Id).ToListAsync();
         saved.Should().HaveCount(3);
-        saved.Sum(x => x.PaidHoursUnit).Should().Be(3m);
+        saved.Sum(x => x.PaidHoursUnit).Should().Be(24m);
         saved.Should().OnlyContain(x => x.Status == LeaveRequestDayAllocationStatuses.Active);
     }
 
     [Fact]
-    public async Task AddPendingRequestAsync_HalfDayWritesPointFiveUnit()
+    public async Task AddPendingRequestAsync_AfternoonPartialWritesFourHours()
     {
         await using var db = BuildDb();
         var tenantId = Guid.NewGuid();
-        var request = Request(tenantId, 0.5m);
+        var request = Request(tenantId, 4m);
+        request.StartAt = new DateTimeOffset(2026, 9, 14, 14, 0, 0, TimeSpan.Zero);
+        request.EndAt = new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.Zero);
         var entitlement = Entitlement(tenantId, request, pending: 0m);
         db.LeaveEntitlements.Add(entitlement);
         await db.SaveChangesAsync();
@@ -61,11 +63,12 @@ public class SubmitLeaveRequestCommandHandlerTests
 
         await repo.AddPendingRequestAsync(new LeaveRequestWriteSet(
             request, [], [],
-            [Allocation(tenantId, request.Id, DateOnly.FromDateTime(request.StartAt.UtcDateTime), 0.5m)],
+            [Allocation(tenantId, request.Id, DateOnly.FromDateTime(request.StartAt.UtcDateTime), 4m)],
             entitlement), CancellationToken.None);
 
         var saved = await db.LeaveRequestDayAllocations.SingleAsync();
-        saved.HoursUnit.Should().Be(0.5m);
+        saved.HoursUnit.Should().Be(4.00m);
+        saved.PaidHoursUnit.Should().Be(4.00m);
     }
 
     [Fact]
@@ -111,7 +114,7 @@ public class SubmitLeaveRequestCommandHandlerTests
             new Mock<ITenantContext>().Object);
     }
 
-    private static LeaveRequest Request(Guid tenantId, decimal days) => new()
+    private static LeaveRequest Request(Guid tenantId, decimal hours) => new()
     {
         Id = Guid.NewGuid(),
         TenantId = tenantId,
@@ -119,8 +122,8 @@ public class SubmitLeaveRequestCommandHandlerTests
         LeaveTypeId = Guid.NewGuid(),
         StartAt = new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero),
         EndAt = new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.Zero),
-        TotalHours = days,
-        PaidHours = days,
+        TotalHours = hours,
+        PaidHours = hours,
         Status = LeaveRequestStatuses.Pending
     };
 

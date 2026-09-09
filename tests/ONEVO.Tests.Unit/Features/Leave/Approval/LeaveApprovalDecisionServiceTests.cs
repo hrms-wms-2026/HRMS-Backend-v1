@@ -48,7 +48,7 @@ public class LeaveApprovalDecisionServiceTests
     [Fact]
     public async Task ApproveAsync_WhenAnyOneApproves_MovesPaidHoursFromPendingToUsed()
     {
-        var harness = Harness.Create(LeaveRequestStatuses.Pending, paidDays: 3m, pendingDays: 3m, usedDays: 5m);
+        var harness = Harness.Create(LeaveRequestStatuses.Pending, paidHours: 3m, pendingHours: 3m, usedHours: 5m);
         var result = await harness.Sut.ApproveAsync(harness.Request.Id, "ok", CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
         harness.Entitlement.PendingHours.Should().Be(0m);
@@ -60,7 +60,7 @@ public class LeaveApprovalDecisionServiceTests
     [Fact]
     public async Task RejectAsync_ReleasesPendingPaidHoursWithoutUsedDeduction()
     {
-        var harness = Harness.Create(LeaveRequestStatuses.Pending, paidDays: 2m, pendingDays: 2m, usedDays: 4m);
+        var harness = Harness.Create(LeaveRequestStatuses.Pending, paidHours: 2m, pendingHours: 2m, usedHours: 4m);
         var result = await harness.Sut.RejectAsync(harness.Request.Id, "coverage", CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
         harness.Entitlement.PendingHours.Should().Be(0m);
@@ -72,7 +72,7 @@ public class LeaveApprovalDecisionServiceTests
     [Fact]
     public async Task RequestInfoAsync_PausesRequestAndKeepsPendingBalanceReserved()
     {
-        var harness = Harness.Create(LeaveRequestStatuses.Pending, paidDays: 2m, pendingDays: 2m, usedDays: 1m);
+        var harness = Harness.Create(LeaveRequestStatuses.Pending, paidHours: 2m, pendingHours: 2m, usedHours: 1m);
         var result = await harness.Sut.RequestInfoAsync(harness.Request.Id, "Need certificate", CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
         harness.Request.Status.Should().Be(LeaveRequestStatuses.InformationRequested);
@@ -83,7 +83,7 @@ public class LeaveApprovalDecisionServiceTests
     [Fact]
     public async Task RespondInfoAsync_ResumesRequestForSameApprover()
     {
-        var harness = Harness.Create(LeaveRequestStatuses.InformationRequested, paidDays: 1m, pendingDays: 1m, usedDays: 0m);
+        var harness = Harness.Create(LeaveRequestStatuses.InformationRequested, paidHours: 1m, pendingHours: 1m, usedHours: 0m);
         harness.Approver.Status = LeaveRequestApproverStatuses.InformationRequested;
         harness.Employee.Id = harness.Request.EmployeeId;
         var result = await harness.Sut.RespondInfoAsync(harness.Request.Id, "Attached", [], CancellationToken.None);
@@ -103,7 +103,7 @@ public class LeaveApprovalDecisionServiceTests
         public List<LeaveRequestInfoMessage> InfoMessages { get; } = [];
         public LeaveApprovalDecisionService Sut { get; }
 
-        private Harness(string status, bool otherApprover, bool selfApprove, decimal paidDays, decimal pendingDays, decimal usedDays)
+        private Harness(string status, bool otherApprover, bool selfApprove, decimal paidHours, decimal pendingHours, decimal usedHours)
         {
             var tenantId = Guid.NewGuid();
             var userId = Guid.NewGuid();
@@ -126,8 +126,8 @@ public class LeaveApprovalDecisionServiceTests
                 LeaveTypeId = Guid.NewGuid(),
                 StartAt = new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero),
                 EndAt = new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.Zero),
-                TotalHours = paidDays,
-                PaidHours = paidDays,
+                TotalHours = paidHours,
+                PaidHours = paidHours,
                 UnpaidHours = 0m,
                 Status = status
             };
@@ -148,8 +148,8 @@ public class LeaveApprovalDecisionServiceTests
                 LeaveTypeId = Request.LeaveTypeId,
                 Year = 2026,
                 TotalHours = 20m,
-                UsedHours = usedDays,
-                PendingHours = pendingDays,
+                UsedHours = usedHours,
+                PendingHours = pendingHours,
                 CarriedForwardHours = 0m,
                 Source = LeaveEntitlementSources.Auto
             };
@@ -233,9 +233,9 @@ public class LeaveApprovalDecisionServiceTests
             string status,
             bool otherApprover = false,
             bool selfApprove = false,
-            decimal paidDays = 1m,
-            decimal pendingDays = 1m,
-            decimal usedDays = 0m) =>
-            new(status, otherApprover, selfApprove, paidDays, pendingDays, usedDays);
+            decimal paidHours = 1m,
+            decimal pendingHours = 1m,
+            decimal usedHours = 0m) =>
+            new(status, otherApprover, selfApprove, paidHours, pendingHours, usedHours);
     }
 }

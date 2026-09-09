@@ -73,17 +73,17 @@ public class AdjustEntitlementCommandHandlerTests
     }
 
     private static LeaveEntitlement CreateEntitlement(
-        Guid tenantId, decimal totalDays, decimal usedDays, decimal pendingDays, decimal carriedForwardDays) => new()
+        Guid tenantId, decimal totalHours, decimal usedHours, decimal pendingHours, decimal carriedForwardHours) => new()
     {
         Id = Guid.NewGuid(),
         TenantId = tenantId,
         EmployeeId = Guid.NewGuid(),
         LeaveTypeId = Guid.NewGuid(),
         Year = 2026,
-        TotalHours = totalDays,
-        UsedHours = usedDays,
-        PendingHours = pendingDays,
-        CarriedForwardHours = carriedForwardDays,
+        TotalHours = totalHours,
+        UsedHours = usedHours,
+        PendingHours = pendingHours,
+        CarriedForwardHours = carriedForwardHours,
         Source = LeaveEntitlementSources.Auto
     };
 }
