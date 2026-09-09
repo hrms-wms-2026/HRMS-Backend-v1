@@ -87,10 +87,11 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SubmitOwnRequest_ReservesPaidPendingDaysAndListsMine()
+    public async Task SubmitOwnRequest_ReservesPaidPendingHoursAndListsMine()
     {
         var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL", requiresApproval: false);
         var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
+        await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
         var employeeId = await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
 
@@ -103,9 +104,8 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
             new
             {
                 leaveTypeId,
-                startDate = "2026-09-14",
-                endDate = "2026-09-14",
-                halfDayPeriod = (string?)null,
+                startAt = "2026-09-14T09:00:00Z",
+                endAt = "2026-09-14T18:00:00Z",
                 reason = "Family event",
                 fileRecordIds = Array.Empty<Guid>()
             },
@@ -113,16 +113,16 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         submit.StatusCode.Should().Be(HttpStatusCode.OK, await submit.Content.ReadAsStringAsync());
         var json = await ReadJsonAsync(submit);
         json.GetProperty("status").GetString().Should().Be("pending");
-        json.GetProperty("paidDays").GetDecimal().Should().Be(1m);
-        json.GetProperty("unpaidDays").GetDecimal().Should().Be(0m);
+        json.GetProperty("paidHours").GetDecimal().Should().Be(8m);
+        json.GetProperty("unpaidHours").GetDecimal().Should().Be(0m);
 
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var entitlement = await db.LeaveEntitlements.SingleAsync(x =>
                 x.TenantId == _tenantId && x.EmployeeId == employeeId && x.LeaveTypeId == leaveTypeId);
-            entitlement.PendingDays.Should().Be(1m);
-            entitlement.UsedDays.Should().Be(0m);
+            entitlement.PendingHours.Should().Be(8m);
+            entitlement.UsedHours.Should().Be(0m);
         }
 
         var mine = await SendAsync(HttpMethod.Get, _owner.Host, "/api/v1/leave/requests/my",
@@ -141,8 +141,8 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
             {
                 employeeId = Guid.NewGuid(),
                 leaveTypeId = Guid.NewGuid(),
-                startDate = "2026-09-14",
-                endDate = "2026-09-14"
+                startAt = "2026-09-14T09:00:00Z",
+                endAt = "2026-09-14T18:00:00Z"
             },
             cookie: _noManage.SessionCookie, csrfToken: _noManage.CsrfHeader);
 
@@ -154,6 +154,7 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
     {
         var leaveTypeId = await CreateLeaveTypeAsync("Sick Leave", "SICK", requiresApproval: false);
         var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
+        await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Sick Policy", leaveTypeId, legalEntityId, 10m);
         await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
         var generate = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/entitlements/generate",
@@ -164,9 +165,8 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         var body = new
         {
             leaveTypeId,
-            startDate = "2026-09-15",
-            endDate = "2026-09-15",
-            halfDayPeriod = (string?)null,
+            startAt = "2026-09-15T09:00:00Z",
+            endAt = "2026-09-15T18:00:00Z",
             reason = (string?)null,
             fileRecordIds = Array.Empty<Guid>()
         };
@@ -275,6 +275,18 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
             .Where(x => x.TenantId == tenantId && x.IsPrimary)
             .Select(x => x.Id)
             .SingleAsync();
+    }
+
+    private async Task EnsureWorkWindowAsync(Guid legalEntityId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var entity = await db.LegalEntities.SingleAsync(x => x.Id == legalEntityId);
+        entity.WorkStartTime = new TimeOnly(9, 0);
+        entity.WorkEndTime = new TimeOnly(18, 0);
+        entity.BreakDurationMinutes = 60;
+        entity.Timezone = "UTC";
+        await db.SaveChangesAsync();
     }
 
     private static object CreatePolicyBody(

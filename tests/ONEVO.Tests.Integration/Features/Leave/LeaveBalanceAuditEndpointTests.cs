@@ -94,6 +94,7 @@ public class LeaveBalanceAuditEndpointTests : IAsyncLifetime
     {
         var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL");
         var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
+        await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 20m);
         await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
 
@@ -203,6 +204,18 @@ public class LeaveBalanceAuditEndpointTests : IAsyncLifetime
             .Where(x => x.TenantId == tenantId && x.IsPrimary)
             .Select(x => x.Id)
             .SingleAsync();
+    }
+
+    private async Task EnsureWorkWindowAsync(Guid legalEntityId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var entity = await db.LegalEntities.SingleAsync(x => x.Id == legalEntityId);
+        entity.WorkStartTime = new TimeOnly(9, 0);
+        entity.WorkEndTime = new TimeOnly(18, 0);
+        entity.BreakDurationMinutes = 60;
+        entity.Timezone = "UTC";
+        await db.SaveChangesAsync();
     }
 
     private static object CreatePolicyBody(
