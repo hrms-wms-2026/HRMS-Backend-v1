@@ -197,6 +197,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.ILocationChangeRequestRepository,
             ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfLocationChangeRequestRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IDailyWorkLocationConfirmationRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfDailyWorkLocationConfirmationRepository>();
 
         services.AddScoped<
             ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestReadRepository,
