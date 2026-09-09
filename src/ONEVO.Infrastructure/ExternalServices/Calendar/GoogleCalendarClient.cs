@@ -1,0 +1,106 @@
+using System.Net.Http.Headers;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+
+namespace ONEVO.Infrastructure.ExternalServices.Calendar;
+
+public sealed class GoogleCalendarClient(HttpClient httpClient) : IGoogleCalendarClient
+{
+    private const string BaseUrl = "https://www.googleapis.com/calendar/v3";
+
+    public async Task<GoogleCalendarPage> ListEventsAsync(string accessToken, string calendarId, string? syncToken, DateTimeOffset windowStart, DateTimeOffset windowEnd, CancellationToken ct)
+    {
+        var url = syncToken is not null
+            ? $"{BaseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events?syncToken={Uri.EscapeDataString(syncToken)}&maxResults=200"
+            : $"{BaseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events?timeMin={Uri.EscapeDataString(windowStart.ToString("O"))}&timeMax={Uri.EscapeDataString(windowEnd.ToString("O"))}&maxResults=200&singleEvents=true";
+
+        using var response = await SendAsync(HttpMethod.Get, url, accessToken, body: null, ct);
+        using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+
+        var events = new List<GoogleCalendarEventDto>();
+        foreach (var item in doc.RootElement.GetProperty("items").EnumerateArray())
+            events.Add(ParseEvent(item));
+
+        var nextSyncToken = doc.RootElement.TryGetProperty("nextSyncToken", out var t) ? t.GetString() : null;
+        return new GoogleCalendarPage(events, nextSyncToken);
+    }
+
+    public async Task<GoogleCalendarEventDto> InsertEventAsync(string accessToken, string calendarId, GoogleCalendarEventDto @event, CancellationToken ct)
+    {
+        var url = $"{BaseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events";
+        using var response = await SendAsync(HttpMethod.Post, url, accessToken, ToJsonBody(@event), ct);
+        using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+        return ParseEvent(doc.RootElement);
+    }
+
+    public async Task<GoogleCalendarEventDto> PatchEventAsync(string accessToken, string calendarId, string eventId, GoogleCalendarEventDto @event, CancellationToken ct)
+    {
+        var url = $"{BaseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}";
+        using var response = await SendAsync(HttpMethod.Patch, url, accessToken, ToJsonBody(@event), ct);
+        using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+        return ParseEvent(doc.RootElement);
+    }
+
+    public async Task DeleteEventAsync(string accessToken, string calendarId, string eventId, CancellationToken ct)
+    {
+        var url = $"{BaseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}";
+        using var response = await SendAsync(HttpMethod.Delete, url, accessToken, body: null, ct);
+        response.Dispose();
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, string accessToken, string? body, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        if (body is not null)
+            request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        var response = await httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        return response;
+    }
+
+    private static string ToJsonBody(GoogleCalendarEventDto e)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["summary"] = e.Title,
+            ["description"] = e.Description,
+            ["location"] = e.Location,
+            ["start"] = e.IsAllDay
+                ? new Dictionary<string, object?> { ["date"] = e.Start.ToString("yyyy-MM-dd") }
+                : new Dictionary<string, object?> { ["dateTime"] = e.Start.ToString("O"), ["timeZone"] = e.Timezone },
+            ["end"] = e.IsAllDay
+                ? new Dictionary<string, object?> { ["date"] = e.End.ToString("yyyy-MM-dd") }
+                : new Dictionary<string, object?> { ["dateTime"] = e.End.ToString("O"), ["timeZone"] = e.Timezone }
+        };
+        return JsonSerializer.Serialize(payload);
+    }
+
+    private static GoogleCalendarEventDto ParseEvent(JsonElement item)
+    {
+        var status = item.TryGetProperty("status", out var s) ? s.GetString() : null;
+        var start = item.GetProperty("start");
+        var end = item.GetProperty("end");
+        var isAllDay = start.TryGetProperty("date", out _);
+
+        DateTimeOffset ParseWhen(JsonElement whenElement) => isAllDay
+            ? DateTimeOffset.Parse(whenElement.GetProperty("date").GetString()!)
+            : DateTimeOffset.Parse(whenElement.GetProperty("dateTime").GetString()!);
+
+        return new GoogleCalendarEventDto(
+            Id: item.GetProperty("id").GetString()!,
+            Etag: item.TryGetProperty("etag", out var etag) ? etag.GetString() : null,
+            Title: item.TryGetProperty("summary", out var summary) ? summary.GetString() ?? string.Empty : string.Empty,
+            Description: item.TryGetProperty("description", out var desc) ? desc.GetString() : null,
+            Start: ParseWhen(start),
+            End: ParseWhen(end),
+            IsAllDay: isAllDay,
+            Timezone: !isAllDay && start.TryGetProperty("timeZone", out var tz) ? tz.GetString() : null,
+            Location: item.TryGetProperty("location", out var loc) ? loc.GetString() : null,
+            IsCancelled: status == "cancelled");
+    }
+}
