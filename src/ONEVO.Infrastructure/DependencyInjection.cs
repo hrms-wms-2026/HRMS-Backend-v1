@@ -442,6 +442,10 @@ public static class DependencyInjection
         {
             client.Timeout = TimeSpan.FromSeconds(15);
         });
+        services.AddHttpClient<ICalendarOAuthTokenExchangeClient, ONEVO.Infrastructure.ExternalServices.Calendar.CalendarOAuthTokenExchangeClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
 
         // Tenant cache invalidation
         services.AddScoped<ITenantCacheInvalidator, TenantCacheInvalidator>();
