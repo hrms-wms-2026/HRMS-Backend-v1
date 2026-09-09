@@ -33,7 +33,10 @@ public class MonitoringDeviceStateIngestController : ControllerBase
             {
                 CapturedAt = s.CapturedAt,
                 IdleSeconds = s.IdleSeconds,
-                IsIdle = s.IsIdle
+                IsIdle = s.IsIdle,
+                Latitude = s.Latitude,
+                Longitude = s.Longitude,
+                AccuracyMeters = s.AccuracyMeters
             })
             .ToList();
 
@@ -54,4 +57,7 @@ public record IngestDeviceStateSnapshotsRequest(
 public record DeviceStateSnapshotRequestItem(
     [property: JsonPropertyName("captured_at")] DateTimeOffset CapturedAt,
     [property: JsonPropertyName("idle_seconds")] int IdleSeconds,
-    [property: JsonPropertyName("is_idle")] bool IsIdle);
+    [property: JsonPropertyName("is_idle")] bool IsIdle,
+    [property: JsonPropertyName("latitude")] double? Latitude = null,
+    [property: JsonPropertyName("longitude")] double? Longitude = null,
+    [property: JsonPropertyName("accuracy_meters")] double? AccuracyMeters = null);
