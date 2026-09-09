@@ -43,7 +43,7 @@ public class LeaveRequestSubmissionEvaluatorTests
     {
         var harness = Harness.Create();
         harness.Requests.Setup(x => x.HasOverlappingPendingOrApprovedRequestAsync(
-                harness.TenantId, harness.Employee.Id, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+                harness.TenantId, harness.Employee.Id, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         var result = await harness.EvaluateDefaultAsync();
@@ -51,6 +51,31 @@ public class LeaveRequestSubmissionEvaluatorTests
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(409);
         result.Error.Should().Be(LeaveRequestMessages.Overlap);
+    }
+
+    [Fact]
+    public async Task Evaluate_OverlapCheckUsesOriginalStartAtAndEndAt()
+    {
+        var harness = Harness.Create();
+        var start = new DateTimeOffset(2026, 8, 21, 22, 0, 0, TimeSpan.FromHours(8));
+        var end = new DateTimeOffset(2026, 8, 22, 6, 0, 0, TimeSpan.FromHours(8));
+        DateTimeOffset? passedStart = null;
+        DateTimeOffset? passedEnd = null;
+        harness.Requests.Setup(x => x.HasOverlappingPendingOrApprovedRequestAsync(
+                harness.TenantId, harness.Employee.Id, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, Guid, DateTimeOffset, DateTimeOffset, CancellationToken>((_, _, s, e, _) =>
+            {
+                passedStart = s;
+                passedEnd = e;
+            })
+            .ReturnsAsync(false);
+
+        await harness.Sut.EvaluateAsync(
+            harness.TenantId, harness.UserId, null, harness.LeaveTypeId,
+            start, end, null, [], CancellationToken.None);
+
+        passedStart.Should().Be(start);
+        passedEnd.Should().Be(end);
     }
 
     [Fact]
@@ -243,7 +268,7 @@ public class LeaveRequestSubmissionEvaluatorTests
             policies.Setup(x => x.ListActiveLegalEntitiesByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([legalEntity]);
 
-            Requests.Setup(x => x.HasOverlappingPendingOrApprovedRequestAsync(TenantId, Employee.Id, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            Requests.Setup(x => x.HasOverlappingPendingOrApprovedRequestAsync(TenantId, Employee.Id, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(false);
             Requests.Setup(x => x.AreAvailableFileRecordsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);

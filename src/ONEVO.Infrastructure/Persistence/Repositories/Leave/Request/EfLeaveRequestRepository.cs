@@ -22,20 +22,18 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
     public async Task<bool> HasOverlappingPendingOrApprovedRequestAsync(
         Guid tenantId,
         Guid employeeId,
-        DateOnly startDate,
-        DateOnly endDate,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
         CancellationToken ct = default)
     {
-        var startInclusive = new DateTimeOffset(startDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
-        var endExclusive = new DateTimeOffset(endDate.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
         return await _db.LeaveRequests.AsNoTracking().AnyAsync(
             request =>
                 request.TenantId == tenantId &&
                 request.EmployeeId == employeeId &&
                 (request.Status == LeaveRequestStatuses.Pending ||
                  request.Status == LeaveRequestStatuses.Approved) &&
-                request.StartAt < endExclusive &&
-                request.EndAt > startInclusive,
+                request.StartAt < endAt &&
+                request.EndAt > startAt,
             ct);
     }
 
@@ -140,8 +138,8 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
                     request.EmployeeId == writeSet.Request.EmployeeId &&
                     (request.Status == LeaveRequestStatuses.Pending ||
                      request.Status == LeaveRequestStatuses.Approved) &&
-                    request.StartAt <= writeSet.Request.EndAt &&
-                    request.EndAt >= writeSet.Request.StartAt,
+                    request.StartAt < writeSet.Request.EndAt &&
+                    request.EndAt > writeSet.Request.StartAt,
                 ct);
             if (overlaps)
                 throw new InvalidOperationException(LeaveRequestMessages.Overlap);

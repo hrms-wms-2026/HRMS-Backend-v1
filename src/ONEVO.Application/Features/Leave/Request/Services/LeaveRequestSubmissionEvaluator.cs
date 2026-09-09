@@ -136,7 +136,7 @@ public sealed class LeaveRequestSubmissionEvaluator
         if (rangeDays > _options.MaximumRequestRangeDays)
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.RangeExceeded);
 
-        if (await _requests.HasOverlappingPendingOrApprovedRequestAsync(tenantId, target.Id, startDate, endDate, ct))
+        if (await _requests.HasOverlappingPendingOrApprovedRequestAsync(tenantId, target.Id, startAt, endAt, ct))
             return Result<LeaveRequestEvaluation>.Conflict(LeaveRequestMessages.Overlap);
 
         var leaveType = await _leaveTypes.GetByIdAsync(tenantId, leaveTypeId, ct);

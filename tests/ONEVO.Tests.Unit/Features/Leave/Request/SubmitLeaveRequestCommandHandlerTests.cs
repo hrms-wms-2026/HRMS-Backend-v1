@@ -100,6 +100,128 @@ public class SubmitLeaveRequestCommandHandlerTests
         (await db.LeaveRequestDayAllocations.CountAsync()).Should().Be(0);
     }
 
+    [Fact]
+    public async Task HasOverlappingPendingOrApprovedRequestAsync_ConsecutiveNightShifts_ReturnsFalse()
+    {
+        var overlaps = await HasOverlapAsync(
+            existingStart: new DateTimeOffset(2026, 9, 11, 22, 0, 0, TimeSpan.Zero),
+            existingEnd: new DateTimeOffset(2026, 9, 12, 6, 0, 0, TimeSpan.Zero),
+            candidateStart: new DateTimeOffset(2026, 9, 12, 22, 0, 0, TimeSpan.Zero),
+            candidateEnd: new DateTimeOffset(2026, 9, 13, 6, 0, 0, TimeSpan.Zero));
+
+        overlaps.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task HasOverlappingPendingOrApprovedRequestAsync_AdjacentHourBlocks_ReturnsFalse()
+    {
+        var overlaps = await HasOverlapAsync(
+            existingStart: new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero),
+            existingEnd: new DateTimeOffset(2026, 9, 14, 13, 0, 0, TimeSpan.Zero),
+            candidateStart: new DateTimeOffset(2026, 9, 14, 13, 0, 0, TimeSpan.Zero),
+            candidateEnd: new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.Zero));
+
+        overlaps.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task HasOverlappingPendingOrApprovedRequestAsync_ContainedAfternoon_ReturnsTrue()
+    {
+        var overlaps = await HasOverlapAsync(
+            existingStart: new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero),
+            existingEnd: new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.Zero),
+            candidateStart: new DateTimeOffset(2026, 9, 14, 14, 0, 0, TimeSpan.Zero),
+            candidateEnd: new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.Zero));
+
+        overlaps.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AddPendingRequestAsync_ConsecutiveNightShifts_DoesNotThrow()
+    {
+        await using var db = BuildDb();
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var existing = Request(tenantId, 8m);
+        existing.EmployeeId = employeeId;
+        existing.StartAt = new DateTimeOffset(2026, 9, 11, 22, 0, 0, TimeSpan.Zero);
+        existing.EndAt = new DateTimeOffset(2026, 9, 12, 6, 0, 0, TimeSpan.Zero);
+        db.LeaveRequests.Add(existing);
+        var entitlement = Entitlement(tenantId, existing, pending: 8m);
+        db.LeaveEntitlements.Add(entitlement);
+        await db.SaveChangesAsync();
+
+        var nextNight = Request(tenantId, 8m);
+        nextNight.EmployeeId = employeeId;
+        nextNight.StartAt = new DateTimeOffset(2026, 9, 12, 22, 0, 0, TimeSpan.Zero);
+        nextNight.EndAt = new DateTimeOffset(2026, 9, 13, 6, 0, 0, TimeSpan.Zero);
+        var clock = new Mock<IDateTimeProvider>();
+        clock.SetupGet(x => x.UtcNow).Returns(DateTimeOffset.UtcNow);
+        var repo = new EfLeaveRequestRepository(db, clock.Object);
+
+        await repo.AddPendingRequestAsync(new LeaveRequestWriteSet(
+            nextNight, [], [],
+            [Allocation(tenantId, nextNight.Id, DateOnly.FromDateTime(nextNight.StartAt.UtcDateTime), 8m)],
+            entitlement), CancellationToken.None);
+
+        (await db.LeaveRequests.CountAsync(x => x.EmployeeId == employeeId)).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task AddPendingRequestAsync_AdjacentHourBlocks_DoesNotThrow()
+    {
+        await using var db = BuildDb();
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var existing = Request(tenantId, 4m);
+        existing.EmployeeId = employeeId;
+        existing.StartAt = new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero);
+        existing.EndAt = new DateTimeOffset(2026, 9, 14, 13, 0, 0, TimeSpan.Zero);
+        db.LeaveRequests.Add(existing);
+        var entitlement = Entitlement(tenantId, existing, pending: 4m);
+        db.LeaveEntitlements.Add(entitlement);
+        await db.SaveChangesAsync();
+
+        var afternoon = Request(tenantId, 5m);
+        afternoon.EmployeeId = employeeId;
+        afternoon.StartAt = new DateTimeOffset(2026, 9, 14, 13, 0, 0, TimeSpan.Zero);
+        afternoon.EndAt = new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.Zero);
+        var clock = new Mock<IDateTimeProvider>();
+        clock.SetupGet(x => x.UtcNow).Returns(DateTimeOffset.UtcNow);
+        var repo = new EfLeaveRequestRepository(db, clock.Object);
+
+        await repo.AddPendingRequestAsync(new LeaveRequestWriteSet(
+            afternoon, [], [],
+            [Allocation(tenantId, afternoon.Id, DateOnly.FromDateTime(afternoon.StartAt.UtcDateTime), 5m)],
+            entitlement), CancellationToken.None);
+
+        (await db.LeaveRequests.CountAsync(x => x.EmployeeId == employeeId)).Should().Be(2);
+    }
+
+    private static async Task<bool> HasOverlapAsync(
+        DateTimeOffset existingStart,
+        DateTimeOffset existingEnd,
+        DateTimeOffset candidateStart,
+        DateTimeOffset candidateEnd)
+    {
+        await using var db = BuildDb();
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var existing = Request(tenantId, 1m);
+        existing.EmployeeId = employeeId;
+        existing.StartAt = existingStart;
+        existing.EndAt = existingEnd;
+        existing.Status = LeaveRequestStatuses.Pending;
+        db.LeaveRequests.Add(existing);
+        await db.SaveChangesAsync();
+
+        var clock = new Mock<IDateTimeProvider>();
+        clock.SetupGet(x => x.UtcNow).Returns(DateTimeOffset.UtcNow);
+        var repo = new EfLeaveRequestRepository(db, clock.Object);
+        return await repo.HasOverlappingPendingOrApprovedRequestAsync(
+            tenantId, employeeId, candidateStart, candidateEnd);
+    }
+
     private static ApplicationDbContext BuildDb()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
