@@ -113,6 +113,8 @@ namespace ONEVO.Infrastructure.Migrations
             // Convert existing day amounts using each employee's legal-entity work window.
             // Unset windows use 8.00 hours and 09:00–17:00 only for this backfill.
             migrationBuilder.Sql("""
+                SET LOCAL app.tenant_context_mode = 'admin';
+
                 CREATE TEMP TABLE leave_hourly_ledger_windows ON COMMIT DROP AS
                 SELECT
                     e.id AS employee_id,
@@ -228,6 +230,23 @@ namespace ONEVO.Infrastructure.Migrations
 
                 ALTER TABLE leave_balance_audits
                     ALTER COLUMN hours_changed DROP DEFAULT;
+
+                DO $$
+                BEGIN
+                  IF EXISTS (
+                    SELECT 1 FROM leave_requests
+                    WHERE start_at = TIMESTAMPTZ '0001-01-01 00:00:00+00'
+                  ) THEN
+                    RAISE EXCEPTION 'LeaveHourlyLedger backfill left default start_at values';
+                  END IF;
+
+                  IF EXISTS (
+                    SELECT 1 FROM leave_entitlements
+                    WHERE total_days <> 0 AND total_hours = 0
+                  ) THEN
+                    RAISE EXCEPTION 'LeaveHourlyLedger backfill left zero total_hours for non-zero total_days';
+                  END IF;
+                END $$;
                 """);
 
             migrationBuilder.DropIndex(
@@ -403,6 +422,8 @@ namespace ONEVO.Infrastructure.Migrations
 
             // Reverse hours with a fixed 8.00-hour day; AM/PM is not restored.
             migrationBuilder.Sql("""
+                SET LOCAL app.tenant_context_mode = 'admin';
+
                 CREATE TEMP TABLE leave_hourly_ledger_windows ON COMMIT DROP AS
                 SELECT
                     e.id AS employee_id,
