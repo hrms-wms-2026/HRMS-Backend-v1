@@ -9817,6 +9817,60 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("clock_in_policies", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.DailyWorkLocationConfirmation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<double?>("AccuracyMeters")
+                        .HasColumnType("double precision")
+                        .HasColumnName("accuracy_meters");
+
+                    b.Property<DateTimeOffset>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("latitude");
+
+                    b.Property<string>("LocationType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("location_type");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("longitude");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateOnly>("WorkDate")
+                        .HasColumnType("date")
+                        .HasColumnName("work_date");
+
+                    b.HasKey("Id")
+                        .HasName("pk_daily_work_location_confirmations");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_daily_work_location_confirmations_employee_id");
+
+                    b.HasIndex("TenantId", "EmployeeId", "WorkDate")
+                        .IsUnique()
+                        .HasDatabaseName("ux_daily_work_location_confirmations_tenant_employee_date");
+
+                    b.ToTable("daily_work_location_confirmations", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.EmployeeWorkLocation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -13379,6 +13433,16 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_clock_in_policies_legal_entities_legal_entity_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.DailyWorkLocationConfirmation", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_daily_work_location_confirmations_employees_employee_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.EmployeeWorkLocation", b =>
