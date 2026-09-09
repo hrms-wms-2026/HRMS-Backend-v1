@@ -6,11 +6,16 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.Calendar.Commands.CancelRecurringOccurrence;
 using ONEVO.Application.Features.Calendar.Commands.CreateCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.DeleteCalendarEvent;
+using ONEVO.Application.Features.Calendar.Commands.DisconnectCalendarConnection;
 using ONEVO.Application.Features.Calendar.Commands.EditRecurringOccurrence;
 using ONEVO.Application.Features.Calendar.Commands.RespondToCalendarEvent;
+using ONEVO.Application.Features.Calendar.Commands.StartCalendarConnection;
+using ONEVO.Application.Features.Calendar.Commands.TriggerCalendarSync;
+using ONEVO.Application.Features.Calendar.Commands.UpdateCalendarConnection;
 using ONEVO.Application.Features.Calendar.Commands.UpdateCalendarEvent;
 using ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts;
 using ONEVO.Application.Features.Calendar.Queries.GetCalendarEvents;
+using ONEVO.Application.Features.Calendar.Queries.GetMyCalendarConnections;
 using ONEVO.Application.Features.Calendar.Queries.GetMyEffectiveTimezone;
 
 namespace ONEVO.Api.Controllers.Tenant.Calendar;
@@ -124,6 +129,56 @@ public class CalendarController : ControllerBase
         var result = await _mediator.Send(new CheckCalendarConflictsQuery(request.ParticipantEmployeeIds, request.StartDate, request.EndDate), ct);
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("connections")]
+    [RequirePermission("calendar:read")]
+    public async Task<IActionResult> GetConnections(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetMyCalendarConnectionsQuery(), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("connections/{provider}/connect")]
+    [RequirePermission("calendar:read")]
+    public async Task<IActionResult> Connect(string provider, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new StartCalendarConnectionCommand(provider), ct);
+        return result.IsSuccess
+            ? Ok(new StartCalendarConnectionResponseModel(result.Value!.AuthorizeUrl))
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPut("connections/{id:guid}")]
+    [RequirePermission("calendar:write")]
+    public async Task<IActionResult> UpdateConnection(Guid id, [FromBody] UpdateCalendarConnectionRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new UpdateCalendarConnectionCommand(id, request.SyncDirection), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpDelete("connections/{id:guid}")]
+    [RequirePermission("calendar:write")]
+    public async Task<IActionResult> DisconnectConnection(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new DisconnectCalendarConnectionCommand(id), ct);
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("connections/{id:guid}/sync")]
+    [RequirePermission("calendar:write")]
+    public async Task<IActionResult> TriggerSync(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new TriggerCalendarSyncCommand(id), ct);
+        return result.IsSuccess
+            ? Ok()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }

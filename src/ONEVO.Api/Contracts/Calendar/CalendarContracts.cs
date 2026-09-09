@@ -56,3 +56,24 @@ public static class CalendarConflictsViewModelMapper
     public static CalendarConflictsViewModel ToViewModel(this CalendarConflictsResponse dto) =>
         new(dto.Conflicts.Select(c => new CalendarConflictViewModel(c.EmployeeId, c.EmployeeName, c.ConflictingEventId, c.ConflictingEventTitle)).ToList());
 }
+
+public sealed record StartCalendarConnectionRequest(); // provider comes from the route, body is empty
+
+public sealed record StartCalendarConnectionResponseModel(string AuthorizeUrl);
+
+public sealed record UpdateCalendarConnectionRequest(string SyncDirection);
+
+public sealed record CalendarConnectionViewModel(
+    Guid Id, string Provider, string ExternalAccountEmail, string? ExternalCalendarName,
+    string SyncDirection, string Status, DateTimeOffset? LastSyncedAt, string? LastError);
+
+public sealed record CalendarConnectionsViewModel(IReadOnlyList<CalendarConnectionViewModel> Connections);
+
+public static class CalendarConnectionViewModelMapper
+{
+    public static CalendarConnectionViewModel ToViewModel(this CalendarConnectionItem dto) => new(
+        dto.Id, dto.Provider, dto.ExternalAccountEmail, dto.ExternalCalendarName, dto.SyncDirection, dto.Status, dto.LastSyncedAt, dto.LastError);
+
+    public static CalendarConnectionsViewModel ToViewModel(this CalendarConnectionsResponse dto) =>
+        new(dto.Connections.Select(c => c.ToViewModel()).ToList());
+}
