@@ -8,6 +8,6 @@ public record CreateManualEntitlementCommand(
     Guid EmployeeId,
     Guid LeaveTypeId,
     int Year,
-    decimal TotalDays,
-    decimal CarriedForwardDays,
+    decimal TotalHours,
+    decimal CarriedForwardHours,
     string Reason) : IRequest<Result<LeaveEntitlementResponse>>;

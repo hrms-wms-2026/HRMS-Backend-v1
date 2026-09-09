@@ -130,10 +130,10 @@ public sealed class LeaveYearEndEntitlementJob : BackgroundService
                 EmployeeId = line.EmployeeId,
                 LeaveTypeId = line.LeaveTypeId,
                 Year = year,
-                TotalDays = line.TotalDays,
-                UsedDays = 0m,
-                PendingDays = 0m,
-                CarriedForwardDays = line.CarriedForwardDays,
+                TotalHours = line.TotalHours,
+                UsedHours = 0m,
+                PendingHours = 0m,
+                CarriedForwardHours = line.CarriedForwardHours,
                 Source = LeaveEntitlementSources.Auto,
                 CreatedAt = now
             };
@@ -144,20 +144,20 @@ public sealed class LeaveYearEndEntitlementJob : BackgroundService
                 {
                     Id = Guid.NewGuid(), TenantId = tenant.Id, EmployeeId = line.EmployeeId, LeaveTypeId = line.LeaveTypeId,
                     ChangeType = LeaveBalanceChangeTypes.Accrual,
-                    DaysChanged = line.TotalDays + line.CarriedForwardDays,
-                    BalanceAfter = line.TotalDays + line.CarriedForwardDays,
+                    HoursChanged = line.TotalHours + line.CarriedForwardHours,
+                    BalanceAfter = line.TotalHours + line.CarriedForwardHours,
                     Reason = "Year-end automatic generation", CreatedAt = now, CreatedBy = null
                 }
             };
 
-            if (line.ForfeitedDays > 0m)
+            if (line.ForfeitedHours > 0m)
             {
                 audits.Add(new LeaveBalanceAudit
                 {
                     Id = Guid.NewGuid(), TenantId = tenant.Id, EmployeeId = line.EmployeeId, LeaveTypeId = line.LeaveTypeId,
                     ChangeType = LeaveBalanceChangeTypes.Forfeiture,
-                    DaysChanged = -line.ForfeitedDays,
-                    BalanceAfter = line.TotalDays + line.CarriedForwardDays,
+                    HoursChanged = -line.ForfeitedHours,
+                    BalanceAfter = line.TotalHours + line.CarriedForwardHours,
                     Reason = "Carry-forward cap applied during year-end generation",
                     CreatedAt = now, CreatedBy = null
                 });

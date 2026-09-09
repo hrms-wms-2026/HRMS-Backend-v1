@@ -7,8 +7,8 @@ public class AdjustEntitlementCommandValidator : AbstractValidator<AdjustEntitle
     public AdjustEntitlementCommandValidator()
     {
         RuleFor(x => x.EntitlementId).NotEmpty();
-        RuleFor(x => x.TotalDays).GreaterThan(0);
-        RuleFor(x => x.CarriedForwardDays).GreaterThanOrEqualTo(0);
+        RuleFor(x => x.TotalHours).GreaterThan(0);
+        RuleFor(x => x.CarriedForwardHours).GreaterThanOrEqualTo(0);
         RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
     }
 }

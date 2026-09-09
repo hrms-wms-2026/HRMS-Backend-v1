@@ -6,7 +6,7 @@ namespace ONEVO.Application.Features.Leave.Entitlement.Commands.AdjustEntitlemen
 
 public record AdjustEntitlementCommand(
     Guid EntitlementId,
-    decimal TotalDays,
-    decimal CarriedForwardDays,
+    decimal TotalHours,
+    decimal CarriedForwardHours,
     string Reason,
     bool ConfirmNegativeRemaining) : IRequest<Result<LeaveEntitlementResponse>>;

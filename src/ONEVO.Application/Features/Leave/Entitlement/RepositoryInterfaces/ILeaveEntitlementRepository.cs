@@ -64,4 +64,4 @@ public record LeaveEntitlementRow(
     string? LegalEntityName,
     string LeaveTypeName,
     string LeaveTypeCode,
-    decimal RemainingDays);
+    decimal RemainingHours);

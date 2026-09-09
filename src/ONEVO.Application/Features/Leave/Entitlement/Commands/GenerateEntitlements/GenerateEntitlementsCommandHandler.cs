@@ -55,10 +55,10 @@ public class GenerateEntitlementsCommandHandler
                     EmployeeId = line.EmployeeId,
                     LeaveTypeId = line.LeaveTypeId,
                     Year = request.Year,
-                    TotalDays = line.TotalDays,
-                    UsedDays = 0m,
-                    PendingDays = 0m,
-                    CarriedForwardDays = line.CarriedForwardDays,
+                    TotalHours = line.TotalHours,
+                    UsedHours = 0m,
+                    PendingHours = 0m,
+                    CarriedForwardHours = line.CarriedForwardHours,
                     Source = LeaveEntitlementSources.Auto,
                     CreatedAt = now
                 };
@@ -72,15 +72,15 @@ public class GenerateEntitlementsCommandHandler
                         EmployeeId = line.EmployeeId,
                         LeaveTypeId = line.LeaveTypeId,
                         ChangeType = LeaveBalanceChangeTypes.Accrual,
-                        DaysChanged = line.TotalDays + line.CarriedForwardDays,
-                        BalanceAfter = line.TotalDays + line.CarriedForwardDays,
+                        HoursChanged = line.TotalHours + line.CarriedForwardHours,
+                        BalanceAfter = line.TotalHours + line.CarriedForwardHours,
                         Reason = "Generated from active leave policy",
                         CreatedAt = now,
                         CreatedBy = _currentUser.UserId
                     }
                 };
 
-                if (line.ForfeitedDays > 0m)
+                if (line.ForfeitedHours > 0m)
                 {
                     audits.Add(new LeaveBalanceAudit
                     {
@@ -89,8 +89,8 @@ public class GenerateEntitlementsCommandHandler
                         EmployeeId = line.EmployeeId,
                         LeaveTypeId = line.LeaveTypeId,
                         ChangeType = LeaveBalanceChangeTypes.Forfeiture,
-                        DaysChanged = -line.ForfeitedDays,
-                        BalanceAfter = line.TotalDays + line.CarriedForwardDays,
+                        HoursChanged = -line.ForfeitedHours,
+                        BalanceAfter = line.TotalHours + line.CarriedForwardHours,
                         Reason = "Carry-forward cap applied during generation",
                         CreatedAt = now,
                         CreatedBy = _currentUser.UserId

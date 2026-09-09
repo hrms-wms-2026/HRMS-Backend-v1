@@ -22,6 +22,9 @@ public sealed class EfLeaveCalendarRepository : ILeaveCalendarRepository
         LeaveCalendarRequestFilter filter,
         CancellationToken ct = default)
     {
+        var monthStart = new DateTimeOffset(filter.MonthStart.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        var monthEndExclusive = new DateTimeOffset(filter.MonthEnd.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+
         var activePrimaryAssignments = _db.PositionAssignments.AsNoTracking()
             .Where(pa => pa.TenantId == tenantId
                 && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
@@ -40,8 +43,8 @@ public sealed class EfLeaveCalendarRepository : ILeaveCalendarRepository
             where request.TenantId == tenantId
                 && employee.TenantId == tenantId
                 && leaveType.TenantId == tenantId
-                && request.StartDate <= filter.MonthEnd
-                && request.EndDate >= filter.MonthStart
+                && request.StartAt < monthEndExclusive
+                && request.EndAt > monthStart
                 && (
                     request.Status == LeaveRequestStatuses.Approved
                     || (filter.IncludeTentativeBlocks
@@ -70,7 +73,7 @@ public sealed class EfLeaveCalendarRepository : ILeaveCalendarRepository
             query = query.Where(row => row.employee.DepartmentId == departmentId);
 
         var rows = await query
-            .OrderBy(row => row.request.StartDate)
+            .OrderBy(row => row.request.StartAt)
             .ThenBy(row => row.employee.LastName)
             .ThenBy(row => row.employee.FirstName)
             .ToListAsync(ct);

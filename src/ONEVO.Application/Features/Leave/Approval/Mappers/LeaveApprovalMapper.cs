@@ -7,11 +7,11 @@ namespace ONEVO.Application.Features.Leave.Approval.Mappers;
 public static class LeaveApprovalMapper
 {
     public static decimal CalculateRemaining(
-        decimal totalDays,
-        decimal carriedForwardDays,
-        decimal usedDays,
-        decimal pendingDays) =>
-        totalDays + carriedForwardDays - usedDays - pendingDays;
+        decimal totalHours,
+        decimal carriedForwardHours,
+        decimal usedHours,
+        decimal pendingHours) =>
+        totalHours + carriedForwardHours - usedHours - pendingHours;
 
     public static LeavePendingApprovalListItemResponse ToPendingListItem(LeavePendingApprovalListRow row) =>
         new(
@@ -21,11 +21,11 @@ public static class LeaveApprovalMapper
             row.Request.LeaveTypeId,
             row.LeaveTypeName,
             row.LeaveTypeCode,
-            row.Request.StartDate,
-            row.Request.EndDate,
-            row.Request.TotalDays,
-            row.Request.PaidDays,
-            row.Request.UnpaidDays,
+            row.Request.StartAt,
+            row.Request.EndAt,
+            row.Request.TotalHours,
+            row.Request.PaidHours,
+            row.Request.UnpaidHours,
             row.Request.Status,
             row.Request.CreatedAt);
 
@@ -38,24 +38,24 @@ public static class LeaveApprovalMapper
             row.DepartmentName,
             row.Request.LeaveTypeId,
             row.LeaveTypeName,
-            row.Request.StartDate,
-            row.Request.EndDate,
-            row.Request.TotalDays,
+            row.Request.StartAt,
+            row.Request.EndAt,
+            row.Request.TotalHours,
             row.Request.Status,
             row.Request.CreatedAt);
 
     public static LeaveApprovalDecisionResponse ToDecision(
         LeaveRequest request,
-        decimal paidDaysMoved,
-        decimal remainingDays,
+        decimal paidHoursMoved,
+        decimal remainingHours,
         string currentApproverState,
         IReadOnlyList<LeaveApprovalWarningResponse> warnings) =>
         new(
             request.Id,
             request.Status,
             currentApproverState,
-            paidDaysMoved,
-            request.UnpaidDays,
-            remainingDays,
+            paidHoursMoved,
+            request.UnpaidHours,
+            remainingHours,
             warnings);
 }

@@ -24,9 +24,9 @@ public sealed record LeaveRequestEvaluation(
     LeaveType LeaveType,
     LeaveEntitlement Entitlement,
     LeavePolicyAggregate Policy,
-    decimal TotalDays,
-    decimal PaidDays,
-    decimal UnpaidDays,
+    decimal TotalHours,
+    decimal PaidHours,
+    decimal UnpaidHours,
     IReadOnlyList<DateOnly> CountedDates,
     decimal CurrentRemaining,
     bool NoticePeriodMissed,
@@ -83,9 +83,8 @@ public sealed class LeaveRequestSubmissionEvaluator
         Guid requesterUserId,
         Guid? onBehalfEmployeeId,
         Guid leaveTypeId,
-        DateOnly startDate,
-        DateOnly endDate,
-        string? halfDayPeriod,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
         string? reason,
         IReadOnlyList<Guid> fileRecordIds,
         CancellationToken ct)
@@ -100,11 +99,14 @@ public sealed class LeaveRequestSubmissionEvaluator
         if (target is null)
             return Result<LeaveRequestEvaluation>.NotFound(LeaveRequestMessages.EmployeeNotFound);
 
+        if (endAt <= startAt)
+            return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.EndAtNotAfterStartAt);
+
+        var startDate = DateOnly.FromDateTime(startAt.UtcDateTime);
+        var endDate = DateOnly.FromDateTime(endAt.UtcDateTime);
+
         if (startDate.Year != endDate.Year)
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.CrossYear);
-
-        if (!string.IsNullOrWhiteSpace(halfDayPeriod) && startDate != endDate)
-            return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.HalfDaySameDay);
 
         if (startDate < _clock.Today && !_options.AllowBackdatedRequests)
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.StartInPast);
@@ -155,7 +157,7 @@ public sealed class LeaveRequestSubmissionEvaluator
 
         var holidays = await _holidays.ListHolidaysAsync(tenantId, legalEntityId, startDate, endDate, ct);
         var calculated = _dayCalculator.Calculate(new LeaveRequestDayCalculationInput(
-            startDate, endDate, halfDayPeriod, workingDays, holidays));
+            startDate, endDate, null, workingDays, holidays));
         if (calculated.TotalDays <= 0)
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.NoWorkingDays);
 
@@ -184,22 +186,22 @@ public sealed class LeaveRequestSubmissionEvaluator
             return Result<LeaveRequestEvaluation>.Failure(LeaveRequestMessages.FileNotAvailable);
 
         var expiry = LeaveEntitlementPlanner.CarryExpiryFromPolicy(policy, leaveTypeId, startDate.Year);
-        var carry = LeaveEntitlementMapper.EffectiveCarry(entitlement.CarriedForwardDays, expiry, _clock.Today);
+        var carry = LeaveEntitlementMapper.EffectiveCarry(entitlement.CarriedForwardHours, expiry, _clock.Today);
         var currentRemaining = LeaveEntitlementMapper.Remaining(
-            entitlement.TotalDays, carry, entitlement.UsedDays, entitlement.PendingDays);
+            entitlement.TotalHours, carry, entitlement.UsedHours, entitlement.PendingHours);
 
-        decimal paidDays;
-        decimal unpaidDays;
+        decimal paidHours;
+        decimal unpaidHours;
         if (!leaveType.IsPaid)
         {
-            paidDays = 0m;
-            unpaidDays = calculated.TotalDays;
+            paidHours = 0m;
+            unpaidHours = calculated.TotalDays;
         }
         else
         {
-            paidDays = Math.Min(calculated.TotalDays, Math.Max(0m, currentRemaining));
-            unpaidDays = calculated.TotalDays - paidDays;
-            if (unpaidDays > 0m && !_options.AllowUnpaidSplitWhenBalanceShort)
+            paidHours = Math.Min(calculated.TotalDays, Math.Max(0m, currentRemaining));
+            unpaidHours = calculated.TotalDays - paidHours;
+            if (unpaidHours > 0m && !_options.AllowUnpaidSplitWhenBalanceShort)
             {
                 return Result<LeaveRequestEvaluation>.Failure(
                     LeaveRequestMessages.InsufficientBalance(currentRemaining, leaveType.Name));
@@ -240,8 +242,8 @@ public sealed class LeaveRequestSubmissionEvaluator
             entitlement,
             policy,
             calculated.TotalDays,
-            paidDays,
-            unpaidDays,
+            paidHours,
+            unpaidHours,
             calculated.CountedDates,
             currentRemaining,
             noticeMissed,

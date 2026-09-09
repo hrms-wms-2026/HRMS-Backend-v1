@@ -47,9 +47,8 @@ public sealed class SubmitLeaveRequestCommandHandler
             _currentUser.UserId,
             command.IsOnBehalfRequest ? command.EmployeeId : null,
             command.LeaveTypeId,
-            command.StartDate,
-            command.EndDate,
-            command.HalfDayPeriod,
+            command.StartAt,
+            command.EndAt,
             command.Reason,
             command.FileRecordIds,
             ct);
@@ -68,12 +67,11 @@ public sealed class SubmitLeaveRequestCommandHandler
             TenantId = _currentUser.TenantId,
             EmployeeId = draft.TargetEmployee.Id,
             LeaveTypeId = command.LeaveTypeId,
-            StartDate = command.StartDate,
-            EndDate = command.EndDate,
-            HalfDayPeriod = command.HalfDayPeriod,
-            TotalDays = draft.TotalDays,
-            PaidDays = draft.PaidDays,
-            UnpaidDays = draft.UnpaidDays,
+            StartAt = command.StartAt,
+            EndAt = command.EndAt,
+            TotalHours = draft.TotalHours,
+            PaidHours = draft.PaidHours,
+            UnpaidHours = draft.UnpaidHours,
             Reason = string.IsNullOrWhiteSpace(command.Reason) ? null : command.Reason.Trim(),
             Status = LeaveRequestStatuses.Pending,
             ConflictSnapshotJson = snapshotJson,
@@ -103,13 +101,12 @@ public sealed class SubmitLeaveRequestCommandHandler
 
         var allocationDrafts = _allocationBuilder.Build(
             draft.CountedDates,
-            command.HalfDayPeriod,
-            draft.PaidDays,
-            draft.UnpaidDays);
+            draft.PaidHours,
+            draft.UnpaidHours);
         var dayAllocations = _allocationBuilder.ToEntities(
             _currentUser.TenantId, requestId, allocationDrafts, now);
 
-        var pendingBeforeSubmit = draft.Entitlement.PendingDays;
+        var pendingBeforeSubmit = draft.Entitlement.PendingHours;
 
         try
         {
@@ -132,7 +129,7 @@ public sealed class SubmitLeaveRequestCommandHandler
             draft.LeaveType.Name,
             draft.LeaveType.Code,
             approvers,
-            LeaveRequestMapper.ToBalanceImpact(draft.CurrentRemaining, pendingBeforeSubmit, draft.PaidDays),
+            LeaveRequestMapper.ToBalanceImpact(draft.CurrentRemaining, pendingBeforeSubmit, draft.PaidHours),
             snapshot));
     }
 }

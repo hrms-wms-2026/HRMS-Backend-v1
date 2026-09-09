@@ -246,8 +246,8 @@ public sealed class AttendanceReadHandler(
         return records.Select(record =>
         {
             var hasApprovedLeave = leavesByEmployee.TryGetValue(record.EmployeeId, out var employeeLeaves)
-                && employeeLeaves.Any(request => request.StartDate <= record.Date
-                    && request.EndDate >= record.Date);
+                && employeeLeaves.Any(request => DateOnly.FromDateTime(request.StartAt.UtcDateTime) <= record.Date
+                    && DateOnly.FromDateTime(request.EndAt.UtcDateTime) >= record.Date);
             var schedule = new AttendanceSchedule(
                 record.ScheduledStart is not null && record.ScheduledEnd is not null
                     ? "configured"

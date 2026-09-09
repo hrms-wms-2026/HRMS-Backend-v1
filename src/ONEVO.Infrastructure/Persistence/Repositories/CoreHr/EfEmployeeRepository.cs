@@ -183,6 +183,8 @@ public class EfEmployeeRepository : IEmployeeRepository
             {
                 var minWorkDate = resolutions.Min(resolution => resolution.WorkDate);
                 var maxWorkDate = resolutions.Max(resolution => resolution.WorkDate);
+                var leaveFromStart = new DateTimeOffset(minWorkDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+                var leaveToExclusive = new DateTimeOffset(maxWorkDate.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
                 attendanceRecords = await _db.AttendanceRecords.AsNoTracking()
                     .Where(record => record.TenantId == tenantId
                         && employeeIds.Contains(record.EmployeeId)
@@ -196,8 +198,8 @@ public class EfEmployeeRepository : IEmployeeRepository
                         .Where(request => request.TenantId == tenantId
                             && employeeIds.Contains(request.EmployeeId)
                             && request.Status == ONEVO.Domain.Features.Leave.Common.LeaveRequestStatuses.Approved
-                            && request.StartDate <= maxWorkDate
-                            && request.EndDate >= minWorkDate)
+                            && request.StartAt < leaveToExclusive
+                            && request.EndAt > leaveFromStart)
                         .ToListAsync(ct);
 
                 var localWindows = resolutions
@@ -240,8 +242,8 @@ public class EfEmployeeRepository : IEmployeeRepository
                     var schedule = resolution?.Schedule ?? new AttendanceSchedule("not_configured", false, null, null, null);
                     var hasApprovedLeave = resolution is not null
                         && leavesByEmployee.TryGetValue(row.e.Id, out var employeeLeaves)
-                        && employeeLeaves.Any(request => request.StartDate <= resolution.WorkDate
-                            && request.EndDate >= resolution.WorkDate);
+                        && employeeLeaves.Any(request => DateOnly.FromDateTime(request.StartAt.UtcDateTime) <= resolution.WorkDate
+                            && DateOnly.FromDateTime(request.EndAt.UtcDateTime) >= resolution.WorkDate);
                     breaksByEmployee.TryGetValue(row.e.Id, out var employeeBreaks);
                     var breakUsedMinutes = resolution is not null && employeeBreaks is not null
                         ? AttendanceTodayStateService.CalculateBreakUsage(

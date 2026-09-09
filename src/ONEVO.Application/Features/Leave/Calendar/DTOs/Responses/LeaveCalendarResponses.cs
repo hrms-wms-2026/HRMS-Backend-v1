@@ -31,10 +31,9 @@ public sealed record LeaveCalendarAbsenceResponse(
     string Status,
     bool IsTentative,
     bool IsPartialCancellationHistory,
-    DateOnly StartDate,
-    DateOnly EndDate,
-    decimal TotalDays,
-    string? HalfDayPeriod);
+    DateTimeOffset StartAt,
+    DateTimeOffset EndAt,
+    decimal TotalHours);
 
 public sealed record LeaveCalendarHolidayResponse(
     DateOnly Date,

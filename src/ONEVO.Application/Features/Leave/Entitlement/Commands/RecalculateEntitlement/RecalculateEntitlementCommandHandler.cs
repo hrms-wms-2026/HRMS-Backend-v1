@@ -100,17 +100,17 @@ public class RecalculateEntitlementCommandHandler
 
         var oldBalance = LeaveEntitlementMapper.Remaining(entitlement);
         var newBalance = LeaveEntitlementMapper.Remaining(
-            calculation.TotalDays, calculation.CarriedForwardDays, entitlement.UsedDays, entitlement.PendingDays);
+            calculation.TotalDays, calculation.CarriedForwardDays, entitlement.UsedHours, entitlement.PendingHours);
 
         if (newBalance < 0m && !request.ConfirmNegativeRemaining)
         {
             return Result<LeaveEntitlementResponse>.Conflict(
                 LeaveEntitlementMessages.NegativeRemaining(
-                    calculation.TotalDays + calculation.CarriedForwardDays, entitlement.UsedDays));
+                    calculation.TotalDays + calculation.CarriedForwardDays, entitlement.UsedHours));
         }
 
-        entitlement.TotalDays = calculation.TotalDays;
-        entitlement.CarriedForwardDays = calculation.CarriedForwardDays;
+        entitlement.TotalHours = calculation.TotalDays;
+        entitlement.CarriedForwardHours = calculation.CarriedForwardDays;
         entitlement.UpdatedAt = now;
 
         var audit = new LeaveBalanceAudit
@@ -120,7 +120,7 @@ public class RecalculateEntitlementCommandHandler
             EmployeeId = entitlement.EmployeeId,
             LeaveTypeId = entitlement.LeaveTypeId,
             ChangeType = LeaveBalanceChangeTypes.Adjustment,
-            DaysChanged = newBalance - oldBalance,
+            HoursChanged = newBalance - oldBalance,
             BalanceAfter = newBalance,
             Reason = "Recalculated from current leave policy",
             CreatedAt = now,

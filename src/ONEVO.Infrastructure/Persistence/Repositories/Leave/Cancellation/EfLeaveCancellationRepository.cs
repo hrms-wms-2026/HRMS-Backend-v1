@@ -40,7 +40,7 @@ public class EfLeaveCancellationRepository : ILeaveCancellationRepository
                 x.TenantId == tenantId &&
                 x.EmployeeId == request.EmployeeId &&
                 x.LeaveTypeId == request.LeaveTypeId &&
-                x.Year == request.StartDate.Year, ct);
+                x.Year == request.StartAt.Year, ct);
 
         var approvers = await _db.LeaveRequestApprovers
             .Where(x => x.TenantId == tenantId && x.LeaveRequestId == request.Id)

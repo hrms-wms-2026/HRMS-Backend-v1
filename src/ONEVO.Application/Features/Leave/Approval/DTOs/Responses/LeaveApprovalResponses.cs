@@ -4,9 +4,9 @@ public sealed record LeaveApprovalDecisionResponse(
     Guid RequestId,
     string Status,
     string CurrentApproverState,
-    decimal PaidDaysMovedFromPending,
-    decimal UnpaidDays,
-    decimal RemainingDays,
+    decimal PaidHoursMovedFromPending,
+    decimal UnpaidHours,
+    decimal RemainingHours,
     IReadOnlyList<LeaveApprovalWarningResponse> CurrentWarnings);
 
 public sealed record LeaveApprovalWarningResponse(string Code, string Message);
@@ -18,11 +18,11 @@ public sealed record LeavePendingApprovalListItemResponse(
     Guid LeaveTypeId,
     string LeaveTypeName,
     string LeaveTypeCode,
-    DateOnly StartDate,
-    DateOnly EndDate,
-    decimal TotalDays,
-    decimal PaidDays,
-    decimal UnpaidDays,
+    DateTimeOffset StartAt,
+    DateTimeOffset EndAt,
+    decimal TotalHours,
+    decimal PaidHours,
+    decimal UnpaidHours,
     string Status,
     DateTimeOffset SubmittedAt);
 
@@ -34,9 +34,9 @@ public sealed record LeaveRequestAllListItemResponse(
     string? DepartmentName,
     Guid LeaveTypeId,
     string LeaveTypeName,
-    DateOnly StartDate,
-    DateOnly EndDate,
-    decimal TotalDays,
+    DateTimeOffset StartAt,
+    DateTimeOffset EndAt,
+    decimal TotalHours,
     string Status,
     DateTimeOffset SubmittedAt);
 
@@ -47,18 +47,18 @@ public sealed record LeaveApprovalDetailResponse(
     Guid LeaveTypeId,
     string LeaveTypeName,
     string LeaveTypeCode,
-    DateOnly StartDate,
-    DateOnly EndDate,
-    decimal TotalDays,
-    decimal PaidDays,
-    decimal UnpaidDays,
+    DateTimeOffset StartAt,
+    DateTimeOffset EndAt,
+    decimal TotalHours,
+    decimal PaidHours,
+    decimal UnpaidHours,
     string Status,
     string? Reason,
     IReadOnlyList<LeaveApprovalApproverResponse> Approvers,
     IReadOnlyList<LeaveApprovalInfoMessageResponse> InfoMessages,
     string? SubmissionConflictSnapshotJson,
     IReadOnlyList<LeaveApprovalWarningResponse> CurrentWarnings,
-    decimal RemainingDays);
+    decimal RemainingHours);
 
 public sealed record LeaveApprovalApproverResponse(
     Guid ApproverEmployeeId,

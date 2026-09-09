@@ -9,7 +9,8 @@ public static class LeaveRequestMessages
     public const string Blackout = "The selected dates fall within a blackout period. Leave requests are restricted";
     public const string NoWorkingDays = "Leave request must include at least one working day.";
     public const string CrossYear = "Leave requests that span more than one year are not supported yet.";
-    public const string HalfDaySameDay = "Half-day leave is only allowed when start and end dates are the same.";
+    public const string WorkWindowRequired = "Set work start and end in General Settings first.";
+    public const string EndAtNotAfterStartAt = "Leave end must be after leave start.";
     public const string NoApprover = "No approver found in your reporting line. Please contact HR";
     public const string GenderRestricted = "This leave type is not available for the employee's gender.";
     public const string NoEntitlement = "No active entitlement and policy were found for this employee, leave type, and year.";
@@ -17,7 +18,7 @@ public static class LeaveRequestMessages
     public const string RangeExceeded = "Leave request date range exceeds the configured maximum.";
 
     public static string InsufficientBalance(decimal remaining, string leaveTypeName) =>
-        $"Insufficient balance. You have {remaining:0.#} days remaining for {leaveTypeName}";
+        $"Insufficient balance. You have {remaining:0.#} hours remaining for {leaveTypeName}";
 
     public static string DocumentRequired(string leaveTypeName, int afterDays) =>
         $"A supporting document is required for {leaveTypeName} requests exceeding {afterDays} days";
