@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.DeviceState.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -61,14 +62,35 @@ public sealed class LocationRuleEvaluatorJob : BackgroundService
         var expectedWorkAreas = scope.ServiceProvider.GetRequiredService<IExpectedWorkAreaResolver>();
         var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
         var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
+        var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
+        var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
+        var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+
+        // Every table this job reads/writes (device_state_snapshots, employees, legal_entities,
+        // clock_in_policies, employee_work_locations, daily_work_location_confirmations,
+        // monitoring_notifications) is under FORCE row-level security. A background scope defaults
+        // to system mode, which the tenant_isolation policy admits for none of them - so the
+        // opening cross-tenant sweep needs admin mode, and each tenant's rows need that tenant's
+        // context established first. Mirrors LeaveYearEndEntitlementJob / ExceptionDetectionJob.
+        tenantContext.SetAdminMode();
 
         var now = clock.UtcNow;
         var keys = await deviceState.GetActiveEmployeeKeysAsync(now - LookbackWindow, ct);
         var created = 0;
+        var switchedTenants = new HashSet<Guid>();
 
         foreach (var (tenantId, employeeId) in keys)
         {
             ct.ThrowIfCancellationRequested();
+
+            if (!switchedTenants.Contains(tenantId))
+            {
+                var tenant = await tenants.GetByIdAsync(tenantId, ct);
+                if (tenant is null) continue;
+                await tenantSwitcher.SwitchToTenantAsync(
+                    new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
+                switchedTenants.Add(tenantId);
+            }
 
             var recent = await deviceState.GetRecentAsync(tenantId, employeeId, now - LookbackWindow, ct);
             var located = recent.LastOrDefault(s => s.Latitude is not null && s.Longitude is not null);
