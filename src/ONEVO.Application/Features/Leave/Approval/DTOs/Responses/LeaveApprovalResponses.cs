@@ -62,6 +62,7 @@ public sealed record LeaveApprovalDetailResponse(
 
 public sealed record LeaveApprovalApproverResponse(
     Guid ApproverEmployeeId,
+    string ApproverName,
     int SequenceOrder,
     string Status,
     string? Comment,

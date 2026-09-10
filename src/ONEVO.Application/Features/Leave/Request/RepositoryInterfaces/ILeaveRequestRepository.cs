@@ -56,7 +56,9 @@ public sealed record LeaveRequestListFilter(
 public sealed record LeaveRequestListRow(
     LeaveRequest Request,
     string LeaveTypeName,
-    string LeaveTypeCode);
+    string LeaveTypeCode,
+    string? ApprovedByName,
+    string? InfoQuestion);
 
 public sealed record LeaveApprovalDelegateRow(
     Guid ApproverEmployeeId,

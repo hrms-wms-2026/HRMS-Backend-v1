@@ -21,7 +21,12 @@ public static class LeaveRequestMapper
             PendingAfterSubmitHours: currentPendingHours + paidHours,
             RemainingAfterSubmitHours: currentRemainingHours - paidHours);
 
-    public static LeaveRequestListItemResponse ToListItem(LeaveRequest request, string leaveTypeName, string leaveTypeCode) =>
+    public static LeaveRequestListItemResponse ToListItem(
+        LeaveRequest request,
+        string leaveTypeName,
+        string leaveTypeCode,
+        string? approvedByName = null,
+        string? infoQuestion = null) =>
         new(
             request.Id,
             request.EmployeeId,
@@ -35,6 +40,8 @@ public static class LeaveRequestMapper
             request.UnpaidHours,
             request.Status,
             request.NoticePeriodMissed,
+            approvedByName,
+            infoQuestion,
             request.CreatedAt,
             request.UpdatedAt);
 
@@ -73,7 +80,7 @@ public static class LeaveRequestMapper
             request.SubmittedOnBehalfOfBy,
             balanceImpact,
             approvers.Select(a => new LeaveRequestApproverResponse(
-                a.ApproverEmployeeId, a.SequenceOrder, a.Status, a.DelegatedFromApproverId)).ToList(),
+                a.ApproverEmployeeId, string.Empty, a.SequenceOrder, a.Status, a.DelegatedFromApproverId)).ToList(),
             snapshot,
             request.CreatedAt);
 }

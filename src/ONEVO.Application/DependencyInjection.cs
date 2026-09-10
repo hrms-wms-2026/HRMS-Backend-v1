@@ -2,6 +2,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Common.Behaviors;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.OutboxHandlers;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.OutboxHandlers;
@@ -67,13 +68,26 @@ public static class DependencyInjection
         services.AddScoped<IOutboxMessageHandler, EmployeeOnboardingInviteEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, PositionChangeApprovalRequestEmailOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, InvoiceEmailOutboxHandler>();
-        services.AddScoped<IOutboxMessageHandler>(_ =>
-            new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveRequestApproved));
-        services.AddScoped<IOutboxMessageHandler>(_ =>
-            new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveRequestRejected));
-        services.AddScoped<IOutboxMessageHandler>(_ =>
-            new NoOpLeaveApprovalSideEffectOutboxHandler(OutboxMessageTypes.LeaveInformationRequested));
-        services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Leave.Cancellation.Outbox.NoOpLeaveCancellationSideEffectOutboxHandler>();
+        services.AddScoped<IOutboxMessageHandler>(sp =>
+            new LeaveApprovalEmailOutboxHandler(
+                sp.GetRequiredService<IEmailService>(),
+                sp.GetRequiredService<IEmployeeRepository>(),
+                OutboxMessageTypes.LeaveRequestApproved));
+        services.AddScoped<IOutboxMessageHandler>(sp =>
+            new LeaveApprovalEmailOutboxHandler(
+                sp.GetRequiredService<IEmailService>(),
+                sp.GetRequiredService<IEmployeeRepository>(),
+                OutboxMessageTypes.LeaveRequestRejected));
+        services.AddScoped<IOutboxMessageHandler>(sp =>
+            new LeaveApprovalEmailOutboxHandler(
+                sp.GetRequiredService<IEmailService>(),
+                sp.GetRequiredService<IEmployeeRepository>(),
+                OutboxMessageTypes.LeaveInformationRequested));
+        services.AddScoped<IOutboxMessageHandler>(sp =>
+            new LeaveApprovalEmailOutboxHandler(
+                sp.GetRequiredService<IEmailService>(),
+                sp.GetRequiredService<IEmployeeRepository>(),
+                OutboxMessageTypes.LeaveRequestCancelled));
                 services.AddScoped<GitHubUserIntegrationAvailability>();
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.ITrayEnrollmentService,

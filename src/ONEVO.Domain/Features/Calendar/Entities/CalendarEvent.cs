@@ -6,8 +6,8 @@ public static class CalendarEventSourceTypes
 {
     public const string Manual = "manual";
     public const string ExternalSync = "external_sync";
-    // "holiday" / "schedule_overlay" / "time_off_request" are reserved for later specs -
-    // this pass never writes them, but the column must accept them without a future migration.
+    public const string Holiday = "holiday";
+    // "schedule_overlay" / "time_off_request" are reserved for later specs.
 }
 
 public static class CalendarExternalSources
