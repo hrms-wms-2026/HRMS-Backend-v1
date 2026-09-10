@@ -8,6 +8,17 @@ namespace ONEVO.Infrastructure.Migrations
     /// <inheritdoc />
     public partial class AddHolidayCalendarSettings : Migration
     {
+        // Issued through the same `TenantTables` + foreach convention as
+        // AddCalendarEventsRlsPolicyCoverage: TenantIsolationArchitectureTests
+        // .EveryTenantOwnedEntityTable_HasRlsPolicyCoverage only recognises RLS
+        // coverage from migrations that declare this literal, so an inline
+        // `CREATE POLICY ... ON holiday_calendar_settings` alone would be
+        // flagged as uncovered.
+        private static readonly string[] TenantTables =
+        [
+            "holiday_calendar_settings"
+        ];
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -42,35 +53,41 @@ namespace ONEVO.Infrastructure.Migrations
                 columns: new[] { "tenant_id", "legal_entity_id" },
                 unique: true);
 
-            migrationBuilder.Sql(@"
-                ALTER TABLE holiday_calendar_settings ENABLE ROW LEVEL SECURITY;
-                ALTER TABLE holiday_calendar_settings FORCE ROW LEVEL SECURITY;
-                DROP POLICY IF EXISTS tenant_isolation ON holiday_calendar_settings;
-                CREATE POLICY tenant_isolation ON holiday_calendar_settings
-                    USING (
-                        current_setting('app.tenant_context_mode', true) = 'admin'
-                        OR (
-                            current_setting('app.tenant_context_mode', true) = 'tenant'
-                            AND tenant_id::text = current_setting('app.current_tenant_id', true)
+            foreach (var table in TenantTables)
+            {
+                migrationBuilder.Sql($@"
+                    ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;
+                    ALTER TABLE {table} FORCE ROW LEVEL SECURITY;
+                    DROP POLICY IF EXISTS tenant_isolation ON {table};
+                    CREATE POLICY tenant_isolation ON {table}
+                        USING (
+                            current_setting('app.tenant_context_mode', true) = 'admin'
+                            OR (
+                                current_setting('app.tenant_context_mode', true) = 'tenant'
+                                AND tenant_id::text = current_setting('app.current_tenant_id', true)
+                            )
                         )
-                    )
-                    WITH CHECK (
-                        current_setting('app.tenant_context_mode', true) = 'admin'
-                        OR (
-                            current_setting('app.tenant_context_mode', true) = 'tenant'
-                            AND tenant_id::text = current_setting('app.current_tenant_id', true)
-                        )
-                    );
-            ");
+                        WITH CHECK (
+                            current_setting('app.tenant_context_mode', true) = 'admin'
+                            OR (
+                                current_setting('app.tenant_context_mode', true) = 'tenant'
+                                AND tenant_id::text = current_setting('app.current_tenant_id', true)
+                            )
+                        );
+                ");
+            }
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.Sql(@"
-                DROP POLICY IF EXISTS tenant_isolation ON holiday_calendar_settings;
-                ALTER TABLE holiday_calendar_settings DISABLE ROW LEVEL SECURITY;
-            ");
+            foreach (var table in TenantTables)
+            {
+                migrationBuilder.Sql($@"
+                    DROP POLICY IF EXISTS tenant_isolation ON {table};
+                    ALTER TABLE {table} DISABLE ROW LEVEL SECURITY;
+                ");
+            }
 
             migrationBuilder.DropTable(
                 name: "holiday_calendar_settings");
