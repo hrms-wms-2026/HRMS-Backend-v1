@@ -46,6 +46,21 @@ public class LeaveRequestsControllerArchitectureTests
         }
     }
 
+    [Fact]
+    public void SubmitContracts_UseStartAtAndEndAt()
+    {
+        foreach (var contractType in new[] { typeof(SubmitLeaveRequestRequest), typeof(SubmitLeaveRequestOnBehalfRequest) })
+        {
+            var names = contractType.GetProperties().Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+            Assert.Contains("StartAt", names);
+            Assert.Contains("EndAt", names);
+            Assert.DoesNotContain("StartDate", names);
+            Assert.DoesNotContain("EndDate", names);
+            Assert.DoesNotContain("HalfDayPeriod", names);
+            Assert.DoesNotContain("TotalDays", names);
+        }
+    }
+
     private static string GetPermission(string methodName)
     {
         var method = ControllerType.GetMethod(methodName);

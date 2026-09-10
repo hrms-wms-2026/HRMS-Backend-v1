@@ -141,13 +141,17 @@ public sealed class GetLeaveApprovalDetailQueryHandler
             return Result<LeaveApprovalDetailResponse>.Forbidden(LeaveApprovalMessages.NotAssigned);
 
         var conflicts = await _conflicts.ListConflictsAsync(
-            _currentUser.TenantId, state.Request.EmployeeId, state.Request.StartDate, state.Request.EndDate, ct);
+            _currentUser.TenantId,
+            state.Request.EmployeeId,
+            DateOnly.FromDateTime(state.Request.StartAt.UtcDateTime),
+            DateOnly.FromDateTime(state.Request.EndAt.UtcDateTime),
+            ct);
         var warnings = conflicts.Select(c => new LeaveApprovalWarningResponse("current_conflict", c.Title)).ToList();
         var remaining = state.Entitlement is null
             ? 0m
             : LeaveApprovalMapper.CalculateRemaining(
-                state.Entitlement.TotalDays, state.Entitlement.CarriedForwardDays,
-                state.Entitlement.UsedDays, state.Entitlement.PendingDays);
+                state.Entitlement.TotalHours, state.Entitlement.CarriedForwardHours,
+                state.Entitlement.UsedHours, state.Entitlement.PendingHours);
 
         return Result<LeaveApprovalDetailResponse>.Success(new LeaveApprovalDetailResponse(
             state.Request.Id,
@@ -156,11 +160,11 @@ public sealed class GetLeaveApprovalDetailQueryHandler
             state.Request.LeaveTypeId,
             state.LeaveTypeName,
             state.LeaveTypeCode,
-            state.Request.StartDate,
-            state.Request.EndDate,
-            state.Request.TotalDays,
-            state.Request.PaidDays,
-            state.Request.UnpaidDays,
+            state.Request.StartAt,
+            state.Request.EndAt,
+            state.Request.TotalHours,
+            state.Request.PaidHours,
+            state.Request.UnpaidHours,
             state.Request.Status,
             state.Request.Reason,
             state.Approvers.Select(a => new LeaveApprovalApproverResponse(

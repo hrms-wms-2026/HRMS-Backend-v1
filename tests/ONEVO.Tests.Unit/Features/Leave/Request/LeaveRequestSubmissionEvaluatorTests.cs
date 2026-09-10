@@ -32,7 +32,7 @@ public class LeaveRequestSubmissionEvaluatorTests
 
         var result = await harness.Sut.EvaluateAsync(
             harness.TenantId, harness.UserId, null, harness.LeaveTypeId,
-            new DateOnly(2026, 8, 10), new DateOnly(2026, 8, 10), null, null, [], CancellationToken.None);
+            At(2026, 8, 10, 9), At(2026, 8, 10, 18), null, [], CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Be(LeaveRequestMessages.StartInPast);
@@ -43,7 +43,7 @@ public class LeaveRequestSubmissionEvaluatorTests
     {
         var harness = Harness.Create();
         harness.Requests.Setup(x => x.HasOverlappingPendingOrApprovedRequestAsync(
-                harness.TenantId, harness.Employee.Id, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+                harness.TenantId, harness.Employee.Id, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         var result = await harness.EvaluateDefaultAsync();
@@ -54,10 +54,35 @@ public class LeaveRequestSubmissionEvaluatorTests
     }
 
     [Fact]
+    public async Task Evaluate_OverlapCheckUsesOriginalStartAtAndEndAt()
+    {
+        var harness = Harness.Create();
+        var start = new DateTimeOffset(2026, 8, 21, 22, 0, 0, TimeSpan.FromHours(8));
+        var end = new DateTimeOffset(2026, 8, 22, 6, 0, 0, TimeSpan.FromHours(8));
+        DateTimeOffset? passedStart = null;
+        DateTimeOffset? passedEnd = null;
+        harness.Requests.Setup(x => x.HasOverlappingPendingOrApprovedRequestAsync(
+                harness.TenantId, harness.Employee.Id, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, Guid, DateTimeOffset, DateTimeOffset, CancellationToken>((_, _, s, e, _) =>
+            {
+                passedStart = s;
+                passedEnd = e;
+            })
+            .ReturnsAsync(false);
+
+        await harness.Sut.EvaluateAsync(
+            harness.TenantId, harness.UserId, null, harness.LeaveTypeId,
+            start, end, null, [], CancellationToken.None);
+
+        passedStart.Should().Be(start);
+        passedEnd.Should().Be(end);
+    }
+
+    [Fact]
     public async Task Evaluate_WhenBalanceShortAndUnpaidSplitDisabled_Fails()
     {
-        var harness = Harness.Create(remaining: 1m, allowUnpaid: false);
-        var result = await harness.EvaluateDefaultAsync(end: new DateOnly(2026, 8, 20));
+        var harness = Harness.Create(remainingHours: 8m, allowUnpaid: false);
+        var result = await harness.EvaluateDefaultAsync(end: At(2026, 8, 20, 18));
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Contain("Insufficient balance");
@@ -66,12 +91,12 @@ public class LeaveRequestSubmissionEvaluatorTests
     [Fact]
     public async Task Evaluate_WhenBalanceShortAndUnpaidSplitEnabled_SplitsPaidAndUnpaid()
     {
-        var harness = Harness.Create(remaining: 1m, allowUnpaid: true);
-        var result = await harness.EvaluateDefaultAsync(end: new DateOnly(2026, 8, 20));
+        var harness = Harness.Create(remainingHours: 8m, allowUnpaid: true);
+        var result = await harness.EvaluateDefaultAsync(end: At(2026, 8, 20, 18));
 
         result.IsSuccess.Should().BeTrue();
-        result.Value!.PaidDays.Should().Be(1m);
-        result.Value.UnpaidDays.Should().Be(2m);
+        result.Value!.PaidHours.Should().Be(8m);
+        result.Value.UnpaidHours.Should().Be(16m);
     }
 
     [Fact]
@@ -117,10 +142,38 @@ public class LeaveRequestSubmissionEvaluatorTests
         var harness = Harness.Create();
         var result = await harness.Sut.EvaluateAsync(
             harness.TenantId, harness.UserId, null, harness.LeaveTypeId,
-            new DateOnly(2026, 12, 28), new DateOnly(2027, 1, 5), null, null, [], CancellationToken.None);
+            At(2026, 12, 28, 9), At(2027, 1, 5, 18), null, [], CancellationToken.None);
 
         result.Error.Should().Be(LeaveRequestMessages.CrossYear);
     }
+
+    [Fact]
+    public async Task Evaluate_WhenWorkWindowUnset_Returns400WorkWindowRequired()
+    {
+        var harness = Harness.Create(workWindowSet: false);
+        var result = await harness.EvaluateDefaultAsync();
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(400);
+        result.Error.Should().Be(LeaveRequestMessages.WorkWindowRequired);
+    }
+
+    [Fact]
+    public async Task Evaluate_AfternoonPartial_ReturnsFourHours()
+    {
+        var harness = Harness.Create();
+        var result = await harness.Sut.EvaluateAsync(
+            harness.TenantId, harness.UserId, null, harness.LeaveTypeId,
+            At(2026, 8, 18, 14), At(2026, 8, 18, 18), null, [], CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.TotalHours.Should().Be(4.00m);
+        result.Value.PaidHours.Should().Be(4.00m);
+        result.Value.HoursByDate.Should().Equal(4.00m);
+    }
+
+    private static DateTimeOffset At(int year, int month, int day, int hour) =>
+        new(year, month, day, hour, 0, 0, TimeSpan.Zero);
 
     private sealed class Harness
     {
@@ -135,7 +188,7 @@ public class LeaveRequestSubmissionEvaluatorTests
         public Mock<ILeaveApproverResolver> Approvers { get; } = new();
         public LeaveRequestSubmissionEvaluator Sut { get; }
 
-        private Harness(decimal remaining, bool allowUnpaid, bool allowBackdated)
+        private Harness(decimal remainingHours, bool allowUnpaid, bool allowBackdated, bool workWindowSet)
         {
             Employee = new Employee
             {
@@ -168,10 +221,10 @@ public class LeaveRequestSubmissionEvaluatorTests
                 EmployeeId = Employee.Id,
                 LeaveTypeId = LeaveTypeId,
                 Year = 2026,
-                TotalDays = remaining,
-                UsedDays = 0m,
-                PendingDays = 0m,
-                CarriedForwardDays = 0m,
+                TotalHours = remainingHours,
+                UsedHours = 0m,
+                PendingHours = 0m,
+                CarriedForwardHours = 0m,
                 Source = LeaveEntitlementSources.Auto
             };
 
@@ -207,11 +260,15 @@ public class LeaveRequestSubmissionEvaluatorTests
             entitlements.Setup(x => x.GetTrackedByEmployeeTypeYearAsync(TenantId, Employee.Id, LeaveTypeId, 2026, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(entitlement);
 
+            var legalEntity = PreviewGenerateEntitlementsQueryHandlerTests.CreateLegalEntity(
+                TenantId, LegalEntityId, workWindowSet);
             var policies = new Mock<ILeavePolicyRepository>();
             policies.Setup(x => x.ListActiveAggregatesByLegalEntityIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), 2026, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Dictionary<Guid, LeavePolicyAggregate> { [LegalEntityId] = policy });
+            policies.Setup(x => x.ListActiveLegalEntitiesByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync([legalEntity]);
 
-            Requests.Setup(x => x.HasOverlappingPendingOrApprovedRequestAsync(TenantId, Employee.Id, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            Requests.Setup(x => x.HasOverlappingPendingOrApprovedRequestAsync(TenantId, Employee.Id, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(false);
             Requests.Setup(x => x.AreAvailableFileRecordsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
@@ -237,7 +294,7 @@ public class LeaveRequestSubmissionEvaluatorTests
                 entitlements.Object,
                 policies.Object,
                 Requests.Object,
-                new LeaveRequestDayCalculator(),
+                new LeaveRequestHourCalculator(),
                 holidays.Object,
                 Approvers.Object,
                 conflicts.Object,
@@ -251,13 +308,17 @@ public class LeaveRequestSubmissionEvaluatorTests
                 }));
         }
 
-        public static Harness Create(decimal remaining = 20m, bool allowUnpaid = false, bool allowBackdated = true) =>
-            new(remaining, allowUnpaid, allowBackdated);
+        public static Harness Create(
+            decimal remainingHours = 160m,
+            bool allowUnpaid = false,
+            bool allowBackdated = true,
+            bool workWindowSet = true) =>
+            new(remainingHours, allowUnpaid, allowBackdated, workWindowSet);
 
         public Task<ONEVO.Application.Common.Models.Result<LeaveRequestEvaluation>> EvaluateDefaultAsync(
-            DateOnly? end = null) =>
+            DateTimeOffset? end = null) =>
             Sut.EvaluateAsync(
                 TenantId, UserId, null, LeaveTypeId,
-                new DateOnly(2026, 8, 18), end ?? new DateOnly(2026, 8, 18), null, null, [], CancellationToken.None);
+                At(2026, 8, 18, 9), end ?? At(2026, 8, 18, 18), null, [], CancellationToken.None);
     }
 }

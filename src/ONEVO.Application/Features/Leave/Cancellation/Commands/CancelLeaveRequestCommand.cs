@@ -49,7 +49,7 @@ public sealed class CancelLeaveRequestCommandHandler
     private readonly LeaveBusinessDateResolver _businessDateResolver;
     private readonly LeaveCancellationClassifier _classifier;
     private readonly LeaveRequestDayAllocationBuilder _allocationBuilder;
-    private readonly LeaveRequestDayCalculator _dayCalculator;
+    private readonly LeaveRequestHourCalculator _hourCalculator;
     private readonly ILeaveHolidayProvider _holidays;
     private readonly ILeavePolicyRepository _policies;
     private readonly IOutboxWriter _outbox;
@@ -64,7 +64,7 @@ public sealed class CancelLeaveRequestCommandHandler
         LeaveBusinessDateResolver businessDateResolver,
         LeaveCancellationClassifier classifier,
         LeaveRequestDayAllocationBuilder allocationBuilder,
-        LeaveRequestDayCalculator dayCalculator,
+        LeaveRequestHourCalculator hourCalculator,
         ILeaveHolidayProvider holidays,
         ILeavePolicyRepository policies,
         IOutboxWriter outbox,
@@ -78,7 +78,7 @@ public sealed class CancelLeaveRequestCommandHandler
         _businessDateResolver = businessDateResolver;
         _classifier = classifier;
         _allocationBuilder = allocationBuilder;
-        _dayCalculator = dayCalculator;
+        _hourCalculator = hourCalculator;
         _holidays = holidays;
         _policies = policies;
         _outbox = outbox;
@@ -111,10 +111,12 @@ public sealed class CancelLeaveRequestCommandHandler
             return Result<CancelLeaveRequestResponse>.Failure(LeaveCancellationMessages.EmployeeReasonRequired);
 
         var businessDate = _businessDateResolver.Today(state.LegalEntity?.Timezone);
+        var startDate = DateOnly.FromDateTime(state.Request.StartAt.UtcDateTime);
+        var endDate = DateOnly.FromDateTime(state.Request.EndAt.UtcDateTime);
         var classificationResult = _classifier.Classify(
             state.Request.Status,
-            state.Request.StartDate,
-            state.Request.EndDate,
+            startDate,
+            endDate,
             businessDate,
             command.EffectiveDate);
         if (!classificationResult.IsSuccess)
@@ -137,7 +139,7 @@ public sealed class CancelLeaveRequestCommandHandler
         {
             var backfilled = await BuildLegacyAllocationsAsync(state, now, ct);
             if (classification.Kind == LeaveCancellationKind.ApprovedPartial
-                && backfilled.Sum(x => x.DayUnit) != state.Request.TotalDays)
+                && backfilled.Sum(x => x.HoursUnit) != state.Request.TotalHours)
             {
                 return Result<CancelLeaveRequestResponse>.Conflict(LeaveCancellationMessages.AllocationUnavailable);
             }
@@ -149,17 +151,17 @@ public sealed class CancelLeaveRequestCommandHandler
             }
         }
 
-        decimal releasedPendingDays = 0m;
-        decimal restoredUsedDays = 0m;
-        decimal affectedUnpaidDays = 0m;
+        decimal releasedPendingHours = 0m;
+        decimal restoredUsedHours = 0m;
+        decimal affectedUnpaidHours = 0m;
         var isPartial = classification.Kind == LeaveCancellationKind.ApprovedPartial;
 
         if (classification.Kind == LeaveCancellationKind.PendingStyle)
         {
-            releasedPendingDays = state.Request.PaidDays;
+            releasedPendingHours = state.Request.PaidHours;
             if (state.Entitlement is not null)
             {
-                state.Entitlement.PendingDays = Math.Max(0m, state.Entitlement.PendingDays - releasedPendingDays);
+                state.Entitlement.PendingHours = Math.Max(0m, state.Entitlement.PendingHours - releasedPendingHours);
                 state.Entitlement.UpdatedAt = now;
             }
 
@@ -175,17 +177,17 @@ public sealed class CancelLeaveRequestCommandHandler
         }
         else if (classification.Kind == LeaveCancellationKind.ApprovedFull)
         {
-            restoredUsedDays = state.Request.PaidDays;
-            affectedUnpaidDays = state.Request.UnpaidDays;
+            restoredUsedHours = state.Request.PaidHours;
+            affectedUnpaidHours = state.Request.UnpaidHours;
             if (state.Entitlement is not null)
             {
-                state.Entitlement.UsedDays = Math.Max(0m, state.Entitlement.UsedDays - restoredUsedDays);
+                state.Entitlement.UsedHours = Math.Max(0m, state.Entitlement.UsedHours - restoredUsedHours);
                 state.Entitlement.UpdatedAt = now;
             }
 
             CancelAllocations(allocations.Where(a => a.Status == LeaveRequestDayAllocationStatuses.Active), now);
             MarkRequestCancelled(state.Request, trimmedReason, null, now);
-            await AddAdjustmentAuditAsync(state, restoredUsedDays, isHrCancel, trimmedReason, false, now, ct);
+            await AddAdjustmentAuditAsync(state, restoredUsedHours, isHrCancel, trimmedReason, false, now, ct);
         }
         else
         {
@@ -193,21 +195,21 @@ public sealed class CancelLeaveRequestCommandHandler
             var futureAllocations = allocations
                 .Where(a => a.Status == LeaveRequestDayAllocationStatuses.Active && a.LeaveDate >= effectiveDate)
                 .ToList();
-            restoredUsedDays = futureAllocations.Sum(a => a.PaidUnit);
-            affectedUnpaidDays = futureAllocations.Sum(a => a.UnpaidUnit);
-            if (restoredUsedDays <= 0m && affectedUnpaidDays <= 0m)
+            restoredUsedHours = futureAllocations.Sum(a => a.PaidHoursUnit);
+            affectedUnpaidHours = futureAllocations.Sum(a => a.UnpaidHoursUnit);
+            if (restoredUsedHours <= 0m && affectedUnpaidHours <= 0m)
                 return Result<CancelLeaveRequestResponse>.Conflict(LeaveCancellationMessages.NoRestorableDays);
 
-            if (state.Entitlement is not null && restoredUsedDays > 0m)
+            if (state.Entitlement is not null && restoredUsedHours > 0m)
             {
-                state.Entitlement.UsedDays = Math.Max(0m, state.Entitlement.UsedDays - restoredUsedDays);
+                state.Entitlement.UsedHours = Math.Max(0m, state.Entitlement.UsedHours - restoredUsedHours);
                 state.Entitlement.UpdatedAt = now;
             }
 
             CancelAllocations(futureAllocations, now);
             MarkRequestCancelled(state.Request, trimmedReason, effectiveDate, now);
-            if (restoredUsedDays > 0m)
-                await AddAdjustmentAuditAsync(state, restoredUsedDays, isHrCancel, trimmedReason, true, now, ct);
+            if (restoredUsedHours > 0m)
+                await AddAdjustmentAuditAsync(state, restoredUsedHours, isHrCancel, trimmedReason, true, now, ct);
         }
 
         await _outbox.EnqueueAsync(
@@ -218,13 +220,13 @@ public sealed class CancelLeaveRequestCommandHandler
                 state.Request.EmployeeId,
                 state.Request.LeaveTypeId,
                 state.LeaveTypeName,
-                state.Request.StartDate,
-                state.Request.EndDate,
+                state.Request.StartAt,
+                state.Request.EndAt,
                 isPartial,
                 state.Request.PartialCancelEffectiveDate,
-                releasedPendingDays,
-                restoredUsedDays,
-                affectedUnpaidDays,
+                releasedPendingHours,
+                restoredUsedHours,
+                affectedUnpaidHours,
                 _currentUser.UserId,
                 currentEmployee.Id,
                 isHrCancel,
@@ -233,7 +235,7 @@ public sealed class CancelLeaveRequestCommandHandler
             _currentUser.TenantId,
             ct);
 
-        await NotifyAsync(state, currentEmployee.Id, isHrCancel, isPartial, openApproverIds, restoredUsedDays, trimmedReason, ct);
+        await NotifyAsync(state, currentEmployee.Id, isHrCancel, isPartial, openApproverIds, restoredUsedHours, trimmedReason, ct);
 
         try
         {
@@ -246,42 +248,52 @@ public sealed class CancelLeaveRequestCommandHandler
 
         var remaining = await RemainingAsync(state, businessDate, ct);
         return Result<CancelLeaveRequestResponse>.Success(LeaveCancellationMapper.ToResponse(
-            state.Request, isPartial, releasedPendingDays, restoredUsedDays, remaining, now));
+            state.Request, isPartial, releasedPendingHours, restoredUsedHours, remaining, now));
     }
 
     private async Task<IReadOnlyList<LeaveRequestDayAllocation>> BuildLegacyAllocationsAsync(
         LeaveCancellationState state, DateTimeOffset now, CancellationToken ct)
     {
-        IReadOnlyCollection<int> workingDays = [];
-        if (state.Employee.LegalEntityId is Guid legalEntityId)
+        var legalEntity = state.LegalEntity;
+        if (legalEntity?.WorkStartTime is null || legalEntity.WorkEndTime is null)
+            return [];
+
+        IReadOnlyCollection<int> workingDays;
+        try
         {
-            var policies = await _policies.ListActiveAggregatesByLegalEntityIdsAsync(
-                _currentUser.TenantId, [legalEntityId], state.Request.StartDate.Year, ct);
-            if (policies.TryGetValue(legalEntityId, out var policy))
-            {
-                var assignment = policy.LegalEntities.FirstOrDefault(x => x.Assignment.LegalEntityId == legalEntityId);
-                try
-                {
-                    workingDays = LegalEntityMapper.ParseStandardWorkingDays(assignment?.StandardWorkingDaysJson ?? "[]");
-                }
-                catch (Exception)
-                {
-                    workingDays = [];
-                }
-            }
+            workingDays = LegalEntityMapper.ParseStandardWorkingDays(legalEntity.StandardWorkingDays);
+        }
+        catch (Exception)
+        {
+            workingDays = [];
         }
 
+        var zone = LeaveCancellationOptions.ResolveTimezone(legalEntity.Timezone) ?? TimeZoneInfo.Utc;
+        // LeaveRequestHourCalculator is a naive clock-time helper: pass local wall time with Offset Zero.
+        var startLocal = LeaveRequestHourCalculator.ToNaiveLocalClock(state.Request.StartAt, zone);
+        var endLocal = LeaveRequestHourCalculator.ToNaiveLocalClock(state.Request.EndAt, zone);
+        var startDate = DateOnly.FromDateTime(startLocal.UtcDateTime);
+        var endDate = DateOnly.FromDateTime(endLocal.UtcDateTime);
         var holidays = await _holidays.ListHolidaysAsync(
-            _currentUser.TenantId, state.Employee.LegalEntityId, state.Request.StartDate, state.Request.EndDate, ct);
-        var calculated = _dayCalculator.Calculate(new LeaveRequestDayCalculationInput(
-            state.Request.StartDate, state.Request.EndDate, state.Request.HalfDayPeriod, workingDays, holidays));
-        if (calculated.CountedDates.Count == 0)
+            _currentUser.TenantId, state.Employee.LegalEntityId, startDate, endDate, ct);
+        var calculated = _hourCalculator.Calculate(new LeaveRequestHourCalculationInput(
+            startLocal,
+            endLocal,
+            legalEntity.WorkStartTime.Value,
+            legalEntity.WorkEndTime.Value,
+            legalEntity.BreakDurationMinutes ?? 0,
+            workingDays,
+            holidays));
+        if (calculated.CountedShiftStartDates.Count == 0)
             return [];
 
         try
         {
             var drafts = _allocationBuilder.Build(
-                calculated.CountedDates, state.Request.HalfDayPeriod, state.Request.PaidDays, state.Request.UnpaidDays);
+                calculated.CountedShiftStartDates,
+                calculated.HoursByShiftStartDate,
+                state.Request.PaidHours,
+                state.Request.UnpaidHours);
             return _allocationBuilder.ToEntities(_currentUser.TenantId, state.Request.Id, drafts, now);
         }
         catch (InvalidOperationException)
@@ -292,14 +304,14 @@ public sealed class CancelLeaveRequestCommandHandler
 
     private async Task AddAdjustmentAuditAsync(
         LeaveCancellationState state,
-        decimal restoredUsedDays,
+        decimal restoredUsedHours,
         bool isHrCancel,
         string? reason,
         bool isPartial,
         DateTimeOffset now,
         CancellationToken ct)
     {
-        if (state.Entitlement is null || restoredUsedDays <= 0m)
+        if (state.Entitlement is null || restoredUsedHours <= 0m)
             return;
 
         var remaining = LeaveEntitlementMapper.Remaining(state.Entitlement);
@@ -310,7 +322,7 @@ public sealed class CancelLeaveRequestCommandHandler
             EmployeeId = state.Request.EmployeeId,
             LeaveTypeId = state.Request.LeaveTypeId,
             ChangeType = LeaveBalanceChangeTypes.Adjustment,
-            DaysChanged = restoredUsedDays,
+            HoursChanged = restoredUsedHours,
             BalanceAfter = remaining,
             Reason = isPartial
                 ? (isHrCancel ? "Leave request partially cancelled by HR" : "Leave request partially cancelled")
@@ -340,8 +352,8 @@ public sealed class CancelLeaveRequestCommandHandler
             ["employeeName"] = employeeName,
             ["cancelledByName"] = cancelledByName,
             ["leaveTypeName"] = state.LeaveTypeName,
-            ["startDate"] = state.Request.StartDate.ToString("yyyy-MM-dd"),
-            ["endDate"] = state.Request.EndDate.ToString("yyyy-MM-dd"),
+            ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
+            ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd"),
             ["effectiveDate"] = state.Request.PartialCancelEffectiveDate?.ToString("yyyy-MM-dd") ?? "",
             ["restoredDays"] = restoredDays.ToString("0.#"),
             ["reason"] = reason ?? ""
@@ -388,14 +400,14 @@ public sealed class CancelLeaveRequestCommandHandler
         if (state.Employee.LegalEntityId is Guid legalEntityId)
         {
             var policies = await _policies.ListActiveAggregatesByLegalEntityIdsAsync(
-                _currentUser.TenantId, [legalEntityId], state.Request.StartDate.Year, ct);
+                _currentUser.TenantId, [legalEntityId], state.Request.StartAt.Year, ct);
             policies.TryGetValue(legalEntityId, out policy);
         }
 
-        var expiry = LeaveEntitlementPlanner.CarryExpiryFromPolicy(policy, state.Request.LeaveTypeId, state.Request.StartDate.Year);
-        var carry = LeaveEntitlementMapper.EffectiveCarry(state.Entitlement.CarriedForwardDays, expiry, businessDate);
+        var expiry = LeaveEntitlementPlanner.CarryExpiryFromPolicy(policy, state.Request.LeaveTypeId, state.Request.StartAt.Year);
+        var carry = LeaveEntitlementMapper.EffectiveCarry(state.Entitlement.CarriedForwardHours, expiry, businessDate);
         return LeaveEntitlementMapper.Remaining(
-            state.Entitlement.TotalDays, carry, state.Entitlement.UsedDays, state.Entitlement.PendingDays);
+            state.Entitlement.TotalHours, carry, state.Entitlement.UsedHours, state.Entitlement.PendingHours);
     }
 
     private static void MarkRequestCancelled(LeaveRequest request, string? reason, DateOnly? effectiveDate, DateTimeOffset now)

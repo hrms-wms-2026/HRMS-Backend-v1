@@ -5,33 +5,34 @@ namespace ONEVO.Application.Features.Leave.Cancellation.Helpers;
 
 public sealed record LeaveRequestDayAllocationDraft(
     DateOnly LeaveDate,
-    decimal DayUnit,
-    decimal PaidUnit,
-    decimal UnpaidUnit);
+    decimal HoursUnit,
+    decimal PaidHoursUnit,
+    decimal UnpaidHoursUnit);
 
 public sealed class LeaveRequestDayAllocationBuilder
 {
     public IReadOnlyList<LeaveRequestDayAllocationDraft> Build(
         IReadOnlyList<DateOnly> countedDates,
-        string? halfDayPeriod,
-        decimal paidDays,
-        decimal unpaidDays)
+        IReadOnlyList<decimal> hoursUnits,
+        decimal paidHours,
+        decimal unpaidHours)
     {
-        var paidRemaining = paidDays;
+        if (countedDates.Count != hoursUnits.Count)
+            throw new InvalidOperationException("Leave day allocations do not match the request total.");
+
+        var paidRemaining = paidHours;
         var rows = new List<LeaveRequestDayAllocationDraft>();
 
-        foreach (var date in countedDates)
+        for (var i = 0; i < countedDates.Count; i++)
         {
-            var unit = !string.IsNullOrWhiteSpace(halfDayPeriod) && countedDates.Count == 1
-                ? 0.5m
-                : 1m;
+            var unit = hoursUnits[i];
             var paid = Math.Min(unit, Math.Max(0m, paidRemaining));
             paidRemaining -= paid;
-            rows.Add(new LeaveRequestDayAllocationDraft(date, unit, paid, unit - paid));
+            rows.Add(new LeaveRequestDayAllocationDraft(countedDates[i], unit, paid, unit - paid));
         }
 
-        var total = rows.Sum(x => x.DayUnit);
-        if (total != paidDays + unpaidDays)
+        var total = rows.Sum(x => x.HoursUnit);
+        if (total != paidHours + unpaidHours)
             throw new InvalidOperationException("Leave day allocations do not match the request total.");
 
         return rows;
@@ -48,9 +49,9 @@ public sealed class LeaveRequestDayAllocationBuilder
             TenantId = tenantId,
             LeaveRequestId = leaveRequestId,
             LeaveDate = draft.LeaveDate,
-            DayUnit = draft.DayUnit,
-            PaidUnit = draft.PaidUnit,
-            UnpaidUnit = draft.UnpaidUnit,
+            HoursUnit = draft.HoursUnit,
+            PaidHoursUnit = draft.PaidHoursUnit,
+            UnpaidHoursUnit = draft.UnpaidHoursUnit,
             Status = LeaveRequestDayAllocationStatuses.Active,
             CreatedAt = now
         }).ToList();

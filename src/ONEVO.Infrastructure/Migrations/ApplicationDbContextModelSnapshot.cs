@@ -4337,7 +4337,7 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnName("id");
 
                     b.Property<decimal>("BalanceAfter")
-                        .HasColumnType("numeric(5,1)")
+                        .HasColumnType("numeric(8,2)")
                         .HasColumnName("balance_after");
 
                     b.Property<string>("ChangeType")
@@ -4354,13 +4354,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
-                    b.Property<decimal>("DaysChanged")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("days_changed");
-
                     b.Property<Guid>("EmployeeId")
                         .HasColumnType("uuid")
                         .HasColumnName("employee_id");
+
+                    b.Property<decimal>("HoursChanged")
+                        .HasColumnType("numeric(8,2)")
+                        .HasColumnName("hours_changed");
 
                     b.Property<Guid>("LeaveTypeId")
                         .HasColumnType("uuid")
@@ -4404,9 +4404,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<decimal>("CarriedForwardDays")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("carried_forward_days");
+                    b.Property<decimal>("CarriedForwardHours")
+                        .HasColumnType("numeric(8,2)")
+                        .HasColumnName("carried_forward_hours");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -4424,9 +4424,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("manual_reason");
 
-                    b.Property<decimal>("PendingDays")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("pending_days");
+                    b.Property<decimal>("PendingHours")
+                        .HasColumnType("numeric(8,2)")
+                        .HasColumnName("pending_hours");
 
                     b.Property<string>("Source")
                         .IsRequired()
@@ -4438,17 +4438,17 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
-                    b.Property<decimal>("TotalDays")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("total_days");
+                    b.Property<decimal>("TotalHours")
+                        .HasColumnType("numeric(8,2)")
+                        .HasColumnName("total_hours");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
-                    b.Property<decimal>("UsedDays")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("used_days");
+                    b.Property<decimal>("UsedHours")
+                        .HasColumnType("numeric(8,2)")
+                        .HasColumnName("used_hours");
 
                     b.Property<int>("Year")
                         .HasColumnType("integer")
@@ -4790,14 +4790,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("employee_id");
 
-                    b.Property<DateOnly>("EndDate")
-                        .HasColumnType("date")
-                        .HasColumnName("end_date");
-
-                    b.Property<string>("HalfDayPeriod")
-                        .HasMaxLength(2)
-                        .HasColumnType("character varying(2)")
-                        .HasColumnName("half_day_period");
+                    b.Property<DateTimeOffset>("EndAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("end_at");
 
                     b.Property<Guid>("LeaveTypeId")
                         .HasColumnType("uuid")
@@ -4807,9 +4802,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("notice_period_missed");
 
-                    b.Property<decimal>("PaidDays")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("paid_days");
+                    b.Property<decimal>("PaidHours")
+                        .HasColumnType("numeric(8,2)")
+                        .HasColumnName("paid_hours");
 
                     b.Property<DateOnly?>("PartialCancelEffectiveDate")
                         .HasColumnType("date")
@@ -4819,9 +4814,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("reason");
 
-                    b.Property<DateOnly>("StartDate")
-                        .HasColumnType("date")
-                        .HasColumnName("start_date");
+                    b.Property<DateTimeOffset>("StartAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("start_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -4837,13 +4832,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
-                    b.Property<decimal>("TotalDays")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("total_days");
+                    b.Property<decimal>("TotalHours")
+                        .HasColumnType("numeric(8,2)")
+                        .HasColumnName("total_hours");
 
-                    b.Property<decimal>("UnpaidDays")
-                        .HasColumnType("numeric(5,1)")
-                        .HasColumnName("unpaid_days");
+                    b.Property<decimal>("UnpaidHours")
+                        .HasColumnType("numeric(8,2)")
+                        .HasColumnName("unpaid_hours");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -4870,7 +4865,7 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("ix_leave_requests_tenant_status");
 
-                    b.HasIndex("TenantId", "StartDate", "EndDate")
+                    b.HasIndex("TenantId", "StartAt", "EndAt")
                         .HasDatabaseName("ix_leave_requests_tenant_start_end");
 
                     b.ToTable("leave_requests", (string)null);
@@ -4951,9 +4946,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<decimal>("DayUnit")
-                        .HasColumnType("numeric(3,1)")
-                        .HasColumnName("day_unit");
+                    b.Property<decimal>("HoursUnit")
+                        .HasColumnType("numeric(8,2)")
+                        .HasColumnName("hours_unit");
 
                     b.Property<DateOnly>("LeaveDate")
                         .HasColumnType("date")
@@ -4963,9 +4958,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("leave_request_id");
 
-                    b.Property<decimal>("PaidUnit")
-                        .HasColumnType("numeric(3,1)")
-                        .HasColumnName("paid_unit");
+                    b.Property<decimal>("PaidHoursUnit")
+                        .HasColumnType("numeric(8,2)")
+                        .HasColumnName("paid_hours_unit");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -4977,9 +4972,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
-                    b.Property<decimal>("UnpaidUnit")
-                        .HasColumnType("numeric(3,1)")
-                        .HasColumnName("unpaid_unit");
+                    b.Property<decimal>("UnpaidHoursUnit")
+                        .HasColumnType("numeric(8,2)")
+                        .HasColumnName("unpaid_hours_unit");
 
                     b.HasKey("Id")
                         .HasName("pk_leave_request_day_allocations");
@@ -7110,7 +7105,7 @@ namespace ONEVO.Infrastructure.Migrations
 
                             t.HasCheckConstraint("ck_legal_entities_week_start_day", "week_start_day BETWEEN 1 AND 7");
 
-                            t.HasCheckConstraint("ck_legal_entities_work_time_pair", "(work_start_time IS NULL AND work_end_time IS NULL) OR (work_start_time IS NOT NULL AND work_end_time IS NOT NULL AND work_start_time < work_end_time)");
+                            t.HasCheckConstraint("ck_legal_entities_work_time_pair", "(work_start_time IS NULL AND work_end_time IS NULL) OR (work_start_time IS NOT NULL AND work_end_time IS NOT NULL)");
                         });
                 });
 

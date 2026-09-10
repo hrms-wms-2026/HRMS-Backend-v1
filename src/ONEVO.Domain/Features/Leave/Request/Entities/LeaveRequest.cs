@@ -8,12 +8,11 @@ public class LeaveRequest : ITenantOwnedEntity
     public Guid TenantId { get; set; }
     public Guid EmployeeId { get; set; }
     public Guid LeaveTypeId { get; set; }
-    public DateOnly StartDate { get; set; }
-    public DateOnly EndDate { get; set; }
-    public string? HalfDayPeriod { get; set; }
-    public decimal TotalDays { get; set; }
-    public decimal PaidDays { get; set; }
-    public decimal UnpaidDays { get; set; }
+    public DateTimeOffset StartAt { get; set; }
+    public DateTimeOffset EndAt { get; set; }
+    public decimal TotalHours { get; set; }
+    public decimal PaidHours { get; set; }
+    public decimal UnpaidHours { get; set; }
     public string? Reason { get; set; }
     public string Status { get; set; } = Common.LeaveRequestStatuses.Pending;
     public Guid? ApprovedBy { get; set; }

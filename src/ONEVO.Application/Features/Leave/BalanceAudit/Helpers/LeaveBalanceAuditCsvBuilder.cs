@@ -8,7 +8,7 @@ public static class LeaveBalanceAuditCsvBuilder
     public static LeaveExportFile Build(IReadOnlyList<LeaveBalanceAuditResponse> rows)
     {
         var sb = new StringBuilder();
-        sb.Append("Employee Number,Employee Name,Leave Type,Change Type,Days Changed,Balance After,Reason,Date\n");
+        sb.Append("Employee Number,Employee Name,Leave Type,Change Type,Hours Changed,Balance After,Reason,Date\n");
 
         foreach (var row in rows)
         {
@@ -16,7 +16,7 @@ public static class LeaveBalanceAuditCsvBuilder
               .Append(Csv(row.EmployeeName)).Append(',')
               .Append(Csv(row.LeaveTypeName)).Append(',')
               .Append(Csv(row.ChangeType)).Append(',')
-              .Append(row.DaysChanged).Append(',')
+              .Append(row.HoursChanged).Append(',')
               .Append(row.BalanceAfter).Append(',')
               .Append(Csv(row.Reason ?? "")).Append(',')
               .Append(row.CreatedAt.ToString("yyyy-MM-dd"))

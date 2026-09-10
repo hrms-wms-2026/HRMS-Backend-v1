@@ -23,8 +23,8 @@ public static class LeaveEntitlementMessages
     public static string AlreadyExists(int year) =>
         $"Entitlements already exist for {year}. Use Recalculate to update";
 
-    public static string NegativeRemaining(decimal newEntitlementDays, decimal usedDays) =>
-        $"New entitlement ({newEntitlementDays:0.#} days) is less than already used ({usedDays:0.#} days). Employee will show negative balance";
+    public static string NegativeRemaining(decimal newEntitlementHours, decimal usedHours) =>
+        $"New entitlement ({newEntitlementHours:0.#} hours) is less than already used ({usedHours:0.#} hours). Employee will show negative balance";
 
     public static string LegalEntityChanged(DateOnly on) =>
         $"Employee changed legal entity on {on:yyyy-MM-dd}";

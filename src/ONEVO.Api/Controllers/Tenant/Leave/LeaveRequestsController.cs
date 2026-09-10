@@ -26,9 +26,8 @@ public sealed class LeaveRequestsController : ControllerBase
         var result = await _mediator.Send(new SubmitLeaveRequestCommand(
             null,
             request.LeaveTypeId,
-            request.StartDate,
-            request.EndDate,
-            request.HalfDayPeriod,
+            request.StartAt,
+            request.EndAt,
             request.Reason,
             request.FileRecordIds ?? [],
             false), ct);
@@ -42,9 +41,8 @@ public sealed class LeaveRequestsController : ControllerBase
         var result = await _mediator.Send(new PreviewSubmitLeaveRequestQuery(
             null,
             request.LeaveTypeId,
-            request.StartDate,
-            request.EndDate,
-            request.HalfDayPeriod,
+            request.StartAt,
+            request.EndAt,
             request.Reason,
             request.FileRecordIds ?? [],
             false), ct);
@@ -58,9 +56,8 @@ public sealed class LeaveRequestsController : ControllerBase
         var result = await _mediator.Send(new SubmitLeaveRequestCommand(
             request.EmployeeId,
             request.LeaveTypeId,
-            request.StartDate,
-            request.EndDate,
-            request.HalfDayPeriod,
+            request.StartAt,
+            request.EndAt,
             request.Reason,
             request.FileRecordIds ?? [],
             true), ct);

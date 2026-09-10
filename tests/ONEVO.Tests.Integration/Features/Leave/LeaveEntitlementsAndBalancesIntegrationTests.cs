@@ -90,6 +90,7 @@ public class LeaveEntitlementsAndBalancesIntegrationTests : IAsyncLifetime
     {
         var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL");
         var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
+        await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
         await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
 
@@ -106,7 +107,7 @@ public class LeaveEntitlementsAndBalancesIntegrationTests : IAsyncLifetime
             csrfToken: _owner.CsrfHeader);
         balances.StatusCode.Should().Be(HttpStatusCode.OK);
         var json = await ReadJsonAsync(balances);
-        json.EnumerateArray().Should().Contain(x => x.GetProperty("annualDays").GetDecimal() == 17.5m);
+        json.EnumerateArray().Should().Contain(x => x.GetProperty("annualHours").GetDecimal() == 140m);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -127,8 +128,8 @@ public class LeaveEntitlementsAndBalancesIntegrationTests : IAsyncLifetime
                 employeeId,
                 leaveTypeId,
                 year = 2026,
-                totalDays = 13.5m,
-                carriedForwardDays = 1.5m,
+                totalHours = 13.5m,
+                carriedForwardHours = 1.5m,
                 reason = "Contractual study leave"
             },
             cookie: _owner.SessionCookie,
@@ -136,8 +137,8 @@ public class LeaveEntitlementsAndBalancesIntegrationTests : IAsyncLifetime
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var json = await ReadJsonAsync(response);
-        json.GetProperty("totalDays").GetDecimal().Should().Be(13.5m);
-        json.GetProperty("carriedForwardDays").GetDecimal().Should().Be(1.5m);
+        json.GetProperty("totalHours").GetDecimal().Should().Be(13.5m);
+        json.GetProperty("carriedForwardHours").GetDecimal().Should().Be(1.5m);
     }
 
     [Fact]
@@ -230,6 +231,18 @@ public class LeaveEntitlementsAndBalancesIntegrationTests : IAsyncLifetime
             .Where(x => x.TenantId == tenantId && x.IsPrimary)
             .Select(x => x.Id)
             .SingleAsync();
+    }
+
+    private async Task EnsureWorkWindowAsync(Guid legalEntityId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var entity = await db.LegalEntities.SingleAsync(x => x.Id == legalEntityId);
+        entity.WorkStartTime = new TimeOnly(9, 0);
+        entity.WorkEndTime = new TimeOnly(18, 0);
+        entity.BreakDurationMinutes = 60;
+        entity.Timezone = "UTC";
+        await db.SaveChangesAsync();
     }
 
     private static object CreatePolicyBody(

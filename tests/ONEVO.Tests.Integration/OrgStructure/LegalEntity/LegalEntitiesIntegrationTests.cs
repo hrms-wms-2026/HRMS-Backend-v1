@@ -411,13 +411,29 @@ public class LegalEntitiesIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Update_WorkStartTimeNotBeforeEndTime_Returns400()
+    public async Task Update_OvernightWorkWindow_Returns200_AndPersists()
     {
-        var company = await CreateCompanyAsync(_tenantA, "Work Time Bad Order Co", "WTBO1", "REG-WTBO1");
+        var company = await CreateCompanyAsync(_tenantA, "Work Time Overnight Co", "WTON1", "REG-WTON1");
 
         var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
             $"/api/v1/org/legal-entities/{company.Id}/general-settings",
-            UpdateBody("Work Time Bad Order Co", "WTBO1", "REG-WTBO1", [1, 2, 3, 4, 5], "18:00", "09:00"),
+            UpdateBody("Work Time Overnight Co", "WTON1", "REG-WTON1", [1, 2, 3, 4, 5], "18:00", "09:00"),
+            cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("workStartTime").GetString().Should().Be("18:00");
+        json.GetProperty("workEndTime").GetString().Should().Be("09:00");
+    }
+
+    [Fact]
+    public async Task Update_BreakCoversWholeShift_Returns400()
+    {
+        var company = await CreateCompanyAsync(_tenantA, "Work Time Break Cover Co", "WTBC1", "REG-WTBC1");
+
+        var response = await SendAsync(HttpMethod.Put, _tenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings",
+            UpdateBody("Work Time Break Cover Co", "WTBC1", "REG-WTBC1", [1, 2, 3, 4, 5], "09:00", "10:00", breakDurationMinutes: 120),
             cookie: _tenantA.SessionCookie, csrfToken: _tenantA.CsrfHeader);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);

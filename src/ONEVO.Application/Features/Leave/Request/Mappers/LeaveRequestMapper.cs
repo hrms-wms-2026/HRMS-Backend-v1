@@ -13,13 +13,13 @@ public static class LeaveRequestMapper
     };
 
     public static LeaveRequestBalanceImpactResponse ToBalanceImpact(
-        decimal currentRemainingDays,
-        decimal currentPendingDays,
-        decimal paidDays) =>
+        decimal currentRemainingHours,
+        decimal currentPendingHours,
+        decimal paidHours) =>
         new(
-            CurrentRemainingDays: currentRemainingDays,
-            PendingAfterSubmitDays: currentPendingDays + paidDays,
-            RemainingAfterSubmitDays: currentRemainingDays - paidDays);
+            CurrentRemainingHours: currentRemainingHours,
+            PendingAfterSubmitHours: currentPendingHours + paidHours,
+            RemainingAfterSubmitHours: currentRemainingHours - paidHours);
 
     public static LeaveRequestListItemResponse ToListItem(LeaveRequest request, string leaveTypeName, string leaveTypeCode) =>
         new(
@@ -28,11 +28,11 @@ public static class LeaveRequestMapper
             request.LeaveTypeId,
             leaveTypeName,
             leaveTypeCode,
-            request.StartDate,
-            request.EndDate,
-            request.TotalDays,
-            request.PaidDays,
-            request.UnpaidDays,
+            request.StartAt,
+            request.EndAt,
+            request.TotalHours,
+            request.PaidHours,
+            request.UnpaidHours,
             request.Status,
             request.NoticePeriodMissed,
             request.CreatedAt,
@@ -63,12 +63,11 @@ public static class LeaveRequestMapper
             request.LeaveTypeId,
             leaveTypeName,
             leaveTypeCode,
-            request.StartDate,
-            request.EndDate,
-            request.HalfDayPeriod,
-            request.TotalDays,
-            request.PaidDays,
-            request.UnpaidDays,
+            request.StartAt,
+            request.EndAt,
+            request.TotalHours,
+            request.PaidHours,
+            request.UnpaidHours,
             request.Status,
             request.NoticePeriodMissed,
             request.SubmittedOnBehalfOfBy,

@@ -78,8 +78,8 @@ public class LeaveEntitlementsController : ControllerBase
             request.EmployeeId,
             request.LeaveTypeId,
             request.Year,
-            request.TotalDays,
-            request.CarriedForwardDays,
+            request.TotalHours,
+            request.CarriedForwardHours,
             request.Reason), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
@@ -91,8 +91,8 @@ public class LeaveEntitlementsController : ControllerBase
     {
         var result = await _mediator.Send(new AdjustEntitlementCommand(
             entitlementId,
-            request.TotalDays,
-            request.CarriedForwardDays,
+            request.TotalHours,
+            request.CarriedForwardHours,
             request.Reason,
             request.ConfirmNegativeRemaining), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);

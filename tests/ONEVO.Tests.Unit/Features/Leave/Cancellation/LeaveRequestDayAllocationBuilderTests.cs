@@ -9,51 +9,54 @@ public class LeaveRequestDayAllocationBuilderTests
     private readonly LeaveRequestDayAllocationBuilder _sut = new();
 
     [Fact]
-    public void Build_FullDayDates_ProduceOneUnitEach()
+    public void Build_FullShifts_UseWorkDayHoursEach()
     {
         var rows = _sut.Build(
             [new DateOnly(2026, 9, 14), new DateOnly(2026, 9, 15), new DateOnly(2026, 9, 16)],
-            null, 3m, 0m);
+            [8m, 8m, 8m],
+            24m, 0m);
         rows.Should().HaveCount(3);
-        rows.Sum(x => x.DayUnit).Should().Be(3m);
-        rows.Sum(x => x.PaidUnit).Should().Be(3m);
+        rows.Sum(x => x.HoursUnit).Should().Be(24m);
+        rows.Sum(x => x.PaidHoursUnit).Should().Be(24m);
     }
 
     [Fact]
-    public void Build_SingleHalfDay_ProducesHalfUnit()
+    public void Build_PartialAfternoon_UsesOverlapHours()
     {
-        var rows = _sut.Build([new DateOnly(2026, 9, 14)], "am", 0.5m, 0m);
+        var rows = _sut.Build([new DateOnly(2026, 9, 14)], [4m], 4m, 0m);
         rows.Should().ContainSingle();
-        rows[0].DayUnit.Should().Be(0.5m);
-        rows[0].PaidUnit.Should().Be(0.5m);
+        rows[0].HoursUnit.Should().Be(4m);
+        rows[0].PaidHoursUnit.Should().Be(4m);
     }
 
     [Fact]
-    public void Build_PaidUnitsAllocatedFromRequestSplit()
+    public void Build_PaidHoursAllocatedFromRequestSplit()
     {
         var rows = _sut.Build(
             [new DateOnly(2026, 9, 14), new DateOnly(2026, 9, 15), new DateOnly(2026, 9, 16)],
-            null, 2m, 1m);
-        rows.Sum(x => x.PaidUnit).Should().Be(2m);
-        rows.Sum(x => x.UnpaidUnit).Should().Be(1m);
-        rows[^1].PaidUnit.Should().Be(0m);
-        rows[^1].UnpaidUnit.Should().Be(1m);
+            [8m, 8m, 8m],
+            16m, 8m);
+        rows.Sum(x => x.PaidHoursUnit).Should().Be(16m);
+        rows.Sum(x => x.UnpaidHoursUnit).Should().Be(8m);
+        rows[^1].PaidHoursUnit.Should().Be(0m);
+        rows[^1].UnpaidHoursUnit.Should().Be(8m);
     }
 
     [Fact]
-    public void Build_UnpaidTailDays_AreNotRestorablePaidDays()
+    public void Build_UnpaidTailHours_AreNotRestorablePaidHours()
     {
         var rows = _sut.Build(
             [new DateOnly(2026, 9, 14), new DateOnly(2026, 9, 15)],
-            null, 1m, 1m);
-        var futurePaid = rows.Where(x => x.LeaveDate >= new DateOnly(2026, 9, 15)).Sum(x => x.PaidUnit);
+            [8m, 8m],
+            8m, 8m);
+        var futurePaid = rows.Where(x => x.LeaveDate >= new DateOnly(2026, 9, 15)).Sum(x => x.PaidHoursUnit);
         futurePaid.Should().Be(0m);
     }
 
     [Fact]
-    public void Build_MismatchBetweenDatesAndTotals_Throws()
+    public void Build_MismatchBetweenHoursAndTotals_Throws()
     {
-        var act = () => _sut.Build([new DateOnly(2026, 9, 14)], null, 1m, 1m);
+        var act = () => _sut.Build([new DateOnly(2026, 9, 14)], [8m], 8m, 8m);
         act.Should().Throw<InvalidOperationException>();
     }
 }

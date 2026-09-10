@@ -38,8 +38,9 @@ public class LegalEntity : ITenantOwnedEntity
     public string TimeFormat { get; set; } = "12h";
 
     // Default company working hours (Phase 1 stand-in ahead of the deferred
-    // Time & Attendance work_schedules/work_schedule_days feature). Same-day
-    // only - both null or both set with WorkStartTime < WorkEndTime.
+    // Time & Attendance work_schedules/work_schedule_days feature). Both null
+    // or both set. Overnight windows are allowed: WorkEndTime <= WorkStartTime
+    // means the end is on the next calendar day.
     public TimeOnly? WorkStartTime { get; set; }
     public TimeOnly? WorkEndTime { get; set; }
 

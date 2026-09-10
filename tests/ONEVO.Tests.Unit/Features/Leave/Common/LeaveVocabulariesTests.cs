@@ -24,14 +24,6 @@ public class LeaveVocabulariesTests
     }
 
     [Fact]
-    public void LeaveHalfDayPeriods_HasNoneAmPm()
-    {
-        Assert.Equal("am", LeaveHalfDayPeriods.Am);
-        Assert.Equal("pm", LeaveHalfDayPeriods.Pm);
-        Assert.Null(LeaveHalfDayPeriods.None);
-    }
-
-    [Fact]
     public void LeaveAccrualMethods_HasSpecValues()
     {
         Assert.Equal("annual", LeaveAccrualMethods.Annual);

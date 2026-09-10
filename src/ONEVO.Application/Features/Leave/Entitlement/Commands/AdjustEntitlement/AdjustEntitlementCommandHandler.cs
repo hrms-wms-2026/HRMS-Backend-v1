@@ -42,18 +42,18 @@ public class AdjustEntitlementCommandHandler
 
         var oldBalance = LeaveEntitlementMapper.Remaining(entitlement);
         var newBalance = LeaveEntitlementMapper.Remaining(
-            request.TotalDays, request.CarriedForwardDays, entitlement.UsedDays, entitlement.PendingDays);
+            request.TotalHours, request.CarriedForwardHours, entitlement.UsedHours, entitlement.PendingHours);
 
         if (newBalance < 0m && !request.ConfirmNegativeRemaining)
         {
             return Result<LeaveEntitlementResponse>.Conflict(
                 LeaveEntitlementMessages.NegativeRemaining(
-                    request.TotalDays + request.CarriedForwardDays, entitlement.UsedDays));
+                    request.TotalHours + request.CarriedForwardHours, entitlement.UsedHours));
         }
 
         var now = _dateTimeProvider.UtcNow;
-        entitlement.TotalDays = request.TotalDays;
-        entitlement.CarriedForwardDays = request.CarriedForwardDays;
+        entitlement.TotalHours = request.TotalHours;
+        entitlement.CarriedForwardHours = request.CarriedForwardHours;
         entitlement.ManualReason = request.Reason.Trim();
         entitlement.UpdatedAt = now;
 
@@ -64,7 +64,7 @@ public class AdjustEntitlementCommandHandler
             EmployeeId = entitlement.EmployeeId,
             LeaveTypeId = entitlement.LeaveTypeId,
             ChangeType = LeaveBalanceChangeTypes.Adjustment,
-            DaysChanged = newBalance - oldBalance,
+            HoursChanged = newBalance - oldBalance,
             BalanceAfter = newBalance,
             Reason = request.Reason.Trim(),
             CreatedAt = now,

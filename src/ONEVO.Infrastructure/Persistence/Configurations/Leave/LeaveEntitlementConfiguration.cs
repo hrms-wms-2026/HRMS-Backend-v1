@@ -13,10 +13,10 @@ public class LeaveEntitlementConfiguration : IEntityTypeConfiguration<LeaveEntit
         builder.ToTable("leave_entitlements");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Source).HasMaxLength(10).IsRequired();
-        builder.Property(e => e.TotalDays).HasColumnType("numeric(5,1)");
-        builder.Property(e => e.UsedDays).HasColumnType("numeric(5,1)");
-        builder.Property(e => e.PendingDays).HasColumnType("numeric(5,1)");
-        builder.Property(e => e.CarriedForwardDays).HasColumnType("numeric(5,1)");
+        builder.Property(e => e.TotalHours).HasColumnType("numeric(8,2)");
+        builder.Property(e => e.UsedHours).HasColumnType("numeric(8,2)");
+        builder.Property(e => e.PendingHours).HasColumnType("numeric(8,2)");
+        builder.Property(e => e.CarriedForwardHours).HasColumnType("numeric(8,2)");
 
         builder.HasIndex(e => new { e.TenantId, e.EmployeeId, e.LeaveTypeId, e.Year })
             .IsUnique()

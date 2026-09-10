@@ -42,7 +42,7 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
                 x.TenantId == tenantId &&
                 x.EmployeeId == request.EmployeeId &&
                 x.LeaveTypeId == request.LeaveTypeId &&
-                x.Year == request.StartDate.Year, ct);
+                x.Year == request.StartAt.Year, ct);
 
         var approvers = await _db.LeaveRequestApprovers
             .Where(x => x.TenantId == tenantId && x.LeaveRequestId == request.Id)
@@ -59,7 +59,7 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
         if (employee.LegalEntityId is Guid legalEntityId)
         {
             var policies = await _policies.ListActiveAggregatesByLegalEntityIdsAsync(
-                tenantId, [legalEntityId], request.StartDate.Year, ct);
+                tenantId, [legalEntityId], request.StartAt.Year, ct);
             if (policies.TryGetValue(legalEntityId, out var policy))
                 approvalMode = policy.Policy.ApprovalMode;
         }
@@ -98,9 +98,15 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
         if (filter.LeaveTypeId is { } leaveTypeId)
             query = query.Where(x => x.request.LeaveTypeId == leaveTypeId);
         if (filter.FromDate is { } from)
-            query = query.Where(x => x.request.EndDate >= from);
+        {
+            var fromStart = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            query = query.Where(x => x.request.EndAt >= fromStart);
+        }
         if (filter.ToDate is { } to)
-            query = query.Where(x => x.request.StartDate <= to);
+        {
+            var toExclusive = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            query = query.Where(x => x.request.StartAt < toExclusive);
+        }
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
             var search = filter.Search.Trim().ToLower();
@@ -139,9 +145,15 @@ public class EfLeaveApprovalRepository : ILeaveApprovalRepository
         if (!string.IsNullOrWhiteSpace(filter.Status))
             query = query.Where(x => x.request.Status == filter.Status);
         if (filter.FromDate is { } from)
-            query = query.Where(x => x.request.EndDate >= from);
+        {
+            var fromStart = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            query = query.Where(x => x.request.EndAt >= fromStart);
+        }
         if (filter.ToDate is { } to)
-            query = query.Where(x => x.request.StartDate <= to);
+        {
+            var toExclusive = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            query = query.Where(x => x.request.StartAt < toExclusive);
+        }
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
             var search = filter.Search.Trim().ToLower();

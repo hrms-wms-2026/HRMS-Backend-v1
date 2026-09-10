@@ -14,8 +14,8 @@ public class LeaveBalanceAuditConfiguration : IEntityTypeConfiguration<LeaveBala
         builder.ToTable("leave_balance_audits");
         builder.HasKey(a => a.Id);
         builder.Property(a => a.ChangeType).HasMaxLength(20).IsRequired();
-        builder.Property(a => a.DaysChanged).HasColumnType("numeric(5,1)");
-        builder.Property(a => a.BalanceAfter).HasColumnType("numeric(5,1)");
+        builder.Property(a => a.HoursChanged).HasColumnType("numeric(8,2)");
+        builder.Property(a => a.BalanceAfter).HasColumnType("numeric(8,2)");
         builder.Property(a => a.Reason).HasMaxLength(500);
 
         builder.HasIndex(a => new { a.TenantId, a.EmployeeId, a.LeaveTypeId })

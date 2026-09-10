@@ -23,7 +23,7 @@ public class GetMyBalancesQueryHandlerTests
         var entitlement = new LeaveEntitlement
         {
             Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id, LeaveTypeId = Guid.NewGuid(),
-            Year = 2026, TotalDays = 10m, CarriedForwardDays = 0m, UsedDays = 3m, PendingDays = 0m,
+            Year = 2026, TotalHours = 10m, CarriedForwardHours = 0m, UsedHours = 3m, PendingHours = 0m,
             Source = LeaveEntitlementSources.Auto
         };
 
@@ -51,6 +51,6 @@ public class GetMyBalancesQueryHandlerTests
         var result = await handler.Handle(new GetMyBalancesQuery(2026), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Should().ContainSingle(x => x.RemainingDays == 7m);
+        result.Value.Should().ContainSingle(x => x.RemainingHours == 7m);
     }
 }

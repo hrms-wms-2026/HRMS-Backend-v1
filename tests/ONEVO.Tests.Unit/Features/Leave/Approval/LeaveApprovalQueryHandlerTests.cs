@@ -142,10 +142,10 @@ public class LeaveApprovalQueryHandlerTests
         TenantId = tenantId,
         EmployeeId = Guid.NewGuid(),
         LeaveTypeId = Guid.NewGuid(),
-        StartDate = new DateOnly(2026, 9, 14),
-        EndDate = new DateOnly(2026, 9, 14),
-        TotalDays = 1m,
-        PaidDays = 1m,
+        StartAt = new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero),
+        EndAt = new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.Zero),
+        TotalHours = 1m,
+        PaidHours = 1m,
         Status = status,
         CreatedAt = DateTimeOffset.UtcNow
     };

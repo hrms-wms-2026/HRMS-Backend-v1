@@ -26,7 +26,7 @@ public class ListTeamBalancesQueryHandlerTests
         var reportEntitlement = new LeaveEntitlement
         {
             Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = reportId, LeaveTypeId = Guid.NewGuid(),
-            Year = 2026, TotalDays = 8m, Source = LeaveEntitlementSources.Auto
+            Year = 2026, TotalHours = 8m, Source = LeaveEntitlementSources.Auto
         };
 
         var currentUser = new Mock<ICurrentUser>();

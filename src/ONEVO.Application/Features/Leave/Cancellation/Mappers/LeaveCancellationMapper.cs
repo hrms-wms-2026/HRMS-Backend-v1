@@ -8,18 +8,18 @@ public static class LeaveCancellationMapper
     public static CancelLeaveRequestResponse ToResponse(
         LeaveRequest request,
         bool isPartialCancellation,
-        decimal releasedPendingDays,
-        decimal restoredUsedDays,
-        decimal remainingDays,
+        decimal releasedPendingHours,
+        decimal restoredUsedHours,
+        decimal remainingHours,
         DateTimeOffset cancelledAt)
         => new(
             request.Id,
             request.Status,
             isPartialCancellation,
             request.PartialCancelEffectiveDate,
-            releasedPendingDays,
-            restoredUsedDays,
-            remainingDays,
+            releasedPendingHours,
+            restoredUsedHours,
+            remainingHours,
             request.CancellationReason,
             cancelledAt);
 }
