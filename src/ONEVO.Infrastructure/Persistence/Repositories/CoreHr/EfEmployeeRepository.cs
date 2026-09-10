@@ -56,6 +56,10 @@ public class EfEmployeeRepository : IEmployeeRepository
     /// earlier in the day doesn't keep badging the employee hours after they resumed activity.</summary>
     private static readonly TimeSpan IdleAlertLookback = TimeSpan.FromHours(1);
 
+    /// <summary>Mirrors LocationRuleEvaluatorJob's own 6-hour alert cooldown, so a stale alert from
+    /// much earlier doesn't keep badging the employee after they returned to range.</summary>
+    private static readonly TimeSpan OutsideWorkLocationAlertLookback = TimeSpan.FromHours(6);
+
     /// <summary>Check-in lookups use this window when deciding whether to show a camera-skip or
     /// outside-work-location warning - a generous superset of any single work day's local-timezone
     /// boundary, not a "recency" signal like IdleAlertLookback above.</summary>
@@ -406,6 +410,9 @@ public class EfEmployeeRepository : IEmployeeRepository
         var idleAlertUserIds = await _notifications.GetEmployeeIdsWithRecentAlertAsync(
             tenantId, candidateUserIds, NotificationType.LongIdleAlert, now - IdleAlertLookback, ct);
 
+        var outsideLocationAlertUserIds = await _notifications.GetEmployeeIdsWithRecentAlertAsync(
+            tenantId, candidateUserIds, NotificationType.OutsideWorkLocationAlert, now - OutsideWorkLocationAlertLookback, ct);
+
         var clockedInCandidates = candidates.Where(row => row.HasClockedInToday).ToList();
         var checkInsByUserId = new Dictionary<Guid, List<Domain.Features.Monitoring.CheckIn.Entities.EmployeeCheckIn>>();
         if (clockedInCandidates.Count > 0)
@@ -449,6 +456,17 @@ public class EfEmployeeRepository : IEmployeeRepository
                     AttentionType = "idle_too_long",
                     AttentionSeverity = "warning",
                     AttentionLabel = "Idle without activity for an extended period during the shift",
+                };
+                continue;
+            }
+
+            if (outsideLocationAlertUserIds.Contains(row.UserId))
+            {
+                overrides[row.EmployeeId] = row.AttendanceSummary with
+                {
+                    AttentionType = "outside_work_location",
+                    AttentionSeverity = "warning",
+                    AttentionLabel = "Moved outside the approved work location while clocked in",
                 };
                 continue;
             }
