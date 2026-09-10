@@ -10,6 +10,7 @@ public static class UploadPurposeCatalog
     public const string CompanyLogo = "company_logo";
     public const string EmployeeAvatar = "employee_avatar";
     public const string GenericDocument = "generic_document";
+    public const string LeaveSupportingDocument = "leave_supporting_document";
     public const string ProjectCover = "project_cover";
     public const string ProjectBanner = "project_banner";
     public const string MonitoringFaceScan = "monitoring_face_scan";
@@ -56,6 +57,15 @@ public static class UploadPurposeCatalog
         [ProjectCover] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [ProjectBanner] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
         [GenericDocument] = new UploadPurposeRule(
+            25 * 1024 * 1024,
+            new[]
+            {
+                "application/pdf", "image/png", "image/jpeg",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            },
+            new[] { ".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx" }),
+        [LeaveSupportingDocument] = new UploadPurposeRule(
             25 * 1024 * 1024,
             new[]
             {

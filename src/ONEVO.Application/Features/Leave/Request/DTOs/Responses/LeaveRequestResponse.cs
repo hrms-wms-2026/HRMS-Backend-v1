@@ -26,6 +26,7 @@ public sealed record LeaveRequestBalanceImpactResponse(
 
 public sealed record LeaveRequestApproverResponse(
     Guid ApproverEmployeeId,
+    string ApproverName,
     int SequenceOrder,
     string Status,
     Guid? DelegatedFromApproverId);
@@ -58,5 +59,7 @@ public sealed record LeaveRequestListItemResponse(
     decimal UnpaidHours,
     string Status,
     bool NoticePeriodMissed,
+    string? ApprovedByName,
+    string? InfoQuestion,
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt);

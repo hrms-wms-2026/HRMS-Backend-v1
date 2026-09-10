@@ -46,8 +46,10 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
         var query =
             from request in _db.LeaveRequests.AsNoTracking()
             join leaveType in _db.LeaveTypes.AsNoTracking() on request.LeaveTypeId equals leaveType.Id
+            join approvedBy in _db.Employees.AsNoTracking() on request.ApprovedBy equals approvedBy.Id into approvedByJoin
+            from approvedBy in approvedByJoin.DefaultIfEmpty()
             where request.TenantId == tenantId && request.EmployeeId == employeeId
-            select new { request, leaveType };
+            select new { request, leaveType, ApprovedByName = approvedBy == null ? null : (approvedBy.FirstName + " " + approvedBy.LastName).Trim() };
 
         if (!string.IsNullOrWhiteSpace(filter.Status))
             query = query.Where(x => x.request.Status == filter.Status);
@@ -68,7 +70,27 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             .OrderByDescending(x => x.request.CreatedAt)
             .ToListAsync(ct);
 
-        return rows.Select(x => new LeaveRequestListRow(x.request, x.leaveType.Name, x.leaveType.Code)).ToList();
+        var infoIds = rows
+            .Where(x => x.request.Status == LeaveRequestStatuses.InformationRequested)
+            .Select(x => x.request.Id)
+            .ToList();
+        var questions = new Dictionary<Guid, string>();
+        if (infoIds.Count > 0)
+        {
+            var messages = await _db.LeaveRequestInfoMessages.AsNoTracking()
+                .Where(message => message.TenantId == tenantId && infoIds.Contains(message.LeaveRequestId))
+                .OrderByDescending(message => message.CreatedAt)
+                .ToListAsync(ct);
+            foreach (var message in messages)
+                questions.TryAdd(message.LeaveRequestId, message.Message);
+        }
+
+        return rows.Select(x => new LeaveRequestListRow(
+            x.request,
+            x.leaveType.Name,
+            x.leaveType.Code,
+            string.IsNullOrWhiteSpace(x.ApprovedByName) ? null : x.ApprovedByName,
+            questions.GetValueOrDefault(x.request.Id))).ToList();
     }
 
     public async Task<IReadOnlyList<LeaveApprovalDelegateRow>> ListActiveDelegatesAsync(
@@ -90,6 +112,36 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             .Select(row => new LeaveApprovalDelegateRow(row.ApproverEmployeeId, row.DelegateEmployeeId))
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<LeaveApprovalDelegateListRow>> ListDelegatesForApproverAsync(
+        Guid tenantId,
+        Guid approverEmployeeId,
+        CancellationToken ct = default)
+    {
+        var rows = await (
+            from row in _db.LeaveApprovalDelegates.AsNoTracking()
+            join person in _db.Employees.AsNoTracking() on row.DelegateEmployeeId equals person.Id
+            where row.TenantId == tenantId && row.ApproverEmployeeId == approverEmployeeId
+            orderby row.StartDate
+            select new LeaveApprovalDelegateListRow(
+                row.Id,
+                row.DelegateEmployeeId,
+                (person.FirstName + " " + person.LastName).Trim(),
+                row.StartDate,
+                row.EndDate)
+        ).ToListAsync(ct);
+        return rows;
+    }
+
+    public async Task AddDelegateAsync(LeaveApprovalDelegate entity, CancellationToken ct = default)
+        => await _db.LeaveApprovalDelegates.AddAsync(entity, ct);
+
+    public Task<LeaveApprovalDelegate?> GetTrackedDelegateAsync(
+        Guid tenantId, Guid id, CancellationToken ct = default)
+        => _db.LeaveApprovalDelegates.FirstOrDefaultAsync(row => row.TenantId == tenantId && row.Id == id, ct);
+
+    public void RemoveDelegate(LeaveApprovalDelegate entity)
+        => _db.LeaveApprovalDelegates.Remove(entity);
 
     public async Task<int> CountDistinctEmployeesPendingOrApprovedInRangeAsync(
         Guid tenantId,

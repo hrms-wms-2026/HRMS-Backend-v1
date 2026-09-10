@@ -68,7 +68,7 @@ public sealed class PreviewSubmitLeaveRequestQueryHandler
             query.IsOnBehalfRequest ? _currentUser.UserId : null,
             LeaveRequestMapper.ToBalanceImpact(draft.CurrentRemaining, draft.Entitlement.PendingHours, draft.PaidHours),
             draft.Approvers.Approvers.Select(a => new LeaveRequestApproverResponse(
-                a.ApproverEmployeeId, a.SequenceOrder, LeaveRequestApproverStatuses.Pending, a.DelegatedFromApproverId)).ToList(),
+                a.ApproverEmployeeId, string.Empty, a.SequenceOrder, LeaveRequestApproverStatuses.Pending, a.DelegatedFromApproverId)).ToList(),
             snapshot,
             _clock.UtcNow));
     }

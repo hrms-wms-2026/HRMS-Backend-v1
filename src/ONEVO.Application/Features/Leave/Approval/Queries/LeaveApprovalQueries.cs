@@ -153,6 +153,9 @@ public sealed class GetLeaveApprovalDetailQueryHandler
                 state.Entitlement.TotalHours, state.Entitlement.CarriedForwardHours,
                 state.Entitlement.UsedHours, state.Entitlement.PendingHours);
 
+        var approverIds = state.Approvers.Select(a => a.ApproverEmployeeId).Distinct().ToList();
+        var approverPeople = await _employees.ListByIdsAsync(_currentUser.TenantId, approverIds, ct);
+
         return Result<LeaveApprovalDetailResponse>.Success(new LeaveApprovalDetailResponse(
             state.Request.Id,
             state.Request.EmployeeId,
@@ -168,7 +171,11 @@ public sealed class GetLeaveApprovalDetailQueryHandler
             state.Request.Status,
             state.Request.Reason,
             state.Approvers.Select(a => new LeaveApprovalApproverResponse(
-                a.ApproverEmployeeId, a.SequenceOrder, a.Status, a.Comment, a.DelegatedFromApproverId, a.DecidedAt)).ToList(),
+                a.ApproverEmployeeId,
+                approverPeople.TryGetValue(a.ApproverEmployeeId, out var person)
+                    ? $"{person.FirstName} {person.LastName}".Trim()
+                    : string.Empty,
+                a.SequenceOrder, a.Status, a.Comment, a.DelegatedFromApproverId, a.DecidedAt)).ToList(),
             state.InfoMessages.Select(m => new LeaveApprovalInfoMessageResponse(m.SenderEmployeeId, m.Message, m.CreatedAt)).ToList(),
             state.Request.ConflictSnapshotJson,
             warnings,

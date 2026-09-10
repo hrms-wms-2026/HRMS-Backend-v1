@@ -15,6 +15,9 @@ public interface IEmployeeRepository
     /// IMilestoneMembershipCoordinator and other EmployeeId-keyed Work Management callers.</summary>
     Task<Employee?> GetByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default);
 
+    Task<IReadOnlyDictionary<Guid, Employee>> ListByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default);
+
     Task<IReadOnlyList<Employee>> ListActiveByLegalEntityAsync(
         Guid tenantId,
         Guid? legalEntityId,

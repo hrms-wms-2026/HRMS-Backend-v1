@@ -237,15 +237,15 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Leave.Calendar.RepositoryInterfaces.ILeaveCalendarRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Leave.Calendar.EfLeaveCalendarRepository>();
-        services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestDayCalculator>();
         services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestHourCalculator>();
         services.AddSingleton<ONEVO.Application.Features.Leave.Calendar.Helpers.LeaveCalendarRequestProjector>();
-        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveHolidayProvider,
-            ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveHolidayProvider>();
-        services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveCalendarHolidayProvider,
-            ONEVO.Application.Features.Leave.Calendar.Services.NoOpLeaveCalendarHolidayProvider>();
+        services.AddScoped<ONEVO.Infrastructure.Services.Leave.EfLeaveHolidayProvider>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveHolidayProvider>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Services.Leave.EfLeaveHolidayProvider>());
+        services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveCalendarHolidayProvider>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Services.Leave.EfLeaveHolidayProvider>());
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveRequestConflictProvider,
-            ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveRequestConflictProvider>();
+            ONEVO.Infrastructure.Services.Leave.EfLeaveRequestConflictProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveApproverResolver,
             ONEVO.Application.Features.Leave.Request.Services.LeaveApproverResolver>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveTeamAbsenceWarningService,
