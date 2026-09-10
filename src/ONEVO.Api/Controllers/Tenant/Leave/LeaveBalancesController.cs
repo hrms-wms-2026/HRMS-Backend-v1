@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.Leave.Balance.Queries.GetMyBalances;
+using ONEVO.Application.Features.Leave.Balance.Queries.GetMyLeaveWorkWindow;
 using ONEVO.Application.Features.Leave.Balance.Queries.ListAllBalances;
 using ONEVO.Application.Features.Leave.Balance.Queries.ListTeamBalances;
 
@@ -22,6 +23,14 @@ public class LeaveBalancesController : ControllerBase
     public async Task<IActionResult> My([FromQuery] int year, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetMyBalancesQuery(year), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("work-window")]
+    [RequireAnyPermission("leave:read-own", "leave:manage")]
+    public async Task<IActionResult> WorkWindow(CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetMyLeaveWorkWindowQuery(), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
