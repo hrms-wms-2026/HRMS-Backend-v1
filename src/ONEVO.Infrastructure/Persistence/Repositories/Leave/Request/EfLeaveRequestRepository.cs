@@ -113,6 +113,36 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<LeaveApprovalDelegateListRow>> ListDelegatesForApproverAsync(
+        Guid tenantId,
+        Guid approverEmployeeId,
+        CancellationToken ct = default)
+    {
+        var rows = await (
+            from row in _db.LeaveApprovalDelegates.AsNoTracking()
+            join person in _db.Employees.AsNoTracking() on row.DelegateEmployeeId equals person.Id
+            where row.TenantId == tenantId && row.ApproverEmployeeId == approverEmployeeId
+            orderby row.StartDate
+            select new LeaveApprovalDelegateListRow(
+                row.Id,
+                row.DelegateEmployeeId,
+                (person.FirstName + " " + person.LastName).Trim(),
+                row.StartDate,
+                row.EndDate)
+        ).ToListAsync(ct);
+        return rows;
+    }
+
+    public async Task AddDelegateAsync(LeaveApprovalDelegate entity, CancellationToken ct = default)
+        => await _db.LeaveApprovalDelegates.AddAsync(entity, ct);
+
+    public Task<LeaveApprovalDelegate?> GetTrackedDelegateAsync(
+        Guid tenantId, Guid id, CancellationToken ct = default)
+        => _db.LeaveApprovalDelegates.FirstOrDefaultAsync(row => row.TenantId == tenantId && row.Id == id, ct);
+
+    public void RemoveDelegate(LeaveApprovalDelegate entity)
+        => _db.LeaveApprovalDelegates.Remove(entity);
+
     public async Task<int> CountDistinctEmployeesPendingOrApprovedInRangeAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> employeeIds,

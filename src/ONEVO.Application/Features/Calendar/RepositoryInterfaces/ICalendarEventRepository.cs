@@ -55,4 +55,7 @@ public interface ICalendarEventRepository
         Guid tenantId, Guid employeeId, DateTimeOffset to, CancellationToken ct = default);
     void Update(CalendarEvent calendarEvent);
     void Remove(CalendarEvent calendarEvent);
+
+    Task<IReadOnlyList<CalendarEvent>> ListBySourceTypeInRangeAsync(
+        Guid tenantId, string sourceType, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
 }
