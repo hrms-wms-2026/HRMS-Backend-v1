@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Application.Features.Monitoring.CheckIn.Commands.TrayClockIn;
 using ONEVO.Application.Features.Monitoring.CheckIn.Commands.TrayClockOut;
+using ONEVO.Application.Features.Monitoring.CheckIn.Commands.TrayEndBreak;
+using ONEVO.Application.Features.Monitoring.CheckIn.Commands.TrayStartBreak;
 using ONEVO.Application.Features.Monitoring.CheckIn.Queries.GetTrayAttendanceStatus;
 
 /// <summary>
@@ -50,6 +52,30 @@ public sealed class TrayAttendanceController : ControllerBase
     public async Task<IActionResult> ClockOut(CancellationToken ct)
     {
         var result = await _mediator.Send(new TrayClockOutCommand(), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        return Ok(result.Value);
+    }
+
+    [HttpPost("break/start")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> StartBreak(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new TrayStartBreakCommand(), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        return Ok(result.Value);
+    }
+
+    [HttpPost("break/end")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> EndBreak(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new TrayEndBreakCommand(), ct);
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
         return Ok(result.Value);

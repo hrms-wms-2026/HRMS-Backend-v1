@@ -272,6 +272,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<WorkAreaChangeRequest> WorkAreaChangeRequests => Set<WorkAreaChangeRequest>();
     public DbSet<EmployeeWorkLocation> EmployeeWorkLocations => Set<EmployeeWorkLocation>();
     public DbSet<LocationChangeRequest> LocationChangeRequests => Set<LocationChangeRequest>();
+    public DbSet<ONEVO.Domain.Features.TimeAttendance.Entities.DailyWorkLocationConfirmation> DailyWorkLocationConfirmations
+        => Set<ONEVO.Domain.Features.TimeAttendance.Entities.DailyWorkLocationConfirmation>();
 
     // Storage - EntityAssets (Phase 1 entity_assets, scoped to owner_type "project" for now)
     public DbSet<EntityAsset> EntityAssets => Set<EntityAsset>();

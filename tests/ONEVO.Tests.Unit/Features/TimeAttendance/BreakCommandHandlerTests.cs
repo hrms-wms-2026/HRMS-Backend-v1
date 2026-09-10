@@ -64,6 +64,31 @@ public sealed class BreakCommandHandlerTests
     }
 
     [Fact]
+    public async Task StartBreak_HandleForContextAsync_AutoDetectedTrue_MarksBreakRecordAutoDetected()
+    {
+        // Exercises the tray's path (TrayStartBreakCommandHandler calls this directly with
+        // autoDetected: true) so the resulting BreakRecord is attributable to the desktop tray.
+        var fixture = CreateFixture();
+        var record = ActiveAttendance();
+        BreakRecord? added = null;
+        fixture.Attendance
+            .Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(record);
+        fixture.Attendance
+            .Setup(x => x.AddBreakAsync(It.IsAny<BreakRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<BreakRecord, CancellationToken>((value, _) => added = value)
+            .Returns(Task.CompletedTask);
+        var contextResult = await fixture.TodayState.Object.ResolveContextAsync(CancellationToken.None);
+        var context = contextResult.Value!;
+
+        var result = await fixture.StartBreak.HandleForContextAsync(context, autoDetected: true, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(added);
+        Assert.True(added!.AutoDetected);
+    }
+
+    [Fact]
     public async Task StartBreak_DoesNotRevertApprovedExpectedWorkAreaSnapshotToLiveContextArea()
     {
         // Today's live context happens to resolve to "onsite" (e.g. a later date's fallback),
@@ -428,6 +453,9 @@ public sealed class BreakCommandHandlerTests
         var todayResponse = CreateTodayResponse();
         todayState
             .Setup(x => x.GetTodayAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayResponse>.Success(todayResponse));
+        todayState
+            .Setup(x => x.GetTodayAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<AttendanceTodayResponse>.Success(todayResponse));
 
         var attendance = new Mock<IAttendanceReadRepository>();

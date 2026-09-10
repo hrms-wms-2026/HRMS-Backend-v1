@@ -77,6 +77,18 @@ public sealed class TimeTrackingController(IMediator mediator) : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    [HttpGet("monthly-summary")]
+    public async Task<IActionResult> MonthlySummary(
+        [FromQuery] DateOnly from,
+        [FromQuery] DateOnly to,
+        CancellationToken ct = default)
+    {
+        var result = await mediator.Send(new GetMyAttendanceMonthlySummaryQuery(from, to), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     [HttpGet("covered-history")]
     [RequirePermission("attendance:read")]
     public async Task<IActionResult> CoveredHistory(

@@ -197,6 +197,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.ILocationChangeRequestRepository,
             ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfLocationChangeRequestRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IDailyWorkLocationConfirmationRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfDailyWorkLocationConfirmationRepository>();
 
         services.AddScoped<
             ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestReadRepository,
@@ -536,6 +539,8 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Settings.EfMonitoringFeatureTogglesRepository>();
         services.AddHostedService<
             ONEVO.Infrastructure.Services.Monitoring.Notifications.WellnessRuleEvaluatorJob>();
+        services.AddHostedService<
+            ONEVO.Infrastructure.Services.Monitoring.Notifications.LocationRuleEvaluatorJob>();
 
         // Monitoring - Screenshots
         services.AddScoped<

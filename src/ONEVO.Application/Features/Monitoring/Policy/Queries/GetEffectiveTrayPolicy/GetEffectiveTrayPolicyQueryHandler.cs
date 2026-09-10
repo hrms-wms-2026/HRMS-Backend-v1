@@ -86,9 +86,11 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
         var todayContextResult = await _todayState.ResolveContextAsync(tenantId, employeeId, cancellationToken);
         var trayClockInEnabled = todayContextResult.IsSuccess
             && todayContextResult.Value!.AllowedClockInMethods.DesktopTray;
+        var scheduleStart = todayContextResult.IsSuccess ? todayContextResult.Value!.Schedule.Start : null;
+        var scheduleEnd = todayContextResult.IsSuccess ? todayContextResult.Value!.Schedule.End : null;
 
         return Result<TrayAgentPolicyDto>.Success(new TrayAgentPolicyDto(
-            ComputeVersion(locationEnabled, activityEnabled, appUsageEnabled, screenshotEnabled, autoScreenshotEnabled, cameraEnabled, idleThresholdMinutes, trayClockInEnabled),
+            ComputeVersion(locationEnabled, activityEnabled, appUsageEnabled, screenshotEnabled, autoScreenshotEnabled, cameraEnabled, idleThresholdMinutes, trayClockInEnabled, scheduleStart, scheduleEnd),
             activityEnabled,
             appUsageEnabled,
             screenshotEnabled,
@@ -98,7 +100,9 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
             now.Add(PolicyValidity),
             EffectiveScope: "employee",
             LocationTrackingEnabled: locationEnabled,
-            TrayClockInEnabled: trayClockInEnabled));
+            TrayClockInEnabled: trayClockInEnabled,
+            ScheduleStart: scheduleStart,
+            ScheduleEnd: scheduleEnd));
     }
 
     internal static string ComputeVersion(
@@ -109,10 +113,12 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
         bool autoScreenshotEnabled,
         bool cameraEnabled,
         int idleThresholdMinutes,
-        bool trayClockInEnabled)
+        bool trayClockInEnabled,
+        TimeOnly? scheduleStart = null,
+        TimeOnly? scheduleEnd = null)
     {
         var fingerprint =
-            $"{locationEnabled}:{activityEnabled}:{appUsageEnabled}:{screenshotEnabled}:{autoScreenshotEnabled}:{cameraEnabled}:{idleThresholdMinutes}:{trayClockInEnabled}";
+            $"{locationEnabled}:{activityEnabled}:{appUsageEnabled}:{screenshotEnabled}:{autoScreenshotEnabled}:{cameraEnabled}:{idleThresholdMinutes}:{trayClockInEnabled}:{scheduleStart}:{scheduleEnd}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint)))[..16];
     }
 }

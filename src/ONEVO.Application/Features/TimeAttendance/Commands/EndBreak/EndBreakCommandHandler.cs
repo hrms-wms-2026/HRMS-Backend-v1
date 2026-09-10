@@ -21,7 +21,16 @@ public sealed class EndBreakCommandHandler(
         if (!contextResult.IsSuccess)
             return ToTodayFailure(contextResult);
 
-        var context = contextResult.Value!;
+        return await HandleForContextAsync(contextResult.Value!, ct);
+    }
+
+    /// <summary>
+    /// Shared mutation entry point for both the web command above and
+    /// <c>TrayEndBreakCommandHandler</c>, which resolves its own tray-device context.
+    /// </summary>
+    public async Task<Result<AttendanceTodayResponse>> HandleForContextAsync(
+        AttendanceTodayContext context, CancellationToken ct)
+    {
         if (context.Schedule.Status != "configured")
             return Result<AttendanceTodayResponse>.Conflict("schedule_not_configured");
 
@@ -42,7 +51,7 @@ public sealed class EndBreakCommandHandler(
             return Result<AttendanceTodayResponse>.Conflict("break_already_ended");
         }
 
-        return await todayState.GetTodayAsync(ct);
+        return await todayState.GetTodayAsync(context.Employee.TenantId, context.Employee.UserId, ct);
     }
 
     private async Task<Result<bool>> MutateAsync(

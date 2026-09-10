@@ -545,6 +545,47 @@ public sealed class EfEmployeeRepositoryTests
     }
 
     [Fact]
+    public async Task ListVisibleAsync_ShowsOutsideWorkLocationWarning_WhenRecentOutsideWorkLocationAlertExists()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var employee = NewEmployee(tenantId, "E-001");
+        employee.LegalEntityId = legalEntityId;
+        var now = new DateTimeOffset(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
+        db.Employees.Add(employee);
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
+            Date = new DateOnly(2026, 8, 21), ActualStart = new DateTimeOffset(2026, 8, 21, 4, 0, 0, TimeSpan.Zero),
+        });
+        db.MonitoringNotifications.Add(new Notification
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.UserId,
+            Type = NotificationType.OutsideWorkLocationAlert, Title = "Left the work area", Message = "outside",
+            CreatedAt = now.AddMinutes(-10),
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        var repo = new EfEmployeeRepository(
+            db, toggles: toggles.Object, notifications: new EfNotificationRepository(db), checkIns: new EfCheckInRepository(db));
+
+        var (items, _) = await repo.ListVisibleAsync(
+            tenantId, EmployeeVisibilityScope.Unrestricted(),
+            new EmployeeListFilter(null, null, legalEntityId, new[] { employee.Id }),
+            1, 25, CancellationToken.None, new EmployeeListAttendanceOptions(now));
+
+        var summary = Assert.Single(items).AttendanceSummary;
+        Assert.NotNull(summary);
+        Assert.Equal("outside_work_location", summary!.AttentionType);
+        Assert.Equal("warning", summary.AttentionSeverity);
+    }
+
+    [Fact]
     public async Task ListVisibleAsync_ShowsCameraSkippedWarning_WhenClockedInWithoutFaceScan_AndCameraRequired()
     {
         await using var db = BuildInMemoryDb();

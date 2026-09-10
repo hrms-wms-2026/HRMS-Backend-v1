@@ -4,6 +4,13 @@ namespace ONEVO.Tests.Unit.Fakes;
 
 public sealed class FakeDateTimeProvider : IDateTimeProvider
 {
-    public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
-    public DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
+    private DateTimeOffset _utcNow = DateTimeOffset.UtcNow;
+
+    public DateTimeOffset UtcNow
+    {
+        get => _utcNow;
+        set => _utcNow = value;
+    }
+
+    public DateOnly Today => DateOnly.FromDateTime(_utcNow.Date);
 }
