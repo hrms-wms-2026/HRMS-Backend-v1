@@ -10,7 +10,8 @@ public sealed record GraphEventDto(
     bool IsAllDay,
     string? Timezone,
     string? Location,
-    bool IsCancelled);
+    bool IsCancelled,
+    bool IsPrivate);
 
 public sealed record GraphCalendarPage(IReadOnlyList<GraphEventDto> Events, string? NextDeltaLink);
 

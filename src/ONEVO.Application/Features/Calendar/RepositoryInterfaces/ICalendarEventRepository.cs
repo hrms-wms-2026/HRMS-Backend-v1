@@ -55,4 +55,10 @@ public interface ICalendarEventRepository
         Guid tenantId, Guid employeeId, DateTimeOffset to, CancellationToken ct = default);
     void Update(CalendarEvent calendarEvent);
     void Remove(CalendarEvent calendarEvent);
+
+    /// <summary>Manual events the caller created that changed after `since` and are not soft-deleted -
+    /// candidates for CalendarSyncService's push direction. Recurring masters/children are excluded
+    /// (Recurrence != None) - pushing recurring events to external providers is a follow-on, not this pass.</summary>
+    Task<IReadOnlyList<CalendarEvent>> GetManualEventsUpdatedSinceForUserAsync(
+        Guid tenantId, Guid userId, DateTimeOffset since, CancellationToken ct = default);
 }

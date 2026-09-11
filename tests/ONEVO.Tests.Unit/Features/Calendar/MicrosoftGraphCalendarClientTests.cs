@@ -108,7 +108,8 @@ public sealed class MicrosoftGraphCalendarClientTests
             IsAllDay: false,
             Timezone: "UTC",
             Location: "HQ",
-            IsCancelled: false);
+            IsCancelled: false,
+            IsPrivate: false);
 
         var result = await sut.CreateEventAsync("at-1", toCreate, CancellationToken.None);
 
@@ -185,7 +186,8 @@ public sealed class MicrosoftGraphCalendarClientTests
             IsAllDay: false,
             Timezone: "Pacific Standard Time",
             Location: "HQ",
-            IsCancelled: false);
+            IsCancelled: false,
+            IsPrivate: false);
 
         await sut.CreateEventAsync("at-1", toCreate, CancellationToken.None);
 

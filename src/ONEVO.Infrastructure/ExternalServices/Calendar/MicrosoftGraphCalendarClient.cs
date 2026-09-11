@@ -85,7 +85,8 @@ public sealed class MicrosoftGraphCalendarClient(HttpClient httpClient) : IMicro
                 IsAllDay: false,
                 Timezone: null,
                 Location: null,
-                IsCancelled: true);
+                IsCancelled: true,
+                IsPrivate: false);
         }
 
         var start = item.GetProperty("start");
@@ -102,6 +103,7 @@ public sealed class MicrosoftGraphCalendarClient(HttpClient httpClient) : IMicro
             IsAllDay: item.TryGetProperty("isAllDay", out var allDay) && allDay.GetBoolean(),
             Timezone: timezone,
             Location: item.TryGetProperty("location", out var loc) && loc.TryGetProperty("displayName", out var name) ? name.GetString() : null,
-            IsCancelled: item.TryGetProperty("isCancelled", out var cancelled) && cancelled.GetBoolean());
+            IsCancelled: item.TryGetProperty("isCancelled", out var cancelled) && cancelled.GetBoolean(),
+            IsPrivate: item.TryGetProperty("sensitivity", out var sens) && (sens.GetString() == "private" || sens.GetString() == "confidential"));
     }
 }

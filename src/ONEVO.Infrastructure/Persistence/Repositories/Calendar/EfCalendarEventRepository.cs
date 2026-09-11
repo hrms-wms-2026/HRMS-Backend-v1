@@ -100,4 +100,13 @@ public class EfCalendarEventRepository : ICalendarEventRepository
 
     public void Update(CalendarEvent calendarEvent) => _db.PersonalCalendarEvents.Update(calendarEvent);
     public void Remove(CalendarEvent calendarEvent) => _db.PersonalCalendarEvents.Remove(calendarEvent);
+
+    public async Task<IReadOnlyList<CalendarEvent>> GetManualEventsUpdatedSinceForUserAsync(
+        Guid tenantId, Guid userId, DateTimeOffset since, CancellationToken ct = default)
+        => await _db.PersonalCalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.CreatedById == userId
+                        && e.SourceType == CalendarEventSourceTypes.Manual
+                        && e.Recurrence == CalendarRecurrences.None
+                        && (e.UpdatedAt ?? e.CreatedAt) > since)
+            .ToListAsync(ct);
 }

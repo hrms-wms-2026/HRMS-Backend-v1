@@ -10,7 +10,8 @@ public sealed record GoogleCalendarEventDto(
     bool IsAllDay,
     string? Timezone,
     string? Location,
-    bool IsCancelled);
+    bool IsCancelled,
+    bool IsPrivate);
 
 public sealed record GoogleCalendarPage(IReadOnlyList<GoogleCalendarEventDto> Events, string? NextSyncToken);
 

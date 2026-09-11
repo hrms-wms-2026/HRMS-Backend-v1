@@ -96,7 +96,8 @@ public sealed class GoogleCalendarClient(HttpClient httpClient) : IGoogleCalenda
                 IsAllDay: false,
                 Timezone: null,
                 Location: null,
-                IsCancelled: true);
+                IsCancelled: true,
+                IsPrivate: false);
         }
 
         var start = item.GetProperty("start");
@@ -117,6 +118,7 @@ public sealed class GoogleCalendarClient(HttpClient httpClient) : IGoogleCalenda
             IsAllDay: isAllDay,
             Timezone: !isAllDay && start.TryGetProperty("timeZone", out var tz) ? tz.GetString() : null,
             Location: item.TryGetProperty("location", out var loc) ? loc.GetString() : null,
-            IsCancelled: status == "cancelled");
+            IsCancelled: status == "cancelled",
+            IsPrivate: item.TryGetProperty("visibility", out var vis) && (vis.GetString() == "private" || vis.GetString() == "confidential"));
     }
 }

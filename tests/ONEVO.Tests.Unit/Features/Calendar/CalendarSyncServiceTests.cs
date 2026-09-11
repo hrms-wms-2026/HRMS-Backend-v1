@@ -1,0 +1,150 @@
+using Moq;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
+using ONEVO.Domain.Features.Calendar.Entities;
+using ONEVO.Infrastructure.Services.Calendar;
+using Microsoft.Extensions.Logging.Abstractions;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.Calendar;
+
+public sealed class CalendarSyncServiceTests
+{
+    private static readonly Guid TenantId = Guid.NewGuid();
+    private static readonly Guid ConnectionId = Guid.NewGuid();
+
+    private readonly Mock<IExternalCalendarConnectionRepository> _connections = new();
+    private readonly Mock<IExternalCalendarEventLinkRepository> _links = new();
+    private readonly Mock<ICalendarEventRepository> _events = new();
+    private readonly Mock<ICalendarOAuthTokenExchangeClient> _tokenClient = new();
+    private readonly Mock<IGoogleCalendarClient> _googleClient = new();
+    private readonly Mock<IMicrosoftGraphCalendarClient> _msClient = new();
+    private readonly Mock<IPlatformOAuthAppResolver> _appResolver = new();
+    private readonly Mock<IEncryptionService> _encryption = new();
+    private readonly Mock<IUnitOfWork> _unitOfWork = new();
+
+    // Note: CalendarSyncService.SyncConnectionAsync deliberately does NOT wrap its writes in
+    // unitOfWork.ExecuteInTransactionAsync - it runs one connection's whole pull+push cycle as a
+    // single unit of work bounded by the one SaveChangesAsync call at the end of the outer method,
+    // which is the correct granularity for a background job syncing one connection (see the
+    // service's own comment). So no ExecuteInTransactionAsync mock setup is needed here - a
+    // placeholder setup that's never invoked would just be dead code.
+    private CalendarSyncService BuildSut()
+    {
+        _encryption.Setup(x => x.DecryptBytes(It.IsAny<byte[]>())).Returns("decrypted-token");
+        _encryption.Setup(x => x.EncryptBytes(It.IsAny<string>())).Returns<string>(s => System.Text.Encoding.UTF8.GetBytes(s));
+        return new CalendarSyncService(
+            _connections.Object, _links.Object, _events.Object, _tokenClient.Object,
+            _googleClient.Object, _msClient.Object, _appResolver.Object, _encryption.Object,
+            _unitOfWork.Object, NullLogger<CalendarSyncService>.Instance);
+    }
+
+    private static ExternalCalendarConnection MakeConnection(string syncDirection, DateTimeOffset? expiresAt = null) => new()
+    {
+        Id = ConnectionId, TenantId = TenantId, UserId = Guid.NewGuid(),
+        Provider = CalendarExternalSources.GoogleCalendar, ExternalAccountEmail = "me@acme.com",
+        ExternalCalendarId = "me@acme.com", AccessTokenEncrypted = [1], RefreshTokenEncrypted = [2],
+        SyncDirection = syncDirection, Status = ExternalCalendarConnectionStatuses.Active,
+        ExpiresAt = expiresAt ?? DateTimeOffset.UtcNow.AddHours(1)
+    };
+
+    [Fact]
+    public async Task SyncConnectionAsync_ConnectionNotFound_DoesNothing()
+    {
+        var sut = BuildSut();
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarConnection?)null);
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        _googleClient.Verify(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_DisabledDirection_SkipsSync()
+    {
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.Disabled);
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        _googleClient.Verify(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_PullOnly_UpsertsNewEventAsCalendarEvent()
+    {
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.PullOnly);
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _googleClient.Setup(x => x.ListEventsAsync("decrypted-token", "me@acme.com", null, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GoogleCalendarPage(
+                [new GoogleCalendarEventDto("ext-1", "etag-1", "Standup", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), false, "UTC", null, false, false)],
+                "sync-token-1"));
+        _links.Setup(x => x.GetTrackedByConnectionAndExternalEventAsync(TenantId, ConnectionId, "ext-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarEventLink?)null);
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        _events.Verify(x => x.AddAsync(It.Is<CalendarEvent>(e => e.Title == "Standup" && e.SourceType == CalendarEventSourceTypes.ExternalSync), It.IsAny<CancellationToken>()), Times.Once);
+        _links.Verify(x => x.AddAsync(It.Is<ExternalCalendarEventLink>(l => l.ExternalEventId == "ext-1" && l.SyncStatus == ExternalCalendarSyncStatuses.Synced), It.IsAny<CancellationToken>()), Times.Once);
+        _connections.Verify(x => x.Update(It.Is<ExternalCalendarConnection>(c => c.FailureCount == 0 && c.LastSyncedAt != null)), Times.Once);
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_PullOnly_PrivateEvent_RedactsTitleAndDescription()
+    {
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.PullOnly);
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _googleClient.Setup(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GoogleCalendarPage(
+                [new GoogleCalendarEventDto("ext-2", "etag-2", "Doctor appointment", "sensitive details", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), false, "UTC", "Clinic", false, IsPrivate: true)],
+                null));
+        _links.Setup(x => x.GetTrackedByConnectionAndExternalEventAsync(TenantId, ConnectionId, "ext-2", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarEventLink?)null);
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        _events.Verify(x => x.AddAsync(It.Is<CalendarEvent>(e =>
+            e.Title == "Busy" && e.Description == null && e.Location == null && e.IsPrivate), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_TokenRefreshFails_SetsReauthRequiredAndSkipsSync()
+    {
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.PullOnly, expiresAt: DateTimeOffset.UtcNow.AddMinutes(2));
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _appResolver.Setup(x => x.GetActiveCredentialForProviderAsync("google", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces.ResolvedPlatformOAuthAppCredential("google", "client", "secret", null, 1));
+        _appResolver.Setup(x => x.GetActiveAppForProviderAsync("google", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces.ResolvedPlatformOAuthApp("google", "client", "https://accounts.google.com/o/oauth2/v2/auth", "https://oauth2.googleapis.com/token", ["scope"]));
+        _tokenClient.Setup(x => x.RefreshTokenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("invalid_grant"));
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        _connections.Verify(x => x.Update(It.Is<ExternalCalendarConnection>(c => c.Status == ExternalCalendarConnectionStatuses.ReauthRequired)), Times.Once);
+        _googleClient.Verify(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_ListEventsThrows_IncrementsFailureCount()
+    {
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.PullOnly);
+        connection.FailureCount = 2;
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _googleClient.Setup(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("rate limited"));
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        _connections.Verify(x => x.Update(It.Is<ExternalCalendarConnection>(c => c.FailureCount == 3 && c.Status == ExternalCalendarConnectionStatuses.Failed)), Times.Once);
+    }
+}

@@ -134,7 +134,8 @@ public sealed class GoogleCalendarClientTests
             IsAllDay: false,
             Timezone: "UTC",
             Location: "HQ",
-            IsCancelled: false);
+            IsCancelled: false,
+            IsPrivate: false);
 
         var result = await sut.InsertEventAsync("at-1", "primary", toInsert, CancellationToken.None);
 
