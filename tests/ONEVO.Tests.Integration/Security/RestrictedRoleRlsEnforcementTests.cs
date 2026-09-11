@@ -16,7 +16,6 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Legal;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Security;
 
@@ -36,12 +35,6 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
     private const string RestrictedRoleName = "rls_enforcement_test_role";
     private const string RestrictedRolePassword = "rls-enforcement-test-role-password";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_rls_enforcement_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
-
     private readonly SystemDateTimeProvider _clock = new();
 
     private string _connectionString = string.Empty;
@@ -52,12 +45,9 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         var tenantA = NewTenant("RLS Test Tenant A", "rls-test-tenant-a");
         var tenantB = NewTenant("RLS Test Tenant B", "rls-test-tenant-b");
@@ -132,7 +122,7 @@ public sealed class RestrictedRoleRlsEnforcementTests : IAsyncLifetime
         _restrictedConnectionString = restrictedBuilder.ConnectionString;
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task RestrictedRole_IsNotSuperuserAndDoesNotBypassRls()

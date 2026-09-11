@@ -21,7 +21,6 @@ using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
 using Npgsql;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Features.TimeAttendance;
@@ -60,7 +59,6 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
 
     private readonly CapturingEmailService _email = new();
 
-    private PostgreSqlContainer? _postgres;
     private string _connectionString = null!;
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
@@ -86,17 +84,13 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
         _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
-            _postgres = new PostgreSqlBuilder()
-                .WithImage("postgres:16-alpine")
-                .WithDatabase("onevo_attendance_corrections_test")
-                .WithUsername("test")
-                .WithPassword("test")
-                .Build();
-            await _postgres.StartAsync();
-            _connectionString = _postgres.GetConnectionString();
+            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
+            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
-
-        await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
+        else
+        {
+            await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
+        }
 
         // AdminTestFactory/IntegrationDatabaseBootstrap migrates as the Testcontainers superuser
         // (see E2ETestFactory.ConfigureWebHost), not as onevo_migrator, so the production
@@ -149,8 +143,6 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         _factory.Dispose();
-        if (_postgres is not null)
-            await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 

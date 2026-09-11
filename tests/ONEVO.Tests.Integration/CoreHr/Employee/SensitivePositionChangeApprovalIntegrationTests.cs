@@ -26,7 +26,6 @@ using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
@@ -41,11 +40,6 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
 {
     private const string TenantSlug = "sensitive-pos-change-approval";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_sensitive_position_change_approval_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private readonly AesEncryptionService _encryption = new(
@@ -73,12 +67,9 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         _tenantId = Guid.NewGuid();
         _legalEntityId = Guid.NewGuid();
@@ -152,7 +143,7 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
             _tenantId, _selfApproveEmployeeId, _selfApproveFromPositionId, hireDate, _managerUserId, reportsToEmployeeId: null))!.Value;
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task WriterRequestsSensitiveChange_ManagerApproves_EndsOldAndActivatesReserved()
@@ -336,11 +327,11 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
             PositionAssignmentRepositoryTestSupport.CreateRepository(db),
             new UnitOfWork(db),
             new StubCurrentUser(_tenantId, userId, orgManage: true, sensitive: false),
-            new EfAuthRepository(db),
+            new EfPermissionRepository(db),
             new EfAccessGrantRequestRepository(db),
             _clock,
             new OutboxWriter(db, _encryption, _clock),
-            new EfAuthRepository(db),
+            new EfUserRepository(db),
             new EfTenantRepository(db),
             new EmployeeOffboardingLockGuard(employees));
     }
@@ -348,13 +339,14 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
     private ApproveAccessGrantRequestCommandHandler BuildApproveHandler(Guid userId)
     {
         var db = CreateContext(_tenantId, TenantSlug);
-        var auth = new EfAuthRepository(db);
+        var authUsers = new EfUserRepository(db);
+        var authUserRoles = new EfUserRoleRepository(db);
         return new ApproveAccessGrantRequestCommandHandler(
             new EfAccessGrantRequestRepository(db),
             new EfOnboardingDraftRepository(db),
             new EfEmployeeRepository(db),
-            auth,
-            auth,
+            authUsers,
+            authUserRoles,
             new EfPositionRepository(db),
             PositionAssignmentRepositoryTestSupport.CreateRepository(db),
             new EfLegalEntityRepository(db),

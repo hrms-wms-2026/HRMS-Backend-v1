@@ -41,7 +41,7 @@ public sealed class EfPlatformAccessRepositoryRoleLookupTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPlatformAccessRepository(db, BuildClock());
+        var repository = new EfPlatformUserRepository(db);
 
         var result = await repository.GetFirstRoleNamesByUserIdsAsync(new[] { user.Id }, CancellationToken.None);
 
@@ -58,7 +58,7 @@ public sealed class EfPlatformAccessRepositoryRoleLookupTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPlatformAccessRepository(db, BuildClock());
+        var repository = new EfPlatformUserRepository(db);
 
         var result = await repository.GetFirstRoleNamesByUserIdsAsync(new[] { user.Id }, CancellationToken.None);
 
@@ -69,7 +69,7 @@ public sealed class EfPlatformAccessRepositoryRoleLookupTests
     public async Task GetFirstRoleNamesByUserIdsAsync_EmptyInput_ReturnsEmptyDictionaryWithoutQuerying()
     {
         await using var db = BuildInMemoryDb();
-        var repository = new EfPlatformAccessRepository(db, BuildClock());
+        var repository = new EfPlatformUserRepository(db);
 
         var result = await repository.GetFirstRoleNamesByUserIdsAsync(Array.Empty<Guid>(), CancellationToken.None);
 

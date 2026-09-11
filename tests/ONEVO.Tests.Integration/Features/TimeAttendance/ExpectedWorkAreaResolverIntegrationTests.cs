@@ -12,8 +12,8 @@ using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
+using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Features.TimeAttendance;
@@ -35,7 +35,6 @@ namespace ONEVO.Tests.Integration.Features.TimeAttendance;
 /// </summary>
 public sealed class ExpectedWorkAreaResolverIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer? _postgres;
     private string _connectionString = null!;
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid OtherTenantId = Guid.NewGuid();
@@ -45,39 +44,22 @@ public sealed class ExpectedWorkAreaResolverIntegrationTests : IAsyncLifetime
     private static readonly Guid OtherEmployeeId = Guid.NewGuid();
     private static readonly DateOnly Date = DateOnly.FromDateTime(DateTime.UtcNow);
 
-    public ExpectedWorkAreaResolverIntegrationTests()
+    public async Task InitializeAsync()
     {
         var configured = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
         if (!string.IsNullOrWhiteSpace(configured))
-            return;
-
-        _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-            .WithDatabase("onevo_work_area_resolver_test")
-            .WithUsername("test")
-            .WithPassword("test")
-            .Build();
-    }
-
-    public async Task InitializeAsync()
-    {
-        if (_postgres is not null)
         {
-            await _postgres.StartAsync();
-            _connectionString = _postgres.GetConnectionString();
+            _connectionString = configured;
+            await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
         }
         else
         {
-            _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB")!;
+            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
+            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
-
-        await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
     }
 
-    public async Task DisposeAsync()
-    {
-        if (_postgres is not null)
-            await _postgres.DisposeAsync();
-    }
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task GetApprovedForDate_RealPostgres_ReturnsApprovedRowForExactScope()

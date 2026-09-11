@@ -20,7 +20,6 @@ using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Auth;
 
@@ -36,11 +35,6 @@ namespace ONEVO.Tests.Integration.Auth;
 [Collection(WebApplicationFactoryCollection.Name)]
 public sealed class TenantSessionRlsIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_ticket_store_rls_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -50,10 +44,7 @@ public sealed class TenantSessionRlsIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _adminConnectionString = _postgres.GetConnectionString();
-
-        await IntegrationDatabaseBootstrap.InitializeAsync(_adminConnectionString);
+        _adminConnectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         // Also sets/restores process env vars for the shared WebApplicationFactoryCollection; harmless
         // here since nothing in this class boots a WebApplicationFactory, but DefaultConnectionString is
@@ -89,7 +80,6 @@ public sealed class TenantSessionRlsIntegrationTests : IAsyncLifetime
     public async Task DisposeAsync()
     {
         await _environmentScope.DisposeAsync();
-        await _postgres.DisposeAsync();
     }
 
     [Fact]
@@ -261,9 +251,8 @@ public sealed class TenantSessionRlsIntegrationTests : IAsyncLifetime
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
-        services.AddScoped<EfAuthRepository>();
-        services.AddScoped<ISessionRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IUserRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
+        services.AddScoped<ISessionRepository, EfSessionRepository>();
+        services.AddScoped<IUserRepository, EfUserRepository>();
         services.AddScoped<ITenantRepository, EfTenantRepository>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
         services.AddScoped<IPermissionResolver, NoOpPermissionResolver>();

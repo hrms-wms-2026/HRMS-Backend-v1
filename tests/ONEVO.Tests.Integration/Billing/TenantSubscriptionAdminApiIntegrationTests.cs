@@ -9,7 +9,6 @@ using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Billing;
@@ -17,12 +16,6 @@ namespace ONEVO.Tests.Integration.Billing;
 [Collection(WebApplicationFactoryCollection.Name)]
 public sealed class TenantSubscriptionAdminApiIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
-        .WithDatabase("onevo_tenant_subscription_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private AdminTestFactory _factory = null!;
@@ -32,9 +25,7 @@ public sealed class TenantSubscriptionAdminApiIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        var connectionString = _postgres.GetConnectionString();
-        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
         _factory = new AdminTestFactory(connectionString);
 
@@ -52,7 +43,6 @@ public sealed class TenantSubscriptionAdminApiIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         _factory.Dispose();
-        await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 

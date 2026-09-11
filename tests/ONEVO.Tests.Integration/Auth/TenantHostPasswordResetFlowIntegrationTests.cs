@@ -31,7 +31,6 @@ using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Security;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Auth;
 
@@ -45,11 +44,6 @@ namespace ONEVO.Tests.Integration.Auth;
 [Collection(WebApplicationFactoryCollection.Name)]
 public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_reset_flow_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private readonly IEncryptionService _encryption = new AesEncryptionService(
@@ -61,10 +55,7 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _adminConnectionString = _postgres.GetConnectionString();
-
-        await IntegrationDatabaseBootstrap.InitializeAsync(_adminConnectionString);
+        _adminConnectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         _environmentScope = new IntegrationTestEnvironmentScope(_adminConnectionString);
         _appConnectionString = _environmentScope.DefaultConnectionString;
@@ -75,7 +66,6 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
     public async Task DisposeAsync()
     {
         await _environmentScope.DisposeAsync();
-        await _postgres.DisposeAsync();
     }
 
     [Fact]
@@ -222,10 +212,9 @@ public sealed class TenantHostPasswordResetFlowIntegrationTests : IAsyncLifetime
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IOutboxWriter, OutboxWriter>();
-        services.AddScoped<EfAuthRepository>();
-        services.AddScoped<IUserRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IPasswordResetTokenRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IRefreshTokenRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
+        services.AddScoped<IUserRepository, EfUserRepository>();
+        services.AddScoped<IPasswordResetTokenRepository, EfPasswordResetTokenRepository>();
+        services.AddScoped<IRefreshTokenRepository, EfRefreshTokenRepository>();
         services.AddScoped<IBaseLoginCandidateRepository, EfBaseLoginCandidateRepository>();
         services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
         services.AddScoped<RequestPasswordResetCommandHandler>();

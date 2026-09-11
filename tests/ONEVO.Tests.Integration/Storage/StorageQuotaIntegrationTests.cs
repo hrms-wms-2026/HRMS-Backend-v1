@@ -18,7 +18,6 @@ using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Subscription;
 using ONEVO.Infrastructure.Persistence.Repositories.Storage.Quota;
 using ONEVO.Infrastructure.Services.Storage.Quota;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Storage;
 
@@ -33,11 +32,6 @@ public sealed class StorageQuotaIntegrationTests : IAsyncLifetime
 {
     private const long Gb = 1024L * 1024L * 1024L;
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_storage_quota_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -47,12 +41,9 @@ public sealed class StorageQuotaIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         var tenantA = NewTenant("Quota Tenant A", "quota-tenant-a");
         var tenantB = NewTenant("Quota Tenant B", "quota-tenant-b");
@@ -117,7 +108,6 @@ public sealed class StorageQuotaIntegrationTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        await _postgres.DisposeAsync();
     }
 
     [Fact]

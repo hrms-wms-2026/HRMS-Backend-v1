@@ -9,7 +9,6 @@ using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Auth;
 
@@ -22,28 +21,20 @@ namespace ONEVO.Tests.Integration.Auth;
 [Collection(WebApplicationFactoryCollection.Name)]
 public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_base_login_integration_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
-
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private BaseDomainLoginTestFactory _factory = null!;
     private HttpClient _client = null!;
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        var connectionString = _postgres.GetConnectionString();
-
-        // Roles + migrations must exist before the environment scope's onevo_app connection string
+        // Cloned from the shared, already-migrated template (see SharedPostgresTemplate) - roles
+        // and migrations already exist before the environment scope's onevo_app connection string
         // is opened by Program.cs's pre-Build() DatabaseConnectionStartupValidator, and the
         // environment scope must be in place before BaseDomainLoginTestFactory is constructed -
         // accessing _factory.Services/CreateClient() is what first triggers Program.cs's top-level
         // startup code, including hosted services like PermissionSeeder that assume migrations have
         // already applied.
-        await IntegrationDatabaseBootstrap.InitializeAsync(connectionString);
+        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new BaseDomainLoginTestFactory(connectionString);
@@ -59,7 +50,6 @@ public sealed class BaseDomainLoginIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         await _factory.DisposeAsync();
-        await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
