@@ -7,6 +7,8 @@ namespace ONEVO.Infrastructure.Identity.CurrentUser;
 
 public sealed class CurrentPlatformUserContext : ICurrentPlatformUserContext
 {
+    private const string AdminAuthenticationScheme = "AdminScheme";
+
     private readonly IHttpContextAccessor _httpContextAccessor;
 
     public CurrentPlatformUserContext(IHttpContextAccessor httpContextAccessor)
@@ -18,7 +20,7 @@ public sealed class CurrentPlatformUserContext : ICurrentPlatformUserContext
     {
         get
         {
-            var value = _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            var value = AdminIdentity()?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (Guid.TryParse(value, out var id))
                 return id;
             return null;
@@ -29,10 +31,19 @@ public sealed class CurrentPlatformUserContext : ICurrentPlatformUserContext
     {
         get
         {
-            var claims = _httpContextAccessor.HttpContext?.User?.FindAll(PlatformPermissionCatalog.PermissionClaimType);
+            var claims = AdminIdentity()?.FindAll(PlatformPermissionCatalog.PermissionClaimType);
             return claims?.Select(c => c.Value).ToList() ?? new List<string>();
         }
     }
+
+    // TenantDatabaseTicketStore stamps the exact same ClaimTypes.NameIdentifier claim type on
+    // a tenant user's own session cookie (just carrying a tenant user id, not a platform user
+    // id). A scheme-blind FindFirstValue on HttpContext.User would misread any authenticated
+    // tenant request's own claim as a platform admin identity. Only trust claims that came from
+    // an identity ASP.NET Core actually authenticated via AdminScheme.
+    private ClaimsIdentity? AdminIdentity() =>
+        _httpContextAccessor.HttpContext?.User?.Identities
+            .FirstOrDefault(i => i.AuthenticationType == AdminAuthenticationScheme);
 
     public bool HasPlatformPermission(string permissionCode)
     {
