@@ -144,20 +144,26 @@ public sealed class AttendanceReadHandler(
                 currentUser.UserId,
                 actor.LegalEntityId.Value,
                 AttendanceReadPermission,
-                IncludeSelf: true,
+                IncludeSelf: false,
                 EmployeeAuthorityPurpose.TimeTrackingRead), ct);
+
+        // The covered ("Team") view is strictly other people — the actor's own history lives on
+        // the "My" tab. IncludeSelf: false stops the self channel, but company-wide or department
+        // coverage still expands to every active employee in the legal entity, which re-introduces
+        // the actor, so strip their id explicitly here too.
+        var coveredEmployeeIds = visibility.EmployeeIds.Where(id => id != actor.Id).ToList();
 
         IReadOnlyCollection<Guid> employeeIds;
         if (query.EmployeeId is Guid requestedEmployeeId)
         {
-            if (!visibility.EmployeeIds.Contains(requestedEmployeeId))
+            if (requestedEmployeeId == actor.Id || !coveredEmployeeIds.Contains(requestedEmployeeId))
                 return Result<PagedResult<AttendanceHistoryRow>>.Forbidden();
 
             employeeIds = [requestedEmployeeId];
         }
         else
         {
-            employeeIds = visibility.EmployeeIds;
+            employeeIds = coveredEmployeeIds;
         }
 
         var pageNumber = query.Paging.PageNumber < 1 ? 1 : query.Paging.PageNumber;
