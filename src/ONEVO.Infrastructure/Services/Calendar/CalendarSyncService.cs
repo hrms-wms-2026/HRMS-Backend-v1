@@ -120,28 +120,33 @@ public sealed class CalendarSyncService(
         if (connection.Provider == CalendarExternalSources.GoogleCalendar)
         {
             var page = await googleClient.ListEventsAsync(accessToken, calendarId, syncToken, windowStart, windowEnd, ct);
-            foreach (var item in page.Events.Take(BatchLimitPerConnection))
+            // Ingest every event the client returned. The client itself already bounds this to its
+            // own MaxPages cap (see GoogleCalendarClient.ListEventsAsync), so there is still an
+            // upper bound on work-per-run - just one described by the client's paging cap, not by
+            // BatchLimitPerConnection (which is a separate, smaller, push-side batch size and has no
+            // business truncating what gets ingested here).
+            foreach (var item in page.Events)
                 await UpsertPulledEventAsync(connection, item.Id, item.Etag, item.Title, item.Description, item.Start, item.End, item.IsAllDay, item.Timezone, item.Location, item.IsCancelled, item.IsPrivate, ct);
-            // Only advance the stored sync token when every event the client accumulated was
-            // actually applied above. The client now accumulates ALL pages into page.Events (see
-            // GoogleCalendarClient.ListEventsAsync), so when there are more events than
-            // BatchLimitPerConnection, the .Take(...) above silently drops the tail - advancing the
-            // token here would permanently skip those dropped events, since the next incremental
-            // query starts from a point past them. Leaving the token untouched means the NEXT run
-            // re-queries from the same starting point and makes progress across multiple runs
-            // instead of losing data.
-            if (page.NextSyncToken is not null && page.Events.Count <= BatchLimitPerConnection)
+            // Advance the stored sync token exactly when the client says it reached the provider's
+            // true final page. The client returns a null token when its own MaxPages cap was hit
+            // before the real final page was found (see GoogleCalendarClient.ListEventsAsync) - that
+            // is the single source of truth for "was every event in this window actually fetched",
+            // now that every event returned above was also applied above. Withholding the token in
+            // that case means the NEXT run re-queries from the same starting point and makes
+            // progress across multiple runs instead of losing data.
+            if (page.NextSyncToken is not null)
                 connection.SyncTokenEncrypted = encryption.EncryptBytes(page.NextSyncToken);
         }
         else
         {
             var deltaLink = connection.DeltaLinkEncrypted is not null ? encryption.DecryptBytes(connection.DeltaLinkEncrypted) : null;
             var page = await msClient.ListEventsAsync(accessToken, deltaLink, windowStart, windowEnd, ct);
-            foreach (var item in page.Events.Take(BatchLimitPerConnection))
+            // Same reasoning as the Google branch above: ingest everything the client returned
+            // (already bounded by the client's own MaxPages cap) and trust the client's own
+            // null-when-capped signal for whether the delta link is safe to advance.
+            foreach (var item in page.Events)
                 await UpsertPulledEventAsync(connection, item.Id, item.Etag, item.Title, item.Description, item.Start, item.End, item.IsAllDay, item.Timezone, item.Location, item.IsCancelled, item.IsPrivate, ct);
-            // Same reasoning as the Google branch above: don't advance the delta link past events
-            // that were truncated by the .Take(...) and never actually applied.
-            if (page.NextDeltaLink is not null && page.Events.Count <= BatchLimitPerConnection)
+            if (page.NextDeltaLink is not null)
                 connection.DeltaLinkEncrypted = encryption.EncryptBytes(page.NextDeltaLink);
         }
     }

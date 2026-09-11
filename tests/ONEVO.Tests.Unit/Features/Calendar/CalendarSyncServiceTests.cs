@@ -189,11 +189,11 @@ public sealed class CalendarSyncServiceTests
         _events.Verify(x => x.GetManualEventsUpdatedSinceForUserAsync(TenantId, connection.UserId, lastAttempt, It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // BatchLimitPerConnection is a private const inside CalendarSyncService that a test cannot
-    // reference directly. It's mirrored here so the "over the limit" / "at the limit" test cases
-    // stay correct if that constant is ever changed - if this drifts out of sync with the real
-    // value, the "AtLimit" test below still passes (it only needs strictly <= the real value to
-    // prove non-truncation), but the "ExceedsLimit" test needs this to genuinely exceed it.
+    // BatchLimitPerConnection is a private const inside CalendarSyncService, still used by
+    // PushAsync (out of scope for this round). PullAsync no longer references it at all - ingestion
+    // there is unbounded except by whatever the provider client itself returned (which is bounded
+    // by the client's own internal MaxPages cap), so these tests exercise event counts well above
+    // this value to prove PullAsync no longer truncates.
     private const int BatchLimitPerConnection = 200;
 
     private static List<GoogleCalendarEventDto> MakeGoogleEvents(int count) =>
@@ -207,70 +207,88 @@ public sealed class CalendarSyncServiceTests
             .ToList();
 
     [Fact]
-    public async Task SyncConnectionAsync_GooglePullExceedsBatchLimit_DoesNotAdvanceSyncToken()
+    public async Task SyncConnectionAsync_GooglePullReturnsMoreThanBatchLimit_UpsertsAllEventsAndAdvancesSyncToken()
     {
-        // page.Events (accumulated across all pages by GoogleCalendarClient) has MORE events than
-        // BatchLimitPerConnection, so CalendarSyncService.PullAsync's .Take(BatchLimitPerConnection)
-        // truncates the upsert - the stored sync token must NOT advance past the untaken events,
-        // otherwise the next incremental query would silently skip them forever.
+        // The client accumulates all pages up to its own MaxPages cap and, here, reached the
+        // provider's real final page within that cap - so it legitimately returns a non-null token
+        // alongside a large event count (well above the old, now-removed, 200-event
+        // BatchLimitPerConnection truncation). PullAsync must ingest every one of them and persist
+        // the token: there is no longer any event-count-based boundary inside PullAsync itself.
+        const int eventCount = BatchLimitPerConnection + 250; // 450
         var sut = BuildSut();
         var connection = MakeConnection(CalendarSyncDirections.PullOnly);
         Assert.Null(connection.SyncTokenEncrypted);
         _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
         _googleClient.Setup(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GoogleCalendarPage(MakeGoogleEvents(BatchLimitPerConnection + 1), "new-sync-token"));
+            .ReturnsAsync(new GoogleCalendarPage(MakeGoogleEvents(eventCount), "new-sync-token"));
+        _links.Setup(x => x.GetTrackedByConnectionAndExternalEventAsync(TenantId, ConnectionId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarEventLink?)null);
 
         await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
 
-        Assert.Null(connection.SyncTokenEncrypted);
-    }
-
-    [Fact]
-    public async Task SyncConnectionAsync_GooglePullWithinBatchLimit_AdvancesSyncToken()
-    {
-        // The full accumulated page fits within BatchLimitPerConnection - nothing was truncated by
-        // .Take(...), so the new sync token must be persisted to make forward progress.
-        var sut = BuildSut();
-        var connection = MakeConnection(CalendarSyncDirections.PullOnly);
-        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
-        _googleClient.Setup(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GoogleCalendarPage(MakeGoogleEvents(BatchLimitPerConnection), "new-sync-token"));
-
-        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
-
+        _events.Verify(x => x.AddAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()), Times.Exactly(eventCount));
         Assert.NotNull(connection.SyncTokenEncrypted);
         Assert.Equal("new-sync-token", System.Text.Encoding.UTF8.GetString(connection.SyncTokenEncrypted!));
     }
 
     [Fact]
-    public async Task SyncConnectionAsync_MicrosoftPullExceedsBatchLimit_DoesNotAdvanceDeltaLink()
+    public async Task SyncConnectionAsync_GooglePullReturnsNullToken_DoesNotAdvanceSyncToken()
     {
+        // The client itself returns a null token when its own internal MaxPages cap was hit before
+        // reaching the provider's real final page (i.e. the client could not fetch everything in the
+        // window). That null - not any event count comparison in PullAsync - is the sole signal that
+        // the stored sync token must be withheld, so the next run retries from the same starting
+        // point instead of silently skipping whatever lay past the cap.
         var sut = BuildSut();
         var connection = MakeConnection(CalendarSyncDirections.PullOnly);
-        connection.Provider = CalendarExternalSources.OutlookCalendar;
-        Assert.Null(connection.DeltaLinkEncrypted);
+        Assert.Null(connection.SyncTokenEncrypted);
         _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
-        _msClient.Setup(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GraphCalendarPage(MakeGraphEvents(BatchLimitPerConnection + 1), "new-delta-link"));
+        _googleClient.Setup(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GoogleCalendarPage(MakeGoogleEvents(BatchLimitPerConnection + 250), null));
+        _links.Setup(x => x.GetTrackedByConnectionAndExternalEventAsync(TenantId, ConnectionId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarEventLink?)null);
 
         await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
 
-        Assert.Null(connection.DeltaLinkEncrypted);
+        Assert.Null(connection.SyncTokenEncrypted);
     }
 
     [Fact]
-    public async Task SyncConnectionAsync_MicrosoftPullWithinBatchLimit_AdvancesDeltaLink()
+    public async Task SyncConnectionAsync_MicrosoftPullReturnsMoreThanBatchLimit_UpsertsAllEventsAndAdvancesDeltaLink()
+    {
+        const int eventCount = BatchLimitPerConnection + 250; // 450
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.PullOnly);
+        connection.Provider = CalendarExternalSources.OutlookCalendar;
+        Assert.Null(connection.DeltaLinkEncrypted);
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _msClient.Setup(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GraphCalendarPage(MakeGraphEvents(eventCount), "new-delta-link"));
+        _links.Setup(x => x.GetTrackedByConnectionAndExternalEventAsync(TenantId, ConnectionId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarEventLink?)null);
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        _events.Verify(x => x.AddAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()), Times.Exactly(eventCount));
+        Assert.NotNull(connection.DeltaLinkEncrypted);
+        Assert.Equal("new-delta-link", System.Text.Encoding.UTF8.GetString(connection.DeltaLinkEncrypted!));
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_MicrosoftPullReturnsNullToken_DoesNotAdvanceDeltaLink()
     {
         var sut = BuildSut();
         var connection = MakeConnection(CalendarSyncDirections.PullOnly);
         connection.Provider = CalendarExternalSources.OutlookCalendar;
+        Assert.Null(connection.DeltaLinkEncrypted);
         _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
         _msClient.Setup(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GraphCalendarPage(MakeGraphEvents(BatchLimitPerConnection), "new-delta-link"));
+            .ReturnsAsync(new GraphCalendarPage(MakeGraphEvents(BatchLimitPerConnection + 250), null));
+        _links.Setup(x => x.GetTrackedByConnectionAndExternalEventAsync(TenantId, ConnectionId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarEventLink?)null);
 
         await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
 
-        Assert.NotNull(connection.DeltaLinkEncrypted);
-        Assert.Equal("new-delta-link", System.Text.Encoding.UTF8.GetString(connection.DeltaLinkEncrypted!));
+        Assert.Null(connection.DeltaLinkEncrypted);
     }
 }
