@@ -108,5 +108,9 @@ public class EfCalendarEventRepository : ICalendarEventRepository
                         && e.SourceType == CalendarEventSourceTypes.Manual
                         && e.Recurrence == CalendarRecurrences.None
                         && (e.UpdatedAt ?? e.CreatedAt) > since)
+            // Ordered ascending so a caller that batches this result (CalendarSyncService.PushAsync)
+            // processes oldest-changed-first and can derive a safe watermark from the last item in
+            // whatever batch it actually pushes, instead of an arbitrary unordered cutoff.
+            .OrderBy(e => e.UpdatedAt ?? e.CreatedAt)
             .ToListAsync(ct);
 }

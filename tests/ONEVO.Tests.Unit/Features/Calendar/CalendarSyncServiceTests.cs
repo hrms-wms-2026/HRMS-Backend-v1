@@ -196,6 +196,94 @@ public sealed class CalendarSyncServiceTests
     // this value to prove PullAsync no longer truncates.
     private const int BatchLimitPerConnection = 200;
 
+    private static List<CalendarEvent> MakeManualEvents(int count, bool isPrivate = false)
+    {
+        var baseTime = DateTimeOffset.UtcNow.AddDays(-1);
+        return Enumerable.Range(0, count)
+            .Select(i => new CalendarEvent
+            {
+                Id = Guid.NewGuid(), TenantId = TenantId, Title = $"Manual {i}",
+                StartDate = DateTimeOffset.UtcNow, EndDate = DateTimeOffset.UtcNow.AddHours(1),
+                SourceType = CalendarEventSourceTypes.Manual, IsPrivate = isPrivate,
+                CreatedAt = baseTime.AddMinutes(i), UpdatedAt = baseTime.AddMinutes(i)
+            })
+            .ToList();
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_PushOnly_MoreThanBatchLimitPending_PushesOnlyBatchAndAdvancesWatermarkToLastPushedEvent()
+    {
+        // 250 pending manual events, ordered oldest-first by the repository (as it now is).
+        // PushAsync must push only the first 200 (the batch) and advance LastSuccessfulSyncAt to
+        // that batch's LAST event's own UpdatedAt - not DateTimeOffset.UtcNow - so the next run's
+        // "since" query picks up exactly the remaining 50 instead of skipping them forever.
+        const int pendingCount = BatchLimitPerConnection + 50; // 250
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.PushOnly);
+        var lastSuccess = DateTimeOffset.UtcNow.AddDays(-2);
+        connection.LastSuccessfulSyncAt = lastSuccess;
+        var pending = MakeManualEvents(pendingCount);
+        var expectedWatermark = pending[BatchLimitPerConnection - 1].UpdatedAt;
+
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _events.Setup(x => x.GetManualEventsUpdatedSinceForUserAsync(TenantId, connection.UserId, lastSuccess, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pending);
+        _links.Setup(x => x.GetTrackedByCalendarEventAndConnectionAsync(TenantId, It.IsAny<Guid>(), ConnectionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarEventLink?)null);
+        _googleClient.Setup(x => x.InsertEventAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<GoogleCalendarEventDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string token, string calId, GoogleCalendarEventDto dto, CancellationToken _) => dto with { Id = "pushed-" + Guid.NewGuid(), Etag = "etag" });
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        _googleClient.Verify(x => x.InsertEventAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<GoogleCalendarEventDto>(), It.IsAny<CancellationToken>()), Times.Exactly(BatchLimitPerConnection));
+        Assert.Equal(expectedWatermark, connection.LastSuccessfulSyncAt);
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_PushOnly_FewerThanBatchLimitPending_AdvancesWatermarkToUtcNow()
+    {
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.PushOnly);
+        var lastSuccess = DateTimeOffset.UtcNow.AddDays(-2);
+        connection.LastSuccessfulSyncAt = lastSuccess;
+        var pending = MakeManualEvents(5);
+        var before = DateTimeOffset.UtcNow;
+
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _events.Setup(x => x.GetManualEventsUpdatedSinceForUserAsync(TenantId, connection.UserId, lastSuccess, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pending);
+        _links.Setup(x => x.GetTrackedByCalendarEventAndConnectionAsync(TenantId, It.IsAny<Guid>(), ConnectionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarEventLink?)null);
+        _googleClient.Setup(x => x.InsertEventAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<GoogleCalendarEventDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string token, string calId, GoogleCalendarEventDto dto, CancellationToken _) => dto with { Id = "pushed-" + Guid.NewGuid(), Etag = "etag" });
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        Assert.True(connection.LastSuccessfulSyncAt >= before);
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_PushOnly_PrivateLocalEvent_PushesIsPrivateTrue()
+    {
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.PushOnly);
+        var lastSuccess = DateTimeOffset.UtcNow.AddDays(-2);
+        connection.LastSuccessfulSyncAt = lastSuccess;
+        var pending = MakeManualEvents(1, isPrivate: true);
+
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _events.Setup(x => x.GetManualEventsUpdatedSinceForUserAsync(TenantId, connection.UserId, lastSuccess, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pending);
+        _links.Setup(x => x.GetTrackedByCalendarEventAndConnectionAsync(TenantId, It.IsAny<Guid>(), ConnectionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExternalCalendarEventLink?)null);
+        _googleClient.Setup(x => x.InsertEventAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<GoogleCalendarEventDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string token, string calId, GoogleCalendarEventDto dto, CancellationToken _) => dto with { Id = "pushed-1", Etag = "etag" });
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        _googleClient.Verify(x => x.InsertEventAsync(It.IsAny<string>(), It.IsAny<string>(), It.Is<GoogleCalendarEventDto>(d => d.IsPrivate), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private static List<GoogleCalendarEventDto> MakeGoogleEvents(int count) =>
         Enumerable.Range(0, count)
             .Select(i => new GoogleCalendarEventDto($"ext-{i}", $"etag-{i}", $"Event {i}", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), false, "UTC", null, false, false))

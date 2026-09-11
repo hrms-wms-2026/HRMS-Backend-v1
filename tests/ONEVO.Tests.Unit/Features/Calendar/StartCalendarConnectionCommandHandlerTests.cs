@@ -88,4 +88,26 @@ public sealed class StartCalendarConnectionCommandHandlerTests
         var escapedLower = redirectUriEscaped.ToLowerInvariant();
         Assert.Contains(escapedLower, urlLower);
     }
+
+    [Fact]
+    public async Task Handle_MixedCaseProvider_NormalizesToLowercaseEverywhere()
+    {
+        // "Google" and "google" must produce the byte-identical redirect_uri, app lookup key, and
+        // state.Provider value - otherwise the redirect_uri sent to Google's authorize endpoint
+        // won't match what's registered in Google's console, causing a real redirect_uri_mismatch.
+        var sut = BuildSut();
+        _appResolver.Setup(x => x.GetActiveAppForProviderAsync("google", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedPlatformOAuthApp("google", "client-123", "https://accounts.google.com/o/oauth2/v2/auth", "https://oauth2.googleapis.com/token", ["https://www.googleapis.com/auth/calendar"]));
+        _stateProtector.Setup(x => x.Protect(It.Is<CalendarOAuthState>(s => s.Provider == "google")))
+            .Returns("protected-state-token");
+
+        var result = await sut.Handle(new StartCalendarConnectionCommand("Google"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _appResolver.Verify(x => x.GetActiveAppForProviderAsync("google", It.IsAny<CancellationToken>()), Times.Once);
+        _stateProtector.Verify(x => x.Protect(It.Is<CalendarOAuthState>(s => s.Provider == "google")), Times.Once);
+        var redirectUriEscaped = Uri.EscapeDataString("https://localhost:7229/api/v1/calendar/connections/google/callback");
+        Assert.Contains(redirectUriEscaped.ToLowerInvariant(), result.Value!.AuthorizeUrl.ToLowerInvariant());
+        Assert.DoesNotContain("connections/Google/callback", result.Value.AuthorizeUrl);
+    }
 }

@@ -49,11 +49,17 @@ public sealed class CalendarSyncService(
             if (connection.SyncDirection is CalendarSyncDirections.PullOnly or CalendarSyncDirections.TwoWay)
                 await PullAsync(connection, accessToken, ct);
 
+            // PushAsync returns the watermark to advance LastSuccessfulSyncAt to: DateTimeOffset.UtcNow
+            // when every pending manual event was pushed this run, or the timestamp of the last event
+            // actually pushed when the batch was truncated by BatchLimitPerConnection - advancing to
+            // UtcNow unconditionally in that case would skip the untransmitted remainder forever, since
+            // this same field is the "since" cursor PushAsync reads on the next run.
+            DateTimeOffset? pushWatermark = null;
             if (connection.SyncDirection is CalendarSyncDirections.PushOnly or CalendarSyncDirections.TwoWay)
-                await PushAsync(connection, accessToken, ct);
+                pushWatermark = await PushAsync(connection, accessToken, ct);
 
             connection.LastSyncedAt = DateTimeOffset.UtcNow;
-            connection.LastSuccessfulSyncAt = DateTimeOffset.UtcNow;
+            connection.LastSuccessfulSyncAt = pushWatermark ?? DateTimeOffset.UtcNow;
             connection.FailureCount = 0;
             connection.LastError = null;
             // Recover a connection that was previously Failed (3 consecutive failures) or
@@ -230,7 +236,7 @@ public sealed class CalendarSyncService(
         links.Update(link);
     }
 
-    private async Task PushAsync(ExternalCalendarConnection connection, string accessToken, CancellationToken ct)
+    private async Task<DateTimeOffset> PushAsync(ExternalCalendarConnection connection, string accessToken, CancellationToken ct)
     {
         // Watermark deliberately reads LastSuccessfulSyncAt, not LastSyncedAt: LastSyncedAt
         // advances even on a failed run (see the catch block above), which would silently move the
@@ -239,17 +245,23 @@ public sealed class CalendarSyncService(
         // still means "last time we attempted a sync" for observability - only its use as a
         // watermark here (and in the conflict check above) is replaced.
         var since = connection.LastSuccessfulSyncAt ?? DateTimeOffset.UtcNow.Subtract(SyncWindowPast);
+        // Ordered ascending by the repository (oldest-changed-first), so if more than
+        // BatchLimitPerConnection events are pending, the batch we actually push is a contiguous
+        // prefix and the last item's own UpdatedAt/CreatedAt is a safe cursor for the next run.
         var candidates = await events.GetManualEventsUpdatedSinceForUserAsync(connection.TenantId, connection.UserId, since, ct);
         var calendarId = connection.ExternalCalendarId ?? connection.ExternalAccountEmail;
 
-        foreach (var localEvent in candidates.Take(BatchLimitPerConnection))
+        var batch = candidates.Take(BatchLimitPerConnection).ToList();
+        var wasTruncated = candidates.Count > BatchLimitPerConnection;
+
+        foreach (var localEvent in batch)
         {
             var existingLink = await links.GetTrackedByCalendarEventAndConnectionAsync(connection.TenantId, localEvent.Id, connection.Id, ct);
 
             if (connection.Provider == CalendarExternalSources.GoogleCalendar)
             {
                 var dto = new GoogleCalendarEventDto(existingLink?.ExternalEventId ?? string.Empty, existingLink?.ExternalEtag, localEvent.Title,
-                    localEvent.Description, localEvent.StartDate, localEvent.EndDate, localEvent.IsAllDay, localEvent.Timezone, localEvent.Location, false, false);
+                    localEvent.Description, localEvent.StartDate, localEvent.EndDate, localEvent.IsAllDay, localEvent.Timezone, localEvent.Location, false, localEvent.IsPrivate);
                 var pushed = existingLink is null
                     ? await googleClient.InsertEventAsync(accessToken, calendarId, dto, ct)
                     : await googleClient.PatchEventAsync(accessToken, calendarId, existingLink.ExternalEventId, dto, ct);
@@ -258,13 +270,23 @@ public sealed class CalendarSyncService(
             else
             {
                 var dto = new GraphEventDto(existingLink?.ExternalEventId ?? string.Empty, existingLink?.ExternalEtag, localEvent.Title,
-                    localEvent.Description, localEvent.StartDate, localEvent.EndDate, localEvent.IsAllDay, localEvent.Timezone, localEvent.Location, false, false);
+                    localEvent.Description, localEvent.StartDate, localEvent.EndDate, localEvent.IsAllDay, localEvent.Timezone, localEvent.Location, false, localEvent.IsPrivate);
                 var pushed = existingLink is null
                     ? await msClient.CreateEventAsync(accessToken, dto, ct)
                     : await msClient.UpdateEventAsync(accessToken, existingLink.ExternalEventId, dto, ct);
                 await UpsertOutboundLinkAsync(connection, localEvent.Id, existingLink, pushed.Id, pushed.Etag, calendarId, ct);
             }
         }
+
+        // Only advance past what we actually pushed. If nothing was truncated, every pending event
+        // (including zero pending) got pushed, so UtcNow is safe. If truncated, advancing only to
+        // the last pushed event's own timestamp means the next run's "since" query picks up exactly
+        // the remainder, instead of skipping it forever.
+        if (!wasTruncated || batch.Count == 0)
+            return DateTimeOffset.UtcNow;
+
+        var lastPushed = batch[^1];
+        return lastPushed.UpdatedAt ?? lastPushed.CreatedAt;
     }
 
     private async Task UpsertOutboundLinkAsync(ExternalCalendarConnection connection, Guid calendarEventId, ExternalCalendarEventLink? existingLink, string externalEventId, string? etag, string calendarId, CancellationToken ct)
