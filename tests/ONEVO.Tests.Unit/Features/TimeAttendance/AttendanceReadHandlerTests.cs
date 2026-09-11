@@ -277,18 +277,35 @@ public sealed class AttendanceReadHandlerTests
     }
 
     [Fact]
-    public async Task CoveredHistory_WithoutEmployeeFilter_QueriesAllResolverVisibleEmployees()
+    public async Task CoveredHistory_WithoutEmployeeFilter_QueriesCoveredEmployeesExcludingSelf()
+    {
+        var fixture = CreateFixture();
+        var secondId = Guid.NewGuid();
+        // Resolver still hands back the actor (e.g. via company-wide coverage) — the Team view
+        // must strip them so only people the actor covers appear.
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, secondId]));
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 1 && ids.Contains(secondId)), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync((new List<AttendanceRecord>(), 0));
+
+        var result = await fixture.Handler.Handle(new GetCoveredAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), null, new PagedRequest()), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        fixture.Attendance.Verify(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 1 && ids.Contains(secondId) && !ids.Contains(EmployeeId)), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CoveredHistory_ExplicitSelfEmployeeId_ReturnsForbidden()
     {
         var fixture = CreateFixture();
         var secondId = Guid.NewGuid();
         fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, secondId]));
-        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 2 && ids.Contains(EmployeeId) && ids.Contains(secondId)), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync((new List<AttendanceRecord>(), 0));
 
-        var result = await fixture.Handler.Handle(new GetCoveredAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), null, new PagedRequest()), CancellationToken.None);
+        var result = await fixture.Handler.Handle(new GetCoveredAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), EmployeeId, new PagedRequest()), CancellationToken.None);
 
-        result.IsSuccess.Should().BeTrue();
-        fixture.Attendance.Verify(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 2 && ids.Contains(EmployeeId) && ids.Contains(secondId)), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        fixture.Attendance.Verify(x => x.ListRecordsAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
