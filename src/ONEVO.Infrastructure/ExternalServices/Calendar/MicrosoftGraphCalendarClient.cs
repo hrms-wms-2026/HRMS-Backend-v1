@@ -8,6 +8,12 @@ public sealed class MicrosoftGraphCalendarClient(HttpClient httpClient) : IMicro
 {
     private const string BaseUrl = "https://graph.microsoft.com/v1.0";
 
+    // Caps the number of pages a single ListEventsAsync call will follow. CalendarSyncService only
+    // ever keeps the first BatchLimitPerConnection (200) events of what's accumulated here, so 25
+    // pages is already far more than one sync run needs. This is a backstop against a
+    // malformed/looping provider response spinning this loop indefinitely inside one job tick.
+    private const int MaxPages = 25;
+
     public async Task<GraphCalendarPage> ListEventsAsync(string accessToken, string? deltaLink, DateTimeOffset windowStart, DateTimeOffset windowEnd, CancellationToken ct)
     {
         // Graph only returns @odata.deltaLink on the FINAL page of a paginated response; every
@@ -19,6 +25,8 @@ public sealed class MicrosoftGraphCalendarClient(HttpClient httpClient) : IMicro
         var events = new List<GraphEventDto>();
         string? nextDeltaLink = null;
         string? requestUrl = deltaLink ?? $"{BaseUrl}/me/calendarView/delta?startDateTime={Uri.EscapeDataString(windowStart.ToString("O"))}&endDateTime={Uri.EscapeDataString(windowEnd.ToString("O"))}";
+        var pageCount = 0;
+        var cappedOut = false;
 
         do
         {
@@ -31,9 +39,18 @@ public sealed class MicrosoftGraphCalendarClient(HttpClient httpClient) : IMicro
 
             nextDeltaLink = doc.RootElement.TryGetProperty("@odata.deltaLink", out var d) ? d.GetString() : null;
             requestUrl = doc.RootElement.TryGetProperty("@odata.nextLink", out var n) ? n.GetString() : null;
+            pageCount++;
+
+            if (requestUrl is not null && pageCount >= MaxPages)
+            {
+                // We haven't actually reached the provider's final page - don't claim we have by
+                // returning a delta link (which would permanently skip whatever pages remain).
+                cappedOut = true;
+                break;
+            }
         } while (requestUrl is not null);
 
-        return new GraphCalendarPage(events, nextDeltaLink);
+        return new GraphCalendarPage(events, cappedOut ? null : nextDeltaLink);
     }
 
     public async Task<GraphEventDto> CreateEventAsync(string accessToken, GraphEventDto @event, CancellationToken ct)

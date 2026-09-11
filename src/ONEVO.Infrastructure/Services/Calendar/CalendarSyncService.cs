@@ -122,7 +122,15 @@ public sealed class CalendarSyncService(
             var page = await googleClient.ListEventsAsync(accessToken, calendarId, syncToken, windowStart, windowEnd, ct);
             foreach (var item in page.Events.Take(BatchLimitPerConnection))
                 await UpsertPulledEventAsync(connection, item.Id, item.Etag, item.Title, item.Description, item.Start, item.End, item.IsAllDay, item.Timezone, item.Location, item.IsCancelled, item.IsPrivate, ct);
-            if (page.NextSyncToken is not null)
+            // Only advance the stored sync token when every event the client accumulated was
+            // actually applied above. The client now accumulates ALL pages into page.Events (see
+            // GoogleCalendarClient.ListEventsAsync), so when there are more events than
+            // BatchLimitPerConnection, the .Take(...) above silently drops the tail - advancing the
+            // token here would permanently skip those dropped events, since the next incremental
+            // query starts from a point past them. Leaving the token untouched means the NEXT run
+            // re-queries from the same starting point and makes progress across multiple runs
+            // instead of losing data.
+            if (page.NextSyncToken is not null && page.Events.Count <= BatchLimitPerConnection)
                 connection.SyncTokenEncrypted = encryption.EncryptBytes(page.NextSyncToken);
         }
         else
@@ -131,7 +139,9 @@ public sealed class CalendarSyncService(
             var page = await msClient.ListEventsAsync(accessToken, deltaLink, windowStart, windowEnd, ct);
             foreach (var item in page.Events.Take(BatchLimitPerConnection))
                 await UpsertPulledEventAsync(connection, item.Id, item.Etag, item.Title, item.Description, item.Start, item.End, item.IsAllDay, item.Timezone, item.Location, item.IsCancelled, item.IsPrivate, ct);
-            if (page.NextDeltaLink is not null)
+            // Same reasoning as the Google branch above: don't advance the delta link past events
+            // that were truncated by the .Take(...) and never actually applied.
+            if (page.NextDeltaLink is not null && page.Events.Count <= BatchLimitPerConnection)
                 connection.DeltaLinkEncrypted = encryption.EncryptBytes(page.NextDeltaLink);
         }
     }

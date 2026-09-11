@@ -61,6 +61,35 @@ public sealed class MicrosoftGraphCalendarClientTests
     }
 
     [Fact]
+    public async Task ListEventsAsync_MoreThanMaxPagesAvailable_StopsAtMaxPages_AndReturnsNullDeltaLink()
+    {
+        const int maxPages = 25; // mirrors MicrosoftGraphCalendarClient's private MaxPages constant
+        var requestCount = 0;
+        var handler = new StubHandler(request =>
+        {
+            requestCount++;
+            // Every page (including a hypothetical page maxPages+1) reports a further
+            // @odata.nextLink, simulating a provider that never terminates pagination. No page ever
+            // returns @odata.deltaLink, matching Graph's contract that it only appears on the true
+            // final page - which this stub never reaches.
+            var json = "{\"value\": [{\"id\": \"evt-page" + requestCount + "\", \"subject\": \"Page " + requestCount + " Event\", " +
+                "\"body\": {\"contentType\": \"text\", \"content\": null}, \"isAllDay\": false, " +
+                "\"location\": {\"displayName\": null}, " +
+                "\"start\": {\"dateTime\": \"2026-09-10T09:00:00\", \"timeZone\": \"UTC\"}, " +
+                "\"end\": {\"dateTime\": \"2026-09-10T09:30:00\", \"timeZone\": \"UTC\"}, \"isCancelled\": false}], " +
+                "\"@odata.nextLink\": \"https://graph.microsoft.com/v1.0/me/calendarView/delta?$skiptoken=page" + (requestCount + 1) + "token\"}";
+            return RawJsonResponse(json);
+        });
+        var sut = new MicrosoftGraphCalendarClient(new HttpClient(handler));
+
+        var result = await sut.ListEventsAsync("at-1", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(7), CancellationToken.None);
+
+        Assert.Equal(maxPages, requestCount);
+        Assert.Equal(maxPages, result.Events.Count);
+        Assert.Null(result.NextDeltaLink);
+    }
+
+    [Fact]
     public async Task ListEventsAsync_ParsesEvents_AndCapturesNextDeltaLink()
     {
         const string responseJson = """

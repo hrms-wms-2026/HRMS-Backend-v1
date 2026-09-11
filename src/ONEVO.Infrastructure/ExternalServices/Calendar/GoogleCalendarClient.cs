@@ -9,6 +9,13 @@ public sealed class GoogleCalendarClient(HttpClient httpClient) : IGoogleCalenda
 {
     private const string BaseUrl = "https://www.googleapis.com/calendar/v3";
 
+    // Caps the number of pages a single ListEventsAsync call will follow. CalendarSyncService only
+    // ever keeps the first BatchLimitPerConnection (200) events of what's accumulated here, so 25
+    // pages (~5,000 events at maxResults=200/page) is already far more than one sync run needs. This
+    // is a backstop against a malformed/looping provider response (e.g. a broken proxy echoing the
+    // same nextPageToken forever) spinning this loop indefinitely inside one job tick.
+    private const int MaxPages = 25;
+
     public async Task<GoogleCalendarPage> ListEventsAsync(string accessToken, string calendarId, string? syncToken, DateTimeOffset windowStart, DateTimeOffset windowEnd, CancellationToken ct)
     {
         // Google only returns nextSyncToken on the FINAL page of a paginated response; every
@@ -21,6 +28,8 @@ public sealed class GoogleCalendarClient(HttpClient httpClient) : IGoogleCalenda
         var events = new List<GoogleCalendarEventDto>();
         string? nextSyncToken = null;
         string? pageToken = null;
+        var pageCount = 0;
+        var cappedOut = false;
 
         do
         {
@@ -35,9 +44,18 @@ public sealed class GoogleCalendarClient(HttpClient httpClient) : IGoogleCalenda
 
             nextSyncToken = doc.RootElement.TryGetProperty("nextSyncToken", out var t) ? t.GetString() : null;
             pageToken = doc.RootElement.TryGetProperty("nextPageToken", out var p) ? p.GetString() : null;
+            pageCount++;
+
+            if (pageToken is not null && pageCount >= MaxPages)
+            {
+                // We haven't actually reached the provider's final page - don't claim we have by
+                // returning a sync token (which would permanently skip whatever pages remain).
+                cappedOut = true;
+                break;
+            }
         } while (pageToken is not null);
 
-        return new GoogleCalendarPage(events, nextSyncToken);
+        return new GoogleCalendarPage(events, cappedOut ? null : nextSyncToken);
     }
 
     private static string BuildListUrl(string calendarId, string? syncToken, string? pageToken, DateTimeOffset windowStart, DateTimeOffset windowEnd)
@@ -45,9 +63,21 @@ public sealed class GoogleCalendarClient(HttpClient httpClient) : IGoogleCalenda
         var baseEventsUrl = $"{BaseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events";
 
         if (pageToken is not null)
-            // Follow-up page of an in-progress pagination loop - only pageToken is sent, never
-            // syncToken/timeMin/timeMax, matching Google's documented pagination contract.
-            return $"{baseEventsUrl}?pageToken={Uri.EscapeDataString(pageToken)}&maxResults=200";
+        {
+            if (syncToken is not null)
+                // Follow-up page of an incremental (syncToken-based) sync - only pageToken is sent,
+                // matching Google's documented pagination contract (syncToken and pageToken must
+                // never appear together on the same request).
+                return $"{baseEventsUrl}?pageToken={Uri.EscapeDataString(pageToken)}&maxResults=200";
+
+            // Follow-up page of a window-based (first) sync. Per Google's pagination contract, every
+            // query parameter besides pageToken must stay identical across the paginated request
+            // sequence - the server uses the originating request's parameters to continue the same
+            // result set. Dropping timeMin/timeMax/singleEvents here would risk a 400, or worse, a
+            // later page silently returning results outside the intended window or with un-expanded
+            // recurring event masters.
+            return $"{baseEventsUrl}?timeMin={Uri.EscapeDataString(windowStart.ToString("O"))}&timeMax={Uri.EscapeDataString(windowEnd.ToString("O"))}&maxResults=200&singleEvents=true&pageToken={Uri.EscapeDataString(pageToken)}";
+        }
 
         return syncToken is not null
             ? $"{baseEventsUrl}?syncToken={Uri.EscapeDataString(syncToken)}&maxResults=200"
