@@ -19,7 +19,6 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Monitoring.Settings;
@@ -38,26 +37,19 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
 {
     private static readonly Guid SeededPlanId = new("a1b2c3d4-0001-0001-0001-000000000001");
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_monitoring_override_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
     private HttpClient _client = null!;
     private readonly SystemDateTimeProvider _clock = new();
+    private string _connectionString = null!;
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        var connectionString = _postgres.GetConnectionString();
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _environmentScope = new IntegrationTestEnvironmentScope(_connectionString);
 
-        await IntegrationDatabaseBootstrap.InitializeAsync(connectionString);
-        _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
-
-        _factory = new E2ETestFactory(connectionString, new CapturingEmailService());
+        _factory = new E2ETestFactory(_connectionString, new CapturingEmailService());
         _client = _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost"),
@@ -69,7 +61,6 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         await _factory.DisposeAsync();
-        await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
@@ -328,7 +319,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
             tenantId, slug, TenantStatus.Active, null));
 
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(_postgres.GetConnectionString())
+            .UseNpgsql(_connectionString)
             .UseSnakeCaseNamingConvention()
             .AddInterceptors(new TenantRlsInterceptor(tenantContext))
             .Options;

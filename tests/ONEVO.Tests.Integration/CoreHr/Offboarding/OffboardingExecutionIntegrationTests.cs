@@ -33,17 +33,12 @@ using ONEVO.Infrastructure.Services.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Integration.CoreHr.Offboarding;
 
 public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_offboarding_execution_test")
-        .WithUsername("test").WithPassword("test").Build();
-
     private readonly SystemDateTimeProvider _clock = new();
     private readonly AesEncryptionService _encryption = new(
         Options.Create(new EncryptionOptions { MasterKey = "integration-test-master-key-32-chars-min" }));
@@ -56,9 +51,7 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await IntegrationDatabaseBootstrap.InitializeAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
         await EnsureLookupsAsync(db);
@@ -99,7 +92,7 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task FullHappyPath_StartToComplete_LocksEmployeeRecord()
@@ -256,11 +249,11 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
             PositionAssignmentRepositoryTestSupport.CreateRepository(db),
             new UnitOfWork(db),
             hr,
-            new EfAuthRepository(db),
+            new EfPermissionRepository(db),
             new EfAccessGrantRequestRepository(db),
             _clock,
             new OutboxWriter(db, _encryption, _clock),
-            new EfAuthRepository(db),
+            new EfUserRepository(db),
             new EfTenantRepository(db),
             new EmployeeOffboardingLockGuard(employees)).Handle(
             new ChangeEmployeePositionCommand(employee.Id, Guid.NewGuid(), DateOnly.FromDateTime(DateTime.UtcNow), "LateralMove"),
@@ -358,10 +351,11 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
 
     private CompleteOffboardingCommandHandler CompleteExitHandler(ApplicationDbContext db, ICurrentUser user)
     {
-        var auth = new EfAuthRepository(db);
+        var authUsers = new EfUserRepository(db);
+        var authSessions = new EfSessionRepository(db);
         return new CompleteOffboardingCommandHandler(
             new EfOffboardingRecordRepository(db), new EfEmployeeChecklistTaskRepository(db),
-            new EfEmployeeRepository(db), auth, auth, new UnitOfWork(db), AllowAllCoverage, user, _clock);
+            new EfEmployeeRepository(db), authUsers, authSessions, new UnitOfWork(db), AllowAllCoverage, user, _clock);
     }
 
     private static readonly IEmployeeOffboardingCoverageGuard AllowAllCoverage = new AllowAllCoverageGuard();

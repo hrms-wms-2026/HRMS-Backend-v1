@@ -10,7 +10,6 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.CoreHr.Offboarding;
@@ -21,26 +20,18 @@ namespace ONEVO.Tests.Integration.CoreHr.Offboarding;
 /// </summary>
 public sealed class SessionRevocationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_session_revocation_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task RevokeAllActiveByUserIdAsync_RevokesOnlyThatUsersActiveSessions()
@@ -55,7 +46,7 @@ public sealed class SessionRevocationTests : IAsyncLifetime
             new Session { Id = Guid.NewGuid(), TenantId = tenantId, UserId = otherUserId, IsRevoked = false, ExpiresAt = DateTimeOffset.UtcNow.AddDays(1), KeyHash = Guid.NewGuid().ToString("N") });
         await db.SaveChangesAsync();
 
-        ISessionRepository repo = new EfAuthRepository(db);
+        var repo = new EfSessionRepository(db);
         var count = await repo.RevokeAllActiveByUserIdAsync(userId);
 
         count.Should().Be(1);

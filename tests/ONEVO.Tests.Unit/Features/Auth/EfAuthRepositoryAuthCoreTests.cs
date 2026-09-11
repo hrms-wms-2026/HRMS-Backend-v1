@@ -58,7 +58,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task GetByNormalizedEmailAsync_ReturnsMatchingNonDeletedUser()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRepository(db);
         var user = NewUser(Guid.NewGuid(), "match@example.com");
         await SeedAsync(user);
 
@@ -72,7 +72,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task GetByNormalizedEmailAsync_DoesNotReturnDeletedUser()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRepository(db);
         var user = NewUser(Guid.NewGuid(), "deleted@example.com");
         user.IsDeleted = true;
         await SeedAsync(user);
@@ -86,7 +86,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task GetActiveByNormalizedEmailAsync_RequiresActiveAndNonDeleted()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRepository(db);
 
         var inactive = NewUser(Guid.NewGuid(), "inactive@example.com");
         inactive.IsActive = false;
@@ -109,7 +109,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task GetByNormalizedEmailAsync_MatchesRegardlessOfStoredEmailCasingOrWhitespace()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRepository(db);
         var user = NewUser(Guid.NewGuid(), "  Mixed.Case@Example.com ");
         await SeedAsync(user);
 
@@ -123,7 +123,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task GetActiveByNormalizedEmailAsync_MatchesRegardlessOfStoredEmailCasingOrWhitespace()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRepository(db);
         var user = NewUser(Guid.NewGuid(), " Active.Mixed@Example.com");
         await SeedAsync(user);
 
@@ -137,7 +137,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task GetByTenantAndEmailAsync_MatchesRegardlessOfStoredEmailCasingOrWhitespace()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRepository(db);
         var tenantId = Guid.NewGuid();
         var user = NewUser(tenantId, "Tenant.Mixed@Example.COM ");
         await SeedAsync(user);
@@ -152,7 +152,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task GetByIdAsync_RequiresMatchingIdAndNonDeleted()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRepository(db);
         var user = NewUser(Guid.NewGuid(), "byid@example.com");
         var deletedUser = NewUser(Guid.NewGuid(), "byid-deleted@example.com");
         deletedUser.IsDeleted = true;
@@ -172,7 +172,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task GetByTenantAndEmailAsync_RequiresBothTenantIdAndNormalizedEmail()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRepository(db);
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
         var user = NewUser(tenantId, "tenant-scoped@example.com");
@@ -191,7 +191,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task AddAsync_User_AddsButDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRepository(db);
         var user = NewUser(Guid.NewGuid(), "new-user@example.com");
 
         await repo.AddAsync(user);
@@ -213,7 +213,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task GetByHashAsync_LooksUpByTokenHashExactly()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRefreshTokenRepository(db);
         var token = NewRefreshToken(Guid.NewGuid());
         token.TokenHash = "expected-refresh-hash";
         await SeedAsync(token);
@@ -230,7 +230,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task ListActiveByUserIdAsync_RefreshToken_ReturnsOnlyRequestedUserAndUnrevoked()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRefreshTokenRepository(db);
         var userId = Guid.NewGuid();
         var otherUserId = Guid.NewGuid();
 
@@ -249,7 +249,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task AddAsync_RefreshToken_AddsButDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRefreshTokenRepository(db);
         var token = NewRefreshToken(Guid.NewGuid());
 
         await repo.AddAsync(token);
@@ -271,7 +271,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task GetLatestActiveByUserIdAsync_ReturnsLatestNonRevokedSessionByLastActivityAt()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfSessionRepository(db);
         var userId = Guid.NewGuid();
 
         var older = NewSession(userId);
@@ -293,7 +293,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task ISessionRepository_GetByIdAsync_ReturnsById()
     {
         using var db = CreateContext();
-        ISessionRepository repo = new EfAuthRepository(db);
+        var repo = new EfSessionRepository(db);
         var session = NewSession(Guid.NewGuid());
         await SeedAsync(session);
 
@@ -309,7 +309,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task ISessionRepository_GetByKeyHashAsync_ReturnsByKeyHash()
     {
         using var db = CreateContext();
-        ISessionRepository repo = new EfAuthRepository(db);
+        var repo = new EfSessionRepository(db);
         var session = NewSession(Guid.NewGuid());
         session.KeyHash = "expected-session-key-hash";
         await SeedAsync(session);
@@ -326,7 +326,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task RevokeByKeyHashAsync_MarksOnlyMatchingSessionRevokedAndDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        ISessionRepository repo = new EfAuthRepository(db);
+        var repo = new EfSessionRepository(db);
         var target = NewSession(Guid.NewGuid());
         target.KeyHash = "revoke-target-key-hash";
         var other = NewSession(Guid.NewGuid());
@@ -354,7 +354,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task RevokeByIdAsync_MarksOnlyMatchingSessionRevokedAndDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        ISessionRepository repo = new EfAuthRepository(db);
+        var repo = new EfSessionRepository(db);
         var target = NewSession(Guid.NewGuid());
         var other = NewSession(Guid.NewGuid());
         await SeedAsync(target, other);
@@ -380,7 +380,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task AddAsync_Session_AddsButDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfSessionRepository(db);
         var session = NewSession(Guid.NewGuid());
 
         await repo.AddAsync(session);
@@ -402,7 +402,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task GetResetTokenByHashAsync_LooksUpByTokenHashExactly()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPasswordResetTokenRepository(db);
         var token = NewPasswordResetToken(Guid.NewGuid());
         token.TokenHash = "expected-reset-hash";
         await SeedAsync(token);
@@ -419,7 +419,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task ListValidByUserIdAsync_ReturnsOnlyRequestedUserUnusedAndUnexpired()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPasswordResetTokenRepository(db);
         var userId = Guid.NewGuid();
 
         var valid = NewPasswordResetToken(userId);
@@ -439,7 +439,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task AddAsync_PasswordResetToken_AddsButDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPasswordResetTokenRepository(db);
         var token = NewPasswordResetToken(Guid.NewGuid());
 
         await repo.AddAsync(token);
@@ -462,7 +462,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task GetTotpAsync_RequiresUserIdMethodTypeTotpAndMatchingIsVerified()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserMfaRepository(db);
         var userId = Guid.NewGuid();
 
         var verifiedTotp = NewUserMfa(userId, "totp");
@@ -485,7 +485,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task AddAsync_UserMfa_AddsButDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserMfaRepository(db);
         var mfa = NewUserMfa(Guid.NewGuid(), "totp");
 
         await repo.AddAsync(mfa);
@@ -505,7 +505,7 @@ public sealed class EfAuthRepositoryAuthCoreTests : IDisposable
     public async Task Remove_UserMfa_RemovesEntityFromDbSet()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserMfaRepository(db);
         var mfa = NewUserMfa(Guid.NewGuid(), "totp");
         await SeedAsync(mfa);
 

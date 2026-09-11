@@ -23,7 +23,6 @@ using ONEVO.Infrastructure.Services.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
@@ -38,11 +37,6 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
 {
     private const string TenantSlug = "employee-detail-change-pos";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_employee_detail_change_pos_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private readonly AesEncryptionService _encryption = new(
@@ -70,12 +64,9 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         _adminUserId = Guid.NewGuid();
         _tenantId = Guid.NewGuid();
@@ -171,7 +162,7 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
         Assert.NotNull(fillerAssignmentId);
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task GetDetail_WithSensitivePermission_IncludesPayroll()
@@ -305,11 +296,11 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
             PositionAssignmentRepositoryTestSupport.CreateRepository(db),
             new UnitOfWork(db),
             new StubCurrentUser(_tenantId, userId, orgManage: true, sensitive: false),
-            new EfAuthRepository(db),
+            new EfPermissionRepository(db),
             new EfAccessGrantRequestRepository(db),
             _clock,
             new OutboxWriter(db, _encryption, _clock),
-            new EfAuthRepository(db),
+            new EfUserRepository(db),
             new EfTenantRepository(db),
             new EmployeeOffboardingLockGuard(employees));
     }

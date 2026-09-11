@@ -10,12 +10,11 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Auth;
 
 /// <summary>
-/// Proves EfAuthRepository.TryConsumeResetTokenAsync against a real PostgreSQL server: the single
+/// Proves EfPasswordResetTokenRepository.TryConsumeResetTokenAsync against a real PostgreSQL server: the single
 /// UPDATE ... WHERE used_at IS NULL guard must let exactly one truly parallel caller win, and must
 /// correctly reject used/expired/wrong-tenant/unknown tokens. A prior SQLite-backed attempt at these
 /// same assertions failed - Microsoft.Data.Sqlite binds a raw-SQL-interpolated DateTimeOffset
@@ -27,11 +26,6 @@ namespace ONEVO.Tests.Integration.Auth;
 /// </summary>
 public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_reset_token_concurrency_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -41,12 +35,9 @@ public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetim
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         var tenant = new Tenant
         {
@@ -77,7 +68,6 @@ public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetim
 
     public async Task DisposeAsync()
     {
-        await _postgres.DisposeAsync();
     }
 
     [Fact]
@@ -86,7 +76,7 @@ public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetim
         var tokenId = await SeedTokenAsync("hash-valid", usedAt: null, expiresAt: _clock.UtcNow.AddHours(1));
 
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPasswordResetTokenRepository(db);
 
         var result = await repo.TryConsumeResetTokenAsync("hash-valid", _tenantId, _clock.UtcNow);
 
@@ -103,7 +93,7 @@ public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetim
         await SeedTokenAsync("hash-used", usedAt: _clock.UtcNow.AddMinutes(-1), expiresAt: _clock.UtcNow.AddHours(1));
 
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPasswordResetTokenRepository(db);
 
         var result = await repo.TryConsumeResetTokenAsync("hash-used", _tenantId, _clock.UtcNow);
 
@@ -116,7 +106,7 @@ public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetim
         await SeedTokenAsync("hash-expired", usedAt: null, expiresAt: _clock.UtcNow.AddMinutes(-1));
 
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPasswordResetTokenRepository(db);
 
         var result = await repo.TryConsumeResetTokenAsync("hash-expired", _tenantId, _clock.UtcNow);
 
@@ -129,7 +119,7 @@ public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetim
         await SeedTokenAsync("hash-wrong-tenant", usedAt: null, expiresAt: _clock.UtcNow.AddHours(1));
 
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPasswordResetTokenRepository(db);
 
         var result = await repo.TryConsumeResetTokenAsync("hash-wrong-tenant", Guid.NewGuid(), _clock.UtcNow);
 
@@ -140,7 +130,7 @@ public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetim
     public async Task TryConsumeResetTokenAsync_UnknownHash_ReturnsNull()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPasswordResetTokenRepository(db);
 
         var result = await repo.TryConsumeResetTokenAsync("no-such-hash", _tenantId, _clock.UtcNow);
 
@@ -159,7 +149,7 @@ public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetim
             consumeTasks.Add(Task.Run(async () =>
             {
                 using var attemptDb = CreateContext();
-                var attemptRepo = new EfAuthRepository(attemptDb);
+                var attemptRepo = new EfPasswordResetTokenRepository(attemptDb);
                 return await attemptRepo.TryConsumeResetTokenAsync("hash-parallel", _tenantId, _clock.UtcNow);
             }));
         }

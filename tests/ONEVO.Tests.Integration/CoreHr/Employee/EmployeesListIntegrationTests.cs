@@ -24,7 +24,6 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
@@ -55,11 +54,6 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
     private const string RestrictedRoleName = "employees_list_rls_test_role";
     private const string RestrictedRolePassword = "employees-list-rls-test-role-password";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_employees_list_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -84,12 +78,9 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         // LookupDataSeeder/PermissionSeeder are IHostedServices that only run when the full host
         // starts - this fixture only runs migrations, so both lookup rows and the permission
@@ -145,7 +136,7 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
         await CreateRestrictedRoleAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task List_OnlyReturnsEmployeesBelongingToCallersTenant()
@@ -269,7 +260,7 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
 
     /// <summary>Builds a real EmployeeAuthorityResolver over the same restricted-role db context
     /// used by the handler under test - no mocks, matching this fixture's "handler -> repository
-    /// -> real SQL" intent. IPermissionRepository (EfAuthRepository) is the piece the legacy
+    /// -> real SQL" intent. IPermissionRepository (EfPermissionRepository) is the piece the legacy
     /// EmployeeVisibilityScopeResolver-based version of this fixture never needed.</summary>
     private IEmployeeAuthorityResolver BuildAuthorityResolver(ApplicationDbContext db, ICurrentUser currentUser)
     {
@@ -282,7 +273,7 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
             new EfPositionRepository(db),
             closureRepository,
             new EfDepartmentRepository(db),
-            new EfAuthRepository(db));
+            new EfPermissionRepository(db));
     }
 
     private GetEmployeeQueryHandler BuildGetHandler(Guid tenantId, bool orgManage, Guid? callerOwnEmployeeId = null)

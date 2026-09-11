@@ -60,7 +60,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task GetByCodeAsync_ReturnsPermissionByExactCode()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var permission = NewPermission("employees.read", "employees");
         await SeedAsync(permission);
 
@@ -76,7 +76,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task GetByCodeAsync_DoesNotMatchDifferentCasing()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var permission = NewPermission("employees.read", "employees");
         await SeedAsync(permission);
 
@@ -91,7 +91,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task GetByIdsAsync_ReturnsOnlyRequestedIds()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var match1 = NewPermission("leave.read", "leave");
         var match2 = NewPermission("leave.write", "leave");
         var other = NewPermission("payroll.read", "payroll");
@@ -106,7 +106,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task GetByIdsAsync_ReturnsEmptyForEmptyInput()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         await SeedAsync(NewPermission("attendance.read", "attendance"));
 
         var results = await repo.GetByIdsAsync(Array.Empty<Guid>());
@@ -120,7 +120,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task GetByCodesAsync_TrimsInputCodes()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var permission = NewPermission("leave.approve", "leave");
         await SeedAsync(permission);
 
@@ -133,7 +133,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task GetByCodesAsync_IgnoresNullEmptyAndWhiteSpaceInput()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var permission = NewPermission("leave.cancel", "leave");
         await SeedAsync(permission);
 
@@ -147,7 +147,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task GetByCodesAsync_DeduplicatesWithOrdinalComparer()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var permission = NewPermission("leave.reject", "leave");
         await SeedAsync(permission);
 
@@ -160,7 +160,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task GetByCodesAsync_DoesNotLowerCaseCodes()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var permission = NewPermission("Leave.Approve", "leave");
         await SeedAsync(permission);
 
@@ -177,7 +177,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task UserHasPermissionCodeAsync_ReturnsTrueForActiveUserRoleGrantingCode()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var permission = NewPermission("employees.read", "employees");
@@ -196,7 +196,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task UserHasPermissionCodeAsync_ReturnsFalseWhenUserRoleExpired()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var permission = NewPermission("employees.read", "employees");
@@ -215,7 +215,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task UserHasPermissionCodeAsync_ReturnsFalseForDifferentPermissionCode()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var permission = NewPermission("employees.read", "employees");
@@ -234,7 +234,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task UserHasPermissionCodeAsync_ReturnsFalseForDifferentUser()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var otherUserId = Guid.NewGuid();
@@ -256,7 +256,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task ListRolePermissionCodesAsync_ReturnsDistinctCodesForActiveUserRoles()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var readPermission = NewPermission("employees.read", "employees");
@@ -282,7 +282,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task ListRolePermissionCodesAsync_ExcludesExpiredUserRoles()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var permission = NewPermission("employees.read", "employees");
@@ -303,7 +303,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task ListRolePermissionCodesWithModulesAsync_ReturnsCodeAndModulePairs()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var permission = NewPermission("employees.read", "employees");
@@ -324,7 +324,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task ListRolePermissionCodesWithModulesAsync_ReturnsDistinctPairs()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var permission = NewPermission("employees.read", "employees");
@@ -348,7 +348,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task ListRolePermissionCodesWithModulesAsync_ExcludesExpiredUserRoles()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var permission = NewPermission("employees.read", "employees");
@@ -367,7 +367,7 @@ public sealed class EfAuthRepositoryPermissionCoreTests : IDisposable
     public async Task ListUserIdsWithPermissionCodeAsync_ExcludesInactiveAndDeletedUsers()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var permission = NewPermission("roles:manage", "roles");
         var role = NewRole(tenantId, "approver");

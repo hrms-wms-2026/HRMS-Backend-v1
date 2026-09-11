@@ -10,18 +10,12 @@ using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.CoreHr.PositionAssignment;
 
 public sealed class PositionAssignmentActiveHoldersTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_position_active_holders_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
@@ -30,12 +24,9 @@ public sealed class PositionAssignmentActiveHoldersTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         _tenantId = Guid.NewGuid();
         db.Tenants.Add(new Tenant
@@ -49,7 +40,7 @@ public sealed class PositionAssignmentActiveHoldersTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task GetActiveHoldersAsync_Returns_Only_Active_PrimaryEmployment_Holders_With_Email()

@@ -20,7 +20,6 @@ using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.CoreHr.OnboardingDraft;
@@ -37,11 +36,6 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
     private const string RestrictedRoleName = "onboarding_drafts_rls_test_role";
     private const string RestrictedRolePassword = "onboarding-drafts-rls-test-role-password";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_onboarding_drafts_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -53,12 +47,9 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         var tenant = new Tenant { Id = Guid.NewGuid(), Name = "Onboarding Draft RLS Tenant", Slug = "onboarding-drafts-rls", CompanySizeRange = "51-200", Status = TenantStatus.Active };
         _tenantId = tenant.Id;
@@ -78,7 +69,7 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
         await CreateRestrictedRoleAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task Handle_NeverCreatesAUserRow_WhenSavingADraft()

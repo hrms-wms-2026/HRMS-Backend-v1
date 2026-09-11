@@ -17,7 +17,6 @@ using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
 using Npgsql;
-using Testcontainers.PostgreSql;
 using Xunit;
 using WorkAreaSources = ONEVO.Application.Features.TimeAttendance.Services.ExpectedWorkAreaResolver;
 using TodaySnapshotSource = ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService;
@@ -54,7 +53,6 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
 
     private readonly CapturingEmailService _email = new();
 
-    private PostgreSqlContainer? _postgres;
     private string _connectionString = null!;
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
@@ -91,17 +89,13 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
         _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
-            _postgres = new PostgreSqlBuilder()
-                .WithImage("postgres:16-alpine")
-                .WithDatabase("onevo_work_area_runtime_http_test")
-                .WithUsername("test")
-                .WithPassword("test")
-                .Build();
-            await _postgres.StartAsync();
-            _connectionString = _postgres.GetConnectionString();
+            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
+            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
-
-        await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
+        else
+        {
+            await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
+        }
 
         WorkDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, ColomboZone).DateTime);
 
@@ -168,8 +162,6 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
     {
         _client.Dispose();
         _factory.Dispose();
-        if (_postgres is not null)
-            await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 

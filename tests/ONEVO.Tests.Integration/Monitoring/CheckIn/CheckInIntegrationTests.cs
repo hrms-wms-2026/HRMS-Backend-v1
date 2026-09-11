@@ -11,7 +11,6 @@ using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Monitoring.CheckIn;
 
@@ -23,11 +22,6 @@ namespace ONEVO.Tests.Integration.Monitoring.CheckIn;
 [Collection(WebApplicationFactoryCollection.Name)]
 public sealed class CheckInIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_checkin_integration_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private CheckInTestFactory _factory = null!;
@@ -35,10 +29,7 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        var connectionString = _postgres.GetConnectionString();
-
-        await IntegrationDatabaseBootstrap.InitializeAsync(connectionString);
+        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new CheckInTestFactory(connectionString);
@@ -53,7 +44,6 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         await _factory.DisposeAsync();
-        await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 

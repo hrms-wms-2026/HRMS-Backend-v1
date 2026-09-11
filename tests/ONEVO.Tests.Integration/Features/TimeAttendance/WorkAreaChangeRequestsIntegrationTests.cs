@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Npgsql;
-using Testcontainers.PostgreSql;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
 using Xunit;
@@ -15,35 +14,22 @@ namespace ONEVO.Tests.Integration.Features.TimeAttendance;
 /// </summary>
 public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer? _postgres;
     private string _connectionString = null!;
-
-    public WorkAreaChangeRequestsIntegrationTests()
-    {
-        var configured = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
-        if (!string.IsNullOrWhiteSpace(configured))
-            return;
-
-        _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-            .WithDatabase("onevo_work_area_test")
-            .WithUsername("test")
-            .WithPassword("test")
-            .Build();
-    }
 
     public async Task InitializeAsync()
     {
-        if (_postgres is not null)
+        var configured = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        if (!string.IsNullOrWhiteSpace(configured))
         {
-            await _postgres.StartAsync();
-            _connectionString = _postgres.GetConnectionString();
+            _connectionString = configured;
+            await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
         }
         else
         {
-            _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB")!;
+            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
+            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
 
-        await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
         await using var admin = new NpgsqlConnection(_connectionString);
         await admin.OpenAsync();
         await using var grant = admin.CreateCommand();
@@ -51,11 +37,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         await grant.ExecuteNonQueryAsync();
     }
 
-    public async Task DisposeAsync()
-    {
-        if (_postgres is not null)
-            await _postgres.DisposeAsync();
-    }
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task MigratedSchema_HasExpectedColumnsRestrictiveForeignKeysAndIndexes()
