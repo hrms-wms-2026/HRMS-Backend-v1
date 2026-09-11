@@ -21,6 +21,46 @@ public sealed class MicrosoftGraphCalendarClientTests
     };
 
     [Fact]
+    public async Task ListEventsAsync_FollowsODataNextLink_AccumulatesAllPagesAndUsesFinalPageDeltaLink()
+    {
+        const string page1Json = """
+        {
+          "value": [
+            { "id": "evt-page1", "subject": "Page 1 Event", "body": { "contentType": "text", "content": null }, "isAllDay": false, "location": { "displayName": null }, "start": { "dateTime": "2026-09-10T09:00:00", "timeZone": "UTC" }, "end": { "dateTime": "2026-09-10T09:30:00", "timeZone": "UTC" }, "isCancelled": false }
+          ],
+          "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/calendarView/delta?$skiptoken=page2token"
+        }
+        """;
+        const string page2Json = """
+        {
+          "value": [
+            { "id": "evt-page2", "subject": "Page 2 Event", "body": { "contentType": "text", "content": null }, "isAllDay": false, "location": { "displayName": null }, "start": { "dateTime": "2026-09-11T09:00:00", "timeZone": "UTC" }, "end": { "dateTime": "2026-09-11T09:30:00", "timeZone": "UTC" }, "isCancelled": false }
+          ],
+          "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=finaltoken"
+        }
+        """;
+
+        var requestedUrls = new List<string>();
+        var handler = new StubHandler(request =>
+        {
+            var url = request.RequestUri!.ToString();
+            requestedUrls.Add(url);
+            return RawJsonResponse(url.Contains("skiptoken=page2token") ? page2Json : page1Json);
+        });
+        var sut = new MicrosoftGraphCalendarClient(new HttpClient(handler));
+
+        var result = await sut.ListEventsAsync("at-1", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(7), CancellationToken.None);
+
+        Assert.Equal(2, requestedUrls.Count);
+        Assert.Equal("https://graph.microsoft.com/v1.0/me/calendarView/delta?$skiptoken=page2token", requestedUrls[1]);
+
+        Assert.Equal(2, result.Events.Count);
+        Assert.Contains(result.Events, e => e.Id == "evt-page1");
+        Assert.Contains(result.Events, e => e.Id == "evt-page2");
+        Assert.Equal("https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=finaltoken", result.NextDeltaLink);
+    }
+
+    [Fact]
     public async Task ListEventsAsync_ParsesEvents_AndCapturesNextDeltaLink()
     {
         const string responseJson = """

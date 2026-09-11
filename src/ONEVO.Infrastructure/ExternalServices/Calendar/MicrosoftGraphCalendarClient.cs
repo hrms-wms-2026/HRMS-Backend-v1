@@ -10,17 +10,29 @@ public sealed class MicrosoftGraphCalendarClient(HttpClient httpClient) : IMicro
 
     public async Task<GraphCalendarPage> ListEventsAsync(string accessToken, string? deltaLink, DateTimeOffset windowStart, DateTimeOffset windowEnd, CancellationToken ct)
     {
-        var url = deltaLink ?? $"{BaseUrl}/me/calendarView/delta?startDateTime={Uri.EscapeDataString(windowStart.ToString("O"))}&endDateTime={Uri.EscapeDataString(windowEnd.ToString("O"))}";
-
-        using var response = await SendAsync(HttpMethod.Get, url, accessToken, body: null, ct);
-        using var stream = await response.Content.ReadAsStreamAsync(ct);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
-
+        // Graph only returns @odata.deltaLink on the FINAL page of a paginated response; every
+        // non-final page returns @odata.nextLink instead - a full URL to request directly (not a
+        // token to append). We must follow it in a loop until we reach the page carrying
+        // @odata.deltaLink, accumulating events across all pages, otherwise a calendar with more
+        // than one page of events never advances its delta link and gets stuck re-fetching only the
+        // first page forever.
         var events = new List<GraphEventDto>();
-        foreach (var item in doc.RootElement.GetProperty("value").EnumerateArray())
-            events.Add(ParseEvent(item));
+        string? nextDeltaLink = null;
+        string? requestUrl = deltaLink ?? $"{BaseUrl}/me/calendarView/delta?startDateTime={Uri.EscapeDataString(windowStart.ToString("O"))}&endDateTime={Uri.EscapeDataString(windowEnd.ToString("O"))}";
 
-        var nextDeltaLink = doc.RootElement.TryGetProperty("@odata.deltaLink", out var d) ? d.GetString() : null;
+        do
+        {
+            using var response = await SendAsync(HttpMethod.Get, requestUrl, accessToken, body: null, ct);
+            using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+
+            foreach (var item in doc.RootElement.GetProperty("value").EnumerateArray())
+                events.Add(ParseEvent(item));
+
+            nextDeltaLink = doc.RootElement.TryGetProperty("@odata.deltaLink", out var d) ? d.GetString() : null;
+            requestUrl = doc.RootElement.TryGetProperty("@odata.nextLink", out var n) ? n.GetString() : null;
+        } while (requestUrl is not null);
+
         return new GraphCalendarPage(events, nextDeltaLink);
     }
 

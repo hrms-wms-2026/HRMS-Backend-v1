@@ -147,4 +147,45 @@ public sealed class CalendarSyncServiceTests
 
         _connections.Verify(x => x.Update(It.Is<ExternalCalendarConnection>(c => c.FailureCount == 3 && c.Status == ExternalCalendarConnectionStatuses.Failed)), Times.Once);
     }
+
+    [Theory]
+    [InlineData(ExternalCalendarConnectionStatuses.Failed)]
+    [InlineData(ExternalCalendarConnectionStatuses.ReauthRequired)]
+    public async Task SyncConnectionAsync_SuccessfulRun_RecoversPreviouslyFailedOrReauthRequiredConnectionToActive(string priorStatus)
+    {
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.PullOnly);
+        connection.Status = priorStatus;
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _googleClient.Setup(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GoogleCalendarPage([], null));
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        Assert.Equal(ExternalCalendarConnectionStatuses.Active, connection.Status);
+        _connections.Verify(x => x.Update(It.Is<ExternalCalendarConnection>(c => c.Status == ExternalCalendarConnectionStatuses.Active)), Times.Once);
+    }
+
+    [Fact]
+    public async Task SyncConnectionAsync_PushOnly_UsesLastSuccessfulSyncAt_NotLaterLastSyncedAt_AsWatermark()
+    {
+        // Simulates "last attempt (LastSyncedAt) more recent than last success (LastSuccessfulSyncAt),
+        // because the last attempt failed" - the push watermark must be the last SUCCESS time, not
+        // the last attempt time, otherwise a failed run's advanced LastSyncedAt would silently skip
+        // local edits made in between.
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.PushOnly);
+        var lastSuccess = DateTimeOffset.UtcNow.AddHours(-2);
+        var lastAttempt = DateTimeOffset.UtcNow.AddMinutes(-5);
+        connection.LastSuccessfulSyncAt = lastSuccess;
+        connection.LastSyncedAt = lastAttempt;
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _events.Setup(x => x.GetManualEventsUpdatedSinceForUserAsync(TenantId, connection.UserId, lastSuccess, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<CalendarEvent>());
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        _events.Verify(x => x.GetManualEventsUpdatedSinceForUserAsync(TenantId, connection.UserId, lastSuccess, It.IsAny<CancellationToken>()), Times.Once);
+        _events.Verify(x => x.GetManualEventsUpdatedSinceForUserAsync(TenantId, connection.UserId, lastAttempt, It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

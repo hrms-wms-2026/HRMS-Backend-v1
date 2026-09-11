@@ -54,15 +54,42 @@ public sealed class CalendarSyncJob(IServiceProvider services, ILogger<CalendarS
 
             foreach (var tenant in page)
             {
-                await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
-
-                var connections = scope.ServiceProvider.GetRequiredService<IExternalCalendarConnectionRepository>();
-                var syncService = scope.ServiceProvider.GetRequiredService<ICalendarSyncService>();
-
-                foreach (var connection in await connections.GetActiveAsync(ct))
+                ct.ThrowIfCancellationRequested();
+                try
                 {
-                    if (connection.SyncDirection == CalendarSyncDirections.Disabled) continue;
-                    await syncService.SyncConnectionAsync(tenant.Id, connection.Id, ct);
+                    await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
+
+                    var connections = scope.ServiceProvider.GetRequiredService<IExternalCalendarConnectionRepository>();
+                    var syncService = scope.ServiceProvider.GetRequiredService<ICalendarSyncService>();
+
+                    foreach (var connection in await connections.GetActiveAsync(ct))
+                    {
+                        if (connection.SyncDirection == CalendarSyncDirections.Disabled) continue;
+
+                        try
+                        {
+                            await syncService.SyncConnectionAsync(tenant.Id, connection.Id, ct);
+                        }
+                        catch (Exception ex)
+                        {
+                            // SyncConnectionAsync already catches Pull/Push errors internally, but a
+                            // handful of things outside that internal catch can still throw here (the
+                            // initial connection lookup, the final Update+SaveChangesAsync, the
+                            // token-refresh-failure branch's own SaveChangesAsync - e.g. a
+                            // DbUpdateException from a concurrent manual "sync now" request on the
+                            // same connection). Isolate per connection so one bad connection doesn't
+                            // skip the rest of this tenant's connections.
+                            logger.LogWarning(ex, "Calendar sync failed for connection {ConnectionId} (tenant {TenantId}); skipping.", connection.Id, tenant.Id);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Isolate per tenant, mirroring LeaveYearEndEntitlementJob.RunForYearAsync's
+                    // per-tenant try/catch - one tenant's database/context issue (e.g.
+                    // SwitchToTenantAsync or GetActiveAsync throwing) must not abort every other
+                    // tenant's sync in the same run.
+                    logger.LogWarning(ex, "Calendar sync failed for tenant {TenantId}; skipping.", tenant.Id);
                 }
             }
 

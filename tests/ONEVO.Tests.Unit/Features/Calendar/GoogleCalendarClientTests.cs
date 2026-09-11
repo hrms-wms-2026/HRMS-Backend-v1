@@ -21,6 +21,68 @@ public sealed class GoogleCalendarClientTests
     };
 
     [Fact]
+    public async Task ListEventsAsync_FollowsNextPageToken_AccumulatesAllPagesAndUsesFinalPageSyncToken()
+    {
+        var requestedUrls = new List<string>();
+        var handler = new StubHandler(request =>
+        {
+            var url = request.RequestUri!.ToString();
+            requestedUrls.Add(url);
+
+            if (url.Contains("pageToken=page-2-token"))
+            {
+                return JsonResponse(new
+                {
+                    items = new object[]
+                    {
+                        new
+                        {
+                            id = "evt-page2",
+                            etag = "\"etag-page2\"",
+                            summary = "Page 2 Event",
+                            start = new { dateTime = "2026-09-12T09:00:00+00:00", timeZone = "UTC" },
+                            end = new { dateTime = "2026-09-12T10:00:00+00:00", timeZone = "UTC" },
+                            status = "confirmed"
+                        }
+                    },
+                    nextSyncToken = "final-sync-token"
+                });
+            }
+
+            return JsonResponse(new
+            {
+                items = new object[]
+                {
+                    new
+                    {
+                        id = "evt-page1",
+                        etag = "\"etag-page1\"",
+                        summary = "Page 1 Event",
+                        start = new { dateTime = "2026-09-10T09:00:00+00:00", timeZone = "UTC" },
+                        end = new { dateTime = "2026-09-10T10:00:00+00:00", timeZone = "UTC" },
+                        status = "confirmed"
+                    }
+                },
+                nextPageToken = "page-2-token"
+            });
+        });
+        var sut = new GoogleCalendarClient(new HttpClient(handler));
+
+        var result = await sut.ListEventsAsync("at-1", "primary", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(7), CancellationToken.None);
+
+        Assert.Equal(2, requestedUrls.Count);
+        Assert.DoesNotContain("pageToken", requestedUrls[0]);
+        Assert.Contains("pageToken=page-2-token", requestedUrls[1]);
+        // Follow-up page requests must not carry syncToken alongside pageToken.
+        Assert.DoesNotContain("syncToken", requestedUrls[1]);
+
+        Assert.Equal(2, result.Events.Count);
+        Assert.Contains(result.Events, e => e.Id == "evt-page1");
+        Assert.Contains(result.Events, e => e.Id == "evt-page2");
+        Assert.Equal("final-sync-token", result.NextSyncToken);
+    }
+
+    [Fact]
     public async Task ListEventsAsync_ParsesTimedAndAllDayEvents_AndCapturesNextSyncToken()
     {
         var handler = new StubHandler(_ => JsonResponse(new

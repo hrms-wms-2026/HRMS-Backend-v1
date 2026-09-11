@@ -11,20 +11,47 @@ public sealed class GoogleCalendarClient(HttpClient httpClient) : IGoogleCalenda
 
     public async Task<GoogleCalendarPage> ListEventsAsync(string accessToken, string calendarId, string? syncToken, DateTimeOffset windowStart, DateTimeOffset windowEnd, CancellationToken ct)
     {
-        var url = syncToken is not null
-            ? $"{BaseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events?syncToken={Uri.EscapeDataString(syncToken)}&maxResults=200"
-            : $"{BaseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events?timeMin={Uri.EscapeDataString(windowStart.ToString("O"))}&timeMax={Uri.EscapeDataString(windowEnd.ToString("O"))}&maxResults=200&singleEvents=true";
-
-        using var response = await SendAsync(HttpMethod.Get, url, accessToken, body: null, ct);
-        using var stream = await response.Content.ReadAsStreamAsync(ct);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
-
+        // Google only returns nextSyncToken on the FINAL page of a paginated response; every
+        // non-final page returns nextPageToken instead. We must follow nextPageToken in a loop
+        // until we reach the page carrying nextSyncToken, accumulating events across all pages,
+        // otherwise a calendar with more than one page of events (>maxResults) never advances its
+        // sync token and gets stuck re-fetching only the first page forever. Per Google's actual
+        // API contract, syncToken is only sent on the very first request of a sync cycle - follow-up
+        // page requests use pageToken instead (not both).
         var events = new List<GoogleCalendarEventDto>();
-        foreach (var item in doc.RootElement.GetProperty("items").EnumerateArray())
-            events.Add(ParseEvent(item));
+        string? nextSyncToken = null;
+        string? pageToken = null;
 
-        var nextSyncToken = doc.RootElement.TryGetProperty("nextSyncToken", out var t) ? t.GetString() : null;
+        do
+        {
+            var url = BuildListUrl(calendarId, syncToken, pageToken, windowStart, windowEnd);
+
+            using var response = await SendAsync(HttpMethod.Get, url, accessToken, body: null, ct);
+            using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+
+            foreach (var item in doc.RootElement.GetProperty("items").EnumerateArray())
+                events.Add(ParseEvent(item));
+
+            nextSyncToken = doc.RootElement.TryGetProperty("nextSyncToken", out var t) ? t.GetString() : null;
+            pageToken = doc.RootElement.TryGetProperty("nextPageToken", out var p) ? p.GetString() : null;
+        } while (pageToken is not null);
+
         return new GoogleCalendarPage(events, nextSyncToken);
+    }
+
+    private static string BuildListUrl(string calendarId, string? syncToken, string? pageToken, DateTimeOffset windowStart, DateTimeOffset windowEnd)
+    {
+        var baseEventsUrl = $"{BaseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events";
+
+        if (pageToken is not null)
+            // Follow-up page of an in-progress pagination loop - only pageToken is sent, never
+            // syncToken/timeMin/timeMax, matching Google's documented pagination contract.
+            return $"{baseEventsUrl}?pageToken={Uri.EscapeDataString(pageToken)}&maxResults=200";
+
+        return syncToken is not null
+            ? $"{baseEventsUrl}?syncToken={Uri.EscapeDataString(syncToken)}&maxResults=200"
+            : $"{baseEventsUrl}?timeMin={Uri.EscapeDataString(windowStart.ToString("O"))}&timeMax={Uri.EscapeDataString(windowEnd.ToString("O"))}&maxResults=200&singleEvents=true";
     }
 
     public async Task<GoogleCalendarEventDto> InsertEventAsync(string accessToken, string calendarId, GoogleCalendarEventDto @event, CancellationToken ct)

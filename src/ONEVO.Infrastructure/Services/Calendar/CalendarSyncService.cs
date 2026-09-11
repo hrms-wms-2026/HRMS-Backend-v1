@@ -56,6 +56,13 @@ public sealed class CalendarSyncService(
             connection.LastSuccessfulSyncAt = DateTimeOffset.UtcNow;
             connection.FailureCount = 0;
             connection.LastError = null;
+            // Recover a connection that was previously Failed (3 consecutive failures) or
+            // ReauthRequired (a token refresh that has since started succeeding again) - without
+            // this, EfExternalCalendarConnectionRepository.GetActiveAsync's exclusion of Failed
+            // connections would permanently strand it outside all future automatic syncs even after
+            // the underlying issue (transient provider outage, expired-then-renewed grant) resolves.
+            // A no-op when already Active.
+            connection.Status = ExternalCalendarConnectionStatuses.Active;
         }
         catch (Exception ex)
         {
@@ -179,10 +186,14 @@ public sealed class CalendarSyncService(
 
         // Two-way conflict check: both sides changed since the last successful sync -> pull wins,
         // flag the link as conflict for later admin visibility (no resolution UI in this pass).
+        // Deliberately compares against LastSuccessfulSyncAt, not LastSyncedAt: LastSyncedAt
+        // advances on every attempt (success or failure), so after a failed run it could sit later
+        // than a local edit that hasn't actually been accounted for by any successful sync yet,
+        // letting that edit silently escape conflict detection.
         var bothSidesChanged = connection.SyncDirection == CalendarSyncDirections.TwoWay
             && link.ExternalEtag != etag
-            && connection.LastSyncedAt is not null
-            && localEvent.UpdatedAt is not null && localEvent.UpdatedAt > connection.LastSyncedAt;
+            && connection.LastSuccessfulSyncAt is not null
+            && localEvent.UpdatedAt is not null && localEvent.UpdatedAt > connection.LastSuccessfulSyncAt;
 
         localEvent.Title = displayTitle;
         localEvent.Description = displayDescription;
@@ -206,7 +217,13 @@ public sealed class CalendarSyncService(
 
     private async Task PushAsync(ExternalCalendarConnection connection, string accessToken, CancellationToken ct)
     {
-        var since = connection.LastSyncedAt ?? DateTimeOffset.UtcNow.Subtract(SyncWindowPast);
+        // Watermark deliberately reads LastSuccessfulSyncAt, not LastSyncedAt: LastSyncedAt
+        // advances even on a failed run (see the catch block above), which would silently move the
+        // "since" cutoff past local edits made during that failed run's window, permanently
+        // skipping them on every future push. LastSyncedAt itself is left alone elsewhere - it
+        // still means "last time we attempted a sync" for observability - only its use as a
+        // watermark here (and in the conflict check above) is replaced.
+        var since = connection.LastSuccessfulSyncAt ?? DateTimeOffset.UtcNow.Subtract(SyncWindowPast);
         var candidates = await events.GetManualEventsUpdatedSinceForUserAsync(connection.TenantId, connection.UserId, since, ct);
         var calendarId = connection.ExternalCalendarId ?? connection.ExternalAccountEmail;
 
