@@ -243,10 +243,18 @@ public static class DependencyInjection
         services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestDayCalculator>();
         services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestHourCalculator>();
         services.AddSingleton<ONEVO.Application.Features.Leave.Calendar.Helpers.LeaveCalendarRequestProjector>();
+        services.AddHttpClient<ONEVO.Application.Features.Calendar.ServiceInterfaces.INagerHolidaysClient,
+            ONEVO.Infrastructure.Services.Calendar.NagerHolidaysClient>(client =>
+        {
+            client.BaseAddress = new Uri("https://date.nager.at/api/v3/");
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.IHolidayCalendarSettingsRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfHolidayCalendarSettingsRepository>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveHolidayProvider,
-            ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveHolidayProvider>();
+            ONEVO.Infrastructure.Services.Calendar.NagerHolidaysProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveCalendarHolidayProvider,
-            ONEVO.Application.Features.Leave.Calendar.Services.NoOpLeaveCalendarHolidayProvider>();
+            ONEVO.Infrastructure.Services.Calendar.NagerHolidaysProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveRequestConflictProvider,
             ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveRequestConflictProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveApproverResolver,

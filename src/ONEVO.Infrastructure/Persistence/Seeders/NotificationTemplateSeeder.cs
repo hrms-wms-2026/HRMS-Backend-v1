@@ -198,6 +198,18 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "calendar_event_cancelled",
                 InAppTitleTemplate = "Event cancelled",
                 InAppBodyTemplate = "{{organizerName}} cancelled \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_resolution_requested",
+                InAppTitleTemplate = "Conflict resolution requested",
+                InAppBodyTemplate = "{{responderName}} requested help resolving a conflict for \"{{eventTitle}}\": {{reason}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_replacement_nominated",
+                InAppTitleTemplate = "Replacement nominated",
+                InAppBodyTemplate = "{{responderName}} nominated {{nomineeName}} as a replacement for \"{{eventTitle}}\"."
             }
 
         };

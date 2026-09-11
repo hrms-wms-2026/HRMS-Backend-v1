@@ -22,6 +22,7 @@ public sealed record CalendarEventItem(
     bool IsRecurringOccurrence = false,
     Guid? RecurrenceMasterId = null,
     DateTimeOffset? OriginalStart = null,
-    IReadOnlyList<CalendarEventParticipantSummary>? Participants = null);
+    IReadOnlyList<CalendarEventParticipantSummary>? Participants = null,
+    bool HasConflict = false);
 
 public sealed record CalendarEventsResponse(IReadOnlyList<CalendarEventItem> Events);

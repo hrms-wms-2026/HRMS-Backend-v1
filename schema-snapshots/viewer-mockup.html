@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Schema Snapshot Viewer — Mockup</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+<style>
+  :root{
+    --ink:#1B2430;
+    --ink-soft:#2C3644;
+    --paper:#FBFAF7;
+    --paper-line:#DED8CB;
+    --text:#1B2430;
+    --text-muted:#68707D;
+    --accent:#B9832E;
+    --accent-soft:#EFE1C6;
+    --line:#4A6670;
+    --radius:3px;
+    --serif: 'Iowan Old Style','Palatino Linotype','Book Antiqua', Georgia, serif;
+    --mono: 'JetBrains Mono','Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--text);
+    font-family: var(--serif);
+    font-size:16px;
+    line-height:1.5;
+  }
+  a{color:var(--ink);}
+  .app{
+    display:grid;
+    grid-template-columns: 280px 1fr;
+    min-height:100vh;
+  }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{
+    background:var(--ink);
+    color:#E9E6DD;
+    padding:24px 20px 20px;
+    display:flex;
+    flex-direction:column;
+    gap:18px;
+  }
+  .snap-meta{
+    font-family:var(--mono);
+    font-size:12.5px;
+    line-height:1.7;
+    color:#B8C0CC;
+    border-bottom:1px solid #3A4657;
+    padding-bottom:16px;
+  }
+  .snap-meta .db-name{
+    display:block;
+    font-family:var(--serif);
+    font-size:19px;
+    color:#fff;
+    margin-bottom:6px;
+  }
+  .search-wrap{position:relative;}
+  .search-wrap input{
+    width:100%;
+    background:var(--ink-soft);
+    border:1px solid #3A4657;
+    color:#fff;
+    padding:9px 12px;
+    border-radius:var(--radius);
+    font-family:var(--serif);
+    font-size:14px;
+  }
+  .search-wrap input::placeholder{color:#8892A0;}
+  .search-wrap input:focus-visible{
+    outline:2px solid var(--accent);
+    outline-offset:1px;
+  }
+  nav.domain-list{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    overflow-y:auto;
+  }
+  .domain-item{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    width:100%;
+    background:transparent;
+    border:none;
+    color:#D6D9DE;
+    text-align:left;
+    padding:9px 10px;
+    border-radius:var(--radius);
+    font-family:var(--serif);
+    font-size:14.5px;
+    cursor:pointer;
+  }
+  .domain-item:hover{background:var(--ink-soft);}
+  .domain-item:focus-visible{outline:2px solid var(--accent); outline-offset:-2px;}
+  .domain-item .count{
+    font-family:var(--mono);
+    font-size:12px;
+    color:#8892A0;
+  }
+  .domain-item[aria-current="true"]{
+    background:var(--ink-soft);
+    color:#fff;
+  }
+  .domain-item[aria-current="true"] .dot{
+    display:inline-block;
+    width:6px;height:6px;
+    border-radius:50%;
+    background:var(--accent);
+    margin-right:8px;
+  }
+  .domain-item .dot{display:none;}
+  .domain-item[aria-current="true"] .name{display:flex;align-items:center;}
+
+  /* ---------- Main content ---------- */
+  main.content{
+    padding:36px 48px 80px;
+    max-width:880px;
+  }
+  .domain-heading{
+    display:flex;
+    align-items:baseline;
+    gap:12px;
+    margin-bottom:4px;
+  }
+  .domain-heading h1{
+    font-size:32px;
+    margin:0;
+    font-weight:600;
+  }
+  .domain-heading .table-count{
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--text-muted);
+  }
+  .legend{
+    display:flex;
+    gap:18px;
+    flex-wrap:wrap;
+    margin:18px 0 28px;
+    padding:12px 14px;
+    border:1px solid var(--paper-line);
+    border-radius:var(--radius);
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--text-muted);
+  }
+  .legend span b{
+    color:var(--accent);
+    font-weight:600;
+  }
+
+  .diagram-card{
+    border:1px solid var(--paper-line);
+    border-radius:var(--radius);
+    padding:18px 20px 6px;
+    margin-bottom:32px;
+    background:#fff;
+  }
+  .diagram-card h2{
+    font-size:13px;
+    text-transform:none;
+    letter-spacing:0.02em;
+    color:var(--text-muted);
+    margin:0 0 8px;
+    font-family:var(--serif);
+    font-weight:600;
+  }
+
+  details.table-card{
+    border:1px solid var(--paper-line);
+    border-radius:var(--radius);
+    margin-bottom:14px;
+    background:#fff;
+    overflow:hidden;
+  }
+  details.table-card > summary{
+    list-style:none;
+    cursor:pointer;
+    padding:14px 18px;
+    font-family:var(--mono);
+    font-size:15px;
+    font-weight:600;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  details.table-card > summary::-webkit-details-marker{display:none;}
+  details.table-card > summary:focus-visible{outline:2px solid var(--accent); outline-offset:-2px;}
+  details.table-card > summary .chevron{
+    font-family:var(--serif);
+    color:var(--text-muted);
+    transition:transform 0.15s ease;
+  }
+  details[open] > summary .chevron{transform:rotate(90deg);}
+  .table-card-body{
+    padding:0 18px 18px;
+    border-top:1px solid var(--paper-line);
+  }
+  table.cols{
+    width:100%;
+    border-collapse:collapse;
+    font-family:var(--mono);
+    font-size:13px;
+    margin-top:12px;
+  }
+  table.cols th{
+    text-align:left;
+    font-family:var(--serif);
+    font-weight:600;
+    font-size:12.5px;
+    color:var(--text-muted);
+    padding:6px 10px 6px 0;
+    border-bottom:1px solid var(--paper-line);
+  }
+  table.cols td{
+    padding:7px 10px 7px 0;
+    border-bottom:1px solid #EEEAE0;
+  }
+  .badge{
+    display:inline-block;
+    padding:1px 6px;
+    border-radius:2px;
+    font-size:11px;
+    background:var(--accent-soft);
+    color:#7A5A17;
+    margin-right:4px;
+  }
+  .xdomain{
+    margin-top:16px;
+  }
+  .xdomain h4{
+    font-family:var(--serif);
+    font-size:13px;
+    font-weight:600;
+    color:var(--text-muted);
+    margin:14px 0 6px;
+  }
+  .xdomain table{
+    width:100%;
+    border-collapse:collapse;
+    font-family:var(--mono);
+    font-size:12.5px;
+  }
+  .xdomain td{
+    padding:6px 8px 6px 0;
+    border-bottom:1px solid #EEEAE0;
+  }
+  .xdomain .none{
+    font-family:var(--serif);
+    font-style:italic;
+    color:var(--text-muted);
+    font-size:13px;
+  }
+
+  /* ---------- Empty domain state ---------- */
+  .empty-state{
+    border:1px dashed var(--paper-line);
+    border-radius:var(--radius);
+    padding:28px 24px;
+    color:var(--text-muted);
+    font-size:15px;
+    max-width:60ch;
+  }
+  .empty-state code{
+    font-family:var(--mono);
+    font-size:13px;
+    background:#F1EEE5;
+    padding:1px 5px;
+    border-radius:2px;
+  }
+
+  [hidden]{display:none !important;}
+
+  @media (max-width: 760px){
+    .app{grid-template-columns:1fr;}
+    .sidebar{
+      flex-direction:column;
+      padding:16px;
+    }
+    nav.domain-list{
+      flex-direction:row;
+      flex-wrap:wrap;
+      overflow-x:auto;
+    }
+    main.content{padding:24px 20px 60px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="snap-meta">
+      <span class="db-name">acme_hr_prod</span>
+      migration: 20260815120000_AddCurrencyPrecision<br>
+      snapshot: 2026-09-09T04:12:00Z
+    </div>
+
+    <div class="search-wrap">
+      <input type="text" id="domainSearch" placeholder="Filter domains…" aria-label="Filter domains">
+    </div>
+
+    <nav class="domain-list" id="domainList" aria-label="Domains"></nav>
+  </aside>
+
+  <main class="content">
+
+    <template id="panel-template">
+      <div class="domain-heading">
+        <h1></h1>
+        <span class="table-count"></span>
+      </div>
+    </template>
+
+    <!-- Populated domain: Reference Data -->
+    <section class="domain-panel" data-domain="Reference Data" id="panel-reference-data">
+      <div class="domain-heading">
+        <h1>Reference Data</h1>
+        <span class="table-count">2 tables</span>
+      </div>
+
+      <div class="legend">
+        <span><b>PK</b> primary key</span>
+        <span><b>FK</b> foreign key</span>
+        <span><b>UK</b> unique constraint</span>
+        <span>NOT NULL columns shown in full opacity, nullable columns muted</span>
+      </div>
+
+      <div class="diagram-card">
+        <h2>Same-domain relationships</h2>
+        <div class="mermaid">
+erDiagram
+  country ||--o{ currency : "country_id"
+        </div>
+      </div>
+
+      <details class="table-card" open>
+        <summary><span>country</span><span class="chevron">›</span></summary>
+        <div class="table-card-body">
+          <table class="cols">
+            <thead><tr><th>Column</th><th>Type</th><th>Key</th><th>Nullable</th><th>Default</th></tr></thead>
+            <tbody>
+              <tr><td>id</td><td>uuid</td><td><span class="badge">PK</span></td><td>NOT NULL</td><td>gen_random_uuid()…</td></tr>
+              <tr><td>iso_code</td><td>varchar3</td><td><span class="badge">UK</span></td><td>NOT NULL</td><td>–</td></tr>
+              <tr><td>name</td><td>varchar100</td><td></td><td>NOT NULL</td><td>–</td></tr>
+            </tbody>
+          </table>
+          <div class="xdomain">
+            <h4>References into other domains</h4>
+            <p class="none">none</p>
+            <h4>Referenced by other domains</h4>
+            <table>
+              <tbody>
+                <tr><td>employee.country_id</td><td>→ country.id</td><td>Core HR &amp; Employee Lifecycle</td><td>RESTRICT</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details class="table-card">
+        <summary><span>currency</span><span class="chevron">›</span></summary>
+        <div class="table-card-body">
+          <table class="cols">
+            <thead><tr><th>Column</th><th>Type</th><th>Key</th><th>Nullable</th><th>Default</th></tr></thead>
+            <tbody>
+              <tr><td>id</td><td>uuid</td><td><span class="badge">PK</span></td><td>NOT NULL</td><td>gen_random_uuid()…</td></tr>
+              <tr><td>country_id</td><td>uuid</td><td><span class="badge">PK</span><span class="badge">FK</span></td><td>NOT NULL</td><td>–</td></tr>
+              <tr><td>code</td><td>varchar3</td><td><span class="badge">UK</span></td><td>NOT NULL</td><td>–</td></tr>
+              <tr><td>precision</td><td>smallint</td><td></td><td>NOT NULL</td><td>2</td></tr>
+            </tbody>
+          </table>
+          <div class="xdomain">
+            <h4>References into other domains</h4>
+            <p class="none">none — country_id is same-domain, drawn above</p>
+            <h4>Referenced by other domains</h4>
+            <table>
+              <tbody>
+                <tr><td>tenant.default_currency_id</td><td>→ currency.id</td><td>Tenancy &amp; Subscription</td><td>RESTRICT</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- Empty-state panels for the remaining 12 domains, generated by JS -->
+    <div id="emptyPanels"></div>
+
+  </main>
+</div>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+
+  const domains = [
+    { name: "Auth & Identity", count: 18 },
+    { name: "Tenancy & Subscription", count: 19 },
+    { name: "Platform Administration", count: 17 },
+    { name: "Org Structure", count: 9 },
+    { name: "Core HR & Employee Lifecycle", count: 22 },
+    { name: "Time & Attendance", count: 6 },
+    { name: "Leave & Time-Off", count: 13 },
+    { name: "Calendar", count: 6 },
+    { name: "Work Management", count: 21 },
+    { name: "Monitoring & Activity", count: 21 },
+    { name: "Notifications & Outbox", count: 3 },
+    { name: "Files & Infrastructure", count: 6 },
+    { name: "Reference Data", count: 2 }
+  ];
+
+  const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+  const listEl = document.getElementById('domainList');
+  const emptyPanelsEl = document.getElementById('emptyPanels');
+
+  domains.forEach(d => {
+    const id = slug(d.name);
+
+    // nav button
+    const btn = document.createElement('button');
+    btn.className = 'domain-item';
+    btn.dataset.target = id;
+    btn.setAttribute('aria-current', d.name === 'Reference Data' ? 'true' : 'false');
+    btn.innerHTML = `<span class="name"><span class="dot"></span>${d.name}</span><span class="count">${d.count}</span>`;
+    btn.addEventListener('click', () => showDomain(id));
+    listEl.appendChild(btn);
+
+    // empty panel (skip the one real panel already in the HTML)
+    if (d.name !== 'Reference Data') {
+      const panel = document.createElement('section');
+      panel.className = 'domain-panel';
+      panel.dataset.domain = d.name;
+      panel.id = 'panel-' + id;
+      panel.hidden = true;
+      panel.innerHTML = `
+        <div class="domain-heading">
+          <h1>${d.name}</h1>
+          <span class="table-count">${d.count} tables</span>
+        </div>
+        <div class="empty-state">
+          Not generated yet. Run the extraction queries against this domain's tables,
+          then regenerate — its diagram, table columns and cross-domain references will
+          render here in the same shape as <code>Reference Data</code>.
+        </div>`;
+      emptyPanelsEl.appendChild(panel);
+    }
+  });
+
+  function showDomain(id){
+    document.querySelectorAll('.domain-panel').forEach(p => p.hidden = (p.id !== 'panel-' + id));
+    document.querySelectorAll('.domain-item').forEach(b => {
+      b.setAttribute('aria-current', b.dataset.target === id ? 'true' : 'false');
+    });
+  }
+
+  document.getElementById('domainSearch').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll('.domain-item').forEach(b => {
+      const name = b.querySelector('.name').textContent.toLowerCase();
+      b.style.display = name.includes(q) ? '' : 'none';
+    });
+  });
+</script>
+
+</body>
+</html>

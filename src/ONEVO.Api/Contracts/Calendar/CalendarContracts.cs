@@ -1,5 +1,6 @@
 using ONEVO.Application.Features.Calendar.DTOs.Responses;
 using ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts;
+using ONEVO.Application.Features.Calendar.Queries.GetHolidayCalendarSettings;
 
 namespace ONEVO.Api.Contracts.Calendar;
 
@@ -13,12 +14,14 @@ public sealed record UpdateCalendarEventRequest(
     bool IsAllDay, string? Location, string? MeetingLink, string? Color,
     string Recurrence);
 
-public sealed record RespondToCalendarEventRequest(string ResponseStatus);
+public sealed record RespondToCalendarEventRequest(string ResponseStatus, string? Reason = null, Guid? NomineeEmployeeId = null);
 
 public sealed record MyEffectiveTimezoneViewModel(string Timezone);
 
 public sealed record CheckCalendarConflictsRequest(IReadOnlyList<Guid> ParticipantEmployeeIds, DateTimeOffset StartDate, DateTimeOffset EndDate);
-public sealed record CalendarConflictViewModel(Guid EmployeeId, string EmployeeName, Guid ConflictingEventId, string ConflictingEventTitle);
+public sealed record CalendarConflictViewModel(
+    Guid EmployeeId, string EmployeeName, Guid ConflictingEventId, string ConflictingEventTitle,
+    DateTimeOffset OverlapStart, DateTimeOffset OverlapEnd);
 public sealed record CalendarConflictsViewModel(IReadOnlyList<CalendarConflictViewModel> Conflicts);
 
 public sealed record EditRecurringOccurrenceRequest(
@@ -34,7 +37,7 @@ public sealed record CalendarEventViewModel(
     string? EventStatus, bool IsPrivate, string? Location, string? MeetingLink,
     string? ExternalSource, Guid CreatedById,
     bool IsRecurringOccurrence = false, Guid? RecurrenceMasterId = null, DateTimeOffset? OriginalStart = null,
-    IReadOnlyList<CalendarEventParticipantSummaryViewModel>? Participants = null);
+    IReadOnlyList<CalendarEventParticipantSummaryViewModel>? Participants = null, bool HasConflict = false);
 
 public sealed record CalendarEventsViewModel(IReadOnlyList<CalendarEventViewModel> Events);
 
@@ -45,7 +48,8 @@ public static class CalendarEventViewModelMapper
         dto.Recurrence, dto.IsAllDay, dto.Timezone, dto.EventStatus, dto.IsPrivate, dto.Location,
         dto.MeetingLink, dto.ExternalSource, dto.CreatedById,
         dto.IsRecurringOccurrence, dto.RecurrenceMasterId, dto.OriginalStart,
-        dto.Participants?.Select(p => new CalendarEventParticipantSummaryViewModel(p.EmployeeId, p.EmployeeName, p.ResponseStatus)).ToList());
+        dto.Participants?.Select(p => new CalendarEventParticipantSummaryViewModel(p.EmployeeId, p.EmployeeName, p.ResponseStatus)).ToList(),
+        dto.HasConflict);
 
     public static CalendarEventsViewModel ToViewModel(this CalendarEventsResponse dto) =>
         new(dto.Events.Select(e => e.ToViewModel()).ToList());
@@ -54,5 +58,19 @@ public static class CalendarEventViewModelMapper
 public static class CalendarConflictsViewModelMapper
 {
     public static CalendarConflictsViewModel ToViewModel(this CalendarConflictsResponse dto) =>
-        new(dto.Conflicts.Select(c => new CalendarConflictViewModel(c.EmployeeId, c.EmployeeName, c.ConflictingEventId, c.ConflictingEventTitle)).ToList());
+        new(dto.Conflicts.Select(c => new CalendarConflictViewModel(
+            c.EmployeeId, c.EmployeeName, c.ConflictingEventId, c.ConflictingEventTitle, c.OverlapStart, c.OverlapEnd)).ToList());
+}
+
+public sealed record UpdateHolidayCalendarSettingsRequest(string? OverrideCountryCode, bool HolidaySyncEnabled);
+
+public sealed record HolidayCalendarSettingsViewModel(
+    Guid Id, Guid LegalEntityId, string DefaultCountryCode, string? OverrideCountryCode,
+    bool HolidaySyncEnabled, int? LastSyncedYear, DateTimeOffset? LastSyncedAt);
+
+public static class HolidayCalendarSettingsViewModelMapper
+{
+    public static HolidayCalendarSettingsViewModel ToViewModel(this HolidayCalendarSettingsResponse dto) => new(
+        dto.Id, dto.LegalEntityId, dto.DefaultCountryCode, dto.OverrideCountryCode,
+        dto.HolidaySyncEnabled, dto.LastSyncedYear, dto.LastSyncedAt);
 }

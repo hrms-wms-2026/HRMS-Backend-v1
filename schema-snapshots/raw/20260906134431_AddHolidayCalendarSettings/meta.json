@@ -1,0 +1,6 @@
+{
+  "database": "OnevoDb_calsmoke",
+  "last_migration": "20260906134431_AddHolidayCalendarSettings",
+  "generated_at": "2026-09-09T11:32:50Z",
+  "base_table_count": 163
+}

@@ -7,6 +7,7 @@ using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.Auth.Entities;
 using PersonalCalendarEvent = ONEVO.Domain.Features.Calendar.Entities.CalendarEvent;
 using PersonalCalendarEventParticipant = ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipant;
+using HolidayCalendarSettings = ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
 using ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities;
@@ -309,6 +310,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<PersonalCalendarEvent> PersonalCalendarEvents => Set<PersonalCalendarEvent>();
     public DbSet<PersonalCalendarEventParticipant> CalendarEventParticipants => Set<PersonalCalendarEventParticipant>();
+    public DbSet<HolidayCalendarSettings> HolidayCalendarSettings => Set<HolidayCalendarSettings>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
