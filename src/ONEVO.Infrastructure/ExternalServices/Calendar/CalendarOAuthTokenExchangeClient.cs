@@ -2,11 +2,12 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 
 namespace ONEVO.Infrastructure.ExternalServices.Calendar;
 
-public sealed class CalendarOAuthTokenExchangeClient(HttpClient httpClient) : ICalendarOAuthTokenExchangeClient
+public sealed class CalendarOAuthTokenExchangeClient(HttpClient httpClient, ILogger<CalendarOAuthTokenExchangeClient> logger) : ICalendarOAuthTokenExchangeClient
 {
     private sealed record TokenResponse(
         [property: JsonPropertyName("access_token")] string AccessToken,
@@ -43,6 +44,13 @@ public sealed class CalendarOAuthTokenExchangeClient(HttpClient httpClient) : IC
     private async Task<CalendarProviderTokens> PostTokenRequestAsync(string tokenUrl, Dictionary<string, string> form, CancellationToken ct)
     {
         using var response = await httpClient.PostAsync(tokenUrl, new FormUrlEncodedContent(form), ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(ct);
+            logger.LogWarning(
+                "OAuth token endpoint {TokenUrl} returned {StatusCode}: {ErrorBody}",
+                tokenUrl, (int)response.StatusCode, errorBody);
+        }
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: ct)
             ?? throw new InvalidOperationException("Token endpoint returned an empty response.");

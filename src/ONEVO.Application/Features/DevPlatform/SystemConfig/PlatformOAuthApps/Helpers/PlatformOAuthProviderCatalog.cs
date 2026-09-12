@@ -56,7 +56,13 @@ public static class PlatformOAuthProviderCatalog
                 TokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
                 // Calendars.ReadWrite (not the narrower Calendars.Read) since Calendar's
                 // two_way/push_only sync modes need write access, not just read.
-                DefaultScopes: new[] { "openid", "profile", "email", "offline_access", "Calendars.ReadWrite" },
+                // User.Read is required separately from openid/profile/email: those three are
+                // OIDC scopes that only populate ID token claims, but CalendarOAuthTokenExchangeClient
+                // .GetMicrosoftAccountAsync calls GET https://graph.microsoft.com/v1.0/me on the
+                // ACCESS token to resolve the account's email - that Graph API call needs the
+                // User.Read delegated permission on the access token itself, which the OIDC scopes
+                // alone do not grant (confirmed: omitting it produces a 403 from Graph's /me endpoint).
+                DefaultScopes: new[] { "openid", "profile", "email", "offline_access", "User.Read", "Calendars.ReadWrite" },
                 ClientSecretRequired: true,
                 Capabilities: new[] { CapabilityUserOAuth, CapabilityCalendar }),
 

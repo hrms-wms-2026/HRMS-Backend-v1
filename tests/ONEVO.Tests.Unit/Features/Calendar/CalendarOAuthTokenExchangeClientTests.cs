@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using ONEVO.Infrastructure.ExternalServices.Calendar;
 using Xunit;
 
@@ -23,7 +24,7 @@ public sealed class CalendarOAuthTokenExchangeClientTests
     public async Task ExchangeCodeAsync_ParsesTokensAndComputesExpiry()
     {
         var handler = new StubHandler(_ => JsonResponse(new { access_token = "at-1", refresh_token = "rt-1", expires_in = 3600 }));
-        var sut = new CalendarOAuthTokenExchangeClient(new HttpClient(handler));
+        var sut = new CalendarOAuthTokenExchangeClient(new HttpClient(handler), NullLogger<CalendarOAuthTokenExchangeClient>.Instance);
 
         var result = await sut.ExchangeCodeAsync("https://oauth2.googleapis.com/token", "client", "secret", "code", "https://localhost:7229/callback", CancellationToken.None);
 
@@ -37,7 +38,7 @@ public sealed class CalendarOAuthTokenExchangeClientTests
     public async Task RefreshTokenAsync_ProviderOmitsRefreshToken_KeepsOriginal()
     {
         var handler = new StubHandler(_ => JsonResponse(new { access_token = "at-2", expires_in = 3600 }));
-        var sut = new CalendarOAuthTokenExchangeClient(new HttpClient(handler));
+        var sut = new CalendarOAuthTokenExchangeClient(new HttpClient(handler), NullLogger<CalendarOAuthTokenExchangeClient>.Instance);
 
         var result = await sut.RefreshTokenAsync("https://oauth2.googleapis.com/token", "client", "secret", "original-refresh-token", CancellationToken.None);
 
@@ -56,7 +57,7 @@ public sealed class CalendarOAuthTokenExchangeClientTests
                 new { id = "me@example.com", primary = true, summary = "me@example.com" }
             }
         }));
-        var sut = new CalendarOAuthTokenExchangeClient(new HttpClient(handler));
+        var sut = new CalendarOAuthTokenExchangeClient(new HttpClient(handler), NullLogger<CalendarOAuthTokenExchangeClient>.Instance);
 
         var result = await sut.GetAccountAsync("google", "at-1", CancellationToken.None);
 

@@ -286,7 +286,13 @@ public sealed class CalendarSyncService(
             return DateTimeOffset.UtcNow;
 
         var lastPushed = batch[^1];
-        return lastPushed.UpdatedAt ?? lastPushed.CreatedAt;
+        // .ToUniversalTime() is required here, not just defensive: this value gets written to
+        // LastSuccessfulSyncAt, a `timestamp with time zone` column - Npgsql refuses to write any
+        // DateTimeOffset whose Offset isn't exactly zero. CalendarEvent.UpdatedAt/CreatedAt are not
+        // guaranteed UTC at the source (confirmed: some existing rows carry a +05:30 offset), so this
+        // watermark must be normalized before the caller persists it, even though it represents the
+        // same instant either way.
+        return (lastPushed.UpdatedAt ?? lastPushed.CreatedAt).ToUniversalTime();
     }
 
     private async Task UpsertOutboundLinkAsync(ExternalCalendarConnection connection, Guid calendarEventId, ExternalCalendarEventLink? existingLink, string externalEventId, string? etag, string calendarId, CancellationToken ct)
