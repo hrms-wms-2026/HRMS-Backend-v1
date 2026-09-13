@@ -27,6 +27,9 @@ public class UpdateWorkModeCommandHandler : IRequestHandler<UpdateWorkModeComman
             return Result<WorkModeResponse>.Forbidden("Authentication required.");
 
         var tenantId = _currentUser.TenantId;
+        if (tenantId == Guid.Empty)
+            return Result<WorkModeResponse>.Forbidden("Tenant context missing.");
+
         var workMode = await _workModes.GetTrackedByIdAsync(tenantId, request.Id, ct);
         if (workMode is null)
             return Result<WorkModeResponse>.NotFound("Work mode not found.");
