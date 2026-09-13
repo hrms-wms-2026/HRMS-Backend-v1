@@ -203,6 +203,12 @@ public sealed class LegalEntityWorkModesControllerTestsFixture : IAsyncLifetime
         return json.GetProperty("id").GetGuid();
     }
 
+    public async Task<int> GetActiveWorkModeCountAsync(Guid legalEntityId)
+    {
+        var list = await GetJsonAsync(TenantA, $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes");
+        return list.GetArrayLength();
+    }
+
     private async Task<string?> WaitForInviteTokenForAsync(string email)
     {
         var deadline = DateTime.UtcNow.AddSeconds(30);
@@ -344,7 +350,12 @@ public class LegalEntityWorkModesControllerTests : IClassFixture<LegalEntityWork
     {
         var legalEntityId = await _fixture.CreateLegalEntityAsync();
 
-        for (int i = 1; i <= 5; i++)
+        // Legal entities may arrive with default Work Modes already seeded (see Task 3's
+        // WorkMode seeder), so top up to the cap of 5 rather than assuming a blank slate.
+        var existingCount = await _fixture.GetActiveWorkModeCountAsync(legalEntityId);
+        var toCreate = 5 - existingCount;
+
+        for (int i = 1; i <= toCreate; i++)
         {
             var response = await _fixture.SendAsync(
                 HttpMethod.Post,
@@ -363,8 +374,9 @@ public class LegalEntityWorkModesControllerTests : IClassFixture<LegalEntityWork
     {
         var legalEntityId = await _fixture.CreateLegalEntityAsync();
 
-        // Create 5 first
-        for (int i = 1; i <= 5; i++)
+        // Top up to the cap first, accounting for any pre-seeded defaults (see Task 3).
+        var existingCount = await _fixture.GetActiveWorkModeCountAsync(legalEntityId);
+        for (int i = 1; i <= 5 - existingCount; i++)
         {
             await _fixture.SendAsync(
                 HttpMethod.Post,
@@ -375,7 +387,7 @@ public class LegalEntityWorkModesControllerTests : IClassFixture<LegalEntityWork
                 csrfToken: _fixture.TenantA.CsrfHeader);
         }
 
-        // Try 6th
+        // Now at the cap - the next one must be rejected.
         var response = await _fixture.SendAsync(
             HttpMethod.Post,
             _fixture.TenantA.Host,
