@@ -588,7 +588,7 @@ public sealed class AttendanceReadHandlerTests
         currentUser.Setup(x => x.HasPermission("attendance:read")).Returns(true);
         currentUser.Setup(x => x.HasPermission("monitoring:read")).Returns(hasMonitoringRead);
 
-        var employee = new Employee { Id = EmployeeId, UserId = UserId, TenantId = TenantId, LegalEntityId = LegalEntityId, WorkModeId = 1, EmploymentTypeId = employmentTypeId };
+        var employee = new Employee { Id = EmployeeId, UserId = UserId, TenantId = TenantId, LegalEntityId = LegalEntityId, WorkModeId = Guid.NewGuid(), EmploymentTypeId = employmentTypeId };
         var legalEntity = new LegalEntity { Id = LegalEntityId, TenantId = TenantId, Timezone = "Asia/Colombo", StandardWorkingDays = "[1,2,3,4,5]", WorkStartTime = new(9, 0), WorkEndTime = new(17, 30), BreakDurationMinutes = 60 };
         var employees = new Mock<IEmployeeRepository>(); employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
         employees.Setup(x => x.GetByIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(employee);

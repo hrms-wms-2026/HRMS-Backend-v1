@@ -623,7 +623,7 @@ public class EfEmployeeRepository : IEmployeeRepository
             from empType in typeJoin.DefaultIfEmpty()
             join empStatus in _db.EmploymentStatuses.AsNoTracking() on e.EmploymentStatusId equals empStatus.Id into statusJoin
             from empStatus in statusJoin.DefaultIfEmpty()
-            join workMode in _db.WorkModes.AsNoTracking() on e.WorkModeId equals workMode.Id into workModeJoin
+            join workMode in _db.TimeAttendanceWorkModes.AsNoTracking() on e.WorkModeId equals (Guid?)workMode.Id into workModeJoin
             from workMode in workModeJoin.DefaultIfEmpty()
             join primaryAssignment in activePrimaryAssignments on e.Id equals primaryAssignment.EmployeeId into paJoin
             from primaryAssignment in paJoin.DefaultIfEmpty()
@@ -668,7 +668,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                 null,
                 null,
                 null,
-                row.workMode != null ? row.workMode.Label : row.e.WorkModeId.ToString()))
+                row.workMode != null ? row.workMode.Name : null))
             .FirstOrDefaultAsync(ct);
     }
 

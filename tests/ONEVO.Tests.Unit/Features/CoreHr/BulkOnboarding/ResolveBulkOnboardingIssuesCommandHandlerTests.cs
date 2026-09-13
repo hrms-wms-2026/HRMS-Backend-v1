@@ -9,13 +9,14 @@ using ONEVO.Application.Features.CoreHr.BulkOnboarding.Helpers;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Models;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Services;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.Commands.CreateDepartment;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdatePosition;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.BulkOnboarding;
@@ -125,16 +126,18 @@ public sealed class ResolveBulkOnboardingIssuesCommandHandlerTests
     [Fact]
     public async Task SetDefault_WorkMode_UpdatesBatchDefault()
     {
-        _workModes.Setup(w => w.ExistsActiveAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var workModeId = Guid.NewGuid();
+        _workModes.Setup(w => w.GetByIdAsync(_tenantId, workModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode { Id = workModeId, IsActive = true });
 
         var result = await CreateHandler().Handle(new ResolveBulkOnboardingIssuesCommand(
             _batchId,
             BulkOnboardingIssueTypes.WorkModeMissing,
             BulkOnboardingIssueTypes.Actions.SetDefault,
-            null, null, 2, [1, 3], null, null), CancellationToken.None);
+            null, null, workModeId, [1, 3], null, null), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(2, _batch.DefaultWorkModeId);
+        Assert.Equal(workModeId, _batch.DefaultWorkModeId);
     }
 
     [Fact]

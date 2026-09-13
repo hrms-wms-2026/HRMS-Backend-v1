@@ -54,7 +54,7 @@ public sealed record ResolveBulkOnboardingIssuesRequest(
     string Action,
     string? TargetId,
     string? NewValue,
-    int? WorkModeId,
+    Guid? WorkModeId,
     IReadOnlyList<int>? ApplyToRowNumbers,
     ResolveBulkOnboardingCreateDepartmentRequest? Create,
     ResolveBulkOnboardingCreatePositionRequest? CreatePosition);

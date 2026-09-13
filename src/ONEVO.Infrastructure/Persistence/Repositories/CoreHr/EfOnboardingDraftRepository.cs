@@ -33,7 +33,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
             from position in posJoin.DefaultIfEmpty()
             join dept in _db.Departments.AsNoTracking() on d.DepartmentId equals dept.Id into deptJoin
             from dept in deptJoin.DefaultIfEmpty()
-            join workMode in _db.WorkModes.AsNoTracking() on d.WorkModeId equals workMode.Id into workModeJoin
+            join workMode in _db.TimeAttendanceWorkModes.AsNoTracking() on d.WorkModeId equals (Guid?)workMode.Id into workModeJoin
             from workMode in workModeJoin.DefaultIfEmpty()
             join reportsToPosition in _db.Positions.AsNoTracking() on position!.ReportsToPositionId equals reportsToPosition.Id into reportsToPosJoin
             from reportsToPosition in reportsToPosJoin.DefaultIfEmpty()
@@ -53,7 +53,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 d.StartDate,
                 d.EmployeeNumber,
                 d.WorkModeId,
-                workMode != null ? workMode.Label : null,
+                workMode != null ? workMode.Name : null,
                 d.SelectedTemplateId,
                 d.EditedTasksJson,
                 d.Status,
@@ -84,7 +84,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
             from position in posJoin.DefaultIfEmpty()
             join dept in _db.Departments.AsNoTracking() on d.DepartmentId equals dept.Id into deptJoin
             from dept in deptJoin.DefaultIfEmpty()
-            join workMode in _db.WorkModes.AsNoTracking() on d.WorkModeId equals workMode.Id into workModeJoin
+            join workMode in _db.TimeAttendanceWorkModes.AsNoTracking() on d.WorkModeId equals (Guid?)workMode.Id into workModeJoin
             from workMode in workModeJoin.DefaultIfEmpty()
             join reportsToPosition in _db.Positions.AsNoTracking() on position!.ReportsToPositionId equals reportsToPosition.Id into reportsToPosJoin
             from reportsToPosition in reportsToPosJoin.DefaultIfEmpty()
@@ -105,7 +105,7 @@ public class EfOnboardingDraftRepository : IOnboardingDraftRepository
                 d.StartDate,
                 d.EmployeeNumber,
                 d.WorkModeId,
-                workMode != null ? workMode.Label : null,
+                workMode != null ? workMode.Name : null,
                 d.SelectedTemplateId,
                 d.EditedTasksJson,
                 d.Status,

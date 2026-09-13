@@ -193,7 +193,7 @@ public sealed class ClockInOutCommandHandlerTests
         var fixture = CreateFixture(
             allowedMethods: new AllowedClockInMethods(true, false, false, false, false, null));
         var context = new AttendanceTodayContext(
-            new Employee { Id = EmployeeId, TenantId = TenantId, UserId = Guid.NewGuid(), LegalEntityId = LegalEntityId, WorkModeId = 1 },
+            new Employee { Id = EmployeeId, TenantId = TenantId, UserId = Guid.NewGuid(), LegalEntityId = LegalEntityId, WorkModeId = Guid.NewGuid() },
             new LegalEntity { Id = LegalEntityId, TenantId = TenantId, Timezone = "Asia/Colombo" },
             "Asia/Colombo",
             TimeZoneInfo.FindSystemTimeZoneById("Asia/Colombo"),
@@ -522,7 +522,7 @@ public sealed class ClockInOutCommandHandlerTests
                 TenantId = TenantId,
                 UserId = Guid.NewGuid(),
                 LegalEntityId = LegalEntityId,
-                WorkModeId = 1
+                WorkModeId = Guid.NewGuid()
             },
             new LegalEntity
             {

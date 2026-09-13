@@ -11,6 +11,7 @@ using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Monitoring.Policy;
 using ONEVO.Tests.Integration.Support;
+using WorkModeEntity = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
 
 namespace ONEVO.Tests.Integration.Monitoring.CheckIn;
 
@@ -152,12 +153,19 @@ public sealed class TrayAttendanceIntegrationTests : IAsyncLifetime
             CountryCode = "US", CurrencyCode = "USD", IsActive = true, IsPrimary = true
         };
         db.LegalEntities.Add(legalEntity);
+        var workMode = new WorkModeEntity
+        {
+            Id = Guid.NewGuid(), TenantId = tenant.Id, LegalEntityId = legalEntity.Id,
+            Name = "Onsite", WebEnabled = true, IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        db.TimeAttendanceWorkModes.Add(workMode);
         db.Employees.Add(new Employee
         {
             Id = Guid.NewGuid(), TenantId = tenant.Id, UserId = user.Id,
             LegalEntityId = legalEntity.Id, EmployeeNumber = Guid.NewGuid().ToString("N")[..8],
             FirstName = "Test", LastName = "User", Email = email,
-            EmploymentTypeId = 1, EmploymentStatusId = 1, WorkModeId = 1,
+            EmploymentTypeId = 1, EmploymentStatusId = 1, WorkModeId = workMode.Id,
             HireDate = new DateOnly(2025, 1, 1), CreatedAt = DateTimeOffset.UtcNow,
             CreatedById = user.Id
         });

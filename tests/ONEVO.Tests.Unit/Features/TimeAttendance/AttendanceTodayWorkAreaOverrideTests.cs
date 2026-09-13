@@ -4,16 +4,12 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using ONEVO.Domain.Lookups;
-using LookupWorkMode = ONEVO.Domain.Lookups.WorkMode;
-using LookupWorkModeRepository = ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces.IWorkModeRepository;
 
 namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 
@@ -30,9 +26,9 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
     private static readonly Guid LegalEntityId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
     private static readonly DateOnly WorkDate = new(2026, 8, 21);
     private static readonly DateTimeOffset UtcNow = new(2026, 8, 21, 5, 0, 0, TimeSpan.Zero);
-    private const int OnsiteWorkModeId = 1;
-    private const int RemoteWorkModeId = 2;
-    private const int HybridWorkModeId = 3;
+    private static readonly Guid OnsiteWorkModeId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid RemoteWorkModeId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+    private static readonly Guid HybridWorkModeId = Guid.Parse("33333333-3333-3333-3333-333333333333");
 
     [Fact]
     public async Task Today_ApprovedRemoteOverride_OverridesPermanentOnsiteWorkModeAndUsesRemotePolicy()
@@ -138,7 +134,7 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
     }
 
     private static Fixture CreateFixture(
-        int permanentWorkModeId,
+        Guid permanentWorkModeId,
         string? approvedOverrideArea,
         AttendanceRecord? attendanceRecord = null)
     {
@@ -185,14 +181,15 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
         authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
 
-        var workModes = new Mock<LookupWorkModeRepository>();
-        workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(
-            [
-                new LookupWorkMode { Id = OnsiteWorkModeId, Code = "onsite", Label = "On-site" },
-                new LookupWorkMode { Id = RemoteWorkModeId, Code = "remote", Label = "Remote" },
-                new LookupWorkMode { Id = HybridWorkModeId, Code = "hybrid", Label = "Hybrid" }
-            ]);
+        var workModes = new Mock<IWorkModeRepository>();
+        foreach (var (id, name) in new[] { (OnsiteWorkModeId, "Onsite"), (RemoteWorkModeId, "Remote"), (HybridWorkModeId, "Hybrid") })
+        {
+            workModes.Setup(x => x.GetByIdAsync(TenantId, id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new WorkMode
+                {
+                    Id = id, TenantId = TenantId, LegalEntityId = LegalEntityId, Name = name, IsActive = true
+                });
+        }
 
         var dateTime = new Mock<IDateTimeProvider>();
         dateTime.SetupGet(x => x.UtcNow).Returns(UtcNow);

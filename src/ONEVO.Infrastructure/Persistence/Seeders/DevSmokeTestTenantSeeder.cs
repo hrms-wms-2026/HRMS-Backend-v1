@@ -96,7 +96,11 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
     private const int SmokeDefaultEmploymentTypeId = 1;   // "full_time" - seeded by LookupDataSeeder
     private const int SmokeDefaultEmploymentStatusId = 1; // "active"    - seeded by LookupDataSeeder
-    private const int SmokeDefaultWorkModeId = 1;          // "on_site"   - seeded by LookupDataSeeder
+
+    // Per-legal-entity WorkMode is resolved by name at employee-seed time (not a fixed id - see
+    // ResolveDefaultWorkModeIdAsync), since WorkModeSeeder seeds independent rows per legal
+    // entity rather than one shared global row.
+    private const string SmokeDefaultWorkModeName = "Onsite";
 
     private static readonly DateOnly SmokeEmployeeHireDate = new(2025, 1, 1);
 
@@ -203,6 +207,19 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             ResolveSmokeTenantContext(tenantContext, tenant);
             var newlyCreatedLegalEntityIds =
                 await SeedTenantLegalEntitiesAsync(db, tenant.Id, tenantDefinition.LegalEntities, now, ct);
+            await db.SaveChangesAsync(ct);
+
+            // Seed default Work Modes only for legal entities created this run (not on every
+            // restart's update pass) - WorkModeSeeder always inserts 3 unconditionally, so
+            // calling it again on an already-seeded legal entity would violate the 5-cap /
+            // name-uniqueness constraints. Runs right after the SaveChangesAsync above (so the
+            // legal entity rows are persisted before WorkModeSeeder's own SaveChangesAsync) and
+            // before any employee is seeded below, since SeedTenantEmployeeAsync needs to resolve
+            // a real WorkMode id for each employee's legal entity.
+            foreach (var legalEntityId in newlyCreatedLegalEntityIds)
+            {
+                await workModeSeeder.SeedDefaultsAsync(tenant.Id, legalEntityId, ct);
+            }
 
             await EnsureSmokeEmployeeReferenceDataAsync(db, ct);
 
@@ -226,16 +243,6 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             await SeedTenantSubscriptionAsync(db, tenant.Id, firstUser!.Id, tenantDefinition.SubscriptionId, now, ct);
             await SeedMonitoringFeatureTogglesAsync(db, tenant.Id, now, ct);
             await db.SaveChangesAsync(ct);
-
-            // Seed default Work Modes only for legal entities created this run (not on every
-            // restart's update pass) - WorkModeSeeder always inserts 3 unconditionally, so
-            // calling it again on an already-seeded legal entity would violate the 5-cap /
-            // name-uniqueness constraints. Runs after the SaveChangesAsync above so the legal
-            // entity rows are already persisted before WorkModeSeeder's own SaveChangesAsync.
-            foreach (var legalEntityId in newlyCreatedLegalEntityIds)
-            {
-                await workModeSeeder.SeedDefaultsAsync(tenant.Id, legalEntityId, ct);
-            }
 
             tenantContext.SetAdminMode();
             var seededEmails = tenantDefinition.Users.Select(u => u.Email).ToArray();
@@ -655,20 +662,35 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
     {
         // LookupDataSeeder (DependencyInjection.cs) is registered and runs before
         // DevSmokeTestTenantSeeder in the hosted-service startup order, seeding fixed
-        // Id=1 rows for employment_types("full_time"), employment_statuses("active"), and
-        // work_modes("on_site"). This check turns a broken startup order into a clear failure
-        // instead of silently writing Employee rows with dangling lookup ids.
+        // Id=1 rows for employment_types("full_time") and employment_statuses("active"). This
+        // check turns a broken startup order into a clear failure instead of silently writing
+        // Employee rows with dangling lookup ids.
         var typeOk = await db.EmploymentTypes.AnyAsync(t => t.Id == SmokeDefaultEmploymentTypeId, ct);
         var statusOk = await db.EmploymentStatuses.AnyAsync(s => s.Id == SmokeDefaultEmploymentStatusId, ct);
-        var workModeOk = await db.WorkModes.AnyAsync(w => w.Id == SmokeDefaultWorkModeId, ct);
 
-        if (!typeOk || !statusOk || !workModeOk)
+        if (!typeOk || !statusOk)
         {
             throw new InvalidOperationException(
-                "Development smoke-test seeder requires employment_types/employment_statuses/work_modes " +
+                "Development smoke-test seeder requires employment_types/employment_statuses " +
                 $"to already contain Id={SmokeDefaultEmploymentTypeId} rows (LookupDataSeeder must run " +
                 "before DevSmokeTestTenantSeeder). Refusing to seed Employee rows with dangling lookup ids.");
         }
+    }
+
+    // WorkMode is per-legal-entity (WorkModeSeeder), not a single shared global row, so it is
+    // resolved by name scoped to the employee's legal entity rather than a fixed id. Returns null
+    // if that legal entity's defaults have not been seeded yet - callers must run work-mode
+    // seeding for a legal entity before seeding any employee assigned to it.
+    private static async Task<Guid?> ResolveDefaultWorkModeIdAsync(
+        ApplicationDbContext db, Guid tenantId, Guid legalEntityId, CancellationToken ct)
+    {
+        var workMode = await db.TimeAttendanceWorkModes.FirstOrDefaultAsync(
+            w => w.TenantId == tenantId
+                && w.LegalEntityId == legalEntityId
+                && w.Name == SmokeDefaultWorkModeName
+                && w.IsActive,
+            ct);
+        return workMode?.Id;
     }
 
     private static async Task SeedTenantEmployeeAsync(
@@ -693,6 +715,8 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 "and must be reconciled manually before re-seeding.");
         }
 
+        var workModeId = await ResolveDefaultWorkModeIdAsync(db, tenantId, definition.LegalEntityId, ct);
+
         var employee = await db.Employees.FirstOrDefaultAsync(e => e.UserId == user.Id, ct);
         if (employee is null)
         {
@@ -708,7 +732,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 LegalEntityId = definition.LegalEntityId,
                 EmploymentTypeId = SmokeDefaultEmploymentTypeId,
                 EmploymentStatusId = SmokeDefaultEmploymentStatusId,
-                WorkModeId = SmokeDefaultWorkModeId,
+                WorkModeId = workModeId,
                 HireDate = SmokeEmployeeHireDate,
                 CreatedAt = now,
                 CreatedById = user.Id
@@ -723,7 +747,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         employee.LegalEntityId = definition.LegalEntityId;
         employee.EmploymentTypeId = SmokeDefaultEmploymentTypeId;
         employee.EmploymentStatusId = SmokeDefaultEmploymentStatusId;
-        employee.WorkModeId = SmokeDefaultWorkModeId;
+        employee.WorkModeId = workModeId;
         employee.UpdatedAt = now;
     }
 

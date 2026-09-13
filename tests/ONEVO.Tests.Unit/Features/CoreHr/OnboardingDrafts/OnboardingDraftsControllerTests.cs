@@ -27,11 +27,11 @@ public sealed class OnboardingDraftsControllerTests
 
     private static SaveOnboardingDraftRequest SampleRequest() => new(
         "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
-        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null, "employee_details");
+        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, Guid.NewGuid(), null, null, "employee_details");
 
     private static OnboardingDraftResponse SampleResponse(Guid id) => new(
         id, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
-        null, null, "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
+        null, null, "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, null, null, null,
         null, "waiting_for_seat", "waiting_for_seat", "employee_details", Guid.NewGuid(), "1", null, null, null);
 
     [Fact]

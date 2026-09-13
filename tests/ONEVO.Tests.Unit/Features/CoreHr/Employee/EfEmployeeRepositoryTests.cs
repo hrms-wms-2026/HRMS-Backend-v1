@@ -196,10 +196,15 @@ public sealed class EfEmployeeRepositoryTests
     {
         await using var db = BuildInMemoryDb();
         var tenantId = Guid.NewGuid();
+        var workModeId = Guid.NewGuid();
         var employee = NewEmployee(tenantId, "E-001");
-        employee.WorkModeId = 2;
+        employee.WorkModeId = workModeId;
         db.Employees.Add(employee);
-        db.WorkModes.Add(new ONEVO.Domain.Lookups.WorkMode { Id = 2, Code = "remote", Label = "Remote", IsActive = true });
+        db.TimeAttendanceWorkModes.Add(new WorkMode
+        {
+            Id = workModeId, TenantId = tenantId, LegalEntityId = employee.LegalEntityId ?? Guid.NewGuid(),
+            Name = "Remote", IsActive = true
+        });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -211,12 +216,12 @@ public sealed class EfEmployeeRepositoryTests
     }
 
     [Fact]
-    public async Task GetVisibleByIdAsync_FallsBackToWorkModeIdString_WhenNoLookupRowMatches()
+    public async Task GetVisibleByIdAsync_ReturnsNullWorkModeLabel_WhenNoLookupRowMatches()
     {
         await using var db = BuildInMemoryDb();
         var tenantId = Guid.NewGuid();
         var employee = NewEmployee(tenantId, "E-001");
-        employee.WorkModeId = 99;
+        employee.WorkModeId = Guid.NewGuid();
         db.Employees.Add(employee);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
@@ -225,7 +230,7 @@ public sealed class EfEmployeeRepositoryTests
         var result = await repo.GetVisibleByIdAsync(tenantId, EmployeeVisibilityScope.Unrestricted(), employee.Id, CancellationToken.None);
 
         Assert.NotNull(result);
-        Assert.Equal("99", result!.WorkModeLabel);
+        Assert.Null(result!.WorkModeLabel);
     }
 
     [Fact]

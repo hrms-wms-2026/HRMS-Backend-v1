@@ -17,6 +17,7 @@ using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -240,7 +241,10 @@ public class ApproveAccessGrantRequestCommandHandler
         if (position.DepartmentId is null)
             return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity("The selected position has no department and cannot be used.");
 
-        if (!await _workModeRepository.ExistsActiveAsync(draft.WorkModeId, ct))
+        if (draft.WorkModeId is not { } approveWorkModeId)
+            return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity("The selected work mode does not exist or is inactive.");
+        var approveWorkMode = await _workModeRepository.GetByIdAsync(tenantId, approveWorkModeId, ct);
+        if (approveWorkMode is null || !approveWorkMode.IsActive)
             return Result<ApproveAccessGrantRequestResponse>.UnprocessableEntity("The selected work mode does not exist or is inactive.");
 
         var employmentTypeId = await _employmentTypeRepository.GetIdByCodeAsync(draft.EmploymentType, ct);

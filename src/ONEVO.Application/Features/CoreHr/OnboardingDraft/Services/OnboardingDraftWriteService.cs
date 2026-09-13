@@ -17,6 +17,7 @@ using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -116,9 +117,11 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
     public async Task<Result<OnboardingDraftResponse>> SaveAsync(
         Guid tenantId, Guid actingUserId, SaveOnboardingDraftCommand request, CancellationToken ct)
     {
-        if (!await _workModeRepository.ExistsActiveAsync(request.WorkModeId, ct))
+        if (request.WorkModeId is { } requestedWorkModeId)
         {
-            return Result<OnboardingDraftResponse>.Failure("The selected work mode does not exist or is inactive.");
+            var requestedWorkMode = await _workModeRepository.GetByIdAsync(tenantId, requestedWorkModeId, ct);
+            if (requestedWorkMode is null || !requestedWorkMode.IsActive)
+                return Result<OnboardingDraftResponse>.Failure("The selected work mode does not exist or is inactive.");
         }
 
         var legalEntity = await _legalEntityRepository.GetByIdForTenantAsync(tenantId, request.LegalEntityId, ct);
@@ -354,7 +357,10 @@ public class OnboardingDraftWriteService : IOnboardingDraftWriteService
                 return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("The selected position has no department and cannot be used.");
         }
 
-        if (!await _workModeRepository.ExistsActiveAsync(draft.WorkModeId, ct))
+        if (draft.WorkModeId is not { } finalizeWorkModeId)
+            return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("The selected work mode does not exist or is inactive.");
+        var finalizeWorkMode = await _workModeRepository.GetByIdAsync(tenantId, finalizeWorkModeId, ct);
+        if (finalizeWorkMode is null || !finalizeWorkMode.IsActive)
             return Result<FinalizeOnboardingDraftResponse>.UnprocessableEntity("The selected work mode does not exist or is inactive.");
 
         var employmentTypeId = await _employmentTypeRepository.GetIdByCodeAsync(draft.EmploymentType, ct);

@@ -123,10 +123,6 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
         {
             db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         }
-        if (!await db.WorkModes.AnyAsync())
-        {
-            db.WorkModes.Add(new WorkMode { Id = 1, Code = "on_site", Label = "On-Site" });
-        }
         await db.SaveChangesAsync();
     }
 

@@ -424,7 +424,7 @@ public sealed class BreakCommandHandlerTests
                 TenantId = TenantId,
                 UserId = Guid.NewGuid(),
                 LegalEntityId = LegalEntityId,
-                WorkModeId = 1
+                WorkModeId = Guid.NewGuid()
             },
             new LegalEntity
             {

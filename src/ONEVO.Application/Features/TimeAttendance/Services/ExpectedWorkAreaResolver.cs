@@ -1,19 +1,22 @@
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-// Disambiguate: use the old int-keyed WorkMode lookup repo (CoreHr), not the new Guid-keyed per-LE repo (TimeAttendance)
-using LookupWorkModeRepository = ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces.IWorkModeRepository;
 
 namespace ONEVO.Application.Features.TimeAttendance.Services;
 
+// TODO(Task 5): this resolver still returns the old string-based work-area vocabulary
+// (onsite/remote/either/field) derived from WorkMode.Name. Task 5 rewrites this to resolve and
+// return the WorkMode itself (Id/Name) instead of re-deriving a string classification from its
+// name - see the plan's Global Constraints ("no category/taxonomy field is ever re-derived").
+// This minimal retarget only swaps the old int-keyed lookup for the new per-legal-entity
+// repository so the codebase keeps compiling; the behavior is otherwise unchanged.
 public sealed class ExpectedWorkAreaResolver(
     IDateTimeProvider dateTime,
-    LookupWorkModeRepository workModes,
+    IWorkModeRepository workModes,
     IWorkAreaChangeRequestRepository workAreaChangeRequests) : IExpectedWorkAreaResolver
 {
     public const string SourceApprovedRequest = "approved_work_area_change_request";
@@ -49,9 +52,10 @@ public sealed class ExpectedWorkAreaResolver(
                     "The approved work-area change request has an unsupported requested work area.");
         }
 
-        var mode = (await workModes.ListActiveAsync(ct))
-            .FirstOrDefault(x => x.Id == employee.WorkModeId);
-        var code = mode?.Code?.Trim().ToLowerInvariant();
+        var mode = employee.WorkModeId is { } workModeId
+            ? await workModes.GetByIdAsync(employee.TenantId, workModeId, ct)
+            : null;
+        var code = mode?.Name?.Trim().ToLowerInvariant();
 
         var expected = code switch
         {

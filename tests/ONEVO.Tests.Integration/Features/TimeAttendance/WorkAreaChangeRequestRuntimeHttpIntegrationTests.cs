@@ -65,6 +65,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
     private TenantSession _requesterA = null!;
     private Guid _requesterAEmployeeId;
     private Guid _requesterAUserId;
+    private Guid _requesterAWorkModeId;
 
     private TenantSession _requesterA2 = null!;
     private Guid _requesterA2EmployeeId;
@@ -91,6 +92,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
     public Guid TenantAId => _tenantAId;
     public TenantSession RequesterA => _requesterA;
     public Guid RequesterAEmployeeId => _requesterAEmployeeId;
+    public Guid RequesterAWorkModeId => _requesterAWorkModeId;
     public TenantSession RequesterA2 => _requesterA2;
     public Guid RequesterA2EmployeeId => _requesterA2EmployeeId;
     public TenantSession RequesterA3 => _requesterA3;
@@ -152,20 +154,20 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
         var requesterPosition3Id = await SeedPositionAsync(_tenantAId, _legalEntityAId, "Requester Position 3", _approverPositionId);
         var requesterPosition4Id = await SeedPositionAsync(_tenantAId, _legalEntityAId, "Requester Position 4", _approverPositionId);
 
-        (_approverA, _approverAEmployeeId, _approverAUserId) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, ownerA.Host, "approver@wa-run-a.test", _legalEntityAId, "WA-A-APR-001", workModeId: 1);
-        (_requesterA, _requesterAEmployeeId, _requesterAUserId) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, ownerA.Host, "requester@wa-run-a.test", _legalEntityAId, "WA-A-REQ-001", workModeId: 1);
-        (_requesterA2, _requesterA2EmployeeId, _) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, ownerA.Host, "requester2@wa-run-a.test", _legalEntityAId, "WA-A-REQ-002", workModeId: 1);
-        (_requesterA3, _requesterA3EmployeeId, _) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, ownerA.Host, "requester3@wa-run-a.test", _legalEntityAId, "WA-A-REQ-003", workModeId: 1);
-        (_requesterA4, var requesterA4EmployeeId, _) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, ownerA.Host, "requester4@wa-run-a.test", _legalEntityAId, "WA-A-REQ-004", workModeId: 1);
-        (_wrongApproverA, _, var wrongApproverAUserId) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, ownerA.Host, "wrong-approver@wa-run-a.test", _legalEntityAId, "WA-A-WRG-001", workModeId: 1);
-        (_approverB, _, var approverBUserId) = await SeedEmployeeFixtureUserAsync(
-            _tenantBId, ownerB.Host, "approver@wa-run-b.test", legalEntityBId, "WA-B-APR-001", workModeId: 1);
+        (_approverA, _approverAEmployeeId, _approverAUserId, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "approver@wa-run-a.test", _legalEntityAId, "WA-A-APR-001");
+        (_requesterA, _requesterAEmployeeId, _requesterAUserId, _requesterAWorkModeId) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "requester@wa-run-a.test", _legalEntityAId, "WA-A-REQ-001");
+        (_requesterA2, _requesterA2EmployeeId, _, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "requester2@wa-run-a.test", _legalEntityAId, "WA-A-REQ-002");
+        (_requesterA3, _requesterA3EmployeeId, _, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "requester3@wa-run-a.test", _legalEntityAId, "WA-A-REQ-003");
+        (_requesterA4, var requesterA4EmployeeId, _, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "requester4@wa-run-a.test", _legalEntityAId, "WA-A-REQ-004");
+        (_wrongApproverA, _, var wrongApproverAUserId, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "wrong-approver@wa-run-a.test", _legalEntityAId, "WA-A-WRG-001");
+        (_approverB, _, var approverBUserId, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantBId, ownerB.Host, "approver@wa-run-b.test", legalEntityBId, "WA-B-APR-001");
 
         await AssignPrimaryPositionAsync(_tenantAId, _approverAEmployeeId, _approverPositionId, _ownerAUserId, null);
         await AssignPrimaryPositionAsync(_tenantAId, _requesterAEmployeeId, requesterPositionId, _ownerAUserId, _approverAEmployeeId);
@@ -411,13 +413,20 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 
-    private async Task<(TenantSession Session, Guid EmployeeId, Guid UserId)> SeedEmployeeFixtureUserAsync(
-        Guid tenantId, string host, string email, Guid legalEntityId, string employeeNumber, int workModeId)
+    private async Task<(TenantSession Session, Guid EmployeeId, Guid UserId, Guid WorkModeId)> SeedEmployeeFixtureUserAsync(
+        Guid tenantId, string host, string email, Guid legalEntityId, string employeeNumber, string workModeName = "Onsite")
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
         var now = DateTimeOffset.UtcNow;
+
+        // Legal entity creation auto-seeds default work modes (Remote/Hybrid/Onsite) via
+        // WorkModeSeeder - reuse those instead of creating new ones.
+        var workModeId = await db.TimeAttendanceWorkModes.AsNoTracking()
+            .Where(w => w.TenantId == tenantId && w.LegalEntityId == legalEntityId && w.Name == workModeName)
+            .Select(w => w.Id)
+            .SingleAsync();
 
         var userId = Guid.NewGuid();
         db.Add(new User
@@ -471,7 +480,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
         await db.SaveChangesAsync();
 
         var session = await LoginViaBaseHostAsync(host, email, FixtureUserPassword);
-        return (session, employeeId, userId);
+        return (session, employeeId, userId, workModeId);
     }
 
     private async Task<Guid> GetTenantIdAsync(string host)
@@ -747,7 +756,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
             .CountAsync(x => x.TenantId == _fixture.TenantAId && x.EmployeeId == _fixture.RequesterAEmployeeId && x.Date == _fixture.WorkDate))
             .Should().Be(1);
         var employee = await db.Employees.AsNoTracking().SingleAsync(x => x.Id == _fixture.RequesterAEmployeeId);
-        employee.WorkModeId.Should().Be(1, "approval must never mutate the employee's permanent WorkModeId");
+        employee.WorkModeId.Should().Be(_fixture.RequesterAWorkModeId, "approval must never mutate the employee's permanent WorkModeId");
     }
 
     [Fact]

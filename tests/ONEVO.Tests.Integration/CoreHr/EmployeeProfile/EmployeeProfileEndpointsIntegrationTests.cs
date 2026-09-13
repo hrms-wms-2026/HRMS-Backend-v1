@@ -19,7 +19,7 @@ using ONEVO.Infrastructure.Security;
 using CommonEfEmployeeRepository = ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository;
 using FeatureEfEmployeeRepository = ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeRepository;
 using EfEmployeeProfileRepository = ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeProfileRepository;
-using EfWorkModeRepository = ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfWorkModeRepository;
+using EfWorkModeRepository = ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfWorkModeRepository;
 using EfLegalEntityRepository = ONEVO.Infrastructure.Persistence.Repositories.OrgStructure.EfLegalEntityRepository;
 using ONEVO.Tests.Integration.Support;
 using Xunit;

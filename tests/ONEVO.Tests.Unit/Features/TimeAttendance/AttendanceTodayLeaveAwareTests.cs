@@ -86,7 +86,7 @@ public sealed class AttendanceTodayLeaveAwareTests
         var employee = new Employee
         {
             Id = EmployeeId, UserId = UserId, TenantId = TenantId,
-            LegalEntityId = LegalEntityId, WorkModeId = 1
+            LegalEntityId = LegalEntityId, WorkModeId = Guid.NewGuid()
         };
         var legalEntity = new LegalEntity
         {

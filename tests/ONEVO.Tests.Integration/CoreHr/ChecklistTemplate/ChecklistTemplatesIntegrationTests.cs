@@ -152,14 +152,12 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
         seedDb.Users.Add(user);
         var employmentStatus = new EmploymentStatus { Id = 1, Code = "onboarding", Label = "Onboarding" };
         var employmentType = new EmploymentType { Id = 1, Code = "full_time", Label = "Full-Time" };
-        var workMode = new WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true };
         if (!await seedDb.EmploymentStatuses.AnyAsync(x => x.Id == 1)) seedDb.EmploymentStatuses.Add(employmentStatus);
         if (!await seedDb.EmploymentTypes.AnyAsync(x => x.Id == 1)) seedDb.EmploymentTypes.Add(employmentType);
-        if (!await seedDb.WorkModes.AnyAsync(x => x.Id == 1)) seedDb.WorkModes.Add(workMode);
         var employee = new Domain.Features.CoreHr.Entities.Employee
         {
             Id = Guid.NewGuid(), TenantId = _tenantId, UserId = user.Id, EmployeeNumber = "EMP-INT-001", FirstName = "New", LastName = "Hire",
-            Email = user.Email, LegalEntityId = _legalEntityId, DepartmentId = _departmentId, EmploymentStatusId = 1, EmploymentTypeId = 1, WorkModeId = 1,
+            Email = user.Email, LegalEntityId = _legalEntityId, DepartmentId = _departmentId, EmploymentStatusId = 1, EmploymentTypeId = 1, WorkModeId = null,
             HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
         };
         seedDb.Employees.Add(employee);
@@ -231,7 +229,7 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
             grantTables.CommandText = $@"
                 GRANT SELECT, INSERT, UPDATE, DELETE ON checklist_templates, employee_checklist_tasks TO {RestrictedRoleName};
                 GRANT SELECT ON tenants, legal_entities, departments, positions, employees, users,
-                    employment_statuses, employment_types, work_modes TO {RestrictedRoleName};
+                    employment_statuses, employment_types, tenant_work_modes TO {RestrictedRoleName};
             ";
             await grantTables.ExecuteNonQueryAsync();
         }

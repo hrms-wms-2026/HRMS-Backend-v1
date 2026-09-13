@@ -9,7 +9,6 @@ using PersonalCalendarEvent = ONEVO.Domain.Features.Calendar.Entities.CalendarEv
 using PersonalCalendarEventParticipant = ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipant;
 using HolidayCalendarSettings = ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings;
 using TimeAttendanceWorkMode = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
-using LookupWorkMode = ONEVO.Domain.Lookups.WorkMode;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
 using ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities;
@@ -242,7 +241,6 @@ public class ApplicationDbContext : DbContext
     // Lookups
     public DbSet<EmploymentType> EmploymentTypes => Set<EmploymentType>();
     public DbSet<EmploymentStatus> EmploymentStatuses => Set<EmploymentStatus>();
-    public DbSet<LookupWorkMode> WorkModes => Set<LookupWorkMode>();
     public DbSet<ApprovalStatus> ApprovalStatuses => Set<ApprovalStatus>();
     public DbSet<Severity> Severities => Set<Severity>();
 

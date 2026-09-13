@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
+using WorkModeEntity = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
 
 namespace ONEVO.Infrastructure.Persistence.Configurations.CoreHr.Employee;
 
@@ -18,7 +19,11 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<EmployeeEntity>
         builder.Property(e => e.Gender).HasMaxLength(10);
         builder.Property(e => e.EmploymentTypeId).IsRequired();
         builder.Property(e => e.EmploymentStatusId).IsRequired();
-        builder.Property(e => e.WorkModeId).IsRequired();
+        builder.Property(e => e.LegacyWorkModeId).IsRequired();
+        builder.HasOne<WorkModeEntity>()
+            .WithMany()
+            .HasForeignKey(e => e.WorkModeId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Property(e => e.DisplayTimezone).HasMaxLength(50);
 
         // Concurrency token mapped to the PostgreSQL system column xmin - see

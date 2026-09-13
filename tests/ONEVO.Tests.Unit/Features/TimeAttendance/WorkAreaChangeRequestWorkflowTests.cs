@@ -380,7 +380,7 @@ public sealed class WorkAreaChangeRequestWorkflowTests
         public Guid PositionId { get; } = Guid.NewGuid();
         public DateOnly Date { get; } = new(2026, 8, 25);
         public DateTimeOffset Now { get; } = new(2026, 8, 25, 8, 0, 0, TimeSpan.Zero);
-        public int OriginalWorkModeId { get; } = 77;
+        public Guid OriginalWorkModeId { get; } = Guid.NewGuid();
         public Employee Employee { get; }
         public Mock<ICurrentUser> CurrentUser { get; } = new();
         public Mock<IDateTimeProvider> Clock { get; } = new();

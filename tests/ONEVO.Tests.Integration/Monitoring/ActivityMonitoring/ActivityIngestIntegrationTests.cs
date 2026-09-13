@@ -145,7 +145,7 @@ public sealed class ActivityIngestIntegrationTestsFixture : IAsyncLifetime
             Email = email,
             EmploymentTypeId = 1,
             EmploymentStatusId = 1,
-            WorkModeId = 1,
+            WorkModeId = null,
             HireDate = new DateOnly(2025, 1, 1),
             CreatedAt = DateTimeOffset.UtcNow,
             CreatedById = user.Id

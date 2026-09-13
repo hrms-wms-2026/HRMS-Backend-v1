@@ -127,6 +127,7 @@ public sealed class AttendanceCorrectionsMigrationUpgradeTests : IAsyncLifetime
             await command.ExecuteNonQueryAsync();
         }
 
+        var employeeIdValue = Guid.NewGuid();
         await using (var context = CreateContext())
         {
             var requester = new User
@@ -142,21 +143,39 @@ public sealed class AttendanceCorrectionsMigrationUpgradeTests : IAsyncLifetime
                 FirstName = "Rev", LastName = "User", PasswordHash = "not-a-real-hash",
                 IsActive = true, EmailVerified = true, CreatedAt = DateTimeOffset.UtcNow, CreatedById = userId
             };
-            var employee = new Employee
-            {
-                Id = Guid.NewGuid(), TenantId = tenant.Id, UserId = userId, EmployeeNumber = "MIG-001",
-                FirstName = "Req", LastName = "User", Email = requester.Email, LegalEntityId = legalEntityId,
-                EmploymentTypeId = 1, EmploymentStatusId = 1, WorkModeId = 1,
-                HireDate = new DateOnly(2025, 1, 1), CreatedAt = DateTimeOffset.UtcNow, CreatedById = userId
-            };
 
-            context.AddRange(requester, reviewer, employee);
+            context.AddRange(requester, reviewer);
             await context.SaveChangesAsync();
 
             tenantId = tenant.Id;
-            employeeId = employee.Id;
+            employeeId = employeeIdValue;
             requesterId = userId;
             reviewerId = reviewerUserId;
+        }
+
+        // Employee is inserted via raw SQL, not EF SaveChanges: the compiled Employee model now
+        // includes legacy_work_mode_id/work_mode_id (uuid) (added by RetargetEmployeeWorkModeIdToGuid,
+        // a much later migration than PreApprovalSnapshotMigration) - EF's generated INSERT always
+        // lists every mapped scalar column explicitly, so it would reference a column that doesn't
+        // exist yet at this pinned historical schema point. Column list below is exactly employees'
+        // NOT-NULL-with-no-default set as of PreApprovalSnapshotMigration; every other column
+        // (including the old int work_mode_id, which still has its original DEFAULT 0 at this
+        // point) is nullable or has a migration-level DEFAULT, so Postgres fills it in when omitted.
+        await using (var connection = new NpgsqlConnection(_migratorConnectionString))
+        {
+            await connection.OpenAsync();
+            await SetAdminModeAsync(connection);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO employees (id, tenant_id, user_id, legal_entity_id, employee_number, first_name, last_name, email, hire_date, created_at, created_by_id, is_deleted)
+                VALUES (@id, @tenant, @user, @legalEntity, 'MIG-001', 'Req', 'User', 'requester@mig-upgrade.test', @hireDate, now(), @user, false);
+                """;
+            command.Parameters.AddWithValue("id", employeeIdValue);
+            command.Parameters.AddWithValue("tenant", tenantId);
+            command.Parameters.AddWithValue("user", requesterId);
+            command.Parameters.AddWithValue("legalEntity", legalEntityId);
+            command.Parameters.AddWithValue("hireDate", new DateOnly(2025, 1, 1));
+            await command.ExecuteNonQueryAsync();
         }
 
         // Step 2: migrate exactly to the base table's own migration - attendance_corrections now

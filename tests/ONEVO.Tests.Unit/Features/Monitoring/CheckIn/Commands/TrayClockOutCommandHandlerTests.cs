@@ -126,7 +126,7 @@ public class TrayClockOutCommandHandlerTests
     }
 
     private static AttendanceTodayContext BuildContext() => new(
-        new Employee { Id = EmployeeId, TenantId = TenantId, UserId = UserId, LegalEntityId = LegalEntityId, WorkModeId = 1 },
+        new Employee { Id = EmployeeId, TenantId = TenantId, UserId = UserId, LegalEntityId = LegalEntityId, WorkModeId = Guid.NewGuid() },
         new LegalEntity { Id = LegalEntityId, TenantId = TenantId, Timezone = "Asia/Colombo" },
         "Asia/Colombo",
         TimeZoneInfo.FindSystemTimeZoneById("Asia/Colombo"),

@@ -3,8 +3,8 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using Xunit;
@@ -67,7 +67,6 @@ public class GetMyProfileQueryHandlerTests
 
         var featureRepo = new Mock<FeatureEmployeeRepo>();
         var workModes = new Mock<IWorkModeRepository>();
-        workModes.Setup(w => w.ListActiveAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
         var profileRepo = new Mock<IEmployeeProfileRepository>();
         profileRepo.Setup(r => r.ListAddressesAsync(tenantId, employeeId, It.IsAny<CancellationToken>())).ReturnsAsync([]);
