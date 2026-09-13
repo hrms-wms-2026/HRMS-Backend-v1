@@ -38,6 +38,7 @@ public class CreateTenantCommandHandler
     private readonly IDateTimeProvider _clock;
     private readonly ITenantOwnerInvitationService _invitationService;
     private readonly IWritableTenantContext _tenantContext;
+    private readonly IWorkModeSeeder _workModeSeeder;
 
     public CreateTenantCommandHandler(
         ITenantRepository tenants,
@@ -50,7 +51,8 @@ public class CreateTenantCommandHandler
         IUnitOfWork unitOfWork,
         IDateTimeProvider clock,
         ITenantOwnerInvitationService invitationService,
-        IWritableTenantContext tenantContext)
+        IWritableTenantContext tenantContext,
+        IWorkModeSeeder workModeSeeder)
     {
         _tenants = tenants;
         _legalEntities = legalEntities;
@@ -63,6 +65,7 @@ public class CreateTenantCommandHandler
         _clock = clock;
         _invitationService = invitationService;
         _tenantContext = tenantContext;
+        _workModeSeeder = workModeSeeder;
     }
 
     public async Task<Result<CreateTenantDraftResponseDto>> Handle(
@@ -120,7 +123,7 @@ public class CreateTenantCommandHandler
         await _tenants.AddAsync(tenant, ct);
 
         // 5. Legal entity
-        await _legalEntities.AddAsync(new LegalEntity
+        var primaryLegalEntity = new LegalEntity
         {
             Id = Guid.NewGuid(),
             TenantId = tenant.Id,
@@ -130,7 +133,8 @@ public class CreateTenantCommandHandler
             CurrencyCode = request.Currency.Trim().ToUpperInvariant(),
             IsPrimary = true,
             CreatedAt = now
-        }, ct);
+        };
+        await _legalEntities.AddAsync(primaryLegalEntity, ct);
 
         // 6. Tenant auth policy
         await _authPolicies.AddAsync(
@@ -214,6 +218,11 @@ public class CreateTenantCommandHandler
         //     + owner role + invite records + email outbox message.
         //     The outbox worker delivers the email after this commit.
         await _unitOfWork.SaveChangesAsync(ct);
+
+        // 12. Seed default Work Modes for the primary legal entity. Deliberately AFTER the
+        // commit above, not interleaved with it - WorkModeSeeder issues its own SaveChangesAsync
+        // internally, and running it earlier would split step 11's single atomic commit into two.
+        await _workModeSeeder.SeedDefaultsAsync(tenant.Id, primaryLegalEntity.Id, ct);
 
         OwnerInviteResultDto? ownerInvite = null;
         if (pendingInvite is not null)

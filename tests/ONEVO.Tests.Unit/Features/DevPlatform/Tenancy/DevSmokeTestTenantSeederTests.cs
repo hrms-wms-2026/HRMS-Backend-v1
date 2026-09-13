@@ -15,7 +15,9 @@ using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using ONEVO.Infrastructure.Persistence.Seeders;
+using ONEVO.Infrastructure.Services.TimeAttendance;
 using ONEVO.Tests.Unit.Features.Auth;
 
 namespace ONEVO.Tests.Unit.Features.DevPlatform.Tenancy;
@@ -159,7 +161,15 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
             CreatePasswordHasher().Object,
             new Mock<IEncryptionService>().Object,
             new ConfigurationBuilder().Build(),
+            CreateWorkModeSeeder(db),
             CancellationToken.None);
+    }
+
+    private static WorkModeSeeder CreateWorkModeSeeder(ApplicationDbContext db)
+    {
+        var clock = new Mock<IDateTimeProvider>();
+        clock.SetupGet(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
+        return new WorkModeSeeder(new EfWorkModeRepository(db), clock.Object);
     }
 
     private static async Task<HashSet<string>> RolePermissionCodesForAsync(
@@ -552,7 +562,8 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
         // dirty dev database rather than a fresh one.
         await DevSmokeTestTenantSeeder.SeedAsync(
             db, tenantContext, CreatePasswordHasher().Object,
-            new Mock<IEncryptionService>().Object, new ConfigurationBuilder().Build(), CancellationToken.None);
+            new Mock<IEncryptionService>().Object, new ConfigurationBuilder().Build(),
+            CreateWorkModeSeeder(db), CancellationToken.None);
 
         var owner = await db.Users.SingleAsync(u => u.Email == AcmeOwnerEmail);
         var conflictingEmployee = await db.Set<Employee>().SingleAsync(e => e.UserId == owner.Id);
@@ -564,7 +575,8 @@ public sealed class DevSmokeTestTenantSeederTests : IDisposable
 
         var act = () => DevSmokeTestTenantSeeder.SeedAsync(
             db, tenantContext, CreatePasswordHasher().Object,
-            new Mock<IEncryptionService>().Object, new ConfigurationBuilder().Build(), CancellationToken.None);
+            new Mock<IEncryptionService>().Object, new ConfigurationBuilder().Build(),
+            CreateWorkModeSeeder(db), CancellationToken.None);
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*ACME-0001*");

@@ -18,15 +18,14 @@ using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
 using Xunit;
 
-namespace ONEVO.Tests.Integration.Controllers;
+namespace ONEVO.Tests.Integration.Features.OrgStructure;
 
 /// <summary>
-/// Fixture for LegalEntityWorkModesControllerTests.
+/// Fixture for CreateLegalEntitySeedsWorkModesTests.
 /// </summary>
-public sealed class LegalEntityWorkModesControllerTestsFixture : IAsyncLifetime
+public sealed class CreateLegalEntitySeedsWorkModesTestsFixture : IAsyncLifetime
 {
     private const string AdminHost = "admin.localhost";
-    private const string FixtureUserPassword = "Password123!";
     private static readonly Guid SeededPlanId = new("a1b2c3d4-0001-0001-0001-000000000001");
 
     private readonly CapturingEmailService _email = new();
@@ -70,7 +69,7 @@ public sealed class LegalEntityWorkModesControllerTestsFixture : IAsyncLifetime
         _adminCsrfToken = adminCookies["admin_csrf"];
         _adminCookie = $"admin_session={adminCookies["admin_session"]}";
 
-        TenantA = await ProvisionAndLoginOwnerAsync("workmode-test", "WorkMode Test Co", "owner-wm@test.test");
+        TenantA = await ProvisionAndLoginOwnerAsync("workmodeseed-test", "WorkMode Seed Test Co", "owner-wms@test.test");
         TenantAId = await GetTenantIdAsync(TenantA.Host);
         TenantAPrimaryLegalEntityId = await GetPrimaryLegalEntityIdAsync(TenantA);
     }
@@ -84,7 +83,7 @@ public sealed class LegalEntityWorkModesControllerTestsFixture : IAsyncLifetime
 
     public sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
 
-    private async Task<TenantSession> ProvisionAndLoginOwnerAsync(string slug, string companyName, string ownerEmail)
+    public async Task<TenantSession> ProvisionAndLoginOwnerAsync(string slug, string companyName, string ownerEmail)
     {
         const string ownerPassword = "OwnerPass@2026!";
         var host = $"{slug}.localhost";
@@ -163,7 +162,7 @@ public sealed class LegalEntityWorkModesControllerTestsFixture : IAsyncLifetime
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 
-    private async Task<Guid> GetTenantIdAsync(string host)
+    public async Task<Guid> GetTenantIdAsync(string host)
     {
         using var scope = _factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -172,41 +171,11 @@ public sealed class LegalEntityWorkModesControllerTestsFixture : IAsyncLifetime
         return tenant.Id;
     }
 
-    private async Task<Guid> GetPrimaryLegalEntityIdAsync(TenantSession session)
+    public async Task<Guid> GetPrimaryLegalEntityIdAsync(TenantSession session)
     {
         var list = await GetJsonAsync(session, "/api/v1/org/legal-entities");
         var primary = list.EnumerateArray().Single(i => i.GetProperty("isPrimary").GetBoolean());
         return primary.GetProperty("id").GetGuid();
-    }
-
-    // Each [Fact] gets its own Legal Entity so the 5-active-work-modes-per-legal-entity cap and
-    // name-uniqueness checks can't interfere across tests sharing this IClassFixture.
-    public async Task<Guid> CreateLegalEntityAsync()
-    {
-        var suffix = Guid.NewGuid().ToString("N")[..8];
-        var response = await SendAsync(
-            HttpMethod.Post,
-            TenantA.Host,
-            "/api/v1/org/legal-entities",
-            new
-            {
-                name = $"WorkMode Test LE {suffix}",
-                companyCode = $"WM{suffix}",
-                registrationNumber = $"REG-{suffix}",
-                countryCode = "LKA",
-                currencyCode = "LKR"
-            },
-            cookie: TenantA.SessionCookie,
-            csrfToken: TenantA.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        var json = await ReadJsonAsync(response);
-        return json.GetProperty("id").GetGuid();
-    }
-
-    public async Task<int> GetActiveWorkModeCountAsync(Guid legalEntityId)
-    {
-        var list = await GetJsonAsync(TenantA, $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes");
-        return list.GetArrayLength();
     }
 
     private async Task<string?> WaitForInviteTokenForAsync(string email)
@@ -320,195 +289,58 @@ public sealed class LegalEntityWorkModesControllerTestsFixture : IAsyncLifetime
 }
 
 [Collection(WebApplicationFactoryCollection.Name)]
-public class LegalEntityWorkModesControllerTests : IClassFixture<LegalEntityWorkModesControllerTestsFixture>
+public class CreateLegalEntitySeedsWorkModesTests : IClassFixture<CreateLegalEntitySeedsWorkModesTestsFixture>
 {
-    private readonly LegalEntityWorkModesControllerTestsFixture _fixture;
+    private readonly CreateLegalEntitySeedsWorkModesTestsFixture _fixture;
 
-    public LegalEntityWorkModesControllerTests(LegalEntityWorkModesControllerTestsFixture fixture)
+    public CreateLegalEntitySeedsWorkModesTests(CreateLegalEntitySeedsWorkModesTestsFixture fixture)
     {
         _fixture = fixture;
     }
 
-    [Fact]
-    public async Task POST_Create_ValidRequest_Returns201()
+    private static void AssertSeededDefaults(JsonElement workModes)
     {
-        var legalEntityId = await _fixture.CreateLegalEntityAsync();
-
-        var response = await _fixture.SendAsync(
-            HttpMethod.Post,
-            _fixture.TenantA.Host,
-            $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes",
-            new { name = "Field", biometricEnabled = true, webEnabled = true, trayEnabled = false, photoRequired = false },
-            cookie: _fixture.TenantA.SessionCookie,
-            csrfToken: _fixture.TenantA.CsrfHeader);
-
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var items = workModes.EnumerateArray().ToList();
+        items.Should().HaveCount(3);
+        items.Select(i => i.GetProperty("name").GetString())
+            .Should().BeEquivalentTo(new[] { "Remote", "Hybrid", "Onsite" });
+        items.Should().OnlyContain(i => i.GetProperty("isSystemSeeded").GetBoolean());
     }
 
     [Fact]
-    public async Task POST_CreateMultiple_UpToFive_AllSucceed()
+    public async Task POST_CreateLegalEntity_SeedsExactlyThreeDefaultWorkModes()
     {
-        var legalEntityId = await _fixture.CreateLegalEntityAsync();
-
-        // Legal entities may arrive with default Work Modes already seeded (see Task 3's
-        // WorkMode seeder), so top up to the cap of 5 rather than assuming a blank slate.
-        var existingCount = await _fixture.GetActiveWorkModeCountAsync(legalEntityId);
-        var toCreate = 5 - existingCount;
-
-        for (int i = 1; i <= toCreate; i++)
-        {
-            var response = await _fixture.SendAsync(
-                HttpMethod.Post,
-                _fixture.TenantA.Host,
-                $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes",
-                new { name = $"Mode {i}", biometricEnabled = false, webEnabled = true, trayEnabled = false, photoRequired = false },
-                cookie: _fixture.TenantA.SessionCookie,
-                csrfToken: _fixture.TenantA.CsrfHeader);
-
-            response.StatusCode.Should().Be(HttpStatusCode.Created, $"Mode {i} creation should succeed");
-        }
-    }
-
-    [Fact]
-    public async Task POST_CreateSixth_Returns409Conflict()
-    {
-        var legalEntityId = await _fixture.CreateLegalEntityAsync();
-
-        // Top up to the cap first, accounting for any pre-seeded defaults (see Task 3).
-        var existingCount = await _fixture.GetActiveWorkModeCountAsync(legalEntityId);
-        for (int i = 1; i <= 5 - existingCount; i++)
-        {
-            await _fixture.SendAsync(
-                HttpMethod.Post,
-                _fixture.TenantA.Host,
-                $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes",
-                new { name = $"Conflict Test {i}", biometricEnabled = false, webEnabled = true, trayEnabled = false, photoRequired = false },
-                cookie: _fixture.TenantA.SessionCookie,
-                csrfToken: _fixture.TenantA.CsrfHeader);
-        }
-
-        // Now at the cap - the next one must be rejected.
-        var response = await _fixture.SendAsync(
-            HttpMethod.Post,
-            _fixture.TenantA.Host,
-            $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes",
-            new { name = "Conflict Test 6", biometricEnabled = false, webEnabled = true, trayEnabled = false, photoRequired = false },
-            cookie: _fixture.TenantA.SessionCookie,
-            csrfToken: _fixture.TenantA.CsrfHeader);
-
-        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
-    }
-
-    [Fact]
-    public async Task PUT_Update_ValidRequest_Returns200()
-    {
-        var legalEntityId = await _fixture.CreateLegalEntityAsync();
-
-        // Create one first
         var createResponse = await _fixture.SendAsync(
             HttpMethod.Post,
             _fixture.TenantA.Host,
-            $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes",
-            new { name = "Update Test", biometricEnabled = false, webEnabled = true, trayEnabled = false, photoRequired = false },
+            "/api/v1/org/legal-entities",
+            new
+            {
+                name = $"Ad Hoc LE {Guid.NewGuid():N}",
+                companyCode = $"AH{Guid.NewGuid():N}"[..10],
+                registrationNumber = $"REG-{Guid.NewGuid():N}",
+                countryCode = "LKA",
+                currencyCode = "LKR"
+            },
             cookie: _fixture.TenantA.SessionCookie,
             csrfToken: _fixture.TenantA.CsrfHeader);
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var legalEntityId = created.GetProperty("id").GetGuid();
 
-        var json = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var id = json.GetProperty("id").GetGuid();
+        var workModes = await _fixture.GetJsonAsync(
+            _fixture.TenantA, $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes");
 
-        // Update it
-        var updateResponse = await _fixture.SendAsync(
-            HttpMethod.Put,
-            _fixture.TenantA.Host,
-            $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes/{id}",
-            new { name = "Updated Name", biometricEnabled = true, webEnabled = false, trayEnabled = true, photoRequired = true },
-            cookie: _fixture.TenantA.SessionCookie,
-            csrfToken: _fixture.TenantA.CsrfHeader);
-
-        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var updateJson = await updateResponse.Content.ReadFromJsonAsync<JsonElement>();
-        updateJson.GetProperty("name").GetString().Should().Be("Updated Name");
+        AssertSeededDefaults(workModes);
     }
 
     [Fact]
-    public async Task POST_Deactivate_ValidRequest_Returns204()
+    public async Task TenantProvisioning_SeedsExactlyThreeDefaultWorkModesForThePrimaryLegalEntity()
     {
-        var legalEntityId = await _fixture.CreateLegalEntityAsync();
+        var workModes = await _fixture.GetJsonAsync(
+            _fixture.TenantA,
+            $"/api/v1/attendance/legal-entities/{_fixture.TenantAPrimaryLegalEntityId}/work-modes");
 
-        // Create one first
-        var createResponse = await _fixture.SendAsync(
-            HttpMethod.Post,
-            _fixture.TenantA.Host,
-            $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes",
-            new { name = "Deactivate Test", biometricEnabled = false, webEnabled = true, trayEnabled = false, photoRequired = false },
-            cookie: _fixture.TenantA.SessionCookie,
-            csrfToken: _fixture.TenantA.CsrfHeader);
-
-        var json = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var id = json.GetProperty("id").GetGuid();
-
-        // Deactivate it
-        var deactivateResponse = await _fixture.SendAsync(
-            HttpMethod.Post,
-            _fixture.TenantA.Host,
-            $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes/{id}/deactivate",
-            body: null,
-            cookie: _fixture.TenantA.SessionCookie,
-            csrfToken: _fixture.TenantA.CsrfHeader);
-
-        deactivateResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
-    }
-
-    [Fact]
-    public async Task GET_List_ExcludesInactiveByDefault()
-    {
-        var legalEntityId = await _fixture.CreateLegalEntityAsync();
-
-        // Create and deactivate one
-        var createResponse = await _fixture.SendAsync(
-            HttpMethod.Post,
-            _fixture.TenantA.Host,
-            $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes",
-            new { name = "List Inactive Test", biometricEnabled = false, webEnabled = true, trayEnabled = false, photoRequired = false },
-            cookie: _fixture.TenantA.SessionCookie,
-            csrfToken: _fixture.TenantA.CsrfHeader);
-
-        var json = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var id = json.GetProperty("id").GetGuid();
-
-        await _fixture.SendAsync(
-            HttpMethod.Post,
-            _fixture.TenantA.Host,
-            $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes/{id}/deactivate",
-            body: null,
-            cookie: _fixture.TenantA.SessionCookie,
-            csrfToken: _fixture.TenantA.CsrfHeader);
-
-        // List without includeInactive
-        var listResponse = await _fixture.SendAsync(
-            HttpMethod.Get,
-            _fixture.TenantA.Host,
-            $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes",
-            body: null,
-            cookie: _fixture.TenantA.SessionCookie);
-
-        listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var listJson = await listResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var deactivatedItem = listJson.EnumerateArray().FirstOrDefault(x => x.GetProperty("id").GetGuid() == id);
-        deactivatedItem.Should().Be(default(JsonElement), "deactivated items should not appear in default list");
-
-        // List with includeInactive=true
-        var listWithInactiveResponse = await _fixture.SendAsync(
-            HttpMethod.Get,
-            _fixture.TenantA.Host,
-            $"/api/v1/attendance/legal-entities/{legalEntityId}/work-modes?includeInactive=true",
-            body: null,
-            cookie: _fixture.TenantA.SessionCookie);
-
-        listWithInactiveResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var listWithInactiveJson = await listWithInactiveResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var deactivatedItemInclusive = listWithInactiveJson.EnumerateArray().FirstOrDefault(x => x.GetProperty("id").GetGuid() == id);
-        deactivatedItemInclusive.Should().NotBe(default(JsonElement), "deactivated items should appear when includeInactive=true");
-        deactivatedItemInclusive.GetProperty("isActive").GetBoolean().Should().BeFalse();
+        AssertSeededDefaults(workModes);
     }
 }

@@ -317,6 +317,7 @@ public static class DependencyInjection
         // New per-legal-entity WorkMode repository (coexists with old int-keyed WorkMode during Tasks 1-3)
         services.AddScoped<ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IWorkModeRepository,
             ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfWorkModeRepository>();
+        services.AddScoped<IWorkModeSeeder, ONEVO.Infrastructure.Services.TimeAttendance.WorkModeSeeder>();
         services.AddScoped<IEmploymentTypeRepository, EfEmploymentTypeRepository>();
         services.AddScoped<EfSubscriptionRepository>();
         services.AddScoped<ISubscriptionPlanRepository>(sp => sp.GetRequiredService<EfSubscriptionRepository>());

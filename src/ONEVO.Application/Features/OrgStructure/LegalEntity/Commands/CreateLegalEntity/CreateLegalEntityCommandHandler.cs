@@ -13,11 +13,14 @@ public class CreateLegalEntityCommandHandler
 {
     private readonly ILegalEntityRepository _legalEntities;
     private readonly ICurrentUser _currentUser;
+    private readonly IWorkModeSeeder _workModeSeeder;
 
-    public CreateLegalEntityCommandHandler(ILegalEntityRepository legalEntities, ICurrentUser currentUser)
+    public CreateLegalEntityCommandHandler(
+        ILegalEntityRepository legalEntities, ICurrentUser currentUser, IWorkModeSeeder workModeSeeder)
     {
         _legalEntities = legalEntities;
         _currentUser = currentUser;
+        _workModeSeeder = workModeSeeder;
     }
 
     public async Task<Result<LegalEntityGeneralSettingsResponse>> Handle(
@@ -85,6 +88,8 @@ public class CreateLegalEntityCommandHandler
 
         await _legalEntities.AddAsync(entity, ct);
         await _legalEntities.SaveChangesAsync(ct);
+
+        await _workModeSeeder.SeedDefaultsAsync(tenantId, entity.Id, ct);
 
         return Result<LegalEntityGeneralSettingsResponse>.Success(LegalEntityMapper.ToGeneralSettingsResponse(entity));
     }

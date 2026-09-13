@@ -154,6 +154,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
             var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
             var encryption = scope.ServiceProvider.GetRequiredService<IEncryptionService>();
+            var workModeSeeder = scope.ServiceProvider.GetRequiredService<IWorkModeSeeder>();
 
             tenantContext.SetAdminMode();
             await SeedAsync(
@@ -162,6 +163,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 passwordHasher,
                 encryption,
                 _configuration,
+                workModeSeeder,
                 cancellationToken);
             _logger.LogInformation(
                 "Development smoke-test tenants seeded: {Slugs}",
@@ -181,6 +183,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         IPasswordHasher passwordHasher,
         IEncryptionService encryption,
         IConfiguration configuration,
+        IWorkModeSeeder workModeSeeder,
         CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
@@ -198,7 +201,8 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             await db.SaveChangesAsync(ct);
 
             ResolveSmokeTenantContext(tenantContext, tenant);
-            await SeedTenantLegalEntitiesAsync(db, tenant.Id, tenantDefinition.LegalEntities, now, ct);
+            var newlyCreatedLegalEntityIds =
+                await SeedTenantLegalEntitiesAsync(db, tenant.Id, tenantDefinition.LegalEntities, now, ct);
 
             await EnsureSmokeEmployeeReferenceDataAsync(db, ct);
 
@@ -222,6 +226,16 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             await SeedTenantSubscriptionAsync(db, tenant.Id, firstUser!.Id, tenantDefinition.SubscriptionId, now, ct);
             await SeedMonitoringFeatureTogglesAsync(db, tenant.Id, now, ct);
             await db.SaveChangesAsync(ct);
+
+            // Seed default Work Modes only for legal entities created this run (not on every
+            // restart's update pass) - WorkModeSeeder always inserts 3 unconditionally, so
+            // calling it again on an already-seeded legal entity would violate the 5-cap /
+            // name-uniqueness constraints. Runs after the SaveChangesAsync above so the legal
+            // entity rows are already persisted before WorkModeSeeder's own SaveChangesAsync.
+            foreach (var legalEntityId in newlyCreatedLegalEntityIds)
+            {
+                await workModeSeeder.SeedDefaultsAsync(tenant.Id, legalEntityId, ct);
+            }
 
             tenantContext.SetAdminMode();
             var seededEmails = tenantDefinition.Users.Select(u => u.Email).ToArray();
@@ -713,13 +727,15 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         employee.UpdatedAt = now;
     }
 
-    private static async Task SeedTenantLegalEntitiesAsync(
+    private static async Task<IReadOnlyList<Guid>> SeedTenantLegalEntitiesAsync(
         ApplicationDbContext db,
         Guid tenantId,
         IReadOnlyList<SmokeLegalEntityDefinition> definitions,
         DateTimeOffset now,
         CancellationToken ct)
     {
+        var newlyCreatedIds = new List<Guid>();
+
         foreach (var definition in definitions)
         {
             var legalEntity = await db.LegalEntities.FirstOrDefaultAsync(l => l.Id == definition.Id, ct);
@@ -739,6 +755,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                     CreatedAt = now
                 };
                 db.LegalEntities.Add(legalEntity);
+                newlyCreatedIds.Add(legalEntity.Id);
                 continue;
             }
 
@@ -751,6 +768,8 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             legalEntity.IsActive = true;
             legalEntity.UpdatedAt = now;
         }
+
+        return newlyCreatedIds;
     }
 
     private static async Task SeedTenantSubscriptionAsync(
