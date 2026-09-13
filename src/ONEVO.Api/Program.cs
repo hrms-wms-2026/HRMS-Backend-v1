@@ -18,11 +18,29 @@ ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
     builder.Configuration,
     builder.Environment.EnvironmentName);
 
+// Development only: generates the local mkcert certificate if it's missing, before anything
+// that depends on the database, so a fresh clone doesn't need a separate manual cert-setup
+// step. Production/Staging terminate TLS with a real certificate authority.
+if (builder.Environment.IsDevelopment())
+{
+    DevCertificateBootstrapper.EnsureCertificateExists(
+        builder.Configuration,
+        builder.Environment.ContentRootPath);
+}
+
 await DatabaseConnectionStartupValidator.ValidateAndOpenAsync(
     builder.Configuration,
     builder.Environment.EnvironmentName,
     DotEnvLoader.DefaultConnectionProcessOverrideActive
         || DotEnvLoader.MigrationConnectionProcessOverrideActive);
+
+// Development only: Test bootstraps its own Testcontainers database via
+// IntegrationDatabaseBootstrap before this process starts, and Production/Staging must apply
+// migrations through their own deployment pipeline, never automatically on process start.
+if (builder.Environment.IsDevelopment())
+{
+    await DatabaseMigrationRunner.MigrateIfPendingAsync(builder.Configuration);
+}
 
 builder.Host.UseSerilog((ctx, cfg) =>
     cfg.ReadFrom.Configuration(ctx.Configuration)

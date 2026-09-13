@@ -9,31 +9,33 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Tenancy;
 
-[Collection(WebApplicationFactoryCollection.Name)]
-public class TenantsAdminApiIntegrationTests : IAsyncLifetime
+/// <summary>
+/// Shared, one-time-per-class setup for TenantsAdminApiIntegrationTests: clones the database,
+/// boots the WebApplicationFactory, and logs in as admin once. xUnit's IClassFixture constructs
+/// this ONCE and disposes it once after every fact in the class has run, instead of
+/// IAsyncLifetime's default of once PER fact - previously this class's own InitializeAsync ran 14
+/// times, once per [Fact]. Every fact creates its own uniquely-slugged tenant draft (verified: no
+/// two facts reuse a slug) and every count-style DB assertion filters by that fact's own
+/// freshly-created TenantId, so there is no cross-fact state-sharing risk from converting this
+/// class.
+/// </summary>
+public sealed class TenantsAdminApiIntegrationTestsFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
-        .WithDatabase("onevo_admin_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
-
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private AdminTestFactory _factory = null!;
     private HttpClient _client = null!;
     private Guid _planId;
 
+    public HttpClient Client => _client;
+    public AdminTestFactory Factory => _factory;
+
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        var connectionString = _postgres.GetConnectionString();
-        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
         _factory = new AdminTestFactory(connectionString);
 
@@ -67,15 +69,12 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         _factory.Dispose();
-        await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
-    // -- Helpers ----------------------------------------------------------------
-
     private static JsonSerializerOptions JsonOpts => new(JsonSerializerDefaults.Web);
 
-    private async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
+    public async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
     {
         var json = await response.Content.ReadAsStringAsync();
         return JsonDocument.Parse(json).RootElement.Clone();
@@ -83,7 +82,7 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
 
     // Matches the current CreateTenantRequest contract: company profile fields plus a
     // subscription referencing a real subscription_plans row (seeded in InitializeAsync).
-    private object DraftBody(string slug = "acme-co", string name = "Acme Co") => new
+    public object DraftBody(string slug = "acme-co", string name = "Acme Co") => new
     {
         company_name = name,
         slug,
@@ -127,14 +126,14 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
 
     // Tenant creation seeds a system "Owner" role; the invite endpoint requires a
     // role_id in the request but always assigns this Owner role.
-    private Guid GetOwnerRoleId(Guid tenantId)
+    public Guid GetOwnerRoleId(Guid tenantId)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         return db.Roles.Single(r => r.TenantId == tenantId && r.Name == "Owner").Id;
     }
 
-    private async Task<Guid> CreateDraftAsync(string slug = "acme-co", string name = "Acme Co")
+    public async Task<Guid> CreateDraftAsync(string slug = "acme-co", string name = "Acme Co")
     {
         var resp = await _client.PostAsJsonAsync("/admin/v1/tenants", DraftBody(slug, name));
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -142,15 +141,27 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
         return body.GetProperty("tenantId").GetGuid();
     }
 
+}
+
+[Collection(WebApplicationFactoryCollection.Name)]
+public sealed class TenantsAdminApiIntegrationTests : IClassFixture<TenantsAdminApiIntegrationTestsFixture>
+{
+    private readonly TenantsAdminApiIntegrationTestsFixture _fixture;
+
+    public TenantsAdminApiIntegrationTests(TenantsAdminApiIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
     // -- Tests ------------------------------------------------------------------
 
     [Fact]
     public async Task PostTenants_CreatesDraft_InProvisioningStatus()
     {
-        var resp = await _client.PostAsJsonAsync("/admin/v1/tenants", DraftBody("draft-co", "Draft Co"));
+        var resp = await _fixture.Client.PostAsJsonAsync("/admin/v1/tenants", _fixture.DraftBody("draft-co", "Draft Co"));
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var body = await ReadJsonAsync(resp);
+        var body = await _fixture.ReadJsonAsync(resp);
         body.GetProperty("status").GetString().Should().Be("provisioning");
         body.GetProperty("tenantId").GetGuid().Should().NotBeEmpty();
     }
@@ -158,12 +169,12 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetTenants_ListsProvisioningTenant()
     {
-        await CreateDraftAsync("list-co", "List Co");
+        await _fixture.CreateDraftAsync("list-co", "List Co");
 
-        var resp = await _client.GetAsync("/admin/v1/tenants?status=provisioning&page=1&page_size=10");
+        var resp = await _fixture.Client.GetAsync("/admin/v1/tenants?status=provisioning&page=1&page_size=10");
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await ReadJsonAsync(resp);
+        var body = await _fixture.ReadJsonAsync(resp);
         body.GetProperty("total").GetInt32().Should().BeGreaterThan(0);
         var items = body.GetProperty("items").EnumerateArray().ToList();
         items.Should().Contain(i => i.GetProperty("slug").GetString() == "list-co");
@@ -172,12 +183,12 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetValidate_ReturnsConflict_OnTakenSlug()
     {
-        await CreateDraftAsync("taken-slug", "Taken Slug Co");
+        await _fixture.CreateDraftAsync("taken-slug", "Taken Slug Co");
 
-        var resp = await _client.GetAsync("/admin/v1/tenants/validate?slug=taken-slug");
+        var resp = await _fixture.Client.GetAsync("/admin/v1/tenants/validate?slug=taken-slug");
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await ReadJsonAsync(resp);
+        var body = await _fixture.ReadJsonAsync(resp);
         body.GetProperty("valid").GetBoolean().Should().BeFalse();
         var conflicts = body.GetProperty("conflicts").EnumerateArray().ToList();
         conflicts.Should().Contain(c => c.GetProperty("field").GetString() == "slug");
@@ -186,12 +197,12 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetTenantById_ReturnsDraftDetail()
     {
-        var tenantId = await CreateDraftAsync("detail-co", "Detail Co");
+        var tenantId = await _fixture.CreateDraftAsync("detail-co", "Detail Co");
 
-        var resp = await _client.GetAsync($"/admin/v1/tenants/{tenantId}");
+        var resp = await _fixture.Client.GetAsync($"/admin/v1/tenants/{tenantId}");
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await ReadJsonAsync(resp);
+        var body = await _fixture.ReadJsonAsync(resp);
         body.GetProperty("id").GetGuid().Should().Be(tenantId);
         body.GetProperty("status").GetString().Should().Be("provisioning");
         body.GetProperty("industry_profile").GetString().Should().Be("professional_services");
@@ -200,26 +211,26 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task PatchTenant_EditsName_WhileProvisioning()
     {
-        var tenantId = await CreateDraftAsync("edit-co", "Edit Co");
+        var tenantId = await _fixture.CreateDraftAsync("edit-co", "Edit Co");
 
-        var patchResp = await _client.PatchAsJsonAsync(
+        var patchResp = await _fixture.Client.PatchAsJsonAsync(
             $"/admin/v1/tenants/{tenantId}",
             new { name = "Edit Co Renamed" });
 
         patchResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        var get = await _client.GetAsync($"/admin/v1/tenants/{tenantId}");
-        var body = await ReadJsonAsync(get);
+        var get = await _fixture.Client.GetAsync($"/admin/v1/tenants/{tenantId}");
+        var body = await _fixture.ReadJsonAsync(get);
         body.GetProperty("company_name").GetString().Should().Be("Edit Co Renamed");
     }
 
     [Fact]
     public async Task PatchTenantStatus_SuspendThenUnsuspend_TransitionsStatus()
     {
-        var tenantId = await CreateDraftAsync("status-co", "Status Co");
+        var tenantId = await _fixture.CreateDraftAsync("status-co", "Status Co");
 
         // Force tenant active so it is eligible for suspend/unsuspend.
-        using (var scope = _factory.Services.CreateScope())
+        using (var scope = _fixture.Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var t = await db.Tenants.FindAsync(tenantId);
@@ -228,12 +239,12 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        var suspend = await _client.PatchAsJsonAsync(
+        var suspend = await _fixture.Client.PatchAsJsonAsync(
             $"/admin/v1/tenants/{tenantId}/status",
             new { action = "suspend", reason = "test_only" });
         suspend.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        using (var scope = _factory.Services.CreateScope())
+        using (var scope = _fixture.Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var t = await db.Tenants.FindAsync(tenantId);
@@ -254,12 +265,12 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
             histories[0].ChangedAt.Should().BeAfter(DateTimeOffset.UtcNow.AddMinutes(-5));
         }
 
-        var unsuspend = await _client.PatchAsJsonAsync(
+        var unsuspend = await _fixture.Client.PatchAsJsonAsync(
             $"/admin/v1/tenants/{tenantId}/status",
             new { action = "unsuspend" });
         unsuspend.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        using (var scope = _factory.Services.CreateScope())
+        using (var scope = _fixture.Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var t = await db.Tenants.FindAsync(tenantId);
@@ -279,9 +290,9 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task PatchTenantStatus_ValidationFailure_WritesNoHistory()
     {
-        var tenantId = await CreateDraftAsync("badstatus-co", "Bad Status Co");
+        var tenantId = await _fixture.CreateDraftAsync("badstatus-co", "Bad Status Co");
 
-        using (var scope = _factory.Services.CreateScope())
+        using (var scope = _fixture.Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var t = await db.Tenants.FindAsync(tenantId);
@@ -290,12 +301,12 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
         }
 
         // suspend without a reason fails validation.
-        var resp = await _client.PatchAsJsonAsync(
+        var resp = await _fixture.Client.PatchAsJsonAsync(
             $"/admin/v1/tenants/{tenantId}/status",
             new { action = "suspend" });
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        var body = await ReadJsonAsync(resp);
+        var body = await _fixture.ReadJsonAsync(resp);
         body.GetProperty("status").GetInt32().Should().Be(400);
         body.GetProperty("title").GetString().Should().Be("Validation Error");
         body.GetProperty("detail").GetString().Should().Be("One or more validation errors occurred.");
@@ -303,7 +314,7 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
         body.GetProperty("errors").GetProperty("Reason").EnumerateArray()
             .Select(e => e.GetString()).Should().Contain("reason is required when suspending a tenant.");
 
-        using (var scope = _factory.Services.CreateScope())
+        using (var scope = _fixture.Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             db.TenantStatusHistories.Count(h => h.TenantId == tenantId).Should().Be(0);
@@ -315,9 +326,9 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task PatchTenantStatus_Unauthorized_WritesNoHistory()
     {
-        var tenantId = await CreateDraftAsync("noauth-co", "No Auth Co");
+        var tenantId = await _fixture.CreateDraftAsync("noauth-co", "No Auth Co");
 
-        using (var scope = _factory.Services.CreateScope())
+        using (var scope = _fixture.Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var t = await db.Tenants.FindAsync(tenantId);
@@ -326,7 +337,7 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
         }
 
         // Client without the admin session cookie or CSRF token.
-        using var anonClient = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        using var anonClient = _fixture.Factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost"),
             HandleCookies = false
@@ -336,7 +347,7 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
             new { action = "suspend", reason = "should_not_apply" });
         resp.IsSuccessStatusCode.Should().BeFalse();
 
-        using (var scope = _factory.Services.CreateScope())
+        using (var scope = _fixture.Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             db.TenantStatusHistories.Count(h => h.TenantId == tenantId).Should().Be(0);
@@ -348,10 +359,10 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task PostInviteAdmin_CreatesUserRoleAndInvitation()
     {
-        var tenantId = await CreateDraftAsync("invite-co", "Invite Co");
-        var ownerRoleId = GetOwnerRoleId(tenantId);
+        var tenantId = await _fixture.CreateDraftAsync("invite-co", "Invite Co");
+        var ownerRoleId = _fixture.GetOwnerRoleId(tenantId);
 
-        var resp = await _client.PostAsJsonAsync(
+        var resp = await _fixture.Client.PostAsJsonAsync(
             $"/admin/v1/tenants/{tenantId}/invite-admin",
             new
             {
@@ -362,11 +373,11 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
             });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await ReadJsonAsync(resp);
+        var body = await _fixture.ReadJsonAsync(resp);
         body.GetProperty("userId").GetGuid().Should().NotBeEmpty();
         body.GetProperty("inviteExpiresAt").GetDateTimeOffset().Should().BeAfter(DateTimeOffset.UtcNow);
 
-        using var scope = _factory.Services.CreateScope();
+        using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         db.InvitationTokens.Count(i => i.TenantId == tenantId).Should().Be(1);
         db.UserRoles.Count(ur => ur.RoleId == ownerRoleId).Should().Be(1);
@@ -376,12 +387,12 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetProvisioningSummary_ReportsIncomplete_WhenSectionsMissing()
     {
-        var tenantId = await CreateDraftAsync("summary-co", "Summary Co");
+        var tenantId = await _fixture.CreateDraftAsync("summary-co", "Summary Co");
 
-        var resp = await _client.GetAsync($"/admin/v1/tenants/{tenantId}/provisioning-summary");
+        var resp = await _fixture.Client.GetAsync($"/admin/v1/tenants/{tenantId}/provisioning-summary");
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await ReadJsonAsync(resp);
+        var body = await _fixture.ReadJsonAsync(resp);
         body.GetProperty("canActivate").GetBoolean().Should().BeFalse();
 
         var sections = body.GetProperty("sections");
@@ -395,19 +406,19 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task ProvisionConfirm_Returns422_WithSummary_WhenIncomplete()
     {
-        var tenantId = await CreateDraftAsync("block-co", "Block Co");
+        var tenantId = await _fixture.CreateDraftAsync("block-co", "Block Co");
 
-        var resp = await _client.PatchAsJsonAsync(
+        var resp = await _fixture.Client.PatchAsJsonAsync(
             $"/admin/v1/tenants/{tenantId}/provision/confirm",
             new { confirm = true });
 
         resp.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
 
-        var body = await ReadJsonAsync(resp);
+        var body = await _fixture.ReadJsonAsync(resp);
         body.GetProperty("canActivate").GetBoolean().Should().BeFalse();
         body.GetProperty("blockingErrors").EnumerateArray().Should().NotBeEmpty();
 
-        using var scope = _factory.Services.CreateScope();
+        using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         db.TenantStatusHistories.Count(h => h.TenantId == tenantId).Should().Be(0);
     }
@@ -417,13 +428,13 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     {
         var missingTenantId = Guid.NewGuid();
 
-        var resp = await _client.PatchAsJsonAsync(
+        var resp = await _fixture.Client.PatchAsJsonAsync(
             $"/admin/v1/tenants/{missingTenantId}/provision/confirm",
             new { confirm = true });
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
 
-        using var scope = _factory.Services.CreateScope();
+        using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         db.TenantStatusHistories.Count(h => h.TenantId == missingTenantId).Should().Be(0);
     }
@@ -431,10 +442,10 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task ProvisionConfirm_Returns204_WhenAllSectionsCompleteAndInviteExists()
     {
-        var tenantId = await CreateDraftAsync("activate-co", "Activate Co");
-        var ownerRoleId = GetOwnerRoleId(tenantId);
+        var tenantId = await _fixture.CreateDraftAsync("activate-co", "Activate Co");
+        var ownerRoleId = _fixture.GetOwnerRoleId(tenantId);
 
-        var invite = await _client.PostAsJsonAsync(
+        var invite = await _fixture.Client.PostAsJsonAsync(
             $"/admin/v1/tenants/{tenantId}/invite-admin",
             new
             {
@@ -445,7 +456,7 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
             });
         invite.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        using (var scope = _factory.Services.CreateScope())
+        using (var scope = _fixture.Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var t = await db.Tenants.FindAsync(tenantId);
@@ -454,15 +465,16 @@ public class TenantsAdminApiIntegrationTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        var get = await _client.GetAsync($"/admin/v1/tenants/{tenantId}");
-        var detail = await ReadJsonAsync(get);
+        var get = await _fixture.Client.GetAsync($"/admin/v1/tenants/{tenantId}");
+        var detail = await _fixture.ReadJsonAsync(get);
         detail.GetProperty("status").GetString().Should().Be("active");
     }
 
     [Fact]
     public async Task TenantApi_RejectsAdminToken_WithoutTenantClaim()
     {
-        var resp = await _client.GetAsync("/api/v1/roles");
+        var resp = await _fixture.Client.GetAsync("/api/v1/roles");
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
+
 }

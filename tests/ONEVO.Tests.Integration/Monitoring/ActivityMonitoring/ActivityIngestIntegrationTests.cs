@@ -11,33 +11,30 @@ using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Monitoring.ActivityMonitoring;
 
 /// <summary>
-/// Full-stack integration tests for activity snapshot ingest under TrayDeviceScheme.
-/// Requires Docker.
+/// Shared, one-time-per-class setup for ActivityIngestIntegrationTests: clones the database and
+/// boots the ActivityMonitoringTestFactory once. xUnit's IClassFixture constructs this ONCE and
+/// disposes it once after every fact in the class has run, instead of IAsyncLifetime's default of
+/// once PER fact - previously this class's own InitializeAsync ran 5 times, once per [Fact]. Every
+/// fact seeds its own fresh Guid.NewGuid() tenant via SeedActiveUserAsync and scopes its
+/// assertions to that tenant, so there is no cross-fact state-sharing risk from converting this
+/// class.
 /// </summary>
-[Collection(WebApplicationFactoryCollection.Name)]
-public sealed class ActivityIngestIntegrationTests : IAsyncLifetime
+public sealed class ActivityIngestIntegrationTestsFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_activity_integration_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
-
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private ActivityMonitoringTestFactory _factory = null!;
     private HttpClient _client = null!;
 
+    public ActivityMonitoringTestFactory Factory => _factory;
+    public HttpClient Client => _client;
+
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        var connectionString = _postgres.GetConnectionString();
-
-        await IntegrationDatabaseBootstrap.InitializeAsync(connectionString);
+        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new ActivityMonitoringTestFactory(connectionString);
@@ -52,127 +49,10 @@ public sealed class ActivityIngestIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         await _factory.DisposeAsync();
-        await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
-    [Fact]
-    public async Task Migrations_ApplyCleanly_AndLeaveNoPendingMigrations()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var pending = await db.Database.GetPendingMigrationsAsync();
-        pending.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task Ingest_WithValidTrayJwt_AndToggleOn_Returns202_AndPersists()
-    {
-        var slug = $"act-ok-{Guid.NewGuid():N}"[..20];
-        var user = await SeedActiveUserAsync(slug, $"{slug}@test.dev", "TestPass1!");
-        await EnableActivityMonitoringAsync(user.TenantId);
-        var jwt = await GetTrayJwtForUserAsync(user, $"fp-{slug}");
-
-        var capturedAt = DateTimeOffset.UtcNow.AddMinutes(-2);
-        using var req = TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/activity/snapshots", new
-        {
-            snapshots = new[]
-            {
-                new
-                {
-                    captured_at = capturedAt,
-                    keyboard_events_count = 42,
-                    mouse_events_count = 17,
-                    active_seconds = 60,
-                    idle_seconds = 0,
-                    intensity_score = 55.5m,
-                    foreground_process_name = "code.exe"
-                }
-            }
-        }, jwt);
-
-        var resp = await _client.SendAsync(req);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.Accepted, await resp.Content.ReadAsStringAsync());
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-        var snapshots = await db.ActivitySnapshots
-            .Where(s => s.TenantId == user.TenantId && s.EmployeeId == user.UserId)
-            .ToListAsync();
-        snapshots.Should().HaveCount(1);
-        snapshots[0].KeyboardEventsCount.Should().Be(42);
-        snapshots[0].MouseEventsCount.Should().Be(17);
-        snapshots[0].ForegroundProcessName.Should().Be("code.exe");
-
-        var buffers = await db.ActivityRawBuffers
-            .Where(b => b.TenantId == user.TenantId)
-            .ToListAsync();
-        buffers.Should().HaveCount(1);
-        buffers[0].PayloadJson.Should().Contain("keyboard");
-    }
-
-    [Fact]
-    public async Task Ingest_WhenActivityMonitoringDisabled_Returns403()
-    {
-        var slug = $"act-off-{Guid.NewGuid():N}"[..20];
-        var user = await SeedActiveUserAsync(slug, $"{slug}@test.dev", "TestPass1!");
-        // No toggle row → safe default false
-        var jwt = await GetTrayJwtForUserAsync(user, $"fp-{slug}");
-
-        using var req = TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/activity/snapshots", new
-        {
-            snapshots = new[]
-            {
-                new
-                {
-                    captured_at = DateTimeOffset.UtcNow.AddMinutes(-1),
-                    keyboard_events_count = 1,
-                    mouse_events_count = 1,
-                    active_seconds = 10,
-                    idle_seconds = 0,
-                    intensity_score = 10m,
-                    foreground_process_name = (string?)null
-                }
-            }
-        }, jwt);
-
-        var resp = await _client.SendAsync(req);
-        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    [Fact]
-    public async Task Ingest_WithoutJwt_Returns401()
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activity/snapshots");
-        req.Headers.Host = "localhost";
-        req.Content = JsonContent.Create(new { snapshots = Array.Empty<object>() });
-
-        var resp = await _client.SendAsync(req);
-        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
-    public async Task Ingest_EmptyBatch_Returns400()
-    {
-        var slug = $"act-empty-{Guid.NewGuid():N}"[..20];
-        var user = await SeedActiveUserAsync(slug, $"{slug}@test.dev", "TestPass1!");
-        await EnableActivityMonitoringAsync(user.TenantId);
-        var jwt = await GetTrayJwtForUserAsync(user, $"fp-{slug}");
-
-        using var req = TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/activity/snapshots", new
-        {
-            snapshots = Array.Empty<object>()
-        }, jwt);
-
-        var resp = await _client.SendAsync(req);
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    // ── Helpers ────────────────────────────────────────────────────────────────
-
-    private async Task EnableActivityMonitoringAsync(Guid tenantId)
+    public async Task EnableActivityMonitoringAsync(Guid tenantId)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -187,7 +67,7 @@ public sealed class ActivityIngestIntegrationTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    private async Task<string> GetTrayJwtForUserAsync(SeedResult user, string fingerprint)
+    public async Task<string> GetTrayJwtForUserAsync(SeedResult user, string fingerprint)
     {
         var session = await LoginAndGetSessionAsync(user);
 
@@ -210,7 +90,7 @@ public sealed class ActivityIngestIntegrationTests : IAsyncLifetime
             .GetProperty("access_token").GetString()!;
     }
 
-    private static HttpRequestMessage TrayJsonRequest(HttpMethod method, string path, object body, string jwt)
+    public static HttpRequestMessage TrayJsonRequest(HttpMethod method, string path, object body, string jwt)
     {
         var req = new HttpRequestMessage(method, path);
         req.Headers.Host = "localhost";
@@ -219,7 +99,7 @@ public sealed class ActivityIngestIntegrationTests : IAsyncLifetime
         return req;
     }
 
-    private async Task<SeedResult> SeedActiveUserAsync(string tenantSlug, string email, string password)
+    public async Task<SeedResult> SeedActiveUserAsync(string tenantSlug, string email, string password)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -378,6 +258,138 @@ public sealed class ActivityIngestIntegrationTests : IAsyncLifetime
         throw new InvalidOperationException($"Cookie '{cookieName}' not found in response.");
     }
 
-    private sealed record SeedResult(Guid TenantId, Guid UserId, string Email, string Password, string TenantSlug);
+    public sealed record SeedResult(Guid TenantId, Guid UserId, string Email, string Password, string TenantSlug);
+
     private sealed record SessionInfo(string CookieHeader, string CsrfHeader, string TenantHost);
+
+}
+
+/// <summary>
+/// Full-stack integration tests for activity snapshot ingest under TrayDeviceScheme.
+/// Requires Docker.
+/// </summary>
+[Collection(WebApplicationFactoryCollection.Name)]
+public sealed class ActivityIngestIntegrationTests : IClassFixture<ActivityIngestIntegrationTestsFixture>
+{
+    private readonly ActivityIngestIntegrationTestsFixture _fixture;
+
+    public ActivityIngestIntegrationTests(ActivityIngestIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task Migrations_ApplyCleanly_AndLeaveNoPendingMigrations()
+    {
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var pending = await db.Database.GetPendingMigrationsAsync();
+        pending.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Ingest_WithValidTrayJwt_AndToggleOn_Returns202_AndPersists()
+    {
+        var slug = $"act-ok-{Guid.NewGuid():N}"[..20];
+        var user = await _fixture.SeedActiveUserAsync(slug, $"{slug}@test.dev", "TestPass1!");
+        await _fixture.EnableActivityMonitoringAsync(user.TenantId);
+        var jwt = await _fixture.GetTrayJwtForUserAsync(user, $"fp-{slug}");
+
+        var capturedAt = DateTimeOffset.UtcNow.AddMinutes(-2);
+        using var req = ActivityIngestIntegrationTestsFixture.TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/activity/snapshots", new
+        {
+            snapshots = new[]
+            {
+                new
+                {
+                    captured_at = capturedAt,
+                    keyboard_events_count = 42,
+                    mouse_events_count = 17,
+                    active_seconds = 60,
+                    idle_seconds = 0,
+                    intensity_score = 55.5m,
+                    foreground_process_name = "code.exe"
+                }
+            }
+        }, jwt);
+
+        var resp = await _fixture.Client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Accepted, await resp.Content.ReadAsStringAsync());
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var snapshots = await db.ActivitySnapshots
+            .Where(s => s.TenantId == user.TenantId && s.EmployeeId == user.UserId)
+            .ToListAsync();
+        snapshots.Should().HaveCount(1);
+        snapshots[0].KeyboardEventsCount.Should().Be(42);
+        snapshots[0].MouseEventsCount.Should().Be(17);
+        snapshots[0].ForegroundProcessName.Should().Be("code.exe");
+
+        var buffers = await db.ActivityRawBuffers
+            .Where(b => b.TenantId == user.TenantId)
+            .ToListAsync();
+        buffers.Should().HaveCount(1);
+        buffers[0].PayloadJson.Should().Contain("keyboard");
+    }
+
+    [Fact]
+    public async Task Ingest_WhenActivityMonitoringDisabled_Returns403()
+    {
+        var slug = $"act-off-{Guid.NewGuid():N}"[..20];
+        var user = await _fixture.SeedActiveUserAsync(slug, $"{slug}@test.dev", "TestPass1!");
+        // No toggle row → safe default false
+        var jwt = await _fixture.GetTrayJwtForUserAsync(user, $"fp-{slug}");
+
+        using var req = ActivityIngestIntegrationTestsFixture.TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/activity/snapshots", new
+        {
+            snapshots = new[]
+            {
+                new
+                {
+                    captured_at = DateTimeOffset.UtcNow.AddMinutes(-1),
+                    keyboard_events_count = 1,
+                    mouse_events_count = 1,
+                    active_seconds = 10,
+                    idle_seconds = 0,
+                    intensity_score = 10m,
+                    foreground_process_name = (string?)null
+                }
+            }
+        }, jwt);
+
+        var resp = await _fixture.Client.SendAsync(req);
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Ingest_WithoutJwt_Returns401()
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activity/snapshots");
+        req.Headers.Host = "localhost";
+        req.Content = JsonContent.Create(new { snapshots = Array.Empty<object>() });
+
+        var resp = await _fixture.Client.SendAsync(req);
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Ingest_EmptyBatch_Returns400()
+    {
+        var slug = $"act-empty-{Guid.NewGuid():N}"[..20];
+        var user = await _fixture.SeedActiveUserAsync(slug, $"{slug}@test.dev", "TestPass1!");
+        await _fixture.EnableActivityMonitoringAsync(user.TenantId);
+        var jwt = await _fixture.GetTrayJwtForUserAsync(user, $"fp-{slug}");
+
+        using var req = ActivityIngestIntegrationTestsFixture.TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/activity/snapshots", new
+        {
+            snapshots = Array.Empty<object>()
+        }, jwt);
+
+        var resp = await _fixture.Client.SendAsync(req);
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
 }

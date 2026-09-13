@@ -12,38 +12,25 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.OrgStructure.Position;
 
 /// <summary>
-/// Real HTTPS/API validation for Position Part 2D: every request in this class goes through
-/// the full Kestrel TestServer pipeline (Authorize, RequirePermission, MediatR, EF/Postgres/RLS,
-/// CSRF middleware) against a real PostgreSQL database - not controller/handler unit tests.
-/// Mirrors the DepartmentsIntegrationTests/LegalEntitiesIntegrationTests convention (two
-/// provisioned tenants for cross-tenant isolation). The org:read-only and no-permission fixture
-/// users are seeded directly via the DB (there is no public "invite additional employee" endpoint
-/// on this tenant's own API yet - only the single owner-invite issued during tenant creation) and
-/// then logged in through the real base-domain login -> session-exchange flow, including their own
-/// LegalAcceptanceRecord rows so that login completes without a legal challenge.
-///
-/// Department.HeadPositionId is seeded directly via DbContext for the head-of-department archive
-/// blocker scenario. As of Department Part 3, CreateDepartmentRequest/UpdateDepartmentRequest do
-/// expose headPositionId as writable (Update only - see DEPARTMENT_HEAD_POSITION_ASSIGNMENT_REPORT.md);
-/// this file still seeds directly because going through the full department-update flow (which
-/// itself requires the head position to already belong to the target department) is unnecessary
-/// setup for scenarios that only care about the archive blocker. Create/UpdatePositionRequest -
-/// the *Position* request contracts - never expose headPositionId, by design (verified by
-/// PositionsControllerArchitectureTests). position_assignments now exists (added in Part 2E),
-/// but ArchiveCheck_* still assert the documented unsupported/null CurrentOccupancy shape -
-/// that pair was deliberately left unpopulated (see PositionListItemResponse for why); occupant-
-/// preview coverage for List/Tree (assignedCount/occupantPreview/remainingAssignedCount) lives in
-/// ONEVO.Tests.Unit (ListPositionsQueryHandlerTests, GetPositionTreeQueryHandlerTests,
-/// PositionMapperTests, EfPositionAssignmentRepositoryTests) rather than here.
+/// Shared, one-time-per-class setup for PositionsIntegrationTests: clones the database, boots the
+/// WebApplicationFactory, provisions the two fixture tenants/users used by every [Fact] below.
+/// xUnit's IClassFixture constructs this ONCE and disposes it once after every fact in the class
+/// has run, instead of IAsyncLifetime's default of once PER fact - previously this class's own
+/// InitializeAsync (real WebApplicationFactory host boot + several real bcrypt-hashed HTTP logins)
+/// ran 59 times, once per [Fact], which is what actually dominated this class's wall-clock time
+/// (the database clone itself is fast; the host boot and real logins are not). Every [Fact] still
+/// creates its own uniquely-coded position/department - only the two base tenants, the two fixture
+/// users, and the seed departments are shared, and every fact's assertions were already written to
+/// tolerate other facts' leftover data (Contain/NotContain rather than exact global counts, and any
+/// exact-count assertion is scoped to a position/department the fact itself just created). Do not
+/// assume other test classes are automatically safe to convert the same way without the same review.
 /// </summary>
-[Collection(WebApplicationFactoryCollection.Name)]
-public class PositionsIntegrationTests : IAsyncLifetime
+public sealed class PositionsIntegrationTestsFixture : IAsyncLifetime
 {
     private const string AdminHost = "admin.localhost";
     private const string FixtureUserPassword = "Password123!";
@@ -51,41 +38,35 @@ public class PositionsIntegrationTests : IAsyncLifetime
 
     private readonly CapturingEmailService _email = new();
 
-    private PostgreSqlContainer? _postgres;
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
     private HttpClient _client = null!;
     private string _adminCookie = null!;
     private string _adminCsrfToken = null!;
 
-    private TenantSession _tenantAOwner = null!;
-    private TenantSession _tenantBOwner = null!;
-    private TenantSession _tenantAOrgReadOnly = null!;
-    private TenantSession _tenantANoAccess = null!;
-    private Guid _tenantAId;
-    private Guid _tenantALegalEntityId;
-    private Guid _tenantASecondLegalEntityId;
-    private Guid _tenantBLegalEntityId;
-    private Guid _tenantADepartmentId;
-    private Guid _tenantASecondLegalEntityDepartmentId;
-    private Guid _tenantBDepartmentId;
+    public TenantSession TenantAOwner { get; private set; } = null!;
+    public TenantSession TenantBOwner { get; private set; } = null!;
+    public TenantSession TenantAOrgReadOnly { get; private set; } = null!;
+    public TenantSession TenantANoAccess { get; private set; } = null!;
+    public Guid TenantAId { get; private set; }
+    public Guid TenantALegalEntityId { get; private set; }
+    public Guid TenantASecondLegalEntityId { get; private set; }
+    public Guid TenantBLegalEntityId { get; private set; }
+    public Guid TenantADepartmentId { get; private set; }
+    public Guid TenantASecondLegalEntityDepartmentId { get; private set; }
+    public Guid TenantBDepartmentId { get; private set; }
 
     public async Task InitializeAsync()
     {
         var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            _postgres = new PostgreSqlBuilder()
-                .WithImage("postgres:16-alpine")
-                .WithDatabase("onevo_positions_test")
-                .WithUsername("test")
-                .WithPassword("test")
-                .Build();
-            await _postgres.StartAsync();
-            connectionString = _postgres.GetConnectionString();
+            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
-
-        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        else
+        {
+            await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        }
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new E2ETestFactory(connectionString, _email);
@@ -103,980 +84,32 @@ public class PositionsIntegrationTests : IAsyncLifetime
         _adminCsrfToken = adminCookies["admin_csrf"];
         _adminCookie = $"admin_session={adminCookies["admin_session"]}";
 
-        _tenantAOwner = await ProvisionAndLoginOwnerAsync("pos-a", "Position A Co", "owner-a@pos.test");
-        _tenantBOwner = await ProvisionAndLoginOwnerAsync("pos-b", "Position B Co", "owner-b@pos.test");
+        TenantAOwner = await ProvisionAndLoginOwnerAsync("pos-a", "Position A Co", "owner-a@pos.test");
+        TenantBOwner = await ProvisionAndLoginOwnerAsync("pos-b", "Position B Co", "owner-b@pos.test");
 
-        _tenantAId = await GetTenantIdAsync(_tenantAOwner.Host);
-        _tenantALegalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantAOwner);
-        _tenantBLegalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantBOwner);
-        _tenantASecondLegalEntityId = await CreateSecondLegalEntityAsync(_tenantAOwner);
+        TenantAId = await GetTenantIdAsync(TenantAOwner.Host);
+        TenantALegalEntityId = await GetPrimaryLegalEntityIdAsync(TenantAOwner);
+        TenantBLegalEntityId = await GetPrimaryLegalEntityIdAsync(TenantBOwner);
+        TenantASecondLegalEntityId = await CreateSecondLegalEntityAsync(TenantAOwner);
 
-        _tenantAOrgReadOnly = await SeedAndLoginFixtureUserAsync(
-            _tenantAId, _tenantAOwner.Host, "org-reader@pos-a.test", permissionCodes: ["org:read"], roleName: "Org Reader");
-        _tenantANoAccess = await SeedAndLoginFixtureUserAsync(
-            _tenantAId, _tenantAOwner.Host, "no-access@pos-a.test", permissionCodes: [], roleName: "No Access");
+        TenantAOrgReadOnly = await SeedAndLoginFixtureUserAsync(
+            TenantAId, TenantAOwner.Host, "org-reader@pos-a.test", permissionCodes: ["org:read"], roleName: "Org Reader");
+        TenantANoAccess = await SeedAndLoginFixtureUserAsync(
+            TenantAId, TenantAOwner.Host, "no-access@pos-a.test", permissionCodes: [], roleName: "No Access");
 
-        _tenantADepartmentId = await CreateDepartmentAsync(_tenantAOwner, _tenantALegalEntityId, "Position Fixture Dept A1");
-        _tenantASecondLegalEntityDepartmentId = await CreateDepartmentAsync(_tenantAOwner, _tenantASecondLegalEntityId, "Position Fixture Dept A2");
-        _tenantBDepartmentId = await CreateDepartmentAsync(_tenantBOwner, _tenantBLegalEntityId, "Position Fixture Dept B1");
+        TenantADepartmentId = await CreateDepartmentAsync(TenantAOwner, TenantALegalEntityId, "Position Fixture Dept A1");
+        TenantASecondLegalEntityDepartmentId = await CreateDepartmentAsync(TenantAOwner, TenantASecondLegalEntityId, "Position Fixture Dept A2");
+        TenantBDepartmentId = await CreateDepartmentAsync(TenantBOwner, TenantBLegalEntityId, "Position Fixture Dept B1");
     }
 
     public async Task DisposeAsync()
     {
         _client.Dispose();
         _factory.Dispose();
-        if (_postgres is not null)
-            await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
-    // -- Auth/permission matrix --------------------------------------------
-
-    [Fact]
-    public async Task List_Unauthenticated_Returns401()
-    {
-        var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions", body: null);
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
-    public async Task List_WithoutOrgRead_Returns403()
-    {
-        var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            body: null, cookie: _tenantANoAccess.SessionCookie);
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    [Fact]
-    public async Task List_WithOrgRead_Returns200()
-    {
-        var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            body: null, cookie: _tenantAOrgReadOnly.SessionCookie);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-    }
-
-    [Fact]
-    public async Task Create_WithOrgReadOnly_NoOrgManage_Returns403()
-    {
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Blocked Position", code = "PERMB", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOrgReadOnly.SessionCookie, csrfToken: _tenantAOrgReadOnly.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    [Fact]
-    public async Task Create_WithOrgManage_Returns201()
-    {
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Full Access Create Position", code = "PERMO", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-    }
-
-    [Fact]
-    public async Task Update_WithOrgReadOnly_NoOrgManage_Returns403()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Perm Position", "UPDPM");
-        var id = position.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            new { departmentId = _tenantADepartmentId, name = "Renamed", code = "UPDPM", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOrgReadOnly.SessionCookie, csrfToken: _tenantAOrgReadOnly.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    [Fact]
-    public async Task Archive_WithOrgReadOnly_NoOrgManage_Returns403()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Perm Position", "ARCHP");
-        var id = position.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/archive",
-            body: null, cookie: _tenantAOrgReadOnly.SessionCookie, csrfToken: _tenantAOrgReadOnly.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    [Fact]
-    public async Task Restore_WithOrgReadOnly_NoOrgManage_Returns403()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Perm Position", "RESTP");
-        var id = position.GetProperty("id").GetGuid();
-        await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/archive",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/restore",
-            body: null, cookie: _tenantAOrgReadOnly.SessionCookie, csrfToken: _tenantAOrgReadOnly.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    [Fact]
-    public async Task ArchiveCheck_Unauthenticated_Returns401()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Unauth Position", "ACHKU");
-        var id = position.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/archive-check", body: null);
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
-    public async Task Restore_Unauthenticated_Returns401()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Unauth Position", "RESTU");
-        var id = position.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/restore", body: null);
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    // -- Create -----------------------------------------------------------
-
-    [Fact]
-    public async Task Create_ValidBody_Returns201_WithExpectedShape()
-    {
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Shape Position", code = "SHAPE", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-
-        var text = await response.Content.ReadAsStringAsync();
-        var json = JsonDocument.Parse(text).RootElement;
-
-        json.GetProperty("id").ValueKind.Should().Be(JsonValueKind.String);
-        json.GetProperty("legalEntityId").GetGuid().Should().Be(_tenantALegalEntityId);
-        json.GetProperty("departmentId").GetGuid().Should().Be(_tenantADepartmentId);
-        json.GetProperty("name").GetString().Should().Be("Shape Position");
-        json.GetProperty("code").GetString().Should().Be("SHAPE");
-        json.GetProperty("positionType").GetString().Should().Be("unique");
-        json.GetProperty("maxOccupancy").GetInt32().Should().Be(1);
-        json.GetProperty("reportsToPositionId").ValueKind.Should().Be(JsonValueKind.Null);
-        json.GetProperty("isActive").GetBoolean().Should().BeTrue();
-
-        text.Should().NotContain("tenantId", "the position response must not expose the raw tenant id");
-        text.Should().NotContain("headPositionId", "position responses have no headPositionId concept");
-    }
-
-    [Fact]
-    public async Task Create_RequestBody_ExtraTenantIdField_IsIgnored()
-    {
-        // CreatePositionRequest has no TenantId property; System.Text.Json model binding
-        // silently drops unknown JSON members, so this can never be used to bypass RLS.
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Tenant Id Ignored Position", code = "TIDIG", maxOccupancy = 1, reportsToPositionId = (Guid?)null, tenantId = Guid.NewGuid() },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        var json = await ReadJsonAsync(response);
-        json.GetProperty("legalEntityId").GetGuid().Should().Be(_tenantALegalEntityId);
-    }
-
-    [Fact]
-    public async Task Create_DuplicateCodeCaseInsensitiveInSameLegalEntity_Returns409()
-    {
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Original Code Position", "DUPCD");
-
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Different Name Position", code = "dupcd", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
-    }
-
-    [Fact]
-    public async Task Create_SameCodeInDifferentLegalEntity_IsAllowed()
-    {
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Shared Code Position A", "SHRDP");
-
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantASecondLegalEntityId}/positions",
-            new { departmentId = _tenantASecondLegalEntityDepartmentId, name = "Shared Code Position B", code = "SHRDP", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-    }
-
-    [Fact]
-    public async Task Create_DepartmentFromAnotherLegalEntity_Returns404()
-    {
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantASecondLegalEntityDepartmentId, name = "Wrong LE Dept Position", code = "WRNGL", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task Create_DepartmentFromAnotherTenant_Returns404()
-    {
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantBDepartmentId, name = "Cross Tenant Dept Position", code = "XTDPT", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task Create_MaxOccupancyZero_Returns400()
-    {
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Invalid Capacity Position", code = "BADCP", maxOccupancy = 0, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    [Fact]
-    public async Task Create_CodeLongerThanFiveCharacters_Returns400()
-    {
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantADepartmentId, name = "Invalid Code Length Position", code = "TOOLONG", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    // -- List ---------------------------------------------------------------
-
-    [Fact]
-    public async Task List_ReturnsPaginatedShape()
-    {
-        var response = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions");
-
-        response.TryGetProperty("items", out _).Should().BeTrue();
-        response.TryGetProperty("page", out _).Should().BeTrue();
-        response.TryGetProperty("pageSize", out _).Should().BeTrue();
-        response.TryGetProperty("totalCount", out _).Should().BeTrue();
-        response.TryGetProperty("totalPages", out _).Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task List_ReturnsOnlyPositionsForSelectedLegalEntity()
-    {
-        var posInFirstLe = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "List Isolation LE1 Position", "ISOL1");
-        var posInSecondLe = await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "List Isolation LE2 Position", "ISOL2");
-
-        var firstLeList = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions");
-        var ids = firstLeList.GetProperty("items").EnumerateArray()
-            .Select(i => i.GetProperty("id").GetGuid()).ToList();
-
-        ids.Should().Contain(posInFirstLe.GetProperty("id").GetGuid());
-        ids.Should().NotContain(posInSecondLe.GetProperty("id").GetGuid());
-    }
-
-    [Fact]
-    public async Task List_FiltersByDepartmentId()
-    {
-        var otherDept = await CreateDepartmentAsync(_tenantAOwner, _tenantALegalEntityId, "List Filter Other Dept");
-        var inTarget = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Dept Filter Target Position", "DFT-1");
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, otherDept, "Dept Filter Other Position", "DFT-2");
-
-        var response = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions?departmentId={_tenantADepartmentId}");
-
-        var ids = response.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToList();
-        ids.Should().Contain(inTarget.GetProperty("id").GetGuid());
-        response.GetProperty("items").EnumerateArray()
-            .Select(i => i.GetProperty("departmentId").GetGuid())
-            .Should().OnlyContain(id => id == _tenantADepartmentId);
-    }
-
-    [Fact]
-    public async Task List_Search_FindsByName()
-    {
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Search Match Marketing Lead", "SRCN1");
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Search NoMatch Finance Lead", "SRCN2");
-
-        var response = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions?search=marketing");
-
-        var names = response.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("name").GetString()).ToList();
-        names.Should().Contain("Search Match Marketing Lead");
-        names.Should().NotContain("Search NoMatch Finance Lead");
-    }
-
-    [Fact]
-    public async Task List_Search_FindsByCode()
-    {
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Search Code Match Position", "SRCHM");
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Search Code NoMatch Position", "OTHRC");
-
-        var response = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions?search=SRCH");
-
-        var codes = response.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("code").GetString()).ToList();
-        codes.Should().Contain("SRCHM");
-        codes.Should().NotContain("OTHRC");
-    }
-
-    [Fact]
-    public async Task List_IncludeInactiveFalse_ExcludesArchived_IncludeInactiveTrue_IncludesArchived()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archived List Position", "ARCHL");
-        var id = position.GetProperty("id").GetGuid();
-        await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/archive",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-
-        var defaultList = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions");
-        defaultList.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).Should().NotContain(id);
-
-        var inclusiveList = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions?includeInactive=true");
-        inclusiveList.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).Should().Contain(id);
-    }
-
-    [Fact]
-    public async Task List_SortByName_Ascending_OrdersAlphabetically()
-    {
-        await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "Zebra Sort Position", "SORTZ");
-        await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "Alpha Sort Position", "SORTA");
-
-        var response = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantASecondLegalEntityId}/positions?sortBy=name&sortDirection=asc");
-
-        var names = response.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("name").GetString()!).ToList();
-        var alphaIndex = names.IndexOf("Alpha Sort Position");
-        var zebraIndex = names.IndexOf("Zebra Sort Position");
-        alphaIndex.Should().BeLessThan(zebraIndex);
-    }
-
-    [Fact]
-    public async Task List_SortByCode_Descending_Orders()
-    {
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Sort Code Low Position", "AAAAA");
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Sort Code High Position", "ZZZZZ");
-
-        var response = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions?sortBy=code&sortDirection=desc&pageSize=100");
-
-        var codes = response.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("code").GetString()!).ToList();
-        var lowIndex = codes.IndexOf("AAAAA");
-        var highIndex = codes.IndexOf("ZZZZZ");
-        highIndex.Should().BeLessThan(lowIndex);
-    }
-
-    // -- Get ------------------------------------------------------------------
-
-    [Fact]
-    public async Task Get_ReturnsCreatedPosition()
-    {
-        var created = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Get Target Position", "GET-1");
-        var id = created.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            body: null, cookie: _tenantAOwner.SessionCookie);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var json = await ReadJsonAsync(response);
-        json.GetProperty("id").GetGuid().Should().Be(id);
-        json.GetProperty("name").GetString().Should().Be("Get Target Position");
-    }
-
-    [Fact]
-    public async Task Get_CrossLegalEntity_WithinSameTenant_Returns404()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "LE Scoped Position", "LESCP");
-
-        var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantASecondLegalEntityId}/positions/{position.GetProperty("id").GetGuid()}",
-            body: null, cookie: _tenantAOwner.SessionCookie);
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    // -- Tree -------------------------------------------------------------------
-
-    [Fact]
-    public async Task Tree_ReturnsRootAndChild_ReportsToHierarchy()
-    {
-        var root = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Tree Root Position", "TREER");
-        var rootId = root.GetProperty("id").GetGuid();
-        var child = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Tree Child Position", "TREEC",
-            maxOccupancy: 3, reportsToPositionId: rootId);
-        var childId = child.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/tree",
-            body: null, cookie: _tenantAOwner.SessionCookie);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var json = await ReadJsonAsync(response);
-
-        json.ValueKind.Should().Be(JsonValueKind.Array);
-        var rootNode = json.EnumerateArray().Single(n => n.GetProperty("id").GetGuid() == rootId);
-        var childNode = rootNode.GetProperty("children").EnumerateArray().Single(n => n.GetProperty("id").GetGuid() == childId);
-        childNode.GetProperty("reportsToPositionId").GetGuid().Should().Be(rootId);
-    }
-
-    [Fact]
-    public async Task Tree_ExcludesCrossLegalEntityPositions()
-    {
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Tree LE1 Root Position", "TREL1");
-        await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "Tree LE2 Root Position", "TREL2");
-
-        var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/tree",
-            body: null, cookie: _tenantAOwner.SessionCookie);
-        var json = await ReadJsonAsync(response);
-
-        json.EnumerateArray().Select(n => n.GetProperty("name").GetString()).Should().NotContain("Tree LE2 Root Position");
-    }
-
-    // -- Update -----------------------------------------------------------------
-
-    [Fact]
-    public async Task Update_ChangesFields()
-    {
-        var otherDept = await CreateDepartmentAsync(_tenantAOwner, _tenantALegalEntityId, "Update Target Dept");
-        var manager = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Manager Position", "UPDMG");
-        var managerId = manager.GetProperty("id").GetGuid();
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Lifecycle Position", "UPDLC");
-        var id = position.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            new { departmentId = otherDept, name = "Update Lifecycle Position Renamed", code = "UPDL2", maxOccupancy = 4, reportsToPositionId = managerId },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var json = await ReadJsonAsync(response);
-        json.GetProperty("name").GetString().Should().Be("Update Lifecycle Position Renamed");
-        json.GetProperty("code").GetString().Should().Be("UPDL2");
-        json.GetProperty("positionType").GetString().Should().Be("pooled");
-        json.GetProperty("maxOccupancy").GetInt32().Should().Be(4);
-        json.GetProperty("departmentId").GetGuid().Should().Be(otherDept);
-        json.GetProperty("reportsToPositionId").GetGuid().Should().Be(managerId);
-    }
-
-    [Fact]
-    public async Task Update_SelfReporting_Returns400()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Self Report Position", "SELFR");
-        var id = position.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            new { departmentId = _tenantADepartmentId, name = "Self Report Position", code = "SELFR", maxOccupancy = 1, reportsToPositionId = id },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    [Fact]
-    public async Task Update_ReportingCycle_Returns422()
-    {
-        var parent = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Cycle Parent Position", "CYCPR");
-        var parentId = parent.GetProperty("id").GetGuid();
-        var child = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Cycle Child Position", "CYCCH",
-            reportsToPositionId: parentId);
-        var childId = child.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{parentId}",
-            new { departmentId = _tenantADepartmentId, name = "Cycle Parent Position", code = "CYCPR", maxOccupancy = 1, reportsToPositionId = childId },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-    }
-
-    [Fact]
-    public async Task Update_DepartmentFromAnotherLegalEntity_Returns404()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Wrong LE Dept Position", "UPDWD");
-        var id = position.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            new { departmentId = _tenantASecondLegalEntityDepartmentId, name = "Update Wrong LE Dept Position", code = "UPDWD", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task Update_ReportsToFromAnotherLegalEntity_Returns404()
-    {
-        var otherLePosition = await CreatePositionAsync(_tenantAOwner, _tenantASecondLegalEntityId, _tenantASecondLegalEntityDepartmentId, "Other LE Reports To Position", "OTHLR");
-        var otherLePositionId = otherLePosition.GetProperty("id").GetGuid();
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Update Wrong LE ReportsTo Position", "UPDWR");
-        var id = position.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            new { departmentId = _tenantADepartmentId, name = "Update Wrong LE ReportsTo Position", code = "UPDWR", maxOccupancy = 1, reportsToPositionId = otherLePositionId },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    // -- Archive-check ------------------------------------------------------------
-
-    [Fact]
-    public async Task ArchiveCheck_Eligible_ReturnsCanArchiveTrue_AndUnsupportedOccupantCount()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Eligible Position", "ACHKO");
-        var id = position.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/archive-check",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var json = await ReadJsonAsync(response);
-        json.GetProperty("activeOccupants").ValueKind.Should().Be(JsonValueKind.Null);
-        json.GetProperty("activeOccupantsCheckSupported").GetBoolean().Should().BeFalse();
-        json.GetProperty("headOfDepartments").GetInt32().Should().Be(0);
-        json.GetProperty("activeChildPositions").GetInt32().Should().Be(0);
-        json.GetProperty("canArchive").GetBoolean().Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task ArchiveCheck_WithOrgRead_Returns200()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Perm Position", "ACHKP");
-        var id = position.GetProperty("id").GetGuid();
-
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/archive-check",
-            body: null, cookie: _tenantAOrgReadOnly.SessionCookie, csrfToken: _tenantAOrgReadOnly.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-    }
-
-    [Fact]
-    public async Task ArchiveCheck_ActiveChildExists_ReturnsAccurateCount_CanArchiveFalse()
-    {
-        var parent = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Parent Position", "ACHPR");
-        var parentId = parent.GetProperty("id").GetGuid();
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Check Child Position", "ACHKC",
-            reportsToPositionId: parentId);
-
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{parentId}/archive-check",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var json = await ReadJsonAsync(response);
-        json.GetProperty("activeChildPositions").GetInt32().Should().Be(1);
-        json.GetProperty("canArchive").GetBoolean().Should().BeFalse();
-    }
-
-    [Fact]
-    public async Task ArchiveCheck_UsedAsDepartmentHead_ReturnsHeadOfDepartmentsGreaterThanZero()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Department Head Candidate Position", "ACHKH");
-        var positionId = position.GetProperty("id").GetGuid();
-        var headedDeptId = await CreateDepartmentAsync(_tenantAOwner, _tenantALegalEntityId, "Headed By Position Dept");
-        await SetDepartmentHeadPositionAsync(headedDeptId, positionId);
-
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{positionId}/archive-check",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var json = await ReadJsonAsync(response);
-        json.GetProperty("headOfDepartments").GetInt32().Should().BeGreaterThan(0);
-        json.GetProperty("canArchive").GetBoolean().Should().BeFalse();
-    }
-
-    // -- Archive ------------------------------------------------------------------
-
-    [Fact]
-    public async Task Archive_NoBlockers_Returns204_SetsIsActiveFalse_AndAffectsListVisibility()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Lifecycle Position", "ARCLC");
-        var id = position.GetProperty("id").GetGuid();
-
-        var archive = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/archive",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        archive.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        var get = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            body: null, cookie: _tenantAOwner.SessionCookie);
-        var getJson = await ReadJsonAsync(get);
-        getJson.GetProperty("isActive").GetBoolean().Should().BeFalse();
-
-        var defaultList = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions");
-        defaultList.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).Should().NotContain(id);
-    }
-
-    [Fact]
-    public async Task Archive_BlockedByActiveChild_Returns409_DoesNotDeactivate_ChildNotReparented()
-    {
-        var parent = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Blocked Parent Position", "ARBLP");
-        var parentId = parent.GetProperty("id").GetGuid();
-        var child = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Blocked Child Position", "ARBLC",
-            reportsToPositionId: parentId);
-        var childId = child.GetProperty("id").GetGuid();
-
-        var archive = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{parentId}/archive",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        archive.StatusCode.Should().Be(HttpStatusCode.Conflict);
-
-        var afterArchive = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{parentId}",
-            body: null, cookie: _tenantAOwner.SessionCookie);
-        (await ReadJsonAsync(afterArchive)).GetProperty("isActive").GetBoolean().Should().BeTrue();
-
-        var childAfter = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{childId}",
-            body: null, cookie: _tenantAOwner.SessionCookie);
-        (await ReadJsonAsync(childAfter)).GetProperty("reportsToPositionId").GetGuid().Should().Be(parentId);
-    }
-
-    [Fact]
-    public async Task Archive_BlockedByDepartmentHead_Returns409()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Archive Blocked Head Position", "ARBLH");
-        var positionId = position.GetProperty("id").GetGuid();
-        var headedDeptId = await CreateDepartmentAsync(_tenantAOwner, _tenantALegalEntityId, "Archive Blocked Headed Dept");
-        await SetDepartmentHeadPositionAsync(headedDeptId, positionId);
-
-        var archive = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{positionId}/archive",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        archive.StatusCode.Should().Be(HttpStatusCode.Conflict);
-    }
-
-    // -- Restore ------------------------------------------------------------------
-
-    [Fact]
-    public async Task Restore_Archived_Returns204_SetsIsActiveTrue()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Lifecycle Position", "RESLC");
-        var id = position.GetProperty("id").GetGuid();
-        await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/archive",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-
-        var restore = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/restore",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        restore.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        var get = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}",
-            body: null, cookie: _tenantAOwner.SessionCookie);
-        (await ReadJsonAsync(get)).GetProperty("isActive").GetBoolean().Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task Restore_AlreadyActive_IsIdempotent_Returns204()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Idempotent Position", "RESID");
-        var id = position.GetProperty("id").GetGuid();
-
-        var restore = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{id}/restore",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        restore.StatusCode.Should().Be(HttpStatusCode.NoContent);
-    }
-
-    [Fact]
-    public async Task Restore_BlockedWhenDepartmentInactive_Returns422()
-    {
-        var deptId = await CreateDepartmentAsync(_tenantAOwner, _tenantALegalEntityId, "Restore Blocked Dept");
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, deptId, "Restore Blocked Dept Position", "RESBD");
-        var positionId = position.GetProperty("id").GetGuid();
-
-        await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{positionId}/archive",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/departments/{deptId}/archive",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-
-        var restore = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{positionId}/restore",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        restore.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-    }
-
-    [Fact]
-    public async Task Restore_BlockedWhenReportsToPositionInactive_Returns422()
-    {
-        var manager = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Blocked Manager Position", "RESBM");
-        var managerId = manager.GetProperty("id").GetGuid();
-        var report = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Restore Blocked Report Position", "RESBR",
-            reportsToPositionId: managerId);
-        var reportId = report.GetProperty("id").GetGuid();
-
-        await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{reportId}/archive",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        var archiveManager = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{managerId}/archive",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        archiveManager.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        var restore = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{reportId}/restore",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        restore.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-    }
-
-    // -- Cross-tenant / cross-legal-entity isolation -------------------------
-    // 404 is the correct "blocked" semantic here (existence-hiding), matching the
-    // same convention already established by DepartmentsIntegrationTests/LegalEntitiesIntegrationTests.
-
-    [Fact]
-    public async Task Get_CrossTenant_Returns404()
-    {
-        var position = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Cross Tenant Position", "XTGET");
-
-        var response = await SendAsync(HttpMethod.Get, _tenantBOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{position.GetProperty("id").GetGuid()}",
-            body: null, cookie: _tenantBOwner.SessionCookie);
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task List_CrossTenant_LegalEntityId_Returns404()
-    {
-        var response = await SendAsync(HttpMethod.Get, _tenantBOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            body: null, cookie: _tenantBOwner.SessionCookie);
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task Create_CrossTenantDepartmentId_Returns404()
-    {
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions",
-            new { departmentId = _tenantBDepartmentId, name = "RLS Bypass Attempt Position", code = "RLSBY", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    // -- Management Coverage ------------------------------------------------
-
-    [Fact]
-    public async Task GetCoverage_Unauthenticated_Returns401()
-    {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Auth Owner", "COVAU");
-
-        var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{owner.GetProperty("id").GetGuid()}/coverage",
-            body: null);
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
-    public async Task GetCoverage_NoRecords_Returns200EmptyArray()
-    {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Empty Owner", "COVEM");
-
-        var response = await SendAsync(HttpMethod.Get, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{owner.GetProperty("id").GetGuid()}/coverage",
-            body: null, cookie: _tenantAOwner.SessionCookie);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var json = await ReadJsonAsync(response);
-        json.ValueKind.Should().Be(JsonValueKind.Array);
-        json.GetArrayLength().Should().Be(0);
-    }
-
-    [Fact]
-    public async Task AddCoverage_Primary_Succeeds_AndAppearsInGet()
-    {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Manual Owner", "COVMG");
-        var ownerId = owner.GetProperty("id").GetGuid();
-        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Manual Target", "COVTG");
-        var coveredId = covered.GetProperty("id").GetGuid();
-
-        var addResponse = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{ownerId}/coverage",
-            new { coveredTargetType = "Position", coveredPositionId = coveredId, coveredDepartmentId = (Guid?)null, ownerOrder = 1 },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        addResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var added = await ReadJsonAsync(addResponse);
-        added.GetProperty("ownerOrder").GetInt32().Should().Be(1);
-        added.GetProperty("source").GetString().Should().Be("Manual");
-        added.GetProperty("isLocked").GetBoolean().Should().BeFalse();
-
-        var listJson = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{ownerId}/coverage");
-        listJson.GetArrayLength().Should().Be(1);
-        listJson[0].GetProperty("coveredPositionId").GetGuid().Should().Be(coveredId);
-    }
-
-    [Fact]
-    public async Task AddCoverage_DuplicatePrimaryForSameCoveredTarget_Returns409()
-    {
-        var ownerOne = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Dup Owner One", "CVDP1");
-        var ownerTwo = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Dup Owner Two", "CVDP2");
-        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Dup Target", "CVDPT");
-        var coveredId = covered.GetProperty("id").GetGuid();
-
-        var firstAdd = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{ownerOne.GetProperty("id").GetGuid()}/coverage",
-            new { coveredTargetType = "Position", coveredPositionId = coveredId, coveredDepartmentId = (Guid?)null, ownerOrder = 1 },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        firstAdd.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        // A second, different owner position also attempting to become Primary (order 1) for the
-        // same covered target must be rejected - uniqueness is per covered target, not per owner.
-        var secondAdd = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{ownerTwo.GetProperty("id").GetGuid()}/coverage",
-            new { coveredTargetType = "Position", coveredPositionId = coveredId, coveredDepartmentId = (Guid?)null, ownerOrder = 1 },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        secondAdd.StatusCode.Should().Be(HttpStatusCode.Conflict);
-    }
-
-    [Fact]
-    public async Task AddCoverage_BackupOrderBeyondThree_Succeeds()
-    {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Deep Owner", "COVDP");
-        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Deep Target", "CVDPG");
-
-        // ownerOrder 4 (Backup Manager 3) must be accepted - responsibility levels are not capped
-        // at the historical Primary/Backup 1/Backup 2 trio.
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{owner.GetProperty("id").GetGuid()}/coverage",
-            new { coveredTargetType = "Position", coveredPositionId = covered.GetProperty("id").GetGuid(), coveredDepartmentId = (Guid?)null, ownerOrder = 4 },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var json = await ReadJsonAsync(response);
-        json.GetProperty("ownerOrder").GetInt32().Should().Be(4);
-    }
-
-    [Fact]
-    public async Task AddCoverage_InactiveCoveredPosition_Returns422()
-    {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Inactive Owner", "COVIO");
-        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Inactive Target", "COVIT");
-        var coveredId = covered.GetProperty("id").GetGuid();
-
-        var archiveResponse = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{coveredId}/archive",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        archiveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        var response = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{owner.GetProperty("id").GetGuid()}/coverage",
-            new { coveredTargetType = "Position", coveredPositionId = coveredId, coveredDepartmentId = (Guid?)null, ownerOrder = 1 },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-    }
-
-    [Fact]
-    public async Task RemoveCoverage_ManualRecord_Succeeds()
-    {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Remove Owner", "COVRO");
-        var ownerId = owner.GetProperty("id").GetGuid();
-        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Remove Target", "COVRT");
-
-        var addResponse = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{ownerId}/coverage",
-            new { coveredTargetType = "Position", coveredPositionId = covered.GetProperty("id").GetGuid(), coveredDepartmentId = (Guid?)null, ownerOrder = 1 },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        var added = await ReadJsonAsync(addResponse);
-        var coverageId = added.GetProperty("id").GetGuid();
-
-        var removeResponse = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{ownerId}/coverage/{coverageId}/remove",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        removeResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        var listJson = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{ownerId}/coverage");
-        listJson.GetArrayLength().Should().Be(0);
-    }
-
-    [Fact]
-    public async Task RemoveCoverage_LockedReportingStructureRecord_Returns409_AndIsNotRemoved()
-    {
-        var manager = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Locked Manager", "COVLM");
-        var managerId = manager.GetProperty("id").GetGuid();
-        // Creating a position with reportsToPositionId set is what auto-generates the locked,
-        // ReportingStructure-sourced coverage record under test here.
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Locked Report", "COVLR",
-            reportsToPositionId: managerId);
-
-        var listJson = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{managerId}/coverage");
-        listJson.GetArrayLength().Should().Be(1);
-        var lockedRecord = listJson[0];
-        lockedRecord.GetProperty("isLocked").GetBoolean().Should().BeTrue();
-        lockedRecord.GetProperty("source").GetString().Should().Be("ReportingStructure");
-        var coverageId = lockedRecord.GetProperty("id").GetGuid();
-
-        var removeResponse = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{managerId}/coverage/{coverageId}/remove",
-            body: null, cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        removeResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
-
-        var listAfter = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{managerId}/coverage");
-        listAfter.GetArrayLength().Should().Be(1);
-    }
-
-    [Fact]
-    public async Task UpdateCoverage_ChangesOwnerOrder_AndPersists()
-    {
-        var owner = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Update Owner", "COVUO");
-        var ownerId = owner.GetProperty("id").GetGuid();
-        var covered = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Update Target", "COVUT");
-
-        var addResponse = await SendAsync(HttpMethod.Post, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{ownerId}/coverage",
-            new { coveredTargetType = "Position", coveredPositionId = covered.GetProperty("id").GetGuid(), coveredDepartmentId = (Guid?)null, ownerOrder = 1 },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        var added = await ReadJsonAsync(addResponse);
-        var coverageId = added.GetProperty("id").GetGuid();
-
-        var updateResponse = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{ownerId}/coverage/{coverageId}",
-            new { ownerOrder = 3 },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var updated = await ReadJsonAsync(updateResponse);
-        updated.GetProperty("ownerOrder").GetInt32().Should().Be(3);
-
-        // Re-fetch through GET (a fresh query, not the same tracked instance the PUT handler
-        // mutated) to prove the change was actually persisted, not just reflected in the response.
-        var listJson = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{ownerId}/coverage");
-        listJson.GetArrayLength().Should().Be(1);
-        listJson[0].GetProperty("ownerOrder").GetInt32().Should().Be(3);
-    }
-
-    [Fact]
-    public async Task UpdateCoverage_LockedReportingStructureRecord_Returns409_AndIsNotChanged()
-    {
-        var manager = await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Update Locked Manager", "CVULM");
-        var managerId = manager.GetProperty("id").GetGuid();
-        await CreatePositionAsync(_tenantAOwner, _tenantALegalEntityId, _tenantADepartmentId, "Coverage Update Locked Report", "CVULR",
-            reportsToPositionId: managerId);
-
-        var listJson = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{managerId}/coverage");
-        var coverageId = listJson[0].GetProperty("id").GetGuid();
-
-        var updateResponse = await SendAsync(HttpMethod.Put, _tenantAOwner.Host,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{managerId}/coverage/{coverageId}",
-            new { ownerOrder = 5 },
-            cookie: _tenantAOwner.SessionCookie, csrfToken: _tenantAOwner.CsrfHeader);
-        updateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
-
-        var listAfter = await GetJsonAsync(_tenantAOwner,
-            $"/api/v1/org/legal-entities/{_tenantALegalEntityId}/positions/{managerId}/coverage");
-        listAfter[0].GetProperty("ownerOrder").GetInt32().Should().Be(1);
-    }
-
-    // -- Fixture provisioning helpers -----------------------------------------
-
-    private sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
+    public sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
 
     private async Task<TenantSession> ProvisionAndLoginOwnerAsync(string slug, string companyName, string ownerEmail)
     {
@@ -1267,7 +300,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
         return json.GetProperty("id").GetGuid();
     }
 
-    private async Task<Guid> CreateDepartmentAsync(TenantSession session, Guid legalEntityId, string name)
+    public async Task<Guid> CreateDepartmentAsync(TenantSession session, Guid legalEntityId, string name)
     {
         var response = await SendAsync(HttpMethod.Post, session.Host,
             $"/api/v1/org/legal-entities/{legalEntityId}/departments", new { name },
@@ -1277,7 +310,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
         return json.GetProperty("id").GetGuid();
     }
 
-    private async Task<JsonElement> CreatePositionAsync(
+    public async Task<JsonElement> CreatePositionAsync(
         TenantSession session, Guid legalEntityId, Guid departmentId, string name, string code,
         int maxOccupancy = 1, Guid? reportsToPositionId = null)
     {
@@ -1298,7 +331,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
     /// still never expose headPositionId, by design (see
     /// PositionsControllerArchitectureTests.NoEndpoint_AcceptsOrMutatesHeadPositionId).
     /// </summary>
-    private async Task SetDepartmentHeadPositionAsync(Guid departmentId, Guid positionId)
+    public async Task SetDepartmentHeadPositionAsync(Guid departmentId, Guid positionId)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -1357,9 +390,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
         throw new TimeoutException("Seeders did not finish within 30s (permissions / subscription plan missing).");
     }
 
-    // -- HTTP helpers (mirrors DepartmentsIntegrationTests/LegalEntitiesIntegrationTests) --------
-
-    private async Task<HttpResponseMessage> SendAsync(
+    public async Task<HttpResponseMessage> SendAsync(
         HttpMethod method, string host, string path, object? body,
         string? cookie = null, string? csrfToken = null, string? idempotencyKey = null)
     {
@@ -1377,7 +408,7 @@ public class PositionsIntegrationTests : IAsyncLifetime
         return await _client.SendAsync(request);
     }
 
-    private async Task<JsonElement> GetJsonAsync(TenantSession session, string path)
+    public async Task<JsonElement> GetJsonAsync(TenantSession session, string path)
     {
         var response = await SendAsync(HttpMethod.Get, session.Host, path, body: null, cookie: session.SessionCookie);
         var json = await ReadJsonAsync(response);
@@ -1407,4 +438,1009 @@ public class PositionsIntegrationTests : IAsyncLifetime
 
         return cookies;
     }
+
+}
+
+/// <summary>
+/// Real HTTPS/API validation for Position Part 2D: every request in this class goes through
+/// the full Kestrel TestServer pipeline (Authorize, RequirePermission, MediatR, EF/Postgres/RLS,
+/// CSRF middleware) against a real PostgreSQL database - not controller/handler unit tests.
+/// Mirrors the DepartmentsIntegrationTests/LegalEntitiesIntegrationTests convention (two
+/// provisioned tenants for cross-tenant isolation). The org:read-only and no-permission fixture
+/// users are seeded directly via the DB (there is no public "invite additional employee" endpoint
+/// on this tenant's own API yet - only the single owner-invite issued during tenant creation) and
+/// then logged in through the real base-domain login -> session-exchange flow, including their own
+/// LegalAcceptanceRecord rows so that login completes without a legal challenge.
+///
+/// Department.HeadPositionId is seeded directly via DbContext for the head-of-department archive
+/// blocker scenario. As of Department Part 3, CreateDepartmentRequest/UpdateDepartmentRequest do
+/// expose headPositionId as writable (Update only - see DEPARTMENT_HEAD_POSITION_ASSIGNMENT_REPORT.md);
+/// this file still seeds directly because going through the full department-update flow (which
+/// itself requires the head position to already belong to the target department) is unnecessary
+/// setup for scenarios that only care about the archive blocker. Create/UpdatePositionRequest -
+/// the *Position* request contracts - never expose headPositionId, by design (verified by
+/// PositionsControllerArchitectureTests). position_assignments now exists (added in Part 2E),
+/// but ArchiveCheck_* still assert the documented unsupported/null CurrentOccupancy shape -
+/// that pair was deliberately left unpopulated (see PositionListItemResponse for why); occupant-
+/// preview coverage for List/Tree (assignedCount/occupantPreview/remainingAssignedCount) lives in
+/// ONEVO.Tests.Unit (ListPositionsQueryHandlerTests, GetPositionTreeQueryHandlerTests,
+/// PositionMapperTests, EfPositionAssignmentRepositoryTests) rather than here.
+/// </summary>
+[Collection(WebApplicationFactoryCollection.Name)]
+public sealed class PositionsIntegrationTests : IClassFixture<PositionsIntegrationTestsFixture>
+{
+    private readonly PositionsIntegrationTestsFixture _fixture;
+
+    public PositionsIntegrationTests(PositionsIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    // -- Auth/permission matrix --------------------------------------------
+
+    [Fact]
+    public async Task List_Unauthenticated_Returns401()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions", body: null);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task List_WithoutOrgRead_Returns403()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            body: null, cookie: _fixture.TenantANoAccess.SessionCookie);
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task List_WithOrgRead_Returns200()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            body: null, cookie: _fixture.TenantAOrgReadOnly.SessionCookie);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Create_WithOrgReadOnly_NoOrgManage_Returns403()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            new { departmentId = _fixture.TenantADepartmentId, name = "Blocked Position", code = "PERMB", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            cookie: _fixture.TenantAOrgReadOnly.SessionCookie, csrfToken: _fixture.TenantAOrgReadOnly.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Create_WithOrgManage_Returns201()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            new { departmentId = _fixture.TenantADepartmentId, name = "Full Access Create Position", code = "PERMO", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task Update_WithOrgReadOnly_NoOrgManage_Returns403()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Update Perm Position", "UPDPM");
+        var id = position.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}",
+            new { departmentId = _fixture.TenantADepartmentId, name = "Renamed", code = "UPDPM", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            cookie: _fixture.TenantAOrgReadOnly.SessionCookie, csrfToken: _fixture.TenantAOrgReadOnly.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Archive_WithOrgReadOnly_NoOrgManage_Returns403()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Archive Perm Position", "ARCHP");
+        var id = position.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}/archive",
+            body: null, cookie: _fixture.TenantAOrgReadOnly.SessionCookie, csrfToken: _fixture.TenantAOrgReadOnly.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Restore_WithOrgReadOnly_NoOrgManage_Returns403()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Restore Perm Position", "RESTP");
+        var id = position.GetProperty("id").GetGuid();
+        await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}/archive",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}/restore",
+            body: null, cookie: _fixture.TenantAOrgReadOnly.SessionCookie, csrfToken: _fixture.TenantAOrgReadOnly.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task ArchiveCheck_Unauthenticated_Returns401()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Archive Check Unauth Position", "ACHKU");
+        var id = position.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}/archive-check", body: null);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Restore_Unauthenticated_Returns401()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Restore Unauth Position", "RESTU");
+        var id = position.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}/restore", body: null);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    // -- Create -----------------------------------------------------------
+
+    [Fact]
+    public async Task Create_ValidBody_Returns201_WithExpectedShape()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            new { departmentId = _fixture.TenantADepartmentId, name = "Shape Position", code = "SHAPE", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var text = await response.Content.ReadAsStringAsync();
+        var json = JsonDocument.Parse(text).RootElement;
+
+        json.GetProperty("id").ValueKind.Should().Be(JsonValueKind.String);
+        json.GetProperty("legalEntityId").GetGuid().Should().Be(_fixture.TenantALegalEntityId);
+        json.GetProperty("departmentId").GetGuid().Should().Be(_fixture.TenantADepartmentId);
+        json.GetProperty("name").GetString().Should().Be("Shape Position");
+        json.GetProperty("code").GetString().Should().Be("SHAPE");
+        json.GetProperty("positionType").GetString().Should().Be("unique");
+        json.GetProperty("maxOccupancy").GetInt32().Should().Be(1);
+        json.GetProperty("reportsToPositionId").ValueKind.Should().Be(JsonValueKind.Null);
+        json.GetProperty("isActive").GetBoolean().Should().BeTrue();
+
+        text.Should().NotContain("tenantId", "the position response must not expose the raw tenant id");
+        text.Should().NotContain("headPositionId", "position responses have no headPositionId concept");
+    }
+
+    [Fact]
+    public async Task Create_RequestBody_ExtraTenantIdField_IsIgnored()
+    {
+        // CreatePositionRequest has no TenantId property; System.Text.Json model binding
+        // silently drops unknown JSON members, so this can never be used to bypass RLS.
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            new { departmentId = _fixture.TenantADepartmentId, name = "Tenant Id Ignored Position", code = "TIDIG", maxOccupancy = 1, reportsToPositionId = (Guid?)null, tenantId = Guid.NewGuid() },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("legalEntityId").GetGuid().Should().Be(_fixture.TenantALegalEntityId);
+    }
+
+    [Fact]
+    public async Task Create_DuplicateCodeCaseInsensitiveInSameLegalEntity_Returns409()
+    {
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Original Code Position", "DUPCD");
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            new { departmentId = _fixture.TenantADepartmentId, name = "Different Name Position", code = "dupcd", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task Create_SameCodeInDifferentLegalEntity_IsAllowed()
+    {
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Shared Code Position A", "SHRDP");
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantASecondLegalEntityId}/positions",
+            new { departmentId = _fixture.TenantASecondLegalEntityDepartmentId, name = "Shared Code Position B", code = "SHRDP", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task Create_DepartmentFromAnotherLegalEntity_Returns404()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            new { departmentId = _fixture.TenantASecondLegalEntityDepartmentId, name = "Wrong LE Dept Position", code = "WRNGL", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Create_DepartmentFromAnotherTenant_Returns404()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            new { departmentId = _fixture.TenantBDepartmentId, name = "Cross Tenant Dept Position", code = "XTDPT", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Create_MaxOccupancyZero_Returns400()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            new { departmentId = _fixture.TenantADepartmentId, name = "Invalid Capacity Position", code = "BADCP", maxOccupancy = 0, reportsToPositionId = (Guid?)null },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Create_CodeLongerThanFiveCharacters_Returns400()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            new { departmentId = _fixture.TenantADepartmentId, name = "Invalid Code Length Position", code = "TOOLONG", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    // -- List ---------------------------------------------------------------
+
+    [Fact]
+    public async Task List_ReturnsPaginatedShape()
+    {
+        var response = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions");
+
+        response.TryGetProperty("items", out _).Should().BeTrue();
+        response.TryGetProperty("page", out _).Should().BeTrue();
+        response.TryGetProperty("pageSize", out _).Should().BeTrue();
+        response.TryGetProperty("totalCount", out _).Should().BeTrue();
+        response.TryGetProperty("totalPages", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task List_ReturnsOnlyPositionsForSelectedLegalEntity()
+    {
+        var posInFirstLe = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "List Isolation LE1 Position", "ISOL1");
+        var posInSecondLe = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantASecondLegalEntityId, _fixture.TenantASecondLegalEntityDepartmentId, "List Isolation LE2 Position", "ISOL2");
+
+        var firstLeList = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions");
+        var ids = firstLeList.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetGuid()).ToList();
+
+        ids.Should().Contain(posInFirstLe.GetProperty("id").GetGuid());
+        ids.Should().NotContain(posInSecondLe.GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task List_FiltersByDepartmentId()
+    {
+        var otherDept = await _fixture.CreateDepartmentAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, "List Filter Other Dept");
+        var inTarget = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Dept Filter Target Position", "DFT-1");
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, otherDept, "Dept Filter Other Position", "DFT-2");
+
+        var response = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions?departmentId={_fixture.TenantADepartmentId}");
+
+        var ids = response.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToList();
+        ids.Should().Contain(inTarget.GetProperty("id").GetGuid());
+        response.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("departmentId").GetGuid())
+            .Should().OnlyContain(id => id == _fixture.TenantADepartmentId);
+    }
+
+    [Fact]
+    public async Task List_Search_FindsByName()
+    {
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Search Match Marketing Lead", "SRCN1");
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Search NoMatch Finance Lead", "SRCN2");
+
+        var response = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions?search=marketing");
+
+        var names = response.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("name").GetString()).ToList();
+        names.Should().Contain("Search Match Marketing Lead");
+        names.Should().NotContain("Search NoMatch Finance Lead");
+    }
+
+    [Fact]
+    public async Task List_Search_FindsByCode()
+    {
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Search Code Match Position", "SRCHM");
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Search Code NoMatch Position", "OTHRC");
+
+        var response = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions?search=SRCH");
+
+        var codes = response.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("code").GetString()).ToList();
+        codes.Should().Contain("SRCHM");
+        codes.Should().NotContain("OTHRC");
+    }
+
+    [Fact]
+    public async Task List_IncludeInactiveFalse_ExcludesArchived_IncludeInactiveTrue_IncludesArchived()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Archived List Position", "ARCHL");
+        var id = position.GetProperty("id").GetGuid();
+        await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}/archive",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+
+        var defaultList = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions");
+        defaultList.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).Should().NotContain(id);
+
+        var inclusiveList = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions?includeInactive=true");
+        inclusiveList.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).Should().Contain(id);
+    }
+
+    [Fact]
+    public async Task List_SortByName_Ascending_OrdersAlphabetically()
+    {
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantASecondLegalEntityId, _fixture.TenantASecondLegalEntityDepartmentId, "Zebra Sort Position", "SORTZ");
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantASecondLegalEntityId, _fixture.TenantASecondLegalEntityDepartmentId, "Alpha Sort Position", "SORTA");
+
+        var response = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantASecondLegalEntityId}/positions?sortBy=name&sortDirection=asc");
+
+        var names = response.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("name").GetString()!).ToList();
+        var alphaIndex = names.IndexOf("Alpha Sort Position");
+        var zebraIndex = names.IndexOf("Zebra Sort Position");
+        alphaIndex.Should().BeLessThan(zebraIndex);
+    }
+
+    [Fact]
+    public async Task List_SortByCode_Descending_Orders()
+    {
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Sort Code Low Position", "AAAAA");
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Sort Code High Position", "ZZZZZ");
+
+        var response = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions?sortBy=code&sortDirection=desc&pageSize=100");
+
+        var codes = response.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("code").GetString()!).ToList();
+        var lowIndex = codes.IndexOf("AAAAA");
+        var highIndex = codes.IndexOf("ZZZZZ");
+        highIndex.Should().BeLessThan(lowIndex);
+    }
+
+    // -- Get ------------------------------------------------------------------
+
+    [Fact]
+    public async Task Get_ReturnsCreatedPosition()
+    {
+        var created = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Get Target Position", "GET-1");
+        var id = created.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("id").GetGuid().Should().Be(id);
+        json.GetProperty("name").GetString().Should().Be("Get Target Position");
+    }
+
+    [Fact]
+    public async Task Get_CrossLegalEntity_WithinSameTenant_Returns404()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "LE Scoped Position", "LESCP");
+
+        var response = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantASecondLegalEntityId}/positions/{position.GetProperty("id").GetGuid()}",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // -- Tree -------------------------------------------------------------------
+
+    [Fact]
+    public async Task Tree_ReturnsRootAndChild_ReportsToHierarchy()
+    {
+        var root = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Tree Root Position", "TREER");
+        var rootId = root.GetProperty("id").GetGuid();
+        var child = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Tree Child Position", "TREEC",
+            maxOccupancy: 3, reportsToPositionId: rootId);
+        var childId = child.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/tree",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+
+        json.ValueKind.Should().Be(JsonValueKind.Array);
+        var rootNode = json.EnumerateArray().Single(n => n.GetProperty("id").GetGuid() == rootId);
+        var childNode = rootNode.GetProperty("children").EnumerateArray().Single(n => n.GetProperty("id").GetGuid() == childId);
+        childNode.GetProperty("reportsToPositionId").GetGuid().Should().Be(rootId);
+    }
+
+    [Fact]
+    public async Task Tree_ExcludesCrossLegalEntityPositions()
+    {
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Tree LE1 Root Position", "TREL1");
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantASecondLegalEntityId, _fixture.TenantASecondLegalEntityDepartmentId, "Tree LE2 Root Position", "TREL2");
+
+        var response = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/tree",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie);
+        var json = await ReadJsonAsync(response);
+
+        json.EnumerateArray().Select(n => n.GetProperty("name").GetString()).Should().NotContain("Tree LE2 Root Position");
+    }
+
+    // -- Update -----------------------------------------------------------------
+
+    [Fact]
+    public async Task Update_ChangesFields()
+    {
+        var otherDept = await _fixture.CreateDepartmentAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, "Update Target Dept");
+        var manager = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Update Manager Position", "UPDMG");
+        var managerId = manager.GetProperty("id").GetGuid();
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Update Lifecycle Position", "UPDLC");
+        var id = position.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}",
+            new { departmentId = otherDept, name = "Update Lifecycle Position Renamed", code = "UPDL2", maxOccupancy = 4, reportsToPositionId = managerId },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("name").GetString().Should().Be("Update Lifecycle Position Renamed");
+        json.GetProperty("code").GetString().Should().Be("UPDL2");
+        json.GetProperty("positionType").GetString().Should().Be("pooled");
+        json.GetProperty("maxOccupancy").GetInt32().Should().Be(4);
+        json.GetProperty("departmentId").GetGuid().Should().Be(otherDept);
+        json.GetProperty("reportsToPositionId").GetGuid().Should().Be(managerId);
+    }
+
+    [Fact]
+    public async Task Update_SelfReporting_Returns400()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Self Report Position", "SELFR");
+        var id = position.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}",
+            new { departmentId = _fixture.TenantADepartmentId, name = "Self Report Position", code = "SELFR", maxOccupancy = 1, reportsToPositionId = id },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Update_ReportingCycle_Returns422()
+    {
+        var parent = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Cycle Parent Position", "CYCPR");
+        var parentId = parent.GetProperty("id").GetGuid();
+        var child = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Cycle Child Position", "CYCCH",
+            reportsToPositionId: parentId);
+        var childId = child.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{parentId}",
+            new { departmentId = _fixture.TenantADepartmentId, name = "Cycle Parent Position", code = "CYCPR", maxOccupancy = 1, reportsToPositionId = childId },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task Update_DepartmentFromAnotherLegalEntity_Returns404()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Update Wrong LE Dept Position", "UPDWD");
+        var id = position.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}",
+            new { departmentId = _fixture.TenantASecondLegalEntityDepartmentId, name = "Update Wrong LE Dept Position", code = "UPDWD", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Update_ReportsToFromAnotherLegalEntity_Returns404()
+    {
+        var otherLePosition = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantASecondLegalEntityId, _fixture.TenantASecondLegalEntityDepartmentId, "Other LE Reports To Position", "OTHLR");
+        var otherLePositionId = otherLePosition.GetProperty("id").GetGuid();
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Update Wrong LE ReportsTo Position", "UPDWR");
+        var id = position.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}",
+            new { departmentId = _fixture.TenantADepartmentId, name = "Update Wrong LE ReportsTo Position", code = "UPDWR", maxOccupancy = 1, reportsToPositionId = otherLePositionId },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // -- Archive-check ------------------------------------------------------------
+
+    [Fact]
+    public async Task ArchiveCheck_Eligible_ReturnsCanArchiveTrue_AndUnsupportedOccupantCount()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Archive Check Eligible Position", "ACHKO");
+        var id = position.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}/archive-check",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("activeOccupants").ValueKind.Should().Be(JsonValueKind.Null);
+        json.GetProperty("activeOccupantsCheckSupported").GetBoolean().Should().BeFalse();
+        json.GetProperty("headOfDepartments").GetInt32().Should().Be(0);
+        json.GetProperty("activeChildPositions").GetInt32().Should().Be(0);
+        json.GetProperty("canArchive").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ArchiveCheck_WithOrgRead_Returns200()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Archive Check Perm Position", "ACHKP");
+        var id = position.GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}/archive-check",
+            body: null, cookie: _fixture.TenantAOrgReadOnly.SessionCookie, csrfToken: _fixture.TenantAOrgReadOnly.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task ArchiveCheck_ActiveChildExists_ReturnsAccurateCount_CanArchiveFalse()
+    {
+        var parent = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Archive Check Parent Position", "ACHPR");
+        var parentId = parent.GetProperty("id").GetGuid();
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Archive Check Child Position", "ACHKC",
+            reportsToPositionId: parentId);
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{parentId}/archive-check",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("activeChildPositions").GetInt32().Should().Be(1);
+        json.GetProperty("canArchive").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ArchiveCheck_UsedAsDepartmentHead_ReturnsHeadOfDepartmentsGreaterThanZero()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Department Head Candidate Position", "ACHKH");
+        var positionId = position.GetProperty("id").GetGuid();
+        var headedDeptId = await _fixture.CreateDepartmentAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, "Headed By Position Dept");
+        await _fixture.SetDepartmentHeadPositionAsync(headedDeptId, positionId);
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{positionId}/archive-check",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("headOfDepartments").GetInt32().Should().BeGreaterThan(0);
+        json.GetProperty("canArchive").GetBoolean().Should().BeFalse();
+    }
+
+    // -- Archive ------------------------------------------------------------------
+
+    [Fact]
+    public async Task Archive_NoBlockers_Returns204_SetsIsActiveFalse_AndAffectsListVisibility()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Archive Lifecycle Position", "ARCLC");
+        var id = position.GetProperty("id").GetGuid();
+
+        var archive = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}/archive",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        archive.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var get = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie);
+        var getJson = await ReadJsonAsync(get);
+        getJson.GetProperty("isActive").GetBoolean().Should().BeFalse();
+
+        var defaultList = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions");
+        defaultList.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).Should().NotContain(id);
+    }
+
+    [Fact]
+    public async Task Archive_BlockedByActiveChild_Returns409_DoesNotDeactivate_ChildNotReparented()
+    {
+        var parent = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Archive Blocked Parent Position", "ARBLP");
+        var parentId = parent.GetProperty("id").GetGuid();
+        var child = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Archive Blocked Child Position", "ARBLC",
+            reportsToPositionId: parentId);
+        var childId = child.GetProperty("id").GetGuid();
+
+        var archive = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{parentId}/archive",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        archive.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var afterArchive = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{parentId}",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie);
+        (await ReadJsonAsync(afterArchive)).GetProperty("isActive").GetBoolean().Should().BeTrue();
+
+        var childAfter = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{childId}",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie);
+        (await ReadJsonAsync(childAfter)).GetProperty("reportsToPositionId").GetGuid().Should().Be(parentId);
+    }
+
+    [Fact]
+    public async Task Archive_BlockedByDepartmentHead_Returns409()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Archive Blocked Head Position", "ARBLH");
+        var positionId = position.GetProperty("id").GetGuid();
+        var headedDeptId = await _fixture.CreateDepartmentAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, "Archive Blocked Headed Dept");
+        await _fixture.SetDepartmentHeadPositionAsync(headedDeptId, positionId);
+
+        var archive = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{positionId}/archive",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        archive.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    // -- Restore ------------------------------------------------------------------
+
+    [Fact]
+    public async Task Restore_Archived_Returns204_SetsIsActiveTrue()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Restore Lifecycle Position", "RESLC");
+        var id = position.GetProperty("id").GetGuid();
+        await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}/archive",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+
+        var restore = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}/restore",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        restore.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var get = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie);
+        (await ReadJsonAsync(get)).GetProperty("isActive").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Restore_AlreadyActive_IsIdempotent_Returns204()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Restore Idempotent Position", "RESID");
+        var id = position.GetProperty("id").GetGuid();
+
+        var restore = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{id}/restore",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        restore.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task Restore_BlockedWhenDepartmentInactive_Returns422()
+    {
+        var deptId = await _fixture.CreateDepartmentAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, "Restore Blocked Dept");
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, deptId, "Restore Blocked Dept Position", "RESBD");
+        var positionId = position.GetProperty("id").GetGuid();
+
+        await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{positionId}/archive",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/departments/{deptId}/archive",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+
+        var restore = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{positionId}/restore",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        restore.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task Restore_BlockedWhenReportsToPositionInactive_Returns422()
+    {
+        var manager = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Restore Blocked Manager Position", "RESBM");
+        var managerId = manager.GetProperty("id").GetGuid();
+        var report = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Restore Blocked Report Position", "RESBR",
+            reportsToPositionId: managerId);
+        var reportId = report.GetProperty("id").GetGuid();
+
+        await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{reportId}/archive",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        var archiveManager = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{managerId}/archive",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        archiveManager.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var restore = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{reportId}/restore",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        restore.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    // -- Cross-tenant / cross-legal-entity isolation -------------------------
+    // 404 is the correct "blocked" semantic here (existence-hiding), matching the
+    // same convention already established by DepartmentsIntegrationTests/LegalEntitiesIntegrationTests.
+
+    [Fact]
+    public async Task Get_CrossTenant_Returns404()
+    {
+        var position = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Cross Tenant Position", "XTGET");
+
+        var response = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantBOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{position.GetProperty("id").GetGuid()}",
+            body: null, cookie: _fixture.TenantBOwner.SessionCookie);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task List_CrossTenant_LegalEntityId_Returns404()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantBOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            body: null, cookie: _fixture.TenantBOwner.SessionCookie);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Create_CrossTenantDepartmentId_Returns404()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions",
+            new { departmentId = _fixture.TenantBDepartmentId, name = "RLS Bypass Attempt Position", code = "RLSBY", maxOccupancy = 1, reportsToPositionId = (Guid?)null },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // -- Management Coverage ------------------------------------------------
+
+    [Fact]
+    public async Task GetCoverage_Unauthenticated_Returns401()
+    {
+        var owner = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Auth Owner", "COVAU");
+
+        var response = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{owner.GetProperty("id").GetGuid()}/coverage",
+            body: null);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task GetCoverage_NoRecords_Returns200EmptyArray()
+    {
+        var owner = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Empty Owner", "COVEM");
+
+        var response = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{owner.GetProperty("id").GetGuid()}/coverage",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.ValueKind.Should().Be(JsonValueKind.Array);
+        json.GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task AddCoverage_Primary_Succeeds_AndAppearsInGet()
+    {
+        var owner = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Manual Owner", "COVMG");
+        var ownerId = owner.GetProperty("id").GetGuid();
+        var covered = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Manual Target", "COVTG");
+        var coveredId = covered.GetProperty("id").GetGuid();
+
+        var addResponse = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{ownerId}/coverage",
+            new { coveredTargetType = "Position", coveredPositionId = coveredId, coveredDepartmentId = (Guid?)null, ownerOrder = 1 },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        addResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var added = await ReadJsonAsync(addResponse);
+        added.GetProperty("ownerOrder").GetInt32().Should().Be(1);
+        added.GetProperty("source").GetString().Should().Be("Manual");
+        added.GetProperty("isLocked").GetBoolean().Should().BeFalse();
+
+        var listJson = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{ownerId}/coverage");
+        listJson.GetArrayLength().Should().Be(1);
+        listJson[0].GetProperty("coveredPositionId").GetGuid().Should().Be(coveredId);
+    }
+
+    [Fact]
+    public async Task AddCoverage_DuplicatePrimaryForSameCoveredTarget_Returns409()
+    {
+        var ownerOne = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Dup Owner One", "CVDP1");
+        var ownerTwo = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Dup Owner Two", "CVDP2");
+        var covered = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Dup Target", "CVDPT");
+        var coveredId = covered.GetProperty("id").GetGuid();
+
+        var firstAdd = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{ownerOne.GetProperty("id").GetGuid()}/coverage",
+            new { coveredTargetType = "Position", coveredPositionId = coveredId, coveredDepartmentId = (Guid?)null, ownerOrder = 1 },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        firstAdd.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // A second, different owner position also attempting to become Primary (order 1) for the
+        // same covered target must be rejected - uniqueness is per covered target, not per owner.
+        var secondAdd = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{ownerTwo.GetProperty("id").GetGuid()}/coverage",
+            new { coveredTargetType = "Position", coveredPositionId = coveredId, coveredDepartmentId = (Guid?)null, ownerOrder = 1 },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        secondAdd.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task AddCoverage_BackupOrderBeyondThree_Succeeds()
+    {
+        var owner = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Deep Owner", "COVDP");
+        var covered = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Deep Target", "CVDPG");
+
+        // ownerOrder 4 (Backup Manager 3) must be accepted - responsibility levels are not capped
+        // at the historical Primary/Backup 1/Backup 2 trio.
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{owner.GetProperty("id").GetGuid()}/coverage",
+            new { coveredTargetType = "Position", coveredPositionId = covered.GetProperty("id").GetGuid(), coveredDepartmentId = (Guid?)null, ownerOrder = 4 },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("ownerOrder").GetInt32().Should().Be(4);
+    }
+
+    [Fact]
+    public async Task AddCoverage_InactiveCoveredPosition_Returns422()
+    {
+        var owner = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Inactive Owner", "COVIO");
+        var covered = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Inactive Target", "COVIT");
+        var coveredId = covered.GetProperty("id").GetGuid();
+
+        var archiveResponse = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{coveredId}/archive",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        archiveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{owner.GetProperty("id").GetGuid()}/coverage",
+            new { coveredTargetType = "Position", coveredPositionId = coveredId, coveredDepartmentId = (Guid?)null, ownerOrder = 1 },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task RemoveCoverage_ManualRecord_Succeeds()
+    {
+        var owner = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Remove Owner", "COVRO");
+        var ownerId = owner.GetProperty("id").GetGuid();
+        var covered = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Remove Target", "COVRT");
+
+        var addResponse = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{ownerId}/coverage",
+            new { coveredTargetType = "Position", coveredPositionId = covered.GetProperty("id").GetGuid(), coveredDepartmentId = (Guid?)null, ownerOrder = 1 },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        var added = await ReadJsonAsync(addResponse);
+        var coverageId = added.GetProperty("id").GetGuid();
+
+        var removeResponse = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{ownerId}/coverage/{coverageId}/remove",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        removeResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var listJson = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{ownerId}/coverage");
+        listJson.GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RemoveCoverage_LockedReportingStructureRecord_Returns409_AndIsNotRemoved()
+    {
+        var manager = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Locked Manager", "COVLM");
+        var managerId = manager.GetProperty("id").GetGuid();
+        // Creating a position with reportsToPositionId set is what auto-generates the locked,
+        // ReportingStructure-sourced coverage record under test here.
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Locked Report", "COVLR",
+            reportsToPositionId: managerId);
+
+        var listJson = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{managerId}/coverage");
+        listJson.GetArrayLength().Should().Be(1);
+        var lockedRecord = listJson[0];
+        lockedRecord.GetProperty("isLocked").GetBoolean().Should().BeTrue();
+        lockedRecord.GetProperty("source").GetString().Should().Be("ReportingStructure");
+        var coverageId = lockedRecord.GetProperty("id").GetGuid();
+
+        var removeResponse = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{managerId}/coverage/{coverageId}/remove",
+            body: null, cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        removeResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var listAfter = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{managerId}/coverage");
+        listAfter.GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task UpdateCoverage_ChangesOwnerOrder_AndPersists()
+    {
+        var owner = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Update Owner", "COVUO");
+        var ownerId = owner.GetProperty("id").GetGuid();
+        var covered = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Update Target", "COVUT");
+
+        var addResponse = await _fixture.SendAsync(HttpMethod.Post, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{ownerId}/coverage",
+            new { coveredTargetType = "Position", coveredPositionId = covered.GetProperty("id").GetGuid(), coveredDepartmentId = (Guid?)null, ownerOrder = 1 },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        var added = await ReadJsonAsync(addResponse);
+        var coverageId = added.GetProperty("id").GetGuid();
+
+        var updateResponse = await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{ownerId}/coverage/{coverageId}",
+            new { ownerOrder = 3 },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await ReadJsonAsync(updateResponse);
+        updated.GetProperty("ownerOrder").GetInt32().Should().Be(3);
+
+        // Re-fetch through GET (a fresh query, not the same tracked instance the PUT handler
+        // mutated) to prove the change was actually persisted, not just reflected in the response.
+        var listJson = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{ownerId}/coverage");
+        listJson.GetArrayLength().Should().Be(1);
+        listJson[0].GetProperty("ownerOrder").GetInt32().Should().Be(3);
+    }
+
+    [Fact]
+    public async Task UpdateCoverage_LockedReportingStructureRecord_Returns409_AndIsNotChanged()
+    {
+        var manager = await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Update Locked Manager", "CVULM");
+        var managerId = manager.GetProperty("id").GetGuid();
+        await _fixture.CreatePositionAsync(_fixture.TenantAOwner, _fixture.TenantALegalEntityId, _fixture.TenantADepartmentId, "Coverage Update Locked Report", "CVULR",
+            reportsToPositionId: managerId);
+
+        var listJson = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{managerId}/coverage");
+        var coverageId = listJson[0].GetProperty("id").GetGuid();
+
+        var updateResponse = await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantAOwner.Host,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{managerId}/coverage/{coverageId}",
+            new { ownerOrder = 5 },
+            cookie: _fixture.TenantAOwner.SessionCookie, csrfToken: _fixture.TenantAOwner.CsrfHeader);
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var listAfter = await _fixture.GetJsonAsync(_fixture.TenantAOwner,
+            $"/api/v1/org/legal-entities/{_fixture.TenantALegalEntityId}/positions/{managerId}/coverage");
+        listAfter[0].GetProperty("ownerOrder").GetInt32().Should().Be(1);
+    }
+
+    private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
+    {
+        var text = await response.Content.ReadAsStringAsync();
+        return string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone();
+    }
+
+    private static Dictionary<string, string> ParseSetCookies(HttpResponseMessage response)
+    {
+        var cookies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!response.Headers.TryGetValues("Set-Cookie", out var values))
+            return cookies;
+
+        foreach (var raw in values)
+        {
+            var pair = raw.Split(';', 2)[0];
+            var idx = pair.IndexOf('=');
+            if (idx > 0)
+                cookies[pair[..idx].Trim()] = pair[(idx + 1)..].Trim();
+        }
+
+        return cookies;
+    }
+
 }

@@ -11,7 +11,6 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Auth.Permission;
@@ -23,26 +22,18 @@ namespace ONEVO.Tests.Integration.Auth.Permission;
 /// </summary>
 public sealed class ListUserIdsWithPermissionCodeAsyncTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_list_user_ids_with_perm_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task ReturnsEveryUserHoldingThePermission_WithinTheTenant()
@@ -57,7 +48,7 @@ public sealed class ListUserIdsWithPermissionCodeAsyncTests : IAsyncLifetime
         await SeedUserWithRoleAsync(otherTenantId, otherTenantRoleId);
 
         await using var db = CreateContext(tenantId, "list-perm-tenant-a");
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var result = await repo.ListUserIdsWithPermissionCodeAsync(tenantId, "roles:manage", DateTimeOffset.UtcNow);
 
         result.Should().Contain(userA);
@@ -74,7 +65,7 @@ public sealed class ListUserIdsWithPermissionCodeAsyncTests : IAsyncLifetime
         var expiredUser = await SeedUserWithRoleAsync(tenantId, roleId, expiresAt: DateTimeOffset.UtcNow.AddDays(-1));
 
         await using var db = CreateContext(tenantId, "list-perm-expired");
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var result = await repo.ListUserIdsWithPermissionCodeAsync(tenantId, "roles:manage", DateTimeOffset.UtcNow);
 
         result.Should().NotContain(expiredUser);
@@ -90,7 +81,7 @@ public sealed class ListUserIdsWithPermissionCodeAsyncTests : IAsyncLifetime
         var deletedUser = await SeedUserWithRoleAsync(tenantId, roleId, isDeleted: true);
 
         await using var db = CreateContext(tenantId, "list-perm-inactive");
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var result = await repo.ListUserIdsWithPermissionCodeAsync(tenantId, "roles:manage", DateTimeOffset.UtcNow);
 
         result.Should().Contain(activeUser);

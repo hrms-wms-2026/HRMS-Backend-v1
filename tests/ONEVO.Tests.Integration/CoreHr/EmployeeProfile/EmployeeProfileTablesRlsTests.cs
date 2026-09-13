@@ -12,7 +12,6 @@ using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
@@ -30,11 +29,6 @@ public sealed class EmployeeProfileTablesRlsTests : IAsyncLifetime
     private const string RestrictedRoleName = "employee_profile_rls_test_role";
     private const string RestrictedRolePassword = "employee-profile-rls-test-role-password";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_employee_profile_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -46,12 +40,9 @@ public sealed class EmployeeProfileTablesRlsTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         var tenantA = NewTenant("Employee Profile RLS Tenant A", "employee-profile-rls-a");
         var tenantB = NewTenant("Employee Profile RLS Tenant B", "employee-profile-rls-b");
@@ -85,7 +76,7 @@ public sealed class EmployeeProfileTablesRlsTests : IAsyncLifetime
         await CreateRestrictedRoleAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task EmployeeBankDetail_RowFromOtherTenant_IsInvisibleUnderRestrictedRoleTenantContext()

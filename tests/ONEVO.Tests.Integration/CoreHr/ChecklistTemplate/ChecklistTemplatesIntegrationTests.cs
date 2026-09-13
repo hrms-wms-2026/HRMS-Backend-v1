@@ -16,7 +16,6 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.CoreHr.ChecklistTemplate;
@@ -33,11 +32,6 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
     private const string RestrictedRoleName = "checklist_templates_rls_test_role";
     private const string RestrictedRolePassword = "checklist-templates-rls-test-role-password";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_checklist_templates_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -51,12 +45,9 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         var tenant = new Tenant { Id = Guid.NewGuid(), Name = "Checklist Template RLS Tenant", Slug = "checklist-templates-rls", CompanySizeRange = "51-200", Status = TenantStatus.Active };
         _tenantId = tenant.Id;
@@ -83,7 +74,7 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
         await CreateRestrictedRoleAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task Create_List_Get_Update_Archive_RoundTrip_ThroughRestrictedRole()

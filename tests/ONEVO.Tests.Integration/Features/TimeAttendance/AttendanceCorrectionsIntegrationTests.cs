@@ -21,38 +21,25 @@ using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
 using Npgsql;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Features.TimeAttendance;
 
 /// <summary>
-/// Focused PostgreSQL integration coverage for the Attendance Correction approval-snapshot
-/// contract (ApprovalRequired persisted once at creation time, never re-derived from status) and
-/// for the corrective FK-support-index migration (20260824180229_AddAttendanceCorrectionForeignKeyIndexes).
-///
-/// This intentionally does NOT replicate the full Legal Entity fixture's ~1200 lines of
-/// company/department/position CRUD coverage. It reuses only the minimal, already-proven
-/// tenant-provisioning and direct-DbContext employee-seeding helpers from that fixture (see
-/// LegalEntitiesIntegrationTests/LeaveTypesIntegrationTests) because building a fresh
-/// tenant/legal-entity/user/employee by hand risks silently missing one of the many invariants
-/// (normalized email generation, seeded reference data, RBAC wiring) the real provisioning
-/// endpoint already enforces correctly.
-///
-/// Attendance-correction rows themselves are seeded directly through a DbContext resolved from
-/// the WebApplicationFactory's DI container (which - see E2ETestFactory.ConfigureWebHost - is
-/// wired to the raw Testcontainers superuser connection, bypassing RLS) rather than driven
-/// through AttendanceCorrectionWorkflow.RequestAsync. That workflow's approval-routing/schedule/
-/// clock-in-policy decision logic is already covered by AttendanceCorrectionNotificationTests
-/// (unit, with fakes); what is NOT covered anywhere else is whether the real Postgres column
-/// round-trips correctly, whether the API response layer reads the stored value rather than
-/// deriving it, and whether RLS actually blocks cross-tenant access - that is this class's job.
-///
-/// Database resolution mirrors every other class in this suite: set ONEVO_TEST_DB to run against
-/// a local PostgreSQL server with no Docker; otherwise a Testcontainers instance is started.
+/// Shared, one-time-per-class setup for AttendanceCorrectionsIntegrationTests: clones the
+/// database, boots the WebApplicationFactory, provisions the fixture tenants/users used by every
+/// [Fact] below. xUnit's IClassFixture constructs this ONCE and disposes it once after every fact
+/// in the class has run, instead of IAsyncLifetime's default of once PER fact - previously this
+/// class's own InitializeAsync ran 10 times, once per [Fact]. ApiResponse_UsesStoredApprovalRequiredValue_
+/// NotDerivedFromStatus was changed to seed its own dedicated employee/user rather than reuse
+/// RequesterA, because 6 other facts also seed corrections for RequesterA/RequesterAEmployeeId -
+/// under shared fixture state those accumulate in "my corrections" and would break its exact
+/// totalCount==2 assertion (and could even push its two specific rows outside the endpoint's
+/// default page). Every other exact-count/lookup here is already scoped to ids the fact itself
+/// just created (SeedCorrectionAsync returns a fresh Guid each call), so no other fact needed a
+/// behavior change.
 /// </summary>
-[Collection(WebApplicationFactoryCollection.Name)]
-public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
+public sealed class AttendanceCorrectionsIntegrationTestsFixture : IAsyncLifetime
 {
     private const string AdminHost = "admin.localhost";
     private const string FixtureUserPassword = "Password123!";
@@ -60,7 +47,6 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
 
     private readonly CapturingEmailService _email = new();
 
-    private PostgreSqlContainer? _postgres;
     private string _connectionString = null!;
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
@@ -68,35 +54,33 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
     private string _adminCookie = null!;
     private string _adminCsrfToken = null!;
 
-    private TenantSession _ownerA = null!;
-    private TenantSession _requesterA = null!;
-    private TenantSession _requesterB = null!;
-    private Guid _tenantAId;
-    private Guid _tenantBId;
-    private Guid _legalEntityAId;
-    private Guid _legalEntityBId;
-    private Guid _requesterAEmployeeId;
-    private Guid _requesterAUserId;
-    private Guid _requesterBEmployeeId;
-    private Guid _requesterBUserId;
-    private Guid _reviewerAUserId;
+    public E2ETestFactory Factory => _factory;
+
+    public TenantSession OwnerA { get; private set; } = null!;
+    public TenantSession RequesterA { get; private set; } = null!;
+    public TenantSession RequesterB { get; private set; } = null!;
+    public Guid TenantAId { get; private set; }
+    public Guid TenantBId { get; private set; }
+    public Guid LegalEntityAId { get; private set; }
+    public Guid LegalEntityBId { get; private set; }
+    public Guid RequesterAEmployeeId { get; private set; }
+    public Guid RequesterAUserId { get; private set; }
+    public Guid RequesterBEmployeeId { get; private set; }
+    public Guid RequesterBUserId { get; private set; }
+    public Guid ReviewerAUserId { get; private set; }
 
     public async Task InitializeAsync()
     {
         _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
-            _postgres = new PostgreSqlBuilder()
-                .WithImage("postgres:16-alpine")
-                .WithDatabase("onevo_attendance_corrections_test")
-                .WithUsername("test")
-                .WithPassword("test")
-                .Build();
-            await _postgres.StartAsync();
-            _connectionString = _postgres.GetConnectionString();
+            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
+            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
-
-        await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
+        else
+        {
+            await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
+        }
 
         // AdminTestFactory/IntegrationDatabaseBootstrap migrates as the Testcontainers superuser
         // (see E2ETestFactory.ConfigureWebHost), not as onevo_migrator, so the production
@@ -129,207 +113,47 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
         _adminCsrfToken = adminCookies["admin_csrf"];
         _adminCookie = $"admin_session={adminCookies["admin_session"]}";
 
-        _ownerA = await ProvisionAndLoginOwnerAsync("attn-corr-a", "Attendance Corr A Co", "owner-a@attn-corr.test");
+        OwnerA = await ProvisionAndLoginOwnerAsync("attn-corr-a", "Attendance Corr A Co", "owner-a@attn-corr.test");
         var ownerB = await ProvisionAndLoginOwnerAsync("attn-corr-b", "Attendance Corr B Co", "owner-b@attn-corr.test");
 
-        _tenantAId = await GetTenantIdAsync(_ownerA.Host);
-        _tenantBId = await GetTenantIdAsync(ownerB.Host);
-        _legalEntityAId = await GetPrimaryLegalEntityIdAsync(_ownerA);
-        _legalEntityBId = await GetPrimaryLegalEntityIdAsync(ownerB);
+        TenantAId = await GetTenantIdAsync(OwnerA.Host);
+        TenantBId = await GetTenantIdAsync(ownerB.Host);
+        LegalEntityAId = await GetPrimaryLegalEntityIdAsync(OwnerA);
+        LegalEntityBId = await GetPrimaryLegalEntityIdAsync(ownerB);
 
-        (_requesterA, _requesterAEmployeeId, _requesterAUserId) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, _ownerA.Host, "requester@attn-corr-a.test", _legalEntityAId, "AC-A-REQ-001");
-        (_requesterB, _requesterBEmployeeId, _requesterBUserId) = await SeedEmployeeFixtureUserAsync(
-            _tenantBId, ownerB.Host, "requester@attn-corr-b.test", _legalEntityBId, "AC-B-REQ-001");
-        (_, _, _reviewerAUserId) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, _ownerA.Host, "reviewer@attn-corr-a.test", _legalEntityAId, "AC-A-REV-001");
+        (RequesterA, RequesterAEmployeeId, RequesterAUserId) = await SeedEmployeeFixtureUserAsync(
+            TenantAId, OwnerA.Host, "requester@attn-corr-a.test", LegalEntityAId, "AC-A-REQ-001");
+        (RequesterB, RequesterBEmployeeId, RequesterBUserId) = await SeedEmployeeFixtureUserAsync(
+            TenantBId, ownerB.Host, "requester@attn-corr-b.test", LegalEntityBId, "AC-B-REQ-001");
+        (_, _, ReviewerAUserId) = await SeedEmployeeFixtureUserAsync(
+            TenantAId, OwnerA.Host, "reviewer@attn-corr-a.test", LegalEntityAId, "AC-A-REV-001");
     }
 
     public async Task DisposeAsync()
     {
         _client.Dispose();
         _factory.Dispose();
-        if (_postgres is not null)
-            await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
-    // ── Items 1-6: persistence of the approval-snapshot invariant ───────────
+    // Every call gets its own WorkDate: ux_attendance_corrections_pending_record_type is a
+    // partial unique index on (employee_id, correction_type, work_date) WHERE status = 'pending'.
+    // Several facts seed a pending correction for the same shared employee that's never
+    // transitioned away (e.g. ApprovalRequiredRequest_PersistsApprovalRequiredTrue), so under
+    // IClassFixture's shared database every later fact's insert for that same employee would
+    // otherwise collide on today's date. Facts run sequentially within a class, so a plain static
+    // counter is enough to guarantee every call is unique - no call site needs to change.
+    private static int _workDateOffsetDays;
 
-    [Fact]
-    public async Task ApprovalRequiredRequest_PersistsApprovalRequiredTrue()
-    {
-        var id = await SeedCorrectionAsync(_tenantAId, _requesterAEmployeeId, _legalEntityAId, _requesterAUserId,
-            AttendanceCorrection.StatusPending, approvalRequired: true);
-
-        var reloaded = await ReloadCorrectionAsync(id);
-
-        reloaded!.ApprovalRequired.Should().BeTrue();
-        reloaded.Status.Should().Be(AttendanceCorrection.StatusPending);
-    }
-
-    [Fact]
-    public async Task AutoApprovedRequest_PersistsApprovalRequiredFalse()
-    {
-        var id = await SeedCorrectionAsync(_tenantAId, _requesterAEmployeeId, _legalEntityAId, _requesterAUserId,
-            AttendanceCorrection.StatusApproved, approvalRequired: false, reviewedById: _requesterAUserId);
-
-        var reloaded = await ReloadCorrectionAsync(id);
-
-        reloaded!.ApprovalRequired.Should().BeFalse();
-    }
-
-    [Fact]
-    public async Task Approval_PreservesApprovalRequiredTrue()
-    {
-        var id = await SeedCorrectionAsync(_tenantAId, _requesterAEmployeeId, _legalEntityAId, _requesterAUserId,
-            AttendanceCorrection.StatusPending, approvalRequired: true);
-
-        await UpdateStatusAsync(id, AttendanceCorrection.StatusApproved, _reviewerAUserId);
-        var reloaded = await ReloadCorrectionAsync(id);
-
-        reloaded!.Status.Should().Be(AttendanceCorrection.StatusApproved);
-        reloaded.ApprovalRequired.Should().BeTrue("approval must not erase the creation-time policy snapshot");
-    }
-
-    [Fact]
-    public async Task Rejection_PreservesApprovalRequiredTrue()
-    {
-        var id = await SeedCorrectionAsync(_tenantAId, _requesterAEmployeeId, _legalEntityAId, _requesterAUserId,
-            AttendanceCorrection.StatusPending, approvalRequired: true);
-
-        await UpdateStatusAsync(id, AttendanceCorrection.StatusRejected, _reviewerAUserId);
-        var reloaded = await ReloadCorrectionAsync(id);
-
-        reloaded!.Status.Should().Be(AttendanceCorrection.StatusRejected);
-        reloaded.ApprovalRequired.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task Cancellation_PreservesApprovalRequiredTrue()
-    {
-        var id = await SeedCorrectionAsync(_tenantAId, _requesterAEmployeeId, _legalEntityAId, _requesterAUserId,
-            AttendanceCorrection.StatusPending, approvalRequired: true);
-
-        await UpdateStatusAsync(id, AttendanceCorrection.StatusCancelled, _requesterAUserId);
-        var reloaded = await ReloadCorrectionAsync(id);
-
-        reloaded!.Status.Should().Be(AttendanceCorrection.StatusCancelled);
-        reloaded.ApprovalRequired.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task Reload_ThroughFreshDbContext_PreservesBothValues()
-    {
-        var trueId = await SeedCorrectionAsync(_tenantAId, _requesterAEmployeeId, _legalEntityAId, _requesterAUserId,
-            AttendanceCorrection.StatusPending, approvalRequired: true);
-        var falseId = await SeedCorrectionAsync(_tenantAId, _requesterAEmployeeId, _legalEntityAId, _requesterAUserId,
-            AttendanceCorrection.StatusApproved, approvalRequired: false, reviewedById: _requesterAUserId);
-
-        // A brand-new scope/DbContext instance per read - not the same tracked instance used to seed -
-        // is the point of this test: it proves the column round-trips through Npgsql, not the
-        // first-level change-tracker cache.
-        (await ReloadCorrectionAsync(trueId))!.ApprovalRequired.Should().BeTrue();
-        (await ReloadCorrectionAsync(falseId))!.ApprovalRequired.Should().BeFalse();
-    }
-
-    // ── Item 7: the API response layer must read the stored value, not derive it ──
-
-    [Fact]
-    public async Task ApiResponse_UsesStoredApprovalRequiredValue_NotDerivedFromStatus()
-    {
-        // Both rows share the same Status ("approved"); only the persisted ApprovalRequired
-        // column differs. If the mapper ever regressed to deriving the field from status, both
-        // would report the same (wrong) value here.
-        var manuallyApprovedId = await SeedCorrectionAsync(_tenantAId, _requesterAEmployeeId, _legalEntityAId,
-            _requesterAUserId, AttendanceCorrection.StatusApproved, approvalRequired: true, reviewedById: _reviewerAUserId);
-        var autoApprovedId = await SeedCorrectionAsync(_tenantAId, _requesterAEmployeeId, _legalEntityAId,
-            _requesterAUserId, AttendanceCorrection.StatusApproved, approvalRequired: false, reviewedById: _requesterAUserId);
-
-        var response = await SendAsync(HttpMethod.Get, _requesterA.Host, "/api/v1/attendance/corrections/my",
-            body: null, cookie: _requesterA.SessionCookie);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var page = await ReadJsonAsync(response);
-        var items = page.GetProperty("items");
-
-        page.GetProperty("totalCount").GetInt32().Should().Be(2);
-
-        var manual = items.EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == manuallyApprovedId);
-        var auto = items.EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == autoApprovedId);
-
-        manual.GetProperty("approvalRequired").GetBoolean().Should().BeTrue();
-        auto.GetProperty("approvalRequired").GetBoolean().Should().BeFalse();
-    }
-
-    // ── Items 9-10: RLS actually enforces tenant isolation for this table ───
-
-    [Fact]
-    public async Task CrossTenant_CannotReadOtherTenantsCorrection()
-    {
-        var tenantBCorrectionId = await SeedCorrectionAsync(_tenantBId, _requesterBEmployeeId,
-            _legalEntityBId, _requesterBUserId,
-            AttendanceCorrection.StatusPending, approvalRequired: true);
-
-        await using var tenantAScopedDb = CreateAppRoleScopedContext(_tenantAId);
-        var visible = await tenantAScopedDb.AttendanceCorrections
-            .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == tenantBCorrectionId);
-
-        visible.Should().BeNull("RLS must hide another tenant's row even when the id is known");
-    }
-
-    [Fact]
-    public async Task CrossTenant_CannotUpdateOtherTenantsCorrection()
-    {
-        var tenantBCorrectionId = await SeedCorrectionAsync(_tenantBId, _requesterBEmployeeId,
-            _legalEntityBId, _requesterBUserId,
-            AttendanceCorrection.StatusPending, approvalRequired: true);
-
-        await using (var tenantAScopedDb = CreateAppRoleScopedContext(_tenantAId))
-        {
-            var affected = await tenantAScopedDb.AttendanceCorrections
-                .Where(x => x.Id == tenantBCorrectionId)
-                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Notes, "cross-tenant-write-attempt"));
-
-            affected.Should().Be(0, "RLS must silently filter the row out of the UPDATE's WHERE clause");
-        }
-
-        var unchanged = await ReloadCorrectionAsync(tenantBCorrectionId);
-        unchanged!.Notes.Should().BeNull();
-    }
-
-    // ── Item 11: the corrective index migration actually created the indexes ──
-
-    [Fact]
-    public async Task FreshlyMigratedDatabase_HasAllFiveCorrectiveIndexes()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-        var indexNames = await db.Database
-            .SqlQuery<string>(
-                $"SELECT indexname AS \"Value\" FROM pg_indexes WHERE tablename = 'attendance_corrections'")
-            .ToListAsync();
-
-        indexNames.Should().Contain(new[]
-        {
-            "ix_attendance_corrections_employee_id",
-            "ix_attendance_corrections_legal_entity_id",
-            "ix_attendance_corrections_presence_session_id",
-            "ix_attendance_corrections_requested_by_id",
-            "ix_attendance_corrections_reviewed_by_id"
-        });
-    }
-
-    // ── Seeding and reload helpers ───────────────────────────────────────────
-
-    private async Task<Guid> SeedCorrectionAsync(
+    public async Task<Guid> SeedCorrectionAsync(
         Guid tenantId, Guid employeeId, Guid legalEntityId, Guid requestedById,
         string status, bool approvalRequired, Guid? reviewedById = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var now = DateTimeOffset.UtcNow;
+        var workDate = DateOnly.FromDateTime(now.UtcDateTime)
+            .AddDays(-System.Threading.Interlocked.Increment(ref _workDateOffsetDays));
 
         var correction = new AttendanceCorrection
         {
@@ -337,7 +161,7 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
             TenantId = tenantId,
             EmployeeId = employeeId,
             LegalEntityId = legalEntityId,
-            WorkDate = DateOnly.FromDateTime(now.UtcDateTime),
+            WorkDate = workDate,
             CorrectionType = AttendanceCorrection.TypeClockIn,
             RequestedClockInAt = now,
             Reason = "Integration test fixture row",
@@ -354,7 +178,7 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
         return correction.Id;
     }
 
-    private async Task UpdateStatusAsync(Guid id, string status, Guid reviewedById)
+    public async Task UpdateStatusAsync(Guid id, string status, Guid reviewedById)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -366,7 +190,7 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    private async Task<AttendanceCorrection?> ReloadCorrectionAsync(Guid id)
+    public async Task<AttendanceCorrection?> ReloadCorrectionAsync(Guid id)
     {
         // A fresh scope each call - never the scope/context used to seed or mutate the row -
         // is what makes this a real "survives a fresh DbContext" check rather than a
@@ -384,7 +208,7 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
     /// E2ETestFactory.ConfigureWebHost), this is the one context in this test class where RLS is
     /// actually enforced, which is the point of the two CrossTenant_* tests above.
     /// </summary>
-    private ApplicationDbContext CreateAppRoleScopedContext(Guid tenantId)
+    public ApplicationDbContext CreateAppRoleScopedContext(Guid tenantId)
     {
         var appRoleConnectionString = new NpgsqlConnectionStringBuilder(_connectionString)
         {
@@ -416,10 +240,7 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
         public TenantContextMode ContextMode => TenantContextMode.Tenant;
     }
 
-    // ── Provisioning and fixture-seeding boilerplate (mirrors LegalEntitiesIntegrationTests /
-    // LeaveTypesIntegrationTests verbatim; not duplicated business-domain test coverage) ──
-
-    private sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
+    public sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
 
     private async Task<TenantSession> ProvisionAndLoginOwnerAsync(string slug, string companyName, string ownerEmail)
     {
@@ -505,7 +326,7 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 
-    private async Task<(TenantSession Session, Guid EmployeeId, Guid UserId)> SeedEmployeeFixtureUserAsync(
+    public async Task<(TenantSession Session, Guid EmployeeId, Guid UserId)> SeedEmployeeFixtureUserAsync(
         Guid tenantId, string host, string email, Guid legalEntityId, string employeeNumber)
     {
         using var scope = _factory.Services.CreateScope();
@@ -640,7 +461,7 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
         throw new TimeoutException("Seeders did not finish within 30s (permissions / subscription plan missing).");
     }
 
-    private async Task<HttpResponseMessage> SendAsync(
+    public async Task<HttpResponseMessage> SendAsync(
         HttpMethod method, string host, string path, object? body,
         string? cookie = null, string? csrfToken = null, string? idempotencyKey = null)
     {
@@ -680,4 +501,240 @@ public sealed class AttendanceCorrectionsIntegrationTests : IAsyncLifetime
 
         return cookies;
     }
+
+}
+
+/// <summary>
+/// Focused PostgreSQL integration coverage for the Attendance Correction approval-snapshot
+/// contract (ApprovalRequired persisted once at creation time, never re-derived from status) and
+/// for the corrective FK-support-index migration (20260824180229_AddAttendanceCorrectionForeignKeyIndexes).
+///
+/// This intentionally does NOT replicate the full Legal Entity fixture's ~1200 lines of
+/// company/department/position CRUD coverage. It reuses only the minimal, already-proven
+/// tenant-provisioning and direct-DbContext employee-seeding helpers from that fixture (see
+/// LegalEntitiesIntegrationTests/LeaveTypesIntegrationTests) because building a fresh
+/// tenant/legal-entity/user/employee by hand risks silently missing one of the many invariants
+/// (normalized email generation, seeded reference data, RBAC wiring) the real provisioning
+/// endpoint already enforces correctly.
+///
+/// Attendance-correction rows themselves are seeded directly through a DbContext resolved from
+/// the WebApplicationFactory's DI container (which - see E2ETestFactory.ConfigureWebHost - is
+/// wired to the raw Testcontainers superuser connection, bypassing RLS) rather than driven
+/// through AttendanceCorrectionWorkflow.RequestAsync. That workflow's approval-routing/schedule/
+/// clock-in-policy decision logic is already covered by AttendanceCorrectionNotificationTests
+/// (unit, with fakes); what is NOT covered anywhere else is whether the real Postgres column
+/// round-trips correctly, whether the API response layer reads the stored value rather than
+/// deriving it, and whether RLS actually blocks cross-tenant access - that is this class's job.
+///
+/// Database resolution mirrors every other class in this suite: set ONEVO_TEST_DB to run against
+/// a local PostgreSQL server with no Docker; otherwise a Testcontainers instance is started.
+/// </summary>
+[Collection(WebApplicationFactoryCollection.Name)]
+public sealed class AttendanceCorrectionsIntegrationTests : IClassFixture<AttendanceCorrectionsIntegrationTestsFixture>
+{
+    private readonly AttendanceCorrectionsIntegrationTestsFixture _fixture;
+
+    public AttendanceCorrectionsIntegrationTests(AttendanceCorrectionsIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    // ── Items 1-6: persistence of the approval-snapshot invariant ───────────
+
+    [Fact]
+    public async Task ApprovalRequiredRequest_PersistsApprovalRequiredTrue()
+    {
+        var id = await _fixture.SeedCorrectionAsync(_fixture.TenantAId, _fixture.RequesterAEmployeeId, _fixture.LegalEntityAId, _fixture.RequesterAUserId,
+            AttendanceCorrection.StatusPending, approvalRequired: true);
+
+        var reloaded = await _fixture.ReloadCorrectionAsync(id);
+
+        reloaded!.ApprovalRequired.Should().BeTrue();
+        reloaded.Status.Should().Be(AttendanceCorrection.StatusPending);
+    }
+
+    [Fact]
+    public async Task AutoApprovedRequest_PersistsApprovalRequiredFalse()
+    {
+        var id = await _fixture.SeedCorrectionAsync(_fixture.TenantAId, _fixture.RequesterAEmployeeId, _fixture.LegalEntityAId, _fixture.RequesterAUserId,
+            AttendanceCorrection.StatusApproved, approvalRequired: false, reviewedById: _fixture.RequesterAUserId);
+
+        var reloaded = await _fixture.ReloadCorrectionAsync(id);
+
+        reloaded!.ApprovalRequired.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Approval_PreservesApprovalRequiredTrue()
+    {
+        var id = await _fixture.SeedCorrectionAsync(_fixture.TenantAId, _fixture.RequesterAEmployeeId, _fixture.LegalEntityAId, _fixture.RequesterAUserId,
+            AttendanceCorrection.StatusPending, approvalRequired: true);
+
+        await _fixture.UpdateStatusAsync(id, AttendanceCorrection.StatusApproved, _fixture.ReviewerAUserId);
+        var reloaded = await _fixture.ReloadCorrectionAsync(id);
+
+        reloaded!.Status.Should().Be(AttendanceCorrection.StatusApproved);
+        reloaded.ApprovalRequired.Should().BeTrue("approval must not erase the creation-time policy snapshot");
+    }
+
+    [Fact]
+    public async Task Rejection_PreservesApprovalRequiredTrue()
+    {
+        var id = await _fixture.SeedCorrectionAsync(_fixture.TenantAId, _fixture.RequesterAEmployeeId, _fixture.LegalEntityAId, _fixture.RequesterAUserId,
+            AttendanceCorrection.StatusPending, approvalRequired: true);
+
+        await _fixture.UpdateStatusAsync(id, AttendanceCorrection.StatusRejected, _fixture.ReviewerAUserId);
+        var reloaded = await _fixture.ReloadCorrectionAsync(id);
+
+        reloaded!.Status.Should().Be(AttendanceCorrection.StatusRejected);
+        reloaded.ApprovalRequired.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Cancellation_PreservesApprovalRequiredTrue()
+    {
+        var id = await _fixture.SeedCorrectionAsync(_fixture.TenantAId, _fixture.RequesterAEmployeeId, _fixture.LegalEntityAId, _fixture.RequesterAUserId,
+            AttendanceCorrection.StatusPending, approvalRequired: true);
+
+        await _fixture.UpdateStatusAsync(id, AttendanceCorrection.StatusCancelled, _fixture.RequesterAUserId);
+        var reloaded = await _fixture.ReloadCorrectionAsync(id);
+
+        reloaded!.Status.Should().Be(AttendanceCorrection.StatusCancelled);
+        reloaded.ApprovalRequired.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reload_ThroughFreshDbContext_PreservesBothValues()
+    {
+        var trueId = await _fixture.SeedCorrectionAsync(_fixture.TenantAId, _fixture.RequesterAEmployeeId, _fixture.LegalEntityAId, _fixture.RequesterAUserId,
+            AttendanceCorrection.StatusPending, approvalRequired: true);
+        var falseId = await _fixture.SeedCorrectionAsync(_fixture.TenantAId, _fixture.RequesterAEmployeeId, _fixture.LegalEntityAId, _fixture.RequesterAUserId,
+            AttendanceCorrection.StatusApproved, approvalRequired: false, reviewedById: _fixture.RequesterAUserId);
+
+        // A brand-new scope/DbContext instance per read - not the same tracked instance used to seed -
+        // is the point of this test: it proves the column round-trips through Npgsql, not the
+        // first-level change-tracker cache.
+        (await _fixture.ReloadCorrectionAsync(trueId))!.ApprovalRequired.Should().BeTrue();
+        (await _fixture.ReloadCorrectionAsync(falseId))!.ApprovalRequired.Should().BeFalse();
+    }
+
+    // ── Item 7: the API response layer must read the stored value, not derive it ──
+
+    [Fact]
+    public async Task ApiResponse_UsesStoredApprovalRequiredValue_NotDerivedFromStatus()
+    {
+        // Own dedicated requester, not the shared RequesterA - 6 other facts also seed corrections
+        // for RequesterAEmployeeId/RequesterAUserId, which would otherwise accumulate in "my
+        // corrections" under shared fixture state and break the exact totalCount==2 assertion
+        // below (and could even push these two specific rows outside the endpoint's default page).
+        var (session, employeeId, userId) = await _fixture.SeedEmployeeFixtureUserAsync(
+            _fixture.TenantAId, _fixture.OwnerA.Host, "apiresponse-requester@attn-corr-a.test",
+            _fixture.LegalEntityAId, "AC-A-APIRESP-001");
+
+        // Both rows share the same Status ("approved"); only the persisted ApprovalRequired
+        // column differs. If the mapper ever regressed to deriving the field from status, both
+        // would report the same (wrong) value here.
+        var manuallyApprovedId = await _fixture.SeedCorrectionAsync(_fixture.TenantAId, employeeId, _fixture.LegalEntityAId,
+            userId, AttendanceCorrection.StatusApproved, approvalRequired: true, reviewedById: _fixture.ReviewerAUserId);
+        var autoApprovedId = await _fixture.SeedCorrectionAsync(_fixture.TenantAId, employeeId, _fixture.LegalEntityAId,
+            userId, AttendanceCorrection.StatusApproved, approvalRequired: false, reviewedById: userId);
+
+        var response = await _fixture.SendAsync(HttpMethod.Get, session.Host, "/api/v1/attendance/corrections/my",
+            body: null, cookie: session.SessionCookie);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var page = await ReadJsonAsync(response);
+        var items = page.GetProperty("items");
+
+        page.GetProperty("totalCount").GetInt32().Should().Be(2);
+
+        var manual = items.EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == manuallyApprovedId);
+        var auto = items.EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == autoApprovedId);
+
+        manual.GetProperty("approvalRequired").GetBoolean().Should().BeTrue();
+        auto.GetProperty("approvalRequired").GetBoolean().Should().BeFalse();
+    }
+
+    // ── Items 9-10: RLS actually enforces tenant isolation for this table ───
+
+    [Fact]
+    public async Task CrossTenant_CannotReadOtherTenantsCorrection()
+    {
+        var tenantBCorrectionId = await _fixture.SeedCorrectionAsync(_fixture.TenantBId, _fixture.RequesterBEmployeeId,
+            _fixture.LegalEntityBId, _fixture.RequesterBUserId,
+            AttendanceCorrection.StatusPending, approvalRequired: true);
+
+        await using var tenantAScopedDb = _fixture.CreateAppRoleScopedContext(_fixture.TenantAId);
+        var visible = await tenantAScopedDb.AttendanceCorrections
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == tenantBCorrectionId);
+
+        visible.Should().BeNull("RLS must hide another tenant's row even when the id is known");
+    }
+
+    [Fact]
+    public async Task CrossTenant_CannotUpdateOtherTenantsCorrection()
+    {
+        var tenantBCorrectionId = await _fixture.SeedCorrectionAsync(_fixture.TenantBId, _fixture.RequesterBEmployeeId,
+            _fixture.LegalEntityBId, _fixture.RequesterBUserId,
+            AttendanceCorrection.StatusPending, approvalRequired: true);
+
+        await using (var tenantAScopedDb = _fixture.CreateAppRoleScopedContext(_fixture.TenantAId))
+        {
+            var affected = await tenantAScopedDb.AttendanceCorrections
+                .Where(x => x.Id == tenantBCorrectionId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Notes, "cross-tenant-write-attempt"));
+
+            affected.Should().Be(0, "RLS must silently filter the row out of the UPDATE's WHERE clause");
+        }
+
+        var unchanged = await _fixture.ReloadCorrectionAsync(tenantBCorrectionId);
+        unchanged!.Notes.Should().BeNull();
+    }
+
+    // ── Item 11: the corrective index migration actually created the indexes ──
+
+    [Fact]
+    public async Task FreshlyMigratedDatabase_HasAllFiveCorrectiveIndexes()
+    {
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var indexNames = await db.Database
+            .SqlQuery<string>(
+                $"SELECT indexname AS \"Value\" FROM pg_indexes WHERE tablename = 'attendance_corrections'")
+            .ToListAsync();
+
+        indexNames.Should().Contain(new[]
+        {
+            "ix_attendance_corrections_employee_id",
+            "ix_attendance_corrections_legal_entity_id",
+            "ix_attendance_corrections_presence_session_id",
+            "ix_attendance_corrections_requested_by_id",
+            "ix_attendance_corrections_reviewed_by_id"
+        });
+    }
+
+    private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
+    {
+        var text = await response.Content.ReadAsStringAsync();
+        return string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone();
+    }
+
+    private static Dictionary<string, string> ParseSetCookies(HttpResponseMessage response)
+    {
+        var cookies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!response.Headers.TryGetValues("Set-Cookie", out var values))
+            return cookies;
+
+        foreach (var raw in values)
+        {
+            var pair = raw.Split(';', 2)[0];
+            var idx = pair.IndexOf('=');
+            if (idx > 0)
+                cookies[pair[..idx].Trim()] = pair[(idx + 1)..].Trim();
+        }
+
+        return cookies;
+    }
+
 }

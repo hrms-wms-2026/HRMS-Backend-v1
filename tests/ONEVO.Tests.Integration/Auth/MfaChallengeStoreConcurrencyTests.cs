@@ -11,7 +11,6 @@ using ONEVO.Infrastructure.Identity.Tokens;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Auth;
 
@@ -23,11 +22,6 @@ namespace ONEVO.Tests.Integration.Auth;
 /// </summary>
 public sealed class MfaChallengeStoreConcurrencyTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_mfa_challenge_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SecureTokenGenerator _tokens = new();
     private readonly SystemDateTimeProvider _clock = new();
@@ -38,12 +32,9 @@ public sealed class MfaChallengeStoreConcurrencyTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         // mfa_challenges has enforced foreign keys to tenants and users, so seed one of each.
         var tenant = new Tenant
@@ -75,7 +66,6 @@ public sealed class MfaChallengeStoreConcurrencyTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        await _postgres.DisposeAsync();
     }
 
     [Fact]
