@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
@@ -16,8 +17,18 @@ using Xunit;
 
 namespace ONEVO.Tests.Integration.Features.Leave;
 
-[Collection(WebApplicationFactoryCollection.Name)]
-public class LeavePoliciesIntegrationTests : IAsyncLifetime
+/// <summary>
+/// Shared, one-time-per-class setup for LeavePoliciesIntegrationTests: clones the database,
+/// provisions the tenant/owner/no-manage-permission user, and boots the WebApplicationFactory
+/// ONCE. xUnit's IClassFixture constructs this ONCE and disposes it once after every fact in the
+/// class has run, instead of IAsyncLifetime's default of once PER fact - previously this class's
+/// own InitializeAsync (which provisions a tenant end to end over real HTTP) ran 5 times, once per
+/// [Fact]. A leave policy can only ever have ONE active assignment per legal entity, so every fact
+/// that creates a policy with confirm:false (expecting 200, i.e. assuming no active policy exists
+/// yet) now seeds its own dedicated legal entity via SeedLegalEntityAsync instead of sharing the
+/// tenant's one primary legal entity - see that helper's own comment.
+/// </summary>
+public sealed class LeavePoliciesIntegrationTestsFixture : IAsyncLifetime
 {
     private const string AdminHost = "admin.localhost";
     private const string FixtureUserPassword = "Password123!";
@@ -34,6 +45,11 @@ public class LeavePoliciesIntegrationTests : IAsyncLifetime
     private TenantSession _owner = null!;
     private TenantSession _noManage = null!;
     private Guid _tenantId;
+
+    public TenantSession Owner => _owner;
+    public TenantSession NoManage => _noManage;
+    public Guid TenantId => _tenantId;
+    public E2ETestFactory Factory => _factory;
 
     public async Task InitializeAsync()
     {
@@ -76,110 +92,7 @@ public class LeavePoliciesIntegrationTests : IAsyncLifetime
         await _environmentScope.DisposeAsync();
     }
 
-    [Fact]
-    public async Task CreatePolicy_AsOwner_Returns200AndPersists()
-    {
-        var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "ANNUAL");
-        var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
-
-        var response = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/policies",
-            CreatePolicyBody("LK Annual Policy", leaveTypeId, legalEntityId, confirm: false),
-            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var json = await ReadJsonAsync(response);
-        json.GetProperty("name").GetString().Should().Be("LK Annual Policy");
-        json.GetProperty("leaveTypes").EnumerateArray().Should().ContainSingle();
-        json.GetProperty("legalEntities").EnumerateArray().Should().ContainSingle();
-    }
-
-    [Fact]
-    public async Task CreatePolicy_WithoutLeaveManage_Returns403()
-    {
-        var leaveTypeId = await CreateLeaveTypeAsync("Sick Leave", "SICK");
-        var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
-
-        var response = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/policies",
-            CreatePolicyBody("Blocked Policy", leaveTypeId, legalEntityId, confirm: false),
-            cookie: _noManage.SessionCookie, csrfToken: _noManage.CsrfHeader);
-
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    [Fact]
-    public async Task CreatePolicy_ExistingActiveLegalEntity_NotConfirmed_Returns409()
-    {
-        var leaveTypeId = await CreateLeaveTypeAsync("Compassionate Leave", "COMP");
-        var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
-
-        var first = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/policies",
-            CreatePolicyBody("First Policy", leaveTypeId, legalEntityId, confirm: false),
-            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-        first.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var second = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/policies",
-            CreatePolicyBody("Second Policy", leaveTypeId, legalEntityId, confirm: false),
-            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-
-        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        var json = await ReadJsonAsync(second);
-        json.ToString().Should().Contain("already has an active policy");
-    }
-
-    [Fact]
-    public async Task CreatePolicy_ExistingActiveLegalEntity_Confirmed_Replaces()
-    {
-        var leaveTypeId = await CreateLeaveTypeAsync("Study Leave", "STUDY");
-        var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
-
-        var first = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/policies",
-            CreatePolicyBody("Old Study Policy", leaveTypeId, legalEntityId, confirm: false),
-            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-        first.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var second = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/policies",
-            CreatePolicyBody("New Study Policy", leaveTypeId, legalEntityId, confirm: true),
-            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-
-        second.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var activeAssignments = await db.LeavePolicyLegalEntities
-            .CountAsync(x => x.TenantId == _tenantId && x.LegalEntityId == legalEntityId && x.IsActive);
-        activeAssignments.Should().Be(1);
-    }
-
-    [Fact]
-    public async Task ClonePolicy_CopiesLeaveTypesAndBlackouts()
-    {
-        var leaveTypeId = await CreateLeaveTypeAsync("Maternity Leave", "MAT");
-        var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
-        var create = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/policies",
-            CreatePolicyBody("Maternity Policy", leaveTypeId, legalEntityId, confirm: false),
-            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-        var created = await ReadJsonAsync(create);
-        var policyId = created.GetProperty("id").GetGuid();
-
-        var clone = await SendAsync(HttpMethod.Post, _owner.Host, $"/api/v1/leave/policies/{policyId}/clone",
-            new
-            {
-                name = "Maternity Policy Copy",
-                country = "LK",
-                legalEntityIds = new[] { legalEntityId },
-                effectiveFrom = "2027-01-01",
-                confirmReplaceExistingLegalEntityAssignments = true
-            },
-            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-
-        clone.StatusCode.Should().Be(HttpStatusCode.OK);
-        var json = await ReadJsonAsync(clone);
-        json.GetProperty("name").GetString().Should().Be("Maternity Policy Copy");
-        json.GetProperty("leaveTypes").EnumerateArray().Should().ContainSingle();
-        json.GetProperty("blackoutPeriods").EnumerateArray().Should().ContainSingle();
-    }
-
-    private async Task<Guid> CreateLeaveTypeAsync(string name, string code)
+    public async Task<Guid> CreateLeaveTypeAsync(string name, string code)
     {
         var response = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/types",
             new
@@ -209,7 +122,7 @@ public class LeavePoliciesIntegrationTests : IAsyncLifetime
         return (await ReadJsonAsync(response)).GetProperty("id").GetGuid();
     }
 
-    private async Task<Guid> GetPrimaryLegalEntityIdAsync(Guid tenantId)
+    public async Task<Guid> GetPrimaryLegalEntityIdAsync(Guid tenantId)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -219,7 +132,32 @@ public class LeavePoliciesIntegrationTests : IAsyncLifetime
             .SingleAsync();
     }
 
-    private static object CreatePolicyBody(string name, Guid leaveTypeId, Guid legalEntityId, bool confirm) => new
+    /// <summary>
+    /// A leave policy can only ever have ONE active assignment per legal entity - each fact that
+    /// creates a policy with confirm:false (expecting 200, i.e. assuming no active policy exists
+    /// yet) needs its own dedicated legal entity rather than the tenant's single shared primary
+    /// one, or whichever fact runs first under a shared IClassFixture database would leave an
+    /// active policy behind that makes every later fact's "first" creation 409 instead of 200.
+    /// </summary>
+    public async Task<Guid> SeedLegalEntityAsync(string slug)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var legalEntity = new LegalEntity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = _tenantId,
+            Name = $"{slug}-le",
+            CountryCode = "LK",
+            CurrencyCode = "LKR",
+            IsActive = true
+        };
+        db.LegalEntities.Add(legalEntity);
+        await db.SaveChangesAsync();
+        return legalEntity.Id;
+    }
+
+    public static object CreatePolicyBody(string name, Guid leaveTypeId, Guid legalEntityId, bool confirm) => new
     {
         name,
         description = "integration fixture policy",
@@ -262,7 +200,7 @@ public class LeavePoliciesIntegrationTests : IAsyncLifetime
         confirmReplaceExistingLegalEntityAssignments = confirm
     };
 
-    private sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
+    public sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
 
     private async Task<TenantSession> ProvisionAndLoginOwnerAsync(string slug, string companyName, string ownerEmail)
     {
@@ -469,7 +407,7 @@ public class LeavePoliciesIntegrationTests : IAsyncLifetime
         throw new TimeoutException("Seeders did not finish within 30s (permissions / subscription plan missing).");
     }
 
-    private async Task<HttpResponseMessage> SendAsync(
+    public async Task<HttpResponseMessage> SendAsync(
         HttpMethod method, string host, string path, object? body,
         string? cookie = null, string? csrfToken = null, string? idempotencyKey = null)
     {
@@ -487,7 +425,7 @@ public class LeavePoliciesIntegrationTests : IAsyncLifetime
         return await _client.SendAsync(request);
     }
 
-    private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
+    public static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
     {
         var text = await response.Content.ReadAsStringAsync();
         return string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone();
@@ -509,4 +447,120 @@ public class LeavePoliciesIntegrationTests : IAsyncLifetime
 
         return cookies;
     }
+
+}
+
+[Collection(WebApplicationFactoryCollection.Name)]
+public class LeavePoliciesIntegrationTests : IClassFixture<LeavePoliciesIntegrationTestsFixture>
+{
+    private readonly LeavePoliciesIntegrationTestsFixture _fixture;
+
+    public LeavePoliciesIntegrationTests(LeavePoliciesIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task CreatePolicy_AsOwner_Returns200AndPersists()
+    {
+        var leaveTypeId = await _fixture.CreateLeaveTypeAsync("Annual Leave", "ANNUAL");
+        var legalEntityId = await _fixture.SeedLegalEntityAsync("lp-annual");
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/policies",
+            LeavePoliciesIntegrationTestsFixture.CreatePolicyBody("LK Annual Policy", leaveTypeId, legalEntityId, confirm: false),
+            cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await LeavePoliciesIntegrationTestsFixture.ReadJsonAsync(response);
+        json.GetProperty("name").GetString().Should().Be("LK Annual Policy");
+        json.GetProperty("leaveTypes").EnumerateArray().Should().ContainSingle();
+        json.GetProperty("legalEntities").EnumerateArray().Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task CreatePolicy_WithoutLeaveManage_Returns403()
+    {
+        var leaveTypeId = await _fixture.CreateLeaveTypeAsync("Sick Leave", "SICK");
+        var legalEntityId = await _fixture.GetPrimaryLegalEntityIdAsync(_fixture.TenantId);
+
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/policies",
+            LeavePoliciesIntegrationTestsFixture.CreatePolicyBody("Blocked Policy", leaveTypeId, legalEntityId, confirm: false),
+            cookie: _fixture.NoManage.SessionCookie, csrfToken: _fixture.NoManage.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task CreatePolicy_ExistingActiveLegalEntity_NotConfirmed_Returns409()
+    {
+        var leaveTypeId = await _fixture.CreateLeaveTypeAsync("Compassionate Leave", "COMP");
+        var legalEntityId = await _fixture.SeedLegalEntityAsync("lp-comp");
+
+        var first = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/policies",
+            LeavePoliciesIntegrationTestsFixture.CreatePolicyBody("First Policy", leaveTypeId, legalEntityId, confirm: false),
+            cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var second = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/policies",
+            LeavePoliciesIntegrationTestsFixture.CreatePolicyBody("Second Policy", leaveTypeId, legalEntityId, confirm: false),
+            cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var json = await LeavePoliciesIntegrationTestsFixture.ReadJsonAsync(second);
+        json.ToString().Should().Contain("already has an active policy");
+    }
+
+    [Fact]
+    public async Task CreatePolicy_ExistingActiveLegalEntity_Confirmed_Replaces()
+    {
+        var leaveTypeId = await _fixture.CreateLeaveTypeAsync("Study Leave", "STUDY");
+        var legalEntityId = await _fixture.SeedLegalEntityAsync("lp-study");
+
+        var first = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/policies",
+            LeavePoliciesIntegrationTestsFixture.CreatePolicyBody("Old Study Policy", leaveTypeId, legalEntityId, confirm: false),
+            cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var second = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/policies",
+            LeavePoliciesIntegrationTestsFixture.CreatePolicyBody("New Study Policy", leaveTypeId, legalEntityId, confirm: true),
+            cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var activeAssignments = await db.LeavePolicyLegalEntities
+            .CountAsync(x => x.TenantId == _fixture.TenantId && x.LegalEntityId == legalEntityId && x.IsActive);
+        activeAssignments.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ClonePolicy_CopiesLeaveTypesAndBlackouts()
+    {
+        var leaveTypeId = await _fixture.CreateLeaveTypeAsync("Maternity Leave", "MAT");
+        var legalEntityId = await _fixture.SeedLegalEntityAsync("lp-mat");
+        var create = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/policies",
+            LeavePoliciesIntegrationTestsFixture.CreatePolicyBody("Maternity Policy", leaveTypeId, legalEntityId, confirm: false),
+            cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+        var created = await LeavePoliciesIntegrationTestsFixture.ReadJsonAsync(create);
+        var policyId = created.GetProperty("id").GetGuid();
+
+        var clone = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, $"/api/v1/leave/policies/{policyId}/clone",
+            new
+            {
+                name = "Maternity Policy Copy",
+                country = "LK",
+                legalEntityIds = new[] { legalEntityId },
+                effectiveFrom = "2027-01-01",
+                confirmReplaceExistingLegalEntityAssignments = true
+            },
+            cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+
+        clone.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await LeavePoliciesIntegrationTestsFixture.ReadJsonAsync(clone);
+        json.GetProperty("name").GetString().Should().Be("Maternity Policy Copy");
+        json.GetProperty("leaveTypes").EnumerateArray().Should().ContainSingle();
+        json.GetProperty("blackoutPeriods").EnumerateArray().Should().ContainSingle();
+    }
+
 }

@@ -24,25 +24,27 @@ using Xunit;
 namespace ONEVO.Tests.Integration.Monitoring.Settings;
 
 /// <summary>
-/// DB-backed coverage for the monitoring policy override CRUD surface
-/// (MonitoringPolicyConfigurationService + MonitoringSettingsController's
-/// company/department/position/role routes) and, most importantly, a regression
-/// test proving MonitoringToggleResolverService resolves a position-level override
-/// via a real PositionAssignments row rather than the historically-hardcoded-null
-/// positionId. Mirrors the fixture/assertion style of
-/// MonitoringFeatureTogglesIntegrationTests and TrayMonitoringPolicyIntegrationTests.
+/// Shared, one-time-per-class setup for MonitoringPolicyOverrideIntegrationTests: clones the
+/// database and boots the WebApplicationFactory once. xUnit's IClassFixture constructs this ONCE
+/// and disposes it once after every fact in the class has run, instead of IAsyncLifetime's default
+/// of once PER fact - previously this class's own InitializeAsync ran 9 times, once per [Fact].
+/// Unlike the OrgStructure classes, InitializeAsync here provisions no shared tenant at all -
+/// every fact seeds its own fresh Guid.NewGuid() tenant with a unique slug (verified: no two facts
+/// reuse a slug for a *different* tenant), so there is no cross-fact state-sharing risk from
+/// converting this class.
 /// </summary>
-[Collection(WebApplicationFactoryCollection.Name)]
-public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
+public sealed class MonitoringPolicyOverrideIntegrationTestsFixture : IAsyncLifetime
 {
     private static readonly Guid SeededPlanId = new("a1b2c3d4-0001-0001-0001-000000000001");
-
 
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
     private HttpClient _client = null!;
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = null!;
+
+    public E2ETestFactory Factory => _factory;
+    public HttpClient Client => _client;
 
     public async Task InitializeAsync()
     {
@@ -64,179 +66,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
         await _environmentScope.DisposeAsync();
     }
 
-    // ---------------------------------------------------------------------
-    // Highest priority: regression test for the historically-hardcoded-null
-    // positionId bug. Proves the resolver reaches an *active* position override
-    // through a real PositionAssignments row (PrimaryEmployment/Active/in-range).
-    // ---------------------------------------------------------------------
-    [Fact]
-    public async Task Resolve_PositionOverride_UsesRealPositionAssignmentRow()
-    {
-        var tenantId = Guid.NewGuid();
-        var (employee, positionId) = await SeedTenantAndEmployeeAsync(
-            tenantId, "pos-regress", departmentId: null, assignToPosition: true);
-
-        await SeedCompanyToggleAsync(tenantId, activityMonitoring: false);
-        await SeedOverrideAsync(tenantId, "position", positionId, activityMonitoring: true);
-
-        using var scope = _factory.Services.CreateScope();
-        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
-        var enabled = await resolver.IsEnabledAsync(tenantId, employee.UserId, MonitoringCapability.ActivityMonitoring);
-
-        enabled.Should().BeTrue("the position override should apply via the employee's real active PositionAssignments row");
-    }
-
-    // ---------------------------------------------------------------------
-    // Precedence matrix: employee > role > position > department > company.
-    // Employee-level is covered by MonitoringFeatureTogglesIntegrationTests already
-    // exercising the tenant-toggle fallback path; these four cover the remaining chain.
-    // ---------------------------------------------------------------------
-    [Fact]
-    public async Task Resolve_CompanyDefaultOnly_Resolves()
-    {
-        var tenantId = Guid.NewGuid();
-        var (employee, _) = await SeedTenantAndEmployeeAsync(
-            tenantId, "prec-company", departmentId: null, assignToPosition: false);
-        await SeedCompanyToggleAsync(tenantId, activityMonitoring: true);
-
-        using var scope = _factory.Services.CreateScope();
-        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
-        var enabled = await resolver.IsEnabledAsync(tenantId, employee.UserId, MonitoringCapability.ActivityMonitoring);
-
-        enabled.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task Resolve_DepartmentOverride_WinsOverCompanyDefault()
-    {
-        var tenantId = Guid.NewGuid();
-        var (employee, departmentId) = await SeedTenantAndEmployeeWithDepartmentAsync(tenantId, "prec-dept");
-
-        await SeedCompanyToggleAsync(tenantId, activityMonitoring: false);
-        await SeedOverrideAsync(tenantId, "department", departmentId, activityMonitoring: true);
-
-        using var scope = _factory.Services.CreateScope();
-        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
-        var enabled = await resolver.IsEnabledAsync(tenantId, employee.UserId, MonitoringCapability.ActivityMonitoring);
-
-        enabled.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task Resolve_PositionOverride_WinsOverDepartmentOverride()
-    {
-        var tenantId = Guid.NewGuid();
-        var (employee, departmentId, positionId) = await SeedTenantEmployeeDeptAndPositionAsync(tenantId, "prec-pos");
-
-        await SeedCompanyToggleAsync(tenantId, activityMonitoring: false);
-        await SeedOverrideAsync(tenantId, "department", departmentId, activityMonitoring: false);
-        await SeedOverrideAsync(tenantId, "position", positionId, activityMonitoring: true);
-
-        using var scope = _factory.Services.CreateScope();
-        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
-        var enabled = await resolver.IsEnabledAsync(tenantId, employee.UserId, MonitoringCapability.ActivityMonitoring);
-
-        enabled.Should().BeTrue("position-level override must win over the conflicting department-level override");
-    }
-
-    [Fact]
-    public async Task Resolve_RoleOverride_WinsOverPositionOverride()
-    {
-        var tenantId = Guid.NewGuid();
-        var (employee, _, positionId) = await SeedTenantEmployeeDeptAndPositionAsync(tenantId, "prec-role");
-        var roleId = await SeedRoleAssignmentAsync(tenantId, employee.UserId);
-
-        await SeedCompanyToggleAsync(tenantId, activityMonitoring: false);
-        await SeedOverrideAsync(tenantId, "position", positionId, activityMonitoring: false);
-        await SeedOverrideAsync(tenantId, "role", roleId, activityMonitoring: true);
-
-        using var scope = _factory.Services.CreateScope();
-        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
-        var enabled = await resolver.IsEnabledAsync(tenantId, employee.UserId, MonitoringCapability.ActivityMonitoring);
-
-        enabled.Should().BeTrue("role-level override must win over the conflicting position-level override");
-    }
-
-    // ---------------------------------------------------------------------
-    // Missing policy fails closed: no MonitoringFeatureToggle row, no overrides at all.
-    // ---------------------------------------------------------------------
-    [Fact]
-    public async Task Resolve_NoTogglesNoOverrides_AllCapabilitiesFalseAndDefaultThreshold()
-    {
-        var tenantId = Guid.NewGuid();
-        await SeedTenantOnlyAsync(tenantId, "prec-empty");
-
-        using var scope = _factory.Services.CreateScope();
-        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
-        var employeeId = Guid.NewGuid();
-
-        foreach (var capability in Enum.GetValues<MonitoringCapability>())
-        {
-            var enabled = await resolver.IsEnabledAsync(tenantId, employeeId, capability);
-            enabled.Should().BeFalse($"{capability} must fail closed when no toggle/override row exists");
-        }
-
-        var minutes = await resolver.GetIdleThresholdMinutesAsync(tenantId, employeeId);
-        minutes.Should().Be(2, "the resolver's hardcoded safe default (MonitoringToggleResolution.DefaultIdleThresholdMinutes)");
-    }
-
-    // ---------------------------------------------------------------------
-    // Invalid / cross-tenant override targets fail cleanly (NotFound), not with an exception.
-    // ---------------------------------------------------------------------
-    [Fact]
-    public async Task Upsert_NonExistentTargetId_ReturnsNotFound()
-    {
-        var session = await SeedAdminSessionAsync("upsert-missing");
-
-        var resp = await PutOverrideAsync(session, "department", Guid.NewGuid());
-
-        resp.StatusCode.Should().Be(HttpStatusCode.NotFound, await resp.Content.ReadAsStringAsync());
-    }
-
-    [Fact]
-    public async Task Upsert_CrossTenantTarget_ReturnsNotFound()
-    {
-        var session = await SeedAdminSessionAsync("upsert-crosstenant-a");
-        var otherTenantId = Guid.NewGuid();
-        var otherDepartmentId = await SeedDepartmentInForeignTenantAsync(otherTenantId, "upsert-crosstenant-b");
-
-        // Sanity check: prove the row genuinely exists under tenant B before asserting tenant A's
-        // PUT rejects it - otherwise a silently-dropped/never-persisted seed would make this test
-        // pass vacuously (any nonexistent id 404s) without proving cross-tenant isolation at all.
-        await using (var verifyDb = CreateTenantScopedContext(otherTenantId, "upsert-crosstenant-b"))
-        {
-            var exists = await verifyDb.Departments.AnyAsync(d => d.Id == otherDepartmentId && d.TenantId == otherTenantId);
-            exists.Should().BeTrue("the foreign-tenant department must actually be persisted for this test to prove anything");
-        }
-
-        var resp = await PutOverrideAsync(session, "department", otherDepartmentId);
-
-        resp.StatusCode.Should().Be(
-            HttpStatusCode.NotFound,
-            "a department belonging to a different tenant must not validate as a valid override target");
-    }
-
-    [Fact]
-    public async Task Delete_NonExistentOverride_ReturnsNotFound()
-    {
-        var session = await SeedAdminSessionAsync("delete-missing");
-
-        using var req = new HttpRequestMessage(
-            HttpMethod.Delete, $"/api/v1/attendance/monitoring/policy/department/{Guid.NewGuid()}");
-        req.Headers.Host = session.TenantHost;
-        req.Headers.Add("Cookie", session.CookieHeader);
-        req.Headers.Add("X-CSRF-Token", session.CsrfHeader);
-
-        var resp = await _client.SendAsync(req);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    // ---------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------
-
-    private async Task<HttpResponseMessage> PutOverrideAsync(SessionInfo session, string scopeType, Guid targetId)
+    public async Task<HttpResponseMessage> PutOverrideAsync(SessionInfo session, string scopeType, Guid targetId)
     {
         using var req = new HttpRequestMessage(
             HttpMethod.Put, $"/api/v1/attendance/monitoring/policy/{scopeType}/{targetId}");
@@ -273,7 +103,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
     /// the insert would either fail the RLS WITH CHECK clause or silently apply against the
     /// wrong tenant context.
     /// </summary>
-    private async Task<Guid> SeedDepartmentInForeignTenantAsync(Guid tenantId, string slug)
+    public async Task<Guid> SeedDepartmentInForeignTenantAsync(Guid tenantId, string slug)
     {
         using (var scope = _factory.Services.CreateScope())
         {
@@ -312,7 +142,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
         return departmentId;
     }
 
-    private ApplicationDbContext CreateTenantScopedContext(Guid tenantId, string slug)
+    public ApplicationDbContext CreateTenantScopedContext(Guid tenantId, string slug)
     {
         var tenantContext = new TenantContextAccessor();
         tenantContext.Resolve(new ONEVO.Application.Common.ServiceInterfaces.TenantRegistryEntry(
@@ -332,7 +162,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
             tenantContext);
     }
 
-    private async Task SeedCompanyToggleAsync(Guid tenantId, bool activityMonitoring)
+    public async Task SeedCompanyToggleAsync(Guid tenantId, bool activityMonitoring)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -347,7 +177,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    private async Task SeedOverrideAsync(Guid tenantId, string scopeType, Guid scopeId, bool activityMonitoring)
+    public async Task SeedOverrideAsync(Guid tenantId, string scopeType, Guid scopeId, bool activityMonitoring)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -365,7 +195,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    private async Task<Guid> SeedRoleAssignmentAsync(Guid tenantId, Guid userId)
+    public async Task<Guid> SeedRoleAssignmentAsync(Guid tenantId, Guid userId)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -393,7 +223,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
         return roleId;
     }
 
-    private Task<Guid> SeedTenantOnlyAsync(Guid tenantId, string slug) => SeedTenantAsync(tenantId, slug);
+    public Task<Guid> SeedTenantOnlyAsync(Guid tenantId, string slug) => SeedTenantAsync(tenantId, slug);
 
     private async Task<Guid> SeedTenantAsync(Guid tenantId, string slug)
     {
@@ -411,7 +241,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
         return tenantId;
     }
 
-    private async Task<(Employee Employee, Guid PositionId)> SeedTenantAndEmployeeAsync(
+    public async Task<(Employee Employee, Guid PositionId)> SeedTenantAndEmployeeAsync(
         Guid tenantId, string slug, Guid? departmentId, bool assignToPosition)
     {
         await SeedTenantAsync(tenantId, slug);
@@ -464,7 +294,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
         return (employee, positionId);
     }
 
-    private async Task<(Employee Employee, Guid DepartmentId)> SeedTenantAndEmployeeWithDepartmentAsync(
+    public async Task<(Employee Employee, Guid DepartmentId)> SeedTenantAndEmployeeWithDepartmentAsync(
         Guid tenantId, string slug)
     {
         await SeedTenantAsync(tenantId, slug);
@@ -509,7 +339,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
         return (employee, departmentId);
     }
 
-    private async Task<(Employee Employee, Guid DepartmentId, Guid PositionId)> SeedTenantEmployeeDeptAndPositionAsync(
+    public async Task<(Employee Employee, Guid DepartmentId, Guid PositionId)> SeedTenantEmployeeDeptAndPositionAsync(
         Guid tenantId, string slug)
     {
         var (employee, departmentId) = await SeedTenantAndEmployeeWithDepartmentAsync(tenantId, slug);
@@ -544,7 +374,7 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
         return (employee, departmentId, positionId);
     }
 
-    private Task<SessionInfo> SeedAdminSessionAsync(string slug) =>
+    public Task<SessionInfo> SeedAdminSessionAsync(string slug) =>
         SeedUserWithPermissionsAsync(slug, ["monitoring:read", "monitoring:configure"]);
 
     private async Task<SessionInfo> SeedUserWithPermissionsAsync(string slug, IReadOnlyList<string> permissionCodes)
@@ -696,5 +526,195 @@ public sealed class MonitoringPolicyOverrideIntegrationTests : IAsyncLifetime
         throw new InvalidOperationException($"Cookie '{cookieName}' not found in response.");
     }
 
-    private sealed record SessionInfo(string CookieHeader, string CsrfHeader, string TenantHost, Guid TenantId);
+    public sealed record SessionInfo(string CookieHeader, string CsrfHeader, string TenantHost, Guid TenantId);
+
+}
+
+/// <summary>
+/// DB-backed coverage for the monitoring policy override CRUD surface
+/// (MonitoringPolicyConfigurationService + MonitoringSettingsController's
+/// company/department/position/role routes) and, most importantly, a regression
+/// test proving MonitoringToggleResolverService resolves a position-level override
+/// via a real PositionAssignments row rather than the historically-hardcoded-null
+/// positionId. Mirrors the fixture/assertion style of
+/// MonitoringFeatureTogglesIntegrationTests and TrayMonitoringPolicyIntegrationTests.
+/// </summary>
+[Collection(WebApplicationFactoryCollection.Name)]
+public sealed class MonitoringPolicyOverrideIntegrationTests : IClassFixture<MonitoringPolicyOverrideIntegrationTestsFixture>
+{
+    private readonly MonitoringPolicyOverrideIntegrationTestsFixture _fixture;
+
+    public MonitoringPolicyOverrideIntegrationTests(MonitoringPolicyOverrideIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    // ---------------------------------------------------------------------
+    // Highest priority: regression test for the historically-hardcoded-null
+    // positionId bug. Proves the resolver reaches an *active* position override
+    // through a real PositionAssignments row (PrimaryEmployment/Active/in-range).
+    // ---------------------------------------------------------------------
+    [Fact]
+    public async Task Resolve_PositionOverride_UsesRealPositionAssignmentRow()
+    {
+        var tenantId = Guid.NewGuid();
+        var (employee, positionId) = await _fixture.SeedTenantAndEmployeeAsync(
+            tenantId, "pos-regress", departmentId: null, assignToPosition: true);
+
+        await _fixture.SeedCompanyToggleAsync(tenantId, activityMonitoring: false);
+        await _fixture.SeedOverrideAsync(tenantId, "position", positionId, activityMonitoring: true);
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
+        var enabled = await resolver.IsEnabledAsync(tenantId, employee.UserId, MonitoringCapability.ActivityMonitoring);
+
+        enabled.Should().BeTrue("the position override should apply via the employee's real active PositionAssignments row");
+    }
+
+    // ---------------------------------------------------------------------
+    // Precedence matrix: employee > role > position > department > company.
+    // Employee-level is covered by MonitoringFeatureTogglesIntegrationTests already
+    // exercising the tenant-toggle fallback path; these four cover the remaining chain.
+    // ---------------------------------------------------------------------
+    [Fact]
+    public async Task Resolve_CompanyDefaultOnly_Resolves()
+    {
+        var tenantId = Guid.NewGuid();
+        var (employee, _) = await _fixture.SeedTenantAndEmployeeAsync(
+            tenantId, "prec-company", departmentId: null, assignToPosition: false);
+        await _fixture.SeedCompanyToggleAsync(tenantId, activityMonitoring: true);
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
+        var enabled = await resolver.IsEnabledAsync(tenantId, employee.UserId, MonitoringCapability.ActivityMonitoring);
+
+        enabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Resolve_DepartmentOverride_WinsOverCompanyDefault()
+    {
+        var tenantId = Guid.NewGuid();
+        var (employee, departmentId) = await _fixture.SeedTenantAndEmployeeWithDepartmentAsync(tenantId, "prec-dept");
+
+        await _fixture.SeedCompanyToggleAsync(tenantId, activityMonitoring: false);
+        await _fixture.SeedOverrideAsync(tenantId, "department", departmentId, activityMonitoring: true);
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
+        var enabled = await resolver.IsEnabledAsync(tenantId, employee.UserId, MonitoringCapability.ActivityMonitoring);
+
+        enabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Resolve_PositionOverride_WinsOverDepartmentOverride()
+    {
+        var tenantId = Guid.NewGuid();
+        var (employee, departmentId, positionId) = await _fixture.SeedTenantEmployeeDeptAndPositionAsync(tenantId, "prec-pos");
+
+        await _fixture.SeedCompanyToggleAsync(tenantId, activityMonitoring: false);
+        await _fixture.SeedOverrideAsync(tenantId, "department", departmentId, activityMonitoring: false);
+        await _fixture.SeedOverrideAsync(tenantId, "position", positionId, activityMonitoring: true);
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
+        var enabled = await resolver.IsEnabledAsync(tenantId, employee.UserId, MonitoringCapability.ActivityMonitoring);
+
+        enabled.Should().BeTrue("position-level override must win over the conflicting department-level override");
+    }
+
+    [Fact]
+    public async Task Resolve_RoleOverride_WinsOverPositionOverride()
+    {
+        var tenantId = Guid.NewGuid();
+        var (employee, _, positionId) = await _fixture.SeedTenantEmployeeDeptAndPositionAsync(tenantId, "prec-role");
+        var roleId = await _fixture.SeedRoleAssignmentAsync(tenantId, employee.UserId);
+
+        await _fixture.SeedCompanyToggleAsync(tenantId, activityMonitoring: false);
+        await _fixture.SeedOverrideAsync(tenantId, "position", positionId, activityMonitoring: false);
+        await _fixture.SeedOverrideAsync(tenantId, "role", roleId, activityMonitoring: true);
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
+        var enabled = await resolver.IsEnabledAsync(tenantId, employee.UserId, MonitoringCapability.ActivityMonitoring);
+
+        enabled.Should().BeTrue("role-level override must win over the conflicting position-level override");
+    }
+
+    // ---------------------------------------------------------------------
+    // Missing policy fails closed: no MonitoringFeatureToggle row, no overrides at all.
+    // ---------------------------------------------------------------------
+    [Fact]
+    public async Task Resolve_NoTogglesNoOverrides_AllCapabilitiesFalseAndDefaultThreshold()
+    {
+        var tenantId = Guid.NewGuid();
+        await _fixture.SeedTenantOnlyAsync(tenantId, "prec-empty");
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
+        var employeeId = Guid.NewGuid();
+
+        foreach (var capability in Enum.GetValues<MonitoringCapability>())
+        {
+            var enabled = await resolver.IsEnabledAsync(tenantId, employeeId, capability);
+            enabled.Should().BeFalse($"{capability} must fail closed when no toggle/override row exists");
+        }
+
+        var minutes = await resolver.GetIdleThresholdMinutesAsync(tenantId, employeeId);
+        minutes.Should().Be(2, "the resolver's hardcoded safe default (MonitoringToggleResolution.DefaultIdleThresholdMinutes)");
+    }
+
+    // ---------------------------------------------------------------------
+    // Invalid / cross-tenant override targets fail cleanly (NotFound), not with an exception.
+    // ---------------------------------------------------------------------
+    [Fact]
+    public async Task Upsert_NonExistentTargetId_ReturnsNotFound()
+    {
+        var session = await _fixture.SeedAdminSessionAsync("upsert-missing");
+
+        var resp = await _fixture.PutOverrideAsync(session, "department", Guid.NewGuid());
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound, await resp.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Upsert_CrossTenantTarget_ReturnsNotFound()
+    {
+        var session = await _fixture.SeedAdminSessionAsync("upsert-crosstenant-a");
+        var otherTenantId = Guid.NewGuid();
+        var otherDepartmentId = await _fixture.SeedDepartmentInForeignTenantAsync(otherTenantId, "upsert-crosstenant-b");
+
+        // Sanity check: prove the row genuinely exists under tenant B before asserting tenant A's
+        // PUT rejects it - otherwise a silently-dropped/never-persisted seed would make this test
+        // pass vacuously (any nonexistent id 404s) without proving cross-tenant isolation at all.
+        await using (var verifyDb = _fixture.CreateTenantScopedContext(otherTenantId, "upsert-crosstenant-b"))
+        {
+            var exists = await verifyDb.Departments.AnyAsync(d => d.Id == otherDepartmentId && d.TenantId == otherTenantId);
+            exists.Should().BeTrue("the foreign-tenant department must actually be persisted for this test to prove anything");
+        }
+
+        var resp = await _fixture.PutOverrideAsync(session, "department", otherDepartmentId);
+
+        resp.StatusCode.Should().Be(
+            HttpStatusCode.NotFound,
+            "a department belonging to a different tenant must not validate as a valid override target");
+    }
+
+    [Fact]
+    public async Task Delete_NonExistentOverride_ReturnsNotFound()
+    {
+        var session = await _fixture.SeedAdminSessionAsync("delete-missing");
+
+        using var req = new HttpRequestMessage(
+            HttpMethod.Delete, $"/api/v1/attendance/monitoring/policy/department/{Guid.NewGuid()}");
+        req.Headers.Host = session.TenantHost;
+        req.Headers.Add("Cookie", session.CookieHeader);
+        req.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+
+        var resp = await _fixture.Client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
 }

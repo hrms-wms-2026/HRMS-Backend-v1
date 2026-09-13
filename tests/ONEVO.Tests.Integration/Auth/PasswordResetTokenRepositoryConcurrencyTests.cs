@@ -14,24 +14,27 @@ using ONEVO.Tests.Integration.Support;
 namespace ONEVO.Tests.Integration.Auth;
 
 /// <summary>
-/// Proves EfPasswordResetTokenRepository.TryConsumeResetTokenAsync against a real PostgreSQL server: the single
-/// UPDATE ... WHERE used_at IS NULL guard must let exactly one truly parallel caller win, and must
-/// correctly reject used/expired/wrong-tenant/unknown tokens. A prior SQLite-backed attempt at these
-/// same assertions failed - Microsoft.Data.Sqlite binds a raw-SQL-interpolated DateTimeOffset
-/// parameter differently than EF's SQLite column converter formats the stored value, so an
-/// "expires_at &gt; @now" raw SQL comparison silently matched zero rows there even though the LINQ
-/// equivalent worked. That is a SQLite ADO parameter-binding quirk, not a defect in the production
-/// code path; Npgsql has no such mismatch for timestamptz, so this suite is the actual proof for the
-/// real target database. Requires Docker.
+/// Shared, one-time-per-class setup for PasswordResetTokenRepositoryConcurrencyTests: clones the
+/// database and seeds the tenant/user ONCE. xUnit's IClassFixture constructs this ONCE and
+/// disposes it once after every fact in the class has run, instead of IAsyncLifetime's default of
+/// once PER fact - previously this class's own InitializeAsync ran 6 times, once per [Fact]. Every
+/// fact seeds its own token under a distinct hash ("hash-valid", "hash-used", "hash-expired",
+/// "hash-wrong-tenant", "hash-parallel"), so there is no cross-fact state-sharing risk from
+/// converting this class; the parallel-consume fact's correctness comes from real Postgres
+/// row-locking on that one token, independent of database isolation between facts.
 /// </summary>
-public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetime
+public sealed class PasswordResetTokenRepositoryConcurrencyTestsFixture : IAsyncLifetime
 {
-
     private readonly SystemDateTimeProvider _clock = new();
 
     private string _connectionString = string.Empty;
     private Guid _tenantId;
     private Guid _userId;
+
+    public SystemDateTimeProvider Clock => _clock;
+    public Guid TenantId => _tenantId;
+    public Guid UserId => _userId;
+
 
     public async Task InitializeAsync()
     {
@@ -70,101 +73,7 @@ public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetim
     {
     }
 
-    [Fact]
-    public async Task TryConsumeResetTokenAsync_ValidToken_ReturnsUserIdAndMarksUsed()
-    {
-        var tokenId = await SeedTokenAsync("hash-valid", usedAt: null, expiresAt: _clock.UtcNow.AddHours(1));
-
-        using var db = CreateContext();
-        var repo = new EfPasswordResetTokenRepository(db);
-
-        var result = await repo.TryConsumeResetTokenAsync("hash-valid", _tenantId, _clock.UtcNow);
-
-        result.Should().Be(_userId);
-
-        using var verifyDb = CreateContext();
-        var persisted = await verifyDb.PasswordResetTokens.AsNoTracking().SingleAsync(t => t.Id == tokenId);
-        persisted.UsedAt.Should().NotBeNull();
-    }
-
-    [Fact]
-    public async Task TryConsumeResetTokenAsync_AlreadyUsedToken_ReturnsNull()
-    {
-        await SeedTokenAsync("hash-used", usedAt: _clock.UtcNow.AddMinutes(-1), expiresAt: _clock.UtcNow.AddHours(1));
-
-        using var db = CreateContext();
-        var repo = new EfPasswordResetTokenRepository(db);
-
-        var result = await repo.TryConsumeResetTokenAsync("hash-used", _tenantId, _clock.UtcNow);
-
-        result.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task TryConsumeResetTokenAsync_ExpiredToken_ReturnsNull()
-    {
-        await SeedTokenAsync("hash-expired", usedAt: null, expiresAt: _clock.UtcNow.AddMinutes(-1));
-
-        using var db = CreateContext();
-        var repo = new EfPasswordResetTokenRepository(db);
-
-        var result = await repo.TryConsumeResetTokenAsync("hash-expired", _tenantId, _clock.UtcNow);
-
-        result.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task TryConsumeResetTokenAsync_WrongTenant_ReturnsNull()
-    {
-        await SeedTokenAsync("hash-wrong-tenant", usedAt: null, expiresAt: _clock.UtcNow.AddHours(1));
-
-        using var db = CreateContext();
-        var repo = new EfPasswordResetTokenRepository(db);
-
-        var result = await repo.TryConsumeResetTokenAsync("hash-wrong-tenant", Guid.NewGuid(), _clock.UtcNow);
-
-        result.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task TryConsumeResetTokenAsync_UnknownHash_ReturnsNull()
-    {
-        using var db = CreateContext();
-        var repo = new EfPasswordResetTokenRepository(db);
-
-        var result = await repo.TryConsumeResetTokenAsync("no-such-hash", _tenantId, _clock.UtcNow);
-
-        result.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task TryConsumeResetTokenAsync_ParallelConsume_AllowsExactlyOneWinner()
-    {
-        const int parallelConsumers = 8;
-        var tokenId = await SeedTokenAsync("hash-parallel", usedAt: null, expiresAt: _clock.UtcNow.AddHours(1));
-
-        var consumeTasks = new List<Task<Guid?>>();
-        for (var i = 0; i < parallelConsumers; i++)
-        {
-            consumeTasks.Add(Task.Run(async () =>
-            {
-                using var attemptDb = CreateContext();
-                var attemptRepo = new EfPasswordResetTokenRepository(attemptDb);
-                return await attemptRepo.TryConsumeResetTokenAsync("hash-parallel", _tenantId, _clock.UtcNow);
-            }));
-        }
-        var results = await Task.WhenAll(consumeTasks);
-
-        results.Count(r => r is not null).Should().Be(
-            1, "racing concurrent resets over the same token must never both succeed");
-        results.Where(r => r is not null).Should().AllSatisfy(r => r.Should().Be(_userId));
-
-        using var verifyDb = CreateContext();
-        var persisted = await verifyDb.PasswordResetTokens.AsNoTracking().SingleAsync(t => t.Id == tokenId);
-        persisted.UsedAt.Should().NotBeNull();
-    }
-
-    private async Task<Guid> SeedTokenAsync(string tokenHash, DateTimeOffset? usedAt, DateTimeOffset expiresAt)
+    public async Task<Guid> SeedTokenAsync(string tokenHash, DateTimeOffset? usedAt, DateTimeOffset expiresAt)
     {
         using var db = CreateContext();
         var token = new PasswordResetToken
@@ -182,7 +91,7 @@ public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetim
         return token.Id;
     }
 
-    private ApplicationDbContext CreateContext()
+    public ApplicationDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(_connectionString)
@@ -196,4 +105,121 @@ public sealed class PasswordResetTokenRepositoryConcurrencyTests : IAsyncLifetim
             new DomainEventDispatchInterceptor(new NoOpPublisher()),
             new TenantContextAccessor());
     }
+
+}
+
+/// <summary>
+/// Proves EfPasswordResetTokenRepository.TryConsumeResetTokenAsync against a real PostgreSQL server: the single
+/// UPDATE ... WHERE used_at IS NULL guard must let exactly one truly parallel caller win, and must
+/// correctly reject used/expired/wrong-tenant/unknown tokens. A prior SQLite-backed attempt at these
+/// same assertions failed - Microsoft.Data.Sqlite binds a raw-SQL-interpolated DateTimeOffset
+/// parameter differently than EF's SQLite column converter formats the stored value, so an
+/// "expires_at &gt; @now" raw SQL comparison silently matched zero rows there even though the LINQ
+/// equivalent worked. That is a SQLite ADO parameter-binding quirk, not a defect in the production
+/// code path; Npgsql has no such mismatch for timestamptz, so this suite is the actual proof for the
+/// real target database. Requires Docker.
+/// </summary>
+public sealed class PasswordResetTokenRepositoryConcurrencyTests : IClassFixture<PasswordResetTokenRepositoryConcurrencyTestsFixture>
+{
+    private readonly PasswordResetTokenRepositoryConcurrencyTestsFixture _fixture;
+
+    public PasswordResetTokenRepositoryConcurrencyTests(PasswordResetTokenRepositoryConcurrencyTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task TryConsumeResetTokenAsync_ValidToken_ReturnsUserIdAndMarksUsed()
+    {
+        var tokenId = await _fixture.SeedTokenAsync("hash-valid", usedAt: null, expiresAt: _fixture.Clock.UtcNow.AddHours(1));
+
+        using var db = _fixture.CreateContext();
+        var repo = new EfPasswordResetTokenRepository(db);
+
+        var result = await repo.TryConsumeResetTokenAsync("hash-valid", _fixture.TenantId, _fixture.Clock.UtcNow);
+
+        result.Should().Be(_fixture.UserId);
+
+        using var verifyDb = _fixture.CreateContext();
+        var persisted = await verifyDb.PasswordResetTokens.AsNoTracking().SingleAsync(t => t.Id == tokenId);
+        persisted.UsedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task TryConsumeResetTokenAsync_AlreadyUsedToken_ReturnsNull()
+    {
+        await _fixture.SeedTokenAsync("hash-used", usedAt: _fixture.Clock.UtcNow.AddMinutes(-1), expiresAt: _fixture.Clock.UtcNow.AddHours(1));
+
+        using var db = _fixture.CreateContext();
+        var repo = new EfPasswordResetTokenRepository(db);
+
+        var result = await repo.TryConsumeResetTokenAsync("hash-used", _fixture.TenantId, _fixture.Clock.UtcNow);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task TryConsumeResetTokenAsync_ExpiredToken_ReturnsNull()
+    {
+        await _fixture.SeedTokenAsync("hash-expired", usedAt: null, expiresAt: _fixture.Clock.UtcNow.AddMinutes(-1));
+
+        using var db = _fixture.CreateContext();
+        var repo = new EfPasswordResetTokenRepository(db);
+
+        var result = await repo.TryConsumeResetTokenAsync("hash-expired", _fixture.TenantId, _fixture.Clock.UtcNow);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task TryConsumeResetTokenAsync_WrongTenant_ReturnsNull()
+    {
+        await _fixture.SeedTokenAsync("hash-wrong-tenant", usedAt: null, expiresAt: _fixture.Clock.UtcNow.AddHours(1));
+
+        using var db = _fixture.CreateContext();
+        var repo = new EfPasswordResetTokenRepository(db);
+
+        var result = await repo.TryConsumeResetTokenAsync("hash-wrong-tenant", Guid.NewGuid(), _fixture.Clock.UtcNow);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task TryConsumeResetTokenAsync_UnknownHash_ReturnsNull()
+    {
+        using var db = _fixture.CreateContext();
+        var repo = new EfPasswordResetTokenRepository(db);
+
+        var result = await repo.TryConsumeResetTokenAsync("no-such-hash", _fixture.TenantId, _fixture.Clock.UtcNow);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task TryConsumeResetTokenAsync_ParallelConsume_AllowsExactlyOneWinner()
+    {
+        const int parallelConsumers = 8;
+        var tokenId = await _fixture.SeedTokenAsync("hash-parallel", usedAt: null, expiresAt: _fixture.Clock.UtcNow.AddHours(1));
+
+        var consumeTasks = new List<Task<Guid?>>();
+        for (var i = 0; i < parallelConsumers; i++)
+        {
+            consumeTasks.Add(Task.Run(async () =>
+            {
+                using var attemptDb = _fixture.CreateContext();
+                var attemptRepo = new EfPasswordResetTokenRepository(attemptDb);
+                return await attemptRepo.TryConsumeResetTokenAsync("hash-parallel", _fixture.TenantId, _fixture.Clock.UtcNow);
+            }));
+        }
+        var results = await Task.WhenAll(consumeTasks);
+
+        results.Count(r => r is not null).Should().Be(
+            1, "racing concurrent resets over the same token must never both succeed");
+        results.Where(r => r is not null).Should().AllSatisfy(r => r.Should().Be(_fixture.UserId));
+
+        using var verifyDb = _fixture.CreateContext();
+        var persisted = await verifyDb.PasswordResetTokens.AsNoTracking().SingleAsync(t => t.Id == tokenId);
+        persisted.UsedAt.Should().NotBeNull();
+    }
+
 }

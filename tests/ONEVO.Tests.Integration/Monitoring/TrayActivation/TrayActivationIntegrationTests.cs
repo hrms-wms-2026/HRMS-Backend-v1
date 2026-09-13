@@ -14,19 +14,22 @@ using ONEVO.Tests.Integration.Support;
 namespace ONEVO.Tests.Integration.Monitoring.TrayActivation;
 
 /// <summary>
-/// Full-stack integration tests for the tray app activation flow:
-/// generate (cookie-auth), exchange (anonymous), and refresh (anonymous) endpoints,
-/// plus security invariants (one-time use, rate limiting, fingerprint theft detection,
-/// raw code/token never persisted in plain text).
-/// Requires Docker.
+/// Shared, one-time-per-class setup for TrayActivationIntegrationTests: clones the database and
+/// boots the WebApplicationFactory once. xUnit's IClassFixture constructs this ONCE and disposes it
+/// once after every fact in the class has run, instead of IAsyncLifetime's default of once PER
+/// fact - previously this class's own InitializeAsync ran 16 times, once per [Fact]. Every fact
+/// seeds its own uniquely-slugged tenant/user directly (verified: no two facts reuse a slug), and
+/// every exact-count DB assertion is scoped to that fact's own freshly-created UserId, so there is
+/// no cross-fact state-sharing risk from converting this class.
 /// </summary>
-[Collection(WebApplicationFactoryCollection.Name)]
-public sealed class TrayActivationIntegrationTests : IAsyncLifetime
+public sealed class TrayActivationIntegrationTestsFixture : IAsyncLifetime
 {
-
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private TrayActivationTestFactory _factory = null!;
     private HttpClient _client = null!;
+
+    public HttpClient Client => _client;
+    public TrayActivationTestFactory Factory => _factory;
 
     public async Task InitializeAsync()
     {
@@ -48,294 +51,12 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         await _environmentScope.DisposeAsync();
     }
 
-    // ── Baseline ───────────────────────────────────────────────────────────────
+    public sealed record SeedResult(Guid TenantId, Guid UserId, string Email, string Password, string TenantSlug);
 
-    [Fact]
-    public async Task Migrations_ApplyCleanly_AndLeaveNoPendingMigrations()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    public sealed record SessionInfo(string CookieHeader, string CsrfHeader, string TenantHost);
 
-        var pending = await db.Database.GetPendingMigrationsAsync();
 
-        pending.Should().BeEmpty();
-    }
-
-    // ── Generate endpoint ──────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Generate_AuthenticatedUser_Returns200WithCodeAndExpiry()
-    {
-        var user = await SeedActiveUserAsync("gen-auth-test", "gen-auth@test.dev", "GenPass1!");
-        var session = await LoginAndGetSessionAsync(user);
-
-        var response = await PostGenerateAsync(session);
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("\"code\":");
-        body.Should().Contain("\"expires_in_seconds\":600");
-        using var doc = JsonDocument.Parse(body);
-        var code = doc.RootElement.GetProperty("code").GetString()!;
-        code.Should().HaveLength(8);
-        code.Should().MatchRegex(@"^[A-Z2-9]+$", "code must use the defined safe character set");
-    }
-
-    [Fact]
-    public async Task Generate_Unauthenticated_Returns401()
-    {
-        await SeedActiveUserAsync("gen-unauth-test", "gen-unauth@test.dev", "GenPass1!");
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/generate");
-        request.Headers.Host = "gen-unauth-test.localhost";
-        var response = await _client.SendAsync(request);
-
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
-    public async Task Generate_ExceedsRateLimit_Returns429OnFourthRequest()
-    {
-        var user = await SeedActiveUserAsync("gen-rate-test", "gen-rate@test.dev", "RatePass1!");
-        var session = await LoginAndGetSessionAsync(user);
-
-        // First 3 requests must succeed
-        for (var i = 0; i < 3; i++)
-        {
-            var ok = await PostGenerateAsync(session);
-            ok.StatusCode.Should().Be(
-                HttpStatusCode.OK,
-                $"request {i + 1} of 3 should succeed");
-        }
-
-        // Fourth request in the same hour must be rejected
-        var tooMany = await PostGenerateAsync(session);
-
-        tooMany.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
-    }
-
-    // ── Exchange endpoint ──────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Exchange_ValidCode_Returns200WithAccessAndRefreshTokens()
-    {
-        var user = await SeedActiveUserWithEmployeeAsync(
-            "exchange-valid-test", "exchange-valid@test.dev", "ExchPass1!", "EMP-0001");
-        var session = await LoginAndGetSessionAsync(user);
-        var code = await GenerateCodeAsync(session);
-
-        var response = await PostExchangeAsync(code, "My Laptop", "Windows 11", "fp-device-001");
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("access_token").GetString().Should().StartWith("eyJ");
-        doc.RootElement.GetProperty("refresh_token").GetString().Should().NotBeNullOrEmpty();
-        doc.RootElement.GetProperty("expires_in_seconds").GetInt32().Should().Be(3600);
-        doc.RootElement.GetProperty("refresh_expires_in_seconds").GetInt32().Should().Be(7_776_000);
-        doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Priya Employee");
-        doc.RootElement.GetProperty("employee_email").GetString().Should().Be("priya.employee@test.dev");
-        doc.RootElement.GetProperty("employee_number").GetString().Should().Be("EMP-0001");
-        body.Should().NotContain(user.UserId.ToString(), "response must never expose internal user ID");
-        body.Should().NotContain(user.TenantId.ToString(), "response must never expose internal tenant ID");
-    }
-
-    [Fact]
-    public async Task Generate_UserWithoutEmployeeRecord_FailsClosed()
-    {
-        var user = await SeedActiveUserAsync(
-            "exchange-noemp-test", "exchange-noemp@test.dev", "NoEmpPass1!", withEmployee: false);
-        var session = await LoginAndGetSessionAsync(user);
-        var response = await PostGenerateAsync(session);
-
-        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-    }
-
-    [Fact]
-    public async Task Exchange_InvalidCode_Returns401()
-    {
-        var response = await PostExchangeAsync("BADCDE23", "My Laptop", "Windows 11", "fp-001");
-
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
-    public async Task Exchange_CodeIsOneTimeUse_SecondCallReturns401()
-    {
-        var user = await SeedActiveUserAsync("exchange-otu-test", "exchange-otu@test.dev", "OtuPass1!");
-        var session = await LoginAndGetSessionAsync(user);
-        var code = await GenerateCodeAsync(session);
-
-        var first = await PostExchangeAsync(code, "My Laptop", "Windows 11", "fp-device-otu");
-        var second = await PostExchangeAsync(code, "My Laptop", "Windows 11", "fp-device-otu");
-
-        first.StatusCode.Should().Be(HttpStatusCode.OK);
-        second.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a consumed code must be rejected on replay");
-    }
-
-        [Fact]
-    public async Task ManualExchange_StillConsumesCodeAndReturnsCredentialsAtomically()
-    {
-        var user = await SeedActiveUserAsync(
-            "exchange-atomic-test", "exchange-atomic@test.dev", "AtomicPass1!");
-        var session = await LoginAndGetSessionAsync(user);
-        var code = await GenerateCodeAsync(session);
-
-        var first = await PostExchangeAsync(code, "Atomic Laptop", "Windows 11", "fp-atomic");
-        var second = await PostExchangeAsync(code, "Atomic Laptop", "Windows 11", "fp-atomic");
-
-        first.StatusCode.Should().Be(HttpStatusCode.OK);
-        second.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        (await db.TrayDeviceRegistrations.CountAsync(d => d.UserId == user.UserId))
-            .Should().Be(1);
-        (await db.TrayDeviceRefreshTokens.CountAsync(t => t.UserId == user.UserId))
-            .Should().Be(1);
-    }
-
-    [Fact]
-    public async Task Exchange_RawCodeNeverStoredInDb_OnlyHashPersisted()
-
-    {
-        var user = await SeedActiveUserAsync("exchange-hash-test", "exchange-hash@test.dev", "HashPass1!");
-        var session = await LoginAndGetSessionAsync(user);
-        var code = await GenerateCodeAsync(session);
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var storedHashes = await db.TrayActivationCodes
-            .Where(c => c.UserId == user.UserId)
-            .Select(c => c.CodeHash)
-            .ToListAsync();
-
-        storedHashes.Should().NotBeEmpty();
-        storedHashes.Should().NotContain(code, "only the SHA-256 hash of the code may ever be persisted");
-    }
-
-    // ── Refresh endpoint ───────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Refresh_ValidToken_RotatesRefreshToken_Returns200WithNewTokens()
-    {
-        var user = await SeedActiveUserAsync("refresh-valid-test", "refresh-valid@test.dev", "RefPass1!");
-        var session = await LoginAndGetSessionAsync(user);
-        var code = await GenerateCodeAsync(session);
-        const string fingerprint = "fp-refresh-valid-001";
-        var (_, firstRefreshToken) = await ExchangeCodeAsync(code, fingerprint);
-
-        var response = await PostRefreshAsync(firstRefreshToken, fingerprint);
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(body);
-        doc.RootElement.GetProperty("access_token").GetString().Should().StartWith("eyJ");
-        var newRefreshToken = doc.RootElement.GetProperty("refresh_token").GetString()!;
-        newRefreshToken.Should().NotBeNullOrEmpty();
-        newRefreshToken.Should().NotBe(firstRefreshToken, "refresh token must be rotated on each use");
-        doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Test User");
-        doc.RootElement.GetProperty("employee_email").GetString().Should().Be("refresh-valid@test.dev");
-        doc.RootElement.TryGetProperty("employee_number", out var numberProp).Should().BeTrue();
-        numberProp.ValueKind.Should().Be(JsonValueKind.String);
-        numberProp.GetString().Should().NotBeNullOrWhiteSpace();
-    }
-
-    [Fact]
-    public async Task Refresh_UsedToken_Returns401()
-    {
-        var user = await SeedActiveUserAsync("refresh-used-test", "refresh-used@test.dev", "RefUsedPass1!");
-        var session = await LoginAndGetSessionAsync(user);
-        var code = await GenerateCodeAsync(session);
-        const string fingerprint = "fp-refresh-used-001";
-        var (_, firstRefreshToken) = await ExchangeCodeAsync(code, fingerprint);
-
-        // Rotate once — old token is revoked
-        await PostRefreshAsync(firstRefreshToken, fingerprint);
-
-        // Replay the original (now revoked) token
-        var replay = await PostRefreshAsync(firstRefreshToken, fingerprint);
-
-        replay.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a rotated-away token must be rejected");
-    }
-
-    [Fact]
-    public async Task Refresh_FingerprintMismatch_RevokesAllDeviceTokens_Returns401()
-    {
-        var user = await SeedActiveUserAsync("refresh-fp-test", "refresh-fp@test.dev", "FpPass1!");
-        var session = await LoginAndGetSessionAsync(user);
-        var code = await GenerateCodeAsync(session);
-        const string originalFingerprint = "fp-original-device";
-        var (_, refreshToken) = await ExchangeCodeAsync(code, originalFingerprint);
-
-        // Attacker has the token but uses a different fingerprint
-        var mismatch = await PostRefreshAsync(refreshToken, "fp-attacker-device");
-
-        mismatch.StatusCode.Should().Be(
-            HttpStatusCode.Unauthorized,
-            "fingerprint mismatch must be treated as token theft and rejected");
-
-        // The legitimate device's token must also be revoked (theft response)
-        var legitimate = await PostRefreshAsync(refreshToken, originalFingerprint);
-        legitimate.StatusCode.Should().Be(
-            HttpStatusCode.Unauthorized,
-            "after a fingerprint mismatch all device tokens must be revoked");
-    }
-
-    // ── Revoke endpoint ────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Revoke_ValidToken_Returns204_AndDeactivatesDevice()
-    {
-        var user = await SeedActiveUserAsync("revoke-valid-test", "revoke-valid@test.dev", "RevPass1!");
-        var session = await LoginAndGetSessionAsync(user);
-        var code = await GenerateCodeAsync(session);
-        const string fingerprint = "fp-revoke-valid-001";
-        var (accessToken, _) = await ExchangeCodeAsync(code, fingerprint);
-
-        var response = await PostRevokeAsync(accessToken);
-
-        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var device = await db.TrayDeviceRegistrations
-            .SingleAsync(d => d.UserId == user.UserId && d.DeviceFingerprint == fingerprint);
-        device.IsActive.Should().BeFalse("revoke must deactivate the device registration");
-        device.DeactivatedAt.Should().NotBeNull();
-    }
-
-    [Fact]
-    public async Task Revoke_ThenRefresh_Returns401()
-    {
-        var user = await SeedActiveUserAsync("revoke-refresh-test", "revoke-refresh@test.dev", "RevRefPass1!");
-        var session = await LoginAndGetSessionAsync(user);
-        var code = await GenerateCodeAsync(session);
-        const string fingerprint = "fp-revoke-refresh-001";
-        var (accessToken, refreshToken) = await ExchangeCodeAsync(code, fingerprint);
-
-        var revoke = await PostRevokeAsync(accessToken);
-        revoke.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        var refresh = await PostRefreshAsync(refreshToken, fingerprint);
-
-        refresh.StatusCode.Should().Be(
-            HttpStatusCode.Unauthorized, "a revoked device's refresh token must no longer be usable");
-    }
-
-    [Fact]
-    public async Task Revoke_NoToken_Returns401()
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/revoke");
-        request.Headers.Host = "localhost";
-        var response = await _client.SendAsync(request);
-
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    // ── Helpers ────────────────────────────────────────────────────────────────
-
-    private async Task<SeedResult> SeedActiveUserAsync(
+    public async Task<SeedResult> SeedActiveUserAsync(
         string tenantSlug, string email, string password, bool withEmployee = true)
     {
         using var scope = _factory.Services.CreateScope();
@@ -385,7 +106,7 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         return new SeedResult(tenant.Id, user.Id, email, password, tenantSlug);
     }
 
-    private async Task<SeedResult> SeedActiveUserWithEmployeeAsync(
+    public async Task<SeedResult> SeedActiveUserWithEmployeeAsync(
         string tenantSlug, string email, string password, string employeeNumber)
     {
         var seed = await SeedActiveUserAsync(tenantSlug, email, password);
@@ -407,7 +128,7 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
     /// and returns the session cookie string, CSRF header value, and tenant host for use in
     /// subsequent TenantPolicy-protected requests.
     /// </summary>
-    private async Task<SessionInfo> LoginAndGetSessionAsync(SeedResult user)
+    public async Task<SessionInfo> LoginAndGetSessionAsync(SeedResult user)
     {
         // 1. Password login on base domain
         using var loginRequest = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/login");
@@ -440,7 +161,7 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
             $"{user.TenantSlug}.localhost");
     }
 
-    private async Task<string> GenerateCodeAsync(SessionInfo session)
+    public async Task<string> GenerateCodeAsync(SessionInfo session)
     {
         var response = await PostGenerateAsync(session);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -449,7 +170,7 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         return doc.RootElement.GetProperty("code").GetString()!;
     }
 
-    private async Task<(string AccessToken, string RefreshToken)> ExchangeCodeAsync(
+    public async Task<(string AccessToken, string RefreshToken)> ExchangeCodeAsync(
         string code, string fingerprint)
     {
         var response = await PostExchangeAsync(code, "Test Device", "Windows 11", fingerprint);
@@ -461,7 +182,7 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
             doc.RootElement.GetProperty("refresh_token").GetString()!);
     }
 
-    private async Task<HttpResponseMessage> PostGenerateAsync(SessionInfo session)
+    public async Task<HttpResponseMessage> PostGenerateAsync(SessionInfo session)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/generate");
         request.Headers.Host = session.TenantHost;
@@ -470,7 +191,7 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         return await _client.SendAsync(request);
     }
 
-    private async Task<HttpResponseMessage> PostExchangeAsync(
+    public async Task<HttpResponseMessage> PostExchangeAsync(
         string code, string deviceName, string deviceOs, string deviceFingerprint)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/exchange");
@@ -487,7 +208,7 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         return await _client.SendAsync(request);
     }
 
-    private async Task<HttpResponseMessage> PostRefreshAsync(string refreshToken, string deviceFingerprint)
+    public async Task<HttpResponseMessage> PostRefreshAsync(string refreshToken, string deviceFingerprint)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/refresh");
         request.Headers.Host = "localhost";
@@ -500,7 +221,7 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         return await _client.SendAsync(request);
     }
 
-    private async Task<HttpResponseMessage> PostRevokeAsync(string accessToken)
+    public async Task<HttpResponseMessage> PostRevokeAsync(string accessToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/revoke");
         request.Headers.Host = "localhost";
@@ -568,9 +289,308 @@ public sealed class TrayActivationIntegrationTests : IAsyncLifetime
         throw new InvalidOperationException($"Cookie '{cookieName}' not found in response.");
     }
 
-    // ── Value objects ──────────────────────────────────────────────────────────
+}
 
-    private sealed record SeedResult(Guid TenantId, Guid UserId, string Email, string Password, string TenantSlug);
+/// <summary>
+/// Full-stack integration tests for the tray app activation flow:
+/// generate (cookie-auth), exchange (anonymous), and refresh (anonymous) endpoints,
+/// plus security invariants (one-time use, rate limiting, fingerprint theft detection,
+/// raw code/token never persisted in plain text).
+/// Requires Docker.
+/// </summary>
+[Collection(WebApplicationFactoryCollection.Name)]
+public sealed class TrayActivationIntegrationTests : IClassFixture<TrayActivationIntegrationTestsFixture>
+{
+    private readonly TrayActivationIntegrationTestsFixture _fixture;
 
-    private sealed record SessionInfo(string CookieHeader, string CsrfHeader, string TenantHost);
+    public TrayActivationIntegrationTests(TrayActivationIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    // ── Baseline ───────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Migrations_ApplyCleanly_AndLeaveNoPendingMigrations()
+    {
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var pending = await db.Database.GetPendingMigrationsAsync();
+
+        pending.Should().BeEmpty();
+    }
+
+    // ── Generate endpoint ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Generate_AuthenticatedUser_Returns200WithCodeAndExpiry()
+    {
+        var user = await _fixture.SeedActiveUserAsync("gen-auth-test", "gen-auth@test.dev", "GenPass1!");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+
+        var response = await _fixture.PostGenerateAsync(session);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("\"code\":");
+        body.Should().Contain("\"expires_in_seconds\":600");
+        using var doc = JsonDocument.Parse(body);
+        var code = doc.RootElement.GetProperty("code").GetString()!;
+        code.Should().HaveLength(8);
+        code.Should().MatchRegex(@"^[A-Z2-9]+$", "code must use the defined safe character set");
+    }
+
+    [Fact]
+    public async Task Generate_Unauthenticated_Returns401()
+    {
+        await _fixture.SeedActiveUserAsync("gen-unauth-test", "gen-unauth@test.dev", "GenPass1!");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/generate");
+        request.Headers.Host = "gen-unauth-test.localhost";
+        var response = await _fixture.Client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Generate_ExceedsRateLimit_Returns429OnFourthRequest()
+    {
+        var user = await _fixture.SeedActiveUserAsync("gen-rate-test", "gen-rate@test.dev", "RatePass1!");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+
+        // First 3 requests must succeed
+        for (var i = 0; i < 3; i++)
+        {
+            var ok = await _fixture.PostGenerateAsync(session);
+            ok.StatusCode.Should().Be(
+                HttpStatusCode.OK,
+                $"request {i + 1} of 3 should succeed");
+        }
+
+        // Fourth request in the same hour must be rejected
+        var tooMany = await _fixture.PostGenerateAsync(session);
+
+        tooMany.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+    }
+
+    // ── Exchange endpoint ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Exchange_ValidCode_Returns200WithAccessAndRefreshTokens()
+    {
+        var user = await _fixture.SeedActiveUserWithEmployeeAsync(
+            "exchange-valid-test", "exchange-valid@test.dev", "ExchPass1!", "EMP-0001");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+
+        var response = await _fixture.PostExchangeAsync(code, "My Laptop", "Windows 11", "fp-device-001");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("access_token").GetString().Should().StartWith("eyJ");
+        doc.RootElement.GetProperty("refresh_token").GetString().Should().NotBeNullOrEmpty();
+        doc.RootElement.GetProperty("expires_in_seconds").GetInt32().Should().Be(3600);
+        doc.RootElement.GetProperty("refresh_expires_in_seconds").GetInt32().Should().Be(7_776_000);
+        doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Priya Employee");
+        doc.RootElement.GetProperty("employee_email").GetString().Should().Be("priya.employee@test.dev");
+        doc.RootElement.GetProperty("employee_number").GetString().Should().Be("EMP-0001");
+        body.Should().NotContain(user.UserId.ToString(), "response must never expose internal user ID");
+        body.Should().NotContain(user.TenantId.ToString(), "response must never expose internal tenant ID");
+    }
+
+    [Fact]
+    public async Task Generate_UserWithoutEmployeeRecord_FailsClosed()
+    {
+        var user = await _fixture.SeedActiveUserAsync(
+            "exchange-noemp-test", "exchange-noemp@test.dev", "NoEmpPass1!", withEmployee: false);
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var response = await _fixture.PostGenerateAsync(session);
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task Exchange_InvalidCode_Returns401()
+    {
+        var response = await _fixture.PostExchangeAsync("BADCDE23", "My Laptop", "Windows 11", "fp-001");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Exchange_CodeIsOneTimeUse_SecondCallReturns401()
+    {
+        var user = await _fixture.SeedActiveUserAsync("exchange-otu-test", "exchange-otu@test.dev", "OtuPass1!");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+
+        var first = await _fixture.PostExchangeAsync(code, "My Laptop", "Windows 11", "fp-device-otu");
+        var second = await _fixture.PostExchangeAsync(code, "My Laptop", "Windows 11", "fp-device-otu");
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        second.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a consumed code must be rejected on replay");
+    }
+
+        [Fact]
+    public async Task ManualExchange_StillConsumesCodeAndReturnsCredentialsAtomically()
+    {
+        var user = await _fixture.SeedActiveUserAsync(
+            "exchange-atomic-test", "exchange-atomic@test.dev", "AtomicPass1!");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+
+        var first = await _fixture.PostExchangeAsync(code, "Atomic Laptop", "Windows 11", "fp-atomic");
+        var second = await _fixture.PostExchangeAsync(code, "Atomic Laptop", "Windows 11", "fp-atomic");
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        second.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        (await db.TrayDeviceRegistrations.CountAsync(d => d.UserId == user.UserId))
+            .Should().Be(1);
+        (await db.TrayDeviceRefreshTokens.CountAsync(t => t.UserId == user.UserId))
+            .Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Exchange_RawCodeNeverStoredInDb_OnlyHashPersisted()
+
+    {
+        var user = await _fixture.SeedActiveUserAsync("exchange-hash-test", "exchange-hash@test.dev", "HashPass1!");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var storedHashes = await db.TrayActivationCodes
+            .Where(c => c.UserId == user.UserId)
+            .Select(c => c.CodeHash)
+            .ToListAsync();
+
+        storedHashes.Should().NotBeEmpty();
+        storedHashes.Should().NotContain(code, "only the SHA-256 hash of the code may ever be persisted");
+    }
+
+    // ── Refresh endpoint ───────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Refresh_ValidToken_RotatesRefreshToken_Returns200WithNewTokens()
+    {
+        var user = await _fixture.SeedActiveUserAsync("refresh-valid-test", "refresh-valid@test.dev", "RefPass1!");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+        const string fingerprint = "fp-refresh-valid-001";
+        var (_, firstRefreshToken) = await _fixture.ExchangeCodeAsync(code, fingerprint);
+
+        var response = await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("access_token").GetString().Should().StartWith("eyJ");
+        var newRefreshToken = doc.RootElement.GetProperty("refresh_token").GetString()!;
+        newRefreshToken.Should().NotBeNullOrEmpty();
+        newRefreshToken.Should().NotBe(firstRefreshToken, "refresh token must be rotated on each use");
+        doc.RootElement.GetProperty("employee_name").GetString().Should().Be("Test User");
+        doc.RootElement.GetProperty("employee_email").GetString().Should().Be("refresh-valid@test.dev");
+        doc.RootElement.TryGetProperty("employee_number", out var numberProp).Should().BeTrue();
+        numberProp.ValueKind.Should().Be(JsonValueKind.String);
+        numberProp.GetString().Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task Refresh_UsedToken_Returns401()
+    {
+        var user = await _fixture.SeedActiveUserAsync("refresh-used-test", "refresh-used@test.dev", "RefUsedPass1!");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+        const string fingerprint = "fp-refresh-used-001";
+        var (_, firstRefreshToken) = await _fixture.ExchangeCodeAsync(code, fingerprint);
+
+        // Rotate once — old token is revoked
+        await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint);
+
+        // Replay the original (now revoked) token
+        var replay = await _fixture.PostRefreshAsync(firstRefreshToken, fingerprint);
+
+        replay.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a rotated-away token must be rejected");
+    }
+
+    [Fact]
+    public async Task Refresh_FingerprintMismatch_RevokesAllDeviceTokens_Returns401()
+    {
+        var user = await _fixture.SeedActiveUserAsync("refresh-fp-test", "refresh-fp@test.dev", "FpPass1!");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+        const string originalFingerprint = "fp-original-device";
+        var (_, refreshToken) = await _fixture.ExchangeCodeAsync(code, originalFingerprint);
+
+        // Attacker has the token but uses a different fingerprint
+        var mismatch = await _fixture.PostRefreshAsync(refreshToken, "fp-attacker-device");
+
+        mismatch.StatusCode.Should().Be(
+            HttpStatusCode.Unauthorized,
+            "fingerprint mismatch must be treated as token theft and rejected");
+
+        // The legitimate device's token must also be revoked (theft response)
+        var legitimate = await _fixture.PostRefreshAsync(refreshToken, originalFingerprint);
+        legitimate.StatusCode.Should().Be(
+            HttpStatusCode.Unauthorized,
+            "after a fingerprint mismatch all device tokens must be revoked");
+    }
+
+    // ── Revoke endpoint ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Revoke_ValidToken_Returns204_AndDeactivatesDevice()
+    {
+        var user = await _fixture.SeedActiveUserAsync("revoke-valid-test", "revoke-valid@test.dev", "RevPass1!");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+        const string fingerprint = "fp-revoke-valid-001";
+        var (accessToken, _) = await _fixture.ExchangeCodeAsync(code, fingerprint);
+
+        var response = await _fixture.PostRevokeAsync(accessToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var device = await db.TrayDeviceRegistrations
+            .SingleAsync(d => d.UserId == user.UserId && d.DeviceFingerprint == fingerprint);
+        device.IsActive.Should().BeFalse("revoke must deactivate the device registration");
+        device.DeactivatedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Revoke_ThenRefresh_Returns401()
+    {
+        var user = await _fixture.SeedActiveUserAsync("revoke-refresh-test", "revoke-refresh@test.dev", "RevRefPass1!");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+        var code = await _fixture.GenerateCodeAsync(session);
+        const string fingerprint = "fp-revoke-refresh-001";
+        var (accessToken, refreshToken) = await _fixture.ExchangeCodeAsync(code, fingerprint);
+
+        var revoke = await _fixture.PostRevokeAsync(accessToken);
+        revoke.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var refresh = await _fixture.PostRefreshAsync(refreshToken, fingerprint);
+
+        refresh.StatusCode.Should().Be(
+            HttpStatusCode.Unauthorized, "a revoked device's refresh token must no longer be usable");
+    }
+
+    [Fact]
+    public async Task Revoke_NoToken_Returns401()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/activation/revoke");
+        request.Headers.Host = "localhost";
+        var response = await _fixture.Client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
 }

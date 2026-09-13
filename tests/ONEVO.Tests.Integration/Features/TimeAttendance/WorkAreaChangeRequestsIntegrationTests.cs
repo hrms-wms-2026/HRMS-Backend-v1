@@ -7,30 +7,33 @@ using Xunit;
 namespace ONEVO.Tests.Integration.Features.TimeAttendance;
 
 /// <summary>
-/// Focused PostgreSQL coverage for the Work Area persistence contract. The tests intentionally use
-/// an administrator connection only to migrate and seed synthetic rows, then use the restricted
-/// onevo_app role for every RLS assertion. No superuser-only query is treated as proof of tenant
-/// isolation.
+/// Shared, one-time-per-class setup for WorkAreaChangeRequestsIntegrationTests: clones the
+/// database once. xUnit's IClassFixture constructs this ONCE and disposes it once after every fact
+/// in the class has run, instead of IAsyncLifetime's default of once PER fact. This class was
+/// already the safest possible conversion candidate: every fact generates its own fully random
+/// Guid tenant/employee/row ids via Guid.NewGuid(), so there is no cross-fact collision or
+/// state-sharing risk whatsoever - every count/lookup query is scoped to ids no other fact could
+/// ever produce.
 /// </summary>
-public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
+public sealed class WorkAreaChangeRequestsIntegrationTestsFixture : IAsyncLifetime
 {
-    private string _connectionString = null!;
+    public string ConnectionString { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
         var configured = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
         if (!string.IsNullOrWhiteSpace(configured))
         {
-            _connectionString = configured;
-            await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
+            ConnectionString = configured;
+            await AdminTestFactory.MigrateDatabaseAsync(ConnectionString);
         }
         else
         {
             // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
-            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+            ConnectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
 
-        await using var admin = new NpgsqlConnection(_connectionString);
+        await using var admin = new NpgsqlConnection(ConnectionString);
         await admin.OpenAsync();
         await using var grant = admin.CreateCommand();
         grant.CommandText = "GRANT SELECT, INSERT, UPDATE, DELETE ON work_area_change_requests TO onevo_app;";
@@ -39,10 +42,75 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
 
     public Task DisposeAsync() => Task.CompletedTask;
 
+    public async Task SeedSyntheticRowsAsync(Guid tenantA, Guid rowA, Guid tenantB, Guid rowB)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await ExecuteAsync(connection, "SET session_replication_role = replica;");
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO work_area_change_requests
+                    (id, tenant_id, employee_id, legal_entity_id, date,
+                     current_expected_work_area, requested_work_area, reason, status, requested_at)
+                VALUES ($1, $2, $3, $4, CURRENT_DATE, 'onsite', 'remote', 'fixture', 'pending', now()),
+                       ($5, $6, $7, $8, CURRENT_DATE, 'onsite', 'remote', 'fixture', 'pending', now());
+                """;
+            command.Parameters.AddWithValue(rowA);
+            command.Parameters.AddWithValue(tenantA);
+            command.Parameters.AddWithValue(Guid.NewGuid());
+            command.Parameters.AddWithValue(Guid.NewGuid());
+            command.Parameters.AddWithValue(rowB);
+            command.Parameters.AddWithValue(tenantB);
+            command.Parameters.AddWithValue(Guid.NewGuid());
+            command.Parameters.AddWithValue(Guid.NewGuid());
+            await command.ExecuteNonQueryAsync();
+        }
+        finally
+        {
+            await ExecuteAsync(connection, "RESET session_replication_role;");
+        }
+    }
+
+    public NpgsqlConnection OpenAppRoleConnection()
+        => new(new NpgsqlConnectionStringBuilder(ConnectionString)
+        {
+            Username = "onevo_app",
+            Password = PrivilegedRoleTestBootstrap.AppRolePassword
+        }.ConnectionString);
+
+    private static async Task ExecuteAsync(NpgsqlConnection connection, string sql, params object[] values)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        for (var i = 0; i < values.Length; i++)
+            command.Parameters.AddWithValue(values[i]);
+        await command.ExecuteNonQueryAsync();
+    }
+
+}
+
+/// <summary>
+/// Focused PostgreSQL coverage for the Work Area persistence contract. The tests intentionally use
+/// an administrator connection only to migrate and seed synthetic rows, then use the restricted
+/// onevo_app role for every RLS assertion. No superuser-only query is treated as proof of tenant
+/// isolation.
+/// </summary>
+public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkAreaChangeRequestsIntegrationTestsFixture>
+
+{
+    private readonly WorkAreaChangeRequestsIntegrationTestsFixture _fixture;
+
+    public WorkAreaChangeRequestsIntegrationTests(WorkAreaChangeRequestsIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
     [Fact]
     public async Task MigratedSchema_HasExpectedColumnsRestrictiveForeignKeysAndIndexes()
     {
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
         await connection.OpenAsync();
 
         var columns = await QueryStringsAsync(connection, """
@@ -86,7 +154,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task MigratedSchema_EnablesAndForcesRlsWithTenantPolicyAndPartialUniqueIndex()
     {
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
         await connection.OpenAsync();
 
         await using var rls = connection.CreateCommand();
@@ -128,9 +196,9 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         var tenantB = Guid.NewGuid();
         var rowA = Guid.NewGuid();
         var rowB = Guid.NewGuid();
-        await SeedSyntheticRowsAsync(tenantA, rowA, tenantB, rowB);
+        await _fixture.SeedSyntheticRowsAsync(tenantA, rowA, tenantB, rowB);
 
-        await using var connection = OpenAppRoleConnection();
+        await using var connection = _fixture.OpenAppRoleConnection();
         await connection.OpenAsync();
         await SetTenantAsync(connection, tenantA);
         (await ScalarAsync(connection, "SELECT count(*) FROM work_area_change_requests;"))
@@ -152,9 +220,9 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         var tenantB = Guid.NewGuid();
         var rowA = Guid.NewGuid();
         var rowB = Guid.NewGuid();
-        await SeedSyntheticRowsAsync(tenantA, rowA, tenantB, rowB);
+        await _fixture.SeedSyntheticRowsAsync(tenantA, rowA, tenantB, rowB);
 
-        await using var connection = OpenAppRoleConnection();
+        await using var connection = _fixture.OpenAppRoleConnection();
         await connection.OpenAsync();
         await SetTenantAsync(connection, tenantA);
 
@@ -189,7 +257,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         var legalEntityId = Guid.NewGuid();
         var date = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
         await connection.OpenAsync();
         await WithReplicaRoleAsync(connection, () =>
             InsertRequestAsync(connection, Guid.NewGuid(), tenantId, employeeId, legalEntityId, date, "pending"));
@@ -207,7 +275,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         var legalEntityId = Guid.NewGuid();
         var date = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
         await connection.OpenAsync();
         await WithReplicaRoleAsync(connection, async () =>
         {
@@ -229,7 +297,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         var legalEntityId = Guid.NewGuid();
         var date = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
         await connection.OpenAsync();
         await WithReplicaRoleAsync(connection, async () =>
         {
@@ -250,7 +318,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         var legalEntityId = Guid.NewGuid();
         var date = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
         await connection.OpenAsync();
         await WithReplicaRoleAsync(connection, async () =>
         {
@@ -271,7 +339,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         var legalEntityId = Guid.NewGuid();
         var date = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
         await connection.OpenAsync();
         await WithReplicaRoleAsync(connection, async () =>
         {
@@ -292,7 +360,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         var legalEntityId = Guid.NewGuid();
         var date = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
         await connection.OpenAsync();
         await WithReplicaRoleAsync(connection, async () =>
         {
@@ -314,7 +382,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         var legalEntityId = Guid.NewGuid();
         var date = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
         await connection.OpenAsync();
         await WithReplicaRoleAsync(connection, async () =>
         {
@@ -342,7 +410,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         var legalEntityId = Guid.NewGuid();
         var date = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
         await connection.OpenAsync();
         await WithReplicaRoleAsync(connection, async () =>
         {
@@ -367,7 +435,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         var date1 = DateOnly.FromDateTime(DateTime.UtcNow);
         var date2 = date1.AddDays(1);
 
-        await using var connection = new NpgsqlConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
         await connection.OpenAsync();
         await WithReplicaRoleAsync(connection, async () =>
         {
@@ -417,49 +485,13 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
         await command.ExecuteNonQueryAsync();
     }
 
-    private async Task SeedSyntheticRowsAsync(Guid tenantA, Guid rowA, Guid tenantB, Guid rowB)
-    {
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync();
-        await ExecuteAsync(connection, "SET session_replication_role = replica;");
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = """
-                INSERT INTO work_area_change_requests
-                    (id, tenant_id, employee_id, legal_entity_id, date,
-                     current_expected_work_area, requested_work_area, reason, status, requested_at)
-                VALUES ($1, $2, $3, $4, CURRENT_DATE, 'onsite', 'remote', 'fixture', 'pending', now()),
-                       ($5, $6, $7, $8, CURRENT_DATE, 'onsite', 'remote', 'fixture', 'pending', now());
-                """;
-            command.Parameters.AddWithValue(rowA);
-            command.Parameters.AddWithValue(tenantA);
-            command.Parameters.AddWithValue(Guid.NewGuid());
-            command.Parameters.AddWithValue(Guid.NewGuid());
-            command.Parameters.AddWithValue(rowB);
-            command.Parameters.AddWithValue(tenantB);
-            command.Parameters.AddWithValue(Guid.NewGuid());
-            command.Parameters.AddWithValue(Guid.NewGuid());
-            await command.ExecuteNonQueryAsync();
-        }
-        finally
-        {
-            await ExecuteAsync(connection, "RESET session_replication_role;");
-        }
-    }
-
-    private NpgsqlConnection OpenAppRoleConnection()
-        => new(new NpgsqlConnectionStringBuilder(_connectionString)
-        {
-            Username = "onevo_app",
-            Password = PrivilegedRoleTestBootstrap.AppRolePassword
-        }.ConnectionString);
-
     private static async Task SetTenantAsync(NpgsqlConnection connection, Guid tenantId)
         => await ExecuteAsync(connection, "SELECT set_config('app.current_tenant_id', $1, false);", tenantId.ToString());
 
+
     private static async Task ResetTenantAsync(NpgsqlConnection connection)
         => await ExecuteAsync(connection, "RESET app.current_tenant_id;");
+
 
     private static async Task ExecuteAsync(NpgsqlConnection connection, string sql, params object[] values)
     {
@@ -489,4 +521,5 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IAsyncLifetime
             result.Add(reader.GetString(0));
         return result;
     }
+
 }
