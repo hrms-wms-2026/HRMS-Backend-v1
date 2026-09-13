@@ -11,6 +11,9 @@ using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Domain.Lookups;
+// Disambiguate: ExpectedWorkAreaResolver uses the old int-keyed WorkMode lookup
+using LookupWorkMode = ONEVO.Domain.Lookups.WorkMode;
+using LookupWorkModeRepository = ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces.IWorkModeRepository;
 
 namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 
@@ -35,12 +38,12 @@ public sealed class WorkAreaChangeRequestTests
         Id = EmployeeId, TenantId = TenantId, WorkModeId = workModeId
     };
 
-    private static (Mock<IWorkModeRepository> WorkModes, Mock<IWorkAreaChangeRequestRepository> Requests, ExpectedWorkAreaResolver Resolver)
+    private static (Mock<LookupWorkModeRepository> WorkModes, Mock<IWorkAreaChangeRequestRepository> Requests, ExpectedWorkAreaResolver Resolver)
         BuildResolver(string workModeCode = "remote", WorkAreaChangeRequest? approved = null)
     {
-        var workModes = new Mock<IWorkModeRepository>();
+        var workModes = new Mock<LookupWorkModeRepository>();
         workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new WorkMode { Id = 77, Code = workModeCode, Label = workModeCode, IsActive = true }]);
+            .ReturnsAsync([new LookupWorkMode { Id = 77, Code = workModeCode, Label = workModeCode, IsActive = true }]);
         var requests = new Mock<IWorkAreaChangeRequestRepository>();
         requests.Setup(x => x.GetApprovedForDateAsync(
                 TenantId, LegalEntityId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
@@ -78,9 +81,9 @@ public sealed class WorkAreaChangeRequestTests
     [Fact]
     public async Task ExpectedAreaResolver_FailsWhenWorkModeIsMissingOrInactive()
     {
-        var workModes = new Mock<IWorkModeRepository>();
+        var workModes = new Mock<LookupWorkModeRepository>();
         workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<WorkMode>());
+            .ReturnsAsync(new List<LookupWorkMode>());
         var requests = new Mock<IWorkAreaChangeRequestRepository>();
         requests.Setup(x => x.GetApprovedForDateAsync(
                 It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
@@ -152,9 +155,9 @@ public sealed class WorkAreaChangeRequestTests
     [Fact]
     public async Task ExpectedAreaResolver_AnotherDate_DoesNotOverride()
     {
-        var workModes = new Mock<IWorkModeRepository>();
+        var workModes = new Mock<LookupWorkModeRepository>();
         workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new WorkMode { Id = 77, Code = "onsite", Label = "onsite", IsActive = true }]);
+            .ReturnsAsync([new LookupWorkMode { Id = 77, Code = "onsite", Label = "onsite", IsActive = true }]);
         var requests = new Mock<IWorkAreaChangeRequestRepository>();
         // Only the exact requested date resolves an approved row; any other date returns null.
         requests.Setup(x => x.GetApprovedForDateAsync(
@@ -178,9 +181,9 @@ public sealed class WorkAreaChangeRequestTests
     public async Task ExpectedAreaResolver_AnotherEmployee_DoesNotOverride()
     {
         var otherEmployeeId = Guid.NewGuid();
-        var workModes = new Mock<IWorkModeRepository>();
+        var workModes = new Mock<LookupWorkModeRepository>();
         workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new WorkMode { Id = 77, Code = "onsite", Label = "onsite", IsActive = true }]);
+            .ReturnsAsync([new LookupWorkMode { Id = 77, Code = "onsite", Label = "onsite", IsActive = true }]);
         var requests = new Mock<IWorkAreaChangeRequestRepository>();
         requests.Setup(x => x.GetApprovedForDateAsync(
                 TenantId, LegalEntityId, EmployeeId, Date, It.IsAny<CancellationToken>()))
@@ -207,9 +210,9 @@ public sealed class WorkAreaChangeRequestTests
     public async Task ExpectedAreaResolver_AnotherLegalEntity_DoesNotOverride()
     {
         var otherLegalEntityId = Guid.NewGuid();
-        var workModes = new Mock<IWorkModeRepository>();
+        var workModes = new Mock<LookupWorkModeRepository>();
         workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new WorkMode { Id = 77, Code = "onsite", Label = "onsite", IsActive = true }]);
+            .ReturnsAsync([new LookupWorkMode { Id = 77, Code = "onsite", Label = "onsite", IsActive = true }]);
         var requests = new Mock<IWorkAreaChangeRequestRepository>();
         requests.Setup(x => x.GetApprovedForDateAsync(
                 TenantId, LegalEntityId, EmployeeId, Date, It.IsAny<CancellationToken>()))
@@ -240,9 +243,9 @@ public sealed class WorkAreaChangeRequestTests
     public async Task ExpectedAreaResolver_AnotherTenant_DoesNotOverride()
     {
         var otherTenantId = Guid.NewGuid();
-        var workModes = new Mock<IWorkModeRepository>();
+        var workModes = new Mock<LookupWorkModeRepository>();
         workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new WorkMode { Id = 77, Code = "onsite", Label = "onsite", IsActive = true }]);
+            .ReturnsAsync([new LookupWorkMode { Id = 77, Code = "onsite", Label = "onsite", IsActive = true }]);
         var requests = new Mock<IWorkAreaChangeRequestRepository>();
         requests.Setup(x => x.GetApprovedForDateAsync(
                 TenantId, LegalEntityId, EmployeeId, Date, It.IsAny<CancellationToken>()))
@@ -278,9 +281,9 @@ public sealed class WorkAreaChangeRequestTests
     [Fact]
     public async Task ExpectedAreaResolver_InconsistentDuplicateApprovedRows_FailsClosed()
     {
-        var workModes = new Mock<IWorkModeRepository>();
+        var workModes = new Mock<LookupWorkModeRepository>();
         workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new WorkMode { Id = 77, Code = "onsite", Label = "onsite", IsActive = true }]);
+            .ReturnsAsync([new LookupWorkMode { Id = 77, Code = "onsite", Label = "onsite", IsActive = true }]);
         var requests = new Mock<IWorkAreaChangeRequestRepository>();
         requests.Setup(x => x.GetApprovedForDateAsync(
                 TenantId, LegalEntityId, EmployeeId, Date, It.IsAny<CancellationToken>()))

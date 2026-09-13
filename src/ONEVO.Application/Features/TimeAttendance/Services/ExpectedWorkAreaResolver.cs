@@ -6,12 +6,14 @@ using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
+// Disambiguate: use the old int-keyed WorkMode lookup repo (CoreHr), not the new Guid-keyed per-LE repo (TimeAttendance)
+using LookupWorkModeRepository = ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces.IWorkModeRepository;
 
 namespace ONEVO.Application.Features.TimeAttendance.Services;
 
 public sealed class ExpectedWorkAreaResolver(
     IDateTimeProvider dateTime,
-    IWorkModeRepository workModes,
+    LookupWorkModeRepository workModes,
     IWorkAreaChangeRequestRepository workAreaChangeRequests) : IExpectedWorkAreaResolver
 {
     public const string SourceApprovedRequest = "approved_work_area_change_request";

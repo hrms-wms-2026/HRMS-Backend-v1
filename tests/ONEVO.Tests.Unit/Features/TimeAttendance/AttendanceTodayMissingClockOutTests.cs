@@ -12,6 +12,8 @@ using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Domain.Lookups;
+using LookupWorkMode = ONEVO.Domain.Lookups.WorkMode;
+using LookupWorkModeRepository = ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces.IWorkModeRepository;
 
 namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 
@@ -117,9 +119,9 @@ public sealed class AttendanceTodayMissingClockOutTests
         authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
 
-        var workModes = new Mock<IWorkModeRepository>();
+        var workModes = new Mock<LookupWorkModeRepository>();
         workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new WorkMode { Id = 1, Code = "onsite", Label = "On-site" }]);
+            .ReturnsAsync([new LookupWorkMode { Id = 1, Code = "onsite", Label = "On-site" }]);
 
         var dateTime = new Mock<IDateTimeProvider>();
         dateTime.SetupGet(x => x.UtcNow).Returns(UtcNow);

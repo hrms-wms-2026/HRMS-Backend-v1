@@ -311,7 +311,12 @@ public static class DependencyInjection
         services.AddScoped<IEmployeeOffboardingCoverageGuard, ONEVO.Infrastructure.Services.CoreHr.Offboarding.EmployeeOffboardingCoverageGuard>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.ServiceInterfaces.IChecklistTemplateAssigneeResolver, ONEVO.Infrastructure.Services.CoreHr.Onboarding.ChecklistTemplateAssigneeResolver>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.Services.ChecklistTemplateTaskInputResolver>();
-        services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();
+        // Old int-keyed WorkMode lookup repository (used by OnboardingDrafts, etc.)
+        services.AddScoped<ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces.IWorkModeRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfWorkModeRepository>();
+        // New per-legal-entity WorkMode repository (coexists with old int-keyed WorkMode during Tasks 1-3)
+        services.AddScoped<ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IWorkModeRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfWorkModeRepository>();
         services.AddScoped<IEmploymentTypeRepository, EfEmploymentTypeRepository>();
         services.AddScoped<EfSubscriptionRepository>();
         services.AddScoped<ISubscriptionPlanRepository>(sp => sp.GetRequiredService<EfSubscriptionRepository>());
