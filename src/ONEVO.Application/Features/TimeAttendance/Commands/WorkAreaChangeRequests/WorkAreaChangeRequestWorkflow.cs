@@ -48,7 +48,7 @@ public sealed class WorkAreaChangeRequestWorkflow(
         return Result<WorkAreaChangeRequestPreviewResponse>.Success(new(
             value.Date,
             value.Expected.Timezone,
-            value.Expected.WorkArea,
+            ClassifyWorkArea(value.Expected.WorkModeName) ?? string.Empty,
             value.RequestedWorkArea,
             value.Reason,
             value.Receiver));
@@ -76,7 +76,7 @@ public sealed class WorkAreaChangeRequestWorkflow(
                     EmployeeId = value.Employee.Id,
                     LegalEntityId = value.LegalEntity.Id,
                     Date = value.Date,
-                    CurrentExpectedWorkArea = value.Expected.WorkArea,
+                    CurrentExpectedWorkArea = ClassifyWorkArea(value.Expected.WorkModeName) ?? string.Empty,
                     RequestedWorkArea = value.RequestedWorkArea,
                     Reason = value.Reason,
                     Status = WorkAreaChangeRequest.StatusPending,
@@ -354,10 +354,11 @@ public sealed class WorkAreaChangeRequestWorkflow(
         var requested = requestedWorkArea?.Trim().ToLowerInvariant();
         if (requested is not (WorkAreaChangeRequest.WorkAreaOnsite or WorkAreaChangeRequest.WorkAreaRemote))
             return Result<PreparedRequest>.Conflict("Requested work area must be onsite or remote.");
-        if (expected.Value.WorkArea == WorkAreaChangeRequest.WorkAreaField)
+        var currentWorkArea = ClassifyWorkArea(expected.Value.WorkModeName);
+        if (currentWorkArea == WorkAreaChangeRequest.WorkAreaField)
             return Result<PreparedRequest>.Conflict("Field work-area changes are not supported in this product flow.");
-        if (expected.Value.WorkArea == WorkAreaChangeRequest.WorkAreaEither
-            || expected.Value.WorkArea == requested)
+        if (currentWorkArea == WorkAreaChangeRequest.WorkAreaEither
+            || currentWorkArea == requested)
             return Result<PreparedRequest>.Conflict(
                 "The selected work area is already planned for this date.");
         if (string.IsNullOrWhiteSpace(reason))
@@ -443,6 +444,22 @@ public sealed class WorkAreaChangeRequestWorkflow(
 
     private static string DisplayName(ONEVO.Domain.Features.CoreHr.Entities.Employee employee)
         => $"{employee.FirstName} {employee.LastName}".Trim();
+
+    // TODO(Task 6): this workflow still validates against the old onsite/remote/either/field
+    // classification (CurrentExpectedWorkArea/RequestedWorkArea as plain strings) instead of the
+    // real WorkMode Id/Name ExpectedWorkAreaResolver now resolves (Task 5) - see the plan's Global
+    // Constraints ("no category/taxonomy field is ever re-derived"). This minimal compile-fix
+    // re-derives the old classification so pre-Task-5 validation behavior is unchanged; Task 6
+    // rewrites this whole workflow to validate/store real WorkMode references.
+    private static string? ClassifyWorkArea(string? workModeName)
+        => workModeName?.Trim().ToLowerInvariant() switch
+        {
+            "onsite" or "on_site" => "onsite",
+            "remote" => "remote",
+            "hybrid" => "either",
+            "field" => "field",
+            _ => null
+        };
 
     private static WorkAreaChangeRequestResponse ToResponse(
         WorkAreaChangeRequest request,

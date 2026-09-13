@@ -548,8 +548,22 @@ public class EfEmployeeRepository : IEmployeeRepository
     {
         var result = await _expectedWorkAreas!.ResolveAsync(
             row.Employee, row.LegalEntity!, row.AttendanceSummary.WorkDate, ct);
-        return result.IsSuccess ? result.Value!.WorkArea : null;
+        return result.IsSuccess ? ClassifyWorkArea(result.Value!.WorkModeName) : null;
     }
+
+    // TODO(Task 10): ExpectedWorkAreaResolver (Task 5) now returns the WorkMode's actual
+    // Id/Name instead of a fixed onsite/remote/either/field classification - see the plan's
+    // Global Constraints ("no category/taxonomy field is ever re-derived"). This minimal
+    // compile-fix re-derives the old classification so pre-Task-5 behavior is unchanged.
+    private static string? ClassifyWorkArea(string? workModeName)
+        => workModeName?.Trim().ToLowerInvariant() switch
+        {
+            "onsite" or "on_site" => "onsite",
+            "remote" => "remote",
+            "hybrid" => "either",
+            "field" => "field",
+            _ => null
+        };
 
     public async Task<IReadOnlyList<EmployeeListItemResponse>> ListInvitedPendingByInviterAsync(
 

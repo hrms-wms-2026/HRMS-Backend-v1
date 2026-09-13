@@ -605,7 +605,7 @@ public sealed class AttendanceReadHandlerTests
             .ReturnsAsync((ActivityDailySummary?)null);
         expectedWorkAreas.Setup(x => x.ResolveAsync(It.IsAny<Employee>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(
-                new ExpectedWorkAreaResolution(ToExpectedWorkArea(workModeCode), legalEntity.Timezone!, "active_employee_work_mode")));
+                new ExpectedWorkAreaResolution(Guid.NewGuid(), workModeCode, legalEntity.Timezone!, "active_employee_work_mode")));
         var dateTime = new Mock<IDateTimeProvider>(); dateTime.SetupGet(x => x.UtcNow).Returns(DateTimeOffset.Parse(localTimeUtc));
         var todayState = new ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService(
             currentUser.Object,
@@ -634,12 +634,6 @@ public sealed class AttendanceReadHandlerTests
             activitySummaries,
             checkIns);
     }
-
-    private static string ToExpectedWorkArea(string workModeCode) => workModeCode switch
-    {
-        "hybrid" => "either",
-        _ => workModeCode
-    };
 
     private sealed record Fixture(AttendanceReadHandler Handler, Mock<IAttendanceReadRepository> Attendance, Mock<IClockInPolicyRepository> Policies, Mock<IEmployeeAuthorityResolver> Authority, LegalEntity LegalEntity, Mock<IActivityDailySummaryRepository> ActivitySummaries, Mock<ICheckInRepository> CheckIns);
 }

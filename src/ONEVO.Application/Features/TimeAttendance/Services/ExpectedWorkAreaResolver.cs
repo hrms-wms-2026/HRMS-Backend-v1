@@ -8,12 +8,6 @@ using ONEVO.Domain.Features.TimeAttendance.Entities;
 
 namespace ONEVO.Application.Features.TimeAttendance.Services;
 
-// TODO(Task 5): this resolver still returns the old string-based work-area vocabulary
-// (onsite/remote/either/field) derived from WorkMode.Name. Task 5 rewrites this to resolve and
-// return the WorkMode itself (Id/Name) instead of re-deriving a string classification from its
-// name - see the plan's Global Constraints ("no category/taxonomy field is ever re-derived").
-// This minimal retarget only swaps the old int-keyed lookup for the new per-legal-entity
-// repository so the codebase keeps compiling; the behavior is otherwise unchanged.
 public sealed class ExpectedWorkAreaResolver(
     IDateTimeProvider dateTime,
     IWorkModeRepository workModes,
@@ -44,31 +38,20 @@ public sealed class ExpectedWorkAreaResolver(
 
         if (approved is not null)
         {
-            var requestedArea = approved.RequestedWorkArea.Trim().ToLowerInvariant();
-            return requestedArea is WorkAreaChangeRequest.WorkAreaOnsite or WorkAreaChangeRequest.WorkAreaRemote
-                ? Result<ExpectedWorkAreaResolution>.Success(
-                    new ExpectedWorkAreaResolution(requestedArea, schedule.Timezone, SourceApprovedRequest))
-                : Result<ExpectedWorkAreaResolution>.Conflict(
-                    "The approved work-area change request has an unsupported requested work area.");
+            return Result<ExpectedWorkAreaResolution>.Success(
+                new ExpectedWorkAreaResolution(
+                    approved.RequestedWorkModeId, approved.RequestedWorkModeName,
+                    schedule.Timezone, SourceApprovedRequest));
         }
 
-        var mode = employee.WorkModeId is { } workModeId
-            ? await workModes.GetByIdAsync(employee.TenantId, workModeId, ct)
-            : null;
-        var code = mode?.Name?.Trim().ToLowerInvariant();
+        if (employee.WorkModeId is not Guid workModeId)
+            return Result<ExpectedWorkAreaResolution>.Conflict("The employee work mode is not configured.");
 
-        var expected = code switch
-        {
-            "onsite" or "on_site" => "onsite",
-            "remote" => "remote",
-            "hybrid" => "either",
-            "field" => "field",
-            _ => null
-        };
+        var mode = await workModes.GetByIdAsync(employee.TenantId, workModeId, ct);
+        if (mode is null)
+            return Result<ExpectedWorkAreaResolution>.Conflict("The employee's assigned work mode was not found.");
 
-        return expected is null
-            ? Result<ExpectedWorkAreaResolution>.Conflict("The employee work mode is not configured.")
-            : Result<ExpectedWorkAreaResolution>.Success(
-                new ExpectedWorkAreaResolution(expected, schedule.Timezone, SourceActiveWorkMode));
+        return Result<ExpectedWorkAreaResolution>.Success(
+            new ExpectedWorkAreaResolution(mode.Id, mode.Name, schedule.Timezone, SourceActiveWorkMode));
     }
 }

@@ -21,6 +21,15 @@ public sealed class WorkAreaChangeRequest : ITenantOwnedEntity
     public DateOnly Date { get; set; }
     public string CurrentExpectedWorkArea { get; set; } = string.Empty;
     public string RequestedWorkArea { get; set; } = string.Empty;
+
+    // Stubbed here for Task 5 (ExpectedWorkAreaResolver's new Guid-based resolution shape);
+    // Task 6 builds out this entity's full WorkMode-based rework (validation, migration off the
+    // old string fields above).
+    public Guid? RequestedWorkModeId { get; set; }
+    public string? RequestedWorkModeName { get; set; }
+    public Guid? CurrentWorkModeId { get; set; }
+    public string? CurrentWorkModeName { get; set; }
+
     public string Reason { get; set; } = string.Empty;
     public string Status { get; set; } = StatusPending;
     public DateTimeOffset RequestedAt { get; set; }

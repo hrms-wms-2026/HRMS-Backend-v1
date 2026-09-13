@@ -125,7 +125,11 @@ public class SubmitCheckInCommandHandler
                 {
                     var workAreaResult = await _expectedWorkAreas.ResolveAsync(
                         employee, legalEntity, DateOnly.FromDateTime(now.UtcDateTime), cancellationToken);
-                    if (workAreaResult.IsSuccess && workAreaResult.Value!.WorkArea == "remote")
+                    // TODO(Task 10): ExpectedWorkAreaResolver (Task 5) now returns the WorkMode's
+                    // actual name instead of a fixed classification - matching by name here is a
+                    // minimal compile-fix preserving prior "remote" behavior for the seeded default.
+                    if (workAreaResult.IsSuccess
+                        && string.Equals(workAreaResult.Value!.WorkModeName, "remote", StringComparison.OrdinalIgnoreCase))
                     {
                         // First-ever location fix for a remote employee becomes their registered
                         // reference point - no separate "confirm your location" screen. Only ever

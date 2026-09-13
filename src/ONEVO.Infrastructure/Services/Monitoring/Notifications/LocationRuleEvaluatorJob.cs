@@ -121,7 +121,7 @@ public sealed class LocationRuleEvaluatorJob : BackgroundService
             if (workArea is null)
             {
                 var resolved = await expectedWorkAreas.ResolveAsync(employee, legalEntity, workDate, ct);
-                workArea = resolved.IsSuccess ? resolved.Value!.WorkArea : null;
+                workArea = resolved.IsSuccess ? ClassifyWorkArea(resolved.Value!.WorkModeName) : null;
             }
 
             if (workArea is not ("onsite" or "remote")) continue;
@@ -174,4 +174,18 @@ public sealed class LocationRuleEvaluatorJob : BackgroundService
         var registered = await workLocations.GetByEmployeeIdAsync(tenantId, employeeId, ct);
         return registered is null ? null : (registered.Latitude, registered.Longitude);
     }
+
+    // TODO(Task 10): ExpectedWorkAreaResolver (Task 5) now returns the WorkMode's actual
+    // Id/Name instead of a fixed onsite/remote/either/field classification - see the plan's
+    // Global Constraints ("no category/taxonomy field is ever re-derived"). This minimal
+    // compile-fix re-derives the old classification so pre-Task-5 behavior is unchanged.
+    private static string? ClassifyWorkArea(string? workModeName)
+        => workModeName?.Trim().ToLowerInvariant() switch
+        {
+            "onsite" or "on_site" => "onsite",
+            "remote" => "remote",
+            "hybrid" => "either",
+            "field" => "field",
+            _ => null
+        };
 }

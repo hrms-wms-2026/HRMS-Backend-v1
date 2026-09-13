@@ -64,7 +64,8 @@ public sealed class AttendanceTodayStateService(
                 expectedAreaResult.StatusCode ?? 409);
 
         var expectedArea = expectedAreaResult.Value;
-        var policy = await ResolvePolicyAsync(tenantId, legalEntity.Id, workDate, NormalizeWorkMode(expectedArea.WorkArea), ct);
+        var classifiedWorkArea = ClassifyWorkArea(expectedArea.WorkModeName);
+        var policy = await ResolvePolicyAsync(tenantId, legalEntity.Id, workDate, NormalizeWorkMode(classifiedWorkArea), ct);
 
         return Result<AttendanceTodayContext>.Success(new AttendanceTodayContext(
             employee,
@@ -75,7 +76,7 @@ public sealed class AttendanceTodayStateService(
             utcNow,
             localNow,
             schedule,
-            expectedArea.WorkArea,
+            classifiedWorkArea,
             expectedArea.Source,
             policy.Policy,
             policy.Status,
@@ -339,6 +340,22 @@ public sealed class AttendanceTodayStateService(
         => string.Equals(value, "either", StringComparison.OrdinalIgnoreCase)
             ? "hybrid"
             : value?.ToLowerInvariant();
+
+    // TODO(Task 10): ExpectedWorkAreaResolver (Task 5) now returns the WorkMode's actual
+    // Id/Name instead of a fixed onsite/remote/either/field classification - see the plan's
+    // Global Constraints ("no category/taxonomy field is ever re-derived"). This re-derives the
+    // old classification here as a minimal compile-fix so AttendanceTodayContext.ExpectedWorkArea
+    // and the clock-in-policy lookup keep their pre-Task-5 behavior exactly; Task 10 rewrites this
+    // service to stop re-deriving it and surface WorkModeId/WorkModeName directly.
+    private static string? ClassifyWorkArea(string? workModeName)
+        => workModeName?.Trim().ToLowerInvariant() switch
+        {
+            "onsite" or "on_site" => "onsite",
+            "remote" => "remote",
+            "hybrid" => "either",
+            "field" => "field",
+            _ => null
+        };
 
     private static AllowedClockInMethods ResolveAllowedMethods(ClockInPolicy policy, string? mode)
     {

@@ -881,7 +881,7 @@ public sealed class EfEmployeeRepositoryTests
         var expectedWorkAreas = new Mock<IExpectedWorkAreaResolver>();
         expectedWorkAreas.Setup(r => r.ResolveAsync(
                 It.IsAny<EmployeeEntity>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(new ExpectedWorkAreaResolution("remote", "Asia/Colombo", "active_employee_work_mode")));
+            .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(new ExpectedWorkAreaResolution(Guid.NewGuid(), "remote", "Asia/Colombo", "active_employee_work_mode")));
         var repo = new EfEmployeeRepository(
             db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
             checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
@@ -991,7 +991,7 @@ public sealed class EfEmployeeRepositoryTests
         var mock = new Mock<IExpectedWorkAreaResolver>();
         mock.Setup(r => r.ResolveAsync(
                 It.IsAny<EmployeeEntity>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(new ExpectedWorkAreaResolution("onsite", "Asia/Colombo", "active_employee_work_mode")));
+            .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(new ExpectedWorkAreaResolution(Guid.NewGuid(), "onsite", "Asia/Colombo", "active_employee_work_mode")));
         return mock;
     }
 

@@ -445,7 +445,7 @@ public sealed class WorkAreaChangeRequestWorkflowTests
                 .ReturnsAsync(new Position { Id = PositionId, TenantId = TenantId, LegalEntityId = LegalEntityId, Name = "Manager" });
             ExpectedAreas.Setup(x => x.ResolveAsync(
                     It.IsAny<Employee>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(new("onsite", "UTC", "active_employee_work_mode")));
+                .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(new(Guid.NewGuid(), "onsite", "UTC", "active_employee_work_mode")));
             Authority.Setup(x => x.ResolveApproverAsync(
                     It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Result<EmployeeApprovalRoute>.Success(new(

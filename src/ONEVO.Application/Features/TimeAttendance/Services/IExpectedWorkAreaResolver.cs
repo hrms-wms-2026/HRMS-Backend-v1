@@ -14,6 +14,7 @@ public interface IExpectedWorkAreaResolver
 }
 
 public sealed record ExpectedWorkAreaResolution(
-    string WorkArea,
+    Guid? WorkModeId,
+    string? WorkModeName,
     string Timezone,
     string Source);

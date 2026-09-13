@@ -64,25 +64,9 @@ public sealed class WorkAreaChangeRequestTests
     {
         Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, LegalEntityId = LegalEntityId,
         Date = Date, CurrentExpectedWorkArea = "onsite", RequestedWorkArea = requestedWorkArea,
+        RequestedWorkModeId = Guid.NewGuid(), RequestedWorkModeName = requestedWorkArea,
         Reason = "Reason", Status = WorkAreaChangeRequest.StatusApproved
     };
-
-    [Theory]
-    [InlineData("onsite", "onsite")]
-    [InlineData("on_site", "onsite")]
-    [InlineData("remote", "remote")]
-    [InlineData("hybrid", "either")]
-    [InlineData("field", "field")]
-    public async Task ExpectedAreaResolver_NoApprovedRequest_UsesActiveWorkModeCode(string code, string expected)
-    {
-        var (_, _, resolver) = BuildResolver(code);
-
-        var result = await resolver.ResolveAsync(DefaultEmployee(), DefaultLegalEntity(), Date);
-
-        result.IsSuccess.Should().BeTrue();
-        result.Value!.WorkArea.Should().Be(expected);
-        result.Value.Source.Should().Be("active_employee_work_mode");
-    }
 
     [Fact]
     public async Task ExpectedAreaResolver_FailsWhenWorkModeIsMissingOrInactive()
@@ -115,7 +99,7 @@ public sealed class WorkAreaChangeRequestTests
         var result = await resolver.ResolveAsync(DefaultEmployee(), DefaultLegalEntity(), Date);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value!.WorkArea.Should().Be("remote");
+        result.Value!.WorkModeName.Should().Be("remote");
         result.Value.Source.Should().Be("approved_work_area_change_request");
     }
 
@@ -127,19 +111,22 @@ public sealed class WorkAreaChangeRequestTests
         var result = await resolver.ResolveAsync(DefaultEmployee(), DefaultLegalEntity(), Date);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value!.WorkArea.Should().Be("onsite");
+        result.Value!.WorkModeName.Should().Be("onsite");
         result.Value.Source.Should().Be("approved_work_area_change_request");
     }
 
     [Fact]
-    public async Task ExpectedAreaResolver_HybridWithNoOverride_ResolvesToEitherFromActiveWorkMode()
+    public async Task ExpectedAreaResolver_HybridWithNoOverride_ReturnsRawWorkModeNameFromActiveWorkMode()
     {
+        // The resolver no longer classifies WorkMode.Name into a fixed onsite/remote/either/field
+        // vocabulary (Task 5) - it returns the name as-is; classification, where still needed, now
+        // lives in the individual consumers that persist/render it (see their own TODO(Task 6/10)).
         var (_, _, resolver) = BuildResolver("hybrid", approved: null);
 
         var result = await resolver.ResolveAsync(DefaultEmployee(), DefaultLegalEntity(), Date);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value!.WorkArea.Should().Be("either");
+        result.Value!.WorkModeName.Should().Be("hybrid");
         result.Value.Source.Should().Be("active_employee_work_mode");
     }
 
@@ -154,7 +141,7 @@ public sealed class WorkAreaChangeRequestTests
         var result = await resolver.ResolveAsync(DefaultEmployee(), DefaultLegalEntity(), Date);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value!.WorkArea.Should().Be("onsite");
+        result.Value!.WorkModeName.Should().Be("onsite");
         result.Value.Source.Should().Be("active_employee_work_mode");
     }
 
@@ -177,7 +164,7 @@ public sealed class WorkAreaChangeRequestTests
         var result = await resolver.ResolveAsync(DefaultEmployee(), DefaultLegalEntity(), Date.AddDays(1));
 
         result.IsSuccess.Should().BeTrue();
-        result.Value!.WorkArea.Should().Be("onsite");
+        result.Value!.WorkModeName.Should().Be("onsite");
         result.Value.Source.Should().Be("active_employee_work_mode");
     }
 
@@ -204,7 +191,7 @@ public sealed class WorkAreaChangeRequestTests
             Date);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value!.WorkArea.Should().Be("onsite");
+        result.Value!.WorkModeName.Should().Be("onsite");
         result.Value.Source.Should().Be("active_employee_work_mode");
     }
 
@@ -235,7 +222,7 @@ public sealed class WorkAreaChangeRequestTests
             Date);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value!.WorkArea.Should().Be("onsite");
+        result.Value!.WorkModeName.Should().Be("onsite");
         result.Value.Source.Should().Be("active_employee_work_mode");
     }
 
@@ -261,20 +248,16 @@ public sealed class WorkAreaChangeRequestTests
             Date);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value!.WorkArea.Should().Be("onsite");
+        result.Value!.WorkModeName.Should().Be("onsite");
         result.Value.Source.Should().Be("active_employee_work_mode");
     }
 
-    [Fact]
-    public async Task ExpectedAreaResolver_ApprovedRequestWithInvalidRequestedArea_FailsClosedInstead_OfFallingBackToWorkMode()
-    {
-        var (_, _, resolver) = BuildResolver("onsite", ApprovedRequest("field"));
-
-        var result = await resolver.ResolveAsync(DefaultEmployee(), DefaultLegalEntity(), Date);
-
-        result.IsSuccess.Should().BeFalse();
-        result.StatusCode.Should().Be(409);
-    }
+    // ExpectedAreaResolver_ApprovedRequestWithInvalidRequestedArea_FailsClosedInstead_OfFallingBackToWorkMode
+    // was removed here: the old resolver validated RequestedWorkArea against a fixed onsite/remote
+    // vocabulary and failed closed on anything else. The new resolver (Task 5) does not validate
+    // the approved override at all - it returns whatever RequestedWorkModeId/RequestedWorkModeName
+    // the row carries. Task 6 is expected to reintroduce validation of the *real* WorkMode
+    // reference at write time (CreateAsync), not read time here.
 
     [Fact]
     public async Task ExpectedAreaResolver_InconsistentDuplicateApprovedRows_FailsClosed()
