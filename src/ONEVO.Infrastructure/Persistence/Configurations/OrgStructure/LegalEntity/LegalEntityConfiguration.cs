@@ -26,7 +26,7 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
             table.HasCheckConstraint(
                 "ck_legal_entities_work_time_pair",
                 "(work_start_time IS NULL AND work_end_time IS NULL) " +
-                "OR (work_start_time IS NOT NULL AND work_end_time IS NOT NULL AND work_start_time < work_end_time)");
+                "OR (work_start_time IS NOT NULL AND work_end_time IS NOT NULL)");
             table.HasCheckConstraint(
                 "ck_legal_entities_break_duration_minutes",
                 "break_duration_minutes IS NULL OR break_duration_minutes >= 0");
@@ -75,8 +75,9 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
         builder.Property(l => l.TimeFormat).HasMaxLength(10).IsRequired().HasDefaultValue("12h");
 
         // Default company working hours. Postgres "time without time zone",
-        // nullable; pairing/ordering enforced by ck_legal_entities_work_time_pair
-        // above (defense in depth alongside the command validator).
+        // nullable; both-or-neither pairing enforced by ck_legal_entities_work_time_pair
+        // above (defense in depth alongside the command validator). Overnight
+        // windows (end <= start) mean the end is on the next calendar day.
         builder.Property(l => l.WorkStartTime).HasColumnType("time");
         builder.Property(l => l.WorkEndTime).HasColumnType("time");
 

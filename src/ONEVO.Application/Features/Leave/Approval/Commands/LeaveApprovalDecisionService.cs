@@ -74,20 +74,20 @@ public sealed class LeaveApprovalDecisionService
 
         if (state.Entitlement is not null)
         {
-            state.Entitlement.PendingDays -= state.Request.PaidDays;
+            state.Entitlement.PendingHours -= state.Request.PaidHours;
             state.Entitlement.UpdatedAt = _clock.UtcNow;
         }
 
         await _outbox.EnqueueAsync(OutboxMessageTypes.LeaveRequestRejected, new LeaveRequestRejectedPayload(
             _currentUser.TenantId, state.Request.Id, state.Request.EmployeeId, state.Request.LeaveTypeId,
-            state.Request.StartDate, state.Request.EndDate, state.Request.PaidDays, state.Request.UnpaidDays,
+            state.Request.StartAt, state.Request.EndAt, state.Request.PaidHours, state.Request.UnpaidHours,
             currentEmployee.Id, reason.Trim()), _currentUser.TenantId, ct);
 
         await NotifyEmployeeAsync(state, "leave_request_rejected", new Dictionary<string, string>
         {
             ["leaveTypeName"] = state.LeaveTypeName,
-            ["startDate"] = state.Request.StartDate.ToString("yyyy-MM-dd"),
-            ["endDate"] = state.Request.EndDate.ToString("yyyy-MM-dd"),
+            ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
+            ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd"),
             ["reason"] = reason.Trim()
         }, ct);
 
@@ -120,15 +120,15 @@ public sealed class LeaveApprovalDecisionService
 
         await _outbox.EnqueueAsync(OutboxMessageTypes.LeaveInformationRequested, new LeaveInformationRequestedPayload(
             _currentUser.TenantId, state.Request.Id, state.Request.EmployeeId, state.Request.LeaveTypeId,
-            state.Request.StartDate, state.Request.EndDate, currentEmployee.Id, question.Trim()), _currentUser.TenantId, ct);
+            state.Request.StartAt, state.Request.EndAt, currentEmployee.Id, question.Trim()), _currentUser.TenantId, ct);
 
         var approverName = LeaveEntitlementName(currentEmployee);
         await NotifyEmployeeAsync(state, "leave_request_information_requested", new Dictionary<string, string>
         {
             ["approverName"] = approverName,
             ["leaveTypeName"] = state.LeaveTypeName,
-            ["startDate"] = state.Request.StartDate.ToString("yyyy-MM-dd"),
-            ["endDate"] = state.Request.EndDate.ToString("yyyy-MM-dd")
+            ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
+            ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd")
         }, ct);
 
         await _repository.SaveChangesAsync(ct);
@@ -199,10 +199,10 @@ public sealed class LeaveApprovalDecisionService
             return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.BalanceChanged(0m));
 
         var remainingBefore = LeaveApprovalMapper.CalculateRemaining(
-            state.Entitlement.TotalDays, state.Entitlement.CarriedForwardDays,
-            state.Entitlement.UsedDays, state.Entitlement.PendingDays);
-        if (state.Request.PaidDays > 0m &&
-            (state.Entitlement.PendingDays < state.Request.PaidDays || remainingBefore < 0m))
+            state.Entitlement.TotalHours, state.Entitlement.CarriedForwardHours,
+            state.Entitlement.UsedHours, state.Entitlement.PendingHours);
+        if (state.Request.PaidHours > 0m &&
+            (state.Entitlement.PendingHours < state.Request.PaidHours || remainingBefore < 0m))
         {
             return Result<LeaveApprovalDecisionResponse>.Conflict(LeaveApprovalMessages.BalanceChanged(remainingBefore));
         }
@@ -230,15 +230,15 @@ public sealed class LeaveApprovalDecisionService
             state.Request.ApprovedBy = currentEmployee.Id;
             state.Request.ApprovedAt = _clock.UtcNow;
             state.Request.UpdatedAt = _clock.UtcNow;
-            paidMoved = state.Request.PaidDays;
-            state.Entitlement.PendingDays -= state.Request.PaidDays;
-            state.Entitlement.UsedDays += state.Request.PaidDays;
+            paidMoved = state.Request.PaidHours;
+            state.Entitlement.PendingHours -= state.Request.PaidHours;
+            state.Entitlement.UsedHours += state.Request.PaidHours;
             state.Entitlement.UpdatedAt = _clock.UtcNow;
 
             var balanceAfter = LeaveApprovalMapper.CalculateRemaining(
-                state.Entitlement.TotalDays, state.Entitlement.CarriedForwardDays,
-                state.Entitlement.UsedDays, state.Entitlement.PendingDays);
-            if (state.Request.PaidDays > 0m)
+                state.Entitlement.TotalHours, state.Entitlement.CarriedForwardHours,
+                state.Entitlement.UsedHours, state.Entitlement.PendingHours);
+            if (state.Request.PaidHours > 0m)
             {
                 await _repository.AddBalanceAuditAsync(new LeaveBalanceAudit
                 {
@@ -247,7 +247,7 @@ public sealed class LeaveApprovalDecisionService
                     EmployeeId = state.Request.EmployeeId,
                     LeaveTypeId = state.Request.LeaveTypeId,
                     ChangeType = LeaveBalanceChangeTypes.Deduction,
-                    DaysChanged = -state.Request.PaidDays,
+                    HoursChanged = -state.Request.PaidHours,
                     BalanceAfter = balanceAfter,
                     Reason = "Leave request approved",
                     RelatedRequestId = state.Request.Id,
@@ -258,14 +258,14 @@ public sealed class LeaveApprovalDecisionService
 
             await _outbox.EnqueueAsync(OutboxMessageTypes.LeaveRequestApproved, new LeaveRequestApprovedPayload(
                 _currentUser.TenantId, state.Request.Id, state.Request.EmployeeId, state.Request.LeaveTypeId,
-                state.Request.StartDate, state.Request.EndDate, state.Request.PaidDays, state.Request.UnpaidDays,
+                state.Request.StartAt, state.Request.EndAt, state.Request.PaidHours, state.Request.UnpaidHours,
                 currentEmployee.Id), _currentUser.TenantId, ct);
 
             await NotifyEmployeeAsync(state, "leave_request_approved", new Dictionary<string, string>
             {
                 ["leaveTypeName"] = state.LeaveTypeName,
-                ["startDate"] = state.Request.StartDate.ToString("yyyy-MM-dd"),
-                ["endDate"] = state.Request.EndDate.ToString("yyyy-MM-dd")
+                ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
+                ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd")
             }, ct);
         }
         else
@@ -317,8 +317,8 @@ public sealed class LeaveApprovalDecisionService
         var remaining = state.Entitlement is null
             ? 0m
             : LeaveApprovalMapper.CalculateRemaining(
-                state.Entitlement.TotalDays, state.Entitlement.CarriedForwardDays,
-                state.Entitlement.UsedDays, state.Entitlement.PendingDays);
+                state.Entitlement.TotalHours, state.Entitlement.CarriedForwardHours,
+                state.Entitlement.UsedHours, state.Entitlement.PendingHours);
         var warnings = await CurrentWarningsAsync(state, ct);
         var currentState = state.Approvers
             .OrderBy(x => x.SequenceOrder)
@@ -331,7 +331,11 @@ public sealed class LeaveApprovalDecisionService
     private async Task<IReadOnlyList<LeaveApprovalWarningResponse>> CurrentWarningsAsync(LeaveApprovalState state, CancellationToken ct)
     {
         var conflicts = await _conflicts.ListConflictsAsync(
-            _currentUser.TenantId, state.Request.EmployeeId, state.Request.StartDate, state.Request.EndDate, ct);
+            _currentUser.TenantId,
+            state.Request.EmployeeId,
+            DateOnly.FromDateTime(state.Request.StartAt.UtcDateTime),
+            DateOnly.FromDateTime(state.Request.EndAt.UtcDateTime),
+            ct);
         return conflicts.Select(c => new LeaveApprovalWarningResponse("current_conflict", c.Title)).ToList();
     }
 
@@ -355,8 +359,8 @@ public sealed class LeaveApprovalDecisionService
             {
                 ["employeeName"] = LeaveEntitlementName(state.Employee),
                 ["leaveTypeName"] = state.LeaveTypeName,
-                ["startDate"] = state.Request.StartDate.ToString("yyyy-MM-dd"),
-                ["endDate"] = state.Request.EndDate.ToString("yyyy-MM-dd")
+                ["startDate"] = state.Request.StartAt.ToString("yyyy-MM-dd"),
+                ["endDate"] = state.Request.EndAt.ToString("yyyy-MM-dd")
             },
             "leave_request", state.Request.Id, ct);
     }

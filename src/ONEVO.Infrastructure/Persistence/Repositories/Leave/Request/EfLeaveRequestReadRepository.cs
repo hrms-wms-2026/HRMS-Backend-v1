@@ -18,16 +18,18 @@ public sealed class EfLeaveRequestReadRepository(ApplicationDbContext db) : ILea
         if (employeeIds.Count == 0 || from > to)
             return Array.Empty<LeaveRequest>();
 
+        var fromStart = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        var toExclusive = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
         return await db.LeaveRequests
             .AsNoTracking()
             .Where(request => request.TenantId == tenantId
                 && employeeIds.Contains(request.EmployeeId)
                 && request.Status == LeaveRequestStatuses.Approved
-                && request.StartDate <= to
-                && request.EndDate >= from)
+                && request.StartAt < toExclusive
+                && request.EndAt > fromStart)
             .OrderBy(request => request.EmployeeId)
-            .ThenBy(request => request.StartDate)
-            .ThenBy(request => request.EndDate)
+            .ThenBy(request => request.StartAt)
+            .ThenBy(request => request.EndAt)
             .ToListAsync(ct);
     }
 }

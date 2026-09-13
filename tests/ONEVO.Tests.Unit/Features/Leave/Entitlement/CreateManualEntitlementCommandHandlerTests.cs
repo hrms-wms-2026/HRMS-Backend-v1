@@ -60,11 +60,11 @@ public class CreateManualEntitlementCommandHandlerTests
             CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        capturedEntitlement!.TotalDays.Should().Be(13.5m);
-        capturedEntitlement.CarriedForwardDays.Should().Be(1.5m);
+        capturedEntitlement!.TotalHours.Should().Be(13.5m);
+        capturedEntitlement.CarriedForwardHours.Should().Be(1.5m);
         capturedEntitlement.Source.Should().Be(LeaveEntitlementSources.Manual);
         capturedAudit!.ChangeType.Should().Be(LeaveBalanceChangeTypes.Accrual);
         capturedAudit.Reason.Should().Be("Contractual top-up");
-        result.Value!.TotalDays.Should().Be(13.5m);
+        result.Value!.TotalHours.Should().Be(13.5m);
     }
 }

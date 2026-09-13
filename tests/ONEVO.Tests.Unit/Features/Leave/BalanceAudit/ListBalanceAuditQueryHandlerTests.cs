@@ -27,7 +27,7 @@ public class ListBalanceAuditQueryHandlerTests
             new LeaveBalanceAudit
             {
                 Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = Guid.NewGuid(), LeaveTypeId = Guid.NewGuid(),
-                ChangeType = LeaveBalanceChangeTypes.Deduction, DaysChanged = -3m, BalanceAfter = 7m,
+                ChangeType = LeaveBalanceChangeTypes.Deduction, HoursChanged = -3m, BalanceAfter = 7m,
                 Reason = "Leave approved", CreatedAt = DateTimeOffset.UtcNow
             },
             "EMP001", "Priya Kumar", "Annual Leave", "ANNUAL");
@@ -43,7 +43,7 @@ public class ListBalanceAuditQueryHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Single(result.Value!);
         Assert.Equal("Priya Kumar", result.Value![0].EmployeeName);
-        Assert.Equal(-3m, result.Value[0].DaysChanged);
+        Assert.Equal(-3m, result.Value[0].HoursChanged);
     }
 
     [Fact]

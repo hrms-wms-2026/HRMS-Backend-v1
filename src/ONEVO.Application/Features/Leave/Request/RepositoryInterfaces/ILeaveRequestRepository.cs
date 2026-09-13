@@ -8,8 +8,8 @@ public interface ILeaveRequestRepository
     Task<bool> HasOverlappingPendingOrApprovedRequestAsync(
         Guid tenantId,
         Guid employeeId,
-        DateOnly startDate,
-        DateOnly endDate,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
         CancellationToken ct = default);
 
     Task<IReadOnlyList<LeaveRequestListRow>> ListOwnAsync(

@@ -1,8 +1,10 @@
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Entitlement.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Request.Helpers;
 using ONEVO.Application.Features.OrgStructure.Mappers;
 using ONEVO.Domain.Lookups;
 
@@ -47,6 +49,8 @@ public class LeaveEntitlementPlanner
             .ToHashSet();
         var previous = await _entitlements.ListPreviousYearAsync(tenantId, year - 1, employeeIds, ct);
         var warnings = await _employees.ListLegalEntityChangeWarningsAsync(tenantId, employeeIds, year, ct);
+        var legalEntitiesById = (await _policies.ListActiveLegalEntitiesByIdsAsync(tenantId, legalEntityIds, ct))
+            .ToDictionary(e => e.Id);
 
         var lines = new List<LeaveEntitlementGenerationLineResponse>();
         var skipped = new List<LeaveEntitlementGenerationSkipResponse>();
@@ -67,11 +71,24 @@ public class LeaveEntitlementPlanner
                 continue;
             }
 
-            var assignment = policy.LegalEntities.FirstOrDefault(x => x.Assignment.LegalEntityId == employeeLegalEntityId);
+            if (!legalEntitiesById.TryGetValue(employeeLegalEntityId, out var legalEntity))
+            {
+                skipped.Add(new(employee.Id, name, LeaveRequestMessages.WorkWindowRequired));
+                continue;
+            }
+
+            var workHours = WorkDayHoursCalculator.TryCompute(
+                legalEntity.WorkStartTime, legalEntity.WorkEndTime, legalEntity.BreakDurationMinutes);
+            if (workHours is null or <= 0m)
+            {
+                skipped.Add(new(employee.Id, name, LeaveRequestMessages.WorkWindowRequired));
+                continue;
+            }
+
             IReadOnlyCollection<int> workingDays;
             try
             {
-                workingDays = LegalEntityMapper.ParseStandardWorkingDays(assignment?.StandardWorkingDaysJson ?? "[]");
+                workingDays = LegalEntityMapper.ParseStandardWorkingDays(legalEntity.StandardWorkingDays);
             }
             catch (Exception)
             {
@@ -87,16 +104,18 @@ public class LeaveEntitlementPlanner
                     continue;
                 }
 
-                var priorRemaining = previous.TryGetValue((employee.Id, typeRule.Rule.LeaveTypeId), out var prior)
+                var priorRemainingHours = previous.TryGetValue((employee.Id, typeRule.Rule.LeaveTypeId), out var prior)
                     ? LeaveEntitlementMapper.Remaining(prior)
                     : 0m;
+                var priorRemainingDays = decimal.Round(
+                    priorRemainingHours / workHours.Value, 1, MidpointRounding.AwayFromZero);
 
                 var calculation = _calculator.Calculate(new LeaveEntitlementCalculationInput(
                     year,
                     employee.HireDate,
                     employee.ProbationEndDate,
                     typeRule.Rule.AnnualEntitlementDays,
-                    priorRemaining,
+                    priorRemainingDays,
                     typeRule.Rule.CarryForwardMaxDays,
                     typeRule.Rule.CarryForwardExpiryMonths,
                     policy.Policy.AccrualMethod,
@@ -115,17 +134,24 @@ public class LeaveEntitlementPlanner
                     continue;
                 }
 
+                var totalHours = decimal.Round(
+                    calculation.TotalDays * workHours.Value, 2, MidpointRounding.AwayFromZero);
+                var carryHours = decimal.Round(
+                    calculation.CarriedForwardDays * workHours.Value, 2, MidpointRounding.AwayFromZero);
+                var forfeitedHours = decimal.Round(
+                    calculation.ForfeitedDays * workHours.Value, 2, MidpointRounding.AwayFromZero);
+
                 lines.Add(new LeaveEntitlementGenerationLineResponse(
                     employee.Id,
                     employee.EmployeeNumber,
                     name,
                     typeRule.Rule.LeaveTypeId,
                     typeRule.LeaveTypeName,
-                    calculation.TotalDays,
-                    calculation.CarriedForwardDays,
-                    calculation.TotalDays + calculation.CarriedForwardDays,
+                    totalHours,
+                    carryHours,
+                    totalHours + carryHours,
                     calculation.ProbationRestrictionApplied,
-                    calculation.ForfeitedDays,
+                    forfeitedHours,
                     calculation.CarryForwardExpiresOn,
                     warnings.GetValueOrDefault(employee.Id)));
             }

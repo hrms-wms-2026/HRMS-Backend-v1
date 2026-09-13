@@ -5,10 +5,10 @@ public sealed record LeaveRequestApprovedPayload(
     Guid LeaveRequestId,
     Guid EmployeeId,
     Guid LeaveTypeId,
-    DateOnly StartDate,
-    DateOnly EndDate,
-    decimal PaidDays,
-    decimal UnpaidDays,
+    DateTimeOffset StartAt,
+    DateTimeOffset EndAt,
+    decimal PaidHours,
+    decimal UnpaidHours,
     Guid ApprovedByEmployeeId);
 
 public sealed record LeaveRequestRejectedPayload(
@@ -16,10 +16,10 @@ public sealed record LeaveRequestRejectedPayload(
     Guid LeaveRequestId,
     Guid EmployeeId,
     Guid LeaveTypeId,
-    DateOnly StartDate,
-    DateOnly EndDate,
-    decimal PaidDays,
-    decimal UnpaidDays,
+    DateTimeOffset StartAt,
+    DateTimeOffset EndAt,
+    decimal PaidHours,
+    decimal UnpaidHours,
     Guid RejectedByEmployeeId,
     string Reason);
 
@@ -28,8 +28,8 @@ public sealed record LeaveInformationRequestedPayload(
     Guid LeaveRequestId,
     Guid EmployeeId,
     Guid LeaveTypeId,
-    DateOnly StartDate,
-    DateOnly EndDate,
+    DateTimeOffset StartAt,
+    DateTimeOffset EndAt,
     Guid RequestedByEmployeeId,
     string Question);
 

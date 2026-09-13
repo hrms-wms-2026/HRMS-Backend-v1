@@ -1,7 +1,7 @@
 namespace ONEVO.Api.Contracts.Leave.Entitlements;
 
 public record AdjustEntitlementRequest(
-    decimal TotalDays,
-    decimal CarriedForwardDays,
+    decimal TotalHours,
+    decimal CarriedForwardHours,
     string Reason,
     bool ConfirmNegativeRemaining);

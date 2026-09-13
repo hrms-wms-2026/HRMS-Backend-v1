@@ -90,11 +90,11 @@ public class LeaveCalendarRequestProjectorTests
             TenantId = Guid.NewGuid(),
             EmployeeId = Guid.NewGuid(),
             LeaveTypeId = Guid.NewGuid(),
-            StartDate = start,
-            EndDate = end,
+            StartAt = new DateTimeOffset(start, TimeOnly.MinValue, TimeSpan.Zero),
+            EndAt = new DateTimeOffset(end, new TimeOnly(18, 0), TimeSpan.Zero),
             Status = status,
-            TotalDays = end.DayNumber - start.DayNumber + 1,
-            PaidDays = end.DayNumber - start.DayNumber + 1
+            TotalHours = end.DayNumber - start.DayNumber + 1,
+            PaidHours = end.DayNumber - start.DayNumber + 1
         };
 
         return new LeaveCalendarRequestRow(

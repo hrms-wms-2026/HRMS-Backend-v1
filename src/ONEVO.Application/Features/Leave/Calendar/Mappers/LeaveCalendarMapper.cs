@@ -63,10 +63,9 @@ public static class LeaveCalendarMapper
             request.Status,
             instance.IsTentative,
             instance.IsPartialCancellationHistory,
-            request.StartDate,
-            request.EndDate,
-            request.TotalDays,
-            request.HalfDayPeriod);
+            request.StartAt,
+            request.EndAt,
+            request.TotalHours);
     }
 
     private static LeaveCalendarHolidayResponse ToHoliday(LeaveCalendarHoliday holiday)

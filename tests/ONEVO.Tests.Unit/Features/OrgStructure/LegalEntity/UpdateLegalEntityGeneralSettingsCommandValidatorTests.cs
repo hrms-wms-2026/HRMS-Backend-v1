@@ -169,25 +169,28 @@ public class UpdateLegalEntityGeneralSettingsCommandValidatorTests
     }
 
     [Fact]
-    public void WorkStartTime_EqualToEndTime_HasError()
+    public void WorkStartTime_AfterEndTime_Overnight_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            WorkStartTime = new TimeOnly(22, 0),
+            WorkEndTime = new TimeOnly(6, 0),
+            BreakDurationMinutes = 0
+        });
+        result.ShouldNotHaveValidationErrorFor(x => x.WorkStartTime);
+        result.ShouldNotHaveValidationErrorFor(x => x.WorkEndTime);
+    }
+
+    [Fact]
+    public void WorkWindow_BreakCoversWholeShift_HasError()
     {
         var result = _validator.TestValidate(ValidCommand() with
         {
             WorkStartTime = new TimeOnly(9, 0),
-            WorkEndTime = new TimeOnly(9, 0)
+            WorkEndTime = new TimeOnly(10, 0),
+            BreakDurationMinutes = 120
         });
-        result.ShouldHaveValidationErrorFor(x => x.WorkStartTime);
-    }
-
-    [Fact]
-    public void WorkStartTime_AfterEndTime_HasError()
-    {
-        var result = _validator.TestValidate(ValidCommand() with
-        {
-            WorkStartTime = new TimeOnly(18, 0),
-            WorkEndTime = new TimeOnly(9, 0)
-        });
-        result.ShouldHaveValidationErrorFor(x => x.WorkStartTime);
+        result.ShouldHaveValidationErrorFor(x => x.BreakDurationMinutes);
     }
 
     [Fact]

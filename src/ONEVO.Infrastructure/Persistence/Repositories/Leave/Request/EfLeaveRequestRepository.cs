@@ -22,8 +22,8 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
     public async Task<bool> HasOverlappingPendingOrApprovedRequestAsync(
         Guid tenantId,
         Guid employeeId,
-        DateOnly startDate,
-        DateOnly endDate,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
         CancellationToken ct = default)
     {
         return await _db.LeaveRequests.AsNoTracking().AnyAsync(
@@ -32,8 +32,8 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
                 request.EmployeeId == employeeId &&
                 (request.Status == LeaveRequestStatuses.Pending ||
                  request.Status == LeaveRequestStatuses.Approved) &&
-                request.StartDate <= endDate &&
-                request.EndDate >= startDate,
+                request.StartAt < endAt &&
+                request.EndAt > startAt,
             ct);
     }
 
@@ -52,9 +52,15 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
         if (!string.IsNullOrWhiteSpace(filter.Status))
             query = query.Where(x => x.request.Status == filter.Status);
         if (filter.FromDate is { } from)
-            query = query.Where(x => x.request.EndDate >= from);
+        {
+            var fromStart = new DateTimeOffset(from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            query = query.Where(x => x.request.EndAt >= fromStart);
+        }
         if (filter.ToDate is { } to)
-            query = query.Where(x => x.request.StartDate <= to);
+        {
+            var toExclusive = new DateTimeOffset(to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+            query = query.Where(x => x.request.StartAt < toExclusive);
+        }
         if (filter.LeaveTypeId is { } leaveTypeId)
             query = query.Where(x => x.request.LeaveTypeId == leaveTypeId);
 
@@ -95,14 +101,16 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
         if (employeeIds.Count == 0)
             return 0;
 
+        var startInclusive = new DateTimeOffset(startDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        var endExclusive = new DateTimeOffset(endDate.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
         return await _db.LeaveRequests.AsNoTracking()
             .Where(request =>
                 request.TenantId == tenantId &&
                 employeeIds.Contains(request.EmployeeId) &&
                 (request.Status == LeaveRequestStatuses.Pending ||
                  request.Status == LeaveRequestStatuses.Approved) &&
-                request.StartDate <= endDate &&
-                request.EndDate >= startDate)
+                request.StartAt < endExclusive &&
+                request.EndAt > startInclusive)
             .Select(request => request.EmployeeId)
             .Distinct()
             .CountAsync(ct);
@@ -112,7 +120,7 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
     {
         // Set (not +=) the target so the mutation is idempotent if the retrying execution
         // strategy replays this unit of work.
-        var targetPendingDays = writeSet.Entitlement.PendingDays + writeSet.Request.PaidDays;
+        var targetPendingHours = writeSet.Entitlement.PendingHours + writeSet.Request.PaidHours;
 
         // EnableRetryOnFailure configured - EF Core forbids a user-initiated BeginTransactionAsync
         // under a retrying execution strategy unless it runs inside ExecuteAsync (same wrapping as
@@ -130,13 +138,13 @@ public class EfLeaveRequestRepository : ILeaveRequestRepository
                     request.EmployeeId == writeSet.Request.EmployeeId &&
                     (request.Status == LeaveRequestStatuses.Pending ||
                      request.Status == LeaveRequestStatuses.Approved) &&
-                    request.StartDate <= writeSet.Request.EndDate &&
-                    request.EndDate >= writeSet.Request.StartDate,
+                    request.StartAt < writeSet.Request.EndAt &&
+                    request.EndAt > writeSet.Request.StartAt,
                 ct);
             if (overlaps)
                 throw new InvalidOperationException(LeaveRequestMessages.Overlap);
 
-            writeSet.Entitlement.PendingDays = targetPendingDays;
+            writeSet.Entitlement.PendingHours = targetPendingHours;
             writeSet.Entitlement.UpdatedAt = _clock.UtcNow;
 
             await _db.LeaveRequests.AddAsync(writeSet.Request, ct);

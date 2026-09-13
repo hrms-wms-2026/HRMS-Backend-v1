@@ -100,4 +100,12 @@ public class EfCalendarEventRepository : ICalendarEventRepository
 
     public void Update(CalendarEvent calendarEvent) => _db.PersonalCalendarEvents.Update(calendarEvent);
     public void Remove(CalendarEvent calendarEvent) => _db.PersonalCalendarEvents.Remove(calendarEvent);
+
+    public async Task RemoveHolidayEventsForYearAsync(Guid tenantId, int year, CancellationToken ct = default)
+        => await _db.PersonalCalendarEvents
+            .Where(e => e.TenantId == tenantId
+                        && e.SourceType == CalendarEventSourceTypes.Holiday
+                        && e.ExternalSource == CalendarExternalSources.CountryHoliday
+                        && e.StartDate.Year == year)
+            .ExecuteDeleteAsync(ct);
 }

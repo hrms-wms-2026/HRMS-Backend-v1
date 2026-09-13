@@ -9,16 +9,16 @@ public static class LeaveEntitlementGenerationCsvBuilder
     public static LeaveExportFile Build(LeaveEntitlementGenerationPreviewResponse preview)
     {
         var sb = new StringBuilder();
-        sb.Append("Employee Number,Employee Name,Leave Type,Total Days,Carried Forward,Remaining,Status,Reason\n");
+        sb.Append("Employee Number,Employee Name,Leave Type,Total Hours,Carried Forward,Remaining,Status,Reason\n");
 
         foreach (var line in preview.Lines)
         {
             sb.Append(line.EmployeeNumber).Append(',')
               .Append(Csv(line.EmployeeName)).Append(',')
               .Append(Csv(line.LeaveTypeName)).Append(',')
-              .Append(line.TotalDays).Append(',')
-              .Append(line.CarriedForwardDays).Append(',')
-              .Append(line.RemainingDays).Append(',')
+              .Append(line.TotalHours).Append(',')
+              .Append(line.CarriedForwardHours).Append(',')
+              .Append(line.RemainingHours).Append(',')
               .Append("Will be created").Append(',')
               .Append(Csv(line.Warning ?? "")).Append('\n');
         }

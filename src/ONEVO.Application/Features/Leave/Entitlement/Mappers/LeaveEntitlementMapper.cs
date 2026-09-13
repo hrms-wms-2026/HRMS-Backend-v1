@@ -9,23 +9,23 @@ namespace ONEVO.Application.Features.Leave.Entitlement.Mappers;
 public static class LeaveEntitlementMapper
 {
     public static decimal Remaining(
-        decimal totalDays,
-        decimal carriedForwardDays,
-        decimal usedDays,
-        decimal pendingDays) =>
-        totalDays + carriedForwardDays - usedDays - pendingDays;
+        decimal totalHours,
+        decimal carriedForwardHours,
+        decimal usedHours,
+        decimal pendingHours) =>
+        totalHours + carriedForwardHours - usedHours - pendingHours;
 
     public static decimal Remaining(LeaveEntitlement entitlement) =>
-        Remaining(entitlement.TotalDays, entitlement.CarriedForwardDays, entitlement.UsedDays, entitlement.PendingDays);
+        Remaining(entitlement.TotalHours, entitlement.CarriedForwardHours, entitlement.UsedHours, entitlement.PendingHours);
 
-    public static decimal EffectiveCarry(decimal carriedForwardDays, DateOnly? expiresOn, DateOnly asOfDate) =>
-        expiresOn is { } expiry && asOfDate >= expiry ? 0m : carriedForwardDays;
+    public static decimal EffectiveCarry(decimal carriedForwardHours, DateOnly? expiresOn, DateOnly asOfDate) =>
+        expiresOn is { } expiry && asOfDate >= expiry ? 0m : carriedForwardHours;
 
     public static LeaveEntitlementResponse ToResponse(LeaveEntitlementRow row, string? warning, DateOnly asOfDate, DateOnly? carryExpiresOn)
     {
         var entitlement = row.Entitlement;
-        var carry = EffectiveCarry(entitlement.CarriedForwardDays, carryExpiresOn, asOfDate);
-        var remaining = Remaining(entitlement.TotalDays, carry, entitlement.UsedDays, entitlement.PendingDays);
+        var carry = EffectiveCarry(entitlement.CarriedForwardHours, carryExpiresOn, asOfDate);
+        var remaining = Remaining(entitlement.TotalHours, carry, entitlement.UsedHours, entitlement.PendingHours);
 
         return new LeaveEntitlementResponse(
             entitlement.Id,
@@ -36,10 +36,10 @@ public static class LeaveEntitlementMapper
             row.LeaveTypeName,
             row.LeaveTypeCode,
             entitlement.Year,
-            entitlement.TotalDays,
-            entitlement.CarriedForwardDays,
-            entitlement.UsedDays,
-            entitlement.PendingDays,
+            entitlement.TotalHours,
+            entitlement.CarriedForwardHours,
+            entitlement.UsedHours,
+            entitlement.PendingHours,
             remaining,
             entitlement.Source,
             entitlement.ManualReason,
@@ -52,8 +52,8 @@ public static class LeaveEntitlementMapper
     public static LeaveBalanceResponse ToBalance(LeaveEntitlementRow row, DateOnly asOfDate, DateOnly? carryExpiresOn)
     {
         var entitlement = row.Entitlement;
-        var carry = EffectiveCarry(entitlement.CarriedForwardDays, carryExpiresOn, asOfDate);
-        var remaining = Remaining(entitlement.TotalDays, carry, entitlement.UsedDays, entitlement.PendingDays);
+        var carry = EffectiveCarry(entitlement.CarriedForwardHours, carryExpiresOn, asOfDate);
+        var remaining = Remaining(entitlement.TotalHours, carry, entitlement.UsedHours, entitlement.PendingHours);
 
         return new LeaveBalanceResponse(
             entitlement.EmployeeId,
@@ -67,11 +67,11 @@ public static class LeaveEntitlementMapper
             row.LeaveTypeName,
             row.LeaveTypeCode,
             entitlement.Year,
-            entitlement.TotalDays + carry,
-            entitlement.TotalDays,
+            entitlement.TotalHours + carry,
+            entitlement.TotalHours,
             carry,
-            entitlement.UsedDays,
-            entitlement.PendingDays,
+            entitlement.UsedHours,
+            entitlement.PendingHours,
             remaining,
             remaining < 0m,
             carryExpiresOn);

@@ -39,6 +39,26 @@ public sealed class CalendarNotificationSender(IOutboxWriter outboxWriter, IEmpl
         Guid tenantId, string eventTitle, IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct = default)
         => await NotifyInAppOnlyAsync(tenantId, "calendar_event_cancelled", eventTitle, employeeIds, organizerName, ct);
 
+    public async Task NotifyResolutionRequestedAsync(
+        Guid tenantId, Guid organizerUserId, string eventTitle, string responderName, string reason, CancellationToken ct = default)
+        => await outboxWriter.EnqueueAsync(
+            OutboxMessageTypes.WorkNotification,
+            new WorkNotificationPayload(
+                tenantId, organizerUserId, "calendar_event_resolution_requested",
+                new Dictionary<string, string> { ["responderName"] = responderName, ["eventTitle"] = eventTitle, ["reason"] = reason },
+                "calendar_event", null),
+            tenantId, ct);
+
+    public async Task NotifyReplacementNominatedAsync(
+        Guid tenantId, Guid organizerUserId, string eventTitle, string responderName, string nomineeName, CancellationToken ct = default)
+        => await outboxWriter.EnqueueAsync(
+            OutboxMessageTypes.WorkNotification,
+            new WorkNotificationPayload(
+                tenantId, organizerUserId, "calendar_event_replacement_nominated",
+                new Dictionary<string, string> { ["responderName"] = responderName, ["eventTitle"] = eventTitle, ["nomineeName"] = nomineeName },
+                "calendar_event", null),
+            tenantId, ct);
+
     private async Task NotifyInAppOnlyAsync(
         Guid tenantId, string templateCode, string eventTitle, IReadOnlyList<Guid> employeeIds, string organizerName, CancellationToken ct)
     {

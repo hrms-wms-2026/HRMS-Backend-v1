@@ -1,4 +1,5 @@
 using FluentValidation;
+using ONEVO.Application.Common.Helpers;
 
 namespace ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
 
@@ -88,9 +89,6 @@ public class UpdateLegalEntityGeneralSettingsCommandValidator
             .WithMessage("Website URL is invalid.")
             .When(x => !string.IsNullOrWhiteSpace(x.Website));
 
-        // Same-day schedule only: both start and end must be provided together,
-        // and start must be strictly before end. Overnight shifts are not
-        // supported in this task.
         RuleFor(x => x.WorkEndTime)
             .NotNull().WithMessage("Work end time is required when work start time is provided.")
             .When(x => x.WorkStartTime is not null);
@@ -99,9 +97,13 @@ public class UpdateLegalEntityGeneralSettingsCommandValidator
             .NotNull().WithMessage("Work start time is required when work end time is provided.")
             .When(x => x.WorkEndTime is not null);
 
-        RuleFor(x => x.WorkStartTime)
-            .Must((command, start) => start < command.WorkEndTime)
-            .WithMessage("Work start time must be before work end time.")
+        RuleFor(x => x.BreakDurationMinutes)
+            .Must((command, brk) =>
+            {
+                var hours = WorkDayHoursCalculator.TryCompute(command.WorkStartTime, command.WorkEndTime, brk);
+                return hours is null || hours > 0m;
+            })
+            .WithMessage("Break duration must be shorter than the work window.")
             .When(x => x.WorkStartTime is not null && x.WorkEndTime is not null);
 
         // Independent of work start/end time - may be set on its own. No

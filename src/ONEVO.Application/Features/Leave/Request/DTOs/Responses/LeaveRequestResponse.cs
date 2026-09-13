@@ -6,12 +6,11 @@ public sealed record LeaveRequestResponse(
     Guid LeaveTypeId,
     string LeaveTypeName,
     string LeaveTypeCode,
-    DateOnly StartDate,
-    DateOnly EndDate,
-    string? HalfDayPeriod,
-    decimal TotalDays,
-    decimal PaidDays,
-    decimal UnpaidDays,
+    DateTimeOffset StartAt,
+    DateTimeOffset EndAt,
+    decimal TotalHours,
+    decimal PaidHours,
+    decimal UnpaidHours,
     string Status,
     bool NoticePeriodMissed,
     Guid? SubmittedOnBehalfOfBy,
@@ -21,9 +20,9 @@ public sealed record LeaveRequestResponse(
     DateTimeOffset CreatedAt);
 
 public sealed record LeaveRequestBalanceImpactResponse(
-    decimal CurrentRemainingDays,
-    decimal PendingAfterSubmitDays,
-    decimal RemainingAfterSubmitDays);
+    decimal CurrentRemainingHours,
+    decimal PendingAfterSubmitHours,
+    decimal RemainingAfterSubmitHours);
 
 public sealed record LeaveRequestApproverResponse(
     Guid ApproverEmployeeId,
@@ -52,11 +51,11 @@ public sealed record LeaveRequestListItemResponse(
     Guid LeaveTypeId,
     string LeaveTypeName,
     string LeaveTypeCode,
-    DateOnly StartDate,
-    DateOnly EndDate,
-    decimal TotalDays,
-    decimal PaidDays,
-    decimal UnpaidDays,
+    DateTimeOffset StartAt,
+    DateTimeOffset EndAt,
+    decimal TotalHours,
+    decimal PaidHours,
+    decimal UnpaidHours,
     string Status,
     bool NoticePeriodMissed,
     DateTimeOffset CreatedAt,

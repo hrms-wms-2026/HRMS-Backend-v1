@@ -29,7 +29,11 @@ public sealed class CheckCalendarConflictsQueryHandler(
 
             var realEvents = await events.GetInDateRangeForEmployeeAsync(tenantId, employeeId, request.StartDate, request.EndDate, ct);
             foreach (var e in realEvents)
-                conflicts.Add(new CalendarConflict(employeeId, employeeName, e.Id, e.Title));
+            {
+                var overlapStart = e.StartDate > request.StartDate ? e.StartDate : request.StartDate;
+                var overlapEnd = e.EndDate < request.EndDate ? e.EndDate : request.EndDate;
+                conflicts.Add(new CalendarConflict(employeeId, employeeName, e.Id, e.Title, overlapStart, overlapEnd));
+            }
 
             var masters = await events.GetRecurringMastersForEmployeeAsync(tenantId, employeeId, request.EndDate, ct);
             foreach (var master in masters)
@@ -41,7 +45,11 @@ public sealed class CheckCalendarConflictsQueryHandler(
                 var hasUncancelledOccurrence = occurrenceStarts.Any(start =>
                     !children.Any(c => c.RecurrenceOriginalStart == start && c.IsRecurrenceCancelled));
                 if (hasUncancelledOccurrence)
-                    conflicts.Add(new CalendarConflict(employeeId, employeeName, master.Id, master.Title));
+                {
+                    var overlapStart = master.StartDate > request.StartDate ? master.StartDate : request.StartDate;
+                    var overlapEnd = master.EndDate < request.EndDate ? master.EndDate : request.EndDate;
+                    conflicts.Add(new CalendarConflict(employeeId, employeeName, master.Id, master.Title, overlapStart, overlapEnd));
+                }
             }
         }
 

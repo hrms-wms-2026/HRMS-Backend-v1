@@ -139,4 +139,54 @@ public sealed class GetCalendarEventsQueryHandlerTests
         Assert.Equal("Ada Lovelace", item.Participants![0].EmployeeName);
         Assert.Equal(CalendarEventParticipantStatuses.Pending, item.Participants[0].ResponseStatus);
     }
+
+    [Fact]
+    public async Task Handle_MarksOverlappingEventsAsHasConflict()
+    {
+        var sut = BuildSut();
+        _events.Setup(x => x.GetInDateRangeForCallerAsync(TenantId, UserId, EmployeeId, From, To, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new CalendarEvent
+                {
+                    Id = Guid.NewGuid(), TenantId = TenantId, Title = "Standup",
+                    StartDate = From.AddDays(2), EndDate = From.AddDays(2).AddHours(1),
+                    SourceType = CalendarEventSourceTypes.Manual, Recurrence = CalendarRecurrences.None,
+                    CreatedById = UserId, CreatedAt = DateTimeOffset.UtcNow
+                },
+                new CalendarEvent
+                {
+                    Id = Guid.NewGuid(), TenantId = TenantId, Title = "Payroll review",
+                    StartDate = From.AddDays(2).AddMinutes(30), EndDate = From.AddDays(2).AddHours(2),
+                    SourceType = CalendarEventSourceTypes.Manual, Recurrence = CalendarRecurrences.None,
+                    CreatedById = UserId, CreatedAt = DateTimeOffset.UtcNow
+                }
+            ]);
+
+        var result = await sut.Handle(new GetCalendarEventsQuery(From, To), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Events.Count);
+        Assert.All(result.Value.Events, e => Assert.True(e.HasConflict));
+    }
+
+    [Fact]
+    public async Task Handle_NonOverlappingEvent_HasConflictFalse()
+    {
+        var sut = BuildSut();
+        _events.Setup(x => x.GetInDateRangeForCallerAsync(TenantId, UserId, EmployeeId, From, To, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new CalendarEvent
+                {
+                    Id = Guid.NewGuid(), TenantId = TenantId, Title = "Standup",
+                    StartDate = From.AddDays(2), EndDate = From.AddDays(2).AddHours(1),
+                    SourceType = CalendarEventSourceTypes.Manual, Recurrence = CalendarRecurrences.None,
+                    CreatedById = UserId, CreatedAt = DateTimeOffset.UtcNow
+                }
+            ]);
+
+        var result = await sut.Handle(new GetCalendarEventsQuery(From, To), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(Assert.Single(result.Value!.Events).HasConflict);
+    }
 }

@@ -259,11 +259,11 @@ public class GetLeaveCalendarQueryHandlerTests
             TenantId = tenantId,
             EmployeeId = Guid.NewGuid(),
             LeaveTypeId = Guid.NewGuid(),
-            StartDate = new DateOnly(2026, 8, 10),
-            EndDate = new DateOnly(2026, 8, 10),
+            StartAt = new DateTimeOffset(2026, 8, 10, 9, 0, 0, TimeSpan.Zero),
+            EndAt = new DateTimeOffset(2026, 8, 10, 18, 0, 0, TimeSpan.Zero),
             Status = LeaveRequestStatuses.Approved,
-            TotalDays = 1m,
-            PaidDays = 1m
+            TotalHours = 1m,
+            PaidHours = 1m
         };
 
         return new LeaveCalendarRequestRow(

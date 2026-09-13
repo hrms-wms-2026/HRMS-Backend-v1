@@ -21,7 +21,7 @@ public class LeaveBalanceAuditCsvBuilderTests
         var text = Encoding.UTF8.GetString(file.Content);
         var lines = text.TrimEnd('\n').Split('\n');
         Assert.Equal(2, lines.Length);
-        Assert.Equal("Employee Number,Employee Name,Leave Type,Change Type,Days Changed,Balance After,Reason,Date", lines[0]);
+        Assert.Equal("Employee Number,Employee Name,Leave Type,Change Type,Hours Changed,Balance After,Reason,Date", lines[0]);
         Assert.Contains("EMP001,Priya Kumar,Annual Leave,deduction,-3,7,Leave approved,2026-04-10", lines[1]);
         Assert.Equal("text/csv", file.ContentType);
         Assert.Equal("leave-balance-audit.csv", file.FileName);

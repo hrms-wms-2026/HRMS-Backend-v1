@@ -12,8 +12,8 @@ public class CreateManualEntitlementCommandValidator : AbstractValidator<CreateM
         RuleFor(x => x.EmployeeId).NotEmpty();
         RuleFor(x => x.LeaveTypeId).NotEmpty();
         RuleFor(x => x.Year).MustBeConfiguredLeaveYear(options.Value);
-        RuleFor(x => x.TotalDays).GreaterThan(0);
-        RuleFor(x => x.CarriedForwardDays).GreaterThanOrEqualTo(0);
+        RuleFor(x => x.TotalHours).GreaterThan(0);
+        RuleFor(x => x.CarriedForwardHours).GreaterThanOrEqualTo(0);
         RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
     }
 }
