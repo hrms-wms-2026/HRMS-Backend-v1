@@ -41,6 +41,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskProgress;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskEditRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskCreationRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyProjectTasks;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskFile;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskHistory;
 
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
@@ -97,6 +98,17 @@ public class TasksController : ControllerBase
         return result.IsSuccess
             ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("tasks/files/{fileId:guid}")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> GetFile(Guid fileId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetTaskFileQuery(fileId), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return File(result.Value!.Content, result.Value!.ContentType);
     }
 
     [HttpGet("my-deadlines")]
