@@ -48,7 +48,7 @@ public class ClockInPolicyCommandHandlerTests
     }
 
     [Fact]
-    public async Task Create_Succeeds_And_Maps_Hybrid_To_Either_Fields()
+    public async Task Create_Succeeds_And_Persists_Policy()
     {
         ClockInPolicyEntity? saved = null;
         _policies
@@ -64,15 +64,7 @@ public class ClockInPolicyCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(saved);
-        Assert.True(saved!.EitherWebEnabled);
-        Assert.Equal(ClockInPolicyEntity.HybridSourceEmployeeChoice, saved.EitherSourceRule);
-        Assert.True(result.Value!.WorkAreaRules.Hybrid.WebEnabled);
-        Assert.DoesNotContain(
-            result.Value.WorkAreaRules.GetType().GetProperties().Select(p => p.Name),
-            n => n.Contains("Either", StringComparison.Ordinal));
-        Assert.Contains(
-            result.Value.WorkAreaRules.GetType().GetProperties().Select(p => p.Name),
-            n => n == "Hybrid");
+        Assert.Equal("Default Clock-in Policy", saved!.Name);
         _policies.Verify(p => p.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -205,9 +197,6 @@ public class ClockInPolicyCommandHandlerTests
             new DateOnly(2026, 8, 21),
             null,
             true,
-            100,
-            ValidWorkAreaRules(),
-            true,
             ClockInPolicyEntity.NotificationManagementCoverageOwner,
             [new LateDeductionRuleInput(15, 0, Guid.NewGuid())],
             true);
@@ -221,17 +210,7 @@ public class ClockInPolicyCommandHandlerTests
             new DateOnly(2026, 8, 21),
             null,
             true,
-            100,
-            ValidWorkAreaRules(),
-            true,
             ClockInPolicyEntity.NotificationManagementCoverageOwner,
             [new LateDeductionRuleInput(15, 0, Guid.NewGuid())],
             true);
-
-    private static WorkAreaRulesInput ValidWorkAreaRules()
-        => new(
-            new WorkAreaSourceRulesInput(true, false, false, false),
-            new RemoteWorkAreaRulesInput(false, true, true, true, false),
-            new HybridWorkAreaRulesInput(false, true, true, true, true, ClockInPolicyEntity.HybridSourceEmployeeChoice),
-            new FieldWorkAreaRulesInput(false, true, true, ClockInPolicyEntity.FieldPhotoRequired));
 }

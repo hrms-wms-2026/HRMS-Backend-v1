@@ -84,10 +84,31 @@ public class CreateClockInPolicyCommandHandler
             Name = request.Name.Trim(),
             EffectiveFrom = request.EffectiveFrom,
             EffectiveTo = request.EffectiveTo,
-            LocationVerificationRequired = request.LocationVerificationRequired,
-            AllowedRadiusMeters = request.LocationVerificationRequired
-                ? request.AllowedRadiusMeters
-                : request.AllowedRadiusMeters,
+            // TODO(Task 10): work-area/location configuration moves to per-WorkMode rows and
+            // Monitoring config (Tasks 8-9). Until AttendanceTodayStateService.ResolveAllowedMethods
+            // reads from there, hardcode "everything enabled, nothing required" so newly created
+            // policies don't silently disable clock-in for every employee.
+            LocationVerificationRequired = false,
+            AllowedRadiusMeters = null,
+            OnsiteBiometricEnabled = true,
+            OnsiteWebEnabled = true,
+            OnsiteTrayEnabled = true,
+            OnsitePhotoRequired = false,
+            RemoteBiometricEnabled = true,
+            RemoteWebEnabled = true,
+            RemoteTrayEnabled = true,
+            RemotePhotoRequired = false,
+            RemoteLocationCheckRequired = false,
+            EitherBiometricEnabled = true,
+            EitherWebEnabled = true,
+            EitherTrayEnabled = true,
+            EitherPhotoRequired = false,
+            EitherLocationCheckRequired = false,
+            EitherSourceRule = ClockInPolicy.HybridSourceEmployeeChoice,
+            FieldBiometricEnabled = true,
+            FieldWebEnabled = true,
+            FieldTrayEnabled = true,
+            FieldPhotoRequirement = ClockInPolicy.FieldPhotoOptional,
             CorrectionRequiresApproval = request.CorrectionRequiresApproval,
             NotificationRecipientResolver = string.IsNullOrWhiteSpace(request.NotificationRecipientResolver)
                 ? ClockInPolicy.NotificationManagementCoverageOwner
@@ -99,7 +120,6 @@ public class CreateClockInPolicyCommandHandler
         };
 
         ClockInPolicyMapper.ApplyScope(policy, request.Scope);
-        ClockInPolicyMapper.ApplyWorkAreaRules(policy, request.WorkAreaRules);
 
         foreach (var rule in request.LateDeductionRules.OrderBy(r => r.LateArrivalMinute))
         {

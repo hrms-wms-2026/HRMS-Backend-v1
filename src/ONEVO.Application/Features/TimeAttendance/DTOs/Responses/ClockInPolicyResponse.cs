@@ -6,39 +6,6 @@ public record ClockInPolicyScopeResponse(
     IReadOnlyList<Guid> PositionIds,
     IReadOnlyList<Guid> EmployeeIds);
 
-public record WorkAreaSourceRulesResponse(
-    bool BiometricEnabled,
-    bool WebEnabled,
-    bool TrayEnabled,
-    bool PhotoRequired);
-
-public record RemoteWorkAreaRulesResponse(
-    bool BiometricEnabled,
-    bool WebEnabled,
-    bool TrayEnabled,
-    bool PhotoRequired,
-    bool LocationCheckRequired);
-
-public record HybridWorkAreaRulesResponse(
-    bool BiometricEnabled,
-    bool WebEnabled,
-    bool TrayEnabled,
-    bool PhotoRequired,
-    bool LocationCheckRequired,
-    string SourceRule);
-
-public record FieldWorkAreaRulesResponse(
-    bool BiometricEnabled,
-    bool WebEnabled,
-    bool TrayEnabled,
-    string PhotoRequirement);
-
-public record WorkAreaRulesResponse(
-    WorkAreaSourceRulesResponse Onsite,
-    RemoteWorkAreaRulesResponse Remote,
-    HybridWorkAreaRulesResponse Hybrid,
-    FieldWorkAreaRulesResponse Field);
-
 public record LateDeductionRuleResponse(
     Guid Id,
     int LateArrivalMinute,
@@ -53,9 +20,6 @@ public record ClockInPolicyResponse(
     ClockInPolicyScopeResponse Scope,
     DateOnly EffectiveFrom,
     DateOnly? EffectiveTo,
-    bool LocationVerificationRequired,
-    int? AllowedRadiusMeters,
-    WorkAreaRulesResponse WorkAreaRules,
     bool CorrectionRequiresApproval,
     string NotificationRecipientResolver,
     IReadOnlyList<LateDeductionRuleResponse> LateDeductionRules,

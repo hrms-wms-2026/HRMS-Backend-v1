@@ -1,5 +1,4 @@
 using ONEVO.Application.Features.TimeAttendance.Mappers;
-using ONEVO.Application.Features.TimeAttendance.Models;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ClockInPolicyEntity = ONEVO.Domain.Features.TimeAttendance.Entities.ClockInPolicy;
 using Xunit;
@@ -9,30 +8,7 @@ namespace ONEVO.Tests.Unit.Features.TimeAttendance.ClockInPolicies;
 public class ClockInPolicyMapperTests
 {
     [Fact]
-    public void ApplyWorkAreaRules_Maps_Hybrid_Api_To_Either_Persistence()
-    {
-        var entity = new ClockInPolicyEntity
-        {
-            EitherSourceRule = ClockInPolicyEntity.HybridSourceOnsite,
-            FieldPhotoRequirement = ClockInPolicyEntity.FieldPhotoOff
-        };
-
-        ClockInPolicyMapper.ApplyWorkAreaRules(entity, new WorkAreaRulesInput(
-            new WorkAreaSourceRulesInput(true, false, false, false),
-            new RemoteWorkAreaRulesInput(false, true, true, true, false),
-            new HybridWorkAreaRulesInput(true, true, false, true, true, ClockInPolicyEntity.HybridSourceRemote),
-            new FieldWorkAreaRulesInput(false, true, true, ClockInPolicyEntity.FieldPhotoRequired)));
-
-        Assert.True(entity.EitherBiometricEnabled);
-        Assert.True(entity.EitherWebEnabled);
-        Assert.False(entity.EitherTrayEnabled);
-        Assert.True(entity.EitherPhotoRequired);
-        Assert.True(entity.EitherLocationCheckRequired);
-        Assert.Equal(ClockInPolicyEntity.HybridSourceRemote, entity.EitherSourceRule);
-    }
-
-    [Fact]
-    public void ToResponse_Exposes_Hybrid_Not_Either()
+    public void ToResponse_Maps_Core_Fields_And_Sorts_LateDeductionRules()
     {
         var entity = new ClockInPolicyEntity
         {
@@ -41,13 +17,6 @@ public class ClockInPolicyMapperTests
             Name = "Policy",
             ScopeType = ClockInPolicyEntity.ScopeFullCompany,
             EffectiveFrom = new DateOnly(2026, 8, 21),
-            EitherBiometricEnabled = true,
-            EitherWebEnabled = true,
-            EitherTrayEnabled = false,
-            EitherPhotoRequired = true,
-            EitherLocationCheckRequired = true,
-            EitherSourceRule = ClockInPolicyEntity.HybridSourceEmployeeChoice,
-            FieldPhotoRequirement = ClockInPolicyEntity.FieldPhotoOptional,
             NotificationRecipientResolver = ClockInPolicyEntity.NotificationManagementCoverageOwner,
             CreatedById = Guid.NewGuid(),
             CreatedAt = DateTimeOffset.UtcNow,
@@ -75,12 +44,9 @@ public class ClockInPolicyMapperTests
 
         var response = ClockInPolicyMapper.ToResponse(entity);
 
-        Assert.True(response.WorkAreaRules.Hybrid.BiometricEnabled);
-        Assert.Equal(ClockInPolicyEntity.HybridSourceEmployeeChoice, response.WorkAreaRules.Hybrid.SourceRule);
+        Assert.Equal(entity.Id, response.Id);
+        Assert.Equal(entity.Name, response.Name);
         Assert.Equal(15, response.LateDeductionRules[0].LateArrivalMinute);
         Assert.Equal(30, response.LateDeductionRules[1].LateArrivalMinute);
-        Assert.DoesNotContain(
-            response.WorkAreaRules.GetType().GetProperties().Select(p => p.Name),
-            n => n.Contains("Either", StringComparison.Ordinal));
     }
 }
