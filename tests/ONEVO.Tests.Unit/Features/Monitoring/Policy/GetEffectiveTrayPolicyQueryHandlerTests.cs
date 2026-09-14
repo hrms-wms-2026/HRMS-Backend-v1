@@ -87,6 +87,11 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
                 _tenantId, _userId, _legalEntityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(minutes);
 
+    private void SetAllowedRadiusMeters(int? meters) =>
+        _toggles.Setup(t => t.GetAllowedRadiusMetersAsync(
+                _tenantId, _userId, _legalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(meters);
+
     [Fact]
     public async Task Unauthenticated_device_returns_401()
     {
@@ -243,6 +248,50 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
         var changedResult = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
 
         changedResult.Value!.Version.Should().NotBe(configuredResult.Value!.Version);
+    }
+
+    [Fact]
+    public async Task Handle_ResolvesAllowedRadiusMetersFromMonitoringResolver()
+    {
+        SetAllowedRadiusMeters(175);
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.AllowedRadiusMeters.Should().Be(175);
+    }
+
+    [Fact]
+    public async Task Handle_SurfacesWorkModeMethodFlagsFromAllowedClockInMethods()
+    {
+        _todayState.Setup(t => t.ResolveContextAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(BuildContext(
+                new AllowedClockInMethods(Web: false, DesktopTray: true, Biometric: true, PhotoRequired: true, LocationRequired: false, AllowedRadiusMeters: null))));
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.BiometricEnabled.Should().BeTrue();
+        result.Value.WebEnabled.Should().BeFalse();
+        result.Value.PhotoRequiredEnabled.Should().BeTrue();
+        result.Value.TrayClockInEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ComputeVersion_ChangesWhenAllowedRadiusMetersChanges()
+    {
+        var v1 = GetEffectiveTrayPolicyQueryHandler.ComputeVersion(
+            locationEnabled: true, activityEnabled: true, appUsageEnabled: true, screenshotEnabled: true,
+            autoScreenshotEnabled: true, cameraEnabled: true, idleThresholdMinutes: 2,
+            trayClockInEnabled: true, biometricEnabled: false, webEnabled: true, photoRequired: false,
+            allowedRadiusMeters: 100);
+        var v2 = GetEffectiveTrayPolicyQueryHandler.ComputeVersion(
+            locationEnabled: true, activityEnabled: true, appUsageEnabled: true, screenshotEnabled: true,
+            autoScreenshotEnabled: true, cameraEnabled: true, idleThresholdMinutes: 2,
+            trayClockInEnabled: true, biometricEnabled: false, webEnabled: true, photoRequired: false,
+            allowedRadiusMeters: 200);
+
+        v1.Should().NotBe(v2);
     }
 
     private sealed class FrozenClock : IDateTimeProvider
