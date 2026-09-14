@@ -37,7 +37,7 @@ public class EfEntityAssetRepository : IEntityAssetRepository
         return await _db.EntityAssets.AsNoTracking()
             .Where(a => a.TenantId == tenantId && a.OwnerType == ownerType && a.OwnerId == ownerId)
             .Join(_db.FileRecords.AsNoTracking(), a => a.FileRecordId, f => f.Id,
-                (a, f) => new EntityAssetWithFile(a.Id, f.Id, f.OriginalFileName, f.FileSizeBytes, f.ContentType, a.CreatedAt))
+                (a, f) => new EntityAssetWithFile(a.Id, f.Id, f.OriginalFileName, f.FileSizeBytes, f.ContentType, a.CreatedAt, a.AssetPurpose))
             .OrderBy(x => x.CreatedAt)
             .ToListAsync(ct);
     }

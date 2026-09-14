@@ -4,7 +4,7 @@ namespace ONEVO.Application.Common.RepositoryInterfaces;
 
 /// <summary>Projection of an entity_assets row joined with its file_records metadata, for listing.</summary>
 public sealed record EntityAssetWithFile(
-    Guid Id, Guid FileRecordId, string OriginalFileName, long FileSizeBytes, string ContentType, DateTimeOffset CreatedAt);
+    Guid Id, Guid FileRecordId, string OriginalFileName, long FileSizeBytes, string ContentType, DateTimeOffset CreatedAt, string AssetPurpose);
 
 public interface IEntityAssetRepository
 {
