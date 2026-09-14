@@ -123,16 +123,27 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default) =>
         GetAllowedRadiusMetersCoreAsync(tenantId, userId, legalEntityId, ct);
 
+    /// <summary>
+    /// Wraps the resolved radius so a genuinely-null result ("no tier configures a radius") is
+    /// itself a real, cacheable value - unlike <see cref="GetIdleThresholdMinutesCoreAsync"/>'s
+    /// bare <c>int?</c> cache entry, a bare <c>int?</c> here can't distinguish "resolved to null"
+    /// from "nothing cached yet", so a null result would never be served from cache and would
+    /// re-run the full resolution chain (employee resolve, policy/role/position lookups, feature
+    /// toggles) on every call - the common case today, since AllowedRadiusMeters has no seed/
+    /// default value.
+    /// </summary>
+    private sealed record CachedRadiusMeters(int? Value);
+
     private async Task<int?> GetAllowedRadiusMetersCoreAsync(
         Guid tenantId, Guid userId, Guid? legalEntityId, CancellationToken ct)
     {
         var cacheKey = $"tenant:{tenantId}:monitoring-toggle:user:{userId}:legal-entity:{legalEntityId}:allowed-radius-meters";
-        var cached = await _cache.GetAsync<int?>(cacheKey, ct);
-        if (cached.HasValue)
+        var cached = await _cache.GetAsync<CachedRadiusMeters>(cacheKey, ct);
+        if (cached is not null)
             return cached.Value;
 
         var resolved = await ResolveRadiusMetersAsync(tenantId, userId, legalEntityId, ct);
-        await _cache.SetAsync(cacheKey, resolved, CacheTtl, ct);
+        await _cache.SetAsync(cacheKey, new CachedRadiusMeters(resolved), CacheTtl, ct);
         return resolved;
     }
 

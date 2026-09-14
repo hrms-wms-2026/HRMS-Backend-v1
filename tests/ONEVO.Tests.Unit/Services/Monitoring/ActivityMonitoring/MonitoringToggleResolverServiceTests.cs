@@ -2,6 +2,7 @@ using FluentAssertions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Caching.Memory;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
@@ -12,6 +13,7 @@ using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
+using ONEVO.Infrastructure.Services.SharedPlatform;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Services.Monitoring.ActivityMonitoring;
@@ -228,5 +230,35 @@ public class MonitoringToggleResolverServiceTests
         var radius = await resolver.GetAllowedRadiusMetersAsync(tenantId, employee.UserId);
 
         radius.Should().Be(500, "with no employee/work-mode/role/position/department override, the legal-entity default applies");
+    }
+
+    [Fact]
+    public async Task GetAllowedRadiusMetersAsync_GenuinelyNullResult_IsCachedAndNotRecomputed()
+    {
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+
+        // No legal-entity default, no overrides anywhere - resolves to a genuine null.
+        var employee = await SeedEmployeeAsync(db, tenantId, workModeId: null);
+
+        // A real cache (not the NoOp fake the other tests use), so this test can actually prove
+        // caching behavior rather than just precedence math.
+        var cache = new MemoryCacheService(new MemoryCache(new MemoryCacheOptions()));
+        var resolver = new MonitoringToggleResolverService(db, cache);
+
+        var first = await resolver.GetAllowedRadiusMetersAsync(tenantId, employee.UserId);
+        first.Should().BeNull();
+
+        // Change the underlying data after the first call. If the null result were NOT cached
+        // (the pre-fix bug: a bare `int?` cache entry can't distinguish "resolved to null" from
+        // "nothing cached yet"), the second call would recompute against this new row and return
+        // 500 instead of the cached null.
+        await SeedLegalEntityDefaultAsync(db, tenantId, allowedRadiusMeters: 500);
+
+        var second = await resolver.GetAllowedRadiusMetersAsync(tenantId, employee.UserId);
+
+        second.Should().BeNull(
+            "a genuinely-resolved null radius must be served from cache on the second call, " +
+            "not recomputed against the now-changed DB state");
     }
 }
