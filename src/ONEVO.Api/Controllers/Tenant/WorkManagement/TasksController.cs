@@ -22,6 +22,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskCategory;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskPendingUpload;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskCategory;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
@@ -84,6 +85,17 @@ public class TasksController : ControllerBase
         return result.IsSuccess
             ? StatusCode(201, new TaskPendingUploadViewModel(
                 result.Value!.Id, result.Value.OriginalFileName, result.Value.FileSizeBytes, result.Value.ContentType))
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpDelete("tasks/pending-uploads/{fileId:guid}")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> DeletePendingUpload(Guid fileId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new DeleteTaskPendingUploadCommand(fileId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
