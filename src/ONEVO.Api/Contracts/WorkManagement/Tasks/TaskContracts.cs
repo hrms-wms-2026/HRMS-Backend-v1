@@ -115,3 +115,5 @@ public static class TaskHistoryViewModelMapper
             entry.Type, entry.OccurredAt, entry.EmployeeId, entry.EmployeeName,
             entry.Edit, entry.StatusChange, entry.ClockSession, entry.PercentageChange)).ToList();
 }
+
+public sealed record TaskPendingUploadViewModel(Guid FileId, string OriginalFileName, long FileSizeBytes, string ContentType);

@@ -17,6 +17,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskEditRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCategory;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskPendingUpload;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTask;
@@ -69,6 +70,20 @@ public class TasksController : ControllerBase
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("tasks/pending-uploads")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> CreatePendingUpload([FromForm] TaskPendingUploadFormRequest request, CancellationToken ct)
+    {
+        await using var stream = request.File.OpenReadStream();
+        var result = await _mediator.Send(new CreateTaskPendingUploadCommand(
+            request.Purpose, request.File.FileName, request.File.ContentType, stream), ct);
+
+        return result.IsSuccess
+            ? StatusCode(201, new TaskPendingUploadViewModel(
+                result.Value!.Id, result.Value.OriginalFileName, result.Value.FileSizeBytes, result.Value.ContentType))
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
