@@ -68,7 +68,7 @@ public sealed class AttendanceTodayStateService(
 
         var expectedArea = expectedAreaResult.Value;
         var policy = await ResolvePolicyAsync(
-            tenantId, legalEntity.Id, employee.Id, workDate, expectedArea.WorkModeId, ct);
+            tenantId, legalEntity.Id, employee.UserId, workDate, expectedArea.WorkModeId, ct);
 
         return Result<AttendanceTodayContext>.Success(new AttendanceTodayContext(
             employee,
@@ -219,7 +219,7 @@ public sealed class AttendanceTodayStateService(
     }
 
     private async Task<PolicyResolution> ResolvePolicyAsync(
-        Guid tenantId, Guid legalEntityId, Guid employeeId, DateOnly workDate,
+        Guid tenantId, Guid legalEntityId, Guid userId, DateOnly workDate,
         Guid? workModeId, CancellationToken ct)
     {
         var active = ClockInPolicyResolver.ResolveActiveFullCompanyPolicies(
@@ -238,12 +238,12 @@ public sealed class AttendanceTodayStateService(
                 null,
                 new AllowedClockInMethods(false, false, false, false, false, null));
 
-        var methods = await ResolveAllowedMethodsAsync(tenantId, employeeId, workModeId, ct);
+        var methods = await ResolveAllowedMethodsAsync(tenantId, legalEntityId, userId, workModeId, ct);
         return new PolicyResolution("configured", active[0], methods);
     }
 
     private async Task<AllowedClockInMethods> ResolveAllowedMethodsAsync(
-        Guid tenantId, Guid employeeId, Guid? workModeId, CancellationToken ct)
+        Guid tenantId, Guid legalEntityId, Guid userId, Guid? workModeId, CancellationToken ct)
     {
         if (workModeId is not Guid id)
             return new AllowedClockInMethods(false, false, false, false, false, null);
@@ -252,9 +252,15 @@ public sealed class AttendanceTodayStateService(
         if (mode is null)
             return new AllowedClockInMethods(false, false, false, false, false, null);
 
+        // IMonitoringToggleResolver's two-arg overload resolves by Employee.Id and its null
+        // legal-entity two-arg counterpart only resolves an unambiguous single active employee
+        // for that user - neither is safe here. Use the three-arg (tenantId, userId,
+        // legalEntityId) overload, the documented contract (see
+        // MonitoringToggleResolverService.ResolveEmployeeAsync's XML doc), so multi-company
+        // users still resolve correctly.
         var locationEnabled = await toggles.IsEnabledAsync(
-            tenantId, employeeId, MonitoringCapability.WorkLocationVerification, ct);
-        var radiusMeters = await toggles.GetAllowedRadiusMetersAsync(tenantId, employeeId, ct);
+            tenantId, userId, legalEntityId, MonitoringCapability.WorkLocationVerification, ct);
+        var radiusMeters = await toggles.GetAllowedRadiusMetersAsync(tenantId, userId, legalEntityId, ct);
 
         return new AllowedClockInMethods(
             mode.WebEnabled, mode.TrayEnabled, mode.BiometricEnabled, mode.PhotoRequired,

@@ -217,6 +217,71 @@ public class MonitoringToggleResolverServiceTests
     }
 
     [Fact]
+    public async Task GetAllowedRadiusMetersAsync_CalledWithEmployeeRecordId_DoesNotResolve()
+    {
+        // Regression guard: every overload's `userId`/`employeeId` parameter is resolved against
+        // Employee.UserId (see ResolveEmployeeAsync's XML doc) - passing a real Employee.Id (the
+        // mistake AttendanceTodayStateService and LocationRuleEvaluatorJob both originally made)
+        // silently fails to resolve the employee and falls back to the "no employee" default.
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+
+        var employee = await SeedEmployeeAsync(db, tenantId, workModeId: null);
+        await SeedLegalEntityDefaultAsync(db, tenantId, allowedRadiusMeters: 500);
+
+        var resolver = new MonitoringToggleResolverService(db, new NoOpCacheService());
+
+        var radius = await resolver.GetAllowedRadiusMetersAsync(tenantId, employee.Id);
+
+        radius.Should().BeNull("Employee.Id is not Employee.UserId - this call must fail to resolve the employee, not silently succeed");
+    }
+
+    [Fact]
+    public async Task GetAllowedRadiusMetersAsync_ThreeArgOverload_ResolvesMultiCompanyUserByLegalEntity()
+    {
+        // The two-arg overload's null-legal-entity fallback only resolves an unambiguous single
+        // active employee for a UserId - it returns null for a multi-company user with more than
+        // one active Employee row. The three-arg overload (tenantId, userId, legalEntityId) is the
+        // one callers with a legal entity in scope (AttendanceTodayStateService,
+        // LocationRuleEvaluatorJob) must use instead.
+        await using var db = BuildInMemoryDb();
+        var tenantId = Guid.NewGuid();
+        var sharedUserId = Guid.NewGuid();
+        var legalEntityA = Guid.NewGuid();
+        var legalEntityB = Guid.NewGuid();
+
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
+        var employeeA = new Employee
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, UserId = sharedUserId, LegalEntityId = legalEntityA,
+            EmployeeNumber = Guid.NewGuid().ToString("N")[..8], FirstName = "Test", LastName = "A",
+            Email = $"{Guid.NewGuid():N}@resolver.onevo.dev", HireDate = DateOnly.FromDateTime(DateTime.UtcNow)
+        };
+        var employeeB = new Employee
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, UserId = sharedUserId, LegalEntityId = legalEntityB,
+            EmployeeNumber = Guid.NewGuid().ToString("N")[..8], FirstName = "Test", LastName = "B",
+            Email = $"{Guid.NewGuid():N}@resolver.onevo.dev", HireDate = DateOnly.FromDateTime(DateTime.UtcNow)
+        };
+        db.Employees.AddRange(employeeA, employeeB);
+        await db.SaveChangesAsync();
+
+        db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, LegalEntityId = legalEntityB, AllowedRadiusMeters = 250
+        });
+        await db.SaveChangesAsync();
+
+        var resolver = new MonitoringToggleResolverService(db, new NoOpCacheService());
+
+        var twoArgResult = await resolver.GetAllowedRadiusMetersAsync(tenantId, sharedUserId);
+        var threeArgResult = await resolver.GetAllowedRadiusMetersAsync(tenantId, sharedUserId, legalEntityB);
+
+        twoArgResult.Should().BeNull("two active Employee rows for the same user makes the null-legal-entity fallback ambiguous");
+        threeArgResult.Should().Be(250, "legal entity B's default applies once the caller disambiguates by legal entity");
+    }
+
+    [Fact]
     public async Task GetAllowedRadiusMetersAsync_NoOverrideAnywhere_FallsBackToLegalEntityDefault()
     {
         await using var db = BuildInMemoryDb();

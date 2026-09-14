@@ -223,10 +223,10 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
 
         var monitoringToggles = new Mock<IMonitoringToggleResolver>();
         monitoringToggles
-            .Setup(x => x.IsEnabledAsync(TenantId, EmployeeId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
+            .Setup(x => x.IsEnabledAsync(TenantId, UserId, LegalEntityId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         monitoringToggles
-            .Setup(x => x.GetAllowedRadiusMetersAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetAllowedRadiusMetersAsync(TenantId, UserId, LegalEntityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((int?)null);
 
         var service = new AttendanceTodayStateService(
@@ -246,10 +246,10 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
         public void SetMonitoringToggles(bool locationRequired, int? allowedRadiusMeters)
         {
             MonitoringToggles
-                .Setup(x => x.IsEnabledAsync(TenantId, EmployeeId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
+                .Setup(x => x.IsEnabledAsync(TenantId, UserId, LegalEntityId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(locationRequired);
             MonitoringToggles
-                .Setup(x => x.GetAllowedRadiusMetersAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+                .Setup(x => x.GetAllowedRadiusMetersAsync(TenantId, UserId, LegalEntityId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(allowedRadiusMeters);
         }
     }

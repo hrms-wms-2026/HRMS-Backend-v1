@@ -153,16 +153,22 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
         await SeedClockInPolicyAsync(_tenantBId, legalEntityBId, ownerBUserId);
 
         // Legal entity creation auto-seeds default work modes (Remote/Hybrid/Onsite) via
-        // WorkModeSeeder - reuse those instead of creating new ones.
+        // WorkModeSeeder - reuse those instead of creating new ones. WorkModeSeeder's defaults are
+        // WebEnabled=true only (Tray/Biometric/PhotoRequired all false); the Remote row is bumped
+        // here so Today's AllowedClockInMethods response provably switches branch on the approved
+        // override (Onsite keeps the seeded all-off-but-web defaults).
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            _remoteWorkModeId = await db.TimeAttendanceWorkModes.AsNoTracking()
-                .Where(w => w.TenantId == _tenantAId && w.LegalEntityId == _legalEntityAId && w.Name == "Remote")
-                .Select(w => w.Id).SingleAsync();
+            var remoteWorkMode = await db.TimeAttendanceWorkModes
+                .SingleAsync(w => w.TenantId == _tenantAId && w.LegalEntityId == _legalEntityAId && w.Name == "Remote");
+            remoteWorkMode.TrayEnabled = true;
+            remoteWorkMode.PhotoRequired = true;
+            _remoteWorkModeId = remoteWorkMode.Id;
             _onsiteWorkModeId = await db.TimeAttendanceWorkModes.AsNoTracking()
                 .Where(w => w.TenantId == _tenantAId && w.LegalEntityId == _legalEntityAId && w.Name == "Onsite")
                 .Select(w => w.Id).SingleAsync();
+            await db.SaveChangesAsync();
         }
 
         _approverPositionId = await SeedPositionAsync(_tenantAId, _legalEntityAId, "Approver Position", null);
@@ -246,27 +252,11 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
             ScopeType = ClockInPolicy.ScopeFullCompany,
             EffectiveFrom = new DateOnly(2020, 1, 1),
             EffectiveTo = null,
-            LocationVerificationRequired = false,
-            // Onsite and Remote branches are deliberately distinguished on tray/photo so Today's
-            // AllowedClockInMethods response provably switches branch on the approved override,
-            // while both keep Web enabled (the approval-after-clock-in scenario clocks in as
-            // On-site first via web, before any override exists).
-            OnsiteWebEnabled = true,
-            OnsiteTrayEnabled = false,
-            OnsiteBiometricEnabled = false,
-            OnsitePhotoRequired = false,
-            RemoteWebEnabled = true,
-            RemoteTrayEnabled = true,
-            RemoteBiometricEnabled = false,
-            RemotePhotoRequired = true,
-            EitherWebEnabled = true,
-            EitherTrayEnabled = false,
-            EitherBiometricEnabled = false,
-            EitherPhotoRequired = false,
-            FieldWebEnabled = false,
-            FieldTrayEnabled = false,
-            FieldBiometricEnabled = false,
-            FieldPhotoRequirement = ClockInPolicy.FieldPhotoOff,
+            // Clock-in methods are no longer sourced from this policy's flattened per-area flags
+            // (AttendanceTodayStateService.ResolveAllowedMethods reads WorkMode.TrayEnabled/
+            // WebEnabled/BiometricEnabled/PhotoRequired directly) - only its presence, as the one
+            // active full-company policy, gates PolicyStatus == "configured". See the Remote
+            // WorkMode update above for where tray/photo are actually distinguished.
             CorrectionRequiresApproval = false,
             IsActive = true,
             CreatedById = createdById,

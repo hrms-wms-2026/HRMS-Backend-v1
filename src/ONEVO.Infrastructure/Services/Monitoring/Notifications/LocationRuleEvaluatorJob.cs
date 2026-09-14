@@ -5,10 +5,10 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.DeviceState.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
-using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Infrastructure.Persistence;
@@ -57,9 +57,7 @@ public sealed class LocationRuleEvaluatorJob : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var deviceState = scope.ServiceProvider.GetRequiredService<IDeviceStateSnapshotRepository>();
         var confirmations = scope.ServiceProvider.GetRequiredService<IDailyWorkLocationConfirmationRepository>();
-        var workLocations = scope.ServiceProvider.GetRequiredService<IEmployeeWorkLocationRepository>();
-        var clockInPolicies = scope.ServiceProvider.GetRequiredService<IClockInPolicyRepository>();
-        var expectedWorkAreas = scope.ServiceProvider.GetRequiredService<IExpectedWorkAreaResolver>();
+        var toggles = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
         var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
         var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
         var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
@@ -67,11 +65,11 @@ public sealed class LocationRuleEvaluatorJob : BackgroundService
         var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
 
         // Every table this job reads/writes (device_state_snapshots, employees, legal_entities,
-        // clock_in_policies, employee_work_locations, daily_work_location_confirmations,
-        // monitoring_notifications) is under FORCE row-level security. A background scope defaults
-        // to system mode, which the tenant_isolation policy admits for none of them - so the
-        // opening cross-tenant sweep needs admin mode, and each tenant's rows need that tenant's
-        // context established first. Mirrors LeaveYearEndEntitlementJob / ExceptionDetectionJob.
+        // daily_work_location_confirmations, monitoring_notifications) is under FORCE row-level
+        // security. A background scope defaults to system mode, which the tenant_isolation
+        // policy admits for none of them - so the opening cross-tenant sweep needs admin mode,
+        // and each tenant's rows need that tenant's context established first. Mirrors
+        // LeaveYearEndEntitlementJob / ExceptionDetectionJob.
         tenantContext.SetAdminMode();
 
         var now = clock.UtcNow;
@@ -111,40 +109,36 @@ public sealed class LocationRuleEvaluatorJob : BackgroundService
             var workDate = DateOnly.FromDateTime(located.CapturedAt.UtcDateTime);
             var confirmation = await confirmations.GetForDateAsync(tenantId, employeeId, workDate, ct);
 
-            var workArea = confirmation?.LocationType switch
+            // No daily confirmation for this date -> no asserted reference point -> skip. This is
+            // strictly non-false-alarming: an unconfirmed day never fires a wrong-reference alert,
+            // and it removes the dependency on ExpectedWorkAreaResolver/the old work-area string
+            // entirely.
+            if (confirmation is null) continue;
+
+            (double Latitude, double Longitude)? referencePoint = confirmation.LocationType switch
             {
-                DailyWorkLocationConfirmation.LocationTypeOffice => "onsite",
-                DailyWorkLocationConfirmation.LocationTypeHome or DailyWorkLocationConfirmation.LocationTypeOther => "remote",
-                _ => null
-            };
-
-            if (workArea is null)
-            {
-                var resolved = await expectedWorkAreas.ResolveAsync(employee, legalEntity, workDate, ct);
-                workArea = resolved.IsSuccess ? ClassifyWorkArea(resolved.Value!.WorkModeName) : null;
-            }
-
-            if (workArea is not ("onsite" or "remote")) continue;
-
-            var policies = await clockInPolicies.ListByLegalEntityAsync(tenantId, legalEntityId, includeInactive: false, ct);
-            var active = ClockInPolicyResolver.ResolveActiveFullCompanyPolicies(policies, workDate);
-            if (active.Count != 1 || active[0].AllowedRadiusMeters is not { } radiusMeters) continue;
-
-            (double Latitude, double Longitude)? referencePoint = workArea switch
-            {
-                "onsite" when legalEntity is { OfficeLatitude: double officeLat, OfficeLongitude: double officeLon }
+                DailyWorkLocationConfirmation.LocationTypeOffice
+                    when legalEntity is { OfficeLatitude: double officeLat, OfficeLongitude: double officeLon }
                     => (officeLat, officeLon),
-                "remote" when confirmation is { Latitude: double confLat, Longitude: double confLon }
+                DailyWorkLocationConfirmation.LocationTypeHome or DailyWorkLocationConfirmation.LocationTypeOther
+                    when confirmation is { Latitude: double confLat, Longitude: double confLon }
                     => (confLat, confLon),
-                "remote" => await ResolveRegisteredWorkLocationAsync(tenantId, employeeId, workLocations, ct),
                 _ => null
             };
             if (referencePoint is null) continue;
 
+            // The two-arg overload resolves by Employee.UserId and, with no legal entity given,
+            // only an unambiguous single active employee for that user - neither shape fits a
+            // real Employee.Id from GetActiveEmployeeKeysAsync. Use the three-arg overload with
+            // the employee's own UserId + legal entity (same contract AttendanceTodayStateService
+            // uses), which also resolves correctly for a multi-company user.
+            var radiusMeters = await toggles.GetAllowedRadiusMetersAsync(tenantId, employee.UserId, legalEntityId, ct);
+            if (radiusMeters is not { } resolvedRadiusMeters) continue;
+
             var distance = GeoDistanceCalculator.DistanceMeters(
                 located.Latitude!.Value, located.Longitude!.Value,
                 referencePoint.Value.Latitude, referencePoint.Value.Longitude);
-            if (distance <= radiusMeters) continue;
+            if (distance <= resolvedRadiusMeters) continue;
 
             await notifications.AddAsync(new Notification
             {
@@ -153,8 +147,8 @@ public sealed class LocationRuleEvaluatorJob : BackgroundService
                 EmployeeId = employeeId,
                 Type = NotificationType.OutsideWorkLocationAlert,
                 Title = "Outside approved work location",
-                Message = $"A location sample was {distance:F0}m from your approved {workArea} location.",
-                MetadataJson = $$"""{"distanceMeters":{{distance:F0}},"workArea":"{{workArea}}"}""",
+                Message = $"A location sample was {distance:F0}m from your approved {confirmation.LocationType} location.",
+                MetadataJson = $$"""{"distanceMeters":{{distance:F0}},"locationType":"{{confirmation.LocationType}}"}""",
                 CreatedAt = now
             }, ct);
             created++;
@@ -167,25 +161,4 @@ public sealed class LocationRuleEvaluatorJob : BackgroundService
             "Location rule evaluation finished. EmployeesScanned={Count} NotificationsCreated={Created}",
             keys.Count, created);
     }
-
-    private static async Task<(double, double)?> ResolveRegisteredWorkLocationAsync(
-        Guid tenantId, Guid employeeId, IEmployeeWorkLocationRepository workLocations, CancellationToken ct)
-    {
-        var registered = await workLocations.GetByEmployeeIdAsync(tenantId, employeeId, ct);
-        return registered is null ? null : (registered.Latitude, registered.Longitude);
-    }
-
-    // TODO(Task 10): ExpectedWorkAreaResolver (Task 5) now returns the WorkMode's actual
-    // Id/Name instead of a fixed onsite/remote/either/field classification - see the plan's
-    // Global Constraints ("no category/taxonomy field is ever re-derived"). This minimal
-    // compile-fix re-derives the old classification so pre-Task-5 behavior is unchanged.
-    private static string? ClassifyWorkArea(string? workModeName)
-        => workModeName?.Trim().ToLowerInvariant() switch
-        {
-            "onsite" or "on_site" => "onsite",
-            "remote" => "remote",
-            "hybrid" => "either",
-            "field" => "field",
-            _ => null
-        };
 }
