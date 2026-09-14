@@ -331,7 +331,7 @@ public class TasksController : ControllerBase
     {
         var result = await _mediator.Send(new EditTaskCommand(
             id, request.Title, request.Description, request.Priority, request.DueDate,
-            request.EstimatedHours, request.StoryPoints, request.ProgressPercent, request.Reason), ct);
+            request.EstimatedHours, request.StoryPoints, request.ProgressPercent, request.Reason, request.AttachmentFileIds), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())

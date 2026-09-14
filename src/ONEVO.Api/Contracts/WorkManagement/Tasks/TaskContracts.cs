@@ -10,7 +10,8 @@ public sealed record CreateTaskRequest(
 
 public sealed record EditTaskRequest(
     string Title, string? Description, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason);
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason,
+    IReadOnlyList<Guid>? AttachmentFileIds = null);
 
 public sealed record CreateTaskEditRequestRequest(
     string Title, string? Description, string Priority,
