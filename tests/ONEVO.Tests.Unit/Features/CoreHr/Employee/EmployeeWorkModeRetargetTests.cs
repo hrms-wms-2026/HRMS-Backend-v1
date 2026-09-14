@@ -16,11 +16,4 @@ public class EmployeeWorkModeRetargetTests
         employee.WorkModeId = null;
         Assert.Null(employee.WorkModeId);
     }
-
-    [Fact]
-    public void LegacyWorkModeId_StillHoldsTheOldIntValue()
-    {
-        var employee = new EmployeeEntity { LegacyWorkModeId = 2 };
-        Assert.Equal(2, employee.LegacyWorkModeId);
-    }
 }

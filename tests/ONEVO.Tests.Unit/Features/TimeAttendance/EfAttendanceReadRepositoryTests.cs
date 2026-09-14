@@ -163,7 +163,7 @@ public sealed class EfAttendanceReadRepositoryTests
                 TenantId = TenantId,
                 EmployeeId = employeeId,
                 Date = date,
-                ExpectedWorkArea = "onsite",
+                ExpectedWorkModeName = "Onsite",
                 WorkedMinutes = 0,
                 BreakMinutes = 0,
                 CreatedAt = new DateTimeOffset(2026, 8, 21, 8, 0, 0, TimeSpan.Zero),
@@ -182,14 +182,14 @@ public sealed class EfAttendanceReadRepositoryTests
             mutateDb.Entry(tracked!).State.Should().Be(EntityState.Unchanged,
                 "GetTrackedRecordAsync must not use AsNoTracking, or a later mutation could not be saved");
 
-            tracked!.ExpectedWorkArea = "remote";
+            tracked!.ExpectedWorkModeName = "Remote";
             await repository.SaveChangesAsync();
         }
 
         await using (var reloadDb = NewDbContext(options))
         {
             var reloaded = await reloadDb.AttendanceRecords.AsNoTracking().SingleAsync(x => x.Id == recordId);
-            reloaded.ExpectedWorkArea.Should().Be("remote",
+            reloaded.ExpectedWorkModeName.Should().Be("Remote",
                 "the mutation on the tracked entity must persist through the repository's own SaveChangesAsync, not a blind detached Update()");
         }
     }

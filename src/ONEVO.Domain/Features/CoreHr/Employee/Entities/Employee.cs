@@ -18,11 +18,6 @@ public class Employee : BaseEntity
     public int EmploymentTypeId { get; set; } = 1;
     public int EmploymentStatusId { get; set; } = 1;
 
-    // Old int-keyed global WorkMode lookup, retired in favor of the per-legal-entity WorkMode
-    // (see WorkModeId below). Kept under this name, not deleted, so Task 14's data migration can
-    // read the old value while mapping historical rows to the new Guid-keyed WorkMode.
-    public int LegacyWorkModeId { get; set; } = 1;
-
     public Guid? WorkModeId { get; set; }
     public DateOnly HireDate { get; set; }
     public DateOnly? ProbationEndDate { get; set; }

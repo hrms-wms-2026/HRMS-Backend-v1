@@ -110,8 +110,7 @@ public sealed class AttendanceTodayBreaksTests
         var policy = new ClockInPolicy
         {
             Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId,
-            ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1),
-            OnsiteWebEnabled = true
+            ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1)
         };
         var policies = new Mock<IClockInPolicyRepository>();
         policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
@@ -124,7 +123,6 @@ public sealed class AttendanceTodayBreaksTests
                 Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
                 Date = WorkDate, ExpectedWorkingDay = true,
                 ScheduledStart = new(9, 0), ScheduledEnd = new(17, 0),
-                ExpectedWorkArea = AttendanceRecord.WorkAreaOnsite,
                 ActualStart = UtcNow.AddHours(-3), Status = AttendanceRecord.StatusActive
             });
         attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))

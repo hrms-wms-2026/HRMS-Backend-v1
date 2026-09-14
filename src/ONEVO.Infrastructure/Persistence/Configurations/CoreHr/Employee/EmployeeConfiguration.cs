@@ -19,7 +19,6 @@ public class EmployeeConfiguration : IEntityTypeConfiguration<EmployeeEntity>
         builder.Property(e => e.Gender).HasMaxLength(10);
         builder.Property(e => e.EmploymentTypeId).IsRequired();
         builder.Property(e => e.EmploymentStatusId).IsRequired();
-        builder.Property(e => e.LegacyWorkModeId).IsRequired();
         builder.HasOne<WorkModeEntity>()
             .WithMany()
             .HasForeignKey(e => e.WorkModeId)

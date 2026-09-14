@@ -304,7 +304,7 @@ public sealed class WorkAreaChangeRequestWorkflowTests
         var existingRecord = new AttendanceRecord
         {
             Id = Guid.NewGuid(), TenantId = fixture.TenantId, EmployeeId = request.EmployeeId,
-            Date = request.Date, ExpectedWorkArea = "onsite",
+            Date = request.Date,
             ActualStart = fixture.Now.AddHours(-1), Status = AttendanceRecord.StatusActive
         };
         fixture.Attendance.Setup(x => x.GetTrackedRecordAsync(
@@ -329,10 +329,11 @@ public sealed class WorkAreaChangeRequestWorkflowTests
         var request = fixture.PendingRequest();
         fixture.Requests.Setup(x => x.GetTrackedByIdAsync(fixture.TenantId, request.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(request);
+        var onsiteWorkModeId = Guid.NewGuid();
         var existingRecord = new AttendanceRecord
         {
             Id = Guid.NewGuid(), TenantId = fixture.TenantId, EmployeeId = request.EmployeeId,
-            Date = request.Date, ExpectedWorkArea = "onsite"
+            Date = request.Date, ExpectedWorkModeId = onsiteWorkModeId, ExpectedWorkModeName = "Onsite"
         };
         fixture.Attendance.Setup(x => x.GetTrackedRecordAsync(
                 fixture.TenantId, request.EmployeeId, request.Date, It.IsAny<CancellationToken>()))
@@ -343,7 +344,8 @@ public sealed class WorkAreaChangeRequestWorkflowTests
 
         result.IsSuccess.Should().BeTrue();
         request.Status.Should().Be(WorkAreaChangeRequest.StatusRejected);
-        existingRecord.ExpectedWorkArea.Should().Be("onsite");
+        existingRecord.ExpectedWorkModeId.Should().Be(onsiteWorkModeId);
+        existingRecord.ExpectedWorkModeName.Should().Be("Onsite");
         fixture.Attendance.Verify(x => x.GetTrackedRecordAsync(
             It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
     }

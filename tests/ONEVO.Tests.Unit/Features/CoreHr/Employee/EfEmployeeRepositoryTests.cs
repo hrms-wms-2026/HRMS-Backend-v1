@@ -719,7 +719,6 @@ public sealed class EfEmployeeRepositoryTests
         db.Employees.Add(employee);
         db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         db.LegalEntities.Add(WorkingLegalEntityWithOffice(tenantId, legalEntityId, officeLat: 6.9271, officeLon: 79.8612));
-        db.ClockInPolicies.Add(NewFullCompanyClockInPolicy(tenantId, legalEntityId, allowedRadiusMeters: 200));
         db.AttendanceRecords.Add(new AttendanceRecord
         {
             Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
@@ -735,14 +734,16 @@ public sealed class EfEmployeeRepositoryTests
         db.ChangeTracker.Clear();
 
         var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.GetAllowedRadiusMetersAsync(
+                tenantId, employee.UserId, legalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(200);
         toggles.Setup(t => t.IsEnabledAsync(
                 tenantId, employee.UserId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         var expectedWorkAreas = OnsiteExpectedWorkAreaResolver();
         var repo = new EfEmployeeRepository(
             db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
-            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
-            clockInPolicies: new EfClockInPolicyRepository(db));
+            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object);
 
         var (items, _) = await repo.ListVisibleAsync(
             tenantId, EmployeeVisibilityScope.Unrestricted(),
@@ -767,7 +768,6 @@ public sealed class EfEmployeeRepositoryTests
         db.Employees.Add(employee);
         db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         db.LegalEntities.Add(WorkingLegalEntityWithOffice(tenantId, legalEntityId, officeLat: 6.9271, officeLon: 79.8612));
-        db.ClockInPolicies.Add(NewFullCompanyClockInPolicy(tenantId, legalEntityId, allowedRadiusMeters: 200));
         db.AttendanceRecords.Add(new AttendanceRecord
         {
             Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
@@ -778,14 +778,16 @@ public sealed class EfEmployeeRepositoryTests
         db.ChangeTracker.Clear();
 
         var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.GetAllowedRadiusMetersAsync(
+                tenantId, employee.UserId, legalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(200);
         toggles.Setup(t => t.IsEnabledAsync(
                 tenantId, employee.UserId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         var expectedWorkAreas = OnsiteExpectedWorkAreaResolver();
         var repo = new EfEmployeeRepository(
             db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
-            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
-            clockInPolicies: new EfClockInPolicyRepository(db));
+            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object);
 
         var (items, _) = await repo.ListVisibleAsync(
             tenantId, EmployeeVisibilityScope.Unrestricted(),
@@ -809,7 +811,6 @@ public sealed class EfEmployeeRepositoryTests
         db.Employees.Add(employee);
         db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         db.LegalEntities.Add(WorkingLegalEntityWithOffice(tenantId, legalEntityId, officeLat: 6.9271, officeLon: 79.8612));
-        db.ClockInPolicies.Add(NewFullCompanyClockInPolicy(tenantId, legalEntityId, allowedRadiusMeters: 500));
         db.AttendanceRecords.Add(new AttendanceRecord
         {
             Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
@@ -825,6 +826,9 @@ public sealed class EfEmployeeRepositoryTests
         db.ChangeTracker.Clear();
 
         var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.GetAllowedRadiusMetersAsync(
+                tenantId, employee.UserId, legalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(500);
         toggles.Setup(t => t.IsEnabledAsync(
                 tenantId, employee.UserId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -834,8 +838,7 @@ public sealed class EfEmployeeRepositoryTests
         var expectedWorkAreas = OnsiteExpectedWorkAreaResolver();
         var repo = new EfEmployeeRepository(
             db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
-            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
-            clockInPolicies: new EfClockInPolicyRepository(db));
+            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object);
 
         var (items, _) = await repo.ListVisibleAsync(
             tenantId, EmployeeVisibilityScope.Unrestricted(),
@@ -859,7 +862,6 @@ public sealed class EfEmployeeRepositoryTests
         db.Employees.Add(employee);
         db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         db.LegalEntities.Add(WorkingLegalEntityWithOffice(tenantId, legalEntityId, officeLat: 6.9271, officeLon: 79.8612));
-        db.ClockInPolicies.Add(NewFullCompanyClockInPolicy(tenantId, legalEntityId, allowedRadiusMeters: 200));
         db.AttendanceRecords.Add(new AttendanceRecord
         {
             Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
@@ -884,8 +886,7 @@ public sealed class EfEmployeeRepositoryTests
             .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(new ExpectedWorkAreaResolution(Guid.NewGuid(), "remote", "Asia/Colombo", "active_employee_work_mode")));
         var repo = new EfEmployeeRepository(
             db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
-            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
-            clockInPolicies: new EfClockInPolicyRepository(db));
+            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object);
 
         var (items, _) = await repo.ListVisibleAsync(
             tenantId, EmployeeVisibilityScope.Unrestricted(),
@@ -910,7 +911,6 @@ public sealed class EfEmployeeRepositoryTests
         db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         // No office lat/lng configured on this legal entity.
         db.LegalEntities.Add(WorkingLegalEntity(tenantId, legalEntityId));
-        db.ClockInPolicies.Add(NewFullCompanyClockInPolicy(tenantId, legalEntityId, allowedRadiusMeters: 200));
         db.AttendanceRecords.Add(new AttendanceRecord
         {
             Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
@@ -926,8 +926,7 @@ public sealed class EfEmployeeRepositoryTests
         var expectedWorkAreas = OnsiteExpectedWorkAreaResolver();
         var repo = new EfEmployeeRepository(
             db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
-            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
-            clockInPolicies: new EfClockInPolicyRepository(db));
+            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object);
 
         var (items, _) = await repo.ListVisibleAsync(
             tenantId, EmployeeVisibilityScope.Unrestricted(),
@@ -954,7 +953,6 @@ public sealed class EfEmployeeRepositoryTests
         db.Employees.Add(employee);
         db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         db.LegalEntities.Add(WorkingLegalEntityWithOffice(tenantId, legalEntityId, officeLat: 6.9271, officeLon: 79.8612));
-        db.ClockInPolicies.Add(NewFullCompanyClockInPolicy(tenantId, legalEntityId, allowedRadiusMeters: 200));
         db.AttendanceRecords.Add(new AttendanceRecord
         {
             Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employee.Id,
@@ -964,6 +962,9 @@ public sealed class EfEmployeeRepositoryTests
         db.ChangeTracker.Clear();
 
         var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.GetAllowedRadiusMetersAsync(
+                tenantId, employee.UserId, legalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(200);
         toggles.Setup(t => t.IsEnabledAsync(
                 tenantId, employee.UserId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
@@ -973,8 +974,7 @@ public sealed class EfEmployeeRepositoryTests
         var expectedWorkAreas = OnsiteExpectedWorkAreaResolver();
         var repo = new EfEmployeeRepository(
             db, toggles: toggles.Object, notifications: new EfNotificationRepository(db),
-            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object,
-            clockInPolicies: new EfClockInPolicyRepository(db));
+            checkIns: new EfCheckInRepository(db), expectedWorkAreas: expectedWorkAreas.Object);
 
         var (items, _) = await repo.ListVisibleAsync(
             tenantId, EmployeeVisibilityScope.Unrestricted(),
@@ -1003,23 +1003,6 @@ public sealed class EfEmployeeRepositoryTests
         entity.OfficeLongitude = officeLon;
         return entity;
     }
-
-    /// <summary>The radius for the on-site/remote location checks now comes from ClockInPolicy
-    /// (shared with the "Allowed distance" field on the Clock-in Policy screen), not LegalEntity.</summary>
-    private static ONEVO.Domain.Features.TimeAttendance.Entities.ClockInPolicy NewFullCompanyClockInPolicy(
-        Guid tenantId, Guid legalEntityId, int allowedRadiusMeters) => new()
-    {
-        Id = Guid.NewGuid(),
-        TenantId = tenantId,
-        LegalEntityId = legalEntityId,
-        Name = "Default",
-        ScopeType = ONEVO.Domain.Features.TimeAttendance.Entities.ClockInPolicy.ScopeFullCompany,
-        EffectiveFrom = new DateOnly(2020, 1, 1),
-        AllowedRadiusMeters = allowedRadiusMeters,
-        IsActive = true,
-        CreatedAt = DateTimeOffset.UtcNow,
-        UpdatedAt = DateTimeOffset.UtcNow,
-    };
 
     private static LegalEntity WorkingLegalEntity(Guid tenantId, Guid legalEntityId) => new()
     {

@@ -123,7 +123,7 @@ public class TrayClockInCommandHandlerTests
         Guid.NewGuid(),
         "Remote",
         "active_employee_work_mode",
-        new ClockInPolicy { Id = Guid.NewGuid(), RemoteTrayEnabled = true },
+        new ClockInPolicy { Id = Guid.NewGuid() },
         "configured",
         new AllowedClockInMethods(false, true, false, false, false, null),
         new AttendanceLocalDayWindow(UtcNow.AddHours(-8), UtcNow.AddHours(16)));

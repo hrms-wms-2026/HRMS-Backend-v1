@@ -84,34 +84,6 @@ public class CreateClockInPolicyCommandHandler
             Name = request.Name.Trim(),
             EffectiveFrom = request.EffectiveFrom,
             EffectiveTo = request.EffectiveTo,
-            // TODO(Task 14): AttendanceTodayStateService.ResolveAllowedMethods now reads
-            // work-area/location config from per-WorkMode rows and Monitoring config (Tasks
-            // 9-10 landed), so ClockInPolicy's flattened per-area flags are entirely unread in
-            // production. Hardcoded here only because the entity/columns themselves are still
-            // held pending Task 14's remap+drop of every legacy column; once that lands, delete
-            // this block along with the entity properties and EF configuration (Task 7 Step 3's
-            // original deferral).
-            LocationVerificationRequired = false,
-            AllowedRadiusMeters = null,
-            OnsiteBiometricEnabled = true,
-            OnsiteWebEnabled = true,
-            OnsiteTrayEnabled = true,
-            OnsitePhotoRequired = false,
-            RemoteBiometricEnabled = true,
-            RemoteWebEnabled = true,
-            RemoteTrayEnabled = true,
-            RemotePhotoRequired = false,
-            RemoteLocationCheckRequired = false,
-            EitherBiometricEnabled = true,
-            EitherWebEnabled = true,
-            EitherTrayEnabled = true,
-            EitherPhotoRequired = false,
-            EitherLocationCheckRequired = false,
-            EitherSourceRule = ClockInPolicy.HybridSourceEmployeeChoice,
-            FieldBiometricEnabled = true,
-            FieldWebEnabled = true,
-            FieldTrayEnabled = true,
-            FieldPhotoRequirement = ClockInPolicy.FieldPhotoOptional,
             CorrectionRequiresApproval = request.CorrectionRequiresApproval,
             NotificationRecipientResolver = string.IsNullOrWhiteSpace(request.NotificationRecipientResolver)
                 ? ClockInPolicy.NotificationManagementCoverageOwner

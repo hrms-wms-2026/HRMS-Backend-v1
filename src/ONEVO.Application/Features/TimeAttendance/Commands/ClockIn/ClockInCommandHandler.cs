@@ -129,10 +129,6 @@ public sealed class ClockInCommandHandler(
         record.RequiredWorkMinutes = context.Schedule.RequiredWorkMinutes;
         record.ExpectedWorkModeId = context.ExpectedWorkModeId;
         record.ExpectedWorkModeName = context.ExpectedWorkModeName;
-        // No production code reads this legacy column any more (Today and the history view both
-        // read ExpectedWorkModeName/Id directly) - kept populated only so Task 14's backfill has
-        // a value to migrate from for rows written before that task drops the column.
-        record.ExpectedWorkArea = context.ExpectedWorkModeName?.ToLowerInvariant();
         record.ScheduleTimezone = context.Timezone;
         record.IsHoliday = false;
         record.HolidayName = null;

@@ -738,7 +738,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
         {
             var record = await verifyDb.AttendanceRecords.AsNoTracking()
                 .SingleAsync(x => x.TenantId == _fixture.TenantAId && x.EmployeeId == _fixture.RequesterAEmployeeId && x.Date == _fixture.WorkDate);
-            record.ExpectedWorkArea.Should().Be("remote");
+            record.ExpectedWorkModeName.Should().Be("Remote");
         }
 
         // Step 8: Today after clock-in still reflects the persisted snapshot.

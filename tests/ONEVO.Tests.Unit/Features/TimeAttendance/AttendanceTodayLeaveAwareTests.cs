@@ -107,8 +107,7 @@ public sealed class AttendanceTodayLeaveAwareTests
             .ReturnsAsync([new ClockInPolicy
             {
                 Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId,
-                ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1),
-                RemoteWebEnabled = true
+                ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1)
             }]);
         var attendance = new Mock<IAttendanceReadRepository>();
         attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))

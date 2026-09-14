@@ -9,7 +9,7 @@ public sealed class AttendanceRecordConfiguration : IEntityTypeConfiguration<Att
     public void Configure(EntityTypeBuilder<AttendanceRecord> b)
     {
         b.ToTable("attendance_records"); b.HasKey(x => x.Id);
-        b.Property(x => x.WorkTimeType).HasMaxLength(20); b.Property(x => x.ExpectedWorkArea).HasMaxLength(10);
+        b.Property(x => x.WorkTimeType).HasMaxLength(20);
         b.Property(x => x.ScheduleTimezone).HasMaxLength(50); b.Property(x => x.HolidayName).HasMaxLength(100);
         b.Property(x => x.AttendanceSource).HasMaxLength(20); b.Property(x => x.Status).HasMaxLength(30).IsRequired();
         b.HasIndex(x => new { x.TenantId, x.EmployeeId, x.Date }).IsUnique();

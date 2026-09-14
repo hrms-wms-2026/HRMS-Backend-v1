@@ -108,7 +108,8 @@ public sealed class BreakCommandHandlerTests
         var result = await fixture.StartBreak.Handle(new StartBreakCommand(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(AttendanceRecord.WorkAreaRemote, record.ExpectedWorkArea);
+        Assert.Equal(RemoteWorkModeId, record.ExpectedWorkModeId);
+        Assert.Equal("Remote", record.ExpectedWorkModeName);
     }
 
     [Fact]
@@ -305,7 +306,8 @@ public sealed class BreakCommandHandlerTests
         var result = await fixture.EndBreak.Handle(new EndBreakCommand(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(AttendanceRecord.WorkAreaRemote, record.ExpectedWorkArea);
+        Assert.Equal(RemoteWorkModeId, record.ExpectedWorkModeId);
+        Assert.Equal("Remote", record.ExpectedWorkModeName);
     }
 
     [Fact]
@@ -413,7 +415,8 @@ public sealed class BreakCommandHandlerTests
             EmployeeId = EmployeeId,
             Date = WorkDate,
             ActualStart = UtcNow.AddHours(-8),
-            ExpectedWorkArea = AttendanceRecord.WorkAreaRemote,
+            ExpectedWorkModeId = RemoteWorkModeId,
+            ExpectedWorkModeName = "Remote",
             Status = AttendanceRecord.StatusActive
         };
 
@@ -445,7 +448,7 @@ public sealed class BreakCommandHandlerTests
             expectedWorkModeId ?? RemoteWorkModeId,
             expectedWorkModeName,
             "active_employee_work_mode",
-            new ClockInPolicy { Id = Guid.NewGuid(), RemoteWebEnabled = true },
+            new ClockInPolicy { Id = Guid.NewGuid() },
             "configured",
             new AllowedClockInMethods(true, false, false, false, false, null),
             LocalDayWindow);

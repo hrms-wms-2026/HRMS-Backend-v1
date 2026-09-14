@@ -54,7 +54,6 @@ public sealed class ClockInOutCommandHandlerTests
         Assert.Equal(510, added.RequiredWorkMinutes);
         Assert.Equal(RemoteWorkModeId, added.ExpectedWorkModeId);
         Assert.Equal("Remote", added.ExpectedWorkModeName);
-        Assert.Equal("remote", added.ExpectedWorkArea);
         Assert.Equal("Asia/Colombo", added.ScheduleTimezone);
         Assert.Equal(UtcNow, added.ActualStart);
         Assert.Equal(840, added.LateMinutes);
@@ -173,7 +172,6 @@ public sealed class ClockInOutCommandHandlerTests
         Assert.NotNull(added);
         Assert.Equal(OnsiteWorkModeId, added!.ExpectedWorkModeId);
         Assert.Equal("Onsite", added.ExpectedWorkModeName);
-        Assert.Equal("onsite", added.ExpectedWorkArea);
     }
 
     [Fact]
@@ -212,7 +210,7 @@ public sealed class ClockInOutCommandHandlerTests
             RemoteWorkModeId,
             "Remote",
             "active_employee_work_mode",
-            new ClockInPolicy { Id = Guid.NewGuid(), RemoteWebEnabled = true },
+            new ClockInPolicy { Id = Guid.NewGuid() },
             "configured",
             new AllowedClockInMethods(true, false, false, false, false, null),
             LocalDayWindow);
@@ -322,8 +320,8 @@ public sealed class ClockInOutCommandHandlerTests
     [Fact]
     public async Task ClockOut_DoesNotRevertApprovedExpectedWorkAreaSnapshotToLivePermanentWorkMode()
     {
-        // The attendance snapshot was persisted as "remote" (an approved override) at clock-in
-        // time. Today's live context now happens to resolve to "onsite" (e.g. the override
+        // The attendance snapshot was persisted with the Remote WorkMode (an approved override) at
+        // clock-in time. Today's live context now happens to resolve to Onsite (e.g. the override
         // expired for a later date, or the fallback would differ) - Clock Out must not re-resolve
         // or overwrite the already-persisted snapshot.
         var fixture = CreateFixture(expectedWorkModeId: OnsiteWorkModeId, expectedWorkModeName: "Onsite");
@@ -334,7 +332,8 @@ public sealed class ClockInOutCommandHandlerTests
             EmployeeId = EmployeeId,
             Date = WorkDate,
             ActualStart = new DateTimeOffset(2026, 8, 21, 9, 0, 0, TimeSpan.Zero),
-            ExpectedWorkArea = AttendanceRecord.WorkAreaRemote,
+            ExpectedWorkModeId = RemoteWorkModeId,
+            ExpectedWorkModeName = "Remote",
             RequiredWorkMinutes = 480,
             Status = AttendanceRecord.StatusActive
         };
@@ -345,7 +344,8 @@ public sealed class ClockInOutCommandHandlerTests
         var result = await fixture.ClockOut.Handle(new ClockOutCommand(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(AttendanceRecord.WorkAreaRemote, record.ExpectedWorkArea);
+        Assert.Equal(RemoteWorkModeId, record.ExpectedWorkModeId);
+        Assert.Equal("Remote", record.ExpectedWorkModeName);
     }
 
     [Fact]
@@ -549,7 +549,7 @@ public sealed class ClockInOutCommandHandlerTests
             expectedWorkModeId ?? RemoteWorkModeId,
             expectedWorkModeName,
             expectedWorkAreaSource,
-            new ClockInPolicy { Id = Guid.NewGuid(), RemoteWebEnabled = true },
+            new ClockInPolicy { Id = Guid.NewGuid() },
             policyStatus,
             allowedMethods ?? new AllowedClockInMethods(true, false, false, false, false, null),
             LocalDayWindow);
