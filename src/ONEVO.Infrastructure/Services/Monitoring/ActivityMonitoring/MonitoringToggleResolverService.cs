@@ -27,15 +27,20 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
     }
 
     /// <summary>
-    /// Resolves "the employee" for a capability/threshold lookup. Every caller (all Monitoring
-    /// command/query handlers, verified by grep) passes a User.Id sourced from the tray device
-    /// identity, not a real Employee.Id - a user may own more than one Employee row for a
-    /// multi-company user, so this defers to the same deterministic "default employee for this
-    /// user" resolution TenantDatabaseTicketStore uses to seed a session's active company
-    /// (most-recent active PrimaryEmployment assignment), instead of picking an arbitrary row.
-    /// Deliberately does NOT also try matching by Employee.Id: doing so would risk resolving the
-    /// wrong person if a User.Id ever collided with an unrelated Employee.Id (both are Guids in
-    /// the same tenant's id space), for a case that has no real caller today.
+    /// Resolves "the employee" for a capability/threshold lookup. Every parameter named `userId`
+    /// (or `employeeId` at call sites that still use that misleading name - see
+    /// AttendanceTodayStateService/LocationRuleEvaluatorJob's own comments for two that
+    /// originally got this wrong) must be a real User.Id, not an Employee.Id - a user may own
+    /// more than one Employee row for a multi-company user, so this defers to the same
+    /// deterministic "default employee for this user" resolution TenantDatabaseTicketStore uses
+    /// to seed a session's active company (most-recent active PrimaryEmployment assignment),
+    /// instead of picking an arbitrary row. Deliberately does NOT also try matching by
+    /// Employee.Id: doing so would risk resolving the wrong person if a User.Id ever collided
+    /// with an unrelated Employee.Id (both are Guids in the same tenant's id space). A caller
+    /// holding a real Employee.Id and a legal entity must resolve the employee's own UserId
+    /// first and pass the three-arg (tenantId, userId, legalEntityId) overload - the two-arg
+    /// overload's null-legal-entity fallback only resolves an unambiguous single active employee
+    /// for that user, which fails for any multi-company user.
     /// </summary>
     private async Task<Employee?> ResolveEmployeeAsync(
         Guid tenantId, Guid userId, Guid? legalEntityId, CancellationToken ct)

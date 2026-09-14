@@ -84,9 +84,11 @@ public class UpdateClockInPolicyCommandHandler
         policy.Name = request.Name.Trim();
         policy.EffectiveFrom = request.EffectiveFrom;
         policy.EffectiveTo = request.EffectiveTo;
-        // TODO(Task 10): work-area/location configuration moves to per-WorkMode rows and
-        // Monitoring config (Tasks 8-9); the update command no longer carries these fields, so
-        // the policy's existing values are left untouched here until then.
+        // TODO(Task 14): work-area/location config is read from per-WorkMode rows and
+        // Monitoring config now (Tasks 9-10 landed), and the update command no longer carries
+        // these fields, so the policy's existing values are left untouched. Remove along with
+        // the entity properties and EF configuration once Task 14 drops the legacy columns
+        // (Task 7 Step 3's original deferral).
         policy.CorrectionRequiresApproval = request.CorrectionRequiresApproval;
         policy.NotificationRecipientResolver = request.NotificationRecipientResolver.Trim();
         policy.IsActive = request.IsActive;

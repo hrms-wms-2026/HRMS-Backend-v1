@@ -84,10 +84,13 @@ public class CreateClockInPolicyCommandHandler
             Name = request.Name.Trim(),
             EffectiveFrom = request.EffectiveFrom,
             EffectiveTo = request.EffectiveTo,
-            // TODO(Task 10): work-area/location configuration moves to per-WorkMode rows and
-            // Monitoring config (Tasks 8-9). Until AttendanceTodayStateService.ResolveAllowedMethods
-            // reads from there, hardcode "everything enabled, nothing required" so newly created
-            // policies don't silently disable clock-in for every employee.
+            // TODO(Task 14): AttendanceTodayStateService.ResolveAllowedMethods now reads
+            // work-area/location config from per-WorkMode rows and Monitoring config (Tasks
+            // 9-10 landed), so ClockInPolicy's flattened per-area flags are entirely unread in
+            // production. Hardcoded here only because the entity/columns themselves are still
+            // held pending Task 14's remap+drop of every legacy column; once that lands, delete
+            // this block along with the entity properties and EF configuration (Task 7 Step 3's
+            // original deferral).
             LocationVerificationRequired = false,
             AllowedRadiusMeters = null,
             OnsiteBiometricEnabled = true,
