@@ -88,7 +88,8 @@ public class MonitoringSettingsController : ControllerBase
                 request.IdentityVerification,
                 request.Biometric,
                 request.IdleThresholdMinutes,
-                request.OverrideReason),
+                request.OverrideReason,
+                request.AllowedRadiusMeters),
             ct);
 
         return result.IsSuccess
@@ -126,7 +127,8 @@ public class MonitoringSettingsController : ControllerBase
                 request.WorkLocationVerification,
                 request.IdentityVerification,
                 request.Biometric,
-                request.IdleThresholdMinutes),
+                request.IdleThresholdMinutes,
+                request.AllowedRadiusMeters),
             ct);
 
         return result.IsSuccess

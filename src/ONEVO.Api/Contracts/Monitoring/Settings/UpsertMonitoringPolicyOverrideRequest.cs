@@ -13,4 +13,5 @@ public sealed record UpsertMonitoringPolicyOverrideRequest(
     bool? IdentityVerification,
     bool? Biometric,
     int? IdleThresholdMinutes,
-    string? OverrideReason);
+    string? OverrideReason,
+    int? AllowedRadiusMeters);
