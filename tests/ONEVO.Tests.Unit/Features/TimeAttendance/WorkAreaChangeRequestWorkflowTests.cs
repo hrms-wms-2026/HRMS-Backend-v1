@@ -29,13 +29,15 @@ public sealed class WorkAreaChangeRequestWorkflowTests
         var fixture = new Fixture();
 
         var result = await fixture.Workflow.PreviewAsync(
-            new PreviewWorkAreaChangeRequestCommand(fixture.Date, " REMOTE ", "  Appointment  "),
+            new PreviewWorkAreaChangeRequestCommand(fixture.Date, fixture.RequestedWorkModeId, "  Appointment  "),
             CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value!.RequestedWorkArea.Should().Be("remote");
+        result.Value!.RequestedWorkModeId.Should().Be(fixture.RequestedWorkModeId);
+        result.Value.RequestedWorkModeName.Should().Be("Remote");
         result.Value.Reason.Should().Be("Appointment");
-        result.Value.CurrentExpectedWorkArea.Should().Be("onsite");
+        result.Value.CurrentWorkModeId.Should().Be(fixture.CurrentWorkModeId);
+        result.Value.CurrentWorkModeName.Should().Be("onsite");
         result.Value.Timezone.Should().Be("UTC");
         result.Value.Receiver.Should().NotBeNull();
         fixture.Requests.Verify(x => x.AddAsync(It.IsAny<WorkAreaChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -54,7 +56,7 @@ public sealed class WorkAreaChangeRequestWorkflowTests
         var fixture = new Fixture();
 
         var result = await fixture.Workflow.PreviewAsync(
-            new PreviewWorkAreaChangeRequestCommand(fixture.Date.AddDays(offset), "remote", "Reason"),
+            new PreviewWorkAreaChangeRequestCommand(fixture.Date.AddDays(offset), fixture.RequestedWorkModeId, "Reason"),
             CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
@@ -67,7 +69,7 @@ public sealed class WorkAreaChangeRequestWorkflowTests
         var fixture = new Fixture();
 
         var result = await fixture.Workflow.CreateAsync(
-            new CreateWorkAreaChangeRequestCommand(fixture.Date, " REMOTE ", "  Appointment  "),
+            new CreateWorkAreaChangeRequestCommand(fixture.Date, fixture.RequestedWorkModeId, "  Appointment  "),
             CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -76,8 +78,10 @@ public sealed class WorkAreaChangeRequestWorkflowTests
         fixture.AddedRequest.TenantId.Should().Be(fixture.TenantId);
         fixture.AddedRequest.EmployeeId.Should().Be(fixture.EmployeeId);
         fixture.AddedRequest.LegalEntityId.Should().Be(fixture.LegalEntityId);
-        fixture.AddedRequest.CurrentExpectedWorkArea.Should().Be("onsite");
-        fixture.AddedRequest.RequestedWorkArea.Should().Be("remote");
+        fixture.AddedRequest.CurrentWorkModeId.Should().Be(fixture.CurrentWorkModeId);
+        fixture.AddedRequest.CurrentWorkModeName.Should().Be("onsite");
+        fixture.AddedRequest.RequestedWorkModeId.Should().Be(fixture.RequestedWorkModeId);
+        fixture.AddedRequest.RequestedWorkModeName.Should().Be("Remote");
         fixture.AddedRequest.Reason.Should().Be("Appointment");
         fixture.AddedRequest.RequestedAt.Should().Be(fixture.Now);
         fixture.Notifications.Should().ContainSingle(x =>
@@ -99,7 +103,7 @@ public sealed class WorkAreaChangeRequestWorkflowTests
             .ReturnsAsync(true);
 
         var result = await fixture.Workflow.CreateAsync(
-            new CreateWorkAreaChangeRequestCommand(fixture.Date, "remote", "Reason"),
+            new CreateWorkAreaChangeRequestCommand(fixture.Date, fixture.RequestedWorkModeId, "Reason"),
             CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
@@ -117,13 +121,96 @@ public sealed class WorkAreaChangeRequestWorkflowTests
             .ReturnsAsync(Result<EmployeeApprovalRoute>.UnprocessableEntity("No approver."));
 
         var result = await fixture.Workflow.CreateAsync(
-            new CreateWorkAreaChangeRequestCommand(fixture.Date, "remote", "Reason"),
+            new CreateWorkAreaChangeRequestCommand(fixture.Date, fixture.RequestedWorkModeId, "Reason"),
             CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(409);
         fixture.AddedRequest.Should().BeNull();
         fixture.Notifications.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateAsync_RequestedWorkModeFromDifferentLegalEntity_ReturnsConflict()
+    {
+        var fixture = new Fixture();
+        var otherLegalEntityWorkModeId = Guid.NewGuid();
+        fixture.WorkModes.Setup(x => x.GetByIdAsync(fixture.TenantId, otherLegalEntityWorkModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode
+            {
+                Id = otherLegalEntityWorkModeId, TenantId = fixture.TenantId, LegalEntityId = Guid.NewGuid(),
+                Name = "Onsite (Other Co)", IsActive = true
+            });
+
+        var result = await fixture.Workflow.CreateAsync(
+            new CreateWorkAreaChangeRequestCommand(fixture.Date, otherLegalEntityWorkModeId, "Reason"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().BeOneOf(409, 422);
+        fixture.AddedRequest.Should().BeNull();
+        fixture.Notifications.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateAsync_RequestedWorkModeSameAsCurrentlyResolved_ReturnsConflict_AlreadyPlanned()
+    {
+        var fixture = new Fixture();
+        fixture.WorkModes.Setup(x => x.GetByIdAsync(fixture.TenantId, fixture.CurrentWorkModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode
+            {
+                Id = fixture.CurrentWorkModeId, TenantId = fixture.TenantId, LegalEntityId = fixture.LegalEntityId,
+                Name = "Onsite", IsActive = true
+            });
+
+        var result = await fixture.Workflow.CreateAsync(
+            new CreateWorkAreaChangeRequestCommand(fixture.Date, fixture.CurrentWorkModeId, "Reason"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(409);
+        result.Error.Should().Contain("already planned");
+        fixture.AddedRequest.Should().BeNull();
+        fixture.Notifications.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateAsync_RequestedWorkModeInactive_ReturnsConflict()
+    {
+        var fixture = new Fixture();
+        var inactiveWorkModeId = Guid.NewGuid();
+        fixture.WorkModes.Setup(x => x.GetByIdAsync(fixture.TenantId, inactiveWorkModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode
+            {
+                Id = inactiveWorkModeId, TenantId = fixture.TenantId, LegalEntityId = fixture.LegalEntityId,
+                Name = "Retired Mode", IsActive = false
+            });
+
+        var result = await fixture.Workflow.CreateAsync(
+            new CreateWorkAreaChangeRequestCommand(fixture.Date, inactiveWorkModeId, "Reason"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(409);
+        fixture.AddedRequest.Should().BeNull();
+        fixture.Notifications.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateAsync_ValidRequest_PersistsWorkModeIdsAndNamesNotStrings()
+    {
+        var fixture = new Fixture();
+
+        var result = await fixture.Workflow.CreateAsync(
+            new CreateWorkAreaChangeRequestCommand(fixture.Date, fixture.RequestedWorkModeId, "Reason"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        fixture.AddedRequest.Should().NotBeNull();
+        fixture.AddedRequest!.CurrentWorkModeId.Should().Be(fixture.CurrentWorkModeId);
+        fixture.AddedRequest.CurrentWorkModeName.Should().Be("onsite");
+        fixture.AddedRequest.RequestedWorkModeId.Should().Be(fixture.RequestedWorkModeId);
+        fixture.AddedRequest.RequestedWorkModeName.Should().Be("Remote");
     }
 
     [Fact]
@@ -228,7 +315,8 @@ public sealed class WorkAreaChangeRequestWorkflowTests
             new ApproveWorkAreaChangeRequestCommand(request.Id, null), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        existingRecord.ExpectedWorkArea.Should().Be(request.RequestedWorkArea);
+        existingRecord.ExpectedWorkModeId.Should().Be(request.RequestedWorkModeId);
+        existingRecord.ExpectedWorkModeName.Should().Be(request.RequestedWorkModeName);
         existingRecord.Status.Should().Be(AttendanceRecord.StatusActive);
         existingRecord.ActualStart.Should().Be(fixture.Now.AddHours(-1));
         fixture.Requests.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -381,6 +469,8 @@ public sealed class WorkAreaChangeRequestWorkflowTests
         public DateOnly Date { get; } = new(2026, 8, 25);
         public DateTimeOffset Now { get; } = new(2026, 8, 25, 8, 0, 0, TimeSpan.Zero);
         public Guid OriginalWorkModeId { get; } = Guid.NewGuid();
+        public Guid CurrentWorkModeId { get; } = Guid.NewGuid();
+        public Guid RequestedWorkModeId { get; } = Guid.NewGuid();
         public Employee Employee { get; }
         public Mock<ICurrentUser> CurrentUser { get; } = new();
         public Mock<IDateTimeProvider> Clock { get; } = new();
@@ -392,6 +482,7 @@ public sealed class WorkAreaChangeRequestWorkflowTests
         public Mock<IExpectedWorkAreaResolver> ExpectedAreas { get; } = new();
         public Mock<IEmployeeAuthorityResolver> Authority { get; } = new();
         public Mock<IPositionRepository> Positions { get; } = new();
+        public Mock<IWorkModeRepository> WorkModes { get; } = new();
         public Mock<INotificationDispatcher> Dispatcher { get; } = new();
         public FakeUnitOfWork UnitOfWork { get; } = new();
         public WorkAreaChangeRequest? AddedRequest { get; private set; }
@@ -445,7 +536,13 @@ public sealed class WorkAreaChangeRequestWorkflowTests
                 .ReturnsAsync(new Position { Id = PositionId, TenantId = TenantId, LegalEntityId = LegalEntityId, Name = "Manager" });
             ExpectedAreas.Setup(x => x.ResolveAsync(
                     It.IsAny<Employee>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(new(Guid.NewGuid(), "onsite", "UTC", "active_employee_work_mode")));
+                .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(new(CurrentWorkModeId, "onsite", "UTC", "active_employee_work_mode")));
+            WorkModes.Setup(x => x.GetByIdAsync(TenantId, RequestedWorkModeId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new WorkMode
+                {
+                    Id = RequestedWorkModeId, TenantId = TenantId, LegalEntityId = LegalEntityId,
+                    Name = "Remote", IsActive = true
+                });
             Authority.Setup(x => x.ResolveApproverAsync(
                     It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Result<EmployeeApprovalRoute>.Success(new(
@@ -467,13 +564,14 @@ public sealed class WorkAreaChangeRequestWorkflowTests
             Workflow = new WorkAreaChangeRequestWorkflow(
                 CurrentUser.Object, Clock.Object, Employees.Object, Sessions.Object, LegalEntities.Object,
                 Requests.Object, Attendance.Object, ExpectedAreas.Object, Authority.Object,
-                Positions.Object, Dispatcher.Object, UnitOfWork);
+                Positions.Object, WorkModes.Object, Dispatcher.Object, UnitOfWork);
         }
 
         public WorkAreaChangeRequest PendingRequest() => new()
         {
             Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, LegalEntityId = LegalEntityId,
-            Date = Date, CurrentExpectedWorkArea = "onsite", RequestedWorkArea = "remote", Reason = "Reason",
+            Date = Date, CurrentWorkModeId = CurrentWorkModeId, CurrentWorkModeName = "onsite",
+            RequestedWorkModeId = RequestedWorkModeId, RequestedWorkModeName = "Remote", Reason = "Reason",
             Status = WorkAreaChangeRequest.StatusPending, RequestedAt = Now
         };
     }

@@ -38,6 +38,14 @@ public class AttendanceRecord : ITenantOwnedEntity
     public TimeOnly? ScheduledEnd { get; set; }
     public int? RequiredWorkMinutes { get; set; }
     public string? ExpectedWorkArea { get; set; }
+
+    // Stubbed here for Task 6 (WorkAreaChangeRequestWorkflow's approval-time attendance sync,
+    // which now carries the real WorkMode reference instead of a classified string); Task 10
+    // rewrites AttendanceTodayStateService/AttendanceRecord to read/write these instead of
+    // ExpectedWorkArea above.
+    public Guid? ExpectedWorkModeId { get; set; }
+    public string? ExpectedWorkModeName { get; set; }
+
     public string? ScheduleTimezone { get; set; }
     public bool IsHoliday { get; set; }
     public string? HolidayName { get; set; }

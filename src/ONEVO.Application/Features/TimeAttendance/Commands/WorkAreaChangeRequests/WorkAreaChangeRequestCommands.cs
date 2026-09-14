@@ -6,12 +6,12 @@ namespace ONEVO.Application.Features.TimeAttendance.Commands.WorkAreaChangeReque
 
 public sealed record PreviewWorkAreaChangeRequestCommand(
     DateOnly Date,
-    string RequestedWorkArea,
+    Guid RequestedWorkModeId,
     string Reason) : IRequest<Result<WorkAreaChangeRequestPreviewResponse>>;
 
 public sealed record CreateWorkAreaChangeRequestCommand(
     DateOnly Date,
-    string RequestedWorkArea,
+    Guid RequestedWorkModeId,
     string Reason) : IRequest<Result<WorkAreaChangeRequestResponse>>;
 
 public sealed record ApproveWorkAreaChangeRequestCommand(Guid Id, string? ReviewComment)

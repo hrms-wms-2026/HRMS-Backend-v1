@@ -63,7 +63,7 @@ public sealed class WorkAreaChangeRequestTests
     private static WorkAreaChangeRequest ApprovedRequest(string requestedWorkArea) => new()
     {
         Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, LegalEntityId = LegalEntityId,
-        Date = Date, CurrentExpectedWorkArea = "onsite", RequestedWorkArea = requestedWorkArea,
+        Date = Date, CurrentWorkModeId = DefaultWorkModeId, CurrentWorkModeName = "onsite",
         RequestedWorkModeId = Guid.NewGuid(), RequestedWorkModeName = requestedWorkArea,
         Reason = "Reason", Status = WorkAreaChangeRequest.StatusApproved
     };
@@ -296,21 +296,14 @@ public sealed class WorkAreaChangeRequestTests
         result.Value!.Timezone.Should().Be("Asia/Colombo");
     }
 
-    [Theory]
-    [InlineData("onsite", false)]
-    [InlineData("remote", false)]
-    [InlineData("hybrid", true)]
-    [InlineData("either", true)]
-    [InlineData("field", true)]
-    [InlineData("unknown", true)]
-    [InlineData("", true)]
-    public void RequestValidator_AllowsOnlyOnsiteAndRemoteTargets(string target, bool invalid)
+    [Fact]
+    public void RequestValidator_RequiresAWorkModeToBeSelected()
     {
         var validator = new CreateWorkAreaChangeRequestCommandValidator();
         var result = validator.TestValidate(new CreateWorkAreaChangeRequestCommand(
-            new DateOnly(2026, 8, 26), target, "Appointment"));
+            new DateOnly(2026, 8, 26), Guid.Empty, "Appointment"));
 
-        result.IsValid.Should().Be(!invalid);
+        result.ShouldHaveValidationErrorFor(x => x.RequestedWorkModeId);
     }
 
     [Fact]
@@ -328,7 +321,7 @@ public sealed class WorkAreaChangeRequestTests
         var validator = new CreateWorkAreaChangeRequestCommandValidator();
 
         validator.TestValidate(new CreateWorkAreaChangeRequestCommand(
-                new DateOnly(2026, 8, 26), "remote", " "))
+                new DateOnly(2026, 8, 26), Guid.NewGuid(), " "))
             .ShouldHaveValidationErrorFor(x => x.Reason);
     }
 }

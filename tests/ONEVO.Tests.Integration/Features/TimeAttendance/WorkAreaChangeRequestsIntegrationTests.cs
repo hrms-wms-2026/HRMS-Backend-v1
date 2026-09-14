@@ -53,16 +53,21 @@ public sealed class WorkAreaChangeRequestsIntegrationTestsFixture : IAsyncLifeti
             command.CommandText = """
                 INSERT INTO work_area_change_requests
                     (id, tenant_id, employee_id, legal_entity_id, date,
-                     current_expected_work_area, requested_work_area, reason, status, requested_at)
-                VALUES ($1, $2, $3, $4, CURRENT_DATE, 'onsite', 'remote', 'fixture', 'pending', now()),
-                       ($5, $6, $7, $8, CURRENT_DATE, 'onsite', 'remote', 'fixture', 'pending', now());
+                     current_work_mode_id, current_work_mode_name, requested_work_mode_id, requested_work_mode_name,
+                     reason, status, requested_at)
+                VALUES ($1, $2, $3, $4, CURRENT_DATE, $5, 'onsite', $6, 'remote', 'fixture', 'pending', now()),
+                       ($7, $8, $9, $10, CURRENT_DATE, $11, 'onsite', $12, 'remote', 'fixture', 'pending', now());
                 """;
             command.Parameters.AddWithValue(rowA);
             command.Parameters.AddWithValue(tenantA);
             command.Parameters.AddWithValue(Guid.NewGuid());
             command.Parameters.AddWithValue(Guid.NewGuid());
+            command.Parameters.AddWithValue(Guid.NewGuid());
+            command.Parameters.AddWithValue(Guid.NewGuid());
             command.Parameters.AddWithValue(rowB);
             command.Parameters.AddWithValue(tenantB);
+            command.Parameters.AddWithValue(Guid.NewGuid());
+            command.Parameters.AddWithValue(Guid.NewGuid());
             command.Parameters.AddWithValue(Guid.NewGuid());
             command.Parameters.AddWithValue(Guid.NewGuid());
             await command.ExecuteNonQueryAsync();
@@ -122,7 +127,8 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         columns.Should().Contain(new[]
         {
             "id", "tenant_id", "employee_id", "legal_entity_id", "date",
-            "current_expected_work_area", "requested_work_area", "reason", "status",
+            "current_work_mode_id", "current_work_mode_name", "requested_work_mode_id", "requested_work_mode_name",
+            "legacy_work_area_label", "reason", "status",
             "requested_at", "reviewed_by_id", "reviewed_at", "review_comment"
         });
 
@@ -132,7 +138,7 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
             WHERE conrelid = 'work_area_change_requests'::regclass
               AND contype = 'f' AND confdeltype = 'r';
             """);
-        restrictiveForeignKeys.Should().HaveCount(3);
+        restrictiveForeignKeys.Should().HaveCount(5);
 
         var indexes = await QueryStringsAsync(connection, """
             SELECT indexname
@@ -237,11 +243,14 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         insert.CommandText = """
             INSERT INTO work_area_change_requests
                 (id, tenant_id, employee_id, legal_entity_id, date,
-                 current_expected_work_area, requested_work_area, reason, status, requested_at)
-            VALUES ($1, $2, $3, $4, CURRENT_DATE, 'onsite', 'remote', 'blocked', 'pending', now());
+                 current_work_mode_id, current_work_mode_name, requested_work_mode_id, requested_work_mode_name,
+                 reason, status, requested_at)
+            VALUES ($1, $2, $3, $4, CURRENT_DATE, $5, 'onsite', $6, 'remote', 'blocked', 'pending', now());
             """;
         insert.Parameters.AddWithValue(rowB);
         insert.Parameters.AddWithValue(tenantB);
+        insert.Parameters.AddWithValue(Guid.NewGuid());
+        insert.Parameters.AddWithValue(Guid.NewGuid());
         insert.Parameters.AddWithValue(Guid.NewGuid());
         insert.Parameters.AddWithValue(Guid.NewGuid());
         var act = async () => await insert.ExecuteNonQueryAsync();
@@ -473,8 +482,9 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         command.CommandText = """
             INSERT INTO work_area_change_requests
                 (id, tenant_id, employee_id, legal_entity_id, date,
-                 current_expected_work_area, requested_work_area, reason, status, requested_at)
-            VALUES ($1, $2, $3, $4, $5, 'onsite', 'remote', 'fixture', $6, now());
+                 current_work_mode_id, current_work_mode_name, requested_work_mode_id, requested_work_mode_name,
+                 reason, status, requested_at)
+            VALUES ($1, $2, $3, $4, $5, $7, 'onsite', $8, 'remote', 'fixture', $6, now());
             """;
         command.Parameters.AddWithValue(id);
         command.Parameters.AddWithValue(tenantId);
@@ -482,6 +492,8 @@ public sealed class WorkAreaChangeRequestsIntegrationTests : IClassFixture<WorkA
         command.Parameters.AddWithValue(legalEntityId);
         command.Parameters.AddWithValue(date);
         command.Parameters.AddWithValue(status);
+        command.Parameters.AddWithValue(Guid.NewGuid());
+        command.Parameters.AddWithValue(Guid.NewGuid());
         await command.ExecuteNonQueryAsync();
     }
 

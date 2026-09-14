@@ -28,6 +28,7 @@ public sealed class WorkAreaChangeRequestWorkflow(
     IExpectedWorkAreaResolver expectedAreas,
     IEmployeeAuthorityResolver authority,
     IPositionRepository positions,
+    IWorkModeRepository workModes,
     INotificationDispatcher notifications,
     IUnitOfWork unitOfWork)
 {
@@ -40,7 +41,7 @@ public sealed class WorkAreaChangeRequestWorkflow(
     public async Task<Result<WorkAreaChangeRequestPreviewResponse>> PreviewAsync(
         PreviewWorkAreaChangeRequestCommand command, CancellationToken ct)
     {
-        var prepared = await PrepareAsync(command.Date, command.RequestedWorkArea, command.Reason, ct);
+        var prepared = await PrepareAsync(command.Date, command.RequestedWorkModeId, command.Reason, ct);
         if (!prepared.IsSuccess)
             return Result<WorkAreaChangeRequestPreviewResponse>.Failure(prepared.Error!, prepared.StatusCode ?? 400);
 
@@ -48,8 +49,10 @@ public sealed class WorkAreaChangeRequestWorkflow(
         return Result<WorkAreaChangeRequestPreviewResponse>.Success(new(
             value.Date,
             value.Expected.Timezone,
-            ClassifyWorkArea(value.Expected.WorkModeName) ?? string.Empty,
-            value.RequestedWorkArea,
+            value.Expected.WorkModeId,
+            value.Expected.WorkModeName ?? string.Empty,
+            value.RequestedWorkModeId,
+            value.RequestedWorkModeName,
             value.Reason,
             value.Receiver));
     }
@@ -64,7 +67,7 @@ public sealed class WorkAreaChangeRequestWorkflow(
         {
             return await unitOfWork.ExecuteInTransactionAsync(async transactionCt =>
             {
-                var prepared = await PrepareAsync(command.Date, command.RequestedWorkArea, command.Reason, transactionCt);
+                var prepared = await PrepareAsync(command.Date, command.RequestedWorkModeId, command.Reason, transactionCt);
                 if (!prepared.IsSuccess)
                     return Result<WorkAreaChangeRequestResponse>.Failure(prepared.Error!, prepared.StatusCode ?? 400);
 
@@ -76,8 +79,10 @@ public sealed class WorkAreaChangeRequestWorkflow(
                     EmployeeId = value.Employee.Id,
                     LegalEntityId = value.LegalEntity.Id,
                     Date = value.Date,
-                    CurrentExpectedWorkArea = ClassifyWorkArea(value.Expected.WorkModeName) ?? string.Empty,
-                    RequestedWorkArea = value.RequestedWorkArea,
+                    CurrentWorkModeId = value.Expected.WorkModeId,
+                    CurrentWorkModeName = value.Expected.WorkModeName ?? string.Empty,
+                    RequestedWorkModeId = value.RequestedWorkModeId,
+                    RequestedWorkModeName = value.RequestedWorkModeName,
                     Reason = value.Reason,
                     Status = WorkAreaChangeRequest.StatusPending,
                     RequestedAt = dateTime.UtcNow
@@ -91,7 +96,7 @@ public sealed class WorkAreaChangeRequestWorkflow(
                     {
                         ["employeeName"] = DisplayName(value.Employee),
                         ["date"] = value.Date.ToString("yyyy-MM-dd"),
-                        ["requestedWorkArea"] = value.RequestedWorkArea
+                        ["requestedWorkMode"] = value.RequestedWorkModeName
                     },
                     RelatedType,
                     request.Id,
@@ -298,7 +303,8 @@ public sealed class WorkAreaChangeRequestWorkflow(
                         request.TenantId, request.EmployeeId, request.Date, transactionCt);
                     if (existingRecord is not null)
                     {
-                        existingRecord.ExpectedWorkArea = request.RequestedWorkArea;
+                        existingRecord.ExpectedWorkModeId = request.RequestedWorkModeId;
+                        existingRecord.ExpectedWorkModeName = request.RequestedWorkModeName;
                         existingRecord.UpdatedAt = dateTime.UtcNow;
                     }
                 }
@@ -311,7 +317,7 @@ public sealed class WorkAreaChangeRequestWorkflow(
                     {
                         ["decision"] = decision,
                         ["date"] = request.Date.ToString("yyyy-MM-dd"),
-                        ["requestedWorkArea"] = request.RequestedWorkArea,
+                        ["requestedWorkMode"] = request.RequestedWorkModeName,
                         ["reviewComment"] = request.ReviewComment ?? string.Empty
                     },
                     RelatedType,
@@ -335,7 +341,7 @@ public sealed class WorkAreaChangeRequestWorkflow(
     }
 
     private async Task<Result<PreparedRequest>> PrepareAsync(
-        DateOnly date, string requestedWorkArea, string reason, CancellationToken ct)
+        DateOnly date, Guid requestedWorkModeId, string reason, CancellationToken ct)
     {
         var context = await ResolveEmployeeContextAsync(ct);
         if (!context.IsSuccess)
@@ -351,16 +357,13 @@ public sealed class WorkAreaChangeRequestWorkflow(
         if (date < localToday)
             return Result<PreparedRequest>.Conflict("A work-area change can only be requested for today or a future date.");
 
-        var requested = requestedWorkArea?.Trim().ToLowerInvariant();
-        if (requested is not (WorkAreaChangeRequest.WorkAreaOnsite or WorkAreaChangeRequest.WorkAreaRemote))
-            return Result<PreparedRequest>.Conflict("Requested work area must be onsite or remote.");
-        var currentWorkArea = ClassifyWorkArea(expected.Value.WorkModeName);
-        if (currentWorkArea == WorkAreaChangeRequest.WorkAreaField)
-            return Result<PreparedRequest>.Conflict("Field work-area changes are not supported in this product flow.");
-        if (currentWorkArea == WorkAreaChangeRequest.WorkAreaEither
-            || currentWorkArea == requested)
-            return Result<PreparedRequest>.Conflict(
-                "The selected work area is already planned for this date.");
+        var requestedWorkMode = await workModes.GetByIdAsync(currentUser.TenantId, requestedWorkModeId, ct);
+        if (requestedWorkMode is null || !requestedWorkMode.IsActive)
+            return Result<PreparedRequest>.Conflict("The selected work mode is not available.");
+        if (requestedWorkMode.LegalEntityId != value.LegalEntity.Id)
+            return Result<PreparedRequest>.Conflict("The selected work mode does not belong to this employee's company.");
+        if (expected.Value.WorkModeId == requestedWorkModeId)
+            return Result<PreparedRequest>.Conflict("The selected work mode is already planned for this date.");
         if (string.IsNullOrWhiteSpace(reason))
             return Result<PreparedRequest>.Failure("A reason is required.");
         if (await requests.HasActiveForDateAsync(currentUser.TenantId, value.Employee.Id, date, ct))
@@ -383,7 +386,7 @@ public sealed class WorkAreaChangeRequestWorkflow(
             position?.Name);
         return Result<PreparedRequest>.Success(new(
             value.Employee, value.LegalEntity, expected.Value, date,
-            requested!, reason.Trim(), route, receiver));
+            requestedWorkMode.Id, requestedWorkMode.Name, reason.Trim(), route, receiver));
     }
 
     private async Task<Result<EmployeeContext>> ResolveEmployeeContextAsync(CancellationToken ct)
@@ -445,22 +448,6 @@ public sealed class WorkAreaChangeRequestWorkflow(
     private static string DisplayName(ONEVO.Domain.Features.CoreHr.Entities.Employee employee)
         => $"{employee.FirstName} {employee.LastName}".Trim();
 
-    // TODO(Task 6): this workflow still validates against the old onsite/remote/either/field
-    // classification (CurrentExpectedWorkArea/RequestedWorkArea as plain strings) instead of the
-    // real WorkMode Id/Name ExpectedWorkAreaResolver now resolves (Task 5) - see the plan's Global
-    // Constraints ("no category/taxonomy field is ever re-derived"). This minimal compile-fix
-    // re-derives the old classification so pre-Task-5 validation behavior is unchanged; Task 6
-    // rewrites this whole workflow to validate/store real WorkMode references.
-    private static string? ClassifyWorkArea(string? workModeName)
-        => workModeName?.Trim().ToLowerInvariant() switch
-        {
-            "onsite" or "on_site" => "onsite",
-            "remote" => "remote",
-            "hybrid" => "either",
-            "field" => "field",
-            _ => null
-        };
-
     private static WorkAreaChangeRequestResponse ToResponse(
         WorkAreaChangeRequest request,
         ONEVO.Domain.Features.CoreHr.Entities.Employee? employee,
@@ -474,8 +461,10 @@ public sealed class WorkAreaChangeRequestWorkflow(
             requesterDisplayName ?? (employee is null ? "Employee" : DisplayName(employee)),
             timezone,
             request.Date,
-            request.CurrentExpectedWorkArea,
-            request.RequestedWorkArea,
+            request.CurrentWorkModeId,
+            request.CurrentWorkModeName,
+            request.RequestedWorkModeId,
+            request.RequestedWorkModeName,
             request.Reason,
             request.Status,
             request.RequestedAt,
@@ -500,7 +489,8 @@ public sealed class WorkAreaChangeRequestWorkflow(
         ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity LegalEntity,
         ExpectedWorkAreaResolution Expected,
         DateOnly Date,
-        string RequestedWorkArea,
+        Guid RequestedWorkModeId,
+        string RequestedWorkModeName,
         string Reason,
         EmployeeApprovalRoute Route,
         WorkAreaChangeApproverResponse Receiver);

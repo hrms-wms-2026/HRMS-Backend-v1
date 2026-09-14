@@ -203,7 +203,8 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
                 {
                     Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
                     LegalEntityId = LegalEntityId, Date = WorkDate,
-                    CurrentExpectedWorkArea = "onsite", RequestedWorkArea = approvedOverrideArea,
+                    CurrentWorkModeId = permanentWorkModeId, CurrentWorkModeName = "onsite",
+                    RequestedWorkModeId = Guid.NewGuid(), RequestedWorkModeName = approvedOverrideArea,
                     Reason = "Appointment", Status = WorkAreaChangeRequest.StatusApproved
                 });
 
