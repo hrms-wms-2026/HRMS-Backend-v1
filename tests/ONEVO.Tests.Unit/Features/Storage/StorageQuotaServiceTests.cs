@@ -339,6 +339,48 @@ public class StorageQuotaServiceTests
         Assert.Equal(403, result.StatusCode);
     }
 
+    // ---- Used storage release ----
+
+    [Fact]
+    public async Task ReleaseUsedStorageAsync_DecrementsUsedBytes()
+    {
+        var tenantId = Guid.NewGuid();
+        _stats.Rows[tenantId] = new TenantStorageStats { TenantId = tenantId, UsedR2Bytes = 1000 };
+
+        var result = await CreateService().ReleaseUsedStorageAsync(tenantId, 500, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(500, _stats.Rows[tenantId].UsedR2Bytes);
+    }
+
+    [Fact]
+    public async Task ReleaseUsedStorageAsync_FloorsAtZero()
+    {
+        var tenantId = Guid.NewGuid();
+        _stats.Rows[tenantId] = new TenantStorageStats { TenantId = tenantId, UsedR2Bytes = 100 };
+
+        var result = await CreateService().ReleaseUsedStorageAsync(tenantId, 500, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, _stats.Rows[tenantId].UsedR2Bytes);
+    }
+
+    [Fact]
+    public async Task ReleaseUsedStorageAsync_EmptyTenantId_Fails()
+    {
+        var result = await CreateService().ReleaseUsedStorageAsync(Guid.Empty, 500, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task ReleaseUsedStorageAsync_NonPositiveBytes_SucceedsAsNoOp()
+    {
+        var result = await CreateService().ReleaseUsedStorageAsync(Guid.NewGuid(), 0, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
     // ---- Fakes ----
 
     private sealed class FakeTenantSubscriptionRepository : ITenantSubscriptionRepository
@@ -436,6 +478,17 @@ public class StorageQuotaServiceTests
             {
                 row.ReservedR2Bytes = Math.Max(0, row.ReservedR2Bytes - bytes);
                 row.UsedR2Bytes += bytes;
+                row.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task ReleaseUsedBytesAsync(Guid tenantId, long bytes, CancellationToken ct = default)
+        {
+            if (Rows.TryGetValue(tenantId, out var row))
+            {
+                row.UsedR2Bytes = Math.Max(0, row.UsedR2Bytes - bytes);
                 row.UpdatedAt = DateTimeOffset.UtcNow;
             }
 
