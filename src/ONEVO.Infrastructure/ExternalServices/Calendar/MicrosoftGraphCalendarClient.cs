@@ -79,6 +79,13 @@ public sealed class MicrosoftGraphCalendarClient(HttpClient httpClient) : IMicro
     {
         using var request = new HttpRequestMessage(method, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        // Without this, Graph's event body.content is HTML by default (Outlook's native format),
+        // and ParseEvent below reads that raw markup straight into CalendarEvent.Description with
+        // no stripping - the user sees literal <html><head>... tags in the edit form. This
+        // preference header makes Graph return plain text directly, which is what our Description
+        // field actually represents; documented at
+        // https://learn.microsoft.com/graph/outlook-change-notifications-integration-tips#work-with-mime-messages.
+        request.Headers.TryAddWithoutValidation("Prefer", "outlook.body-content-type=\"text\"");
         if (body is not null)
             request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
         var response = await httpClient.SendAsync(request, ct);
