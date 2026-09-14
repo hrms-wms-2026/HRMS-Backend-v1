@@ -255,6 +255,23 @@ $script:Areas = @(
         Keywords     = @('LeavePolicy', 'LeaveType', 'LeaveEntitlement', 'LeaveRequest')
         Filter       = 'FullyQualifiedName~Leave'
     }
+    @{
+        # TimeAttendance (clock-in/out, breaks, attendance corrections, work-area change requests)
+        # was missing from this table entirely, so any PR touching only this actively-developed
+        # area fell to the expensive full-integration fallback below. Every test class under
+        # tests/ONEVO.Tests.Integration/Features/TimeAttendance/ shares the
+        # ONEVO.Tests.Integration.Features.TimeAttendance namespace regardless of its own class
+        # name (e.g. ExpectedWorkAreaResolverIntegrationTests, WorkAreaChangeRequestsIntegrationTests
+        # do not contain "Attendance" in the class name but do in the namespace), so a single
+        # namespace-substring filter covers the whole folder.
+        Name         = 'TimeAttendance'
+        PathPatterns = @(
+            'src/*/TimeAttendance/*'
+            'src/*/Attendance/*'
+        ) + (New-IntegrationTestPathPatterns -Names @('TimeAttendance'))
+        Keywords     = @()
+        Filter       = 'FullyQualifiedName~TimeAttendance'
+    }
 )
 
 $script:MigrationPathPattern  = 'src/ONEVO.Infrastructure/Migrations/*'
@@ -571,6 +588,18 @@ function Invoke-SelfTest {
     Assert-Decision -Name 'Storage integration test file directly under the project root routes to Storage (regression guard)' `
         -Files @('tests/ONEVO.Tests.Integration/Storage/StorageQuotaIntegrationTests.cs') `
         -Check { param($d) -not $d.Skip -and -not $d.FullIntegration -and $d.Filter -eq 'FullyQualifiedName~Storage|FullyQualifiedName~File' }
+
+    Assert-Decision -Name 'TimeAttendance src change (Application/Features/TimeAttendance) routes to TimeAttendance filter, not full integration' `
+        -Files @('src/ONEVO.Application/Features/TimeAttendance/Queries/AttendanceReadHandlers.cs') `
+        -Check { param($d) -not $d.Skip -and -not $d.FullIntegration -and $d.Filter -eq 'FullyQualifiedName~TimeAttendance' }
+
+    Assert-Decision -Name 'Attendance controller/contract folder (not literally named TimeAttendance) also routes to TimeAttendance filter' `
+        -Files @('src/ONEVO.Api/Controllers/Tenant/Attendance/AttendanceCorrectionsController.cs') `
+        -Check { param($d) -not $d.Skip -and -not $d.FullIntegration -and $d.Filter -eq 'FullyQualifiedName~TimeAttendance' }
+
+    Assert-Decision -Name 'TimeAttendance integration test file whose class name has no "Attendance" in it still routes via namespace (regression guard)' `
+        -Files @('tests/ONEVO.Tests.Integration/Features/TimeAttendance/WorkAreaChangeRequestsIntegrationTests.cs') `
+        -Check { param($d) -not $d.Skip -and -not $d.FullIntegration -and $d.Filter -eq 'FullyQualifiedName~TimeAttendance' }
 
     if ($failures -gt 0) {
         Write-Host "$failures self-test(s) FAILED"

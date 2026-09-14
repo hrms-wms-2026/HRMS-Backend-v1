@@ -8,6 +8,7 @@ using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailySummary;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -25,13 +26,20 @@ public sealed class AttendanceReadHandler(
     ILeaveRequestReadRepository? leaveRequests = null,
     ILegalEntityRepository? legalEntities = null,
     IDateTimeProvider? dateTimeProvider = null,
-    IActivityDailySummaryRepository? activitySummaries = null)
+    IActivityDailySummaryRepository? activitySummaries = null,
+    ICheckInRepository? checkIns = null)
     : IRequestHandler<GetAttendanceTodayQuery, Result<AttendanceTodayResponse>>,
       IRequestHandler<GetMyAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
       IRequestHandler<GetCoveredAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
-      IRequestHandler<GetAttendanceDayDetailQuery, Result<AttendanceDayDetailResponse>>
+      IRequestHandler<GetAttendanceDayDetailQuery, Result<AttendanceDayDetailResponse>>,
+      IRequestHandler<GetMyAttendanceMonthlySummaryQuery, Result<AttendanceMonthlySummaryResponse>>
 {
     private const string AttendanceReadPermission = "attendance:read";
+
+    // Kept as a plain code constant (not a configurable policy field) because this is a
+    // display-only summary, not the payroll-affecting ClockInPolicy.LateArrivalMinute tiers -
+    // coupling this count to that graduated deduction schedule would be the wrong dependency.
+    private static readonly TimeSpan LateOrEarlyGrace = TimeSpan.Zero;
 
     public Task<Result<AttendanceTodayResponse>> Handle(GetAttendanceTodayQuery _, CancellationToken ct)
         => todayState.GetTodayAsync(ct);
@@ -56,6 +64,67 @@ public sealed class AttendanceReadHandler(
             new PagedResult<AttendanceHistoryRow>(rows, pageNumber, query.Paging.PageSize, totalCount));
     }
 
+    public async Task<Result<AttendanceMonthlySummaryResponse>> Handle(
+        GetMyAttendanceMonthlySummaryQuery query, CancellationToken ct)
+    {
+        var validation = ValidateRange(query.From, query.To);
+        if (validation is not null)
+            return Result<AttendanceMonthlySummaryResponse>.Failure(validation);
+        if (query.To.DayNumber - query.From.DayNumber > 31)
+            return Result<AttendanceMonthlySummaryResponse>.Failure("Range must be 31 days or fewer.");
+
+        var employee = await employees.GetDefaultForUserAsync(currentUser.TenantId, currentUser.UserId, ct);
+        if (employee is null)
+            return Result<AttendanceMonthlySummaryResponse>.NotFound("Current employee record was not found.");
+
+        var (records, _) = await attendance.ListRecordsAsync(
+            currentUser.TenantId, [employee.Id], query.From, query.To, 0, 62, ct);
+
+        var legalEntity = legalEntities is not null && employee.LegalEntityId is Guid entityId
+            ? await legalEntities.GetByIdForTenantAsync(currentUser.TenantId, entityId, ct)
+            : null;
+        var timezone = TryFindTimezone(legalEntity?.Timezone ?? records.FirstOrDefault()?.ScheduleTimezone);
+        var now = dateTimeProvider?.UtcNow ?? DateTimeOffset.UtcNow;
+
+        var workingDays = 0;
+        var daysPresent = 0;
+        var lateArrivals = 0;
+        var earlyDepartures = 0;
+        var missingClockOuts = 0;
+
+        foreach (var record in records)
+        {
+            if (record.ExpectedWorkingDay)
+                workingDays += 1;
+
+            if (record.ActualStart is null)
+                continue;
+
+            daysPresent += 1;
+
+            if (record.ScheduledStart is TimeOnly scheduledStart)
+            {
+                var localStart = TimeZoneInfo.ConvertTime(record.ActualStart.Value, timezone).TimeOfDay;
+                if (localStart - scheduledStart.ToTimeSpan() > LateOrEarlyGrace)
+                    lateArrivals += 1;
+            }
+
+            if (record.ActualEnd is DateTimeOffset actualEnd && record.ScheduledEnd is TimeOnly scheduledEnd)
+            {
+                var localEnd = TimeZoneInfo.ConvertTime(actualEnd, timezone).TimeOfDay;
+                if (scheduledEnd.ToTimeSpan() - localEnd > LateOrEarlyGrace)
+                    earlyDepartures += 1;
+            }
+
+            if (record.ActualEnd is null
+                && now - record.ActualStart.Value >= AttendanceDayStatusResolver.MissingClockOutThreshold)
+                missingClockOuts += 1;
+        }
+
+        return Result<AttendanceMonthlySummaryResponse>.Success(
+            new AttendanceMonthlySummaryResponse(workingDays, daysPresent, lateArrivals, earlyDepartures, missingClockOuts));
+    }
+
     public async Task<Result<PagedResult<AttendanceHistoryRow>>> Handle(
         GetCoveredAttendanceHistoryQuery query, CancellationToken ct)
     {
@@ -75,20 +144,26 @@ public sealed class AttendanceReadHandler(
                 currentUser.UserId,
                 actor.LegalEntityId.Value,
                 AttendanceReadPermission,
-                IncludeSelf: true,
+                IncludeSelf: false,
                 EmployeeAuthorityPurpose.TimeTrackingRead), ct);
+
+        // The covered ("Team") view is strictly other people — the actor's own history lives on
+        // the "My" tab. IncludeSelf: false stops the self channel, but company-wide or department
+        // coverage still expands to every active employee in the legal entity, which re-introduces
+        // the actor, so strip their id explicitly here too.
+        var coveredEmployeeIds = visibility.EmployeeIds.Where(id => id != actor.Id).ToList();
 
         IReadOnlyCollection<Guid> employeeIds;
         if (query.EmployeeId is Guid requestedEmployeeId)
         {
-            if (!visibility.EmployeeIds.Contains(requestedEmployeeId))
+            if (requestedEmployeeId == actor.Id || !coveredEmployeeIds.Contains(requestedEmployeeId))
                 return Result<PagedResult<AttendanceHistoryRow>>.Forbidden();
 
             employeeIds = [requestedEmployeeId];
         }
         else
         {
-            employeeIds = visibility.EmployeeIds;
+            employeeIds = coveredEmployeeIds;
         }
 
         var pageNumber = query.Paging.PageNumber < 1 ? 1 : query.Paging.PageNumber;
@@ -175,8 +250,23 @@ public sealed class AttendanceReadHandler(
                 dailyActivity = GetActivityDailySummaryQueryHandler.Map(activityEntity);
         }
 
+        var checkInLocations = Array.Empty<CheckInLocationDto>() as IReadOnlyList<CheckInLocationDto>;
+        if (canSeeActivity && checkIns is not null)
+        {
+            var targetEmployee = await employees.GetByIdAsync(currentUser.TenantId, query.EmployeeId, ct);
+            if (targetEmployee is not null)
+            {
+                var checkInRecords = await checkIns.ListForUserInRangeAsync(
+                    currentUser.TenantId, targetEmployee.UserId, dayWindow.Start, dayWindow.End, ct);
+                checkInLocations = checkInRecords
+                    .Select(c => new CheckInLocationDto(
+                        c.Id, c.CheckedInAt, c.Latitude, c.Longitude, c.LocationAccuracy, c.LocationAddress))
+                    .ToList();
+            }
+        }
+
         return Result<AttendanceDayDetailResponse>.Success(
-            new AttendanceDayDetailResponse(summary, timelineEvents, dailyActivity));
+            new AttendanceDayDetailResponse(summary, timelineEvents, dailyActivity, checkInLocations));
     }
 
     private async Task<IReadOnlyList<AttendanceHistoryRow>> BuildRowsAsync(
@@ -229,8 +319,8 @@ public sealed class AttendanceReadHandler(
         return records.Select(record =>
         {
             var hasApprovedLeave = leavesByEmployee.TryGetValue(record.EmployeeId, out var employeeLeaves)
-                && employeeLeaves.Any(request => request.StartDate <= record.Date
-                    && request.EndDate >= record.Date);
+                && employeeLeaves.Any(request => DateOnly.FromDateTime(request.StartAt.UtcDateTime) <= record.Date
+                    && DateOnly.FromDateTime(request.EndAt.UtcDateTime) >= record.Date);
             var schedule = new AttendanceSchedule(
                 record.ScheduledStart is not null && record.ScheduledEnd is not null
                     ? "configured"
@@ -282,7 +372,10 @@ public sealed class AttendanceReadHandler(
                 status.AttentionLabel,
                 status.AttentionSeverity,
                 status.BreakOverageMinutes,
-                status.IsOverBreakAllowance);
+                status.IsOverBreakAllowance,
+                schedule.Start?.ToString("HH:mm"),
+                schedule.End?.ToString("HH:mm"),
+                schedule.RequiredWorkMinutes);
         }).ToList();
     }
 

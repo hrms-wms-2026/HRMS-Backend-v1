@@ -45,7 +45,7 @@ public static class AttendanceDayStatusResolver
         {
             return new AttendanceDayStatusResolution(
                 AttendanceRecord.StatusOverBreak,
-                "Over break allowance",
+                "Over break",
                 "over_break",
                 "Break time has exceeded the allowance",
                 "warning",

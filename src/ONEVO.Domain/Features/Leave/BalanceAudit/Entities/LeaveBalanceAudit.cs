@@ -9,7 +9,7 @@ public class LeaveBalanceAudit : ITenantOwnedEntity
     public Guid EmployeeId { get; set; }
     public Guid LeaveTypeId { get; set; }
     public string ChangeType { get; set; } = string.Empty;
-    public decimal DaysChanged { get; set; }
+    public decimal HoursChanged { get; set; }
     public decimal BalanceAfter { get; set; }
     public string? Reason { get; set; }
     public Guid? RelatedRequestId { get; set; }

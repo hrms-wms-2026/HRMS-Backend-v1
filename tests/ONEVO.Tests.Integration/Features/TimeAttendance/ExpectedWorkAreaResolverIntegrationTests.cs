@@ -12,138 +12,53 @@ using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
+using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Features.TimeAttendance;
 
 /// <summary>
-/// Proves that EfWorkAreaChangeRequestRepository.GetApprovedForDateAsync - the read the runtime
-/// ExpectedWorkAreaResolver depends on to override the employee's permanent work mode - translates
-/// correctly against real PostgreSQL, not just the EF InMemory provider used by the unit-level
-/// EfWorkAreaChangeRequestRepositoryTests. Rows are seeded via a raw admin connection (matching the
-/// established pattern in WorkAreaChangeRequestsIntegrationTests) and read back through the actual
-/// repository class and a real Npgsql-backed ApplicationDbContext.
-///
-/// This intentionally does not drive the full HTTP/tenant-provisioning stack (see
-/// AttendanceCorrectionsIntegrationTests for that heavier pattern) - ClockIn persistence and the
-/// approval-time attendance-snapshot sync are covered at the unit level
-/// (ClockInOutCommandHandlerTests, WorkAreaChangeRequestWorkflowTests) against fakes/mocks of these
-/// same repository contracts; this class closes the one gap those tests cannot close: real
-/// PostgreSQL LINQ translation of the new query.
+/// Shared, one-time-per-class setup for ExpectedWorkAreaResolverIntegrationTests: clones the
+/// database ONCE. xUnit's IClassFixture constructs this ONCE and disposes it once after every fact
+/// in the class has run, instead of IAsyncLifetime's default of once PER fact - previously this
+/// class's own InitializeAsync ran 8 times (5 facts + 3 Theory cases), once per test. Every fact
+/// generates its own fresh tenant/legal-entity/employee/date scope via NewScope() (see its own
+/// comment for why), so there is no cross-fact state-sharing risk from converting this class.
 /// </summary>
-public sealed class ExpectedWorkAreaResolverIntegrationTests : IAsyncLifetime
+public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer? _postgres;
     private string _connectionString = null!;
-    private static readonly Guid TenantId = Guid.NewGuid();
-    private static readonly Guid OtherTenantId = Guid.NewGuid();
-    private static readonly Guid LegalEntityId = Guid.NewGuid();
-    private static readonly Guid OtherLegalEntityId = Guid.NewGuid();
-    private static readonly Guid EmployeeId = Guid.NewGuid();
-    private static readonly Guid OtherEmployeeId = Guid.NewGuid();
-    private static readonly DateOnly Date = DateOnly.FromDateTime(DateTime.UtcNow);
-
-    public ExpectedWorkAreaResolverIntegrationTests()
-    {
-        var configured = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
-        if (!string.IsNullOrWhiteSpace(configured))
-            return;
-
-        _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-            .WithDatabase("onevo_work_area_resolver_test")
-            .WithUsername("test")
-            .WithPassword("test")
-            .Build();
-    }
 
     public async Task InitializeAsync()
     {
-        if (_postgres is not null)
+        var configured = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        if (!string.IsNullOrWhiteSpace(configured))
         {
-            await _postgres.StartAsync();
-            _connectionString = _postgres.GetConnectionString();
+            _connectionString = configured;
+            await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
         }
         else
         {
-            _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB")!;
+            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
+            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
-
-        await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
     }
 
-    public async Task DisposeAsync()
-    {
-        if (_postgres is not null)
-            await _postgres.DisposeAsync();
-    }
+    public Task DisposeAsync() => Task.CompletedTask;
 
-    [Fact]
-    public async Task GetApprovedForDate_RealPostgres_ReturnsApprovedRowForExactScope()
-    {
-        await SeedAsync(TenantId, LegalEntityId, EmployeeId, Date, WorkAreaChangeRequest.StatusApproved, "remote");
+    /// <summary>
+    /// Every fact (and every [InlineData] case of the Theory) gets its own fresh tenant/legal-
+    /// entity/employee/date tuple: this class used to share one static set of these ids across
+    /// every fact, which only worked because each fact previously got its own fresh Testcontainers
+    /// database (IAsyncLifetime). Under a shared IClassFixture database, a leftover approved row
+    /// seeded by one fact would otherwise satisfy another fact's "no approved row exists for this
+    /// exact key" assertion.
+    /// </summary>
+    public static (Guid TenantId, Guid LegalEntityId, Guid EmployeeId, DateOnly Date) NewScope() =>
+        (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateOnly.FromDateTime(DateTime.UtcNow));
 
-        var result = await Repository().GetApprovedForDateAsync(TenantId, LegalEntityId, EmployeeId, Date);
-
-        result.Should().NotBeNull();
-        result!.RequestedWorkArea.Should().Be("remote");
-    }
-
-    [Theory]
-    [InlineData(WorkAreaChangeRequest.StatusPending)]
-    [InlineData(WorkAreaChangeRequest.StatusRejected)]
-    [InlineData(WorkAreaChangeRequest.StatusCancelled)]
-    public async Task GetApprovedForDate_RealPostgres_IgnoresNonApprovedStatus(string status)
-    {
-        await SeedAsync(TenantId, LegalEntityId, EmployeeId, Date, status, "remote");
-
-        var result = await Repository().GetApprovedForDateAsync(TenantId, LegalEntityId, EmployeeId, Date);
-
-        result.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task GetApprovedForDate_RealPostgres_IgnoresAnotherDate()
-    {
-        await SeedAsync(TenantId, LegalEntityId, EmployeeId, Date.AddDays(1), WorkAreaChangeRequest.StatusApproved, "remote");
-
-        var result = await Repository().GetApprovedForDateAsync(TenantId, LegalEntityId, EmployeeId, Date);
-
-        result.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task GetApprovedForDate_RealPostgres_IgnoresAnotherEmployee()
-    {
-        await SeedAsync(TenantId, LegalEntityId, OtherEmployeeId, Date, WorkAreaChangeRequest.StatusApproved, "remote");
-
-        var result = await Repository().GetApprovedForDateAsync(TenantId, LegalEntityId, EmployeeId, Date);
-
-        result.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task GetApprovedForDate_RealPostgres_IgnoresAnotherLegalEntity()
-    {
-        await SeedAsync(TenantId, OtherLegalEntityId, EmployeeId, Date, WorkAreaChangeRequest.StatusApproved, "remote");
-
-        var result = await Repository().GetApprovedForDateAsync(TenantId, LegalEntityId, EmployeeId, Date);
-
-        result.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task GetApprovedForDate_RealPostgres_IgnoresAnotherTenant()
-    {
-        await SeedAsync(OtherTenantId, LegalEntityId, EmployeeId, Date, WorkAreaChangeRequest.StatusApproved, "remote");
-
-        var result = await Repository().GetApprovedForDateAsync(TenantId, LegalEntityId, EmployeeId, Date);
-
-        result.Should().BeNull();
-    }
-
-    private EfWorkAreaChangeRequestRepository Repository() => new(BuildDbContext());
+    public EfWorkAreaChangeRequestRepository Repository() => new(BuildDbContext());
 
     private ApplicationDbContext BuildDbContext()
     {
@@ -179,7 +94,7 @@ public sealed class ExpectedWorkAreaResolverIntegrationTests : IAsyncLifetime
             where TNotification : INotification => Task.CompletedTask;
     }
 
-    private async Task SeedAsync(
+    public async Task SeedAsync(
         Guid tenantId, Guid legalEntityId, Guid employeeId, DateOnly date, string status, string requestedWorkArea)
     {
         // employee_id/legal_entity_id are restrictive foreign keys; these are synthetic ids that
@@ -215,4 +130,104 @@ public sealed class ExpectedWorkAreaResolverIntegrationTests : IAsyncLifetime
         resetReplica.CommandText = "RESET session_replication_role;";
         await resetReplica.ExecuteNonQueryAsync();
     }
+
+}
+
+/// <summary>
+/// Proves that EfWorkAreaChangeRequestRepository.GetApprovedForDateAsync - the read the runtime
+/// ExpectedWorkAreaResolver depends on to override the employee's permanent work mode - translates
+/// correctly against real PostgreSQL, not just the EF InMemory provider used by the unit-level
+/// EfWorkAreaChangeRequestRepositoryTests. Rows are seeded via a raw admin connection (matching the
+/// established pattern in WorkAreaChangeRequestsIntegrationTests) and read back through the actual
+/// repository class and a real Npgsql-backed ApplicationDbContext.
+///
+/// This intentionally does not drive the full HTTP/tenant-provisioning stack (see
+/// AttendanceCorrectionsIntegrationTests for that heavier pattern) - ClockIn persistence and the
+/// approval-time attendance-snapshot sync are covered at the unit level
+/// (ClockInOutCommandHandlerTests, WorkAreaChangeRequestWorkflowTests) against fakes/mocks of these
+/// same repository contracts; this class closes the one gap those tests cannot close: real
+/// PostgreSQL LINQ translation of the new query.
+/// </summary>
+public sealed class ExpectedWorkAreaResolverIntegrationTests : IClassFixture<ExpectedWorkAreaResolverIntegrationTestsFixture>
+{
+    private readonly ExpectedWorkAreaResolverIntegrationTestsFixture _fixture;
+
+    public ExpectedWorkAreaResolverIntegrationTests(ExpectedWorkAreaResolverIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task GetApprovedForDate_RealPostgres_ReturnsApprovedRowForExactScope()
+    {
+        var (tenantId, legalEntityId, employeeId, date) = ExpectedWorkAreaResolverIntegrationTestsFixture.NewScope();
+        await _fixture.SeedAsync(tenantId, legalEntityId, employeeId, date, WorkAreaChangeRequest.StatusApproved, "remote");
+
+        var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
+
+        result.Should().NotBeNull();
+        result!.RequestedWorkArea.Should().Be("remote");
+    }
+
+    [Theory]
+    [InlineData(WorkAreaChangeRequest.StatusPending)]
+    [InlineData(WorkAreaChangeRequest.StatusRejected)]
+    [InlineData(WorkAreaChangeRequest.StatusCancelled)]
+    public async Task GetApprovedForDate_RealPostgres_IgnoresNonApprovedStatus(string status)
+    {
+        var (tenantId, legalEntityId, employeeId, date) = ExpectedWorkAreaResolverIntegrationTestsFixture.NewScope();
+        await _fixture.SeedAsync(tenantId, legalEntityId, employeeId, date, status, "remote");
+
+        var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetApprovedForDate_RealPostgres_IgnoresAnotherDate()
+    {
+        var (tenantId, legalEntityId, employeeId, date) = ExpectedWorkAreaResolverIntegrationTestsFixture.NewScope();
+        await _fixture.SeedAsync(tenantId, legalEntityId, employeeId, date.AddDays(1), WorkAreaChangeRequest.StatusApproved, "remote");
+
+        var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetApprovedForDate_RealPostgres_IgnoresAnotherEmployee()
+    {
+        var (tenantId, legalEntityId, employeeId, date) = ExpectedWorkAreaResolverIntegrationTestsFixture.NewScope();
+        var otherEmployeeId = Guid.NewGuid();
+        await _fixture.SeedAsync(tenantId, legalEntityId, otherEmployeeId, date, WorkAreaChangeRequest.StatusApproved, "remote");
+
+        var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetApprovedForDate_RealPostgres_IgnoresAnotherLegalEntity()
+    {
+        var (tenantId, legalEntityId, employeeId, date) = ExpectedWorkAreaResolverIntegrationTestsFixture.NewScope();
+        var otherLegalEntityId = Guid.NewGuid();
+        await _fixture.SeedAsync(tenantId, otherLegalEntityId, employeeId, date, WorkAreaChangeRequest.StatusApproved, "remote");
+
+        var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetApprovedForDate_RealPostgres_IgnoresAnotherTenant()
+    {
+        var (tenantId, legalEntityId, employeeId, date) = ExpectedWorkAreaResolverIntegrationTestsFixture.NewScope();
+        var otherTenantId = Guid.NewGuid();
+        await _fixture.SeedAsync(otherTenantId, legalEntityId, employeeId, date, WorkAreaChangeRequest.StatusApproved, "remote");
+
+        var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
+
+        result.Should().BeNull();
+    }
+
 }

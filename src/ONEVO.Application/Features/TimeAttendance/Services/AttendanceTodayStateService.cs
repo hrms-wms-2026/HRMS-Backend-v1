@@ -216,13 +216,9 @@ public sealed class AttendanceTodayStateService(
     private async Task<PolicyResolution> ResolvePolicyAsync(
         Guid tenantId, Guid legalEntityId, DateOnly workDate, string? workMode, CancellationToken ct)
     {
-        var active = (await policies.ListByLegalEntityAsync(
-                tenantId, legalEntityId, includeInactive: false, ct))
-            .Where(policy => policy.IsActive
-                && policy.ScopeType == ClockInPolicy.ScopeFullCompany
-                && policy.EffectiveFrom <= workDate
-                && (policy.EffectiveTo is null || policy.EffectiveTo >= workDate))
-            .ToList();
+        var active = ClockInPolicyResolver.ResolveActiveFullCompanyPolicies(
+            await policies.ListByLegalEntityAsync(tenantId, legalEntityId, includeInactive: false, ct),
+            workDate);
 
         if (active.Count == 0)
             return new PolicyResolution(
@@ -360,7 +356,7 @@ public sealed class AttendanceTodayStateService(
                 policy.RemoteTrayEnabled,
                 policy.RemoteBiometricEnabled,
                 policy.RemotePhotoRequired,
-                policy.LocationVerificationRequired,
+                policy.RemoteLocationCheckRequired || policy.LocationVerificationRequired,
                 policy.AllowedRadiusMeters),
             "field" => new(
                 policy.FieldWebEnabled,

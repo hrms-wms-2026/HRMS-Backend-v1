@@ -5,8 +5,8 @@ public sealed record CancelLeaveRequestResponse(
     string Status,
     bool IsPartialCancellation,
     DateOnly? EffectiveDate,
-    decimal ReleasedPendingDays,
-    decimal RestoredUsedDays,
-    decimal RemainingDays,
+    decimal ReleasedPendingHours,
+    decimal RestoredUsedHours,
+    decimal RemainingHours,
     string? Reason,
     DateTimeOffset CancelledAt);

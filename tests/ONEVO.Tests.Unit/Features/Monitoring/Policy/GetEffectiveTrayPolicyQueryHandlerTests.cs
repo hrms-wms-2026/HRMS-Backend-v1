@@ -60,7 +60,7 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
         _clock,
         _todayState.Object);
 
-    private AttendanceTodayContext BuildContext(AllowedClockInMethods allowedMethods) => new(
+    private AttendanceTodayContext BuildContext(AllowedClockInMethods allowedMethods, AttendanceSchedule? schedule = null) => new(
         new Employee { Id = Guid.NewGuid(), TenantId = _tenantId, UserId = _userId, LegalEntityId = _legalEntityId },
         new LegalEntity { Id = _legalEntityId, TenantId = _tenantId, Timezone = "Asia/Colombo" },
         "Asia/Colombo",
@@ -68,7 +68,7 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
         DateOnly.FromDateTime(_clock.UtcNow.UtcDateTime),
         _clock.UtcNow,
         _clock.UtcNow,
-        new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
+        schedule ?? new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
         "remote",
         "active_employee_work_mode",
         null,
@@ -202,6 +202,46 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.TrayClockInEnabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Configured_legal_entity_schedule_flows_into_dto()
+    {
+        // Default BuildContext() schedule is legal-entity-configured 09:00-17:30 (see ctor setup).
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ScheduleStart.Should().Be(new TimeOnly(9, 0));
+        result.Value.ScheduleEnd.Should().Be(new TimeOnly(17, 30));
+    }
+
+    [Fact]
+    public async Task Unconfigured_legal_entity_schedule_returns_null_schedule_fields()
+    {
+        _todayState.Setup(t => t.ResolveContextAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(BuildContext(
+                new AllowedClockInMethods(Web: true, DesktopTray: false, Biometric: false, PhotoRequired: false, LocationRequired: false, AllowedRadiusMeters: null),
+                schedule: new AttendanceSchedule("not_configured", false, null, null, null))));
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ScheduleStart.Should().BeNull();
+        result.Value.ScheduleEnd.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Different_schedule_produces_different_version()
+    {
+        var configuredResult = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        _todayState.Setup(t => t.ResolveContextAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(BuildContext(
+                new AllowedClockInMethods(Web: true, DesktopTray: false, Biometric: false, PhotoRequired: false, LocationRequired: false, AllowedRadiusMeters: null),
+                schedule: new AttendanceSchedule("configured", true, new(6, 46), new(12, 46), 360))));
+        var changedResult = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        changedResult.Value!.Version.Should().NotBe(configuredResult.Value!.Version);
     }
 
     private sealed class FrozenClock : IDateTimeProvider

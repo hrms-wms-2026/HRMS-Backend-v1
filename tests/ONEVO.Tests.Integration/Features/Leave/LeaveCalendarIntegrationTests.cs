@@ -14,7 +14,6 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Features.Leave;
@@ -30,7 +29,6 @@ public sealed class LeaveCalendarIntegrationTests : IAsyncLifetime
 
     private readonly CapturingEmailService _email = new();
 
-    private PostgreSqlContainer? _postgres;
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
     private HttpClient _client = null!;
@@ -42,17 +40,12 @@ public sealed class LeaveCalendarIntegrationTests : IAsyncLifetime
         var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            _postgres = new PostgreSqlBuilder()
-                .WithImage("postgres:16-alpine")
-                .WithDatabase("onevo_leave_calendar_test")
-                .WithUsername("test")
-                .WithPassword("test")
-                .Build();
-            await _postgres.StartAsync();
-            connectionString = _postgres.GetConnectionString();
+            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
-
-        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        else
+        {
+            await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        }
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new E2ETestFactory(connectionString, _email);
@@ -71,8 +64,6 @@ public sealed class LeaveCalendarIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         _factory.Dispose();
-        if (_postgres is not null)
-            await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
@@ -160,10 +151,10 @@ public sealed class LeaveCalendarIntegrationTests : IAsyncLifetime
                 TenantId = tenant.Id,
                 EmployeeId = employee.Id,
                 LeaveTypeId = leaveTypeId,
-                StartDate = new DateOnly(2026, 8, 10),
-                EndDate = new DateOnly(2026, 8, 10),
-                TotalDays = 1m,
-                PaidDays = 1m,
+                StartAt = new DateTimeOffset(2026, 8, 10, 9, 0, 0, TimeSpan.Zero),
+                EndAt = new DateTimeOffset(2026, 8, 10, 18, 0, 0, TimeSpan.Zero),
+                TotalHours = 8m,
+                PaidHours = 8m,
                 Status = LeaveRequestStatuses.Approved,
                 ApprovedBy = employee.UserId,
                 ApprovedAt = now,
@@ -175,10 +166,10 @@ public sealed class LeaveCalendarIntegrationTests : IAsyncLifetime
                 TenantId = tenant.Id,
                 EmployeeId = employee.Id,
                 LeaveTypeId = leaveTypeId,
-                StartDate = new DateOnly(2026, 8, 11),
-                EndDate = new DateOnly(2026, 8, 11),
-                TotalDays = 1m,
-                PaidDays = 1m,
+                StartAt = new DateTimeOffset(2026, 8, 11, 9, 0, 0, TimeSpan.Zero),
+                EndAt = new DateTimeOffset(2026, 8, 11, 18, 0, 0, TimeSpan.Zero),
+                TotalHours = 8m,
+                PaidHours = 8m,
                 Status = LeaveRequestStatuses.Pending,
                 CreatedAt = now
             },
@@ -188,10 +179,10 @@ public sealed class LeaveCalendarIntegrationTests : IAsyncLifetime
                 TenantId = tenant.Id,
                 EmployeeId = employee.Id,
                 LeaveTypeId = leaveTypeId,
-                StartDate = new DateOnly(2026, 8, 12),
-                EndDate = new DateOnly(2026, 8, 12),
-                TotalDays = 1m,
-                PaidDays = 1m,
+                StartAt = new DateTimeOffset(2026, 8, 12, 9, 0, 0, TimeSpan.Zero),
+                EndAt = new DateTimeOffset(2026, 8, 12, 18, 0, 0, TimeSpan.Zero),
+                TotalHours = 8m,
+                PaidHours = 8m,
                 Status = LeaveRequestStatuses.Rejected,
                 CreatedAt = now
             });

@@ -40,8 +40,16 @@ public sealed class GetTrayAttendanceStatusQueryHandler(
             context.Employee.TenantId, context.Employee.Id, context.WorkDate, ct);
 
         var isClockedIn = record?.ActualStart is not null && record.ActualEnd is null;
+
+        var openBreak = isClockedIn
+            ? await attendance.GetAnyOpenBreakTrackedAsync(
+                context.Employee.TenantId, context.Employee.Id, ct)
+            : null;
+
         return Result<TrayAttendanceStatusDto>.Success(new TrayAttendanceStatusDto(
             IsClockedIn: isClockedIn,
-            ClockedInAtUtc: isClockedIn ? record!.ActualStart : null));
+            ClockedInAtUtc: isClockedIn ? record!.ActualStart : null,
+            IsOnBreak: openBreak is not null,
+            BreakStartedAtUtc: openBreak?.BreakStart));
     }
 }

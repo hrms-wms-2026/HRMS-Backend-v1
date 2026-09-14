@@ -7,9 +7,8 @@ namespace ONEVO.Application.Features.Leave.Request.Queries.PreviewSubmitLeaveReq
 public sealed record PreviewSubmitLeaveRequestQuery(
     Guid? EmployeeId,
     Guid LeaveTypeId,
-    DateOnly StartDate,
-    DateOnly EndDate,
-    string? HalfDayPeriod,
+    DateTimeOffset StartAt,
+    DateTimeOffset EndAt,
     string? Reason,
     IReadOnlyList<Guid> FileRecordIds,
     bool IsOnBehalfRequest) : IRequest<Result<LeaveRequestResponse>>;

@@ -25,27 +25,27 @@ using ONEVO.Infrastructure.Services.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Infrastructure.Services.SharedPlatform.Outbox;
 using ONEVO.Tests.Integration.Support;
-using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Integration.CoreHr.Employee;
 
 /// <summary>
-/// End-to-end coverage for sensitive Change Position (reserve Planned + AccessGrantRequest)
-/// then roles:manage approval, against real PostgreSQL. Matches the EmployeeDetail /
-/// EmployeesList Testcontainers fixture (handler → repository → SQL). Requires Docker.
+/// Shared, one-time-per-class setup for SensitivePositionChangeApprovalIntegrationTests: clones
+/// the database and seeds the tenant/roles/positions/employees ONCE. xUnit's IClassFixture
+/// constructs this ONCE and disposes it once after every fact in the class has run, instead of
+/// IAsyncLifetime's default of once PER fact - previously this class's own InitializeAsync ran 5
+/// times, once per [Fact]. A dedicated _target2* employee/assignment/position trio was added for
+/// ActorWithRolesManage_BypassesApproval_ActivatesImmediatelyWithApprovedAuditRow: that fact and
+/// WriterRequestsSensitiveChange_ManagerApproves_EndsOldAndActivatesReserved both used to move the
+/// same shared employee into the same occupancy-capped sensitive position and both assert
+/// exclusive/singular state for it, which only worked because each fact got its own fresh database
+/// before this conversion.
 /// </summary>
-public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLifetime
+public sealed class SensitivePositionChangeApprovalIntegrationTestsFixture : IAsyncLifetime
 {
-    private const string TenantSlug = "sensitive-pos-change-approval";
+    public const string TenantSlug = "sensitive-pos-change-approval";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_sensitive_position_change_approval_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private readonly AesEncryptionService _encryption = new(
@@ -64,6 +64,17 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
     private Guid _fromPositionId;
     private Guid _sensitivePositionId;
 
+    // Dedicated to ActorWithRolesManage_BypassesApproval_ActivatesImmediatelyWithApprovedAuditRow:
+    // that fact moves its employee into _sensitivePositionId and asserts an exclusive/singular
+    // AccessGrantRequest + PositionAssignment for that employee, same as
+    // WriterRequestsSensitiveChange_ManagerApproves_EndsOldAndActivatesReserved does for
+    // _targetEmployeeId - reusing _targetEmployeeId here would collide once both facts run against
+    // one shared IClassFixture database instead of each getting a fresh one.
+    private Guid _target2EmployeeId;
+    private Guid _target2AssignmentId;
+    private Guid _target2FromPositionId;
+    private Guid _target2SensitivePositionId;
+
     private Guid _selfApproveEmployeeId;
     private Guid _selfApproveAssignmentId;
     private Guid _selfApproveFromPositionId;
@@ -71,14 +82,25 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
 
     private Guid _writerEmployeeId;
 
+    public Guid TenantId => _tenantId;
+    public Guid ManagerUserId => _managerUserId;
+    public Guid WriterUserId => _writerUserId;
+    public Guid WriterEmployeeId => _writerEmployeeId;
+    public Guid TargetEmployeeId => _targetEmployeeId;
+    public Guid TargetAssignmentId => _targetAssignmentId;
+    public Guid SensitivePositionId => _sensitivePositionId;
+    public Guid SelfApproveEmployeeId => _selfApproveEmployeeId;
+    public Guid SelfApproveAssignmentId => _selfApproveAssignmentId;
+    public Guid SelfApproveSensitivePositionId => _selfApproveSensitivePositionId;
+    public Guid Target2EmployeeId => _target2EmployeeId;
+    public Guid Target2AssignmentId => _target2AssignmentId;
+    public Guid Target2SensitivePositionId => _target2SensitivePositionId;
+
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         _tenantId = Guid.NewGuid();
         _legalEntityId = Guid.NewGuid();
@@ -87,6 +109,8 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
         _sensitivePositionId = Guid.NewGuid();
         _selfApproveFromPositionId = Guid.NewGuid();
         _selfApproveSensitivePositionId = Guid.NewGuid();
+        _target2FromPositionId = Guid.NewGuid();
+        _target2SensitivePositionId = Guid.NewGuid();
 
         db.Tenants.Add(new Tenant
         {
@@ -118,7 +142,9 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
             NewPosition(_fromPositionId, "Current Seat"),
             NewPosition(_sensitivePositionId, "Sensitive Seat"),
             NewPosition(_selfApproveFromPositionId, "Self-Approve From"),
-            NewPosition(_selfApproveSensitivePositionId, "Self-Approve Sensitive"));
+            NewPosition(_selfApproveSensitivePositionId, "Self-Approve Sensitive"),
+            NewPosition(_target2FromPositionId, "Current Seat 2"),
+            NewPosition(_target2SensitivePositionId, "Sensitive Seat 2"));
 
         await db.SaveChangesAsync();
 
@@ -135,11 +161,14 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
         _selfApproveEmployeeId = selfApproveTarget.Id;
         var writerEmployee = NewEmployee(_tenantId, _writerUserId, "E-WRITER", "Writer");
         _writerEmployeeId = writerEmployee.Id;
-        seeded.Employees.AddRange(target, selfApproveTarget, writerEmployee);
+        var target2 = NewEmployee(_tenantId, Guid.NewGuid(), "E-TARGET2", "Target2");
+        _target2EmployeeId = target2.Id;
+        seeded.Employees.AddRange(target, selfApproveTarget, writerEmployee, target2);
 
         seeded.PositionAccessTemplates.AddRange(
             NewSensitiveTemplate(_sensitivePositionId, templateRoleId),
-            NewSensitiveTemplate(_selfApproveSensitivePositionId, templateRoleId));
+            NewSensitiveTemplate(_selfApproveSensitivePositionId, templateRoleId),
+            NewSensitiveTemplate(_target2SensitivePositionId, templateRoleId));
 
         await seeded.SaveChangesAsync();
 
@@ -150,183 +179,13 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
             _tenantId, _targetEmployeeId, _fromPositionId, hireDate, _managerUserId, reportsToEmployeeId: null))!.Value;
         _selfApproveAssignmentId = (await assignmentRepo.TryCreateActiveAssignmentAsync(
             _tenantId, _selfApproveEmployeeId, _selfApproveFromPositionId, hireDate, _managerUserId, reportsToEmployeeId: null))!.Value;
+        _target2AssignmentId = (await assignmentRepo.TryCreateActiveAssignmentAsync(
+            _tenantId, _target2EmployeeId, _target2FromPositionId, hireDate, _managerUserId, reportsToEmployeeId: null))!.Value;
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
-    [Fact]
-    public async Task WriterRequestsSensitiveChange_ManagerApproves_EndsOldAndActivatesReserved()
-    {
-        var effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow);
-        var writerHandler = BuildChangePositionHandler(_writerUserId);
-
-        var requestResult = await writerHandler.Handle(
-            new ChangeEmployeePositionCommand(_targetEmployeeId, _sensitivePositionId, effectiveFrom, "Promotion"),
-            CancellationToken.None);
-
-        Assert.True(requestResult.IsSuccess);
-        Assert.True(requestResult.Value!.PendingApproval);
-
-        await using var afterRequest = CreateContext(_tenantId, TenantSlug);
-        var oldAfterRequest = await afterRequest.PositionAssignments.AsNoTracking()
-            .SingleAsync(a => a.Id == _targetAssignmentId);
-        Assert.Equal(PositionAssignmentStatus.Active, oldAfterRequest.AssignmentStatus);
-        Assert.Null(oldAfterRequest.EffectiveTo);
-
-        var planned = await afterRequest.PositionAssignments.AsNoTracking()
-            .SingleAsync(a => a.EmployeeId == _targetEmployeeId
-                              && a.PositionId == _sensitivePositionId
-                              && a.AssignmentStatus == PositionAssignmentStatus.Planned
-                              && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment);
-        Assert.Equal(effectiveFrom, planned.EffectiveFrom);
-
-        var grant = await afterRequest.AccessGrantRequests.AsNoTracking()
-            .SingleAsync(g => g.EmployeeId == _targetEmployeeId
-                              && g.ActionType == AccessGrantActionType.PositionChange);
-        Assert.Equal("Pending", grant.ApprovalStatus);
-        Assert.Equal("Promotion", grant.ChangeReason);
-        Assert.Equal(planned.Id, grant.ReservedPositionAssignmentId);
-        Assert.Equal(_writerUserId, grant.RequestedByUserId);
-
-        var managerHandler = BuildApproveHandler(_managerUserId);
-        var approveResult = await managerHandler.Handle(
-            new ApproveAccessGrantRequestCommand(grant.Id), CancellationToken.None);
-
-        Assert.True(approveResult.IsSuccess);
-
-        await using var afterApprove = CreateContext(_tenantId, TenantSlug);
-        var oldAfterApprove = await afterApprove.PositionAssignments.AsNoTracking()
-            .SingleAsync(a => a.Id == _targetAssignmentId);
-        Assert.Equal(PositionAssignmentStatus.Ended, oldAfterApprove.AssignmentStatus);
-        Assert.NotNull(oldAfterApprove.EffectiveTo);
-
-        var activated = await afterApprove.PositionAssignments.AsNoTracking()
-            .SingleAsync(a => a.Id == planned.Id);
-        Assert.Equal(PositionAssignmentStatus.Active, activated.AssignmentStatus);
-        Assert.Equal(_sensitivePositionId, activated.PositionId);
-        Assert.Equal("Promotion", activated.ChangeReason);
-
-        var grantAfter = await afterApprove.AccessGrantRequests.AsNoTracking()
-            .SingleAsync(g => g.Id == grant.Id);
-        Assert.Equal("Approved", grantAfter.ApprovalStatus);
-        Assert.Equal("Promotion", grantAfter.ChangeReason);
-    }
-
-    [Fact]
-    public async Task RequesterWithRolesManage_BypassesPendingApproval()
-    {
-        var effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow);
-        var requesterHandler = BuildChangePositionHandler(_managerUserId);
-
-        var requestResult = await requesterHandler.Handle(
-            new ChangeEmployeePositionCommand(
-                _selfApproveEmployeeId, _selfApproveSensitivePositionId, effectiveFrom, "Transfer"),
-            CancellationToken.None);
-
-        Assert.True(requestResult.IsSuccess);
-        Assert.False(requestResult.Value!.PendingApproval);
-
-        await using var db = CreateContext(_tenantId, TenantSlug);
-        var old = await db.PositionAssignments.AsNoTracking()
-            .SingleAsync(a => a.Id == _selfApproveAssignmentId);
-        Assert.Equal(PositionAssignmentStatus.Ended, old.AssignmentStatus);
-
-        var newAssignment = await db.PositionAssignments.AsNoTracking()
-            .SingleAsync(a => a.EmployeeId == _selfApproveEmployeeId
-                              && a.PositionId == _selfApproveSensitivePositionId
-                              && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment);
-        Assert.Equal(PositionAssignmentStatus.Active, newAssignment.AssignmentStatus);
-        Assert.Equal(effectiveFrom, newAssignment.EffectiveFrom);
-
-        var grant = await db.AccessGrantRequests.AsNoTracking()
-            .SingleAsync(g => g.EmployeeId == _selfApproveEmployeeId
-                              && g.ActionType == AccessGrantActionType.PositionChange);
-        Assert.Equal("Approved", grant.ApprovalStatus);
-        Assert.Equal(_managerUserId, grant.RequestedByUserId);
-        Assert.Equal(_managerUserId, grant.DecidedByUserId);
-    }
-
-    [Fact]
-    public async Task Employee_CannotChangeOwnPosition_ReturnsForbidden()
-    {
-        var handler = BuildChangePositionHandler(_writerUserId);
-
-        var result = await handler.Handle(
-            new ChangeEmployeePositionCommand(
-                _writerEmployeeId,
-                _sensitivePositionId,
-                DateOnly.FromDateTime(DateTime.UtcNow),
-                "LateralMove"),
-            CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(403, result.StatusCode);
-        Assert.Equal("You cannot change your own position.", result.Error);
-    }
-
-    [Fact]
-    public async Task ActorWithRolesManage_BypassesApproval_ActivatesImmediatelyWithApprovedAuditRow()
-    {
-        var bypassRoleId = await SeedRoleWithPermissionAsync(_tenantId, "roles:manage");
-        var bypassActorUserId = await SeedUserWithRoleAsync(_tenantId, bypassRoleId);
-        var effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow);
-        var handler = BuildChangePositionHandler(bypassActorUserId);
-
-        var result = await handler.Handle(
-            new ChangeEmployeePositionCommand(_targetEmployeeId, _sensitivePositionId, effectiveFrom, "Transfer"),
-            CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        Assert.False(result.Value!.PendingApproval);
-
-        await using var db = CreateContext(_tenantId, TenantSlug);
-        var oldAssignment = await db.PositionAssignments.AsNoTracking()
-            .SingleAsync(a => a.Id == _targetAssignmentId);
-        Assert.Equal(PositionAssignmentStatus.Ended, oldAssignment.AssignmentStatus);
-        Assert.NotNull(oldAssignment.EffectiveTo);
-
-        var newAssignment = await db.PositionAssignments.AsNoTracking()
-            .SingleAsync(a => a.EmployeeId == _targetEmployeeId
-                              && a.PositionId == _sensitivePositionId
-                              && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment);
-        Assert.Equal(PositionAssignmentStatus.Active, newAssignment.AssignmentStatus);
-        Assert.Equal(effectiveFrom, newAssignment.EffectiveFrom);
-
-        var grant = await db.AccessGrantRequests.AsNoTracking()
-            .SingleAsync(g => g.EmployeeId == _targetEmployeeId && g.ActionType == AccessGrantActionType.PositionChange);
-        Assert.Equal("Approved", grant.ApprovalStatus);
-        Assert.Equal(bypassActorUserId, grant.RequestedByUserId);
-        Assert.Equal(bypassActorUserId, grant.DecidedByUserId);
-        Assert.NotNull(grant.DecidedAt);
-        Assert.Equal("Self-authorized: requester holds roles:manage.", grant.DecisionNote);
-        Assert.Equal(newAssignment.Id, grant.ReservedPositionAssignmentId);
-    }
-
-    [Fact]
-    public async Task ActorWithRolesManage_CannotBypassSelfTransferBlock()
-    {
-        var bypassRoleId = await SeedRoleWithPermissionAsync(_tenantId, "roles:manage");
-        var bypassActorUserId = await SeedUserWithRoleAsync(_tenantId, bypassRoleId);
-        var bypassActorEmployee = NewEmployee(_tenantId, bypassActorUserId, "E-BYPASS-SELF", "BypassSelf");
-
-        await using (var seeded = CreateContext())
-        {
-            seeded.Employees.Add(bypassActorEmployee);
-            await seeded.SaveChangesAsync();
-        }
-
-        var handler = BuildChangePositionHandler(bypassActorUserId);
-        var result = await handler.Handle(
-            new ChangeEmployeePositionCommand(
-                bypassActorEmployee.Id, _sensitivePositionId, DateOnly.FromDateTime(DateTime.UtcNow), "Transfer"),
-            CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(403, result.StatusCode);
-        Assert.Equal("You cannot change your own position.", result.Error);
-    }
-
-    private ChangeEmployeePositionCommandHandler BuildChangePositionHandler(Guid userId)
+    public ChangeEmployeePositionCommandHandler BuildChangePositionHandler(Guid userId)
     {
         var db = CreateContext(_tenantId, TenantSlug);
         var employees = new EfEmployeeRepository(db);
@@ -336,25 +195,26 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
             PositionAssignmentRepositoryTestSupport.CreateRepository(db),
             new UnitOfWork(db),
             new StubCurrentUser(_tenantId, userId, orgManage: true, sensitive: false),
-            new EfAuthRepository(db),
+            new EfPermissionRepository(db),
             new EfAccessGrantRequestRepository(db),
             _clock,
             new OutboxWriter(db, _encryption, _clock),
-            new EfAuthRepository(db),
+            new EfUserRepository(db),
             new EfTenantRepository(db),
             new EmployeeOffboardingLockGuard(employees));
     }
 
-    private ApproveAccessGrantRequestCommandHandler BuildApproveHandler(Guid userId)
+    public ApproveAccessGrantRequestCommandHandler BuildApproveHandler(Guid userId)
     {
         var db = CreateContext(_tenantId, TenantSlug);
-        var auth = new EfAuthRepository(db);
+        var authUsers = new EfUserRepository(db);
+        var authUserRoles = new EfUserRoleRepository(db);
         return new ApproveAccessGrantRequestCommandHandler(
             new EfAccessGrantRequestRepository(db),
             new EfOnboardingDraftRepository(db),
             new EfEmployeeRepository(db),
-            auth,
-            auth,
+            authUsers,
+            authUserRoles,
             new EfPositionRepository(db),
             PositionAssignmentRepositoryTestSupport.CreateRepository(db),
             new EfLegalEntityRepository(db),
@@ -385,7 +245,7 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
         IsActive = true,
     };
 
-    private EmployeeEntity NewEmployee(Guid tenantId, Guid userId, string employeeNumber, string firstName) => new()
+    public EmployeeEntity NewEmployee(Guid tenantId, Guid userId, string employeeNumber, string firstName) => new()
     {
         Id = Guid.NewGuid(),
         TenantId = tenantId,
@@ -410,7 +270,7 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
         CreatedAt = DateTimeOffset.UtcNow,
     };
 
-    private async Task<Guid> SeedRoleWithPermissionAsync(Guid tenantId, string permissionCode)
+    public async Task<Guid> SeedRoleWithPermissionAsync(Guid tenantId, string permissionCode)
     {
         await using var db = CreateContext();
         var permission = await db.Permissions.FirstOrDefaultAsync(p => p.Code == permissionCode);
@@ -462,7 +322,7 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
         return userId;
     }
 
-    private async Task<Guid> SeedUserWithRoleAsync(
+    public async Task<Guid> SeedUserWithRoleAsync(
         Guid tenantId,
         Guid roleId,
         DateTimeOffset? expiresAt = null)
@@ -481,7 +341,7 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
         return userId;
     }
 
-    private ApplicationDbContext CreateContext(Guid? tenantId = null, string? slug = null)
+    public ApplicationDbContext CreateContext(Guid? tenantId = null, string? slug = null)
     {
         var tenantContext = new TenantContextAccessor();
         if (tenantId is not null && slug is not null)
@@ -534,4 +394,193 @@ public sealed class SensitivePositionChangeApprovalIntegrationTests : IAsyncLife
         public bool HasPermission(string permission) => Permissions.Contains(permission);
         public bool IsAuthenticated => true;
     }
+
+}
+
+/// <summary>
+/// End-to-end coverage for sensitive Change Position (reserve Planned + AccessGrantRequest)
+/// then roles:manage approval, against real PostgreSQL. Matches the EmployeeDetail /
+/// EmployeesList Testcontainers fixture (handler → repository → SQL). Requires Docker.
+/// </summary>
+public sealed class SensitivePositionChangeApprovalIntegrationTests : IClassFixture<SensitivePositionChangeApprovalIntegrationTestsFixture>
+{
+    private readonly SensitivePositionChangeApprovalIntegrationTestsFixture _fixture;
+
+    public SensitivePositionChangeApprovalIntegrationTests(SensitivePositionChangeApprovalIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task WriterRequestsSensitiveChange_ManagerApproves_EndsOldAndActivatesReserved()
+    {
+        var effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow);
+        var writerHandler = _fixture.BuildChangePositionHandler(_fixture.WriterUserId);
+
+        var requestResult = await writerHandler.Handle(
+            new ChangeEmployeePositionCommand(_fixture.TargetEmployeeId, _fixture.SensitivePositionId, effectiveFrom, "Promotion"),
+            CancellationToken.None);
+
+        Assert.True(requestResult.IsSuccess);
+        Assert.True(requestResult.Value!.PendingApproval);
+
+        await using var afterRequest = _fixture.CreateContext(_fixture.TenantId, SensitivePositionChangeApprovalIntegrationTestsFixture.TenantSlug);
+        var oldAfterRequest = await afterRequest.PositionAssignments.AsNoTracking()
+            .SingleAsync(a => a.Id == _fixture.TargetAssignmentId);
+        Assert.Equal(PositionAssignmentStatus.Active, oldAfterRequest.AssignmentStatus);
+        Assert.Null(oldAfterRequest.EffectiveTo);
+
+        var planned = await afterRequest.PositionAssignments.AsNoTracking()
+            .SingleAsync(a => a.EmployeeId == _fixture.TargetEmployeeId
+                              && a.PositionId == _fixture.SensitivePositionId
+                              && a.AssignmentStatus == PositionAssignmentStatus.Planned
+                              && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment);
+        Assert.Equal(effectiveFrom, planned.EffectiveFrom);
+
+        var grant = await afterRequest.AccessGrantRequests.AsNoTracking()
+            .SingleAsync(g => g.EmployeeId == _fixture.TargetEmployeeId
+                              && g.ActionType == AccessGrantActionType.PositionChange);
+        Assert.Equal("Pending", grant.ApprovalStatus);
+        Assert.Equal("Promotion", grant.ChangeReason);
+        Assert.Equal(planned.Id, grant.ReservedPositionAssignmentId);
+        Assert.Equal(_fixture.WriterUserId, grant.RequestedByUserId);
+
+        var managerHandler = _fixture.BuildApproveHandler(_fixture.ManagerUserId);
+        var approveResult = await managerHandler.Handle(
+            new ApproveAccessGrantRequestCommand(grant.Id), CancellationToken.None);
+
+        Assert.True(approveResult.IsSuccess);
+
+        await using var afterApprove = _fixture.CreateContext(_fixture.TenantId, SensitivePositionChangeApprovalIntegrationTestsFixture.TenantSlug);
+        var oldAfterApprove = await afterApprove.PositionAssignments.AsNoTracking()
+            .SingleAsync(a => a.Id == _fixture.TargetAssignmentId);
+        Assert.Equal(PositionAssignmentStatus.Ended, oldAfterApprove.AssignmentStatus);
+        Assert.NotNull(oldAfterApprove.EffectiveTo);
+
+        var activated = await afterApprove.PositionAssignments.AsNoTracking()
+            .SingleAsync(a => a.Id == planned.Id);
+        Assert.Equal(PositionAssignmentStatus.Active, activated.AssignmentStatus);
+        Assert.Equal(_fixture.SensitivePositionId, activated.PositionId);
+        Assert.Equal("Promotion", activated.ChangeReason);
+
+        var grantAfter = await afterApprove.AccessGrantRequests.AsNoTracking()
+            .SingleAsync(g => g.Id == grant.Id);
+        Assert.Equal("Approved", grantAfter.ApprovalStatus);
+        Assert.Equal("Promotion", grantAfter.ChangeReason);
+    }
+
+    [Fact]
+    public async Task RequesterWithRolesManage_BypassesPendingApproval()
+    {
+        var effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow);
+        var requesterHandler = _fixture.BuildChangePositionHandler(_fixture.ManagerUserId);
+
+        var requestResult = await requesterHandler.Handle(
+            new ChangeEmployeePositionCommand(
+                _fixture.SelfApproveEmployeeId, _fixture.SelfApproveSensitivePositionId, effectiveFrom, "Transfer"),
+            CancellationToken.None);
+
+        Assert.True(requestResult.IsSuccess);
+        Assert.False(requestResult.Value!.PendingApproval);
+
+        await using var db = _fixture.CreateContext(_fixture.TenantId, SensitivePositionChangeApprovalIntegrationTestsFixture.TenantSlug);
+        var old = await db.PositionAssignments.AsNoTracking()
+            .SingleAsync(a => a.Id == _fixture.SelfApproveAssignmentId);
+        Assert.Equal(PositionAssignmentStatus.Ended, old.AssignmentStatus);
+
+        var newAssignment = await db.PositionAssignments.AsNoTracking()
+            .SingleAsync(a => a.EmployeeId == _fixture.SelfApproveEmployeeId
+                              && a.PositionId == _fixture.SelfApproveSensitivePositionId
+                              && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment);
+        Assert.Equal(PositionAssignmentStatus.Active, newAssignment.AssignmentStatus);
+        Assert.Equal(effectiveFrom, newAssignment.EffectiveFrom);
+
+        var grant = await db.AccessGrantRequests.AsNoTracking()
+            .SingleAsync(g => g.EmployeeId == _fixture.SelfApproveEmployeeId
+                              && g.ActionType == AccessGrantActionType.PositionChange);
+        Assert.Equal("Approved", grant.ApprovalStatus);
+        Assert.Equal(_fixture.ManagerUserId, grant.RequestedByUserId);
+        Assert.Equal(_fixture.ManagerUserId, grant.DecidedByUserId);
+    }
+
+    [Fact]
+    public async Task Employee_CannotChangeOwnPosition_ReturnsForbidden()
+    {
+        var handler = _fixture.BuildChangePositionHandler(_fixture.WriterUserId);
+
+        var result = await handler.Handle(
+            new ChangeEmployeePositionCommand(
+                _fixture.WriterEmployeeId,
+                _fixture.SensitivePositionId,
+                DateOnly.FromDateTime(DateTime.UtcNow),
+                "LateralMove"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal("You cannot change your own position.", result.Error);
+    }
+
+    [Fact]
+    public async Task ActorWithRolesManage_BypassesApproval_ActivatesImmediatelyWithApprovedAuditRow()
+    {
+        var bypassRoleId = await _fixture.SeedRoleWithPermissionAsync(_fixture.TenantId, "roles:manage");
+        var bypassActorUserId = await _fixture.SeedUserWithRoleAsync(_fixture.TenantId, bypassRoleId);
+        var effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow);
+        var handler = _fixture.BuildChangePositionHandler(bypassActorUserId);
+
+        var result = await handler.Handle(
+            new ChangeEmployeePositionCommand(_fixture.Target2EmployeeId, _fixture.Target2SensitivePositionId, effectiveFrom, "Transfer"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.PendingApproval);
+
+        await using var db = _fixture.CreateContext(_fixture.TenantId, SensitivePositionChangeApprovalIntegrationTestsFixture.TenantSlug);
+        var oldAssignment = await db.PositionAssignments.AsNoTracking()
+            .SingleAsync(a => a.Id == _fixture.Target2AssignmentId);
+        Assert.Equal(PositionAssignmentStatus.Ended, oldAssignment.AssignmentStatus);
+        Assert.NotNull(oldAssignment.EffectiveTo);
+
+        var newAssignment = await db.PositionAssignments.AsNoTracking()
+            .SingleAsync(a => a.EmployeeId == _fixture.Target2EmployeeId
+                              && a.PositionId == _fixture.Target2SensitivePositionId
+                              && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment);
+        Assert.Equal(PositionAssignmentStatus.Active, newAssignment.AssignmentStatus);
+        Assert.Equal(effectiveFrom, newAssignment.EffectiveFrom);
+
+        var grant = await db.AccessGrantRequests.AsNoTracking()
+            .SingleAsync(g => g.EmployeeId == _fixture.Target2EmployeeId && g.ActionType == AccessGrantActionType.PositionChange);
+        Assert.Equal("Approved", grant.ApprovalStatus);
+        Assert.Equal(bypassActorUserId, grant.RequestedByUserId);
+        Assert.Equal(bypassActorUserId, grant.DecidedByUserId);
+        Assert.NotNull(grant.DecidedAt);
+        Assert.Equal("Self-authorized: requester holds roles:manage.", grant.DecisionNote);
+        Assert.Equal(newAssignment.Id, grant.ReservedPositionAssignmentId);
+    }
+
+    [Fact]
+    public async Task ActorWithRolesManage_CannotBypassSelfTransferBlock()
+    {
+        var bypassRoleId = await _fixture.SeedRoleWithPermissionAsync(_fixture.TenantId, "roles:manage");
+        var bypassActorUserId = await _fixture.SeedUserWithRoleAsync(_fixture.TenantId, bypassRoleId);
+        var bypassActorEmployee = _fixture.NewEmployee(_fixture.TenantId, bypassActorUserId, "E-BYPASS-SELF", "BypassSelf");
+
+        await using (var seeded = _fixture.CreateContext())
+        {
+            seeded.Employees.Add(bypassActorEmployee);
+            await seeded.SaveChangesAsync();
+        }
+
+        var handler = _fixture.BuildChangePositionHandler(bypassActorUserId);
+        var result = await handler.Handle(
+            new ChangeEmployeePositionCommand(
+                bypassActorEmployee.Id, _fixture.SensitivePositionId, DateOnly.FromDateTime(DateTime.UtcNow), "Transfer"),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal("You cannot change your own position.", result.Error);
+    }
+
 }

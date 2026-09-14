@@ -12,7 +12,6 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Features.Leave;
@@ -30,7 +29,6 @@ public class LeaveBalanceAuditEndpointTests : IAsyncLifetime
 
     private readonly CapturingEmailService _email = new();
 
-    private PostgreSqlContainer? _postgres;
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
     private HttpClient _client = null!;
@@ -46,17 +44,12 @@ public class LeaveBalanceAuditEndpointTests : IAsyncLifetime
         var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            _postgres = new PostgreSqlBuilder()
-                .WithImage("postgres:16-alpine")
-                .WithDatabase("onevo_leave_balance_audit_test")
-                .WithUsername("test")
-                .WithPassword("test")
-                .Build();
-            await _postgres.StartAsync();
-            connectionString = _postgres.GetConnectionString();
+            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
-
-        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        else
+        {
+            await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        }
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new E2ETestFactory(connectionString, _email);
@@ -84,8 +77,6 @@ public class LeaveBalanceAuditEndpointTests : IAsyncLifetime
     {
         _client.Dispose();
         _factory.Dispose();
-        if (_postgres is not null)
-            await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
@@ -94,6 +85,7 @@ public class LeaveBalanceAuditEndpointTests : IAsyncLifetime
     {
         var leaveTypeId = await CreateLeaveTypeAsync("Annual Leave", "AL");
         var legalEntityId = await GetPrimaryLegalEntityIdAsync(_tenantId);
+        await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 20m);
         await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
 
@@ -203,6 +195,18 @@ public class LeaveBalanceAuditEndpointTests : IAsyncLifetime
             .Where(x => x.TenantId == tenantId && x.IsPrimary)
             .Select(x => x.Id)
             .SingleAsync();
+    }
+
+    private async Task EnsureWorkWindowAsync(Guid legalEntityId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var entity = await db.LegalEntities.SingleAsync(x => x.Id == legalEntityId);
+        entity.WorkStartTime = new TimeOnly(9, 0);
+        entity.WorkEndTime = new TimeOnly(18, 0);
+        entity.BreakDurationMinutes = 60;
+        entity.Timezone = "UTC";
+        await db.SaveChangesAsync();
     }
 
     private static object CreatePolicyBody(

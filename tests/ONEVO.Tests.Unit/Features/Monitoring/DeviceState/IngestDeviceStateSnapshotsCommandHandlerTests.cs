@@ -147,4 +147,59 @@ public class IngestDeviceStateSnapshotsCommandHandlerTests
         result.StatusCode.Should().Be(400);
         result.Error.Should().Be(MonitoringErrors.SnapshotTooOld);
     }
+
+    [Fact]
+    public async Task Handle_SnapshotWithLocation_PersistsCoordinates()
+    {
+        IEnumerable<DeviceStateSnapshot>? saved = null;
+        _snapshots.Setup(s => s.AddRangeAsync(It.IsAny<IEnumerable<DeviceStateSnapshot>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<DeviceStateSnapshot>, CancellationToken>((list, _) => saved = list.ToList())
+            .Returns(Task.CompletedTask);
+
+        var cmd = new IngestDeviceStateSnapshotsCommand
+        {
+            Snapshots =
+            [
+                new DeviceStateSnapshotItem
+                {
+                    CapturedAt = _clock.UtcNow,
+                    IdleSeconds = 0,
+                    IsIdle = false,
+                    Latitude = 6.9271,
+                    Longitude = 79.8612,
+                    AccuracyMeters = 12.5
+                }
+            ]
+        };
+
+        var result = await CreateSut().Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        saved.Should().NotBeNull().And.HaveCount(1);
+        saved!.First().Latitude.Should().Be(6.9271);
+        saved.First().Longitude.Should().Be(79.8612);
+        saved.First().AccuracyMeters.Should().Be(12.5);
+    }
+
+    [Fact]
+    public async Task Handle_SnapshotWithoutLocation_PersistsNullCoordinates()
+    {
+        IEnumerable<DeviceStateSnapshot>? saved = null;
+        _snapshots.Setup(s => s.AddRangeAsync(It.IsAny<IEnumerable<DeviceStateSnapshot>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<DeviceStateSnapshot>, CancellationToken>((list, _) => saved = list.ToList())
+            .Returns(Task.CompletedTask);
+
+        var cmd = new IngestDeviceStateSnapshotsCommand
+        {
+            Snapshots = [new DeviceStateSnapshotItem { CapturedAt = _clock.UtcNow, IdleSeconds = 30, IsIdle = false }]
+        };
+
+        var result = await CreateSut().Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        saved.Should().NotBeNull().And.HaveCount(1);
+        saved!.First().Latitude.Should().BeNull();
+        saved.First().Longitude.Should().BeNull();
+        saved.First().AccuracyMeters.Should().BeNull();
+    }
 }

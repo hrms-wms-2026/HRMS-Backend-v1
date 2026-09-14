@@ -19,6 +19,10 @@ public interface INotificationRepository
 
     Task<int> GetInboxTotalCountAsync(Guid tenantId, Guid employeeId, CancellationToken ct);
 
+    /// <summary>Batch anti-spam check: which of these employees have a Notification of this type created after <paramref name="sinceUtc"/>.</summary>
+    Task<IReadOnlySet<Guid>> GetEmployeeIdsWithRecentAlertAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, NotificationType type, DateTimeOffset sinceUtc, CancellationToken ct);
+
     void Update(Notification notification);
 
     Task<int> SaveChangesAsync(CancellationToken ct);

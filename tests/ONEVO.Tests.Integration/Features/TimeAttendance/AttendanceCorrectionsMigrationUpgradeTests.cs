@@ -95,11 +95,40 @@ public sealed class AttendanceCorrectionsMigrationUpgradeTests : IAsyncLifetime
         }
 
         Guid tenantId, legalEntityId, employeeId, requesterId, reviewerId;
+        var userId = Guid.NewGuid();
+        var tenant = new Tenant { Id = Guid.NewGuid(), Name = "Migration Upgrade Co", Slug = "mig-upgrade-co", CompanySizeRange = "1-50" };
+
         await using (var context = CreateContext())
         {
-            var userId = Guid.NewGuid();
-            var tenant = new Tenant { Id = Guid.NewGuid(), Name = "Migration Upgrade Co", Slug = "mig-upgrade-co", CompanySizeRange = "1-50" };
-            var legalEntity = new LegalEntity { Id = Guid.NewGuid(), TenantId = tenant.Id, Name = "Migration Upgrade Co", CountryCode = "LK", CurrencyCode = "LKR" };
+            context.Add(tenant);
+            await context.SaveChangesAsync();
+        }
+
+        // LegalEntity is inserted via raw SQL, not EF SaveChanges: the compiled LegalEntity model
+        // now includes office_address/office_latitude/office_longitude (added by a much later
+        // migration than PreApprovalSnapshotMigration), and EF's generated INSERT always lists
+        // every mapped scalar column explicitly - it would reference those columns before they
+        // exist at this pinned historical schema point. Column list below is exactly
+        // legal_entities' NOT-NULL-with-no-default set as of PreApprovalSnapshotMigration; every
+        // other column is nullable or has a migration-level DEFAULT, so Postgres fills it in when
+        // omitted.
+        legalEntityId = Guid.NewGuid();
+        await using (var connection = new NpgsqlConnection(_migratorConnectionString))
+        {
+            await connection.OpenAsync();
+            await SetAdminModeAsync(connection);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO legal_entities (id, tenant_id, name, country_code, currency_code, is_active, is_primary, created_at)
+                VALUES (@id, @tenant, 'Migration Upgrade Co', 'LK', 'LKR', true, true, now());
+                """;
+            command.Parameters.AddWithValue("id", legalEntityId);
+            command.Parameters.AddWithValue("tenant", tenant.Id);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var context = CreateContext())
+        {
             var requester = new User
             {
                 Id = userId, TenantId = tenant.Id, Email = "requester@mig-upgrade.test",
@@ -116,16 +145,15 @@ public sealed class AttendanceCorrectionsMigrationUpgradeTests : IAsyncLifetime
             var employee = new Employee
             {
                 Id = Guid.NewGuid(), TenantId = tenant.Id, UserId = userId, EmployeeNumber = "MIG-001",
-                FirstName = "Req", LastName = "User", Email = requester.Email, LegalEntityId = legalEntity.Id,
+                FirstName = "Req", LastName = "User", Email = requester.Email, LegalEntityId = legalEntityId,
                 EmploymentTypeId = 1, EmploymentStatusId = 1, WorkModeId = 1,
                 HireDate = new DateOnly(2025, 1, 1), CreatedAt = DateTimeOffset.UtcNow, CreatedById = userId
             };
 
-            context.AddRange(tenant, legalEntity, requester, reviewer, employee);
+            context.AddRange(requester, reviewer, employee);
             await context.SaveChangesAsync();
 
             tenantId = tenant.Id;
-            legalEntityId = legalEntity.Id;
             employeeId = employee.Id;
             requesterId = userId;
             reviewerId = reviewerUserId;

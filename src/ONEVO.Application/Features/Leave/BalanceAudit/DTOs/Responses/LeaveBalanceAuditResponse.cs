@@ -9,7 +9,7 @@ public record LeaveBalanceAuditResponse(
     string LeaveTypeName,
     string LeaveTypeCode,
     string ChangeType,
-    decimal DaysChanged,
+    decimal HoursChanged,
     decimal BalanceAfter,
     string? Reason,
     Guid? RelatedRequestId,

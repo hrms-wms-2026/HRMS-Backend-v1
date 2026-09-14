@@ -13,4 +13,6 @@ public sealed record TrayAgentPolicyDto(
     [property: JsonPropertyName("valid_until")] DateTimeOffset ValidUntil,
     [property: JsonPropertyName("effective_scope")] string EffectiveScope = "employee",
     [property: JsonPropertyName("location_tracking_enabled")] bool LocationTrackingEnabled = false,
-    [property: JsonPropertyName("tray_clock_in_enabled")] bool TrayClockInEnabled = false);
+    [property: JsonPropertyName("tray_clock_in_enabled")] bool TrayClockInEnabled = false,
+    [property: JsonPropertyName("schedule_start")] TimeOnly? ScheduleStart = null,
+    [property: JsonPropertyName("schedule_end")] TimeOnly? ScheduleEnd = null);

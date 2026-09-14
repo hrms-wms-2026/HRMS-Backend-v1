@@ -37,10 +37,10 @@ public class EfLeaveEntitlementRepositoryTests
             EmployeeId = employee.Id,
             LeaveTypeId = leaveType.Id,
             Year = 2026,
-            TotalDays = 17.5m,
-            UsedDays = 0m,
-            PendingDays = 0m,
-            CarriedForwardDays = 2.5m,
+            TotalHours = 17.5m,
+            UsedHours = 0m,
+            PendingHours = 0m,
+            CarriedForwardHours = 2.5m,
             Source = LeaveEntitlementSources.Auto
         };
         var audit = new LeaveBalanceAudit
@@ -50,7 +50,7 @@ public class EfLeaveEntitlementRepositoryTests
             EmployeeId = employee.Id,
             LeaveTypeId = leaveType.Id,
             ChangeType = LeaveBalanceChangeTypes.Accrual,
-            DaysChanged = 20m,
+            HoursChanged = 20m,
             BalanceAfter = 20m,
             Reason = "Generated from active leave policy"
         };
@@ -58,7 +58,7 @@ public class EfLeaveEntitlementRepositoryTests
         var repo = new EfLeaveEntitlementRepository(db);
         await repo.AddGeneratedAsync([new LeaveEntitlementWriteSet(entitlement, [audit])], CancellationToken.None);
 
-        (await db.LeaveEntitlements.SingleAsync()).TotalDays.Should().Be(17.5m);
+        (await db.LeaveEntitlements.SingleAsync()).TotalHours.Should().Be(17.5m);
         (await db.LeaveBalanceAudits.SingleAsync()).BalanceAfter.Should().Be(20m);
     }
 
@@ -78,10 +78,10 @@ public class EfLeaveEntitlementRepositoryTests
             EmployeeId = employee.Id,
             LeaveTypeId = leaveType.Id,
             Year = 2026,
-            TotalDays = 12.5m,
-            UsedDays = 4m,
-            PendingDays = 1.5m,
-            CarriedForwardDays = 2m,
+            TotalHours = 12.5m,
+            UsedHours = 4m,
+            PendingHours = 1.5m,
+            CarriedForwardHours = 2m,
             Source = LeaveEntitlementSources.Manual
         });
         await db.SaveChangesAsync();
@@ -93,7 +93,7 @@ public class EfLeaveEntitlementRepositoryTests
             CancellationToken.None);
 
         rows.Should().ContainSingle();
-        rows[0].RemainingDays.Should().Be(9m);
+        rows[0].RemainingHours.Should().Be(9m);
         rows[0].EmployeeName.Should().Be("Maya Silva");
     }
 

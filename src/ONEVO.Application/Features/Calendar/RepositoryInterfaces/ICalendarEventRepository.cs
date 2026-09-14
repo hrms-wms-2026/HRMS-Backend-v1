@@ -61,4 +61,9 @@ public interface ICalendarEventRepository
     /// (Recurrence != None) - pushing recurring events to external providers is a follow-on, not this pass.</summary>
     Task<IReadOnlyList<CalendarEvent>> GetManualEventsUpdatedSinceForUserAsync(
         Guid tenantId, Guid userId, DateTimeOffset since, CancellationToken ct = default);
+
+    /// <summary>Removes every 'holiday'-sourced event for the tenant in the given year - used to
+    /// make holiday re-sync idempotent (delete-then-reinsert) instead of accumulating
+    /// duplicates on every sync.</summary>
+    Task RemoveHolidayEventsForYearAsync(Guid tenantId, int year, CancellationToken ct = default);
 }

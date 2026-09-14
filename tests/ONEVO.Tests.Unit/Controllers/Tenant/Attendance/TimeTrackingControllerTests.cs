@@ -105,7 +105,8 @@ public sealed class TimeTrackingControllerTests
                 Guid.NewGuid(), WorkDate, null, null, null, false, 0, 0, null, null, "present",
                 true, false, false, false),
             Array.Empty<TimelineEvent>(),
-            null);
+            null,
+            Array.Empty<CheckInLocationDto>());
         mediator
             .Setup(x => x.Send(It.IsAny<GetAttendanceDayDetailQuery>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<AttendanceDayDetailResponse>.Success(expected));

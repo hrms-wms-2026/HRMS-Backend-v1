@@ -26,4 +26,30 @@ public class EfCheckInRepository : ICheckInRepository
             .Where(f => f.Id == faceScanId)
             .ExecuteUpdateAsync(s => s.SetProperty(f => f.Status, status), ct);
     }
+
+    public async Task<IReadOnlyList<EmployeeCheckIn>> ListForUserInRangeAsync(
+        Guid tenantId, Guid userId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+        => await _db.EmployeeCheckIns
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId
+                && c.UserId == userId
+                && c.CheckedInAt >= from
+                && c.CheckedInAt < to)
+            .OrderBy(c => c.CheckedInAt)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<EmployeeCheckIn>> ListForUsersInRangeAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> userIds, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        if (userIds.Count == 0) return Array.Empty<EmployeeCheckIn>();
+
+        return await _db.EmployeeCheckIns
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId
+                && userIds.Contains(c.UserId)
+                && c.CheckedInAt >= from
+                && c.CheckedInAt < to)
+            .OrderBy(c => c.CheckedInAt)
+            .ToListAsync(ct);
+    }
 }

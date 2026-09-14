@@ -22,7 +22,18 @@ public sealed class StartBreakCommandHandler(
         if (!contextResult.IsSuccess)
             return ToTodayFailure(contextResult);
 
-        var context = contextResult.Value!;
+        return await HandleForContextAsync(contextResult.Value!, autoDetected: false, ct);
+    }
+
+    /// <summary>
+    /// Shared mutation entry point for both the web command above and
+    /// <c>TrayStartBreakCommandHandler</c>, which resolves its own tray-device context and passes
+    /// <paramref name="autoDetected"/> = true so the resulting <see cref="BreakRecord"/> is
+    /// attributable to the desktop tray in the attendance timeline.
+    /// </summary>
+    public async Task<Result<AttendanceTodayResponse>> HandleForContextAsync(
+        AttendanceTodayContext context, bool autoDetected, CancellationToken ct)
+    {
         if (context.Schedule.Status != "configured")
             return Result<AttendanceTodayResponse>.Conflict("schedule_not_configured");
 
@@ -32,7 +43,7 @@ public sealed class StartBreakCommandHandler(
         try
         {
             var mutation = await unitOfWork.ExecuteInTransactionAsync(
-                transactionCt => MutateAsync(context, transactionCt), ct);
+                transactionCt => MutateAsync(context, autoDetected, transactionCt), ct);
 
             if (!mutation.IsSuccess)
                 return Result<AttendanceTodayResponse>.Failure(
@@ -48,11 +59,12 @@ public sealed class StartBreakCommandHandler(
                 "Break state was updated by another request. Please refresh and try again.");
         }
 
-        return await todayState.GetTodayAsync(ct);
+        return await todayState.GetTodayAsync(context.Employee.TenantId, context.Employee.UserId, ct);
     }
 
     private async Task<Result<bool>> MutateAsync(
         AttendanceTodayContext context,
+        bool autoDetected,
         CancellationToken ct)
     {
         var allowance = context.LegalEntity.BreakDurationMinutes;
@@ -107,7 +119,7 @@ public sealed class StartBreakCommandHandler(
             BreakStart = context.UtcNow,
             BreakEnd = null,
             BreakType = null,
-            AutoDetected = false,
+            AutoDetected = autoDetected,
             CreatedAt = context.UtcNow
         };
 

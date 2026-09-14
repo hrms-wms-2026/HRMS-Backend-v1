@@ -179,11 +179,11 @@ public class EfLeaveCalendarRepositoryTests
         TenantId = tenantId,
         EmployeeId = employeeId,
         LeaveTypeId = leaveTypeId,
-        StartDate = start,
-        EndDate = end,
+        StartAt = new DateTimeOffset(start, TimeOnly.MinValue, TimeSpan.Zero),
+        EndAt = new DateTimeOffset(end, new TimeOnly(18, 0), TimeSpan.Zero),
         Status = status,
-        TotalDays = end.DayNumber - start.DayNumber + 1,
-        PaidDays = end.DayNumber - start.DayNumber + 1
+        TotalHours = end.DayNumber - start.DayNumber + 1,
+        PaidHours = end.DayNumber - start.DayNumber + 1
     };
 
     private static Employee CreateEmployee(Guid tenantId, Guid legalEntityId, Guid departmentId, string number, string first, string last) => new()

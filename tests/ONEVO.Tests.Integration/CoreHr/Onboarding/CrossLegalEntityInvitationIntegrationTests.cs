@@ -18,7 +18,6 @@ using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
@@ -31,11 +30,6 @@ namespace ONEVO.Tests.Integration.CoreHr.Onboarding;
 /// </summary>
 public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_cross_le_invitation_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
@@ -47,12 +41,9 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         _tenantId = Guid.NewGuid();
         _legalEntityAId = Guid.NewGuid();
@@ -96,7 +87,7 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task SaveDraft_AllowsSameEmailInSecondLegalEntity()

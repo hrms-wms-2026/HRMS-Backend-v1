@@ -40,8 +40,8 @@ public sealed class LeaveCalendarRequestProjector
                 continue;
             }
 
-            var visibleStart = Max(request.StartDate, rangeStart);
-            var visibleEnd = Min(request.EndDate, rangeEnd);
+            var visibleStart = Max(DateOnly.FromDateTime(request.StartAt.UtcDateTime), rangeStart);
+            var visibleEnd = Min(DateOnly.FromDateTime(request.EndAt.UtcDateTime), rangeEnd);
 
             if (isPartialCancellationHistory)
                 visibleEnd = Min(visibleEnd, request.PartialCancelEffectiveDate!.Value.AddDays(-1));

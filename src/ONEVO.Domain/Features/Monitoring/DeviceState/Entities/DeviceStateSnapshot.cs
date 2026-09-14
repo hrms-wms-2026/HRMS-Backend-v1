@@ -14,5 +14,8 @@ public class DeviceStateSnapshot : ITenantOwnedEntity
     public DateTimeOffset CapturedAt { get; set; }
     public int IdleSeconds { get; set; }
     public bool IsIdle { get; set; }
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
+    public double? AccuracyMeters { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }

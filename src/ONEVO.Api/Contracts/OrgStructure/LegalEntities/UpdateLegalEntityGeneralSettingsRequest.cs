@@ -25,4 +25,7 @@ public record UpdateLegalEntityGeneralSettingsRequest(
     string Status,
     TimeOnly? WorkStartTime,
     TimeOnly? WorkEndTime,
-    int? BreakDurationMinutes);
+    int? BreakDurationMinutes,
+    string? OfficeAddress,
+    double? OfficeLatitude,
+    double? OfficeLongitude);

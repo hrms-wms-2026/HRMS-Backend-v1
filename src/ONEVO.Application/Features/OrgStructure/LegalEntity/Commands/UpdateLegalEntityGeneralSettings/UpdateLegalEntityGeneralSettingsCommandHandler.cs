@@ -86,6 +86,9 @@ public class UpdateLegalEntityGeneralSettingsCommandHandler
         entity.WorkStartTime = request.WorkStartTime;
         entity.WorkEndTime = request.WorkEndTime;
         entity.BreakDurationMinutes = request.BreakDurationMinutes;
+        entity.OfficeAddress = request.OfficeAddress?.Trim();
+        entity.OfficeLatitude = request.OfficeLatitude;
+        entity.OfficeLongitude = request.OfficeLongitude;
         entity.IsActive = newIsActive;
         entity.UpdatedAt = _dateTimeProvider.UtcNow;
 

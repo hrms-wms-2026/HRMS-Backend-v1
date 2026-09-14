@@ -60,7 +60,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListForUserAsync_ReturnsOverrideGrantsForRequestedTenantAndUser()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserPermissionOverrideRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var permission = NewPermission("employees.read", "employees");
@@ -77,7 +77,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListForUserAsync_JoinsToPermissionAndReturnsCode()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserPermissionOverrideRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var readPermission = NewPermission("payroll.read", "payroll");
@@ -96,7 +96,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListForUserAsync_PreservesGrantType()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserPermissionOverrideRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var grantedPermission = NewPermission("leave.approve", "leave");
@@ -116,7 +116,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListForUserAsync_ExcludesOverridesForAnotherTenant()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserPermissionOverrideRepository(db);
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
@@ -133,7 +133,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListForUserAsync_ExcludesOverridesForAnotherUser()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserPermissionOverrideRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var otherUserId = Guid.NewGuid();
@@ -152,7 +152,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListActiveByUserIdAsync_ReturnsRolesForUserWhenExpiresAtIsNull()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var role = NewRole(tenantId, "hr-user");
@@ -169,7 +169,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListActiveByUserIdAsync_ReturnsRolesWhenExpiresAtIsInTheFuture()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var role = NewRole(tenantId, "hr-user");
@@ -186,7 +186,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListActiveByUserIdAsync_ExcludesExpiredRoles()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var role = NewRole(tenantId, "hr-user");
@@ -202,7 +202,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListActiveByUserIdAsync_ExcludesRolesForAnotherUser()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var otherUserId = Guid.NewGuid();
@@ -227,7 +227,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListUserIdsByRoleAsync_IncludesAssignmentWhenExpiresAtIsNull()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "hr-user");
         var userId = Guid.NewGuid();
@@ -243,7 +243,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListUserIdsByRoleAsync_IncludesAssignmentWhenExpiresAtIsAfterSuppliedNow()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "hr-user");
         var userId = Guid.NewGuid();
@@ -259,7 +259,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListUserIdsByRoleAsync_ExcludesAssignmentExpiringExactlyAtSuppliedNow()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "hr-user");
         var userId = Guid.NewGuid();
@@ -275,7 +275,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListUserIdsByRoleAsync_ExcludesExpiredAssignments()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "hr-user");
         var userId = Guid.NewGuid();
@@ -291,7 +291,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListUserIdsByRoleAsync_ExcludesOtherRoles()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "hr-user");
         var otherRole = NewRole(tenantId, "hr-admin");
@@ -308,7 +308,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListUserIdsByRoleAsync_ReturnsDistinctUserIdsForActiveAssignmentsOnRequestedRole()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "hr-user");
         var userA = Guid.NewGuid();
@@ -327,7 +327,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task ListUserIdsByRoleAsync_DoesNotTrackReturnedRows()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "hr-user");
         var userId = Guid.NewGuid();
@@ -347,7 +347,7 @@ public sealed class EfAuthRepositoryUserAccessCoreTests : IDisposable
     public async Task AddAsync_UserRole_AddsButDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfUserRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "hr-user");
         await SeedAsync(role);

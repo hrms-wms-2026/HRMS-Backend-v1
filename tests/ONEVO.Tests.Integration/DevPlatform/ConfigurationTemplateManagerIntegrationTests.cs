@@ -18,7 +18,6 @@ using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.ConfigurationTemplates;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.DevPlatform;
@@ -26,25 +25,18 @@ namespace ONEVO.Tests.Integration.DevPlatform;
 [Collection(WebApplicationFactoryCollection.Name)]
 public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_configuration_templates_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private AdminTestFactory _factory = null!;
     private HttpClient _client = null!;
+    private string _connectionString = null!;
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        var connectionString = _postgres.GetConnectionString();
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        _environmentScope = new IntegrationTestEnvironmentScope(_connectionString);
 
-        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
-        _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
-
-        _factory = new AdminTestFactory(connectionString);
+        _factory = new AdminTestFactory(_connectionString);
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("https://localhost")
@@ -55,7 +47,6 @@ public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetim
     {
         _client.Dispose();
         _factory.Dispose();
-        await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
@@ -117,7 +108,7 @@ public sealed class ConfigurationTemplateManagerIntegrationTests : IAsyncLifetim
     [Fact]
     public async Task Migration_rejects_nonexistent_tenant_and_template_foreign_keys()
     {
-        await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
+        await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
         // Bypass the tenant_isolation RLS policy via the admin context-mode escape

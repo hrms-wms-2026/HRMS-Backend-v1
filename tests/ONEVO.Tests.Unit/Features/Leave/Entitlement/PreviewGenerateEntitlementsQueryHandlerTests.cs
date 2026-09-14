@@ -10,6 +10,7 @@ using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Leave.Common;
 using ONEVO.Domain.Features.Leave.Entitlement.Entities;
 using ONEVO.Domain.Features.Leave.Policy.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Lookups;
 using Xunit;
 
@@ -38,6 +39,8 @@ public class PreviewGenerateEntitlementsQueryHandlerTests
             .ReturnsAsync([employee]);
         _policies.Setup(x => x.ListActiveAggregatesByLegalEntityIdsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), 2026, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, LeavePolicyAggregate> { [legalEntityId] = policy });
+        _policies.Setup(x => x.ListActiveLegalEntitiesByIdsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([CreateLegalEntity(tenantId, legalEntityId)]);
         _entitlements.Setup(x => x.ListExistingAsync(tenantId, 2026, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         _entitlements.Setup(x => x.ListPreviousYearAsync(tenantId, 2025, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
@@ -49,7 +52,7 @@ public class PreviewGenerateEntitlementsQueryHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.Lines.Should().ContainSingle();
-        result.Value.Lines[0].TotalDays.Should().Be(17.5m);
+        result.Value.Lines[0].TotalHours.Should().Be(140.00m);
     }
 
     [Fact]
@@ -66,6 +69,8 @@ public class PreviewGenerateEntitlementsQueryHandlerTests
             .ReturnsAsync([employee]);
         _policies.Setup(x => x.ListActiveAggregatesByLegalEntityIdsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), 2026, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, LeavePolicyAggregate>());
+        _policies.Setup(x => x.ListActiveLegalEntitiesByIdsAsync(tenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
         _entitlements.Setup(x => x.ListExistingAsync(tenantId, 2026, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         _entitlements.Setup(x => x.ListPreviousYearAsync(tenantId, 2025, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
@@ -87,6 +92,21 @@ public class PreviewGenerateEntitlementsQueryHandlerTests
             _policies.Object,
             _entitlements.Object,
             new LeaveEntitlementCalculator(new LeaveWorkingDayCounter())));
+
+    internal static LegalEntity CreateLegalEntity(Guid tenantId, Guid legalEntityId, bool workWindowSet = true) => new()
+    {
+        Id = legalEntityId,
+        TenantId = tenantId,
+        Name = "Acme UK",
+        CountryCode = "GBR",
+        CurrencyCode = "GBP",
+        IsActive = true,
+        Timezone = "UTC",
+        StandardWorkingDays = "[1,2,3,4,5]",
+        WorkStartTime = workWindowSet ? new TimeOnly(9, 0) : null,
+        WorkEndTime = workWindowSet ? new TimeOnly(18, 0) : null,
+        BreakDurationMinutes = 60
+    };
 
     internal static Employee CreateEmployee(Guid tenantId, Guid legalEntityId, DateOnly? hireDate = null) => new()
     {

@@ -29,8 +29,8 @@ public sealed class AttendanceStatusLeaveAwarenessArchitectureTests
         Assert.Contains("AsNoTracking", source, StringComparison.Ordinal);
         Assert.Contains("request.TenantId == tenantId", source, StringComparison.Ordinal);
         Assert.Contains("request.Status == LeaveRequestStatuses.Approved", source, StringComparison.Ordinal);
-        Assert.Contains("request.StartDate <= to", source, StringComparison.Ordinal);
-        Assert.Contains("request.EndDate >= from", source, StringComparison.Ordinal);
+        Assert.Contains("request.StartAt < toExclusive", source, StringComparison.Ordinal);
+        Assert.Contains("request.EndAt > fromStart", source, StringComparison.Ordinal);
     }
 
     [Fact]

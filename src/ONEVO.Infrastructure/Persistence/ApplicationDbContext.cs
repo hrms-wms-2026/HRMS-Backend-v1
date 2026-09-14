@@ -9,6 +9,7 @@ using PersonalCalendarEvent = ONEVO.Domain.Features.Calendar.Entities.CalendarEv
 using PersonalCalendarEventParticipant = ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipant;
 using ExternalCalendarConnection = ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarConnection;
 using ExternalCalendarEventLink = ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarEventLink;
+using HolidayCalendarSettings = ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
 using ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities;
@@ -272,6 +273,10 @@ public class ApplicationDbContext : DbContext
     public DbSet<BreakRecord> BreakRecords => Set<BreakRecord>();
     public DbSet<AttendanceCorrection> AttendanceCorrections => Set<AttendanceCorrection>();
     public DbSet<WorkAreaChangeRequest> WorkAreaChangeRequests => Set<WorkAreaChangeRequest>();
+    public DbSet<EmployeeWorkLocation> EmployeeWorkLocations => Set<EmployeeWorkLocation>();
+    public DbSet<LocationChangeRequest> LocationChangeRequests => Set<LocationChangeRequest>();
+    public DbSet<ONEVO.Domain.Features.TimeAttendance.Entities.DailyWorkLocationConfirmation> DailyWorkLocationConfirmations
+        => Set<ONEVO.Domain.Features.TimeAttendance.Entities.DailyWorkLocationConfirmation>();
 
     // Storage - EntityAssets (Phase 1 entity_assets, scoped to owner_type "project" for now)
     public DbSet<EntityAsset> EntityAssets => Set<EntityAsset>();
@@ -309,6 +314,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<PersonalCalendarEventParticipant> CalendarEventParticipants => Set<PersonalCalendarEventParticipant>();
     public DbSet<ExternalCalendarConnection> ExternalCalendarConnections => Set<ExternalCalendarConnection>();
     public DbSet<ExternalCalendarEventLink> ExternalCalendarEventLinks => Set<ExternalCalendarEventLink>();
+    public DbSet<HolidayCalendarSettings> HolidayCalendarSettings => Set<HolidayCalendarSettings>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

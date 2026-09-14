@@ -113,4 +113,12 @@ public class EfCalendarEventRepository : ICalendarEventRepository
             // whatever batch it actually pushes, instead of an arbitrary unordered cutoff.
             .OrderBy(e => e.UpdatedAt ?? e.CreatedAt)
             .ToListAsync(ct);
+
+    public async Task RemoveHolidayEventsForYearAsync(Guid tenantId, int year, CancellationToken ct = default)
+        => await _db.PersonalCalendarEvents
+            .Where(e => e.TenantId == tenantId
+                        && e.SourceType == CalendarEventSourceTypes.Holiday
+                        && e.ExternalSource == CalendarExternalSources.CountryHoliday
+                        && e.StartDate.Year == year)
+            .ExecuteDeleteAsync(ct);
 }

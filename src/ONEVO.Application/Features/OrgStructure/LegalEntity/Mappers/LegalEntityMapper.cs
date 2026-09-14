@@ -45,7 +45,10 @@ public static class LegalEntityMapper
             entity.IsActive ? "active" : "inactive",
             entity.WorkStartTime,
             entity.WorkEndTime,
-            entity.BreakDurationMinutes);
+            entity.BreakDurationMinutes,
+            entity.OfficeAddress,
+            entity.OfficeLatitude,
+            entity.OfficeLongitude);
     }
 
     public static IReadOnlyList<int> ParseStandardWorkingDays(string standardWorkingDaysJson)

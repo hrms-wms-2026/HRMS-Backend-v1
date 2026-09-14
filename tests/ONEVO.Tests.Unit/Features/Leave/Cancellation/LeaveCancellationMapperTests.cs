@@ -23,7 +23,7 @@ public class LeaveCancellationMapperTests
         var response = LeaveCancellationMapper.ToResponse(request, true, 0m, 1.5m, 10m, at);
 
         response.IsPartialCancellation.Should().BeTrue();
-        response.RestoredUsedDays.Should().Be(1.5m);
+        response.RestoredUsedHours.Should().Be(1.5m);
         response.EffectiveDate.Should().Be(new DateOnly(2026, 8, 24));
         response.Reason.Should().Be("coverage");
     }

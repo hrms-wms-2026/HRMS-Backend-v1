@@ -13,7 +13,6 @@ using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Storage.File;
 using ONEVO.Infrastructure.Persistence.Repositories.Storage.Quota;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Storage.File;
 
@@ -52,11 +51,6 @@ public sealed class FileStorageIntegrationTests : IAsyncLifetime
     private const string RestrictedRoleName = "file_storage_test_role";
     private const string RestrictedRolePassword = "file-storage-test-role-password";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_file_storage_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -68,12 +62,9 @@ public sealed class FileStorageIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         var tenantA = NewTenant("File Storage Tenant A", "file-storage-tenant-a");
         var tenantB = NewTenant("File Storage Tenant B", "file-storage-tenant-b");
@@ -144,7 +135,6 @@ public sealed class FileStorageIntegrationTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        await _postgres.DisposeAsync();
     }
 
     [Fact]

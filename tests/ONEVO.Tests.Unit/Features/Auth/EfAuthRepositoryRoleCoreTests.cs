@@ -56,7 +56,7 @@ public sealed class EfAuthRepositoryRoleCoreTests : IDisposable
     public async Task GetRoleByIdAsync_ReturnsMatchingRoleById()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleRepository(db);
         var role = NewRole(Guid.NewGuid(), "manager");
         await SeedAsync(role);
 
@@ -72,7 +72,7 @@ public sealed class EfAuthRepositoryRoleCoreTests : IDisposable
     public async Task GetByIdForTenantAsync_RequiresBothTenantIdAndRoleId()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "supervisor");
         await SeedAsync(role);
@@ -89,7 +89,7 @@ public sealed class EfAuthRepositoryRoleCoreTests : IDisposable
     public async Task GetByIdForTenantAsync_DoesNotReturnSameRoleIdFromAnotherTenant()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "lead");
@@ -106,7 +106,7 @@ public sealed class EfAuthRepositoryRoleCoreTests : IDisposable
     public async Task GetByNameForTenantAsync_RequiresTenantIdAndExactName()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "hr-admin");
@@ -127,7 +127,7 @@ public sealed class EfAuthRepositoryRoleCoreTests : IDisposable
     public async Task GetBySourceTemplateForTenantAsync_RequiresTenantIdAndSourceTemplateId()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var templateId = Guid.NewGuid();
         var role = NewRole(tenantId, "templated-role");
@@ -149,7 +149,7 @@ public sealed class EfAuthRepositoryRoleCoreTests : IDisposable
     public async Task ListByTenantAsync_ReturnsOnlyRequestedTenantRolesOrderedByNameAscending()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleRepository(db);
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
 
@@ -168,7 +168,7 @@ public sealed class EfAuthRepositoryRoleCoreTests : IDisposable
     public async Task AddAsync_Role_AddsButDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleRepository(db);
         var role = NewRole(Guid.NewGuid(), "new-role");
 
         await repo.AddAsync(role);
@@ -188,7 +188,7 @@ public sealed class EfAuthRepositoryRoleCoreTests : IDisposable
     public async Task Remove_Role_RemovesFromDbSetButDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleRepository(db);
         var role = NewRole(Guid.NewGuid(), "removable-role");
         await SeedAsync(role);
 
@@ -212,7 +212,7 @@ public sealed class EfAuthRepositoryRoleCoreTests : IDisposable
     public async Task ListByRoleAsync_ReturnsOnlyRolePermissionsForRequestedRoleId()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRolePermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "role-with-permissions");
         var otherRole = NewRole(tenantId, "other-role");
@@ -233,7 +233,7 @@ public sealed class EfAuthRepositoryRoleCoreTests : IDisposable
     public async Task AddRangeAsync_RolePermissions_AddsButDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRolePermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "role-for-add-range");
         await SeedAsync(role);
@@ -265,7 +265,7 @@ public sealed class EfAuthRepositoryRoleCoreTests : IDisposable
     public async Task RemoveRange_RolePermissions_RemovesFromDbSetButDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRolePermissionRepository(db);
         var tenantId = Guid.NewGuid();
         var role = NewRole(tenantId, "role-for-remove-range");
         await SeedAsync(role);

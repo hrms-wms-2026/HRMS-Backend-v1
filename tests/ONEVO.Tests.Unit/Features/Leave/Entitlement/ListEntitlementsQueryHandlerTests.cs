@@ -25,7 +25,7 @@ public class ListEntitlementsQueryHandlerTests
             EmployeeId = employeeId,
             LeaveTypeId = Guid.NewGuid(),
             Year = 2026,
-            TotalDays = 10m,
+            TotalHours = 10m,
             Source = LeaveEntitlementSources.Auto
         };
         var row = new LeaveEntitlementRow(

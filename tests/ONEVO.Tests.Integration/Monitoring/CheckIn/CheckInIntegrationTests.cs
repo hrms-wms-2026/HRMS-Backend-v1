@@ -7,37 +7,33 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Monitoring.CheckIn;
 
 /// <summary>
-/// Full-stack integration tests for tray employee check-in:
-/// submit check-in + face-scan upload under TrayDeviceScheme JWT auth.
-/// Requires Docker.
+/// Shared, one-time-per-class setup for CheckInIntegrationTests: clones the database and boots
+/// the CheckInTestFactory once. xUnit's IClassFixture constructs this ONCE and disposes it once
+/// after every fact in the class has run, instead of IAsyncLifetime's default of once PER fact -
+/// previously this class's own InitializeAsync ran 9 times, once per [Fact]. Every fact seeds its
+/// own fresh Guid.NewGuid() tenant via SeedActiveUserAsync (or a second user in that same
+/// per-fact tenant), so there is no cross-fact state-sharing risk from converting this class.
 /// </summary>
-[Collection(WebApplicationFactoryCollection.Name)]
-public sealed class CheckInIntegrationTests : IAsyncLifetime
+public sealed class CheckInIntegrationTestsFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_checkin_integration_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
-
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private CheckInTestFactory _factory = null!;
     private HttpClient _client = null!;
 
+    public CheckInTestFactory Factory => _factory;
+    public HttpClient Client => _client;
+
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        var connectionString = _postgres.GetConnectionString();
-
-        await IntegrationDatabaseBootstrap.InitializeAsync(connectionString);
+        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new CheckInTestFactory(connectionString);
@@ -52,210 +48,10 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         await _factory.DisposeAsync();
-        await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
-    // ── Migrations ─────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Migrations_ApplyCleanly_AndLeaveNoPendingMigrations()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-        var pending = await db.Database.GetPendingMigrationsAsync();
-
-        pending.Should().BeEmpty();
-    }
-
-    // ── SubmitCheckIn ──────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task SubmitCheckIn_WithValidTrayJwt_Returns200AndPersistsRecord()
-    {
-        var jwt = await GetTrayJwtAsync("checkin-ok");
-        using var req = TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new
-        {
-            latitude = 6.9271,
-            longitude = 79.8612,
-            location_accuracy = 15.0,
-            location_address = "Colombo, Sri Lanka",
-            device_serial_number = "SN-TEST-001"
-        }, jwt);
-
-        var resp = await _client.SendAsync(req);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        body.GetProperty("check_in_id").GetString().Should().NotBeNullOrEmpty();
-        body.GetProperty("latitude").GetDouble().Should().BeApproximately(6.9271, 0.0001);
-        body.GetProperty("device_serial_number").GetString().Should().Be("SN-TEST-001");
-        body.GetProperty("face_scan_required").GetBoolean().Should().BeTrue();
-
-        var checkInId = Guid.Parse(body.GetProperty("check_in_id").GetString()!);
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var record = await db.EmployeeCheckIns.FindAsync(checkInId);
-        record.Should().NotBeNull();
-        record!.Latitude.Should().BeApproximately(6.9271, 0.0001);
-        record.DeviceSerialNumber.Should().Be("SN-TEST-001");
-    }
-
-    [Fact]
-    public async Task SubmitCheckIn_WithoutJwt_Returns401()
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/check-in");
-        req.Headers.Host = "localhost";
-        req.Content = JsonContent.Create(new { latitude = 6.9271, longitude = 79.8612 });
-
-        var resp = await _client.SendAsync(req);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
-    public async Task SubmitCheckIn_WithInvalidLatitude_Returns400()
-    {
-        var jwt = await GetTrayJwtAsync("checkin-lat");
-        using var req = TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new
-        {
-            latitude = 999.0,
-            longitude = 79.8612
-        }, jwt);
-
-        var resp = await _client.SendAsync(req);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    [Fact]
-    public async Task SubmitCheckIn_WithNoLocationOrDevice_Returns200()
-    {
-        var jwt = await GetTrayJwtAsync("checkin-min");
-        using var req = TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new { }, jwt);
-
-        var resp = await _client.SendAsync(req);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
-    }
-
-    // ── UploadFaceScan ─────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task UploadFaceScan_AfterCheckIn_Returns200AndPersistsMetadata()
-    {
-        var jwt = await GetTrayJwtAsync("checkin-face");
-
-        using var checkInReq = TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new
-        {
-            latitude = 6.9271,
-            longitude = 79.8612
-        }, jwt);
-        var checkInResp = await _client.SendAsync(checkInReq);
-        checkInResp.StatusCode.Should().Be(HttpStatusCode.OK, await checkInResp.Content.ReadAsStringAsync());
-        var checkInId = (await checkInResp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("check_in_id").GetString()!;
-
-        var fakeJpeg = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x01, 0xFF, 0xD9 };
-        using var form = new MultipartFormDataContent();
-        var imageContent = new ByteArrayContent(fakeJpeg);
-        imageContent.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
-        form.Add(imageContent, "face_scan", "scan.jpg");
-
-        using var scanReq = new HttpRequestMessage(
-            HttpMethod.Post, $"/api/v1/monitoring/check-in/{checkInId}/face-scan")
-        {
-            Content = form
-        };
-        scanReq.Headers.Host = "localhost";
-        scanReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
-
-        var scanResp = await _client.SendAsync(scanReq);
-
-        scanResp.StatusCode.Should().Be(HttpStatusCode.OK, await scanResp.Content.ReadAsStringAsync());
-        var scanBody = await scanResp.Content.ReadFromJsonAsync<JsonElement>();
-        scanBody.GetProperty("face_scan_id").GetString().Should().NotBeNullOrEmpty();
-        // No biometric profile is enrolled for this test employee, so verification
-        // short-circuits to "no_reference_photo" rather than the old unconditional "available".
-        scanBody.GetProperty("status").GetString().Should().Be("no_reference_photo");
-
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var faceScan = await db.MonitoringFaceScans
-            .FirstOrDefaultAsync(f => f.CheckInId == Guid.Parse(checkInId));
-        faceScan.Should().NotBeNull();
-        faceScan!.ContentType.Should().Be("image/jpeg");
-    }
-
-    [Fact]
-    public async Task UploadFaceScan_WithWrongContentType_Returns400()
-    {
-        var jwt = await GetTrayJwtAsync("checkin-ctype");
-
-        using var checkInReq = TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new { }, jwt);
-        var checkInResp = await _client.SendAsync(checkInReq);
-        checkInResp.StatusCode.Should().Be(HttpStatusCode.OK, await checkInResp.Content.ReadAsStringAsync());
-        var checkInId = (await checkInResp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("check_in_id").GetString()!;
-
-        using var form = new MultipartFormDataContent();
-        var pdfContent = new ByteArrayContent(new byte[] { 0x25, 0x50, 0x44, 0x46 });
-        pdfContent.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
-        form.Add(pdfContent, "face_scan", "scan.pdf");
-
-        using var scanReq = new HttpRequestMessage(
-            HttpMethod.Post, $"/api/v1/monitoring/check-in/{checkInId}/face-scan")
-        {
-            Content = form
-        };
-        scanReq.Headers.Host = "localhost";
-        scanReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
-
-        var resp = await _client.SendAsync(scanReq);
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    [Fact]
-    public async Task UploadFaceScan_ForAnotherUsersCheckIn_Returns403()
-    {
-        // Same tenant, two different employees — check-in is visible under RLS,
-        // but ownership mismatch must return 403 (not 404).
-        var slug = $"checkin-u-{Guid.NewGuid():N}"[..20];
-        var password = "TestPass1!";
-        var user1 = await SeedActiveUserAsync(slug, $"{slug}-a@test.dev", password);
-        var user2 = await SeedSecondUserInTenantAsync(user1.TenantId, $"{slug}-b@test.dev", password);
-
-        var jwt1 = await GetTrayJwtForUserAsync(user1, fingerprint: $"fp-{slug}-a");
-        var jwt2 = await GetTrayJwtForUserAsync(user2, fingerprint: $"fp-{slug}-b");
-
-        using var checkInReq = TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new { }, jwt1);
-        var checkInResp = await _client.SendAsync(checkInReq);
-        checkInResp.StatusCode.Should().Be(HttpStatusCode.OK, await checkInResp.Content.ReadAsStringAsync());
-        var checkInId = (await checkInResp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("check_in_id").GetString()!;
-
-        var fakeJpeg = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x01, 0xFF, 0xD9 };
-        using var form = new MultipartFormDataContent();
-        var img = new ByteArrayContent(fakeJpeg);
-        img.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
-        form.Add(img, "face_scan", "scan.jpg");
-
-        using var scanReq = new HttpRequestMessage(
-            HttpMethod.Post, $"/api/v1/monitoring/check-in/{checkInId}/face-scan")
-        {
-            Content = form
-        };
-        scanReq.Headers.Host = "localhost";
-        scanReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", jwt2);
-
-        var resp = await _client.SendAsync(scanReq);
-        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    // ── Helpers ────────────────────────────────────────────────────────────────
-
-    private async Task<string> GetTrayJwtAsync(string slugPrefix)
+    public async Task<string> GetTrayJwtAsync(string slugPrefix)
     {
         // Keep slug within DB length limits and unique across parallel tests.
         var slug = $"{slugPrefix}-{Guid.NewGuid():N}"[..20];
@@ -265,7 +61,7 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
         return await GetTrayJwtForUserAsync(user, fingerprint: $"fp-{slug}");
     }
 
-    private async Task<string> GetTrayJwtForUserAsync(SeedResult user, string fingerprint)
+    public async Task<string> GetTrayJwtForUserAsync(SeedResult user, string fingerprint)
     {
         var session = await LoginAndGetSessionAsync(user);
 
@@ -288,7 +84,21 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
             .GetProperty("access_token").GetString()!;
     }
 
-    private async Task<SeedResult> SeedSecondUserInTenantAsync(Guid tenantId, string email, string password)
+    public async Task EnableWorkLocationVerificationAsync(Guid tenantId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LegalEntityId = null,
+            WorkLocationVerification = true
+        });
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<SeedResult> SeedSecondUserInTenantAsync(Guid tenantId, string email, string password)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -329,7 +139,7 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
         return new SeedResult(tenantId, user.Id, email, password, tenant.Slug);
     }
 
-    private static HttpRequestMessage TrayJsonRequest(HttpMethod method, string path, object body, string jwt)
+    public static HttpRequestMessage TrayJsonRequest(HttpMethod method, string path, object body, string jwt)
     {
         var req = new HttpRequestMessage(method, path);
         req.Headers.Host = "localhost";
@@ -338,7 +148,7 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
         return req;
     }
 
-    private async Task<SeedResult> SeedActiveUserAsync(string tenantSlug, string email, string password)
+    public async Task<SeedResult> SeedActiveUserAsync(string tenantSlug, string email, string password)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -497,7 +307,261 @@ public sealed class CheckInIntegrationTests : IAsyncLifetime
         throw new InvalidOperationException($"Cookie '{cookieName}' not found in response.");
     }
 
-    private sealed record SeedResult(Guid TenantId, Guid UserId, string Email, string Password, string TenantSlug);
+    public sealed record SeedResult(Guid TenantId, Guid UserId, string Email, string Password, string TenantSlug);
 
     private sealed record SessionInfo(string CookieHeader, string CsrfHeader, string TenantHost);
+
+}
+
+/// <summary>
+/// Full-stack integration tests for tray employee check-in:
+/// submit check-in + face-scan upload under TrayDeviceScheme JWT auth.
+/// Requires Docker.
+/// </summary>
+[Collection(WebApplicationFactoryCollection.Name)]
+public sealed class CheckInIntegrationTests : IClassFixture<CheckInIntegrationTestsFixture>
+{
+    private readonly CheckInIntegrationTestsFixture _fixture;
+
+    public CheckInIntegrationTests(CheckInIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task Migrations_ApplyCleanly_AndLeaveNoPendingMigrations()
+    {
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var pending = await db.Database.GetPendingMigrationsAsync();
+
+        pending.Should().BeEmpty();
+    }
+
+    // ── SubmitCheckIn ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SubmitCheckIn_WithValidTrayJwt_Returns200AndPersistsRecord()
+    {
+        // Location is only persisted when the tenant has Location tracking (WorkLocationVerification)
+        // turned on - a fresh tenant with no monitoring config defaults every capability to off, so
+        // this must seed an explicit toggle to exercise the "location captured" path.
+        var slug = $"checkin-ok-{Guid.NewGuid():N}"[..20];
+        var user = await _fixture.SeedActiveUserAsync(slug, $"{slug}@test.dev", "TestPass1!");
+        await _fixture.EnableWorkLocationVerificationAsync(user.TenantId);
+        var jwt = await _fixture.GetTrayJwtForUserAsync(user, fingerprint: $"fp-{slug}");
+
+        using var req = CheckInIntegrationTestsFixture.TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new
+        {
+            latitude = 6.9271,
+            longitude = 79.8612,
+            location_accuracy = 15.0,
+            location_address = "Colombo, Sri Lanka",
+            device_serial_number = "SN-TEST-001"
+        }, jwt);
+
+        var resp = await _fixture.Client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("check_in_id").GetString().Should().NotBeNullOrEmpty();
+        body.GetProperty("latitude").GetDouble().Should().BeApproximately(6.9271, 0.0001);
+        body.GetProperty("device_serial_number").GetString().Should().Be("SN-TEST-001");
+        body.GetProperty("face_scan_required").GetBoolean().Should().BeTrue();
+
+        var checkInId = Guid.Parse(body.GetProperty("check_in_id").GetString()!);
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var record = await db.EmployeeCheckIns.FindAsync(checkInId);
+        record.Should().NotBeNull();
+        record!.Latitude.Should().BeApproximately(6.9271, 0.0001);
+        record.DeviceSerialNumber.Should().Be("SN-TEST-001");
+    }
+
+    [Fact]
+    public async Task SubmitCheckIn_WithLocationTrackingDisabled_PersistsRecordWithoutLocation()
+    {
+        // No monitoring config seeded for this tenant -> WorkLocationVerification resolves to its
+        // safe default (off). A location fix sent anyway must not be persisted.
+        var jwt = await _fixture.GetTrayJwtAsync("checkin-notrack");
+        using var req = CheckInIntegrationTestsFixture.TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new
+        {
+            latitude = 6.9271,
+            longitude = 79.8612,
+            location_accuracy = 15.0,
+            location_address = "Colombo, Sri Lanka",
+            device_serial_number = "SN-TEST-002"
+        }, jwt);
+
+        var resp = await _fixture.Client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("latitude").ValueKind.Should().Be(JsonValueKind.Null);
+        body.GetProperty("device_serial_number").GetString().Should().Be("SN-TEST-002");
+
+        var checkInId = Guid.Parse(body.GetProperty("check_in_id").GetString()!);
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var record = await db.EmployeeCheckIns.FindAsync(checkInId);
+        record.Should().NotBeNull();
+        record!.Latitude.Should().BeNull();
+        record.Longitude.Should().BeNull();
+        record.LocationAccuracy.Should().BeNull();
+        record.LocationAddress.Should().BeNull();
+        record.DeviceSerialNumber.Should().Be("SN-TEST-002");
+    }
+
+    [Fact]
+    public async Task SubmitCheckIn_WithoutJwt_Returns401()
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/monitoring/check-in");
+        req.Headers.Host = "localhost";
+        req.Content = JsonContent.Create(new { latitude = 6.9271, longitude = 79.8612 });
+
+        var resp = await _fixture.Client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task SubmitCheckIn_WithInvalidLatitude_Returns400()
+    {
+        var jwt = await _fixture.GetTrayJwtAsync("checkin-lat");
+        using var req = CheckInIntegrationTestsFixture.TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new
+        {
+            latitude = 999.0,
+            longitude = 79.8612
+        }, jwt);
+
+        var resp = await _fixture.Client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task SubmitCheckIn_WithNoLocationOrDevice_Returns200()
+    {
+        var jwt = await _fixture.GetTrayJwtAsync("checkin-min");
+        using var req = CheckInIntegrationTestsFixture.TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new { }, jwt);
+
+        var resp = await _fixture.Client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
+    }
+
+    // ── UploadFaceScan ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UploadFaceScan_AfterCheckIn_Returns200AndPersistsMetadata()
+    {
+        var jwt = await _fixture.GetTrayJwtAsync("checkin-face");
+
+        using var checkInReq = CheckInIntegrationTestsFixture.TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new
+        {
+            latitude = 6.9271,
+            longitude = 79.8612
+        }, jwt);
+        var checkInResp = await _fixture.Client.SendAsync(checkInReq);
+        checkInResp.StatusCode.Should().Be(HttpStatusCode.OK, await checkInResp.Content.ReadAsStringAsync());
+        var checkInId = (await checkInResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("check_in_id").GetString()!;
+
+        var fakeJpeg = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x01, 0xFF, 0xD9 };
+        using var form = new MultipartFormDataContent();
+        var imageContent = new ByteArrayContent(fakeJpeg);
+        imageContent.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
+        form.Add(imageContent, "face_scan", "scan.jpg");
+
+        using var scanReq = new HttpRequestMessage(
+            HttpMethod.Post, $"/api/v1/monitoring/check-in/{checkInId}/face-scan")
+        {
+            Content = form
+        };
+        scanReq.Headers.Host = "localhost";
+        scanReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
+
+        var scanResp = await _fixture.Client.SendAsync(scanReq);
+
+        scanResp.StatusCode.Should().Be(HttpStatusCode.OK, await scanResp.Content.ReadAsStringAsync());
+        var scanBody = await scanResp.Content.ReadFromJsonAsync<JsonElement>();
+        scanBody.GetProperty("face_scan_id").GetString().Should().NotBeNullOrEmpty();
+        // No biometric profile is enrolled for this test employee, so verification
+        // short-circuits to "no_reference_photo" rather than the old unconditional "available".
+        scanBody.GetProperty("status").GetString().Should().Be("no_reference_photo");
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var faceScan = await db.MonitoringFaceScans
+            .FirstOrDefaultAsync(f => f.CheckInId == Guid.Parse(checkInId));
+        faceScan.Should().NotBeNull();
+        faceScan!.ContentType.Should().Be("image/jpeg");
+    }
+
+    [Fact]
+    public async Task UploadFaceScan_WithWrongContentType_Returns400()
+    {
+        var jwt = await _fixture.GetTrayJwtAsync("checkin-ctype");
+
+        using var checkInReq = CheckInIntegrationTestsFixture.TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new { }, jwt);
+        var checkInResp = await _fixture.Client.SendAsync(checkInReq);
+        checkInResp.StatusCode.Should().Be(HttpStatusCode.OK, await checkInResp.Content.ReadAsStringAsync());
+        var checkInId = (await checkInResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("check_in_id").GetString()!;
+
+        using var form = new MultipartFormDataContent();
+        var pdfContent = new ByteArrayContent(new byte[] { 0x25, 0x50, 0x44, 0x46 });
+        pdfContent.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        form.Add(pdfContent, "face_scan", "scan.pdf");
+
+        using var scanReq = new HttpRequestMessage(
+            HttpMethod.Post, $"/api/v1/monitoring/check-in/{checkInId}/face-scan")
+        {
+            Content = form
+        };
+        scanReq.Headers.Host = "localhost";
+        scanReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
+
+        var resp = await _fixture.Client.SendAsync(scanReq);
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task UploadFaceScan_ForAnotherUsersCheckIn_Returns403()
+    {
+        // Same tenant, two different employees — check-in is visible under RLS,
+        // but ownership mismatch must return 403 (not 404).
+        var slug = $"checkin-u-{Guid.NewGuid():N}"[..20];
+        var password = "TestPass1!";
+        var user1 = await _fixture.SeedActiveUserAsync(slug, $"{slug}-a@test.dev", password);
+        var user2 = await _fixture.SeedSecondUserInTenantAsync(user1.TenantId, $"{slug}-b@test.dev", password);
+
+        var jwt1 = await _fixture.GetTrayJwtForUserAsync(user1, fingerprint: $"fp-{slug}-a");
+        var jwt2 = await _fixture.GetTrayJwtForUserAsync(user2, fingerprint: $"fp-{slug}-b");
+
+        using var checkInReq = CheckInIntegrationTestsFixture.TrayJsonRequest(HttpMethod.Post, "/api/v1/monitoring/check-in", new { }, jwt1);
+        var checkInResp = await _fixture.Client.SendAsync(checkInReq);
+        checkInResp.StatusCode.Should().Be(HttpStatusCode.OK, await checkInResp.Content.ReadAsStringAsync());
+        var checkInId = (await checkInResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("check_in_id").GetString()!;
+
+        var fakeJpeg = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x01, 0xFF, 0xD9 };
+        using var form = new MultipartFormDataContent();
+        var img = new ByteArrayContent(fakeJpeg);
+        img.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
+        form.Add(img, "face_scan", "scan.jpg");
+
+        using var scanReq = new HttpRequestMessage(
+            HttpMethod.Post, $"/api/v1/monitoring/check-in/{checkInId}/face-scan")
+        {
+            Content = form
+        };
+        scanReq.Headers.Host = "localhost";
+        scanReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", jwt2);
+
+        var resp = await _fixture.Client.SendAsync(scanReq);
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
 }

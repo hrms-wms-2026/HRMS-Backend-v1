@@ -17,7 +17,6 @@ using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
 using Npgsql;
-using Testcontainers.PostgreSql;
 using Xunit;
 using WorkAreaSources = ONEVO.Application.Features.TimeAttendance.Services.ExpectedWorkAreaResolver;
 using TodaySnapshotSource = ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService;
@@ -25,20 +24,17 @@ using TodaySnapshotSource = ONEVO.Application.Features.TimeAttendance.Services.A
 namespace ONEVO.Tests.Integration.Features.TimeAttendance;
 
 /// <summary>
-/// Real HTTP/PostgreSQL end-to-end coverage for the Work Area Change Request runtime path:
-/// submit request -> approve -> read Today -> clock in -> read history. Reuses the proven
-/// WebApplicationFactory/tenant-provisioning pattern from AttendanceCorrectionsIntegrationTests
-/// rather than inventing a new fixture style. WorkDate is resolved from the real clock at fixture
-/// setup time, and the legal entity's working-day set is configured to include every day of the
-/// week, so schedule/working-day resolution never depends on which real weekday the suite runs on.
-///
-/// Each [Fact] gets its own fresh Testcontainers database and tenant provisioning (xUnit
-/// constructs a new class instance per test method, so IAsyncLifetime.InitializeAsync reruns per
-/// test) - the same isolation-over-shared-state tradeoff AttendanceCorrectionsIntegrationTests
-/// already makes in this suite.
+/// Shared, one-time-per-class setup for WorkAreaChangeRequestRuntimeHttpIntegrationTests: clones
+/// the database, provisions the two-tenant fixture (owners, legal entities, positions, requester/
+/// approver employees), and boots the WebApplicationFactory ONCE. xUnit's IClassFixture
+/// constructs this ONCE and disposes it once after every fact in the class has run, instead of
+/// IAsyncLifetime's default of once PER fact - previously this class's own InitializeAsync (which
+/// provisions two tenants end to end over real HTTP) ran 5 times, once per [Fact]. A dedicated
+/// _requesterA4 employee was added for TenantIsolation_CannotSeeOrApproveAnotherTenantsRequest:
+/// that fact's request is deliberately never resolved to a terminal state, so reusing another
+/// fact's requester for the same WorkDate would collide under this shared database.
 /// </summary>
-[Collection(WebApplicationFactoryCollection.Name)]
-public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLifetime
+public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IAsyncLifetime
 {
     private const string AdminHost = "admin.localhost";
     private const string FixtureUserPassword = "Password123!";
@@ -50,11 +46,10 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
     // ASP.NET Core's own real-time cookie/ticket expiry checks. The legal entity's working-day set
     // is configured to include every day of the week (see ConfigureLegalEntityGeneralSettingsAsync)
     // so schedule resolution does not depend on which real weekday the suite happens to run on.
-    private DateOnly WorkDate;
+    public DateOnly WorkDate;
 
     private readonly CapturingEmailService _email = new();
 
-    private PostgreSqlContainer? _postgres;
     private string _connectionString = null!;
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
@@ -77,6 +72,13 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
     private TenantSession _requesterA3 = null!;
     private Guid _requesterA3EmployeeId;
 
+    // Dedicated to TenantIsolation_CannotSeeOrApproveAnotherTenantsRequest: that fact's request is
+    // never resolved to a terminal state (the only interaction with it is a cross-tenant approve
+    // attempt that returns NotFound, so it stays Pending) - reusing _requesterA there would collide
+    // with FullLifecycle_SubmitApproveClockInHistory_ReflectsApprovedRemoteOverride's own request
+    // for the same employee/WorkDate once this class runs its facts against one shared database.
+    private TenantSession _requesterA4 = null!;
+
     private TenantSession _approverA = null!;
     private Guid _approverAEmployeeId;
     private Guid _approverAUserId;
@@ -86,22 +88,30 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
     private Guid _tenantBId;
     private TenantSession _approverB = null!;
 
+    public Guid TenantAId => _tenantAId;
+    public TenantSession RequesterA => _requesterA;
+    public Guid RequesterAEmployeeId => _requesterAEmployeeId;
+    public TenantSession RequesterA2 => _requesterA2;
+    public Guid RequesterA2EmployeeId => _requesterA2EmployeeId;
+    public TenantSession RequesterA3 => _requesterA3;
+    public TenantSession RequesterA4 => _requesterA4;
+    public TenantSession ApproverA => _approverA;
+    public Guid ApproverAUserId => _approverAUserId;
+    public TenantSession WrongApproverA => _wrongApproverA;
+    public TenantSession ApproverB => _approverB;
+
     public async Task InitializeAsync()
     {
         _connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
-            _postgres = new PostgreSqlBuilder()
-                .WithImage("postgres:16-alpine")
-                .WithDatabase("onevo_work_area_runtime_http_test")
-                .WithUsername("test")
-                .WithPassword("test")
-                .Build();
-            await _postgres.StartAsync();
-            _connectionString = _postgres.GetConnectionString();
+            // Cloned from the shared, already-migrated template - see SharedPostgresTemplate.
+            _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
-
-        await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
+        else
+        {
+            await AdminTestFactory.MigrateDatabaseAsync(_connectionString);
+        }
 
         WorkDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, ColomboZone).DateTime);
 
@@ -140,6 +150,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
         var requesterPositionId = await SeedPositionAsync(_tenantAId, _legalEntityAId, "Requester Position", _approverPositionId);
         var requesterPosition2Id = await SeedPositionAsync(_tenantAId, _legalEntityAId, "Requester Position 2", _approverPositionId);
         var requesterPosition3Id = await SeedPositionAsync(_tenantAId, _legalEntityAId, "Requester Position 3", _approverPositionId);
+        var requesterPosition4Id = await SeedPositionAsync(_tenantAId, _legalEntityAId, "Requester Position 4", _approverPositionId);
 
         (_approverA, _approverAEmployeeId, _approverAUserId) = await SeedEmployeeFixtureUserAsync(
             _tenantAId, ownerA.Host, "approver@wa-run-a.test", _legalEntityAId, "WA-A-APR-001", workModeId: 1);
@@ -149,6 +160,8 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
             _tenantAId, ownerA.Host, "requester2@wa-run-a.test", _legalEntityAId, "WA-A-REQ-002", workModeId: 1);
         (_requesterA3, _requesterA3EmployeeId, _) = await SeedEmployeeFixtureUserAsync(
             _tenantAId, ownerA.Host, "requester3@wa-run-a.test", _legalEntityAId, "WA-A-REQ-003", workModeId: 1);
+        (_requesterA4, var requesterA4EmployeeId, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "requester4@wa-run-a.test", _legalEntityAId, "WA-A-REQ-004", workModeId: 1);
         (_wrongApproverA, _, var wrongApproverAUserId) = await SeedEmployeeFixtureUserAsync(
             _tenantAId, ownerA.Host, "wrong-approver@wa-run-a.test", _legalEntityAId, "WA-A-WRG-001", workModeId: 1);
         (_approverB, _, var approverBUserId) = await SeedEmployeeFixtureUserAsync(
@@ -158,6 +171,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
         await AssignPrimaryPositionAsync(_tenantAId, _requesterAEmployeeId, requesterPositionId, _ownerAUserId, _approverAEmployeeId);
         await AssignPrimaryPositionAsync(_tenantAId, _requesterA2EmployeeId, requesterPosition2Id, _ownerAUserId, _approverAEmployeeId);
         await AssignPrimaryPositionAsync(_tenantAId, _requesterA3EmployeeId, requesterPosition3Id, _ownerAUserId, _approverAEmployeeId);
+        await AssignPrimaryPositionAsync(_tenantAId, requesterA4EmployeeId, requesterPosition4Id, _ownerAUserId, _approverAEmployeeId);
 
         await GrantPermissionAsync(_tenantAId, _approverAUserId, ApprovePermission);
         await GrantPermissionAsync(_tenantAId, wrongApproverAUserId, ApprovePermission);
@@ -168,275 +182,10 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
     {
         _client.Dispose();
         _factory.Dispose();
-        if (_postgres is not null)
-            await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
-    // ── Primary end-to-end scenario ─────────────────────────────────────────
-
-    [Fact]
-    public async Task FullLifecycle_SubmitApproveClockInHistory_ReflectsApprovedRemoteOverride()
-    {
-        // Step 0 (negative, folded in): an unsupported requested work area is rejected by the
-        // request-level FluentValidation rule before any valid request is created, and does not
-        // consume the one-active-request-per-day slot.
-        var unsupportedResponse = await SendAsync(HttpMethod.Post, _requesterA.Host,
-            "/api/v1/attendance/work-area-change-requests",
-            new { date = WorkDate, requestedWorkArea = "field", reason = "Unsupported" },
-            cookie: _requesterA.SessionCookie, csrfToken: _requesterA.CsrfHeader);
-        unsupportedResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-
-        // Step 1: baseline Today is the permanent On-site work mode.
-        var today1 = await GetJsonAuthenticatedAsync(_requesterA, "/api/v1/attendance/time-tracking/today");
-        today1.GetProperty("expectedWorkMode").GetString().Should().Be("onsite");
-        today1.GetProperty("expectedWorkAreaSource").GetString().Should().Be(WorkAreaSources.SourceActiveWorkMode);
-        AssertAllowedMethods(today1, web: true, tray: false, photo: false);
-
-        // Step 2: preview.
-        var preview = await PostJsonAuthenticatedAsync(_requesterA,
-            "/api/v1/attendance/work-area-change-requests/preview",
-            new { date = WorkDate, requestedWorkArea = "remote", reason = "Home repair appointment" });
-        preview.status.Should().Be(HttpStatusCode.OK, preview.json.ValueKind == JsonValueKind.Undefined ? "(empty body)" : preview.json.GetRawText());
-        preview.json.GetProperty("currentExpectedWorkArea").GetString().Should().Be("onsite");
-        preview.json.GetProperty("requestedWorkArea").GetString().Should().Be("remote");
-        preview.json.GetProperty("receiver").GetProperty("userId").GetGuid().Should().Be(_approverAUserId);
-
-        // Step 3: submit.
-        var create = await PostJsonAuthenticatedAsync(_requesterA,
-            "/api/v1/attendance/work-area-change-requests",
-            new { date = WorkDate, requestedWorkArea = "remote", reason = "Home repair appointment" });
-        create.status.Should().Be(HttpStatusCode.Created);
-        create.json.GetProperty("status").GetString().Should().Be(WorkAreaChangeRequest.StatusPending);
-        create.json.GetProperty("requestedWorkArea").GetString().Should().Be("remote");
-        create.json.TryGetProperty("tenantId", out _).Should().BeFalse("tenant id is server-internal and must not be exposed");
-        var requestId = create.json.GetProperty("id").GetGuid();
-
-        // A second active request for the same employee/date is rejected while the first is pending.
-        var duplicate = await SendAsync(HttpMethod.Post, _requesterA.Host,
-            "/api/v1/attendance/work-area-change-requests",
-            new { date = WorkDate, requestedWorkArea = "onsite", reason = "Duplicate attempt" },
-            cookie: _requesterA.SessionCookie, csrfToken: _requesterA.CsrfHeader);
-        duplicate.StatusCode.Should().Be(HttpStatusCode.Conflict);
-
-        // Pending does not affect Today.
-        var todayWhilePending = await GetJsonAuthenticatedAsync(_requesterA, "/api/v1/attendance/time-tracking/today");
-        todayWhilePending.GetProperty("expectedWorkMode").GetString().Should().Be("onsite");
-
-        // Step 4: approval inbox.
-        var inboxAsApprover = await GetJsonAuthenticatedAsync(_approverA, "/api/v1/attendance/work-area-change-requests/approvals");
-        var inboxItems = inboxAsApprover.GetProperty("items").EnumerateArray().ToList();
-        inboxItems.Should().ContainSingle(x => x.GetProperty("id").GetGuid() == requestId);
-
-        var inboxAsWrongApprover = await GetJsonAuthenticatedAsync(_wrongApproverA, "/api/v1/attendance/work-area-change-requests/approvals");
-        inboxAsWrongApprover.GetProperty("items").EnumerateArray()
-            .Should().NotContain(x => x.GetProperty("id").GetGuid() == requestId,
-                "wrongApprover holds attendance:approve but is not the resolver-selected approver for this employee");
-
-        var inboxAsRequester = await SendAsync(HttpMethod.Get, _requesterA.Host,
-            "/api/v1/attendance/work-area-change-requests/approvals", body: null, cookie: _requesterA.SessionCookie);
-        inboxAsRequester.StatusCode.Should().Be(HttpStatusCode.Forbidden, "the requester does not hold attendance:approve");
-
-        // Wrong approver (has the permission, is not the selected route) cannot approve.
-        var wrongApprove = await PostJsonAuthenticatedAsync(_wrongApproverA,
-            $"/api/v1/attendance/work-area-change-requests/{requestId}/approve", new { reviewComment = (string?)null });
-        wrongApprove.status.Should().Be(HttpStatusCode.Forbidden);
-
-        // Step 5: approve.
-        var approve = await PostJsonAuthenticatedAsync(_approverA,
-            $"/api/v1/attendance/work-area-change-requests/{requestId}/approve", new { reviewComment = (string?)null });
-        approve.status.Should().Be(HttpStatusCode.OK);
-        approve.json.GetProperty("status").GetString().Should().Be(WorkAreaChangeRequest.StatusApproved);
-        approve.json.GetProperty("reviewedById").GetGuid().Should().Be(_approverAUserId);
-        approve.json.GetProperty("requestedWorkArea").GetString().Should().Be("remote");
-
-        // Approving an already-decided request returns the existing conflict behavior.
-        var reapprove = await PostJsonAuthenticatedAsync(_approverA,
-            $"/api/v1/attendance/work-area-change-requests/{requestId}/approve", new { reviewComment = (string?)null });
-        reapprove.status.Should().Be(HttpStatusCode.Conflict);
-
-        // Step 6: Today uses the approved override before any attendance row exists.
-        var today2 = await GetJsonAuthenticatedAsync(_requesterA, "/api/v1/attendance/time-tracking/today");
-        today2.GetProperty("expectedWorkMode").GetString().Should().Be("remote");
-        today2.GetProperty("expectedWorkAreaSource").GetString().Should().Be(WorkAreaSources.SourceApprovedRequest);
-        AssertAllowedMethods(today2, web: true, tray: true, photo: true);
-
-        // Step 7: clock in.
-        var clockIn = await PostJsonAuthenticatedAsync(_requesterA,
-            "/api/v1/attendance/time-tracking/clock-in", new { source = "web" });
-        clockIn.status.Should().Be(HttpStatusCode.OK);
-        clockIn.json.GetProperty("expectedWorkMode").GetString().Should().Be("remote");
-        clockIn.json.GetProperty("attendanceSource").GetString().Should().Be("web");
-        clockIn.json.GetProperty("clockInAt").GetDateTimeOffset().Should().NotBe(default);
-        clockIn.json.GetProperty("expectedWorkAreaSource").GetString().Should().Be(TodaySnapshotSource.ExpectedWorkAreaSourceAttendanceSnapshot);
-
-        await using (var verifyDb = OpenScopedDb())
-        {
-            var record = await verifyDb.AttendanceRecords.AsNoTracking()
-                .SingleAsync(x => x.TenantId == _tenantAId && x.EmployeeId == _requesterAEmployeeId && x.Date == WorkDate);
-            record.ExpectedWorkArea.Should().Be("remote");
-        }
-
-        // Step 8: Today after clock-in still reflects the persisted snapshot.
-        var today3 = await GetJsonAuthenticatedAsync(_requesterA, "/api/v1/attendance/time-tracking/today");
-        today3.GetProperty("expectedWorkMode").GetString().Should().Be("remote");
-        today3.GetProperty("expectedWorkAreaSource").GetString().Should().Be(TodaySnapshotSource.ExpectedWorkAreaSourceAttendanceSnapshot);
-
-        // Step 9: history.
-        var history = await GetJsonAuthenticatedAsync(_requesterA,
-            $"/api/v1/attendance/time-tracking/history?from={WorkDate:yyyy-MM-dd}&to={WorkDate:yyyy-MM-dd}");
-        var historyRow = history.GetProperty("items").EnumerateArray()
-            .Single(x => x.GetProperty("workDate").GetString() == WorkDate.ToString("yyyy-MM-dd"));
-        historyRow.GetProperty("expectedWorkMode").GetString().Should().Be("remote");
-
-        // Step 10: database invariants.
-        await using var db = OpenScopedDb();
-        (await db.WorkAreaChangeRequests.AsNoTracking()
-            .CountAsync(x => x.TenantId == _tenantAId && x.EmployeeId == _requesterAEmployeeId
-                && x.Date == WorkDate && x.Status == WorkAreaChangeRequest.StatusApproved))
-            .Should().Be(1);
-        (await db.AttendanceRecords.AsNoTracking()
-            .CountAsync(x => x.TenantId == _tenantAId && x.EmployeeId == _requesterAEmployeeId && x.Date == WorkDate))
-            .Should().Be(1);
-        var employee = await db.Employees.AsNoTracking().SingleAsync(x => x.Id == _requesterAEmployeeId);
-        employee.WorkModeId.Should().Be(1, "approval must never mutate the employee's permanent WorkModeId");
-    }
-
-    [Fact]
-    public async Task ApprovalAfterClockIn_SynchronizesExistingAttendanceSnapshot()
-    {
-        var clockIn = await PostJsonAuthenticatedAsync(_requesterA2,
-            "/api/v1/attendance/time-tracking/clock-in", new { source = "web" });
-        clockIn.status.Should().Be(HttpStatusCode.OK);
-        clockIn.json.GetProperty("expectedWorkMode").GetString().Should().Be("onsite");
-
-        Guid attendanceRecordId;
-        DateTimeOffset actualStart;
-        await using (var db = OpenScopedDb())
-        {
-            var record = await db.AttendanceRecords.AsNoTracking()
-                .SingleAsync(x => x.TenantId == _tenantAId && x.EmployeeId == _requesterA2EmployeeId && x.Date == WorkDate);
-            attendanceRecordId = record.Id;
-            actualStart = record.ActualStart!.Value;
-        }
-
-        var create = await PostJsonAuthenticatedAsync(_requesterA2,
-            "/api/v1/attendance/work-area-change-requests",
-            new { date = WorkDate, requestedWorkArea = "remote", reason = "Family emergency" });
-        create.status.Should().Be(HttpStatusCode.Created);
-        var requestId = create.json.GetProperty("id").GetGuid();
-
-        var approve = await PostJsonAuthenticatedAsync(_approverA,
-            $"/api/v1/attendance/work-area-change-requests/{requestId}/approve", new { reviewComment = (string?)null });
-        approve.status.Should().Be(HttpStatusCode.OK);
-
-        await using (var db = OpenScopedDb())
-        {
-            var record = await db.AttendanceRecords.AsNoTracking().SingleAsync(x => x.Id == attendanceRecordId);
-            record.ExpectedWorkArea.Should().Be("remote");
-            record.ActualStart.Should().Be(actualStart);
-            record.ActualEnd.Should().BeNull();
-            record.AttendanceSource.Should().Be("web");
-        }
-
-        var today = await GetJsonAuthenticatedAsync(_requesterA2, "/api/v1/attendance/time-tracking/today");
-        today.GetProperty("expectedWorkMode").GetString().Should().Be("remote");
-        today.GetProperty("expectedWorkAreaSource").GetString().Should().Be(TodaySnapshotSource.ExpectedWorkAreaSourceAttendanceSnapshot);
-
-        var history = await GetJsonAuthenticatedAsync(_requesterA2,
-            $"/api/v1/attendance/time-tracking/history?from={WorkDate:yyyy-MM-dd}&to={WorkDate:yyyy-MM-dd}");
-        history.GetProperty("items").EnumerateArray()
-            .Single(x => x.GetProperty("attendanceRecordId").GetGuid() == attendanceRecordId)
-            .GetProperty("expectedWorkMode").GetString().Should().Be("remote");
-    }
-
-    [Fact]
-    public async Task RejectedAndCancelledRequests_DoNotAffectToday()
-    {
-        var firstRequest = await PostJsonAuthenticatedAsync(_requesterA3,
-            "/api/v1/attendance/work-area-change-requests",
-            new { date = WorkDate, requestedWorkArea = "remote", reason = "Reason one" });
-        firstRequest.status.Should().Be(HttpStatusCode.Created);
-        var firstId = firstRequest.json.GetProperty("id").GetGuid();
-
-        var reject = await PostJsonAuthenticatedAsync(_approverA,
-            $"/api/v1/attendance/work-area-change-requests/{firstId}/reject", new { reviewComment = "Not approved for this date" });
-        reject.status.Should().Be(HttpStatusCode.OK);
-        reject.json.GetProperty("status").GetString().Should().Be(WorkAreaChangeRequest.StatusRejected);
-
-        var todayAfterReject = await GetJsonAuthenticatedAsync(_requesterA3, "/api/v1/attendance/time-tracking/today");
-        todayAfterReject.GetProperty("expectedWorkMode").GetString().Should().Be("onsite");
-
-        // A new request is allowed once the previous one reached a terminal state.
-        var secondRequest = await PostJsonAuthenticatedAsync(_requesterA3,
-            "/api/v1/attendance/work-area-change-requests",
-            new { date = WorkDate, requestedWorkArea = "remote", reason = "Reason two" });
-        secondRequest.status.Should().Be(HttpStatusCode.Created);
-        var secondId = secondRequest.json.GetProperty("id").GetGuid();
-
-        var cancel = await PostJsonAuthenticatedAsync(_requesterA3,
-            $"/api/v1/attendance/work-area-change-requests/{secondId}/cancel", new { });
-        cancel.status.Should().Be(HttpStatusCode.OK);
-        cancel.json.GetProperty("status").GetString().Should().Be(WorkAreaChangeRequest.StatusCancelled);
-
-        var todayAfterCancel = await GetJsonAuthenticatedAsync(_requesterA3, "/api/v1/attendance/time-tracking/today");
-        todayAfterCancel.GetProperty("expectedWorkMode").GetString().Should().Be("onsite");
-    }
-
-    [Fact]
-    public async Task Unauthenticated_And_MissingOrInvalidCsrf_AreRejected()
-    {
-        var unauthenticatedToday = await SendAsync(HttpMethod.Get, _requesterA.Host,
-            "/api/v1/attendance/time-tracking/today", body: null);
-        unauthenticatedToday.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-
-        var unauthenticatedClockIn = await SendAsync(HttpMethod.Post, _requesterA.Host,
-            "/api/v1/attendance/time-tracking/clock-in", new { source = "web" });
-        unauthenticatedClockIn.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-
-        var unauthenticatedCreate = await SendAsync(HttpMethod.Post, _requesterA.Host,
-            "/api/v1/attendance/work-area-change-requests",
-            new { date = WorkDate, requestedWorkArea = "remote", reason = "No session" });
-        unauthenticatedCreate.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-
-        var missingCsrf = await SendAsync(HttpMethod.Post, _requesterA.Host,
-            "/api/v1/attendance/work-area-change-requests",
-            new { date = WorkDate, requestedWorkArea = "remote", reason = "Missing token" },
-            cookie: _requesterA.SessionCookie);
-        missingCsrf.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-
-        var invalidCsrf = await SendAsync(HttpMethod.Post, _requesterA.Host,
-            "/api/v1/attendance/work-area-change-requests",
-            new { date = WorkDate, requestedWorkArea = "remote", reason = "Invalid token" },
-            cookie: _requesterA.SessionCookie, csrfToken: "not-the-real-token");
-        invalidCsrf.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    [Fact]
-    public async Task TenantIsolation_CannotSeeOrApproveAnotherTenantsRequest()
-    {
-        var create = await PostJsonAuthenticatedAsync(_requesterA,
-            "/api/v1/attendance/work-area-change-requests",
-            new { date = WorkDate, requestedWorkArea = "remote", reason = "Tenant isolation fixture" });
-        create.status.Should().Be(HttpStatusCode.Created);
-        var requestId = create.json.GetProperty("id").GetGuid();
-
-        var inboxAsTenantB = await GetJsonAuthenticatedAsync(_approverB, "/api/v1/attendance/work-area-change-requests/approvals");
-        inboxAsTenantB.GetProperty("items").EnumerateArray()
-            .Should().NotContain(x => x.GetProperty("id").GetGuid() == requestId);
-
-        var approveAsTenantB = await PostJsonAuthenticatedAsync(_approverB,
-            $"/api/v1/attendance/work-area-change-requests/{requestId}/approve", new { reviewComment = (string?)null });
-        approveAsTenantB.status.Should().Be(HttpStatusCode.NotFound);
-
-        var todayAsRequesterA = await GetJsonAuthenticatedAsync(_requesterA, "/api/v1/attendance/time-tracking/today");
-        todayAsRequesterA.GetProperty("expectedWorkMode").GetString().Should().Be("onsite",
-            "tenant B's failed cross-tenant approve attempt must not affect tenant A's state");
-    }
-
-    // ── Assertion helpers ────────────────────────────────────────────────────
-
-    private static void AssertAllowedMethods(JsonElement today, bool web, bool tray, bool photo)
+    public static void AssertAllowedMethods(JsonElement today, bool web, bool tray, bool photo)
     {
         var methods = today.GetProperty("allowedClockInMethods");
         methods.GetProperty("web").GetBoolean().Should().Be(web);
@@ -444,9 +193,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
         methods.GetProperty("photoRequired").GetBoolean().Should().Be(photo);
     }
 
-    // ── Fixture setup helpers ────────────────────────────────────────────────
-
-    private ApplicationDbContext OpenScopedDb()
+    public ApplicationDbContext OpenScopedDb()
     {
         var scope = _factory.Services.CreateScope();
         return scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -578,9 +325,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
         return user.Id;
     }
 
-    // ── Provisioning and HTTP boilerplate (mirrors AttendanceCorrectionsIntegrationTests) ────
-
-    private sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
+    public sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
 
     private async Task<TenantSession> ProvisionAndLoginOwnerAsync(string slug, string companyName, string ownerEmail)
     {
@@ -745,14 +490,14 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
         return primary.GetProperty("id").GetGuid();
     }
 
-    private async Task<JsonElement> GetJsonAuthenticatedAsync(TenantSession session, string path)
+    public async Task<JsonElement> GetJsonAuthenticatedAsync(TenantSession session, string path)
     {
         var response = await SendAsync(HttpMethod.Get, session.Host, path, body: null, cookie: session.SessionCookie);
         response.StatusCode.Should().Be(HttpStatusCode.OK, $"GET {path} failed for host {session.Host}");
         return await ReadJsonAsync(response);
     }
 
-    private async Task<(HttpStatusCode status, JsonElement json)> PostJsonAuthenticatedAsync(
+    public async Task<(HttpStatusCode status, JsonElement json)> PostJsonAuthenticatedAsync(
         TenantSession session, string path, object body)
     {
         var response = await SendAsync(HttpMethod.Post, session.Host, path, body,
@@ -810,7 +555,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
         throw new TimeoutException("Seeders did not finish within 30s (permissions / subscription plan missing).");
     }
 
-    private async Task<HttpResponseMessage> SendAsync(
+    public async Task<HttpResponseMessage> SendAsync(
         HttpMethod method, string host, string path, object? body,
         string? cookie = null, string? csrfToken = null, string? idempotencyKey = null)
     {
@@ -850,4 +595,295 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IAsyncLif
 
         return cookies;
     }
+
+}
+
+/// <summary>
+/// Real HTTP/PostgreSQL end-to-end coverage for the Work Area Change Request runtime path:
+/// submit request -> approve -> read Today -> clock in -> read history. Reuses the proven
+/// WebApplicationFactory/tenant-provisioning pattern from AttendanceCorrectionsIntegrationTests
+/// rather than inventing a new fixture style. WorkDate is resolved from the real clock at fixture
+/// setup time, and the legal entity's working-day set is configured to include every day of the
+/// week, so schedule/working-day resolution never depends on which real weekday the suite runs on.
+///
+/// Each [Fact] gets its own fresh Testcontainers database and tenant provisioning (xUnit
+/// constructs a new class instance per test method, so IAsyncLifetime.InitializeAsync reruns per
+/// test) - the same isolation-over-shared-state tradeoff AttendanceCorrectionsIntegrationTests
+/// already makes in this suite.
+/// </summary>
+[Collection(WebApplicationFactoryCollection.Name)]
+public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFixture<WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture>
+{
+    private readonly WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture _fixture;
+
+    public WorkAreaChangeRequestRuntimeHttpIntegrationTests(WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    // ── Primary end-to-end scenario ─────────────────────────────────────────
+
+    [Fact]
+    public async Task FullLifecycle_SubmitApproveClockInHistory_ReflectsApprovedRemoteOverride()
+    {
+        // Step 0 (negative, folded in): an unsupported requested work area is rejected by the
+        // request-level FluentValidation rule before any valid request is created, and does not
+        // consume the one-active-request-per-day slot.
+        var unsupportedResponse = await _fixture.SendAsync(HttpMethod.Post, _fixture.RequesterA.Host,
+            "/api/v1/attendance/work-area-change-requests",
+            new { date = _fixture.WorkDate, requestedWorkArea = "field", reason = "Unsupported" },
+            cookie: _fixture.RequesterA.SessionCookie, csrfToken: _fixture.RequesterA.CsrfHeader);
+        unsupportedResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        // Step 1: baseline Today is the permanent On-site work mode.
+        var today1 = await _fixture.GetJsonAuthenticatedAsync(_fixture.RequesterA, "/api/v1/attendance/time-tracking/today");
+        today1.GetProperty("expectedWorkMode").GetString().Should().Be("onsite");
+        today1.GetProperty("expectedWorkAreaSource").GetString().Should().Be(WorkAreaSources.SourceActiveWorkMode);
+        WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture.AssertAllowedMethods(today1, web: true, tray: false, photo: false);
+
+        // Step 2: preview.
+        var preview = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA,
+            "/api/v1/attendance/work-area-change-requests/preview",
+            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Home repair appointment" });
+        preview.status.Should().Be(HttpStatusCode.OK, preview.json.ValueKind == JsonValueKind.Undefined ? "(empty body)" : preview.json.GetRawText());
+        preview.json.GetProperty("currentExpectedWorkArea").GetString().Should().Be("onsite");
+        preview.json.GetProperty("requestedWorkArea").GetString().Should().Be("remote");
+        preview.json.GetProperty("receiver").GetProperty("userId").GetGuid().Should().Be(_fixture.ApproverAUserId);
+
+        // Step 3: submit.
+        var create = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA,
+            "/api/v1/attendance/work-area-change-requests",
+            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Home repair appointment" });
+        create.status.Should().Be(HttpStatusCode.Created);
+        create.json.GetProperty("status").GetString().Should().Be(WorkAreaChangeRequest.StatusPending);
+        create.json.GetProperty("requestedWorkArea").GetString().Should().Be("remote");
+        create.json.TryGetProperty("tenantId", out _).Should().BeFalse("tenant id is server-internal and must not be exposed");
+        var requestId = create.json.GetProperty("id").GetGuid();
+
+        // A second active request for the same employee/date is rejected while the first is pending.
+        var duplicate = await _fixture.SendAsync(HttpMethod.Post, _fixture.RequesterA.Host,
+            "/api/v1/attendance/work-area-change-requests",
+            new { date = _fixture.WorkDate, requestedWorkArea = "onsite", reason = "Duplicate attempt" },
+            cookie: _fixture.RequesterA.SessionCookie, csrfToken: _fixture.RequesterA.CsrfHeader);
+        duplicate.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        // Pending does not affect Today.
+        var todayWhilePending = await _fixture.GetJsonAuthenticatedAsync(_fixture.RequesterA, "/api/v1/attendance/time-tracking/today");
+        todayWhilePending.GetProperty("expectedWorkMode").GetString().Should().Be("onsite");
+
+        // Step 4: approval inbox.
+        var inboxAsApprover = await _fixture.GetJsonAuthenticatedAsync(_fixture.ApproverA, "/api/v1/attendance/work-area-change-requests/approvals");
+        var inboxItems = inboxAsApprover.GetProperty("items").EnumerateArray().ToList();
+        inboxItems.Should().ContainSingle(x => x.GetProperty("id").GetGuid() == requestId);
+
+        var inboxAsWrongApprover = await _fixture.GetJsonAuthenticatedAsync(_fixture.WrongApproverA, "/api/v1/attendance/work-area-change-requests/approvals");
+        inboxAsWrongApprover.GetProperty("items").EnumerateArray()
+            .Should().NotContain(x => x.GetProperty("id").GetGuid() == requestId,
+                "wrongApprover holds attendance:approve but is not the resolver-selected approver for this employee");
+
+        var inboxAsRequester = await _fixture.SendAsync(HttpMethod.Get, _fixture.RequesterA.Host,
+            "/api/v1/attendance/work-area-change-requests/approvals", body: null, cookie: _fixture.RequesterA.SessionCookie);
+        inboxAsRequester.StatusCode.Should().Be(HttpStatusCode.Forbidden, "the requester does not hold attendance:approve");
+
+        // Wrong approver (has the permission, is not the selected route) cannot approve.
+        var wrongApprove = await _fixture.PostJsonAuthenticatedAsync(_fixture.WrongApproverA,
+            $"/api/v1/attendance/work-area-change-requests/{requestId}/approve", new { reviewComment = (string?)null });
+        wrongApprove.status.Should().Be(HttpStatusCode.Forbidden);
+
+        // Step 5: approve.
+        var approve = await _fixture.PostJsonAuthenticatedAsync(_fixture.ApproverA,
+            $"/api/v1/attendance/work-area-change-requests/{requestId}/approve", new { reviewComment = (string?)null });
+        approve.status.Should().Be(HttpStatusCode.OK);
+        approve.json.GetProperty("status").GetString().Should().Be(WorkAreaChangeRequest.StatusApproved);
+        approve.json.GetProperty("reviewedById").GetGuid().Should().Be(_fixture.ApproverAUserId);
+        approve.json.GetProperty("requestedWorkArea").GetString().Should().Be("remote");
+
+        // Approving an already-decided request returns the existing conflict behavior.
+        var reapprove = await _fixture.PostJsonAuthenticatedAsync(_fixture.ApproverA,
+            $"/api/v1/attendance/work-area-change-requests/{requestId}/approve", new { reviewComment = (string?)null });
+        reapprove.status.Should().Be(HttpStatusCode.Conflict);
+
+        // Step 6: Today uses the approved override before any attendance row exists.
+        var today2 = await _fixture.GetJsonAuthenticatedAsync(_fixture.RequesterA, "/api/v1/attendance/time-tracking/today");
+        today2.GetProperty("expectedWorkMode").GetString().Should().Be("remote");
+        today2.GetProperty("expectedWorkAreaSource").GetString().Should().Be(WorkAreaSources.SourceApprovedRequest);
+        WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture.AssertAllowedMethods(today2, web: true, tray: true, photo: true);
+
+        // Step 7: clock in.
+        var clockIn = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA,
+            "/api/v1/attendance/time-tracking/clock-in", new { source = "web" });
+        clockIn.status.Should().Be(HttpStatusCode.OK);
+        clockIn.json.GetProperty("expectedWorkMode").GetString().Should().Be("remote");
+        clockIn.json.GetProperty("attendanceSource").GetString().Should().Be("web");
+        clockIn.json.GetProperty("clockInAt").GetDateTimeOffset().Should().NotBe(default);
+        clockIn.json.GetProperty("expectedWorkAreaSource").GetString().Should().Be(TodaySnapshotSource.ExpectedWorkAreaSourceAttendanceSnapshot);
+
+        await using (var verifyDb = _fixture.OpenScopedDb())
+        {
+            var record = await verifyDb.AttendanceRecords.AsNoTracking()
+                .SingleAsync(x => x.TenantId == _fixture.TenantAId && x.EmployeeId == _fixture.RequesterAEmployeeId && x.Date == _fixture.WorkDate);
+            record.ExpectedWorkArea.Should().Be("remote");
+        }
+
+        // Step 8: Today after clock-in still reflects the persisted snapshot.
+        var today3 = await _fixture.GetJsonAuthenticatedAsync(_fixture.RequesterA, "/api/v1/attendance/time-tracking/today");
+        today3.GetProperty("expectedWorkMode").GetString().Should().Be("remote");
+        today3.GetProperty("expectedWorkAreaSource").GetString().Should().Be(TodaySnapshotSource.ExpectedWorkAreaSourceAttendanceSnapshot);
+
+        // Step 9: history.
+        var history = await _fixture.GetJsonAuthenticatedAsync(_fixture.RequesterA,
+            $"/api/v1/attendance/time-tracking/history?from={_fixture.WorkDate:yyyy-MM-dd}&to={_fixture.WorkDate:yyyy-MM-dd}");
+        var historyRow = history.GetProperty("items").EnumerateArray()
+            .Single(x => x.GetProperty("workDate").GetString() == _fixture.WorkDate.ToString("yyyy-MM-dd"));
+        historyRow.GetProperty("expectedWorkMode").GetString().Should().Be("remote");
+
+        // Step 10: database invariants.
+        await using var db = _fixture.OpenScopedDb();
+        (await db.WorkAreaChangeRequests.AsNoTracking()
+            .CountAsync(x => x.TenantId == _fixture.TenantAId && x.EmployeeId == _fixture.RequesterAEmployeeId
+                && x.Date == _fixture.WorkDate && x.Status == WorkAreaChangeRequest.StatusApproved))
+            .Should().Be(1);
+        (await db.AttendanceRecords.AsNoTracking()
+            .CountAsync(x => x.TenantId == _fixture.TenantAId && x.EmployeeId == _fixture.RequesterAEmployeeId && x.Date == _fixture.WorkDate))
+            .Should().Be(1);
+        var employee = await db.Employees.AsNoTracking().SingleAsync(x => x.Id == _fixture.RequesterAEmployeeId);
+        employee.WorkModeId.Should().Be(1, "approval must never mutate the employee's permanent WorkModeId");
+    }
+
+    [Fact]
+    public async Task ApprovalAfterClockIn_SynchronizesExistingAttendanceSnapshot()
+    {
+        var clockIn = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA2,
+            "/api/v1/attendance/time-tracking/clock-in", new { source = "web" });
+        clockIn.status.Should().Be(HttpStatusCode.OK);
+        clockIn.json.GetProperty("expectedWorkMode").GetString().Should().Be("onsite");
+
+        Guid attendanceRecordId;
+        DateTimeOffset actualStart;
+        await using (var db = _fixture.OpenScopedDb())
+        {
+            var record = await db.AttendanceRecords.AsNoTracking()
+                .SingleAsync(x => x.TenantId == _fixture.TenantAId && x.EmployeeId == _fixture.RequesterA2EmployeeId && x.Date == _fixture.WorkDate);
+            attendanceRecordId = record.Id;
+            actualStart = record.ActualStart!.Value;
+        }
+
+        var create = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA2,
+            "/api/v1/attendance/work-area-change-requests",
+            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Family emergency" });
+        create.status.Should().Be(HttpStatusCode.Created);
+        var requestId = create.json.GetProperty("id").GetGuid();
+
+        var approve = await _fixture.PostJsonAuthenticatedAsync(_fixture.ApproverA,
+            $"/api/v1/attendance/work-area-change-requests/{requestId}/approve", new { reviewComment = (string?)null });
+        approve.status.Should().Be(HttpStatusCode.OK);
+
+        await using (var db = _fixture.OpenScopedDb())
+        {
+            var record = await db.AttendanceRecords.AsNoTracking().SingleAsync(x => x.Id == attendanceRecordId);
+            record.ExpectedWorkArea.Should().Be("remote");
+            record.ActualStart.Should().Be(actualStart);
+            record.ActualEnd.Should().BeNull();
+            record.AttendanceSource.Should().Be("web");
+        }
+
+        var today = await _fixture.GetJsonAuthenticatedAsync(_fixture.RequesterA2, "/api/v1/attendance/time-tracking/today");
+        today.GetProperty("expectedWorkMode").GetString().Should().Be("remote");
+        today.GetProperty("expectedWorkAreaSource").GetString().Should().Be(TodaySnapshotSource.ExpectedWorkAreaSourceAttendanceSnapshot);
+
+        var history = await _fixture.GetJsonAuthenticatedAsync(_fixture.RequesterA2,
+            $"/api/v1/attendance/time-tracking/history?from={_fixture.WorkDate:yyyy-MM-dd}&to={_fixture.WorkDate:yyyy-MM-dd}");
+        history.GetProperty("items").EnumerateArray()
+            .Single(x => x.GetProperty("attendanceRecordId").GetGuid() == attendanceRecordId)
+            .GetProperty("expectedWorkMode").GetString().Should().Be("remote");
+    }
+
+    [Fact]
+    public async Task RejectedAndCancelledRequests_DoNotAffectToday()
+    {
+        var firstRequest = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA3,
+            "/api/v1/attendance/work-area-change-requests",
+            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Reason one" });
+        firstRequest.status.Should().Be(HttpStatusCode.Created);
+        var firstId = firstRequest.json.GetProperty("id").GetGuid();
+
+        var reject = await _fixture.PostJsonAuthenticatedAsync(_fixture.ApproverA,
+            $"/api/v1/attendance/work-area-change-requests/{firstId}/reject", new { reviewComment = "Not approved for this date" });
+        reject.status.Should().Be(HttpStatusCode.OK);
+        reject.json.GetProperty("status").GetString().Should().Be(WorkAreaChangeRequest.StatusRejected);
+
+        var todayAfterReject = await _fixture.GetJsonAuthenticatedAsync(_fixture.RequesterA3, "/api/v1/attendance/time-tracking/today");
+        todayAfterReject.GetProperty("expectedWorkMode").GetString().Should().Be("onsite");
+
+        // A new request is allowed once the previous one reached a terminal state.
+        var secondRequest = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA3,
+            "/api/v1/attendance/work-area-change-requests",
+            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Reason two" });
+        secondRequest.status.Should().Be(HttpStatusCode.Created);
+        var secondId = secondRequest.json.GetProperty("id").GetGuid();
+
+        var cancel = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA3,
+            $"/api/v1/attendance/work-area-change-requests/{secondId}/cancel", new { });
+        cancel.status.Should().Be(HttpStatusCode.OK);
+        cancel.json.GetProperty("status").GetString().Should().Be(WorkAreaChangeRequest.StatusCancelled);
+
+        var todayAfterCancel = await _fixture.GetJsonAuthenticatedAsync(_fixture.RequesterA3, "/api/v1/attendance/time-tracking/today");
+        todayAfterCancel.GetProperty("expectedWorkMode").GetString().Should().Be("onsite");
+    }
+
+    [Fact]
+    public async Task Unauthenticated_And_MissingOrInvalidCsrf_AreRejected()
+    {
+        var unauthenticatedToday = await _fixture.SendAsync(HttpMethod.Get, _fixture.RequesterA.Host,
+            "/api/v1/attendance/time-tracking/today", body: null);
+        unauthenticatedToday.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        var unauthenticatedClockIn = await _fixture.SendAsync(HttpMethod.Post, _fixture.RequesterA.Host,
+            "/api/v1/attendance/time-tracking/clock-in", new { source = "web" });
+        unauthenticatedClockIn.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        var unauthenticatedCreate = await _fixture.SendAsync(HttpMethod.Post, _fixture.RequesterA.Host,
+            "/api/v1/attendance/work-area-change-requests",
+            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "No session" });
+        unauthenticatedCreate.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        var missingCsrf = await _fixture.SendAsync(HttpMethod.Post, _fixture.RequesterA.Host,
+            "/api/v1/attendance/work-area-change-requests",
+            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Missing token" },
+            cookie: _fixture.RequesterA.SessionCookie);
+        missingCsrf.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var invalidCsrf = await _fixture.SendAsync(HttpMethod.Post, _fixture.RequesterA.Host,
+            "/api/v1/attendance/work-area-change-requests",
+            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Invalid token" },
+            cookie: _fixture.RequesterA.SessionCookie, csrfToken: "not-the-real-token");
+        invalidCsrf.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task TenantIsolation_CannotSeeOrApproveAnotherTenantsRequest()
+    {
+        // Uses its own dedicated requester (_fixture.RequesterA4): this fact's request is deliberately
+        // never resolved to a terminal state (the cross-tenant approve attempt below returns
+        // NotFound rather than approving it), so reusing another fact's requester would leave a
+        // permanently-pending request behind for that employee/_fixture.WorkDate.
+        var create = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA4,
+            "/api/v1/attendance/work-area-change-requests",
+            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Tenant isolation fixture" });
+        create.status.Should().Be(HttpStatusCode.Created);
+        var requestId = create.json.GetProperty("id").GetGuid();
+
+        var inboxAsTenantB = await _fixture.GetJsonAuthenticatedAsync(_fixture.ApproverB, "/api/v1/attendance/work-area-change-requests/approvals");
+        inboxAsTenantB.GetProperty("items").EnumerateArray()
+            .Should().NotContain(x => x.GetProperty("id").GetGuid() == requestId);
+
+        var approveAsTenantB = await _fixture.PostJsonAuthenticatedAsync(_fixture.ApproverB,
+            $"/api/v1/attendance/work-area-change-requests/{requestId}/approve", new { reviewComment = (string?)null });
+        approveAsTenantB.status.Should().Be(HttpStatusCode.NotFound);
+
+        var todayAsRequesterA4 = await _fixture.GetJsonAuthenticatedAsync(_fixture.RequesterA4, "/api/v1/attendance/time-tracking/today");
+        todayAsRequesterA4.GetProperty("expectedWorkMode").GetString().Should().Be("onsite",
+            "tenant B's failed cross-tenant approve attempt must not affect tenant A's state");
+    }
+
 }

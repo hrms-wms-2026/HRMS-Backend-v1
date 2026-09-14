@@ -12,6 +12,13 @@ public record WorkAreaSourceRulesRequest(
     bool TrayEnabled,
     bool PhotoRequired);
 
+public record RemoteWorkAreaRulesRequest(
+    bool BiometricEnabled,
+    bool WebEnabled,
+    bool TrayEnabled,
+    bool PhotoRequired,
+    bool LocationCheckRequired);
+
 public record HybridWorkAreaRulesRequest(
     bool BiometricEnabled,
     bool WebEnabled,
@@ -28,7 +35,7 @@ public record FieldWorkAreaRulesRequest(
 
 public record WorkAreaRulesRequest(
     WorkAreaSourceRulesRequest Onsite,
-    WorkAreaSourceRulesRequest Remote,
+    RemoteWorkAreaRulesRequest Remote,
     HybridWorkAreaRulesRequest Hybrid,
     FieldWorkAreaRulesRequest Field);
 

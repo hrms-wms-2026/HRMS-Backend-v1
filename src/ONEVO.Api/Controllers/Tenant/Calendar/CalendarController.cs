@@ -10,11 +10,15 @@ using ONEVO.Application.Features.Calendar.Commands.DisconnectCalendarConnection;
 using ONEVO.Application.Features.Calendar.Commands.EditRecurringOccurrence;
 using ONEVO.Application.Features.Calendar.Commands.RespondToCalendarEvent;
 using ONEVO.Application.Features.Calendar.Commands.StartCalendarConnection;
+using ONEVO.Application.Features.Calendar.Commands.SyncHolidayCalendar;
 using ONEVO.Application.Features.Calendar.Commands.TriggerCalendarSync;
 using ONEVO.Application.Features.Calendar.Commands.UpdateCalendarConnection;
 using ONEVO.Application.Features.Calendar.Commands.UpdateCalendarEvent;
+using ONEVO.Application.Features.Calendar.Commands.UpdateHolidayCalendarSettings;
 using ONEVO.Application.Features.Calendar.Queries.CheckCalendarConflicts;
 using ONEVO.Application.Features.Calendar.Queries.GetCalendarEvents;
+using ONEVO.Application.Features.Calendar.Queries.GetEligibleNominees;
+using ONEVO.Application.Features.Calendar.Queries.GetHolidayCalendarSettings;
 using ONEVO.Application.Features.Calendar.Queries.GetMyCalendarConnections;
 using ONEVO.Application.Features.Calendar.Queries.GetMyEffectiveTimezone;
 
@@ -106,9 +110,19 @@ public class CalendarController : ControllerBase
     [RequirePermission("calendar:read")]
     public async Task<IActionResult> Respond(Guid id, [FromBody] RespondToCalendarEventRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new RespondToCalendarEventCommand(id, request.ResponseStatus), ct);
+        var result = await _mediator.Send(new RespondToCalendarEventCommand(id, request.ResponseStatus, request.Reason, request.NomineeEmployeeId), ct);
         return result.IsSuccess
             ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("{id:guid}/eligible-nominees")]
+    [RequirePermission("calendar:read")]
+    public async Task<IActionResult> GetEligibleNominees(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetEligibleNomineesQuery(id), ct);
+        return result.IsSuccess
+            ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
@@ -137,6 +151,16 @@ public class CalendarController : ControllerBase
     public async Task<IActionResult> GetConnections(CancellationToken ct)
     {
         var result = await _mediator.Send(new GetMyCalendarConnectionsQuery(), ct);
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("holiday-settings")]
+    [RequirePermission("calendar:admin")]
+    public async Task<IActionResult> GetHolidaySettings(CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetHolidayCalendarSettingsQuery(), ct);
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
@@ -172,6 +196,16 @@ public class CalendarController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    [HttpPut("holiday-settings/{id:guid}")]
+    [RequirePermission("calendar:admin")]
+    public async Task<IActionResult> UpdateHolidaySettings(Guid id, [FromBody] UpdateHolidayCalendarSettingsRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new UpdateHolidayCalendarSettingsCommand(id, request.OverrideCountryCode, request.HolidaySyncEnabled), ct);
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     [HttpPost("connections/{id:guid}/sync")]
     [RequirePermission("calendar:write")]
     public async Task<IActionResult> TriggerSync(Guid id, CancellationToken ct)
@@ -179,6 +213,16 @@ public class CalendarController : ControllerBase
         var result = await _mediator.Send(new TriggerCalendarSyncCommand(id), ct);
         return result.IsSuccess
             ? Ok()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("holiday-settings/{id:guid}/sync")]
+    [RequirePermission("calendar:admin")]
+    public async Task<IActionResult> SyncHolidaySettings(Guid id, [FromQuery] int year, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new SyncHolidayCalendarCommand(id, year), ct);
+        return result.IsSuccess
+            ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }

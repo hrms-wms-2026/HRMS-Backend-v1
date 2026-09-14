@@ -130,6 +130,71 @@ public sealed class GetEmployeeDetailQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_CallerLacksAttendanceReadPermission_OmitsAttendanceSummary()
+    {
+        ArrangeVisibleEmployee();
+        _currentUser.Setup(c => c.HasPermission("employees:read:sensitive")).Returns(false);
+        _currentUser.Setup(c => c.HasPermission("attendance:read")).Returns(false);
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.AttendanceSummary);
+        _employeeRepository.Verify(
+            r => r.ListVisibleAsync(
+                It.IsAny<Guid>(), It.IsAny<EmployeeVisibilityScope>(), It.IsAny<EmployeeListFilter>(),
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>(), It.IsAny<EmployeeListAttendanceOptions>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_CallerHasAttendanceReadPermission_IncludesAttendanceSummaryScopedToThisEmployee()
+    {
+        ArrangeVisibleEmployee();
+        _currentUser.Setup(c => c.HasPermission("employees:read:sensitive")).Returns(false);
+        _currentUser.Setup(c => c.HasPermission("attendance:read")).Returns(true);
+
+        var summary = new EmployeeListAttendanceSummaryResponse(
+            ShowNotClockedInWarning: true,
+            ShouldHaveClockedIn: true,
+            HasClockedInToday: false,
+            WorkDate: DateOnly.FromDateTime(_now.UtcDateTime),
+            Timezone: "UTC",
+            ScheduledStartTime: "09:00",
+            WarningLabel: "Still has not clocked in",
+            AttendanceStatus: "not_clocked_in",
+            AttendanceStatusLabel: "Not clocked in",
+            AttentionType: "not_clocked_in",
+            AttentionSeverity: "critical",
+            AttentionLabel: "Still has not clocked in");
+
+        var attendanceItem = new EmployeeListItemResponse(
+            _employeeId, "E-001", "Ada Lovelace", "ada@test.dev",
+            null, null, null, null, null, null, "full_time", "active", null, null,
+            AttendanceSummary: summary);
+
+        _employeeRepository
+            .Setup(r => r.ListVisibleAsync(
+                _tenantId,
+                It.Is<EmployeeVisibilityScope>(s => !s.CanViewAllTenantEmployees),
+                It.Is<EmployeeListFilter>(f =>
+                    f.RestrictToEmployeeIds != null
+                    && f.RestrictToEmployeeIds.Count == 1
+                    && f.RestrictToEmployeeIds.Contains(_employeeId)),
+                1, 1,
+                It.IsAny<CancellationToken>(),
+                It.Is<EmployeeListAttendanceOptions>(o => o.UtcNow == _now)))
+            .ReturnsAsync((new[] { attendanceItem }, 1));
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Value!.AttendanceSummary);
+        Assert.Equal("not_clocked_in", result.Value!.AttendanceSummary!.AttentionType);
+        Assert.True(result.Value!.AttendanceSummary!.ShowNotClockedInWarning);
+    }
+
+    [Fact]
     public async Task Handle_EmployeeOutsideVisibilityScope_ReturnsForbidden()
     {
         _employeeRepository

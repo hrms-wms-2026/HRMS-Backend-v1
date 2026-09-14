@@ -24,42 +24,26 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Integration.CoreHr.Employee;
 
 /// <summary>
-/// Exercises ListEmployeesQueryHandler/GetEmployeeQueryHandler against real PostgreSQL with
-/// RLS enforced through a restricted, non-superuser, non-BYPASSRLS role (same fixture pattern
-/// as PositionAssignmentRlsIntegrationTests/RestrictedRoleRlsEnforcementTests) - the read path
-/// composed end to end (handler -> repository -> real SQL), not mocked. Does NOT drive the
-/// full Kestrel/WebApplicationFactory HTTP pipeline (Authorize/RequirePermissionAttribute) the
-/// way DepartmentsIntegrationTests.cs does; that gap is documented in the implementation
-/// report. Requires Docker.
-///
-/// EMPLOYEE_LIST_AUTHORITY_RESOLVER_BACKEND_PART1: ListEmployeesQueryHandler now resolves
-/// visibility through a real EmployeeAuthorityResolver instead of EmployeeVisibilityScopeResolver.
-/// Unlike the legacy scope resolver, EmployeeAuthorityResolver (a) gates managed/company-wide
-/// visibility on an actual employees:read permission grant resolved via IPermissionRepository
-/// (not just ICurrentUser.Permissions, which the resolver never reads), and (b) inner-joins
-/// employment_statuses to determine "active" for both self- and managed-visibility lookups - so
-/// this fixture must now seed a real employment_statuses row and a real Role/RolePermission/
-/// UserRole grant for company-wide callers, neither of which the legacy path required.
-/// GetEmployeeQueryHandler (BuildGetHandler) is unchanged and still uses the legacy
-/// EmployeeVisibilityScopeResolver - only the List endpoint was migrated in this task.
+/// Shared, one-time-per-class setup for EmployeesListIntegrationTests: clones the database,
+/// seeds the two-tenant fixture data (30 tenant-A employees, 1 tenant-B employee, both
+/// company-wide callers, lookups, and the restricted role) ONCE. xUnit's IClassFixture
+/// constructs this ONCE and disposes it once after every fact in the class has run, instead of
+/// IAsyncLifetime's default of once PER fact - previously this class's own InitializeAsync ran 7
+/// times, once per [Fact]. Every fact is a read-only query through a handler - none of them
+/// insert/update/delete rows - so the fixed seeded counts (e.g. TotalCount == 31/30/2) that
+/// facts assert on stay valid regardless of how many other facts have already run against this
+/// same shared database.
 /// </summary>
-public sealed class EmployeesListIntegrationTests : IAsyncLifetime
+public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
 {
     private const string RestrictedRoleName = "employees_list_rls_test_role";
     private const string RestrictedRolePassword = "employees-list-rls-test-role-password";
-
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_employees_list_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -70,26 +54,22 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
     private Guid _legalEntityAId;
     private Guid _legalEntityBId;
     private Guid _departmentAId;
-
-    // Since 2026-08-18 (commit e344a7c), the Employees directory is always coverage-scoped -
-    // org:manage no longer bypasses coverage. Tests that need "see every employee in the
-    // tenant" must impersonate a caller who actually holds company-wide ManagementCoverageRecord
-    // coverage, not just the org:manage permission string. Since EMPLOYEE_LIST_AUTHORITY_RESOLVER_
-    // BACKEND_PART1, that caller must ALSO hold a real employees:read grant (Role/RolePermission/
-    // UserRole) - EmployeeAuthorityResolver checks IPermissionRepository directly, unlike the
-    // legacy EmployeeVisibilityScopeResolver, which never checked permissions at all.
     private Guid _callerAUserId;
     private Guid _callerBUserId;
     private Guid _employeesReadPermissionId;
 
+    public Guid TenantAId => _tenantAId;
+    public Guid TenantBId => _tenantBId;
+    public Guid LegalEntityAId => _legalEntityAId;
+    public Guid DepartmentAId => _departmentAId;
+    public Guid CallerAUserId => _callerAUserId;
+    public Guid CallerBUserId => _callerBUserId;
+
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         // LookupDataSeeder/PermissionSeeder are IHostedServices that only run when the full host
         // starts - this fixture only runs migrations, so both lookup rows and the permission
@@ -145,119 +125,9 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
         await CreateRestrictedRoleAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
-    [Fact]
-    public async Task List_OnlyReturnsEmployeesBelongingToCallersTenant()
-    {
-        var handler = BuildListHandler(_tenantAId, orgManage: true, callerOwnEmployeeId: _callerAUserId);
-        var resultA = await handler.Handle(new ListEmployeesQuery(null, null, null, 1, 100), CancellationToken.None);
-
-        resultA.IsSuccess.Should().BeTrue();
-        // 30 seeded employees + the caller's own employee row, which is always self-visible
-        // regardless of coverage (see EfEmployeeRepository.ListVisibleAsync's ownEmployeeId branch).
-        resultA.Value!.TotalCount.Should().Be(31);
-        resultA.Value.Items.Should().OnlyContain(i => i.LegalEntityId == _legalEntityAId || i.LegalEntityId == null);
-
-        var handlerB = BuildListHandler(_tenantBId, orgManage: true, callerOwnEmployeeId: _callerBUserId);
-        var resultB = await handlerB.Handle(new ListEmployeesQuery(null, null, null, 1, 100), CancellationToken.None);
-
-        // Seeded "E-B-001" + the caller's own self-visible employee row.
-        resultB.Value!.TotalCount.Should().Be(2);
-    }
-
-    [Fact]
-    public async Task List_RespectsPageSize_AndReturnsStableOrderAcrossPages()
-    {
-        var handler = BuildListHandler(_tenantAId, orgManage: true, callerOwnEmployeeId: _callerAUserId);
-
-        var page1 = await handler.Handle(new ListEmployeesQuery(null, null, null, 1, 10), CancellationToken.None);
-        var page2 = await handler.Handle(new ListEmployeesQuery(null, null, null, 2, 10), CancellationToken.None);
-
-        page1.Value!.Items.Should().HaveCount(10);
-        page2.Value!.Items.Should().HaveCount(10);
-        var page1Ids = page1.Value.Items.Select(i => i.Id).ToHashSet();
-        var page2Ids = page2.Value.Items.Select(i => i.Id).ToHashSet();
-        page1Ids.Intersect(page2Ids).Should().BeEmpty("pages must not overlap");
-    }
-
-    [Fact]
-    public async Task List_SearchFiltersByEmployeeNumber()
-    {
-        var handler = BuildListHandler(_tenantAId, orgManage: true, callerOwnEmployeeId: _callerAUserId);
-
-        var result = await handler.Handle(new ListEmployeesQuery("E-015", null, null, 1, 25), CancellationToken.None);
-
-        result.Value!.TotalCount.Should().Be(1);
-        result.Value.Items.Single().EmployeeNumber.Should().Be("E-015");
-    }
-
-    [Fact]
-    public async Task List_FiltersByDepartmentId()
-    {
-        var handler = BuildListHandler(_tenantAId, orgManage: true, callerOwnEmployeeId: _callerAUserId);
-
-        var result = await handler.Handle(new ListEmployeesQuery(null, _departmentAId, null, 1, 100), CancellationToken.None);
-
-        result.Value!.TotalCount.Should().Be(30);
-        result.Value.Items.Should().OnlyContain(i => i.DepartmentId == _departmentAId);
-    }
-
-    [Fact]
-    public async Task List_WithoutOrgManage_ReturnsOnlySelf_WhenCallerHasNoResolvableCoverage()
-    {
-        Guid selfEmployeeId;
-        Guid selfUserId;
-        await using (var seedDb = CreateContext(_tenantAId, "employees-list-rls-a", useRestrictedRole: true))
-        {
-            var self = await seedDb.Employees.AsNoTracking().Select(e => new { e.Id, e.UserId }).FirstAsync();
-            selfEmployeeId = self.Id;
-            selfUserId = self.UserId;
-        }
-
-        // callerOwnEmployeeId here is threaded through as the session's UserId (matching
-        // employees.user_id, resolved by EmployeeVisibilityScopeResolver) - not the employee's
-        // own row id, which is what the resolver looks up FROM the user id.
-        var handler = BuildListHandler(_tenantAId, orgManage: false, callerOwnEmployeeId: selfUserId);
-        var result = await handler.Handle(new ListEmployeesQuery(null, null, null, 1, 100), CancellationToken.None);
-
-        result.Value!.TotalCount.Should().Be(1);
-        result.Value.Items.Single().Id.Should().Be(selfEmployeeId);
-    }
-
-    [Fact]
-    public async Task GetById_Returns404_ForEmployeeInAnotherTenant()
-    {
-        Guid tenantBEmployeeId;
-        await using (var seedDb = CreateContext(_tenantBId, "employees-list-rls-b", useRestrictedRole: true))
-        {
-            tenantBEmployeeId = await seedDb.Employees.AsNoTracking().Select(e => e.Id).FirstAsync();
-        }
-
-        var handler = BuildGetHandler(_tenantAId, orgManage: true);
-        var result = await handler.Handle(new GetEmployeeQuery(tenantBEmployeeId), CancellationToken.None);
-
-        result.IsSuccess.Should().BeFalse();
-        result.StatusCode.Should().Be(404);
-    }
-
-    [Fact]
-    public async Task GetById_Returns200_ForVisibleEmployeeInCallersTenant()
-    {
-        Guid employeeId;
-        await using (var seedDb = CreateContext(_tenantAId, "employees-list-rls-a", useRestrictedRole: true))
-        {
-            employeeId = await seedDb.Employees.AsNoTracking().Select(e => e.Id).FirstAsync();
-        }
-
-        var handler = BuildGetHandler(_tenantAId, orgManage: true, callerOwnEmployeeId: _callerAUserId);
-        var result = await handler.Handle(new GetEmployeeQuery(employeeId), CancellationToken.None);
-
-        result.IsSuccess.Should().BeTrue();
-        result.Value!.Id.Should().Be(employeeId);
-    }
-
-    private ListEmployeesQueryHandler BuildListHandler(Guid tenantId, bool orgManage, Guid? callerOwnEmployeeId = null)
+    public ListEmployeesQueryHandler BuildListHandler(Guid tenantId, bool orgManage, Guid? callerOwnEmployeeId = null)
     {
         var db = CreateContext(tenantId, SlugFor(tenantId), useRestrictedRole: true);
         var employeeRepository = new EfEmployeeRepository(db);
@@ -269,7 +139,7 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
 
     /// <summary>Builds a real EmployeeAuthorityResolver over the same restricted-role db context
     /// used by the handler under test - no mocks, matching this fixture's "handler -> repository
-    /// -> real SQL" intent. IPermissionRepository (EfAuthRepository) is the piece the legacy
+    /// -> real SQL" intent. IPermissionRepository (EfPermissionRepository) is the piece the legacy
     /// EmployeeVisibilityScopeResolver-based version of this fixture never needed.</summary>
     private IEmployeeAuthorityResolver BuildAuthorityResolver(ApplicationDbContext db, ICurrentUser currentUser)
     {
@@ -282,10 +152,10 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
             new EfPositionRepository(db),
             closureRepository,
             new EfDepartmentRepository(db),
-            new EfAuthRepository(db));
+            new EfPermissionRepository(db));
     }
 
-    private GetEmployeeQueryHandler BuildGetHandler(Guid tenantId, bool orgManage, Guid? callerOwnEmployeeId = null)
+    public GetEmployeeQueryHandler BuildGetHandler(Guid tenantId, bool orgManage, Guid? callerOwnEmployeeId = null)
     {
         var db = CreateContext(tenantId, SlugFor(tenantId), useRestrictedRole: true);
         var employeeRepository = new EfEmployeeRepository(db);
@@ -355,7 +225,7 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
             grantTables.CommandText = $@"
                 GRANT SELECT ON employees, position_assignments, employee_hierarchy_closure,
                     departments, legal_entities, positions, employment_types, employment_statuses,
-                    management_coverage_records, tenants, invitation_tokens,
+                    work_modes, management_coverage_records, tenants, invitation_tokens,
                     roles, role_permissions, user_roles, permissions
                     TO {RestrictedRoleName};
             ";
@@ -467,7 +337,7 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
         HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
     };
 
-    private ApplicationDbContext CreateContext(Guid? tenantId = null, string? slug = null, bool useRestrictedRole = false)
+    public ApplicationDbContext CreateContext(Guid? tenantId = null, string? slug = null, bool useRestrictedRole = false)
     {
         var tenantContext = new TenantContextAccessor();
 
@@ -490,4 +360,146 @@ public sealed class EmployeesListIntegrationTests : IAsyncLifetime
             new DomainEventDispatchInterceptor(new NoOpPublisher()),
             tenantContext);
     }
+
+}
+
+/// <summary>
+/// Exercises ListEmployeesQueryHandler/GetEmployeeQueryHandler against real PostgreSQL with
+/// RLS enforced through a restricted, non-superuser, non-BYPASSRLS role (same fixture pattern
+/// as PositionAssignmentRlsIntegrationTests/RestrictedRoleRlsEnforcementTests) - the read path
+/// composed end to end (handler -> repository -> real SQL), not mocked. Does NOT drive the
+/// full Kestrel/WebApplicationFactory HTTP pipeline (Authorize/RequirePermissionAttribute) the
+/// way DepartmentsIntegrationTests.cs does; that gap is documented in the implementation
+/// report. Requires Docker.
+///
+/// EMPLOYEE_LIST_AUTHORITY_RESOLVER_BACKEND_PART1: ListEmployeesQueryHandler now resolves
+/// visibility through a real EmployeeAuthorityResolver instead of EmployeeVisibilityScopeResolver.
+/// Unlike the legacy scope resolver, EmployeeAuthorityResolver (a) gates managed/company-wide
+/// visibility on an actual employees:read permission grant resolved via IPermissionRepository
+/// (not just ICurrentUser.Permissions, which the resolver never reads), and (b) inner-joins
+/// employment_statuses to determine "active" for both self- and managed-visibility lookups - so
+/// this fixture must now seed a real employment_statuses row and a real Role/RolePermission/
+/// UserRole grant for company-wide callers, neither of which the legacy path required.
+/// GetEmployeeQueryHandler (BuildGetHandler) is unchanged and still uses the legacy
+/// EmployeeVisibilityScopeResolver - only the List endpoint was migrated in this task.
+/// </summary>
+public sealed class EmployeesListIntegrationTests : IClassFixture<EmployeesListIntegrationTestsFixture>
+{
+    private readonly EmployeesListIntegrationTestsFixture _fixture;
+
+    public EmployeesListIntegrationTests(EmployeesListIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task List_OnlyReturnsEmployeesBelongingToCallersTenant()
+    {
+        var handler = _fixture.BuildListHandler(_fixture.TenantAId, orgManage: true, callerOwnEmployeeId: _fixture.CallerAUserId);
+        var resultA = await handler.Handle(new ListEmployeesQuery(null, null, null, 1, 100), CancellationToken.None);
+
+        resultA.IsSuccess.Should().BeTrue();
+        // 30 seeded employees + the caller's own employee row, which is always self-visible
+        // regardless of coverage (see EfEmployeeRepository.ListVisibleAsync's ownEmployeeId branch).
+        resultA.Value!.TotalCount.Should().Be(31);
+        resultA.Value.Items.Should().OnlyContain(i => i.LegalEntityId == _fixture.LegalEntityAId || i.LegalEntityId == null);
+
+        var handlerB = _fixture.BuildListHandler(_fixture.TenantBId, orgManage: true, callerOwnEmployeeId: _fixture.CallerBUserId);
+        var resultB = await handlerB.Handle(new ListEmployeesQuery(null, null, null, 1, 100), CancellationToken.None);
+
+        // Seeded "E-B-001" + the caller's own self-visible employee row.
+        resultB.Value!.TotalCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task List_RespectsPageSize_AndReturnsStableOrderAcrossPages()
+    {
+        var handler = _fixture.BuildListHandler(_fixture.TenantAId, orgManage: true, callerOwnEmployeeId: _fixture.CallerAUserId);
+
+        var page1 = await handler.Handle(new ListEmployeesQuery(null, null, null, 1, 10), CancellationToken.None);
+        var page2 = await handler.Handle(new ListEmployeesQuery(null, null, null, 2, 10), CancellationToken.None);
+
+        page1.Value!.Items.Should().HaveCount(10);
+        page2.Value!.Items.Should().HaveCount(10);
+        var page1Ids = page1.Value.Items.Select(i => i.Id).ToHashSet();
+        var page2Ids = page2.Value.Items.Select(i => i.Id).ToHashSet();
+        page1Ids.Intersect(page2Ids).Should().BeEmpty("pages must not overlap");
+    }
+
+    [Fact]
+    public async Task List_SearchFiltersByEmployeeNumber()
+    {
+        var handler = _fixture.BuildListHandler(_fixture.TenantAId, orgManage: true, callerOwnEmployeeId: _fixture.CallerAUserId);
+
+        var result = await handler.Handle(new ListEmployeesQuery("E-015", null, null, 1, 25), CancellationToken.None);
+
+        result.Value!.TotalCount.Should().Be(1);
+        result.Value.Items.Single().EmployeeNumber.Should().Be("E-015");
+    }
+
+    [Fact]
+    public async Task List_FiltersByDepartmentId()
+    {
+        var handler = _fixture.BuildListHandler(_fixture.TenantAId, orgManage: true, callerOwnEmployeeId: _fixture.CallerAUserId);
+
+        var result = await handler.Handle(new ListEmployeesQuery(null, _fixture.DepartmentAId, null, 1, 100), CancellationToken.None);
+
+        result.Value!.TotalCount.Should().Be(30);
+        result.Value.Items.Should().OnlyContain(i => i.DepartmentId == _fixture.DepartmentAId);
+    }
+
+    [Fact]
+    public async Task List_WithoutOrgManage_ReturnsOnlySelf_WhenCallerHasNoResolvableCoverage()
+    {
+        Guid selfEmployeeId;
+        Guid selfUserId;
+        await using (var seedDb = _fixture.CreateContext(_fixture.TenantAId, "employees-list-rls-a", useRestrictedRole: true))
+        {
+            var self = await seedDb.Employees.AsNoTracking().Select(e => new { e.Id, e.UserId }).FirstAsync();
+            selfEmployeeId = self.Id;
+            selfUserId = self.UserId;
+        }
+
+        // callerOwnEmployeeId here is threaded through as the session's UserId (matching
+        // employees.user_id, resolved by EmployeeVisibilityScopeResolver) - not the employee's
+        // own row id, which is what the resolver looks up FROM the user id.
+        var handler = _fixture.BuildListHandler(_fixture.TenantAId, orgManage: false, callerOwnEmployeeId: selfUserId);
+        var result = await handler.Handle(new ListEmployeesQuery(null, null, null, 1, 100), CancellationToken.None);
+
+        result.Value!.TotalCount.Should().Be(1);
+        result.Value.Items.Single().Id.Should().Be(selfEmployeeId);
+    }
+
+    [Fact]
+    public async Task GetById_Returns404_ForEmployeeInAnotherTenant()
+    {
+        Guid tenantBEmployeeId;
+        await using (var seedDb = _fixture.CreateContext(_fixture.TenantBId, "employees-list-rls-b", useRestrictedRole: true))
+        {
+            tenantBEmployeeId = await seedDb.Employees.AsNoTracking().Select(e => e.Id).FirstAsync();
+        }
+
+        var handler = _fixture.BuildGetHandler(_fixture.TenantAId, orgManage: true);
+        var result = await handler.Handle(new GetEmployeeQuery(tenantBEmployeeId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(404);
+    }
+
+    [Fact]
+    public async Task GetById_Returns200_ForVisibleEmployeeInCallersTenant()
+    {
+        Guid employeeId;
+        await using (var seedDb = _fixture.CreateContext(_fixture.TenantAId, "employees-list-rls-a", useRestrictedRole: true))
+        {
+            employeeId = await seedDb.Employees.AsNoTracking().Select(e => e.Id).FirstAsync();
+        }
+
+        var handler = _fixture.BuildGetHandler(_fixture.TenantAId, orgManage: true, callerOwnEmployeeId: _fixture.CallerAUserId);
+        var result = await handler.Handle(new GetEmployeeQuery(employeeId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Id.Should().Be(employeeId);
+    }
+
 }

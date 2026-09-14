@@ -84,14 +84,35 @@ public sealed record AttendanceHistoryRow(
     string? AttentionLabel = null,
     string? AttentionSeverity = null,
     int BreakOverageMinutes = 0,
-    bool IsOverBreakAllowance = false);
+    bool IsOverBreakAllowance = false,
+    string? ScheduledStartTime = null,
+    string? ScheduledEndTime = null,
+    int? RequiredWorkMinutes = null);
+
+public sealed record AttendanceMonthlySummaryResponse(
+    int WorkingDays,
+    int DaysPresent,
+    int LateArrivals,
+    int EarlyDepartures,
+    int MissingClockOuts);
 
 public sealed record TimelineEvent(
     string EventType,
     DateTimeOffset Timestamp,
     string Source);
 
+/// <summary>A tray check-in's captured location, read back for the attendance day-detail view.
+/// Gated behind the same monitoring:read visibility as DailyActivity below.</summary>
+public sealed record CheckInLocationDto(
+    Guid Id,
+    DateTimeOffset CheckedInAt,
+    double? Latitude,
+    double? Longitude,
+    double? LocationAccuracy,
+    string? LocationAddress);
+
 public sealed record AttendanceDayDetailResponse(
     AttendanceHistoryRow Summary,
     IReadOnlyList<TimelineEvent> TimelineEvents,
-    ActivityDailySummaryDto? DailyActivity);
+    ActivityDailySummaryDto? DailyActivity,
+    IReadOnlyList<CheckInLocationDto> CheckIns);
