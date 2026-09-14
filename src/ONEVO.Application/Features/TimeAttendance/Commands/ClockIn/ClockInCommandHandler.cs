@@ -127,7 +127,12 @@ public sealed class ClockInCommandHandler(
         record.ScheduledStart = context.Schedule.Start;
         record.ScheduledEnd = context.Schedule.End;
         record.RequiredWorkMinutes = context.Schedule.RequiredWorkMinutes;
-        record.ExpectedWorkArea = context.ExpectedWorkArea;
+        record.ExpectedWorkModeId = context.ExpectedWorkModeId;
+        record.ExpectedWorkModeName = context.ExpectedWorkModeName;
+        // Kept in sync for AttendanceReadHandlers' history view and other callers still on the
+        // legacy column (see AttendanceRecord.ExpectedWorkArea) - a plain lowercase copy of the
+        // real WorkMode name, not a re-derived onsite/remote/either/field taxonomy.
+        record.ExpectedWorkArea = context.ExpectedWorkModeName?.ToLowerInvariant();
         record.ScheduleTimezone = context.Timezone;
         record.IsHoliday = false;
         record.HolidayName = null;

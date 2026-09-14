@@ -69,6 +69,7 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
         _clock.UtcNow,
         _clock.UtcNow,
         schedule ?? new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
+        Guid.NewGuid(),
         "remote",
         "active_employee_work_mode",
         null,

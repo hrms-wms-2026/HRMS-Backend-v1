@@ -4,6 +4,7 @@ using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -20,6 +21,8 @@ public sealed class AttendanceTodayStateService(
     IAttendanceReadRepository attendance,
     IEmployeeAuthorityResolver authority,
     IExpectedWorkAreaResolver expectedWorkAreas,
+    IWorkModeRepository workModes,
+    IMonitoringToggleResolver toggles,
     ILeaveRequestReadRepository? leaveRequests = null)
     : IAttendanceTodayStateService
 {
@@ -64,8 +67,8 @@ public sealed class AttendanceTodayStateService(
                 expectedAreaResult.StatusCode ?? 409);
 
         var expectedArea = expectedAreaResult.Value;
-        var classifiedWorkArea = ClassifyWorkArea(expectedArea.WorkModeName);
-        var policy = await ResolvePolicyAsync(tenantId, legalEntity.Id, workDate, NormalizeWorkMode(classifiedWorkArea), ct);
+        var policy = await ResolvePolicyAsync(
+            tenantId, legalEntity.Id, employee.Id, workDate, expectedArea.WorkModeId, ct);
 
         return Result<AttendanceTodayContext>.Success(new AttendanceTodayContext(
             employee,
@@ -76,7 +79,8 @@ public sealed class AttendanceTodayStateService(
             utcNow,
             localNow,
             schedule,
-            classifiedWorkArea,
+            expectedArea.WorkModeId,
+            expectedArea.WorkModeName,
             expectedArea.Source,
             policy.Policy,
             policy.Status,
@@ -164,10 +168,10 @@ public sealed class AttendanceTodayStateService(
                 IncludeSelf: true,
                 EmployeeAuthorityPurpose.TimeTrackingRead), ct);
 
-        // Once an attendance row exists, its persisted ExpectedWorkArea is the historical
+        // Once an attendance row exists, its persisted ExpectedWorkModeId/Name is the historical
         // snapshot for the day and takes precedence over today's live resolution, which may have
         // moved on (e.g. a later approval for a different date, or a policy change).
-        var effectiveExpectedWorkArea = attendanceRecord?.ExpectedWorkArea ?? context.ExpectedWorkArea;
+        var effectiveExpectedWorkModeName = attendanceRecord?.ExpectedWorkModeName ?? context.ExpectedWorkModeName;
         var effectiveExpectedWorkAreaSource = attendanceRecord is not null
             ? ExpectedWorkAreaSourceAttendanceSnapshot
             : context.ExpectedWorkAreaSource;
@@ -190,7 +194,7 @@ public sealed class AttendanceTodayStateService(
             breakState.RemainingMinutes,
             breakState.State,
             breakRecords.Select(b => new AttendanceTodayBreakInterval(b.BreakStart, b.BreakEnd)).ToArray(),
-            NormalizeWorkMode(effectiveExpectedWorkArea),
+            effectiveExpectedWorkModeName?.ToLowerInvariant(),
             attendanceState.Status,
             attendanceRecord?.ActualStart,
             attendanceRecord?.ActualEnd,
@@ -215,7 +219,8 @@ public sealed class AttendanceTodayStateService(
     }
 
     private async Task<PolicyResolution> ResolvePolicyAsync(
-        Guid tenantId, Guid legalEntityId, DateOnly workDate, string? workMode, CancellationToken ct)
+        Guid tenantId, Guid legalEntityId, Guid employeeId, DateOnly workDate,
+        Guid? workModeId, CancellationToken ct)
     {
         var active = ClockInPolicyResolver.ResolveActiveFullCompanyPolicies(
             await policies.ListByLegalEntityAsync(tenantId, legalEntityId, includeInactive: false, ct),
@@ -233,10 +238,27 @@ public sealed class AttendanceTodayStateService(
                 null,
                 new AllowedClockInMethods(false, false, false, false, false, null));
 
-        return new PolicyResolution(
-            "configured",
-            active[0],
-            ResolveAllowedMethods(active[0], workMode));
+        var methods = await ResolveAllowedMethodsAsync(tenantId, employeeId, workModeId, ct);
+        return new PolicyResolution("configured", active[0], methods);
+    }
+
+    private async Task<AllowedClockInMethods> ResolveAllowedMethodsAsync(
+        Guid tenantId, Guid employeeId, Guid? workModeId, CancellationToken ct)
+    {
+        if (workModeId is not Guid id)
+            return new AllowedClockInMethods(false, false, false, false, false, null);
+
+        var mode = await workModes.GetByIdAsync(tenantId, id, ct);
+        if (mode is null)
+            return new AllowedClockInMethods(false, false, false, false, false, null);
+
+        var locationEnabled = await toggles.IsEnabledAsync(
+            tenantId, employeeId, MonitoringCapability.WorkLocationVerification, ct);
+        var radiusMeters = await toggles.GetAllowedRadiusMetersAsync(tenantId, employeeId, ct);
+
+        return new AllowedClockInMethods(
+            mode.WebEnabled, mode.TrayEnabled, mode.BiometricEnabled, mode.PhotoRequired,
+            locationEnabled, radiusMeters);
     }
 
     private static ActionResolution ResolveActions(
@@ -334,63 +356,6 @@ public sealed class AttendanceTodayStateService(
         var startUtc = TimeZoneInfo.ConvertTimeToUtc(localStart, zone);
         var endUtc = TimeZoneInfo.ConvertTimeToUtc(localEnd, zone);
         return new AttendanceLocalDayWindow(new DateTimeOffset(startUtc), new DateTimeOffset(endUtc));
-    }
-
-    private static string? NormalizeWorkMode(string? value)
-        => string.Equals(value, "either", StringComparison.OrdinalIgnoreCase)
-            ? "hybrid"
-            : value?.ToLowerInvariant();
-
-    // TODO(Task 10): ExpectedWorkAreaResolver (Task 5) now returns the WorkMode's actual
-    // Id/Name instead of a fixed onsite/remote/either/field classification - see the plan's
-    // Global Constraints ("no category/taxonomy field is ever re-derived"). This re-derives the
-    // old classification here as a minimal compile-fix so AttendanceTodayContext.ExpectedWorkArea
-    // and the clock-in-policy lookup keep their pre-Task-5 behavior exactly; Task 10 rewrites this
-    // service to stop re-deriving it and surface WorkModeId/WorkModeName directly.
-    private static string? ClassifyWorkArea(string? workModeName)
-        => workModeName?.Trim().ToLowerInvariant() switch
-        {
-            "onsite" or "on_site" => "onsite",
-            "remote" => "remote",
-            "hybrid" => "either",
-            "field" => "field",
-            _ => null
-        };
-
-    private static AllowedClockInMethods ResolveAllowedMethods(ClockInPolicy policy, string? mode)
-    {
-        return mode switch
-        {
-            "onsite" => new(
-                policy.OnsiteWebEnabled,
-                policy.OnsiteTrayEnabled,
-                policy.OnsiteBiometricEnabled,
-                policy.OnsitePhotoRequired,
-                policy.LocationVerificationRequired,
-                policy.AllowedRadiusMeters),
-            "remote" => new(
-                policy.RemoteWebEnabled,
-                policy.RemoteTrayEnabled,
-                policy.RemoteBiometricEnabled,
-                policy.RemotePhotoRequired,
-                policy.RemoteLocationCheckRequired || policy.LocationVerificationRequired,
-                policy.AllowedRadiusMeters),
-            "field" => new(
-                policy.FieldWebEnabled,
-                policy.FieldTrayEnabled,
-                policy.FieldBiometricEnabled,
-                policy.FieldPhotoRequirement == ClockInPolicy.FieldPhotoRequired,
-                policy.LocationVerificationRequired,
-                policy.AllowedRadiusMeters),
-            "hybrid" => new(
-                policy.EitherWebEnabled,
-                policy.EitherTrayEnabled,
-                policy.EitherBiometricEnabled,
-                policy.EitherPhotoRequired,
-                policy.EitherLocationCheckRequired || policy.LocationVerificationRequired,
-                policy.AllowedRadiusMeters),
-            _ => new AllowedClockInMethods(false, false, false, false, false, null)
-        };
     }
 
     private sealed record PolicyResolution(

@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
@@ -135,9 +136,12 @@ public sealed class AttendanceTodayMissingClockOutTests
         var expectedWorkAreas = new ExpectedWorkAreaResolver(
             dateTime.Object, workModes.Object, workAreaChangeRequests.Object);
 
+        var toggles = new Mock<IMonitoringToggleResolver>();
+
         var service = new AttendanceTodayStateService(
             currentUser.Object, dateTime.Object, employees.Object, legalEntities.Object,
-            policies.Object, attendance.Object, authority.Object, expectedWorkAreas);
+            policies.Object, attendance.Object, authority.Object, expectedWorkAreas,
+            workModes.Object, toggles.Object);
 
         return new Fixture(service);
     }

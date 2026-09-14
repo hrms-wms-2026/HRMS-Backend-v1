@@ -37,12 +37,13 @@ public class AttendanceRecord : ITenantOwnedEntity
     public TimeOnly? ScheduledStart { get; set; }
     public TimeOnly? ScheduledEnd { get; set; }
     public int? RequiredWorkMinutes { get; set; }
+    // Legacy classified-string snapshot ("onsite"/"remote"/"either"/"field"). Superseded by
+    // ExpectedWorkModeId/ExpectedWorkModeName below (Task 10), which AttendanceTodayStateService
+    // now reads/writes as the source of truth. Kept in sync (a plain lowercase copy of the real
+    // WorkMode name, not a re-derived taxonomy) purely for AttendanceReadHandlers' history view
+    // and other callers still on this column; Task 14 drops it once they're migrated.
     public string? ExpectedWorkArea { get; set; }
 
-    // Stubbed here for Task 6 (WorkAreaChangeRequestWorkflow's approval-time attendance sync,
-    // which now carries the real WorkMode reference instead of a classified string); Task 10
-    // rewrites AttendanceTodayStateService/AttendanceRecord to read/write these instead of
-    // ExpectedWorkArea above.
     public Guid? ExpectedWorkModeId { get; set; }
     public string? ExpectedWorkModeName { get; set; }
 

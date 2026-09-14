@@ -20,6 +20,8 @@ public sealed class BreakCommandHandlerTests
     private static readonly Guid TenantId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid EmployeeId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     private static readonly Guid LegalEntityId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+    private static readonly Guid RemoteWorkModeId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+    private static readonly Guid OnsiteWorkModeId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
     private static readonly DateOnly WorkDate = new(2026, 8, 21);
     private static readonly DateTimeOffset UtcNow = new(2026, 8, 21, 17, 30, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset LocalNow = new(2026, 8, 21, 23, 0, 0, TimeSpan.FromHours(5.5));
@@ -94,7 +96,7 @@ public sealed class BreakCommandHandlerTests
         // Today's live context happens to resolve to "onsite" (e.g. a later date's fallback),
         // while the attendance record was already snapshotted as "remote" at clock-in. Start
         // Break must not re-resolve or overwrite that persisted snapshot.
-        var fixture = CreateFixture(expectedWorkArea: AttendanceRecord.WorkAreaOnsite);
+        var fixture = CreateFixture(expectedWorkModeId: OnsiteWorkModeId, expectedWorkModeName: "Onsite");
         var record = ActiveAttendance();
         fixture.Attendance
             .Setup(x => x.GetTrackedRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
@@ -281,7 +283,7 @@ public sealed class BreakCommandHandlerTests
     [Fact]
     public async Task EndBreak_DoesNotRevertApprovedExpectedWorkAreaSnapshotToLiveContextArea()
     {
-        var fixture = CreateFixture(expectedWorkArea: AttendanceRecord.WorkAreaOnsite);
+        var fixture = CreateFixture(expectedWorkModeId: OnsiteWorkModeId, expectedWorkModeName: "Onsite");
         var record = ActiveAttendance();
         var openBreak = new BreakRecord
         {
@@ -415,7 +417,8 @@ public sealed class BreakCommandHandlerTests
             Status = AttendanceRecord.StatusActive
         };
 
-    private static Fixture CreateFixture(int? allowance = 60, string expectedWorkArea = AttendanceRecord.WorkAreaRemote)
+    private static Fixture CreateFixture(
+        int? allowance = 60, Guid? expectedWorkModeId = null, string? expectedWorkModeName = "Remote")
     {
         var context = new AttendanceTodayContext(
             new Employee
@@ -439,7 +442,8 @@ public sealed class BreakCommandHandlerTests
             UtcNow,
             LocalNow,
             new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
-            expectedWorkArea,
+            expectedWorkModeId ?? RemoteWorkModeId,
+            expectedWorkModeName,
             "active_employee_work_mode",
             new ClockInPolicy { Id = Guid.NewGuid(), RemoteWebEnabled = true },
             "configured",

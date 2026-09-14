@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
@@ -134,10 +135,14 @@ public sealed class AttendanceTodayLeaveAwareTests
         var dateTime = new Mock<IDateTimeProvider>();
         dateTime.SetupGet(x => x.UtcNow).Returns(now ?? UtcNow);
 
+        var workModes = new Mock<IWorkModeRepository>();
+        var toggles = new Mock<IMonitoringToggleResolver>();
+
         return new Fixture(
             new AttendanceTodayStateService(
                 currentUser.Object, dateTime.Object, employees.Object, legalEntities.Object,
-                policies.Object, attendance.Object, authority.Object, expectedWorkAreas.Object, leaves.Object));
+                policies.Object, attendance.Object, authority.Object, expectedWorkAreas.Object,
+                workModes.Object, toggles.Object, leaves.Object));
     }
 
     private sealed record Fixture(AttendanceTodayStateService Service);

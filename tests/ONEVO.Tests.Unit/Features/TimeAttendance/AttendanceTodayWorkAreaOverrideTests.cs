@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
@@ -35,13 +36,13 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
     {
         var fixture = CreateFixture(
             permanentWorkModeId: OnsiteWorkModeId,
-            approvedOverrideArea: "remote");
-        fixture.Policy.OnsiteWebEnabled = false;
-        fixture.Policy.OnsitePhotoRequired = true;
-        fixture.Policy.RemoteWebEnabled = true;
-        fixture.Policy.RemotePhotoRequired = false;
-        fixture.Policy.LocationVerificationRequired = true;
-        fixture.Policy.AllowedRadiusMeters = 150;
+            approvedOverrideWorkModeId: RemoteWorkModeId,
+            approvedOverrideWorkModeName: "Remote");
+        fixture.WorkModes[OnsiteWorkModeId].WebEnabled = false;
+        fixture.WorkModes[OnsiteWorkModeId].PhotoRequired = true;
+        fixture.WorkModes[RemoteWorkModeId].WebEnabled = true;
+        fixture.WorkModes[RemoteWorkModeId].PhotoRequired = false;
+        fixture.SetMonitoringToggles(locationRequired: true, allowedRadiusMeters: 150);
 
         var result = await fixture.Service.GetTodayAsync();
 
@@ -59,10 +60,11 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
     {
         var fixture = CreateFixture(
             permanentWorkModeId: RemoteWorkModeId,
-            approvedOverrideArea: "onsite");
-        fixture.Policy.RemoteWebEnabled = false;
-        fixture.Policy.OnsiteWebEnabled = true;
-        fixture.Policy.OnsitePhotoRequired = true;
+            approvedOverrideWorkModeId: OnsiteWorkModeId,
+            approvedOverrideWorkModeName: "Onsite");
+        fixture.WorkModes[RemoteWorkModeId].WebEnabled = false;
+        fixture.WorkModes[OnsiteWorkModeId].WebEnabled = true;
+        fixture.WorkModes[OnsiteWorkModeId].PhotoRequired = true;
 
         var result = await fixture.Service.GetTodayAsync();
 
@@ -78,10 +80,11 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
     {
         var fixture = CreateFixture(
             permanentWorkModeId: HybridWorkModeId,
-            approvedOverrideArea: null);
-        fixture.Policy.EitherWebEnabled = true;
-        fixture.Policy.EitherPhotoRequired = true;
-        fixture.Policy.EitherLocationCheckRequired = true;
+            approvedOverrideWorkModeId: null,
+            approvedOverrideWorkModeName: null);
+        fixture.WorkModes[HybridWorkModeId].WebEnabled = true;
+        fixture.WorkModes[HybridWorkModeId].PhotoRequired = true;
+        fixture.SetMonitoringToggles(locationRequired: true, allowedRadiusMeters: null);
 
         var result = await fixture.Service.GetTodayAsync();
 
@@ -98,8 +101,9 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
     {
         var fixture = CreateFixture(
             permanentWorkModeId: OnsiteWorkModeId,
-            approvedOverrideArea: null);
-        fixture.Policy.OnsiteWebEnabled = true;
+            approvedOverrideWorkModeId: null,
+            approvedOverrideWorkModeName: null);
+        fixture.WorkModes[OnsiteWorkModeId].WebEnabled = true;
 
         var result = await fixture.Service.GetTodayAsync();
 
@@ -116,13 +120,14 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
         // but Today must not contradict the historical snapshot already on the attendance record.
         var fixture = CreateFixture(
             permanentWorkModeId: OnsiteWorkModeId,
-            approvedOverrideArea: "remote",
+            approvedOverrideWorkModeId: RemoteWorkModeId,
+            approvedOverrideWorkModeName: "Remote",
             attendanceRecord: new AttendanceRecord
             {
                 Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
                 Date = WorkDate, ExpectedWorkingDay = true,
                 ScheduledStart = new(9, 0), ScheduledEnd = new(17, 0),
-                ExpectedWorkArea = AttendanceRecord.WorkAreaOnsite,
+                ExpectedWorkModeId = OnsiteWorkModeId, ExpectedWorkModeName = "Onsite",
                 ActualStart = UtcNow.AddHours(-1), Status = AttendanceRecord.StatusActive
             });
 
@@ -135,7 +140,8 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
 
     private static Fixture CreateFixture(
         Guid permanentWorkModeId,
-        string? approvedOverrideArea,
+        Guid? approvedOverrideWorkModeId,
+        string? approvedOverrideWorkModeName,
         AttendanceRecord? attendanceRecord = null)
     {
         var currentUser = new Mock<ICurrentUser>();
@@ -181,15 +187,18 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
         authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
 
-        var workModes = new Mock<IWorkModeRepository>();
+        var workModes = new Dictionary<Guid, WorkMode>();
         foreach (var (id, name) in new[] { (OnsiteWorkModeId, "Onsite"), (RemoteWorkModeId, "Remote"), (HybridWorkModeId, "Hybrid") })
         {
-            workModes.Setup(x => x.GetByIdAsync(TenantId, id, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new WorkMode
-                {
-                    Id = id, TenantId = TenantId, LegalEntityId = LegalEntityId, Name = name, IsActive = true
-                });
+            workModes[id] = new WorkMode
+            {
+                Id = id, TenantId = TenantId, LegalEntityId = LegalEntityId, Name = name, IsActive = true
+            };
         }
+        var workModeRepository = new Mock<IWorkModeRepository>();
+        workModeRepository
+            .Setup(x => x.GetByIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid id, CancellationToken __) => workModes.TryGetValue(id, out var mode) ? mode : null);
 
         var dateTime = new Mock<IDateTimeProvider>();
         dateTime.SetupGet(x => x.UtcNow).Returns(UtcNow);
@@ -197,26 +206,51 @@ public sealed class AttendanceTodayWorkAreaOverrideTests
         var workAreaChangeRequests = new Mock<IWorkAreaChangeRequestRepository>();
         workAreaChangeRequests.Setup(x => x.GetApprovedForDateAsync(
                 TenantId, LegalEntityId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(approvedOverrideArea is null
+            .ReturnsAsync(approvedOverrideWorkModeId is null
                 ? null
                 : new WorkAreaChangeRequest
                 {
                     Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
                     LegalEntityId = LegalEntityId, Date = WorkDate,
-                    CurrentWorkModeId = permanentWorkModeId, CurrentWorkModeName = "onsite",
-                    RequestedWorkModeId = Guid.NewGuid(), RequestedWorkModeName = approvedOverrideArea,
+                    CurrentWorkModeId = permanentWorkModeId, CurrentWorkModeName = "Onsite",
+                    RequestedWorkModeId = approvedOverrideWorkModeId.Value,
+                    RequestedWorkModeName = approvedOverrideWorkModeName!,
                     Reason = "Appointment", Status = WorkAreaChangeRequest.StatusApproved
                 });
 
         var expectedWorkAreas = new ExpectedWorkAreaResolver(
-            dateTime.Object, workModes.Object, workAreaChangeRequests.Object);
+            dateTime.Object, workModeRepository.Object, workAreaChangeRequests.Object);
+
+        var monitoringToggles = new Mock<IMonitoringToggleResolver>();
+        monitoringToggles
+            .Setup(x => x.IsEnabledAsync(TenantId, EmployeeId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        monitoringToggles
+            .Setup(x => x.GetAllowedRadiusMetersAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int?)null);
 
         var service = new AttendanceTodayStateService(
             currentUser.Object, dateTime.Object, employees.Object, legalEntities.Object,
-            policies.Object, attendance.Object, authority.Object, expectedWorkAreas);
+            policies.Object, attendance.Object, authority.Object, expectedWorkAreas,
+            workModeRepository.Object, monitoringToggles.Object);
 
-        return new Fixture(service, policy);
+        return new Fixture(service, policy, workModes, monitoringToggles);
     }
 
-    private sealed record Fixture(AttendanceTodayStateService Service, ClockInPolicy Policy);
+    private sealed record Fixture(
+        AttendanceTodayStateService Service,
+        ClockInPolicy Policy,
+        IReadOnlyDictionary<Guid, WorkMode> WorkModes,
+        Mock<IMonitoringToggleResolver> MonitoringToggles)
+    {
+        public void SetMonitoringToggles(bool locationRequired, int? allowedRadiusMeters)
+        {
+            MonitoringToggles
+                .Setup(x => x.IsEnabledAsync(TenantId, EmployeeId, MonitoringCapability.WorkLocationVerification, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(locationRequired);
+            MonitoringToggles
+                .Setup(x => x.GetAllowedRadiusMetersAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(allowedRadiusMeters);
+        }
+    }
 }

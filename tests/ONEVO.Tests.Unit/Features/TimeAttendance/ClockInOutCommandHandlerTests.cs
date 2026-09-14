@@ -20,6 +20,8 @@ public sealed class ClockInOutCommandHandlerTests
     private static readonly Guid TenantId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid EmployeeId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     private static readonly Guid LegalEntityId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+    private static readonly Guid RemoteWorkModeId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+    private static readonly Guid OnsiteWorkModeId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
     private static readonly DateOnly WorkDate = new(2026, 8, 21);
     private static readonly DateTimeOffset UtcNow = new(2026, 8, 21, 17, 30, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset LocalNow = new(2026, 8, 21, 23, 0, 0, TimeSpan.FromHours(5.5));
@@ -50,7 +52,9 @@ public sealed class ClockInOutCommandHandlerTests
         Assert.Equal(new TimeOnly(9, 0), added.ScheduledStart);
         Assert.Equal(new TimeOnly(17, 30), added.ScheduledEnd);
         Assert.Equal(510, added.RequiredWorkMinutes);
-        Assert.Equal(AttendanceRecord.WorkAreaRemote, added.ExpectedWorkArea);
+        Assert.Equal(RemoteWorkModeId, added.ExpectedWorkModeId);
+        Assert.Equal("Remote", added.ExpectedWorkModeName);
+        Assert.Equal("remote", added.ExpectedWorkArea);
         Assert.Equal("Asia/Colombo", added.ScheduleTimezone);
         Assert.Equal(UtcNow, added.ActualStart);
         Assert.Equal(840, added.LateMinutes);
@@ -150,7 +154,8 @@ public sealed class ClockInOutCommandHandlerTests
         // the approved onsite override; Onsite web is enabled while Remote web is disabled for
         // this policy, proving the handler uses the resolved override, not the permanent mode.
         var fixture = CreateFixture(
-            expectedWorkArea: AttendanceRecord.WorkAreaOnsite,
+            expectedWorkModeId: OnsiteWorkModeId,
+            expectedWorkModeName: "Onsite",
             expectedWorkAreaSource: "approved_work_area_change_request",
             allowedMethods: new AllowedClockInMethods(true, false, false, true, false, null));
         AttendanceRecord? added = null;
@@ -166,7 +171,9 @@ public sealed class ClockInOutCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(added);
-        Assert.Equal(AttendanceRecord.WorkAreaOnsite, added!.ExpectedWorkArea);
+        Assert.Equal(OnsiteWorkModeId, added!.ExpectedWorkModeId);
+        Assert.Equal("Onsite", added.ExpectedWorkModeName);
+        Assert.Equal("onsite", added.ExpectedWorkArea);
     }
 
     [Fact]
@@ -176,7 +183,8 @@ public sealed class ClockInOutCommandHandlerTests
         // onsite override, and the policy disallows web for onsite, so the clock-in must be
         // rejected even though this same policy happens to allow web for remote.
         var fixture = CreateFixture(
-            expectedWorkArea: AttendanceRecord.WorkAreaOnsite,
+            expectedWorkModeId: OnsiteWorkModeId,
+            expectedWorkModeName: "Onsite",
             expectedWorkAreaSource: "approved_work_area_change_request",
             allowedMethods: new AllowedClockInMethods(false, false, false, false, false, null));
 
@@ -201,7 +209,8 @@ public sealed class ClockInOutCommandHandlerTests
             UtcNow,
             LocalNow,
             new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
-            AttendanceRecord.WorkAreaRemote,
+            RemoteWorkModeId,
+            "Remote",
             "active_employee_work_mode",
             new ClockInPolicy { Id = Guid.NewGuid(), RemoteWebEnabled = true },
             "configured",
@@ -317,7 +326,7 @@ public sealed class ClockInOutCommandHandlerTests
         // time. Today's live context now happens to resolve to "onsite" (e.g. the override
         // expired for a later date, or the fallback would differ) - Clock Out must not re-resolve
         // or overwrite the already-persisted snapshot.
-        var fixture = CreateFixture(expectedWorkArea: AttendanceRecord.WorkAreaOnsite);
+        var fixture = CreateFixture(expectedWorkModeId: OnsiteWorkModeId, expectedWorkModeName: "Onsite");
         var record = new AttendanceRecord
         {
             Id = Guid.NewGuid(),
@@ -512,7 +521,8 @@ public sealed class ClockInOutCommandHandlerTests
         AttendanceSchedule? schedule = null,
         AllowedClockInMethods? allowedMethods = null,
         string policyStatus = "configured",
-        string expectedWorkArea = AttendanceRecord.WorkAreaRemote,
+        Guid? expectedWorkModeId = null,
+        string? expectedWorkModeName = "Remote",
         string expectedWorkAreaSource = "active_employee_work_mode")
     {
         var context = new AttendanceTodayContext(
@@ -536,7 +546,8 @@ public sealed class ClockInOutCommandHandlerTests
             UtcNow,
             LocalNow,
             schedule ?? new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
-            expectedWorkArea,
+            expectedWorkModeId ?? RemoteWorkModeId,
+            expectedWorkModeName,
             expectedWorkAreaSource,
             new ClockInPolicy { Id = Guid.NewGuid(), RemoteWebEnabled = true },
             policyStatus,

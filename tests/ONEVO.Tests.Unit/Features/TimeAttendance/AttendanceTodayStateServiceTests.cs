@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
@@ -135,6 +136,9 @@ public sealed class AttendanceTodayStateServiceTests
         legalEntities.Setup(x => x.GetByIdForTenantAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(legalEntity);
 
+        var workModes = new Mock<IWorkModeRepository>();
+        var toggles = new Mock<IMonitoringToggleResolver>();
+
         return new AttendanceTodayStateService(
             currentUser,
             dateTime.Object,
@@ -143,6 +147,8 @@ public sealed class AttendanceTodayStateServiceTests
             policies.Object,
             attendance.Object,
             authority.Object,
-            expectedWorkAreas.Object);
+            expectedWorkAreas.Object,
+            workModes.Object,
+            toggles.Object);
     }
 }
