@@ -161,9 +161,15 @@ public sealed class GoogleCalendarClient(HttpClient httpClient) : IGoogleCalenda
         var end = item.GetProperty("end");
         var isAllDay = start.TryGetProperty("date", out _);
 
+        // .ToUniversalTime() is required, not just defensive: Google's dateTime carries the
+        // event's real local offset (e.g. +05:30), and DateTimeOffset.Parse preserves that offset
+        // as-is. Postgres's `timestamp with time zone` columns (via Npgsql) only accept a
+        // DateTimeOffset whose Offset is exactly zero - writing this straight into
+        // CalendarEvent.StartDate/EndDate throws ArgumentException at save time for any event
+        // whose organizer isn't in UTC, which is effectively every real event.
         DateTimeOffset ParseWhen(JsonElement whenElement) => isAllDay
             ? new DateTimeOffset(DateOnly.Parse(whenElement.GetProperty("date").GetString()!).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
-            : DateTimeOffset.Parse(whenElement.GetProperty("dateTime").GetString()!);
+            : DateTimeOffset.Parse(whenElement.GetProperty("dateTime").GetString()!).ToUniversalTime();
 
         return new GoogleCalendarEventDto(
             Id: item.GetProperty("id").GetString()!,

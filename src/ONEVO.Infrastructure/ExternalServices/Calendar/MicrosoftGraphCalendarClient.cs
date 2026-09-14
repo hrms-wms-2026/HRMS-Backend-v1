@@ -122,13 +122,45 @@ public sealed class MicrosoftGraphCalendarClient(HttpClient httpClient) : IMicro
         var end = item.GetProperty("end");
         var timezone = start.TryGetProperty("timeZone", out var tz) ? tz.GetString() : null;
 
+        // Unlike Google (which embeds a real offset in its dateTime string), Graph returns a
+        // naive wall-clock dateTime paired with a separate timeZone name. DateTimeOffset.Parse on
+        // a naive string silently assumes the EXECUTING MACHINE's own local offset - wrong and
+        // non-deterministic across machines, and Postgres's `timestamp with time zone` columns
+        // reject any non-zero offset outright at save time regardless. Interpret the naive value
+        // against the named zone, then normalize to UTC before it reaches CalendarEvent.
+        DateTimeOffset ParseGraphWhen(JsonElement whenElement)
+        {
+            var naive = DateTime.Parse(
+                whenElement.GetProperty("dateTime").GetString()!,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None);
+
+            if (string.IsNullOrEmpty(timezone) || timezone.Equals("UTC", StringComparison.OrdinalIgnoreCase))
+                return new DateTimeOffset(DateTime.SpecifyKind(naive, DateTimeKind.Utc));
+
+            try
+            {
+                var zone = TimeZoneInfo.FindSystemTimeZoneById(timezone);
+                var utc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(naive, DateTimeKind.Unspecified), zone);
+                return new DateTimeOffset(utc, TimeSpan.Zero);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                // Graph can report either IANA or Windows zone names depending on the
+                // Prefer: outlook.timezone header; an unrecognized name shouldn't crash the whole
+                // sync - fall back to treating the naive value as UTC (matches the "UTC" branch
+                // above) rather than losing the event entirely.
+                return new DateTimeOffset(DateTime.SpecifyKind(naive, DateTimeKind.Utc));
+            }
+        }
+
         return new GraphEventDto(
             Id: item.GetProperty("id").GetString()!,
             Etag: item.TryGetProperty("@odata.etag", out var etag) ? etag.GetString() : null,
             Title: item.TryGetProperty("subject", out var subject) ? subject.GetString() ?? string.Empty : string.Empty,
             Description: item.TryGetProperty("body", out var body) && body.TryGetProperty("content", out var content) ? content.GetString() : null,
-            Start: DateTimeOffset.Parse(start.GetProperty("dateTime").GetString()!),
-            End: DateTimeOffset.Parse(end.GetProperty("dateTime").GetString()!),
+            Start: ParseGraphWhen(start),
+            End: ParseGraphWhen(end),
             IsAllDay: item.TryGetProperty("isAllDay", out var allDay) && allDay.GetBoolean(),
             Timezone: timezone,
             Location: item.TryGetProperty("location", out var loc) && loc.TryGetProperty("displayName", out var name) ? name.GetString() : null,
