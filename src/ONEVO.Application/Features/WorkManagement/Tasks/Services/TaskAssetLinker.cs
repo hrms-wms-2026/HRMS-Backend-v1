@@ -16,12 +16,15 @@ public sealed class TaskAssetLinker : ITaskAssetLinker
     private readonly IEntityAssetRepository _assets;
     private readonly IFileStorageService _fileStorage;
     private readonly IFileRecordRepository _fileRecords;
+    private readonly IUnitOfWork _unitOfWork;
 
-    public TaskAssetLinker(IEntityAssetRepository assets, IFileStorageService fileStorage, IFileRecordRepository fileRecords)
+    public TaskAssetLinker(
+        IEntityAssetRepository assets, IFileStorageService fileStorage, IFileRecordRepository fileRecords, IUnitOfWork unitOfWork)
     {
         _assets = assets;
         _fileStorage = fileStorage;
         _fileRecords = fileRecords;
+        _unitOfWork = unitOfWork;
     }
 
     public Task SyncAttachmentsAsync(
@@ -89,5 +92,12 @@ public sealed class TaskAssetLinker : ITaskAssetLinker
             await _assets.DeleteAsync(tracked, ct);
             await _fileStorage.DeleteAsync(tenantId, userId, asset.FileRecordId, ct);
         }
+
+        // IEntityAssetRepository.AddAsync/DeleteAsync only stage changes on the tracked
+        // DbContext - nothing else in this flow is guaranteed to flush them (the caller's own
+        // transaction only commits already-saved changes). Save explicitly so a newly linked or
+        // unlinked asset is actually persisted, proven missing by a real integration test: it
+        // silently no-op'd under Moq-based unit tests since AddAsync there has no tracker to omit.
+        await _unitOfWork.SaveChangesAsync(ct);
     }
 }

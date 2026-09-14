@@ -24,7 +24,8 @@ public class TaskAssetLinkerTests
         var assets = new Mock<IEntityAssetRepository>();
         var fileStorage = new Mock<IFileStorageService>();
         var fileRecords = new Mock<IFileRecordRepository>();
-        var linker = new TaskAssetLinker(assets.Object, fileStorage.Object, fileRecords.Object);
+        var unitOfWork = new Mock<IUnitOfWork>();
+        var linker = new TaskAssetLinker(assets.Object, fileStorage.Object, fileRecords.Object, unitOfWork.Object);
         return (linker, assets, fileStorage, fileRecords);
     }
 
