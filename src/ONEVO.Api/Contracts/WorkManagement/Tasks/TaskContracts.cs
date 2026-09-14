@@ -5,7 +5,8 @@ namespace ONEVO.Api.Contracts.WorkManagement.Tasks;
 
 public sealed record CreateTaskRequest(
     string Title, string? Description, Guid CategoryId, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId);
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId,
+    IReadOnlyList<Guid>? AttachmentFileIds = null);
 
 public sealed record EditTaskRequest(
     string Title, string? Description, string Priority,

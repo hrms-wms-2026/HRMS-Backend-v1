@@ -166,7 +166,7 @@ public class TasksController : ControllerBase
     {
         var result = await _mediator.Send(new CreateTaskCommand(
             objectiveId, request.Title, request.Description, request.CategoryId, request.Priority,
-            request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId), ct);
+            request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId, request.AttachmentFileIds), ct);
 
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())
