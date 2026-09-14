@@ -43,14 +43,16 @@ public interface ICalendarEventRepository
     Task<CalendarEventParticipant?> GetTrackedParticipantAsync(
         Guid tenantId, Guid eventId, Guid employeeId, CancellationToken ct = default);
 
-    /// <summary>Same shape as GetInDateRangeForCallerAsync, but scoped to one specific employee's
-    /// participation rather than the current caller - used for conflict-checking a participant
-    /// who is not the person making the request.</summary>
+    /// <summary>Same shape as GetInDateRangeForCallerAsync, but scoped to one specific employee
+    /// (as owner OR participant) rather than the current caller - used for conflict-checking a
+    /// participant who is not the person making the request. "Owner" covers synced external
+    /// events and participant-less personal blocks, neither of which ever get a
+    /// CalendarEventParticipant row.</summary>
     Task<IReadOnlyList<CalendarEvent>> GetInDateRangeForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
 
-    /// <summary>Same shape as GetRecurringMastersForCallerAsync, scoped to one specific employee's
-    /// participation.</summary>
+    /// <summary>Same shape as GetRecurringMastersForCallerAsync, scoped to one specific employee
+    /// as owner OR participant.</summary>
     Task<IReadOnlyList<CalendarEvent>> GetRecurringMastersForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset to, CancellationToken ct = default);
     void Update(CalendarEvent calendarEvent);
