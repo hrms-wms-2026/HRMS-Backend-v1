@@ -366,4 +366,70 @@ public class FileStorageServiceTests
         Assert.False(result.IsSuccess);
         Assert.Equal(502, result.StatusCode);
     }
+
+    [Fact]
+    public async Task DeleteAsync_ExistingRecord_MarksDeletedAndReleasesQuota()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var fileRecords = new FakeFileRecordRepository();
+        var record = new FileRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, StorageKey = "tenants/x/task-attachments/a.png",
+            OriginalFileName = "a.png", SafeFileName = "a.png", ContentType = "image/png",
+            FileSizeBytes = 1024, ChecksumSha256 = new string('a', 64), UploadedByUserId = userId,
+            Status = FileRecordStatus.Available, CreatedAt = DateTimeOffset.UtcNow
+        };
+        await fileRecords.AddAsync(record);
+        var quota = new FakeStorageQuotaService();
+        var objectStorage = new FakeObjectStorageAdapter();
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), fileRecords, quota, objectStorage, new FakeUnitOfWork());
+
+        var result = await service.DeleteAsync(tenantId, userId, record.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, quota.ReleaseUsedCallCount);
+        Assert.Equal(1024, quota.LastReleasedUsedBytes);
+        var reloaded = await fileRecords.GetByIdAsync(tenantId, record.Id);
+        Assert.NotNull(reloaded!.DeletedAt);
+        Assert.NotNull(reloaded.StorageDeletedAt);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_UnknownRecord_ReturnsNotFound()
+    {
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), new FakeFileRecordRepository(),
+            new FakeStorageQuotaService(), new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var result = await service.DeleteAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_AlreadyDeleted_IsIdempotentSuccess()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileRecords = new FakeFileRecordRepository();
+        var record = new FileRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, StorageKey = "k", OriginalFileName = "a.png",
+            SafeFileName = "a.png", ContentType = "image/png", FileSizeBytes = 100,
+            ChecksumSha256 = new string('a', 64), UploadedByUserId = Guid.NewGuid(),
+            Status = FileRecordStatus.Available, CreatedAt = DateTimeOffset.UtcNow,
+            DeletedAt = DateTimeOffset.UtcNow, StorageDeletedAt = DateTimeOffset.UtcNow
+        };
+        await fileRecords.AddAsync(record);
+        var quota = new FakeStorageQuotaService();
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), fileRecords, quota, new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var result = await service.DeleteAsync(tenantId, record.UploadedByUserId, record.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, quota.ReleaseUsedCallCount);
+    }
 }

@@ -211,5 +211,8 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
             Guid fileId,
             CancellationToken ct = default)
             => Task.FromResult(Result<FileStreamDto>.NotFound("File not found."));
+
+        public Task<Result> DeleteAsync(Guid tenantId, Guid userId, Guid fileRecordId, CancellationToken ct = default)
+            => Task.FromResult(Result.Success());
     }
 }
