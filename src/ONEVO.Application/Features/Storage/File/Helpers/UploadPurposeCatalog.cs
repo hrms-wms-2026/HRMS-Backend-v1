@@ -16,6 +16,8 @@ public static class UploadPurposeCatalog
     public const string BiometricReferencePhoto = "biometric_reference_photo";
     public const string MonitoringScreenshot = "monitoring_screenshot";
     public const string ObjectiveAsset = "objective_asset";
+    public const string TaskAttachment = "task_attachment";
+    public const string TaskDescriptionImage = "task_description_image";
 
     private static readonly IReadOnlyList<string> ImageContentTypes = new[]
     {
@@ -46,6 +48,21 @@ public static class UploadPurposeCatalog
         ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".doc", ".docx", ".xls", ".xlsx", ".zip"
     };
 
+    private static readonly IReadOnlyList<string> TaskAttachmentContentTypes = new[]
+    {
+        "application/pdf", "image/png", "image/jpeg", "image/webp", "image/gif",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/zip", "application/x-zip-compressed", "application/octet-stream"
+    };
+
+    private static readonly IReadOnlyList<string> TaskAttachmentExtensions = new[]
+    {
+        ".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".doc", ".docx", ".xls", ".xlsx", ".zip"
+    };
+
     private static readonly Dictionary<string, UploadPurposeRule> Rules = new()
     {
         [CompanyLogo] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
@@ -64,7 +81,9 @@ public static class UploadPurposeCatalog
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             },
             new[] { ".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx" }),
-        [ObjectiveAsset] = new UploadPurposeRule(25 * 1024 * 1024, ObjectiveAssetContentTypes, ObjectiveAssetExtensions)
+        [ObjectiveAsset] = new UploadPurposeRule(25 * 1024 * 1024, ObjectiveAssetContentTypes, ObjectiveAssetExtensions),
+        [TaskAttachment] = new UploadPurposeRule(25 * 1024 * 1024, TaskAttachmentContentTypes, TaskAttachmentExtensions),
+        [TaskDescriptionImage] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions)
     };
 
     public static IReadOnlyList<string> SupportedPurposes => Rules.Keys.ToList();

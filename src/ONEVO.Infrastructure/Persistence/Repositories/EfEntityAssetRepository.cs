@@ -52,4 +52,10 @@ public class EfEntityAssetRepository : IEntityAssetRepository
         _db.EntityAssets.Remove(asset);
         return Task.CompletedTask;
     }
+
+    public async Task<EntityAsset?> GetByFileRecordIdAsync(Guid tenantId, Guid fileRecordId, CancellationToken ct = default)
+    {
+        return await _db.EntityAssets
+            .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.FileRecordId == fileRecordId, ct);
+    }
 }
