@@ -35,7 +35,7 @@
 **Interfaces:**
 - Produces: `IStorageQuotaService.ReleaseUsedStorageAsync(Guid tenantId, long bytes, CancellationToken ct = default) : Task<Result>` — symmetric to the existing `ReleaseReservedStorageAsync`, but decrements `used_r2_bytes` (floored at zero). Consumed by Task 2's `FileStorageService.DeleteAsync`.
 
-- [ ] **Step 1: Write the failing unit test**
+- [x] **Step 1: Write the failing unit test**
 
 Open `tests/ONEVO.Tests.Unit/Features/Storage/StorageQuotaServiceTests.cs` and check its existing fixture/mock setup for `StorageQuotaService` (it will already construct one for `ReleaseReservedStorageAsync` tests — reuse that same construction helper). Add:
 
@@ -69,12 +69,12 @@ public async Task ReleaseUsedStorageAsync_NonPositiveBytes_SucceedsAsNoOp()
 
 Match whatever field names the existing test class already uses for its `StorageQuotaService` instance and its `ITenantStorageStatsRepository` (the existing tests for `ReleaseReservedStorageAsync` show the pattern — copy it).
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~StorageQuotaServiceTests.ReleaseUsedStorageAsync"`
 Expected: FAIL — `ReleaseUsedStorageAsync` does not exist on `IStorageQuotaService`/`StorageQuotaService` (compile error).
 
-- [ ] **Step 3: Add the repository method**
+- [x] **Step 3: Add the repository method**
 
 In `ITenantStorageStatsRepository.cs`, add after `ReleaseReservedBytesAsync`:
 
@@ -103,7 +103,7 @@ In `EfTenantStorageStatsRepository.cs`, add after `ReleaseReservedBytesAsync`:
     }
 ```
 
-- [ ] **Step 4: Add the service method**
+- [x] **Step 4: Add the service method**
 
 In `IStorageQuotaService.cs`, add after `CommitReservedStorageAsync`:
 
@@ -133,7 +133,7 @@ In `StorageQuotaService.cs`, add after `ReleaseReservedStorageAsync`:
     }
 ```
 
-- [ ] **Step 5: Update the Fake implementation**
+- [x] **Step 5: Update the Fake implementation**
 
 In `tests/ONEVO.Tests.Unit/Fakes/FakeStorageQuotaService.cs`, add tracking fields and the method (mirroring `ReleaseReservedStorageAsync`'s fake):
 
@@ -149,17 +149,17 @@ In `tests/ONEVO.Tests.Unit/Fakes/FakeStorageQuotaService.cs`, add tracking field
     }
 ```
 
-- [ ] **Step 6: Run test to verify it passes**
+- [x] **Step 6: Run test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~StorageQuotaServiceTests"`
 Expected: PASS (all StorageQuotaService tests, including the 3 new ones).
 
-- [ ] **Step 7: Run full unit test suite to catch any other implementer**
+- [x] **Step 7: Run full unit test suite to catch any other implementer**
 
 Run: `dotnet build tests/ONEVO.Tests.Unit` then `dotnet build tests/ONEVO.Tests.Integration`
 Expected: both build clean — confirms no other hand-written `IStorageQuotaService` implementer was missed.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/Storage/Quota/RepositoryInterfaces/ITenantStorageStatsRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/Storage/Quota/EfTenantStorageStatsRepository.cs src/ONEVO.Application/Common/ServiceInterfaces/IStorageQuotaService.cs src/ONEVO.Infrastructure/Services/Storage/Quota/StorageQuotaService.cs tests/ONEVO.Tests.Unit/Fakes/FakeStorageQuotaService.cs tests/ONEVO.Tests.Unit/Features/Storage/StorageQuotaServiceTests.cs
@@ -180,7 +180,7 @@ git commit -m "feat: add IStorageQuotaService.ReleaseUsedStorageAsync"
 - Consumes: `IStorageQuotaService.ReleaseUsedStorageAsync` (Task 1), `IObjectStorageAdapter.DeleteObjectAsync(string objectKey, CancellationToken ct)` (already exists).
 - Produces: `IFileStorageService.DeleteAsync(Guid tenantId, Guid userId, Guid fileRecordId, CancellationToken ct = default) : Task<Result>`. Consumed by Task 4 (`TaskAssetLinker`) and Task 6 (`DeleteTaskPendingUploadCommandHandler`).
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 In `tests/ONEVO.Tests.Unit/Features/Storage/File/FileStorageServiceTests.cs`, add (this file already has a `CreateService(...)` helper taking `FakeFileUploadReservationRepository, FakeFileRecordRepository, FakeStorageQuotaService, FakeObjectStorageAdapter, FakeUnitOfWork` — reuse it exactly):
 
@@ -254,12 +254,12 @@ public async Task DeleteAsync_AlreadyDeleted_IsIdempotentSuccess()
 
 (Check `FakeFileRecordRepository`'s dictionary is keyed so `GetByIdAsync` returns the *same reference* you mutate — it already is, per its current implementation — so no `Update` method is needed on the fake or the real EF repository; mutating the tracked/fake entity and calling `SaveChangesAsync` is sufficient, matching how `EfFileRecordRepository.GetByIdAsync` returns a change-tracked entity.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~FileStorageServiceTests.DeleteAsync"`
 Expected: FAIL — compile error, `DeleteAsync` not on `IFileStorageService`.
 
-- [ ] **Step 3: Add the interface method**
+- [x] **Step 3: Add the interface method**
 
 In `IFileStorageService.cs`, add after `OpenReadAsync`:
 
@@ -276,7 +276,7 @@ In `IFileStorageService.cs`, add after `OpenReadAsync`:
     Task<Result> DeleteAsync(Guid tenantId, Guid userId, Guid fileRecordId, CancellationToken ct = default);
 ```
 
-- [ ] **Step 4: Implement it**
+- [x] **Step 4: Implement it**
 
 In `FileStorageService.cs`, add after `OpenReadAsync`:
 
@@ -314,12 +314,12 @@ In `FileStorageService.cs`, add after `OpenReadAsync`:
     }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~FileStorageServiceTests"`
 Expected: PASS (all FileStorageService tests).
 
-- [ ] **Step 6: Fix the other hand-written implementer**
+- [x] **Step 6: Fix the other hand-written implementer**
 
 In `tests/ONEVO.Tests.Integration/Monitoring/CheckIn/CheckInTestFactory.cs`, find the private `NoOpFileStorageService : IFileStorageService` class and add, matching its existing no-op style:
 
@@ -328,12 +328,12 @@ In `tests/ONEVO.Tests.Integration/Monitoring/CheckIn/CheckInTestFactory.cs`, fin
             => Task.FromResult(Result.Success());
 ```
 
-- [ ] **Step 7: Build everything to confirm no other implementer was missed**
+- [x] **Step 7: Build everything to confirm no other implementer was missed**
 
 Run: `dotnet build tests/ONEVO.Tests.Integration`
 Expected: builds clean.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/Storage/File/ServiceInterfaces/IFileStorageService.cs src/ONEVO.Infrastructure/Services/Storage/File/FileStorageService.cs tests/ONEVO.Tests.Integration/Monitoring/CheckIn/CheckInTestFactory.cs tests/ONEVO.Tests.Unit/Features/Storage/File/FileStorageServiceTests.cs
@@ -354,11 +354,11 @@ git commit -m "feat: add IFileStorageService.DeleteAsync"
 **Interfaces:**
 - Produces: `UploadPurposeCatalog.TaskAttachment = "task_attachment"`, `UploadPurposeCatalog.TaskDescriptionImage = "task_description_image"`; `EntityAssetOwnerTypes.Task = "task"`; `IEntityAssetRepository.GetByFileRecordIdAsync(Guid tenantId, Guid fileRecordId, CancellationToken ct = default) : Task<EntityAsset?>`. All three consumed starting Task 4.
 
-- [ ] **Step 1: Check for an existing UploadPurposeCatalog test file**
+- [x] **Step 1: Check for an existing UploadPurposeCatalog test file**
 
 Run: `find tests/ONEVO.Tests.Unit -iname "UploadPurposeCatalogTests.cs"`. If it exists, add the new tests below into it; if not, create it with the imports/namespace matching sibling files in `tests/ONEVO.Tests.Unit/Features/Storage/File/`.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 ```csharp
 using ONEVO.Application.Features.Storage.File.Helpers;
@@ -389,12 +389,12 @@ public class UploadPurposeCatalogTests
 }
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~UploadPurposeCatalogTests"`
 Expected: FAIL — compile error, `TaskAttachment`/`TaskDescriptionImage` don't exist.
 
-- [ ] **Step 4: Add the two purposes**
+- [x] **Step 4: Add the two purposes**
 
 In `UploadPurposeCatalog.cs`, add two constants next to `ObjectiveAsset`:
 
@@ -429,7 +429,7 @@ and, inside the `Rules` dictionary initializer, add:
         [TaskDescriptionImage] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
 ```
 
-- [ ] **Step 5: Add the owner type constant**
+- [x] **Step 5: Add the owner type constant**
 
 Open `EntityAssetOwnerTypes.cs`, note its existing `Project` constant's exact value/casing convention, and add:
 
@@ -437,7 +437,7 @@ Open `EntityAssetOwnerTypes.cs`, note its existing `Project` constant's exact va
     public const string Task = "task";
 ```
 
-- [ ] **Step 6: Add the reverse-lookup repository method**
+- [x] **Step 6: Add the reverse-lookup repository method**
 
 In `IEntityAssetRepository.cs`, add after `GetByIdForTenantAsync`:
 
@@ -458,7 +458,7 @@ In `EfEntityAssetRepository.cs`, add:
     }
 ```
 
-- [ ] **Step 7: Run tests to verify they pass**
+- [x] **Step 7: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~UploadPurposeCatalogTests"`
 Expected: PASS.
@@ -466,7 +466,7 @@ Expected: PASS.
 Run: `dotnet build src/ONEVO.Infrastructure`
 Expected: builds clean (confirms `EfEntityAssetRepository` compiles against the updated interface; no other hand-written `IEntityAssetRepository` implementer exists per the earlier repo-wide search, only Moq usages in tests).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/Storage/File/Helpers/UploadPurposeCatalog.cs src/ONEVO.Application/Common/Constants/EntityAssetOwnerTypes.cs src/ONEVO.Application/Common/RepositoryInterfaces/IEntityAssetRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/EfEntityAssetRepository.cs tests/ONEVO.Tests.Unit/Features/Storage/File/UploadPurposeCatalogTests.cs
@@ -506,7 +506,7 @@ git commit -m "feat: add task_attachment/task_description_image upload purposes"
 - `SyncDescriptionImagesAsync`: extracts fileIds from `descriptionHtml` via `Regex.Matches(html, "tasks/files/([0-9a-fA-F-]{36})")`, then applies the exact same add/remove diff logic as above but scoped to `AssetPurpose == TaskDescriptionImage`.
 - Both methods are **best-effort** — they never return a `Result`/throw for a skipped invalid id; the caller (`CreateTaskCommandHandler`/`EditTaskCommandHandler`) always succeeds regardless of attachment linking outcomes, per the spec ("invalid/foreign ids are skipped, never fatal").
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 ```csharp
 using Moq;
@@ -629,12 +629,12 @@ public class TaskAssetLinkerTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~TaskAssetLinkerTests"`
 Expected: FAIL — compile errors (`TaskAssetLinker` doesn't exist yet, `EntityAssetWithFile` record doesn't have a 6th `AssetPurpose` positional argument yet).
 
-- [ ] **Step 3: Add `AssetPurpose` to `EntityAssetWithFile` and its query**
+- [x] **Step 3: Add `AssetPurpose` to `EntityAssetWithFile` and its query**
 
 In `src/ONEVO.Application/Common/RepositoryInterfaces/IEntityAssetRepository.cs`, change:
 
@@ -660,7 +660,7 @@ In `EfEntityAssetRepository.cs`, update the `ListByOwnerAsync` projection:
 
 Run: `dotnet build src/ONEVO.Application src/ONEVO.Infrastructure` and fix any other call site of the `EntityAssetWithFile` positional constructor that the compiler flags (there should be none yet outside the repository itself, since Task 10 is the first real consumer and hasn't been written).
 
-- [ ] **Step 4: Create `ITaskAssetLinker`**
+- [x] **Step 4: Create `ITaskAssetLinker`**
 
 ```csharp
 using System.Threading;
@@ -685,7 +685,7 @@ public interface ITaskAssetLinker
 }
 ```
 
-- [ ] **Step 5: Implement `TaskAssetLinker`**
+- [x] **Step 5: Implement `TaskAssetLinker`**
 
 ```csharp
 using System.Text.RegularExpressions;
@@ -783,7 +783,7 @@ public sealed class TaskAssetLinker : ITaskAssetLinker
 }
 ```
 
-- [ ] **Step 6: Register in DI**
+- [x] **Step 6: Register in DI**
 
 In `src/ONEVO.Infrastructure/DependencyInjection.cs`, near the other WorkManagement Tasks service registrations, add:
 
@@ -792,17 +792,17 @@ In `src/ONEVO.Infrastructure/DependencyInjection.cs`, near the other WorkManagem
             ONEVO.Application.Features.WorkManagement.Tasks.Services.TaskAssetLinker>();
 ```
 
-- [ ] **Step 7: Run tests to verify they pass**
+- [x] **Step 7: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~TaskAssetLinkerTests"`
 Expected: PASS.
 
-- [ ] **Step 8: Full build check**
+- [x] **Step 8: Full build check**
 
 Run: `dotnet build`
 Expected: solution builds clean (confirms the `EntityAssetWithFile` signature change didn't break another call site).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/ONEVO.Application/Common/RepositoryInterfaces/IEntityAssetRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/EfEntityAssetRepository.cs src/ONEVO.Application/Features/WorkManagement/Tasks/Services/ITaskAssetLinker.cs src/ONEVO.Application/Features/WorkManagement/Tasks/Services/TaskAssetLinker.cs src/ONEVO.Infrastructure/DependencyInjection.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/TaskAssetLinkerTests.cs
@@ -825,7 +825,7 @@ git commit -m "feat: add TaskAssetLinker for task attachment/description-image s
 - Consumes: `IFileStorageService.UploadAsync` (existing), `UploadPurposeCatalog.IsSupported` (Task 3).
 - Produces: `POST api/v1/work/tasks/pending-uploads` → `201 { fileId, originalFileName, fileSizeBytes, contentType }`. Consumed by frontend Task 12/14/17.
 
-- [ ] **Step 1: Write the failing unit test**
+- [x] **Step 1: Write the failing unit test**
 
 ```csharp
 using Moq;
@@ -889,12 +889,12 @@ public class CreateTaskPendingUploadCommandHandlerTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~CreateTaskPendingUploadCommandHandlerTests"`
 Expected: FAIL — compile error, the command/handler don't exist.
 
-- [ ] **Step 3: Create the command**
+- [x] **Step 3: Create the command**
 
 ```csharp
 using MediatR;
@@ -908,7 +908,7 @@ public sealed record CreateTaskPendingUploadCommand(
 ) : IRequest<Result<FileRecordDto>>;
 ```
 
-- [ ] **Step 4: Create the handler**
+- [x] **Step 4: Create the handler**
 
 ```csharp
 using MediatR;
@@ -949,12 +949,12 @@ public sealed class CreateTaskPendingUploadCommandHandler : IRequestHandler<Crea
 }
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~CreateTaskPendingUploadCommandHandlerTests"`
 Expected: PASS.
 
-- [ ] **Step 6: Add the API contract and controller route**
+- [x] **Step 6: Add the API contract and controller route**
 
 In `src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskPendingUploadFormRequest.cs`:
 
@@ -994,12 +994,12 @@ In `TasksController.cs`, add the using `ONEVO.Application.Features.WorkManagemen
     }
 ```
 
-- [ ] **Step 7: Build to confirm the controller compiles**
+- [x] **Step 7: Build to confirm the controller compiles**
 
 Run: `dotnet build src/ONEVO.Api`
 Expected: builds clean.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/CreateTaskPendingUpload src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskPendingUploadFormRequest.cs src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskContracts.cs src/ONEVO.Api/Controllers/Tenant/WorkManagement/TasksController.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/CreateTaskPendingUploadCommandHandlerTests.cs
@@ -1020,7 +1020,7 @@ git commit -m "feat: add POST tasks/pending-uploads endpoint"
 - Consumes: `IFileRecordRepository.GetByIdAsync`, `IEntityAssetRepository.GetByFileRecordIdAsync` (Task 3), `IFileStorageService.DeleteAsync` (Task 2).
 - Produces: `DELETE api/v1/work/tasks/pending-uploads/{fileId}` → `204`, or `403`/`404`/`409`.
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 ```csharp
 using Moq;
@@ -1106,12 +1106,12 @@ public class DeleteTaskPendingUploadCommandHandlerTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~DeleteTaskPendingUploadCommandHandlerTests"`
 Expected: FAIL — compile error.
 
-- [ ] **Step 3: Create the command**
+- [x] **Step 3: Create the command**
 
 ```csharp
 using MediatR;
@@ -1122,7 +1122,7 @@ namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskPen
 public sealed record DeleteTaskPendingUploadCommand(Guid FileId) : IRequest<Result>;
 ```
 
-- [ ] **Step 4: Create the handler**
+- [x] **Step 4: Create the handler**
 
 ```csharp
 using MediatR;
@@ -1174,12 +1174,12 @@ public sealed class DeleteTaskPendingUploadCommandHandler : IRequestHandler<Dele
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~DeleteTaskPendingUploadCommandHandlerTests"`
 Expected: PASS.
 
-- [ ] **Step 6: Add the controller route**
+- [x] **Step 6: Add the controller route**
 
 In `TasksController.cs`, add the using `ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskPendingUpload;` and:
 
@@ -1196,12 +1196,12 @@ In `TasksController.cs`, add the using `ONEVO.Application.Features.WorkManagemen
     }
 ```
 
-- [ ] **Step 7: Build to confirm the controller compiles**
+- [x] **Step 7: Build to confirm the controller compiles**
 
 Run: `dotnet build src/ONEVO.Api`
 Expected: builds clean.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/DeleteTaskPendingUpload src/ONEVO.Api/Controllers/Tenant/WorkManagement/TasksController.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/DeleteTaskPendingUploadCommandHandlerTests.cs
@@ -1222,7 +1222,7 @@ git commit -m "feat: add DELETE tasks/pending-uploads/{fileId} endpoint"
 - Consumes: `IEntityAssetRepository.GetByFileRecordIdAsync` (Task 3), `IFileRecordRepository.GetByIdAsync`, `IWorkTaskRepository.GetByIdForTenantAsync`, `IProjectRepository.GetByIdForTenantAsync`, `IPermissionResolver.ResolveAsync`, `IProjectMemberRepository.GetActiveObjectiveIdsForEmployeeInProjectAsync`, `ICallerIdentityResolver.ResolveCallerEmployeeIdAsync` (all pre-existing — same access rule as `GetTaskByIdQueryHandler`), `IFileStorageService.OpenReadAsync`.
 - Produces: `GET api/v1/work/tasks/files/{fileId}` streaming response.
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 ```csharp
 using Moq;
@@ -1360,12 +1360,12 @@ public class GetTaskFileQueryHandlerTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~GetTaskFileQueryHandlerTests"`
 Expected: FAIL — compile error.
 
-- [ ] **Step 3: Create the query**
+- [x] **Step 3: Create the query**
 
 ```csharp
 using MediatR;
@@ -1377,7 +1377,7 @@ namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskFile;
 public sealed record GetTaskFileQuery(Guid FileId) : IRequest<Result<FileStreamDto>>;
 ```
 
-- [ ] **Step 4: Implement the handler**
+- [x] **Step 4: Implement the handler**
 
 ```csharp
 using MediatR;
@@ -1483,12 +1483,12 @@ public sealed class GetTaskFileQueryHandler : IRequestHandler<GetTaskFileQuery, 
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~GetTaskFileQueryHandlerTests"`
 Expected: PASS.
 
-- [ ] **Step 6: Add the controller route**
+- [x] **Step 6: Add the controller route**
 
 In `TasksController.cs`, add the using `ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskFile;` and:
 
@@ -1505,12 +1505,12 @@ In `TasksController.cs`, add the using `ONEVO.Application.Features.WorkManagemen
     }
 ```
 
-- [ ] **Step 7: Build to confirm the controller compiles**
+- [x] **Step 7: Build to confirm the controller compiles**
 
 Run: `dotnet build src/ONEVO.Api`
 Expected: builds clean.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Queries/GetTaskFile src/ONEVO.Api/Controllers/Tenant/WorkManagement/TasksController.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/GetTaskFileQueryHandlerTests.cs
@@ -1532,7 +1532,7 @@ git commit -m "feat: add GET tasks/files/{fileId} endpoint"
 - Consumes: `ITaskAssetLinker.SyncAttachmentsAsync`/`SyncDescriptionImagesAsync` (Task 4).
 - Produces: `CreateTaskCommand` gains `AttachmentFileIds` as its final parameter.
 
-- [ ] **Step 1: Update the existing test file's `BuildHandler` (it will fail to compile once the handler's constructor changes)**
+- [x] **Step 1: Update the existing test file's `BuildHandler` (it will fail to compile once the handler's constructor changes)**
 
 In `CreateTaskCommandHandlerTests.cs`, add `using ONEVO.Application.Features.WorkManagement.Tasks.Services;` (already imported) and add a mock:
 
@@ -1563,12 +1563,12 @@ public async Task Handle_WithAttachmentFileIds_CallsAssetLinkerAfterCreate()
 
 Add an optional `Mock<ITaskAssetLinker>? assetLinker = null` parameter to `BuildHandler`'s signature, defaulting to a fresh `new Mock<ITaskAssetLinker>()` when not supplied, and pass `.Object` into the handler constructor.
 
-- [ ] **Step 2: Run tests to verify the new one fails (and confirm the rest still compile once you've updated call sites)**
+- [x] **Step 2: Run tests to verify the new one fails (and confirm the rest still compile once you've updated call sites)**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~CreateTaskCommandHandlerTests"`
 Expected: compile FAIL until Step 3/4 land (the command record and handler constructor don't have the new members yet) — this is expected; proceed.
 
-- [ ] **Step 3: Add `AttachmentFileIds` to the command**
+- [x] **Step 3: Add `AttachmentFileIds` to the command**
 
 ```csharp
 public sealed record CreateTaskCommand(
@@ -1578,7 +1578,7 @@ public sealed record CreateTaskCommand(
 ) : IRequest<Result<WorkTaskResponse>>;
 ```
 
-- [ ] **Step 4: Wire the linker into the handler**
+- [x] **Step 4: Wire the linker into the handler**
 
 Add `private readonly ITaskAssetLinker _assetLinker;` field, add it as the last constructor parameter (update the `using ONEVO.Application.Features.WorkManagement.Tasks.Services;` import, already present), assign it in the constructor body, and inside the `ExecuteInTransactionAsync` closure — **after** `await _unitOfWork.SaveChangesAsync(innerCt);` and before building the response — add:
 
@@ -1587,12 +1587,12 @@ Add `private readonly ITaskAssetLinker _assetLinker;` field, add it as the last 
             await _assetLinker.SyncDescriptionImagesAsync(tenantId, userId, task.Id, task.Description, innerCt);
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~CreateTaskCommandHandlerTests"`
 Expected: PASS (all existing tests plus the new one).
 
-- [ ] **Step 6: Update the API contract and controller**
+- [x] **Step 6: Update the API contract and controller**
 
 In `TaskContracts.cs`, change `CreateTaskRequest` to:
 
@@ -1611,12 +1611,12 @@ In `TasksController.cs`'s `Create` action, pass the new field through:
             request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId, request.AttachmentFileIds), ct);
 ```
 
-- [ ] **Step 7: Build to confirm nothing else broke**
+- [x] **Step 7: Build to confirm nothing else broke**
 
 Run: `dotnet build`
 Expected: solution builds clean.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/CreateTask src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskContracts.cs src/ONEVO.Api/Controllers/Tenant/WorkManagement/TasksController.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/CreateTaskCommandHandlerTests.cs
@@ -1638,7 +1638,7 @@ git commit -m "feat: link attachments and description images on task create"
 - Consumes: `ITaskAssetLinker` (Task 4), same as Task 8.
 - Produces: `EditTaskCommand` gains `AttachmentFileIds` as its final parameter — the **full desired set** after the edit (see spec §4: this is a resync, not an add-only operation, exactly matching `ITaskAssetLinker`'s semantics already used identically in Task 8).
 
-- [ ] **Step 1: Update the existing test file, then write the new failing test**
+- [x] **Step 1: Update the existing test file, then write the new failing test**
 
 Open `EditTaskCommandHandlerTests.cs`, find its handler-construction helper, add a `Mock<ITaskAssetLinker>` the same way Task 8 did, update every existing `new EditTaskCommand(...)` call site to append `AttachmentFileIds: Array.Empty<Guid>()`, then add:
 
@@ -1661,12 +1661,12 @@ public async Task Handle_WithAttachmentFileIds_CallsAssetLinker()
 
 (Adapt the exact `BuildHandler` parameter names/order to whatever this test file already uses — read it first, since its helper signature wasn't fully captured during planning; keep every pre-existing test passing by giving the new mock/parameter a default.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~EditTaskCommandHandlerTests"`
 Expected: FAIL — compile error until Steps 3/4 land.
 
-- [ ] **Step 3: Add `AttachmentFileIds` to the command**
+- [x] **Step 3: Add `AttachmentFileIds` to the command**
 
 ```csharp
 public sealed record EditTaskCommand(
@@ -1676,7 +1676,7 @@ public sealed record EditTaskCommand(
 ) : IRequest<Result<WorkTaskResponse>>;
 ```
 
-- [ ] **Step 4: Wire the linker into the handler**
+- [x] **Step 4: Wire the linker into the handler**
 
 Add `private readonly ITaskAssetLinker _assetLinker;`, add it as the last constructor parameter, assign it, and inside the `ExecuteInTransactionAsync` closure — after `await _unitOfWork.SaveChangesAsync(innerCt);` and before building the response — add:
 
@@ -1687,12 +1687,12 @@ Add `private readonly ITaskAssetLinker _assetLinker;`, add it as the last constr
 
 Note: `userId` isn't currently a local variable in `EditTaskCommandHandler.Handle` (only `tenantId` and `callerEmployeeId` are) — add `var userId = _currentUser.UserId;` near the top alongside the existing `tenantId` assignment.
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~EditTaskCommandHandlerTests"`
 Expected: PASS.
 
-- [ ] **Step 6: Update the API contract and controller**
+- [x] **Step 6: Update the API contract and controller**
 
 In `TaskContracts.cs`:
 
@@ -1711,12 +1711,12 @@ In `TasksController.cs`'s `Edit` action:
             request.EstimatedHours, request.StoryPoints, request.ProgressPercent, request.Reason, request.AttachmentFileIds), ct);
 ```
 
-- [ ] **Step 7: Build to confirm nothing else broke**
+- [x] **Step 7: Build to confirm nothing else broke**
 
 Run: `dotnet build`
 Expected: solution builds clean.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/EditTask src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskContracts.cs src/ONEVO.Api/Controllers/Tenant/WorkManagement/TasksController.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/EditTaskCommandHandlerTests.cs
@@ -1738,11 +1738,11 @@ git commit -m "feat: resync attachments and description images on task edit"
 - Consumes: `IEntityAssetRepository.ListByOwnerAsync` (existing, now carrying `AssetPurpose` per Task 4 Step 3).
 - Produces: `TaskAttachmentDto(Guid FileId, string FileName, long FileSizeBytes, string ContentType)`; `WorkTaskResponse.Attachments : IReadOnlyList<TaskAttachmentDto>`.
 
-- [ ] **Step 1: Read the existing test file's handler-construction helper**
+- [x] **Step 1: Read the existing test file's handler-construction helper**
 
 Open `GetTaskByIdQueryHandlerTests.cs` and note its exact mock-setup pattern (it will need an `IEntityAssetRepository` mock added to its constructor call — check whether it already has one for some other reason).
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```csharp
 [Fact]
@@ -1769,12 +1769,12 @@ public async Task Handle_TaskHasAttachments_IncludesThemInResponse()
 }
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~GetTaskByIdQueryHandlerTests.Handle_TaskHasAttachments"`
 Expected: FAIL — compile error, `Attachments` doesn't exist on `WorkTaskResponse`.
 
-- [ ] **Step 4: Add `TaskAttachmentDto` and the `Attachments` field**
+- [x] **Step 4: Add `TaskAttachmentDto` and the `Attachments` field**
 
 In `WorkTaskResponse.cs`, add:
 
@@ -1795,7 +1795,7 @@ public sealed record WorkTaskResponse(
     IReadOnlyList<TaskAttachmentDto>? Attachments = null);
 ```
 
-- [ ] **Step 5: Populate it in the handler**
+- [x] **Step 5: Populate it in the handler**
 
 In `GetTaskByIdQueryHandler.cs`, add the `IEntityAssetRepository` dependency (constructor field + injection), and before constructing the `response`:
 
@@ -1808,12 +1808,12 @@ In `GetTaskByIdQueryHandler.cs`, add the `IEntityAssetRepository` dependency (co
 
 and add `attachments` as the trailing argument to the existing `new WorkTaskResponse(...)` call.
 
-- [ ] **Step 6: Run test to verify it passes**
+- [x] **Step 6: Run test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~GetTaskByIdQueryHandlerTests"`
 Expected: PASS (all tests in this file, including pre-existing ones — `Attachments` defaults to `null` for any test not setting up the mock, and the handler always populates a list, so verify no pre-existing test asserts `Attachments is null`; if one does, that assertion is now wrong and should be updated to expect an empty list).
 
-- [ ] **Step 7: Surface it on the API view model**
+- [x] **Step 7: Surface it on the API view model**
 
 In `TaskContracts.cs`, add:
 
@@ -1846,12 +1846,12 @@ In `WorkTaskViewModelMapper.cs`, update `ToViewModel(this WorkTaskResponse dto)`
             .Select(a => new TaskAttachmentViewModel(a.FileId, a.FileName, a.FileSizeBytes, a.ContentType)).ToList());
 ```
 
-- [ ] **Step 8: Build to confirm every other `WorkTaskViewModel`/`WorkTaskResponse` construction site still compiles**
+- [x] **Step 8: Build to confirm every other `WorkTaskViewModel`/`WorkTaskResponse` construction site still compiles**
 
 Run: `dotnet build`
 Expected: builds clean. `WorkTaskResponse`'s new member is optional (defaults to `null`) so `CreateTaskCommandHandler`/`EditTaskCommandHandler`'s existing `new WorkTaskResponse(...)` calls (which don't pass it) still compile — they'll just report `Attachments: null`, which is acceptable since a freshly created/edited task's response is immediately followed by the linker call and the caller re-fetches via `GetTaskById` if it needs to see the attachment list reflected. `WorkTaskViewModel`'s new member is **not** optional (matches this file's existing non-optional style for the DTO's other list fields like `AssigneeEmployeeIds`), so `ToViewModel` must always supply it — confirmed handled by Step 7 above.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/DTOs/Responses/WorkTaskResponse.cs src/ONEVO.Application/Features/WorkManagement/Tasks/Queries/GetTaskById/GetTaskByIdQueryHandler.cs src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskContracts.cs src/ONEVO.Api/Contracts/WorkManagement/Tasks/WorkTaskViewModelMapper.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/GetTaskByIdQueryHandlerTests.cs
@@ -1870,7 +1870,7 @@ Check an existing integration test in `tests/ONEVO.Tests.Integration/` for the h
 **Interfaces:**
 - Consumes: the full stack built in Tasks 1–10, exercised through real HTTP calls against the test server (no mocks).
 
-- [ ] **Step 1: Write the failing integration test**
+- [x] **Step 1: Write the failing integration test**
 
 ```csharp
 [Fact]
@@ -1898,17 +1898,17 @@ public async Task GetFile_UnlinkedFileNotOwnedByCaller_Returns404()
 
 Fill in the actual HTTP call code using this integration test project's existing `HttpClient`/`WebApplicationFactory`/auth-header helper conventions (read a neighboring integration test file first — e.g. one under `tests/ONEVO.Tests.Integration/WorkManagement/` if one exists, otherwise `FileStorageIntegrationTests.cs` for the multipart upload call shape).
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Integration --filter "FullyQualifiedName~TaskAttachmentsIntegrationTests"`
 Expected: FAIL (endpoints exist by now from Tasks 5–10, so this should mostly pass already if Tasks 1–10 are correct — treat any failure here as a real integration bug to fix, not an expected red step. If everything from Tasks 1–10 was implemented correctly, this step may already be green; if so, skip ahead to Step 3 and just confirm.)
 
-- [ ] **Step 3: Run tests to verify they pass**
+- [x] **Step 3: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Integration --filter "FullyQualifiedName~TaskAttachmentsIntegrationTests"`
 Expected: PASS. If not, debug against the real handlers/controllers from Tasks 5–10 rather than adjusting the test to match broken behavior.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/ONEVO.Tests.Integration/WorkManagement/TaskAttachmentsIntegrationTests.cs
@@ -1953,11 +1953,11 @@ git worktree add .worktrees/task-attachments-rich-description -b feature/task-at
   ```
   Consumed by Tasks 14/15/17.
 
-- [ ] **Step 1: Check for existing spec files**
+- [x] **Step 1: Check for existing spec files**
 
 Run: `find src/app/modules/work/utils -iname "task.mapper.spec.ts"` and `find src/app/modules/work/data-access -iname "task-api.service.spec.ts"`. Create whichever is missing, matching the import/describe style of `task-form-modal.component.spec.ts` (Vitest, `vi.fn()`, `of()`/`throwError()` from `rxjs`).
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 In `task.mapper.spec.ts` (add to it, or create it):
 
@@ -2008,12 +2008,12 @@ it('getFileUrl builds the content url', () => {
 
 (Match this file's actual `baseUrl`/`httpMock` variable names from whatever `beforeEach` scaffolding already exists in the sibling spec you copied the pattern from.)
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `npx vitest run task.mapper.spec.ts task-api.service.spec.ts`
 Expected: FAIL — `attachments` doesn't exist, `uploadPendingFile`/`deletePendingFile`/`getFileUrl` don't exist.
 
-- [ ] **Step 4: Add the DTO types**
+- [x] **Step 4: Add the DTO types**
 
 In `task.dto.ts`, add:
 
@@ -2052,7 +2052,7 @@ export interface EditTaskRequestDto {
 }
 ```
 
-- [ ] **Step 5: Add the model type and mapper**
+- [x] **Step 5: Add the model type and mapper**
 
 In `task.model.ts`, add:
 
@@ -2074,7 +2074,7 @@ In `task.mapper.ts`, update `toWorkTask`:
 
 (add this line to the returned object, alongside the existing `activeEventName` line).
 
-- [ ] **Step 6: Add the TaskApiService methods**
+- [x] **Step 6: Add the TaskApiService methods**
 
 In `task-api.service.ts`, import `PendingUploadDto` alongside the other DTO imports, and add:
 
@@ -2095,17 +2095,17 @@ In `task-api.service.ts`, import `PendingUploadDto` alongside the other DTO impo
   }
 ```
 
-- [ ] **Step 7: Run tests to verify they pass**
+- [x] **Step 7: Run tests to verify they pass**
 
 Run: `npx vitest run task.mapper.spec.ts task-api.service.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 8: Run the full frontend unit suite to catch any other WorkTaskDto/WorkTask consumer**
+- [x] **Step 8: Run the full frontend unit suite to catch any other WorkTaskDto/WorkTask consumer**
 
 Run: `npx vitest run`
 Expected: no new failures (the new `attachments` field is additive/optional on the DTO and always-populated on the model, so no existing test literal should break; if one does, it's a test asserting an exact object shape that now needs the new field added).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/app/modules/work/models/dto/task.dto.ts src/app/modules/work/models/task.model.ts src/app/modules/work/utils/task.mapper.ts src/app/modules/work/utils/task.mapper.spec.ts src/app/modules/work/data-access/task-api.service.ts src/app/modules/work/data-access/task-api.service.spec.ts
@@ -2134,7 +2134,7 @@ git commit -m "feat: add task attachment DTOs, model, mapper, and API methods"
 
 This is a small presentational component — no HTTP calls of its own (the parent owns upload/delete side effects), matching this codebase's existing presentational-component pattern (e.g. `WorkDropdownComponent`).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -2176,12 +2176,12 @@ describe('TaskAttachmentListComponent', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run task-attachment-list.component.spec.ts`
 Expected: FAIL — the component file doesn't exist.
 
-- [ ] **Step 3: Implement the component**
+- [x] **Step 3: Implement the component**
 
 ```ts
 import { Component, input, output } from '@angular/core';
@@ -2241,12 +2241,12 @@ export class TaskAttachmentListComponent {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run task-attachment-list.component.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/app/modules/work/ui/task-attachment-list
@@ -2265,7 +2265,7 @@ git commit -m "feat: add reusable TaskAttachmentListComponent"
 - Consumes: `TaskApiService.uploadPendingFile`/`deletePendingFile` (Task 12), `TaskAttachmentListComponent` (Task 13).
 - Produces: replaces `attachedFileNames = signal<string[]>([])` with `attachedFiles = signal<AttachmentPill[]>([])`, used by both create and (Task 15) edit modes.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `task-form-modal.component.spec.ts`, add `uploadPendingFile`/`deletePendingFile` to `baseApi()`:
 
@@ -2328,12 +2328,12 @@ describe('TaskFormModalComponent - create mode attachments', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run task-form-modal.component.spec.ts`
 Expected: FAIL — `attachedFiles` doesn't exist yet (still `attachedFileNames`), `onFilesSelected`/`removeAttachedFile` don't call the API.
 
-- [ ] **Step 3: Replace the signal and rewrite the upload methods**
+- [x] **Step 3: Replace the signal and rewrite the upload methods**
 
 Replace:
 
@@ -2389,7 +2389,7 @@ Add a private helper and call it from every place the modal closes without submi
 
 Call `this.cleanupUnsavedAttachments();` at the start of `onBackdrop()`, `onEscape()`, and the Cancel button's handler (change the template's `(click)="closed.emit()"` on the Cancel button to `(click)="onCancel()"` and add a small `onCancel(): void { this.cleanupUnsavedAttachments(); this.closed.emit(); }` method — apply the same change to `onBackdrop`/`onEscape` bodies by prepending the cleanup call before their existing `closed.emit()`).
 
-- [ ] **Step 4: Include `attachmentFileIds` in the submit payloads**
+- [x] **Step 4: Include `attachmentFileIds` in the submit payloads**
 
 In `submitCreateWithAction`, add `attachmentFileIds: this.attachedFiles().map((f) => f.fileId)` to the `CreateTaskRequestDto` object literal (`request`).
 
@@ -2397,7 +2397,7 @@ In `submit()` (the edit-mode path), add the same field to the `fields` object pa
 
 Also update the two `create_and_add_another` reset blocks (there are two, in `submitCreateWithAction`) that currently do `this.attachedFileNames.set([])` — change both to `this.attachedFiles.set([])`.
 
-- [ ] **Step 5: Swap the Level 3 attachments markup for `TaskAttachmentListComponent`**
+- [x] **Step 5: Swap the Level 3 attachments markup for `TaskAttachmentListComponent`**
 
 Add `TaskAttachmentListComponent` to the component's `imports` array. Replace the existing Level 3 "Attachments" `<div class="tfm-inline-field">...</div>` block and the following `@if (attachedFileNames().length > 0) { ... }` pill block with:
 
@@ -2416,16 +2416,16 @@ Add `TaskAttachmentListComponent` to the component's `imports` array. Replace th
 
 Remove the now-dead `.tfm-attachment-box`, `.tfm-file-hidden`, `.tfm-attached-files`, `.tfm-attached-pill`, `.tfm-attached-remove` CSS rules from the component's `styles` array (their markup no longer exists — `TaskAttachmentListComponent` has its own `.tal-*` styles).
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `npx vitest run task-form-modal.component.spec.ts`
 Expected: PASS (all tests in this file, old and new).
 
-- [ ] **Step 7: Manual browser verification**
+- [x] **Step 7: Manual browser verification**
 
 Start the dev server (`preview_start` with the frontend's launch.json config), open the Work board, click "Create task", attach a file, confirm the pill appears, remove it, confirm it disappears and a network tab shows the DELETE call, then re-attach and submit, confirming the network payload includes `attachmentFileIds`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/app/modules/work/ui/task-form-modal/task-form-modal.component.ts src/app/modules/work/ui/task-form-modal/task-form-modal.component.spec.ts
@@ -2443,7 +2443,7 @@ git commit -m "feat: wire real file upload into task create attachments"
 **Interfaces:**
 - Consumes: `task().attachments` (from `WorkTask.attachments`, Task 12), `attachedFiles` signal and `onFilesSelected`/`removeAttachedFile` (Task 14).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to the existing edit-mode `describe` block in `task-form-modal.component.spec.ts` (extend `taskDto` at the top of the file with an `attachments` array first):
 
@@ -2469,12 +2469,12 @@ it('on Save Changes: includes the current attachedFiles ids in the edit payload'
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run task-form-modal.component.spec.ts`
 Expected: FAIL — `attachedFiles` isn't seeded on load in edit mode, and there's no Attachments card in the edit-mode template yet.
 
-- [ ] **Step 3: Seed `attachedFiles` when a task loads**
+- [x] **Step 3: Seed `attachedFiles` when a task loads**
 
 Find `loadForTaskId` (or wherever the component maps the fetched `WorkTaskDto`/`WorkTask` into its signals on edit-mode load — it's the method that sets `title.set(...)`, `description.set(...)`, etc.) and add:
 
@@ -2482,7 +2482,7 @@ Find `loadForTaskId` (or wherever the component maps the fetched `WorkTaskDto`/`
     this.attachedFiles.set(task.attachments.map((a) => ({ fileId: a.fileId, name: a.name, sizeBytes: a.sizeBytes })));
 ```
 
-- [ ] **Step 4: Add the Attachments card to the edit-mode template**
+- [x] **Step 4: Add the Attachments card to the edit-mode template**
 
 In the `tfm__pane-side` aside, add a new `<section class="tfm__card">` after the existing "Task details" card (before the Time tracking / Activity log cards, or after — placement doesn't affect tests, just visual grouping), following the same header markup convention as the neighboring cards:
 
@@ -2500,20 +2500,20 @@ In the `tfm__pane-side` aside, add a new `<section class="tfm__card">` after the
                   </section>
 ```
 
-- [ ] **Step 5: Include `attachmentFileIds` in the edit-mode save payload**
+- [x] **Step 5: Include `attachmentFileIds` in the edit-mode save payload**
 
 Confirm Task 14 Step 4 already added `attachmentFileIds: this.attachedFiles().map((f) => f.fileId)` to the `fields` object in `submit()` — if not yet done, do it now (Task 14 and 15 both touch this method; if executed out of order, whichever lands first should add it).
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `npx vitest run task-form-modal.component.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 7: Manual browser verification**
+- [x] **Step 7: Manual browser verification**
 
 Open an existing task's edit view, confirm the Attachments card shows any files attached at creation, add a new one, remove one, click Save Changes, reload the task, confirm the change persisted.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/app/modules/work/ui/task-form-modal/task-form-modal.component.ts src/app/modules/work/ui/task-form-modal/task-form-modal.component.spec.ts
@@ -2541,7 +2541,7 @@ git commit -m "feat: add Attachments card to task edit view"
   }
   ```
 
-- [ ] **Step 1: Write the failing component test**
+- [x] **Step 1: Write the failing component test**
 
 ```ts
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -2574,12 +2574,12 @@ describe('ColorSwatchPopoverComponent', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run color-swatch-popover.component.spec.ts`
 Expected: FAIL — component doesn't exist.
 
-- [ ] **Step 3: Implement the component**
+- [x] **Step 3: Implement the component**
 
 ```ts
 import { Component, input, output } from '@angular/core';
@@ -2617,12 +2617,12 @@ export class ColorSwatchPopoverComponent {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run color-swatch-popover.component.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Wire two toolbar buttons into the description editor**
+- [x] **Step 5: Wire two toolbar buttons into the description editor**
 
 In `task-form-modal.component.ts`, add `ColorSwatchPopoverComponent` to `imports`. Add two signals near `showLinkPopover`:
 
@@ -2707,7 +2707,7 @@ In the template, after the Underline button (before the `<span class="tfm-editor
                       </div>
 ```
 
-- [ ] **Step 6: Write the failing task-form-modal tests**
+- [x] **Step 6: Write the failing task-form-modal tests**
 
 ```ts
 it('applyTextColor runs execCommand foreColor and syncs description', () => {
@@ -2726,16 +2726,16 @@ it('applyHighlight runs execCommand hiliteColor', () => {
 
 (Add these to whichever existing `describe` block already exercises `formatDoc`-style toolbar methods, for setup consistency.)
 
-- [ ] **Step 7: Run tests to verify they pass**
+- [x] **Step 7: Run tests to verify they pass**
 
 Run: `npx vitest run task-form-modal.component.spec.ts color-swatch-popover.component.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 8: Manual browser verification**
+- [x] **Step 8: Manual browser verification**
 
 Open the create-task modal, type some text, select it, click the text-color button, pick a swatch, confirm the text recolors; repeat for highlight; switch to the Preview tab and confirm the color/highlight survives.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/app/modules/work/ui/color-swatch-popover src/app/modules/work/ui/task-form-modal/task-form-modal.component.ts src/app/modules/work/ui/task-form-modal/task-form-modal.component.spec.ts
@@ -2753,7 +2753,7 @@ git commit -m "feat: add text color and highlight toolbar controls"
 **Interfaces:**
 - Consumes: `TaskApiService.uploadPendingFile`/`getFileUrl` (Task 12).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 it('insertImage uploads the file and inserts an <img> at the saved selection', async () => {
@@ -2788,12 +2788,12 @@ it('a failed image upload does not touch the editor and surfaces an error', asyn
 
 (`uploadPendingFile` in `baseApi()` already resolves `{ fileId: 'f1', ... }` — reuse it for the happy path.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run task-form-modal.component.spec.ts`
 Expected: FAIL — `onImageFileSelected` doesn't exist.
 
-- [ ] **Step 3: Add the toolbar button and method**
+- [x] **Step 3: Add the toolbar button and method**
 
 In the template, add an "Insert image" button next to the existing link button (inside `.tfm-editor__tools-left`, after the link `<div class="tfm-link-anchor">` block):
 
@@ -2844,16 +2844,16 @@ Add a `viewChild` for it and the handler method, next to the existing `descEdito
   }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run task-form-modal.component.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Manual browser verification**
+- [x] **Step 5: Manual browser verification**
 
 Open the create-task modal, click the image button, pick a PNG, confirm it appears inline in the Write tab at the cursor position, switch to Preview and confirm it renders there too, submit the task, reopen it in edit mode, and confirm the image still loads (proving the cookie-based `<img src>` auth and the description-image linking from Task 8/9 both work end to end).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/modules/work/ui/task-form-modal/task-form-modal.component.ts src/app/modules/work/ui/task-form-modal/task-form-modal.component.spec.ts
