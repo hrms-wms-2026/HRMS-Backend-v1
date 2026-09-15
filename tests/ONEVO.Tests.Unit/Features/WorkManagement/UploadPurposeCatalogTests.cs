@@ -19,4 +19,23 @@ public class UploadPurposeCatalogTests
         Assert.Equal(cover.AllowedContentTypes, banner.AllowedContentTypes);
         Assert.Equal(cover.AllowedExtensions, banner.AllowedExtensions);
     }
+
+    [Fact]
+    public void TaskAttachment_IsSupported_AllowsBroadDocumentTypes()
+    {
+        Assert.True(UploadPurposeCatalog.IsSupported(UploadPurposeCatalog.TaskAttachment));
+        var rule = UploadPurposeCatalog.GetRule(UploadPurposeCatalog.TaskAttachment)!;
+        Assert.Equal(25 * 1024 * 1024, rule.MaxSizeBytes);
+        Assert.Contains("application/zip", rule.AllowedContentTypes);
+        Assert.Contains(".xlsx", rule.AllowedExtensions);
+    }
+
+    [Fact]
+    public void TaskDescriptionImage_IsSupported_ImageOnlyFiveMegabytes()
+    {
+        Assert.True(UploadPurposeCatalog.IsSupported(UploadPurposeCatalog.TaskDescriptionImage));
+        var rule = UploadPurposeCatalog.GetRule(UploadPurposeCatalog.TaskDescriptionImage)!;
+        Assert.Equal(5 * 1024 * 1024, rule.MaxSizeBytes);
+        Assert.DoesNotContain("application/pdf", rule.AllowedContentTypes);
+    }
 }

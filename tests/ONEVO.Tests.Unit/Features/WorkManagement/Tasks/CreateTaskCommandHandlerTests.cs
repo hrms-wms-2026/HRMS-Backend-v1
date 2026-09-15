@@ -41,7 +41,8 @@ public class CreateTaskCommandHandlerTests
         Objective objective, decimal existingAllocationSum, string sprintStatus = SprintStatuses.Active,
         Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null,
         bool categoryExists = true, Guid? categoryProjectId = null,
-        Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null)
+        Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null,
+        Mock<ITaskAssetLinker>? assetLinker = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? EmployeeId;
 
@@ -108,7 +109,8 @@ public class CreateTaskCommandHandlerTests
         var handler = new CreateTaskCommandHandler(
             currentUser.Object, identity.Object, objectives.Object, projects.Object, tasks.Object,
             statuses.Object, sprints.Object, categories.Object, slackCalculator, unitOfWork.Object, membership.Object,
-            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object);
+            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
+            (assetLinker ?? new Mock<ITaskAssetLinker>()).Object);
         return (handler, tasks, sprints);
     }
 
@@ -317,5 +319,20 @@ public class CreateTaskCommandHandlerTests
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task Handle_WithAttachmentFileIds_CallsAssetLinkerAfterCreate()
+    {
+        var assetLinker = new Mock<ITaskAssetLinker>();
+        var (handler, tasks, _) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m, assetLinker: assetLinker);
+        var fileId = Guid.NewGuid();
+        var command = new CreateTaskCommand(ObjectiveId, "Build the thing", "<p>desc</p>", CategoryId, "medium", null, null, null, SprintId, new[] { fileId });
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        assetLinker.Verify(x => x.SyncAttachmentsAsync(TenantId, UserId, result.Value!.Id, new[] { fileId }, It.IsAny<CancellationToken>()), Times.Once);
+        assetLinker.Verify(x => x.SyncDescriptionImagesAsync(TenantId, UserId, result.Value!.Id, "<p>desc</p>", It.IsAny<CancellationToken>()), Times.Once);
     }
 }

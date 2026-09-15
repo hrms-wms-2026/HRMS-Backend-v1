@@ -89,4 +89,15 @@ public interface IFileStorageService
         Guid tenantId,
         Guid fileId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Soft-deletes a file this tenant owns: marks the file_records row
+    /// deleted, best-effort deletes the underlying object, and releases the
+    /// bytes it was consuming back to the tenant's used-storage quota.
+    /// Idempotent — deleting an already-deleted record is a no-op success.
+    /// Caller-ownership (e.g. "only the uploader may delete") is the calling
+    /// feature handler's responsibility, not this method's — same trust model
+    /// documented on <see cref="OpenReadAsync"/>.
+    /// </summary>
+    Task<Result> DeleteAsync(Guid tenantId, Guid userId, Guid fileRecordId, CancellationToken ct = default);
 }

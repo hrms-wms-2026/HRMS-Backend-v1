@@ -1,7 +1,10 @@
 using MediatR;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -22,6 +25,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly IEntityAssetRepository _entityAssets;
 
     public GetTaskByIdQueryHandler(
         ICurrentUser currentUser,
@@ -32,7 +36,8 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         IPermissionResolver permissionResolver,
         ITaskAssignmentRepository assignments,
         ITaskClockingSessionRepository sessions,
-        ICalendarEventRepository calendarEvents)
+        ICalendarEventRepository calendarEvents,
+        IEntityAssetRepository entityAssets)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -43,6 +48,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         _assignments = assignments;
         _sessions = sessions;
         _calendarEvents = calendarEvents;
+        _entityAssets = entityAssets;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(GetTaskByIdQuery request, CancellationToken ct)
@@ -87,6 +93,11 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
         var activeEventLink = (await _calendarEvents.ListActiveTaskLinksForTasksAsync(tenantId, new[] { task.Id }, ct))
             .FirstOrDefault();
 
+        var attachments = (await _entityAssets.ListByOwnerAsync(tenantId, EntityAssetOwnerTypes.Task, task.Id, ct))
+            .Where(a => a.AssetPurpose == UploadPurposeCatalog.TaskAttachment)
+            .Select(a => new TaskAttachmentDto(a.FileRecordId, a.OriginalFileName, a.FileSizeBytes, a.ContentType))
+            .ToList();
+
         var response = new WorkTaskResponse(
             task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description, task.CategoryId, task.StatusId,
             task.Priority, task.StoryPoints, task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
@@ -95,7 +106,8 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
             openSession?.ClockInAt,
             totalLoggedMinutes.GetValueOrDefault(task.Id, 0),
             activeEventLink?.CalendarEventId,
-            activeEventLink?.EventName);
+            activeEventLink?.EventName,
+            attachments);
 
         return Result<WorkTaskResponse>.Success(response);
     }

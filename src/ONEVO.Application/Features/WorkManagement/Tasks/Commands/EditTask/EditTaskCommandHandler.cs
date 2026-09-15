@@ -27,12 +27,14 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
     private readonly ITaskEditLogRepository _editLogs;
     private readonly ITaskPercentageLogRepository _percentageLogs;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ITaskAssetLinker _assetLinker;
 
     public EditTaskCommandHandler(
         ICurrentUser currentUser, IWorkTaskRepository tasks, IObjectiveRepository objectives,
         IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork, ISprintRepository sprints,
         ICallerIdentityResolver identity, ITaskEditLogRepository editLogs, ITaskPercentageLogRepository percentageLogs,
-        ICalendarEventRepository calendarEvents)
+        ICalendarEventRepository calendarEvents,
+        ITaskAssetLinker assetLinker)
     {
         _currentUser = currentUser;
         _tasks = tasks;
@@ -44,6 +46,7 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         _editLogs = editLogs;
         _percentageLogs = percentageLogs;
         _calendarEvents = calendarEvents;
+        _assetLinker = assetLinker;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(EditTaskCommand request, CancellationToken ct)
@@ -52,7 +55,8 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
             return Result<WorkTaskResponse>.Forbidden("Authentication required.");
 
         var tenantId = _currentUser.TenantId;
-        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, _currentUser.UserId, ct);
+        var userId = _currentUser.UserId;
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
         if (callerEmployeeId is null)
             return Result<WorkTaskResponse>.Forbidden("No employee record for the current user.");
 
@@ -152,6 +156,9 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
             }
 
             await _unitOfWork.SaveChangesAsync(innerCt);
+
+            await _assetLinker.SyncAttachmentsAsync(tenantId, userId, task.Id, request.AttachmentFileIds ?? Array.Empty<Guid>(), innerCt);
+            await _assetLinker.SyncDescriptionImagesAsync(tenantId, userId, task.Id, task.Description, innerCt);
 
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,

@@ -1,6 +1,9 @@
 using Moq;
+using ONEVO.Application.Common.Constants;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -36,7 +39,8 @@ public sealed class GetTaskByIdQueryHandlerTests
 
     private static GetTaskByIdQueryHandler BuildHandler(
         WorkTask? task, Project? project, bool hasReadPermission,
-        IReadOnlyList<Guid>? accessibleObjectiveIds = null, bool authenticated = true, bool employeeExists = true)
+        IReadOnlyList<Guid>? accessibleObjectiveIds = null, bool authenticated = true, bool employeeExists = true,
+        Mock<IEntityAssetRepository>? entityAssets = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
@@ -71,10 +75,22 @@ public sealed class GetTaskByIdQueryHandlerTests
         sessions.Setup(x => x.GetTotalClosedSessionMinutesForTasksAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, int>());
 
+        Mock<IEntityAssetRepository> assets;
+        if (entityAssets is null)
+        {
+            assets = new Mock<IEntityAssetRepository>();
+            assets.Setup(x => x.ListByOwnerAsync(TenantId, EntityAssetOwnerTypes.Task, TaskId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<EntityAssetWithFile>());
+        }
+        else
+        {
+            assets = entityAssets;
+        }
+
         return new GetTaskByIdQueryHandler(
             currentUser.Object, identity.Object, tasks.Object, projects.Object,
             members.Object, permissions.Object, assignments.Object, sessions.Object,
-            CalendarEventRepositoryMocks.Empty().Object);
+            CalendarEventRepositoryMocks.Empty().Object, assets.Object);
     }
 
     [Fact]
@@ -121,5 +137,24 @@ public sealed class GetTaskByIdQueryHandlerTests
         var result = await handler.Handle(new GetTaskByIdQuery(TaskId), CancellationToken.None);
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_TaskHasAttachments_IncludesThemInResponse()
+    {
+        var assets = new Mock<IEntityAssetRepository>();
+        var fileId = Guid.NewGuid();
+        assets.Setup(x => x.ListByOwnerAsync(TenantId, EntityAssetOwnerTypes.Task, TaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EntityAssetWithFile>
+            {
+                new(Guid.NewGuid(), fileId, "spec.pdf", 2048, "application/pdf", DateTimeOffset.UtcNow, UploadPurposeCatalog.TaskAttachment)
+            });
+        var handler = BuildHandler(Task(), ActiveProject(), hasReadPermission: true, entityAssets: assets);
+
+        var result = await handler.Handle(new GetTaskByIdQuery(TaskId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value!.Attachments!);
+        Assert.Equal("spec.pdf", result.Value.Attachments![0].FileName);
     }
 }

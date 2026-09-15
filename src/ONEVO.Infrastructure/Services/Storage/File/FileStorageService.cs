@@ -377,4 +377,36 @@ public sealed class FileStorageService : IFileStorageService
             return Result<FileStreamDto>.Failure("file_read_failed", 502);
         }
     }
+
+    public async Task<Result> DeleteAsync(Guid tenantId, Guid userId, Guid fileRecordId, CancellationToken ct = default)
+    {
+        var record = await _fileRecords.GetByIdAsync(tenantId, fileRecordId, ct);
+        if (record is null)
+            return Result.Failure("file_record_not_found", 404);
+
+        if (record.DeletedAt is not null)
+            return Result.Success();
+
+        var now = _clock.UtcNow;
+
+        try
+        {
+            await _objectStorage.DeleteObjectAsync(record.StorageKey, ct);
+            record.StorageDeletedAt = now;
+        }
+        catch (ObjectStorageException ex)
+        {
+            _logger.LogError(
+                ex, "Failed to delete R2 object for tenant {TenantId}, file {FileId}. Row is still marked deleted.",
+                tenantId, fileRecordId);
+        }
+
+        record.DeletedAt = now;
+        record.UpdatedAt = now;
+
+        await _unitOfWork.SaveChangesAsync(ct);
+        await _quota.ReleaseUsedStorageAsync(tenantId, record.FileSizeBytes, ct);
+
+        return Result.Success();
+    }
 }

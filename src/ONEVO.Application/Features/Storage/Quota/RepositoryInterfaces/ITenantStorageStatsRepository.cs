@@ -30,4 +30,11 @@ public interface ITenantStorageStatsRepository
     /// successful upload completion.
     /// </summary>
     Task CommitReservedToUsedAsync(Guid tenantId, long bytes, CancellationToken ct = default);
+
+    /// <summary>
+    /// Atomically releases a previously committed amount back to the pool.
+    /// used_r2_bytes never goes below zero. Used when a linked file is
+    /// explicitly deleted (e.g. an attachment removed from a task).
+    /// </summary>
+    Task ReleaseUsedBytesAsync(Guid tenantId, long bytes, CancellationToken ct = default);
 }

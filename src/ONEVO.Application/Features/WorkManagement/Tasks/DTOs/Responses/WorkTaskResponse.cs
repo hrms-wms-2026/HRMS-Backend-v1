@@ -2,13 +2,16 @@ using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 
+public sealed record TaskAttachmentDto(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
+
 public sealed record WorkTaskResponse(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
     Guid CategoryId, Guid StatusId, string Priority, int? StoryPoints,
     DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent,
     Guid? SprintId, IReadOnlyList<Guid>? AssigneeEmployeeIds = null, Guid? OpenClockSessionEmployeeId = null,
     DateTimeOffset? OpenClockSessionClockInAt = null, int TotalLoggedMinutes = 0,
-    Guid? ActiveEventId = null, string? ActiveEventName = null);
+    Guid? ActiveEventId = null, string? ActiveEventName = null,
+    IReadOnlyList<TaskAttachmentDto>? Attachments = null);
 
 public sealed record TaskCreationRequestResponse(
     Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt);

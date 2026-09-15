@@ -73,4 +73,16 @@ public sealed class EfTenantStorageStatsRepository : ITenantStorageStatsReposito
             WHERE tenant_id = {tenantId}
         ", ct);
     }
+
+    public async Task ReleaseUsedBytesAsync(Guid tenantId, long bytes, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        await _db.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE tenant_storage_stats
+            SET used_r2_bytes = GREATEST(0, used_r2_bytes - {bytes}),
+                updated_at = {now}
+            WHERE tenant_id = {tenantId}
+        ", ct);
+    }
 }

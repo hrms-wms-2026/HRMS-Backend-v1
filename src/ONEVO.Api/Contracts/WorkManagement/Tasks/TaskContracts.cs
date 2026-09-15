@@ -5,11 +5,13 @@ namespace ONEVO.Api.Contracts.WorkManagement.Tasks;
 
 public sealed record CreateTaskRequest(
     string Title, string? Description, Guid CategoryId, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId);
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId,
+    IReadOnlyList<Guid>? AttachmentFileIds = null);
 
 public sealed record EditTaskRequest(
     string Title, string? Description, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason);
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason,
+    IReadOnlyList<Guid>? AttachmentFileIds = null);
 
 public sealed record CreateTaskEditRequestRequest(
     string Title, string? Description, string Priority,
@@ -46,12 +48,15 @@ public sealed record ReorderTaskCategoriesRequest(List<TaskCategoryOrderUpdateRe
 
 public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder);
 
+public sealed record TaskAttachmentViewModel(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
+
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
     Guid CategoryId, Guid StatusId, string Priority, int? StoryPoints,
     DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent,
     Guid? SprintId, IReadOnlyList<Guid> AssigneeEmployeeIds, Guid? OpenClockSessionEmployeeId,
-    DateTimeOffset? OpenClockSessionClockInAt, int TotalLoggedMinutes);
+    DateTimeOffset? OpenClockSessionClockInAt, int TotalLoggedMinutes,
+    IReadOnlyList<TaskAttachmentViewModel> Attachments);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,
@@ -115,3 +120,5 @@ public static class TaskHistoryViewModelMapper
             entry.Type, entry.OccurredAt, entry.EmployeeId, entry.EmployeeName,
             entry.Edit, entry.StatusChange, entry.ClockSession, entry.PercentageChange)).ToList();
 }
+
+public sealed record TaskPendingUploadViewModel(Guid FileId, string OriginalFileName, long FileSizeBytes, string ContentType);

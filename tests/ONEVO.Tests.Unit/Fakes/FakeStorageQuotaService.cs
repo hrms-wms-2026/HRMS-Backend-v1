@@ -12,9 +12,11 @@ public sealed class FakeStorageQuotaService : IStorageQuotaService
     public int ReserveCallCount { get; private set; }
     public int ReleaseCallCount { get; private set; }
     public int CommitCallCount { get; private set; }
+    public int ReleaseUsedCallCount { get; private set; }
     public long LastReservedBytes { get; private set; }
     public long LastReleasedBytes { get; private set; }
     public long LastCommittedBytes { get; private set; }
+    public long LastReleasedUsedBytes { get; private set; }
 
     public Task<Result<TenantStorageLimitDto>> GetTenantStorageLimitAsync(Guid tenantId, CancellationToken ct = default)
     {
@@ -57,6 +59,13 @@ public sealed class FakeStorageQuotaService : IStorageQuotaService
     {
         CommitCallCount++;
         LastCommittedBytes = bytes;
+        return Task.FromResult(Result.Success());
+    }
+
+    public Task<Result> ReleaseUsedStorageAsync(Guid tenantId, long bytes, CancellationToken ct = default)
+    {
+        ReleaseUsedCallCount++;
+        LastReleasedUsedBytes = bytes;
         return Task.FromResult(Result.Success());
     }
 }
