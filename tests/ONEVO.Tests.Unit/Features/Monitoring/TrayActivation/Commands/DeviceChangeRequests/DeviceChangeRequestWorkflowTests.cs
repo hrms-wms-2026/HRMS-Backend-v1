@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Commands.DeviceChangeRequests;
+using ONEVO.Application.Features.Monitoring.TrayActivation.Queries.DeviceChangeRequests;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
@@ -90,6 +91,46 @@ public sealed class DeviceChangeRequestWorkflowTests
         fixture.TrayActivation.Verify(t => t.DeactivateDeviceAsync(It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Fact]
+    public async Task ListApprovalsAsync_ReturnsPendingRequestForResolvedLegalEntity()
+    {
+        var fixture = new Fixture(actingAsApprover: true);
+        var request = fixture.PendingRequest(currentDeviceRegistrationId: DeviceId);
+        fixture.Employees.Setup(e => e.GetDefaultForUserAsync(TenantId, ApproverUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, FirstName = "Sam", LastName = "Approver" });
+        fixture.Requests.Setup(r => r.ListPendingEmployeeIdsAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { EmployeeId });
+        fixture.Authority.Setup(a => a.ResolveApprovalInboxScopeAsync(It.IsAny<EmployeeApprovalInboxScopeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { EmployeeId });
+        fixture.Requests.Setup(r => r.ListApprovalInboxAsync(
+                TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), 0, 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new[] { request }, 1));
+
+        var result = await fixture.Workflow.ListApprovalsAsync(
+            new ListDeviceChangeRequestApprovalsQuery(new PagedRequest()), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.TotalCount.Should().Be(1);
+        result.Value.Items.Should().ContainSingle(i => i.Id == request.Id);
+    }
+
+    [Fact]
+    public async Task ApproveAsync_WhenLegalEntityIsUnresolved_ReturnsConflict()
+    {
+        var fixture = new Fixture(actingAsApprover: true);
+        var request = fixture.PendingRequest(currentDeviceRegistrationId: DeviceId);
+        request.LegalEntityId = null;
+        fixture.Requests.Setup(r => r.GetTrackedByIdAsync(TenantId, request.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(request);
+
+        var result = await fixture.Workflow.ApproveAsync(
+            new ApproveDeviceChangeRequestCommand(request.Id, null), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(409);
+        fixture.Authority.Verify(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private sealed class Fixture
     {
         public Mock<ICurrentUser> CurrentUser { get; } = new();
@@ -110,6 +151,11 @@ public sealed class DeviceChangeRequestWorkflowTests
 
             Employees.Setup(e => e.GetByIdAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Employee { Id = EmployeeId, TenantId = TenantId, LegalEntityId = LegalEntityId, FirstName = "Alex", LastName = "Employee" });
+            Employees.Setup(e => e.ListByIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Dictionary<Guid, Employee>
+                {
+                    [EmployeeId] = new Employee { Id = EmployeeId, TenantId = TenantId, LegalEntityId = LegalEntityId, FirstName = "Alex", LastName = "Employee" },
+                });
 
             Authority.Setup(a => a.ResolveApproverAsync(It.IsAny<EmployeeApprovalRouteRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Result<EmployeeApprovalRoute>.Success(new EmployeeApprovalRoute(
