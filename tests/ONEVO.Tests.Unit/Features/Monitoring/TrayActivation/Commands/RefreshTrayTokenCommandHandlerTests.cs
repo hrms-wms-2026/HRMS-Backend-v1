@@ -60,6 +60,26 @@ public sealed class RefreshTrayTokenCommandHandlerTests
         result.Value!.RequiresLegalAcceptance.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Handle_WhenLegalCheckerReportsNotConfigured_LeavesRequiresLegalAcceptanceFalse()
+    {
+        var legalChecker = new Mock<ILegalAcceptanceChecker>();
+        legalChecker.Setup(c => c.CheckAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegalAcceptanceCheckResult(
+                LegalAcceptanceStatus.NotConfigured, IsComplete: false, PendingDocuments: Array.Empty<PendingLegalDocumentDto>(),
+                ErrorCode: "MissingRequiredLegalVersions"));
+
+        var repository = CreateRepository();
+        var handler = CreateHandler(repository, legalChecker: legalChecker);
+
+        var result = await handler.Handle(
+            new RefreshTrayTokenCommand("raw-refresh-token", "fingerprint"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.RequiresLegalAcceptance.Should().BeFalse();
+    }
+
     private static Mock<ITrayActivationRepository> CreateRepository()
     {
         var repository = new Mock<ITrayActivationRepository>();

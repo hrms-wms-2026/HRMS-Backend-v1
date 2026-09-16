@@ -113,7 +113,7 @@ public class RefreshTrayTokenCommandHandler
             employeeEmail,
             employeeNumber,
             profileStatus,
-            RequiresLegalAcceptance: !legalCheck.IsComplete,
+            RequiresLegalAcceptance: legalCheck.Status == LegalAcceptanceStatus.Pending,
             PendingLegalDocuments: legalCheck.PendingDocuments));
     }
 

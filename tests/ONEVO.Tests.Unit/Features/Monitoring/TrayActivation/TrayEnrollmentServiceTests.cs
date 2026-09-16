@@ -209,6 +209,22 @@ public class TrayEnrollmentServiceTests
     }
 
     [Fact]
+    public async Task IssueAsync_WhenLegalCheckerReportsNotConfigured_LeavesRequiresLegalAcceptanceFalse()
+    {
+        var legalChecker = new Mock<ILegalAcceptanceChecker>();
+        legalChecker.Setup(c => c.CheckAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegalAcceptanceCheckResult(
+                LegalAcceptanceStatus.NotConfigured, IsComplete: false, PendingDocuments: Array.Empty<PendingLegalDocumentDto>(),
+                ErrorCode: "MissingRequiredLegalVersions"));
+        var repository = new Mock<ITrayActivationRepository>();
+        var service = CreateService(repository, TokenService(), legalChecker: legalChecker);
+
+        var result = await service.IssueAsync(Request(), CancellationToken.None);
+
+        result.RequiresLegalAcceptance.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task IssueAsync_WhenDifferentFingerprintAndRequestHasNoLegalEntity_FallsBackToEmployeesDefaultLegalEntity()
     {
         var repository = new Mock<ITrayActivationRepository>();

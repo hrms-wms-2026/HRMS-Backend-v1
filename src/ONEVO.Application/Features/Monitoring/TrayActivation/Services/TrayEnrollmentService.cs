@@ -133,7 +133,7 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
             employeeNumber,
             profileStatus,
             tenantSlug,
-            RequiresLegalAcceptance: !legalCheck.IsComplete,
+            RequiresLegalAcceptance: legalCheck.Status == LegalAcceptanceStatus.Pending,
             PendingLegalDocuments: legalCheck.PendingDocuments);
     }
 
