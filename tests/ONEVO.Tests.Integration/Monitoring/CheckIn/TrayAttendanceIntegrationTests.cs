@@ -11,18 +11,12 @@ using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Monitoring.Policy;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Monitoring.CheckIn;
 
 [Collection(WebApplicationFactoryCollection.Name)]
 public sealed class TrayAttendanceIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_attendance_integration_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private TrayMonitoringPolicyTestFactory _factory = null!;
@@ -30,10 +24,7 @@ public sealed class TrayAttendanceIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        var connectionString = _postgres.GetConnectionString();
-
-        await IntegrationDatabaseBootstrap.InitializeAsync(connectionString);
+        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new TrayMonitoringPolicyTestFactory(connectionString);
@@ -48,7 +39,6 @@ public sealed class TrayAttendanceIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         await _factory.DisposeAsync();
-        await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 

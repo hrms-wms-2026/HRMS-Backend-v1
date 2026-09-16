@@ -12,13 +12,20 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Testcontainers.PostgreSql;
 using Xunit;
 
-namespace ONEVO.Tests.Integration.Features.Leave;
-
-[Collection(WebApplicationFactoryCollection.Name)]
-public class LeaveTypesIntegrationTests : IAsyncLifetime
+/// <summary>
+/// Shared, one-time-per-class setup for LeaveTypesIntegrationTests: clones the database,
+/// provisions the tenant/owner/no-manage-permission user, and boots the WebApplicationFactory
+/// ONCE. xUnit's IClassFixture constructs this ONCE and disposes it once after every fact in the
+/// class has run, instead of IAsyncLifetime's default of once PER fact - previously this class's
+/// own InitializeAsync (which provisions a tenant end to end over real HTTP) ran 6 times, once per
+/// [Fact]. Every fact creates its own leave type with a distinct code (SICK/BLOCK/ANNUAL/ORIG/
+/// TEMP) and every assertion is scoped to that fact's own returned id (Contain/NotContain a
+/// specific id, or fields of the specific updated row) rather than an exact list count, so no
+/// cross-fact collision exists from sharing one database across facts.
+/// </summary>
+public sealed class LeaveTypesIntegrationTestsFixture : IAsyncLifetime
 {
     private const string AdminHost = "admin.localhost";
     private const string FixtureUserPassword = "Password123!";
@@ -26,7 +33,6 @@ public class LeaveTypesIntegrationTests : IAsyncLifetime
 
     private readonly CapturingEmailService _email = new();
 
-    private PostgreSqlContainer? _postgres;
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
     private HttpClient _client = null!;
@@ -37,22 +43,21 @@ public class LeaveTypesIntegrationTests : IAsyncLifetime
     private TenantSession _noManage = null!;
     private Guid _tenantId;
 
+    public TenantSession Owner => _owner;
+    public TenantSession NoManage => _noManage;
+    public Guid TenantId => _tenantId;
+
     public async Task InitializeAsync()
     {
         var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            _postgres = new PostgreSqlBuilder()
-                .WithImage("postgres:16-alpine")
-                .WithDatabase("onevo_leave_types_test")
-                .WithUsername("test")
-                .WithPassword("test")
-                .Build();
-            await _postgres.StartAsync();
-            connectionString = _postgres.GetConnectionString();
+            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
-
-        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        else
+        {
+            await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        }
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new E2ETestFactory(connectionString, _email);
@@ -80,116 +85,10 @@ public class LeaveTypesIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         _factory.Dispose();
-        if (_postgres is not null)
-            await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
-    [Fact]
-    public async Task Create_AsOwner_Returns200AndPersists()
-    {
-        var response = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/types",
-            CreateBody("Sick Leave", "SICK"),
-            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var json = await ReadJsonAsync(response);
-        json.GetProperty("name").GetString().Should().Be("Sick Leave");
-        json.GetProperty("code").GetString().Should().Be("SICK");
-        json.GetProperty("id").GetGuid().Should().NotBe(Guid.Empty);
-    }
-
-    [Fact]
-    public async Task Create_WithoutLeaveManage_Returns403()
-    {
-        var response = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/types",
-            CreateBody("Blocked Leave", "BLOCK"),
-            cookie: _noManage.SessionCookie, csrfToken: _noManage.CsrfHeader);
-
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    [Fact]
-    public async Task Create_Unauthenticated_Returns401()
-    {
-        var response = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/types",
-            CreateBody("Anon Leave", "ANON"));
-
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
-    public async Task List_AfterCreate_IncludesTheType()
-    {
-        var create = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/types",
-            CreateBody("Annual Leave", "ANNUAL"),
-            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-        create.StatusCode.Should().Be(HttpStatusCode.OK);
-        var created = await ReadJsonAsync(create);
-        var id = created.GetProperty("id").GetGuid();
-
-        var list = await SendAsync(HttpMethod.Get, _owner.Host, "/api/v1/leave/types",
-            body: null, cookie: _owner.SessionCookie);
-        list.StatusCode.Should().Be(HttpStatusCode.OK);
-        var items = await ReadJsonAsync(list);
-        items.EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).Should().Contain(id);
-    }
-
-    [Fact]
-    public async Task Update_DoesNotChangeCode()
-    {
-        var create = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/types",
-            CreateBody("Original Name", "ORIG"),
-            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-        var created = await ReadJsonAsync(create);
-        var id = created.GetProperty("id").GetGuid();
-
-        var update = await SendAsync(HttpMethod.Put, _owner.Host, $"/api/v1/leave/types/{id}",
-            new
-            {
-                name = "Renamed Leave",
-                description = "updated",
-                category = "custom",
-                isPaid = true,
-                requiresApproval = true,
-                requiresDocument = false,
-                documentRequiredAfterDays = (int?)null,
-                acceptedDocumentTypes = Array.Empty<string>(),
-                maxConsecutiveDays = (int?)null,
-                defaultDaysPerYear = 12m,
-                carryForwardAllowed = false,
-                maxCarryForwardDays = (decimal?)null,
-                carryForwardExpiryMonths = (int?)null,
-                proRataForNewJoiners = false,
-                applicableGender = "all",
-                minimumNoticeDays = 0
-            },
-            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-        update.StatusCode.Should().Be(HttpStatusCode.OK);
-        var json = await ReadJsonAsync(update);
-        json.GetProperty("name").GetString().Should().Be("Renamed Leave");
-        json.GetProperty("code").GetString().Should().Be("ORIG");
-    }
-
-    [Fact]
-    public async Task Deactivate_HidesFromDefaultList()
-    {
-        var create = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/types",
-            CreateBody("Temp Leave", "TEMP"),
-            cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-        var id = (await ReadJsonAsync(create)).GetProperty("id").GetGuid();
-
-        var deactivate = await SendAsync(HttpMethod.Post, _owner.Host, $"/api/v1/leave/types/{id}/deactivate",
-            body: null, cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
-        deactivate.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        var list = await SendAsync(HttpMethod.Get, _owner.Host, "/api/v1/leave/types",
-            body: null, cookie: _owner.SessionCookie);
-        var items = await ReadJsonAsync(list);
-        items.EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).Should().NotContain(id);
-    }
-
-    private static object CreateBody(string name, string code) => new
+    public static object CreateBody(string name, string code) => new
     {
         name,
         code,
@@ -210,7 +109,7 @@ public class LeaveTypesIntegrationTests : IAsyncLifetime
         minimumNoticeDays = 0
     };
 
-    private sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
+    public sealed record TenantSession(string Host, string SessionCookie, string CsrfHeader);
 
     private async Task<TenantSession> ProvisionAndLoginOwnerAsync(string slug, string companyName, string ownerEmail)
     {
@@ -296,7 +195,7 @@ public class LeaveTypesIntegrationTests : IAsyncLifetime
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 
-    private async Task<TenantSession> SeedAndLoginFixtureUserAsync(
+    public async Task<TenantSession> SeedAndLoginFixtureUserAsync(
         Guid tenantId, string host, string email, IReadOnlyList<string> permissionCodes, string roleName)
     {
         using var scope = _factory.Services.CreateScope();
@@ -417,7 +316,7 @@ public class LeaveTypesIntegrationTests : IAsyncLifetime
         throw new TimeoutException("Seeders did not finish within 30s (permissions / subscription plan missing).");
     }
 
-    private async Task<HttpResponseMessage> SendAsync(
+    public async Task<HttpResponseMessage> SendAsync(
         HttpMethod method, string host, string path, object? body,
         string? cookie = null, string? csrfToken = null, string? idempotencyKey = null)
     {
@@ -435,7 +334,7 @@ public class LeaveTypesIntegrationTests : IAsyncLifetime
         return await _client.SendAsync(request);
     }
 
-    private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
+    public static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
     {
         var text = await response.Content.ReadAsStringAsync();
         return string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone();
@@ -457,4 +356,121 @@ public class LeaveTypesIntegrationTests : IAsyncLifetime
 
         return cookies;
     }
+
+}
+
+[Collection(WebApplicationFactoryCollection.Name)]
+public class LeaveTypesIntegrationTests : IClassFixture<LeaveTypesIntegrationTestsFixture>
+{
+    private readonly LeaveTypesIntegrationTestsFixture _fixture;
+
+    public LeaveTypesIntegrationTests(LeaveTypesIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task Create_AsOwner_Returns200AndPersists()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/types",
+            LeaveTypesIntegrationTestsFixture.CreateBody("Sick Leave", "SICK"),
+            cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await LeaveTypesIntegrationTestsFixture.ReadJsonAsync(response);
+        json.GetProperty("name").GetString().Should().Be("Sick Leave");
+        json.GetProperty("code").GetString().Should().Be("SICK");
+        json.GetProperty("id").GetGuid().Should().NotBe(Guid.Empty);
+    }
+
+    [Fact]
+    public async Task Create_WithoutLeaveManage_Returns403()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/types",
+            LeaveTypesIntegrationTestsFixture.CreateBody("Blocked Leave", "BLOCK"),
+            cookie: _fixture.NoManage.SessionCookie, csrfToken: _fixture.NoManage.CsrfHeader);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Create_Unauthenticated_Returns401()
+    {
+        var response = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/types",
+            LeaveTypesIntegrationTestsFixture.CreateBody("Anon Leave", "ANON"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task List_AfterCreate_IncludesTheType()
+    {
+        var create = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/types",
+            LeaveTypesIntegrationTestsFixture.CreateBody("Annual Leave", "ANNUAL"),
+            cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+        create.StatusCode.Should().Be(HttpStatusCode.OK);
+        var created = await LeaveTypesIntegrationTestsFixture.ReadJsonAsync(create);
+        var id = created.GetProperty("id").GetGuid();
+
+        var list = await _fixture.SendAsync(HttpMethod.Get, _fixture.Owner.Host, "/api/v1/leave/types",
+            body: null, cookie: _fixture.Owner.SessionCookie);
+        list.StatusCode.Should().Be(HttpStatusCode.OK);
+        var items = await LeaveTypesIntegrationTestsFixture.ReadJsonAsync(list);
+        items.EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).Should().Contain(id);
+    }
+
+    [Fact]
+    public async Task Update_DoesNotChangeCode()
+    {
+        var create = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/types",
+            LeaveTypesIntegrationTestsFixture.CreateBody("Original Name", "ORIG"),
+            cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+        var created = await LeaveTypesIntegrationTestsFixture.ReadJsonAsync(create);
+        var id = created.GetProperty("id").GetGuid();
+
+        var update = await _fixture.SendAsync(HttpMethod.Put, _fixture.Owner.Host, $"/api/v1/leave/types/{id}",
+            new
+            {
+                name = "Renamed Leave",
+                description = "updated",
+                category = "custom",
+                isPaid = true,
+                requiresApproval = true,
+                requiresDocument = false,
+                documentRequiredAfterDays = (int?)null,
+                acceptedDocumentTypes = Array.Empty<string>(),
+                maxConsecutiveDays = (int?)null,
+                defaultDaysPerYear = 12m,
+                carryForwardAllowed = false,
+                maxCarryForwardDays = (decimal?)null,
+                carryForwardExpiryMonths = (int?)null,
+                proRataForNewJoiners = false,
+                applicableGender = "all",
+                minimumNoticeDays = 0
+            },
+            cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+        update.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await LeaveTypesIntegrationTestsFixture.ReadJsonAsync(update);
+        json.GetProperty("name").GetString().Should().Be("Renamed Leave");
+        json.GetProperty("code").GetString().Should().Be("ORIG");
+    }
+
+    [Fact]
+    public async Task Deactivate_HidesFromDefaultList()
+    {
+        var create = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, "/api/v1/leave/types",
+            LeaveTypesIntegrationTestsFixture.CreateBody("Temp Leave", "TEMP"),
+            cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+        var id = (await LeaveTypesIntegrationTestsFixture.ReadJsonAsync(create)).GetProperty("id").GetGuid();
+
+        var deactivate = await _fixture.SendAsync(HttpMethod.Post, _fixture.Owner.Host, $"/api/v1/leave/types/{id}/deactivate",
+            body: null, cookie: _fixture.Owner.SessionCookie, csrfToken: _fixture.Owner.CsrfHeader);
+        deactivate.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var list = await _fixture.SendAsync(HttpMethod.Get, _fixture.Owner.Host, "/api/v1/leave/types",
+            body: null, cookie: _fixture.Owner.SessionCookie);
+        var items = await LeaveTypesIntegrationTestsFixture.ReadJsonAsync(list);
+        items.EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).Should().NotContain(id);
+    }
+
 }

@@ -22,7 +22,6 @@ using EfEmployeeProfileRepository = ONEVO.Infrastructure.Persistence.Repositorie
 using EfWorkModeRepository = ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfWorkModeRepository;
 using EfLegalEntityRepository = ONEVO.Infrastructure.Persistence.Repositories.OrgStructure.EfLegalEntityRepository;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
@@ -38,11 +37,6 @@ namespace ONEVO.Tests.Integration.CoreHr.EmployeeProfile;
 /// </summary>
 public sealed class EmployeeProfileEndpointsIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_employee_profile_endpoints_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private readonly AesEncryptionService _encryption = new(
@@ -56,12 +50,9 @@ public sealed class EmployeeProfileEndpointsIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         var tenantA = NewTenant("Employee Profile Endpoints Tenant A", "employee-profile-endpoints-a");
         var tenantB = NewTenant("Employee Profile Endpoints Tenant B", "employee-profile-endpoints-b");
@@ -85,7 +76,7 @@ public sealed class EmployeeProfileEndpointsIntegrationTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task GetMyProfile_ReturnsOwnDataOnly_NotOtherTenantsData()
@@ -167,8 +158,8 @@ public sealed class EmployeeProfileEndpointsIntegrationTests : IAsyncLifetime
             new FeatureEfEmployeeRepository(db),
             new EfEmployeeProfileRepository(db),
             new EfWorkModeRepository(db),
-            new EfAuthRepository(db),
-            new EfAuthRepository(db),
+            new EfUserRepository(db),
+            new EfUserMfaRepository(db),
             _encryption,
             new EfLegalEntityRepository(db),
             BuildCurrentUser(tenantId, userId, hasEmployeesWrite));

@@ -78,4 +78,26 @@ public sealed class CheckCalendarConflictsQueryHandlerTests
         Assert.Single(result.Value!.Conflicts);
         Assert.Equal("Weekly Sync", result.Value.Conflicts[0].ConflictingEventTitle);
     }
+
+    [Fact]
+    public async Task Handle_ComputesOverlapAsIntersectionOfQueryRangeAndEventRange()
+    {
+        var sut = BuildSut();
+        // Existing event runs 09:00-10:30 against the fixture's 09:00-10:00 query range - overlap is 09:00-10:00
+        var existingEvent = new CalendarEvent
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, Title = "Payroll review",
+            StartDate = Start, EndDate = End.AddMinutes(30),
+            SourceType = CalendarEventSourceTypes.Manual, CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow
+        };
+        _events.Setup(x => x.GetInDateRangeForEmployeeAsync(TenantId, EmployeeId, Start, End, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([existingEvent]);
+
+        var result = await sut.Handle(new CheckCalendarConflictsQuery([EmployeeId], Start, End), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var conflict = Assert.Single(result.Value!.Conflicts);
+        Assert.Equal(Start, conflict.OverlapStart);
+        Assert.Equal(End, conflict.OverlapEnd);
+    }
 }

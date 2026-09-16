@@ -1468,6 +1468,86 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("calendar_event_participants", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<string>("DefaultCountryCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("default_country_code");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<bool>("HolidaySyncEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("holiday_sync_enabled");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<DateTimeOffset?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_synced_at");
+
+                    b.Property<int?>("LastSyncedYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("last_synced_year");
+
+                    b.Property<Guid>("LegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_entity_id");
+
+                    b.Property<string>("OverrideCountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("override_country_code");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("nager_holidays")
+                        .HasColumnName("provider");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_holiday_calendar_settings");
+
+                    b.HasIndex("TenantId", "LegalEntityId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_holiday_calendar_settings_one_per_legal_entity");
+
+                    b.ToTable("holiday_calendar_settings", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.AccessGrantRequest", b =>
                 {
                     b.Property<Guid>("Id")

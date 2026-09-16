@@ -158,20 +158,19 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
-        services.AddScoped<EfAuthRepository>();
-        services.AddScoped<IRoleTemplateRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IUserRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IRefreshTokenRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<ISessionRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IPasswordResetTokenRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IUserMfaRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IRoleRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IRolePermissionRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IPermissionRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IUserPermissionOverrideRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IUserRoleRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IFeatureAccessGrantRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IAuditLogRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
+        services.AddScoped<IRoleTemplateRepository, EfRoleTemplateRepository>();
+        services.AddScoped<IUserRepository, EfUserRepository>();
+        services.AddScoped<IRefreshTokenRepository, EfRefreshTokenRepository>();
+        services.AddScoped<ISessionRepository, EfSessionRepository>();
+        services.AddScoped<IPasswordResetTokenRepository, EfPasswordResetTokenRepository>();
+        services.AddScoped<IUserMfaRepository, EfUserMfaRepository>();
+        services.AddScoped<IRoleRepository, EfRoleRepository>();
+        services.AddScoped<IRolePermissionRepository, EfRolePermissionRepository>();
+        services.AddScoped<IPermissionRepository, EfPermissionRepository>();
+        services.AddScoped<IUserPermissionOverrideRepository, EfUserPermissionOverrideRepository>();
+        services.AddScoped<IUserRoleRepository, EfUserRoleRepository>();
+        services.AddScoped<IFeatureAccessGrantRepository, EfFeatureAccessGrantRepository>();
+        services.AddScoped<IAuditLogRepository, EfAuditLogRepository>();
 
         // Developer Platform repositories
         services.AddScoped<ITenantRepository, EfTenantRepository>();
@@ -243,10 +242,18 @@ public static class DependencyInjection
         services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestDayCalculator>();
         services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestHourCalculator>();
         services.AddSingleton<ONEVO.Application.Features.Leave.Calendar.Helpers.LeaveCalendarRequestProjector>();
+        services.AddHttpClient<ONEVO.Application.Features.Calendar.ServiceInterfaces.INagerHolidaysClient,
+            ONEVO.Infrastructure.Services.Calendar.NagerHolidaysClient>(client =>
+        {
+            client.BaseAddress = new Uri("https://date.nager.at/api/v3/");
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.IHolidayCalendarSettingsRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfHolidayCalendarSettingsRepository>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveHolidayProvider,
-            ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveHolidayProvider>();
+            ONEVO.Infrastructure.Services.Calendar.NagerHolidaysProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveCalendarHolidayProvider,
-            ONEVO.Application.Features.Leave.Calendar.Services.NoOpLeaveCalendarHolidayProvider>();
+            ONEVO.Infrastructure.Services.Calendar.NagerHolidaysProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveRequestConflictProvider,
             ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveRequestConflictProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveApproverResolver,
@@ -587,14 +594,13 @@ public static class DependencyInjection
         services.AddScoped<ILegalLoginChallengeRepository, EfLegalLoginChallengeRepository>();
 
         // Developer Platform access (canonical platform_* tables)
-        services.AddScoped<EfPlatformAccessRepository>();
-        services.AddScoped<IPlatformUserRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
+        services.AddScoped<IPlatformUserRepository, EfPlatformUserRepository>();
         services.AddScoped<IPlatformUserCredentialRepository, EfPlatformUserCredentialRepository>();
-        services.AddScoped<IPlatformRoleRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
-        services.AddScoped<IPlatformUserSessionRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
-        services.AddScoped<IPlatformAccessReadRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
-        services.AddScoped<IPlatformAuthEventRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
-        services.AddScoped<IPlatformUserInviteRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
+        services.AddScoped<IPlatformRoleRepository, EfPlatformRoleRepository>();
+        services.AddScoped<IPlatformUserSessionRepository, EfPlatformUserSessionRepository>();
+        services.AddScoped<IPlatformAccessReadRepository, EfPlatformAccessReadRepository>();
+        services.AddScoped<IPlatformAuthEventRepository, EfPlatformAuthEventRepository>();
+        services.AddScoped<IPlatformUserInviteRepository, EfPlatformUserInviteRepository>();
         services.AddScoped<IPlatformPermissionResolver, PlatformPermissionResolver>();
         services.AddScoped<IPlatformAccessManagementService, PlatformAccessManagementService>();
         services.AddScoped<IUserExternalIdentityRepository, EfUserExternalIdentityRepository>();

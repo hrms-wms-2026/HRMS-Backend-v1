@@ -11,18 +11,12 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.BulkOnboarding;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.CoreHr.BulkOnboarding;
 
 public sealed class BulkOnboardingUploadTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_bulk_onboarding_upload_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
@@ -32,9 +26,7 @@ public sealed class BulkOnboardingUploadTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await IntegrationDatabaseBootstrap.InitializeAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
         var tenant = new Tenant
@@ -62,7 +54,7 @@ public sealed class BulkOnboardingUploadTests : IAsyncLifetime
         _userId = Guid.NewGuid();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task Upload_ValidCsv_ReturnsBatchWithSuggestedMapping()

@@ -26,7 +26,6 @@ using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Infrastructure.Services.CoreHr.BulkOnboarding;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
 using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
@@ -35,11 +34,6 @@ namespace ONEVO.Tests.Integration.CoreHr.BulkOnboarding;
 
 public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_bulk_onboarding_processor_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
@@ -52,9 +46,7 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await IntegrationDatabaseBootstrap.InitializeAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext(new TenantContextAccessor());
         db.WorkModes.Add(new WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true });
@@ -104,7 +96,7 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
         _userB = Guid.NewGuid();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task ProcessOnce_BatchWithValidRows_CreatesOnboardingDraftsAndMarksBatchDone()

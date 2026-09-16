@@ -55,4 +55,9 @@ public interface ICalendarEventRepository
         Guid tenantId, Guid employeeId, DateTimeOffset to, CancellationToken ct = default);
     void Update(CalendarEvent calendarEvent);
     void Remove(CalendarEvent calendarEvent);
+
+    /// <summary>Removes every 'holiday'-sourced event for the tenant in the given year - used to
+    /// make holiday re-sync idempotent (delete-then-reinsert) instead of accumulating
+    /// duplicates on every sync.</summary>
+    Task RemoveHolidayEventsForYearAsync(Guid tenantId, int year, CancellationToken ct = default);
 }

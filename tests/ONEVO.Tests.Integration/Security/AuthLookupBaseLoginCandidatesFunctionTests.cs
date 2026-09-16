@@ -9,7 +9,6 @@ using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Security;
 
@@ -23,11 +22,6 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
     private const string RestrictedRoleName = "base_login_fn_test_role";
     private const string RestrictedRolePassword = "base-login-fn-test-role-password";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_base_login_fn_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -38,12 +32,9 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         var tenantA = new Tenant
         {
@@ -133,7 +124,7 @@ public sealed class AuthLookupBaseLoginCandidatesFunctionTests : IAsyncLifetime
         _restrictedConnectionString = restrictedBuilder.ConnectionString;
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task RestrictedRole_CanCallFunctionAndSeesBothTenantsCandidates()

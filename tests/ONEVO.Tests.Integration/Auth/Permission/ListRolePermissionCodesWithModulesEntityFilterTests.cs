@@ -12,18 +12,12 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Auth;
 
 public sealed class ListRolePermissionCodesWithModulesEntityFilterTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_role_perm_entity_filter_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
@@ -34,12 +28,9 @@ public sealed class ListRolePermissionCodesWithModulesEntityFilterTests : IAsync
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         _tenantId = Guid.NewGuid();
         _userId = Guid.NewGuid();
@@ -104,13 +95,13 @@ public sealed class ListRolePermissionCodesWithModulesEntityFilterTests : IAsync
         await db.SaveChangesAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task ListRolePermissionCodesWithModulesAsync_FiltersByActiveLegalEntity()
     {
         await using var db = CreateContext(_tenantId, "entity-filter");
-        var repo = new EfAuthRepository(db);
+        var repo = new EfPermissionRepository(db);
         var now = DateTimeOffset.UtcNow;
 
         var entityA = await repo.ListRolePermissionCodesWithModulesAsync(_userId, now, _legalEntityAId);
