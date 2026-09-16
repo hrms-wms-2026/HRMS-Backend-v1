@@ -81,6 +81,7 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.ITrayEnrollmentService,
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.TrayEnrollmentService>();
+        services.AddScoped<ONEVO.Application.Features.Monitoring.TrayActivation.Commands.DeviceChangeRequests.DeviceChangeRequestWorkflow>();
 
         services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarEventInviteEmailOutboxHandler>();
