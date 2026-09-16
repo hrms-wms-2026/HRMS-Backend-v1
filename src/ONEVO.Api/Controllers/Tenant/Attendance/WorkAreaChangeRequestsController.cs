@@ -19,7 +19,7 @@ public sealed class WorkAreaChangeRequestsController(IMediator mediator) : Contr
         [FromBody] WorkAreaChangeRequestRequest request, CancellationToken ct = default)
     {
         var result = await mediator.Send(new PreviewWorkAreaChangeRequestCommand(
-            request.Date, request.RequestedWorkArea, request.Reason), ct);
+            request.Date, request.RequestedWorkModeId, request.Reason), ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
@@ -28,7 +28,7 @@ public sealed class WorkAreaChangeRequestsController(IMediator mediator) : Contr
         [FromBody] WorkAreaChangeRequestRequest request, CancellationToken ct = default)
     {
         var result = await mediator.Send(new CreateWorkAreaChangeRequestCommand(
-            request.Date, request.RequestedWorkArea, request.Reason), ct);
+            request.Date, request.RequestedWorkModeId, request.Reason), ct);
         return result.IsSuccess
             ? StatusCode(StatusCodes.Status201Created, result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

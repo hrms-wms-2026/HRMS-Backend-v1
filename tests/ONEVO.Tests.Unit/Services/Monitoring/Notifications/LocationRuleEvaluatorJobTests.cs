@@ -6,10 +6,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.DeviceState.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
-using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Monitoring.DeviceState.Entities;
@@ -60,9 +60,7 @@ public class LocationRuleEvaluatorJobTests
         ApplicationDbContext db,
         IDeviceStateSnapshotRepository deviceState,
         IDailyWorkLocationConfirmationRepository confirmations,
-        IEmployeeWorkLocationRepository workLocations,
-        IClockInPolicyRepository clockInPolicies,
-        IExpectedWorkAreaResolver expectedWorkAreas,
+        IMonitoringToggleResolver toggles,
         INotificationRepository notifications,
         IDateTimeProvider clock,
         ITenantContextSwitcher? tenantSwitcher = null,
@@ -72,9 +70,7 @@ public class LocationRuleEvaluatorJobTests
         services.AddSingleton(db);
         services.AddSingleton(deviceState);
         services.AddSingleton(confirmations);
-        services.AddSingleton(workLocations);
-        services.AddSingleton(clockInPolicies);
-        services.AddSingleton(expectedWorkAreas);
+        services.AddSingleton(toggles);
         services.AddSingleton(notifications);
         services.AddSingleton(clock);
         services.AddSingleton<IWritableTenantContext>(new TenantContextAccessor());
@@ -88,11 +84,12 @@ public class LocationRuleEvaluatorJobTests
     {
         var tenantId = Guid.NewGuid();
         var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
         var legalEntityId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
 
         await using var db = MakeDb();
-        db.Employees.Add(new Employee { Id = employeeId, TenantId = tenantId, LegalEntityId = legalEntityId });
+        db.Employees.Add(new Employee { Id = employeeId, UserId = userId, TenantId = tenantId, LegalEntityId = legalEntityId });
         db.LegalEntities.Add(new LegalEntity
         {
             Id = legalEntityId, TenantId = tenantId, OfficeLatitude = 6.9271, OfficeLongitude = 79.8612
@@ -118,18 +115,9 @@ public class LocationRuleEvaluatorJobTests
                 LocationType = DailyWorkLocationConfirmation.LocationTypeOffice, ConfirmedAt = now
             });
 
-        var workLocations = new Mock<IEmployeeWorkLocationRepository>();
-
-        var clockInPolicies = new Mock<IClockInPolicyRepository>();
-        clockInPolicies.Setup(p => p.ListByLegalEntityAsync(tenantId, legalEntityId, false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new ClockInPolicy
-            {
-                Id = Guid.NewGuid(), TenantId = tenantId, LegalEntityId = legalEntityId,
-                ScopeType = ClockInPolicy.ScopeFullCompany, IsActive = true,
-                EffectiveFrom = DateOnly.MinValue, AllowedRadiusMeters = 300
-            }]);
-
-        var expectedWorkAreas = new Mock<IExpectedWorkAreaResolver>();
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.GetAllowedRadiusMetersAsync(tenantId, userId, legalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(300);
 
         var notifications = new Mock<INotificationRepository>();
         notifications.Setup(n => n.ExistsRecentAsync(
@@ -137,8 +125,7 @@ public class LocationRuleEvaluatorJobTests
             .ReturnsAsync(false);
 
         var clock = new FakeDateTimeProvider { UtcNow = now };
-        var services = BuildServices(db, deviceState.Object, confirmations.Object, workLocations.Object,
-            clockInPolicies.Object, expectedWorkAreas.Object, notifications.Object, clock);
+        var services = BuildServices(db, deviceState.Object, confirmations.Object, toggles.Object, notifications.Object, clock);
 
         var job = new LocationRuleEvaluatorJob(services, NullLogger<LocationRuleEvaluatorJob>.Instance);
         await job.RunOnceAsync(CancellationToken.None);
@@ -153,11 +140,12 @@ public class LocationRuleEvaluatorJobTests
     {
         var tenantId = Guid.NewGuid();
         var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
         var legalEntityId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
 
         await using var db = MakeDb();
-        db.Employees.Add(new Employee { Id = employeeId, TenantId = tenantId, LegalEntityId = legalEntityId });
+        db.Employees.Add(new Employee { Id = employeeId, UserId = userId, TenantId = tenantId, LegalEntityId = legalEntityId });
         db.LegalEntities.Add(new LegalEntity
         {
             Id = legalEntityId, TenantId = tenantId, OfficeLatitude = 6.9271, OfficeLongitude = 79.8612
@@ -183,22 +171,13 @@ public class LocationRuleEvaluatorJobTests
                 LocationType = DailyWorkLocationConfirmation.LocationTypeOffice, ConfirmedAt = now
             });
 
-        var workLocations = new Mock<IEmployeeWorkLocationRepository>();
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        toggles.Setup(t => t.GetAllowedRadiusMetersAsync(tenantId, userId, legalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(300);
 
-        var clockInPolicies = new Mock<IClockInPolicyRepository>();
-        clockInPolicies.Setup(p => p.ListByLegalEntityAsync(tenantId, legalEntityId, false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new ClockInPolicy
-            {
-                Id = Guid.NewGuid(), TenantId = tenantId, LegalEntityId = legalEntityId,
-                ScopeType = ClockInPolicy.ScopeFullCompany, IsActive = true,
-                EffectiveFrom = DateOnly.MinValue, AllowedRadiusMeters = 300
-            }]);
-
-        var expectedWorkAreas = new Mock<IExpectedWorkAreaResolver>();
         var notifications = new Mock<INotificationRepository>();
         var clock = new FakeDateTimeProvider { UtcNow = now };
-        var services = BuildServices(db, deviceState.Object, confirmations.Object, workLocations.Object,
-            clockInPolicies.Object, expectedWorkAreas.Object, notifications.Object, clock);
+        var services = BuildServices(db, deviceState.Object, confirmations.Object, toggles.Object, notifications.Object, clock);
 
         var job = new LocationRuleEvaluatorJob(services, NullLogger<LocationRuleEvaluatorJob>.Instance);
         await job.RunOnceAsync(CancellationToken.None);
@@ -207,15 +186,16 @@ public class LocationRuleEvaluatorJobTests
     }
 
     [Fact]
-    public async Task RunOnceAsync_NoConfirmationAndUnresolvedWorkArea_SkipsRatherThanGuessing()
+    public async Task RunOnceAsync_NoConfirmationForDate_SkipsEmployee_NoAlertCreated()
     {
         var tenantId = Guid.NewGuid();
         var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
         var legalEntityId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
 
         await using var db = MakeDb();
-        db.Employees.Add(new Employee { Id = employeeId, TenantId = tenantId, LegalEntityId = legalEntityId });
+        db.Employees.Add(new Employee { Id = employeeId, UserId = userId, TenantId = tenantId, LegalEntityId = legalEntityId });
         db.LegalEntities.Add(new LegalEntity { Id = legalEntityId, TenantId = tenantId });
         await db.SaveChangesAsync();
 
@@ -225,6 +205,8 @@ public class LocationRuleEvaluatorJobTests
         deviceState.Setup(d => d.GetRecentAsync(tenantId, employeeId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([new DeviceStateSnapshot
             {
+                // Far outside any plausible radius - proves the job skips on the absence of a
+                // confirmation rather than guessing a reference point from anything else.
                 Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId,
                 CapturedAt = now, IsIdle = false, IdleSeconds = 0, Latitude = 6.0, Longitude = 79.0
             }]);
@@ -233,20 +215,18 @@ public class LocationRuleEvaluatorJobTests
         confirmations.Setup(c => c.GetForDateAsync(tenantId, employeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((DailyWorkLocationConfirmation?)null);
 
-        var expectedWorkAreas = new Mock<IExpectedWorkAreaResolver>();
-        expectedWorkAreas.Setup(r => r.ResolveAsync(
-                It.IsAny<Employee>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ONEVO.Application.Common.Models.Result<ExpectedWorkAreaResolution>.Conflict("not configured"));
-
+        var toggles = new Mock<IMonitoringToggleResolver>();
         var notifications = new Mock<INotificationRepository>();
         var clock = new FakeDateTimeProvider { UtcNow = now };
-        var services = BuildServices(db, deviceState.Object, confirmations.Object, new Mock<IEmployeeWorkLocationRepository>().Object,
-            new Mock<IClockInPolicyRepository>().Object, expectedWorkAreas.Object, notifications.Object, clock);
+        var services = BuildServices(db, deviceState.Object, confirmations.Object, toggles.Object, notifications.Object, clock);
 
         var job = new LocationRuleEvaluatorJob(services, NullLogger<LocationRuleEvaluatorJob>.Instance);
         await job.RunOnceAsync(CancellationToken.None);
 
         notifications.Verify(n => n.AddAsync(It.IsAny<Notification>(), It.IsAny<CancellationToken>()), Times.Never);
+        toggles.Verify(t => t.GetAllowedRadiusMetersAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never,
+            "an unconfirmed day must never reach the radius resolution step");
     }
 
     [Fact]
@@ -290,9 +270,7 @@ public class LocationRuleEvaluatorJobTests
         services.AddSingleton(db);
         services.AddSingleton(deviceState.Object);
         services.AddSingleton(new Mock<IDailyWorkLocationConfirmationRepository>().Object);
-        services.AddSingleton(new Mock<IEmployeeWorkLocationRepository>().Object);
-        services.AddSingleton(new Mock<IClockInPolicyRepository>().Object);
-        services.AddSingleton(new Mock<IExpectedWorkAreaResolver>().Object);
+        services.AddSingleton(new Mock<IMonitoringToggleResolver>().Object);
         services.AddSingleton(new Mock<INotificationRepository>().Object);
         services.AddSingleton<IDateTimeProvider>(new FakeDateTimeProvider { UtcNow = now });
         services.AddSingleton<IWritableTenantContext>(writableContext);

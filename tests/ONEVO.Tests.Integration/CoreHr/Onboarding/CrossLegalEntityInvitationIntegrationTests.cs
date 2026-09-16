@@ -7,7 +7,6 @@ using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
-using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
@@ -16,6 +15,7 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Tests.Integration.Support;
 using Xunit;
@@ -71,7 +71,6 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
             LastName = "Person",
             IsActive = true,
         });
-        db.WorkModes.Add(new WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true });
         db.Employees.Add(new EmployeeEntity
         {
             Id = Guid.NewGuid(),
@@ -97,7 +96,7 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
 
         var result = await handler.Handle(new SaveOnboardingDraftCommand(
             null, "Shared", "Person", SharedEmail, _legalEntityBId, null, null,
-            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "EMP-B-001", 1, null, null,
+            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "EMP-B-001", null, null, null,
             "employee_details", IfMatchVersion: null, ReportsToEmployeeId: null), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -111,7 +110,7 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
 
         var result = await handler.Handle(new SaveOnboardingDraftCommand(
             null, "Shared", "Person", SharedEmail, _legalEntityAId, null, null,
-            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "EMP-A-002", 1, null, null,
+            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "EMP-A-002", null, null, null,
             "employee_details", IfMatchVersion: null, ReportsToEmployeeId: null), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();

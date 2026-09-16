@@ -5,10 +5,10 @@ using ONEVO.Application.Features.CoreHr.BulkOnboarding.Models;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Services;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using System.Text.Json;
@@ -42,7 +42,7 @@ public sealed class BulkOnboardingPositionCapacityValidationTests
             {
                 new() { Id = _departmentId, Name = "Engineering", LegalEntityId = _legalEntityId, TenantId = _tenantId }
             });
-        _workModes.Setup(w => w.ListActiveAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _workModes.Setup(w => w.ListByLegalEntityAsync(_tenantId, _legalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync([]);
         _templates.Setup(t => t.ListOnboardingMatchesAsync(_tenantId, _legalEntityId, null, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
     }
@@ -82,7 +82,7 @@ public sealed class BulkOnboardingPositionCapacityValidationTests
     private static RowValidationOutcome ValidWithPosition(Guid positionId, Guid departmentId) => new(
         true, null, departmentId, positionId, null,
         "A", "B", $"{Guid.NewGuid():N}@x.com", DateOnly.FromDateTime(DateTime.UtcNow),
-        "full_time", 1, null, null);
+        "full_time", Guid.NewGuid(), null, null);
 
     [Fact]
     public async Task RunAsync_DetectsPositionCapacityExceeded_WhenBatchNeedsExceedSeats()

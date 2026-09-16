@@ -13,7 +13,7 @@ public record OnboardingDraftResponse(
     string EmploymentType,
     DateOnly StartDate,
     string? EmployeeNumber,
-    int WorkModeId,
+    Guid? WorkModeId,
     string? WorkModeLabel,
     Guid? SelectedTemplateId,
     string? EditedTasksJson,

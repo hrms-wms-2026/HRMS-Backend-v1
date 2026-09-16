@@ -65,6 +65,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
             existing.IdentityVerification = request.IdentityVerification;
             existing.Biometric = request.Biometric;
             existing.IdleThresholdMinutes = request.IdleThresholdMinutes;
+            existing.AllowedRadiusMeters = request.AllowedRadiusMeters;
             existing.UpdatedAt = now;
             _toggles.Update(existing);
         }
@@ -87,6 +88,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
                 IdentityVerification = request.IdentityVerification,
                 Biometric = request.Biometric,
                 IdleThresholdMinutes = request.IdleThresholdMinutes,
+                AllowedRadiusMeters = request.AllowedRadiusMeters,
                 CreatedAt = now,
                 UpdatedAt = now
             };

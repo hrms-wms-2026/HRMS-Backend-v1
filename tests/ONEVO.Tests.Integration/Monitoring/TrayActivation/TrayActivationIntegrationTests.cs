@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
@@ -96,7 +97,7 @@ public sealed class TrayActivationIntegrationTestsFixture : IAsyncLifetime
                 Id = Guid.NewGuid(), TenantId = tenant.Id, UserId = user.Id,
                 LegalEntityId = legalEntity.Id, EmployeeNumber = Guid.NewGuid().ToString("N")[..8],
                 FirstName = "Test", LastName = "User", Email = email,
-                EmploymentTypeId = 1, EmploymentStatusId = 1, WorkModeId = 1,
+                EmploymentTypeId = 1, EmploymentStatusId = 1, WorkModeId = null,
                 HireDate = new DateOnly(2025, 1, 1), CreatedAt = DateTimeOffset.UtcNow,
                 CreatedById = user.Id
             });
@@ -591,6 +592,46 @@ public sealed class TrayActivationIntegrationTests : IClassFixture<TrayActivatio
         var response = await _fixture.Client.SendAsync(request);
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    // ── Device change approval ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Exchange_FromSecondDevice_Returns409_AndRaisesPendingDeviceChangeRequest()
+    {
+        var user = await _fixture.SeedActiveUserWithEmployeeAsync(
+            "device-change-test", "device-change@test.dev", "DeviceChangePass1!", "EMP-DC01");
+        var session = await _fixture.LoginAndGetSessionAsync(user);
+
+        var firstCode = await _fixture.GenerateCodeAsync(session);
+        var first = await _fixture.PostExchangeAsync(firstCode, "First Laptop", "Windows 11", "fp-device-first");
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var secondCode = await _fixture.GenerateCodeAsync(session);
+        var second = await _fixture.PostExchangeAsync(secondCode, "Second Laptop", "macOS", "fp-device-second");
+
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var body = await second.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("code").GetString().Should().Be("device_change_pending");
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var firstDevice = await db.TrayDeviceRegistrations
+            .SingleAsync(d => d.UserId == user.UserId && d.DeviceFingerprint == "fp-device-first");
+
+        var changeRequest = await db.DeviceChangeRequests
+            .SingleAsync(r => r.EmployeeId == user.UserId);
+        changeRequest.Status.Should().Be(DeviceChangeRequest.StatusPending);
+        changeRequest.LegalEntityId.Should().NotBeNull("the seeded user has a resolvable legal entity");
+        changeRequest.CurrentDeviceRegistrationId.Should().Be(firstDevice.Id);
+        changeRequest.NewDeviceFingerprint.Should().Be("fp-device-second");
+        changeRequest.NewDeviceName.Should().Be("Second Laptop");
+
+        // The blocked second device must never have been registered.
+        (await db.TrayDeviceRegistrations.CountAsync(d => d.UserId == user.UserId))
+            .Should().Be(1, "a rejected device-change attempt must not create a second active registration");
     }
 
 }

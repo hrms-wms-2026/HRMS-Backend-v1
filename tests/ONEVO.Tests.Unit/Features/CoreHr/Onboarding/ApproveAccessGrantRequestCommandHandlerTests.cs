@@ -14,10 +14,12 @@ using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
 using PositionAssignmentEntity = ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment;
@@ -76,7 +78,8 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
             .Setup(r => r.GetAccessTemplateByPositionAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PositionAccessTemplate { Id = _templateId, TenantId = _tenantId, PositionId = _positionId, RoleId = _roleId, RequiresApproval = true, IsActive = true });
 
-        _workModeRepository.Setup(r => r.ExistsActiveAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _workModeRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid tenantId, Guid id, CancellationToken _) => new WorkMode { Id = id, TenantId = tenantId, IsActive = true });
         _employmentTypeRepository.Setup(r => r.GetIdByCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         _employeeRepository
@@ -134,7 +137,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         EmploymentType = "full_time",
         StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
         EmployeeNumber = "EMP-001",
-        WorkModeId = 1,
+        WorkModeId = Guid.NewGuid(),
         Status = status,
         StartedById = _userId,
     };

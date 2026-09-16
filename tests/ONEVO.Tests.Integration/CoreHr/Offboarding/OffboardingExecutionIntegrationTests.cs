@@ -294,7 +294,7 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
             FirstName = "Leaving", LastName = "Employee",
             Email = $"{employeeNumber.ToLowerInvariant()}@offboarding-execution.onevo.dev",
             LegalEntityId = _legalEntityId, DepartmentId = _departmentId,
-            EmploymentStatusId = EmploymentStatusIds.Active, EmploymentTypeId = 1, WorkModeId = 1,
+            EmploymentStatusId = EmploymentStatusIds.Active, EmploymentTypeId = 1, WorkModeId = null,
             HireDate = new DateOnly(2024, 1, 1),
         };
         db.Employees.Add(employee);
@@ -327,8 +327,6 @@ public sealed class OffboardingExecutionIntegrationTests : IAsyncLifetime
             db.EmploymentStatuses.Add(new EmploymentStatus { Id = EmploymentStatusIds.Resigned, Code = "resigned", Label = "Resigned" });
         if (!await db.EmploymentTypes.AnyAsync(x => x.Id == 1))
             db.EmploymentTypes.Add(new EmploymentType { Id = 1, Code = "full_time", Label = "Full-Time" });
-        if (!await db.WorkModes.AnyAsync(x => x.Id == 1))
-            db.WorkModes.Add(new WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true });
         await db.SaveChangesAsync();
     }
 

@@ -26,7 +26,6 @@ public class EfEmployeeRepository : IEmployeeRepository
     private readonly INotificationRepository? _notifications;
     private readonly ICheckInRepository? _checkIns;
     private readonly IExpectedWorkAreaResolver? _expectedWorkAreas;
-    private readonly IClockInPolicyRepository? _clockInPolicies;
     private readonly IEmployeeWorkLocationRepository? _workLocations;
 
     public EfEmployeeRepository(
@@ -37,7 +36,6 @@ public class EfEmployeeRepository : IEmployeeRepository
         INotificationRepository? notifications = null,
         ICheckInRepository? checkIns = null,
         IExpectedWorkAreaResolver? expectedWorkAreas = null,
-        IClockInPolicyRepository? clockInPolicies = null,
         IEmployeeWorkLocationRepository? workLocations = null)
     {
         _db = db;
@@ -47,7 +45,6 @@ public class EfEmployeeRepository : IEmployeeRepository
         _notifications = notifications;
         _checkIns = checkIns;
         _expectedWorkAreas = expectedWorkAreas;
-        _clockInPolicies = clockInPolicies;
         _workLocations = workLocations;
     }
 
@@ -426,24 +423,6 @@ public class EfEmployeeRepository : IEmployeeRepository
                 .ToDictionary(group => group.Key, group => group.ToList());
         }
 
-        // The on-site and remote location checks share one "how far is allowed" number: the
-        // resolved ClockInPolicy's AllowedRadiusMeters (same field the Clock-in Policy screen's
-        // "Allowed distance" input already edits) - there is exactly one radius concept in the
-        // product, not a separate one per work mode.
-        var radiusByLegalEntityId = new Dictionary<Guid, int?>();
-        if (_clockInPolicies is not null)
-        {
-            foreach (var legalEntityId in clockedInCandidates
-                .Where(row => row.LegalEntity is not null)
-                .Select(row => row.LegalEntity!.Id)
-                .Distinct())
-            {
-                var policies = await _clockInPolicies.ListByLegalEntityAsync(tenantId, legalEntityId, includeInactive: false, ct);
-                var active = ClockInPolicyResolver.ResolveActiveFullCompanyPolicies(policies, DateOnly.FromDateTime(now.UtcDateTime));
-                radiusByLegalEntityId[legalEntityId] = active.Count == 1 ? active[0].AllowedRadiusMeters : null;
-            }
-        }
-
         var workLocationsByEmployeeId = _workLocations is not null
             ? await _workLocations.ListByEmployeeIdsAsync(
                 tenantId, clockedInCandidates.Select(row => row.EmployeeId).Distinct().ToArray(), ct)
@@ -475,8 +454,13 @@ public class EfEmployeeRepository : IEmployeeRepository
 
             checkInsByUserId.TryGetValue(row.UserId, out var userCheckIns);
 
+            // The on-site and remote location checks share one "how far is allowed" number: the
+            // resolved Monitoring config's AllowedRadiusMeters (same employee -> work mode -> role
+            // -> position -> department -> legal entity precedence chain as every other monitoring
+            // capability) - there is exactly one radius concept in the product, not a separate one
+            // per work mode. Moved off ClockInPolicy.AllowedRadiusMeters in Task 14.
             if (_expectedWorkAreas is not null && row.HasClockedInToday && row.LegalEntity is not null
-                && radiusByLegalEntityId.GetValueOrDefault(row.LegalEntity.Id) is int radiusMeters
+                && await _toggles.GetAllowedRadiusMetersAsync(tenantId, row.UserId, row.LegalEntity.Id, ct) is int radiusMeters
                 && await _toggles.IsEnabledAsync(tenantId, row.UserId, MonitoringCapability.WorkLocationVerification, ct))
             {
                 var workArea = await ResolveWorkAreaAsync(row, ct);
@@ -548,8 +532,22 @@ public class EfEmployeeRepository : IEmployeeRepository
     {
         var result = await _expectedWorkAreas!.ResolveAsync(
             row.Employee, row.LegalEntity!, row.AttendanceSummary.WorkDate, ct);
-        return result.IsSuccess ? result.Value!.WorkArea : null;
+        return result.IsSuccess ? ClassifyWorkArea(result.Value!.WorkModeName) : null;
     }
+
+    // TODO(Task 10): ExpectedWorkAreaResolver (Task 5) now returns the WorkMode's actual
+    // Id/Name instead of a fixed onsite/remote/either/field classification - see the plan's
+    // Global Constraints ("no category/taxonomy field is ever re-derived"). This minimal
+    // compile-fix re-derives the old classification so pre-Task-5 behavior is unchanged.
+    private static string? ClassifyWorkArea(string? workModeName)
+        => workModeName?.Trim().ToLowerInvariant() switch
+        {
+            "onsite" or "on_site" => "onsite",
+            "remote" => "remote",
+            "hybrid" => "either",
+            "field" => "field",
+            _ => null
+        };
 
     public async Task<IReadOnlyList<EmployeeListItemResponse>> ListInvitedPendingByInviterAsync(
 
@@ -623,7 +621,7 @@ public class EfEmployeeRepository : IEmployeeRepository
             from empType in typeJoin.DefaultIfEmpty()
             join empStatus in _db.EmploymentStatuses.AsNoTracking() on e.EmploymentStatusId equals empStatus.Id into statusJoin
             from empStatus in statusJoin.DefaultIfEmpty()
-            join workMode in _db.WorkModes.AsNoTracking() on e.WorkModeId equals workMode.Id into workModeJoin
+            join workMode in _db.TimeAttendanceWorkModes.AsNoTracking() on e.WorkModeId equals (Guid?)workMode.Id into workModeJoin
             from workMode in workModeJoin.DefaultIfEmpty()
             join primaryAssignment in activePrimaryAssignments on e.Id equals primaryAssignment.EmployeeId into paJoin
             from primaryAssignment in paJoin.DefaultIfEmpty()
@@ -668,7 +666,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                 null,
                 null,
                 null,
-                row.workMode != null ? row.workMode.Label : row.e.WorkModeId.ToString()))
+                row.workMode != null ? row.workMode.Name : null))
             .FirstOrDefaultAsync(ct);
     }
 

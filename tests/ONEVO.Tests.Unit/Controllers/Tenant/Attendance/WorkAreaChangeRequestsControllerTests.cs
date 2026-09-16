@@ -14,6 +14,7 @@ namespace ONEVO.Tests.Unit.Controllers.Tenant.Attendance;
 public sealed class WorkAreaChangeRequestsControllerTests
 {
     private static readonly Guid RequestId = Guid.NewGuid();
+    private static readonly Guid RequestedWorkModeId = Guid.NewGuid();
     private static readonly DateOnly Date = new(2026, 8, 25);
 
     [Fact]
@@ -26,13 +27,13 @@ public sealed class WorkAreaChangeRequestsControllerTests
         var controller = new WorkAreaChangeRequestsController(mediator.Object);
 
         var result = await controller.Preview(
-            new WorkAreaChangeRequestRequest(Date, " REMOTE ", "Reason"), CancellationToken.None);
+            new WorkAreaChangeRequestRequest(Date, RequestedWorkModeId, "Reason"), CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.Same(expected, ok.Value);
         mediator.Verify(x => x.Send(
             It.Is<PreviewWorkAreaChangeRequestCommand>(command =>
-                command.Date == Date && command.RequestedWorkArea == " REMOTE " && command.Reason == "Reason"),
+                command.Date == Date && command.RequestedWorkModeId == RequestedWorkModeId && command.Reason == "Reason"),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -46,7 +47,7 @@ public sealed class WorkAreaChangeRequestsControllerTests
         var controller = new WorkAreaChangeRequestsController(mediator.Object);
 
         var result = await controller.Create(
-            new WorkAreaChangeRequestRequest(Date, "remote", "Reason"), CancellationToken.None);
+            new WorkAreaChangeRequestRequest(Date, RequestedWorkModeId, "Reason"), CancellationToken.None);
 
         var created = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status201Created, created.StatusCode);
@@ -113,17 +114,18 @@ public sealed class WorkAreaChangeRequestsControllerTests
         var controller = new WorkAreaChangeRequestsController(mediator.Object);
 
         var result = await controller.Create(
-            new WorkAreaChangeRequestRequest(Date, "remote", "Reason"), CancellationToken.None);
+            new WorkAreaChangeRequestRequest(Date, RequestedWorkModeId, "Reason"), CancellationToken.None);
 
         var problem = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status409Conflict, problem.StatusCode);
     }
 
     private static WorkAreaChangeRequestPreviewResponse PreviewResponse()
-        => new(Date, "UTC", "onsite", "remote", "Reason", null);
+        => new(Date, "UTC", Guid.NewGuid(), "Onsite", RequestedWorkModeId, "Remote", "Reason", null);
 
     private static WorkAreaChangeRequestResponse Response()
         => new(RequestId, Guid.NewGuid(), Guid.NewGuid(), "Employee", "UTC", Date,
-            "onsite", "remote", "Reason", "pending", Date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            Guid.NewGuid(), "Onsite", RequestedWorkModeId, "Remote", "Reason", "pending",
+            Date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
             null, null, null, null, null);
 }

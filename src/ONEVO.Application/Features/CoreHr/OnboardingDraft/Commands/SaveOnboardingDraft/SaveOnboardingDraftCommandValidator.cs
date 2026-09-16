@@ -27,6 +27,6 @@ public class SaveOnboardingDraftCommandValidator : AbstractValidator<SaveOnboard
             .Must(value => value is null || EmployeeNumberRules.IsValidFormat(EmployeeNumberRules.NormalizeInput(value)!))
             .WithMessage(EmployeeNumberRules.InvalidFormatMessage)
             .When(c => !string.IsNullOrWhiteSpace(c.EmployeeNumber));
-        RuleFor(c => c.WorkModeId).GreaterThan(0);
+        RuleFor(c => c.WorkModeId).NotEqual(Guid.Empty).When(c => c.WorkModeId is not null);
     }
 }

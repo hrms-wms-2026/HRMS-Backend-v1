@@ -145,7 +145,7 @@ public sealed class ActivityIngestIntegrationTestsFixture : IAsyncLifetime
             Email = email,
             EmploymentTypeId = 1,
             EmploymentStatusId = 1,
-            WorkModeId = 1,
+            WorkModeId = null,
             HireDate = new DateOnly(2025, 1, 1),
             CreatedAt = DateTimeOffset.UtcNow,
             CreatedById = user.Id
@@ -157,7 +157,7 @@ public sealed class ActivityIngestIntegrationTestsFixture : IAsyncLifetime
         db.Employees.Add(employee);
         await db.SaveChangesAsync();
 
-        return new SeedResult(tenant.Id, user.Id, email, password, tenantSlug);
+        return new SeedResult(tenant.Id, user.Id, employee.Id, email, password, tenantSlug);
     }
 
     private async Task<SessionInfo> LoginAndGetSessionAsync(SeedResult user)
@@ -258,7 +258,7 @@ public sealed class ActivityIngestIntegrationTestsFixture : IAsyncLifetime
         throw new InvalidOperationException($"Cookie '{cookieName}' not found in response.");
     }
 
-    public sealed record SeedResult(Guid TenantId, Guid UserId, string Email, string Password, string TenantSlug);
+    public sealed record SeedResult(Guid TenantId, Guid UserId, Guid EmployeeId, string Email, string Password, string TenantSlug);
 
     private sealed record SessionInfo(string CookieHeader, string CsrfHeader, string TenantHost);
 
@@ -320,8 +320,11 @@ public sealed class ActivityIngestIntegrationTests : IClassFixture<ActivityInges
         using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
+        // IngestActivitySnapshotsCommandHandler resolves the real CoreHR Employee.Id via
+        // ITrayEmployeeIdentityResolver rather than storing the raw tray-JWT UserId - this seed
+        // always has a matching Employee row, so that's the id snapshots persist under.
         var snapshots = await db.ActivitySnapshots
-            .Where(s => s.TenantId == user.TenantId && s.EmployeeId == user.UserId)
+            .Where(s => s.TenantId == user.TenantId && s.EmployeeId == user.EmployeeId)
             .ToListAsync();
         snapshots.Should().HaveCount(1);
         snapshots[0].KeyboardEventsCount.Should().Be(42);

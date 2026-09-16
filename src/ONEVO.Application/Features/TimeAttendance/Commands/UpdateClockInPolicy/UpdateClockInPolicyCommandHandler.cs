@@ -84,15 +84,12 @@ public class UpdateClockInPolicyCommandHandler
         policy.Name = request.Name.Trim();
         policy.EffectiveFrom = request.EffectiveFrom;
         policy.EffectiveTo = request.EffectiveTo;
-        policy.LocationVerificationRequired = request.LocationVerificationRequired;
-        policy.AllowedRadiusMeters = request.AllowedRadiusMeters;
         policy.CorrectionRequiresApproval = request.CorrectionRequiresApproval;
         policy.NotificationRecipientResolver = request.NotificationRecipientResolver.Trim();
         policy.IsActive = request.IsActive;
         policy.UpdatedAt = now;
 
         ClockInPolicyMapper.ApplyScope(policy, request.Scope);
-        ClockInPolicyMapper.ApplyWorkAreaRules(policy, request.WorkAreaRules);
 
         policy.LateDeductionRules.Clear();
         foreach (var rule in request.LateDeductionRules.OrderBy(r => r.LateArrivalMinute))

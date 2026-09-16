@@ -6,7 +6,7 @@ public class BulkOnboardingBatch : BaseEntity
 {
     public Guid LegalEntityId { get; set; }
     public string? DefaultEmploymentType { get; set; }
-    public int? DefaultWorkModeId { get; set; }
+    public Guid? DefaultWorkModeId { get; set; }
     public Guid? DefaultChecklistTemplateId { get; set; }
     public string? ColumnMappingJson { get; set; }
     public string? SelectedDraftIdsJson { get; set; }

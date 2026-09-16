@@ -6,11 +6,11 @@ using ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnbo
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Helpers;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Models;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.RepositoryInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.Commands.CreateDepartment;
 using ONEVO.Application.Features.OrgStructure.Commands.CreatePosition;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdatePosition;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ResolveBulkOnboardingIssues;
 
@@ -25,7 +25,7 @@ public sealed record ResolveBulkOnboardingIssuesCommand(
     string Action,
     string? TargetId,
     string? NewValue,
-    int? WorkModeId,
+    Guid? WorkModeId,
     IReadOnlyList<int>? ApplyToRowNumbers,
     ResolveBulkOnboardingCreateDepartment? CreateDepartment,
     ResolveBulkOnboardingCreatePosition? CreatePosition)
@@ -194,7 +194,8 @@ public sealed class ResolveBulkOnboardingIssuesCommandHandler
                 {
                     if (request.WorkModeId is null)
                         return Result<ValidateBulkOnboardingBatchResult>.Failure("Choose a work mode to continue.");
-                    if (!await _workModes.ExistsActiveAsync(request.WorkModeId.Value, ct))
+                    var selectedWorkMode = await _workModes.GetByIdAsync(_currentUser.TenantId, request.WorkModeId.Value, ct);
+                    if (selectedWorkMode is null || !selectedWorkMode.IsActive)
                         return Result<ValidateBulkOnboardingBatchResult>.Failure("The selected work mode is not available.");
 
                     batch.DefaultWorkModeId = request.WorkModeId.Value;
@@ -271,10 +272,10 @@ public sealed class ResolveBulkOnboardingIssuesCommandHandler
         if (field is "checklistTemplate")
             return null;
 
-        if (field is "workMode" && int.TryParse(targetId, out var workModeId))
+        if (field is "workMode" && Guid.TryParse(targetId, out var workModeId))
         {
-            var modes = await _workModes.ListActiveAsync(ct);
-            return modes.FirstOrDefault(m => m.Id == workModeId)?.Label;
+            var mode = await _workModes.GetByIdAsync(_currentUser.TenantId, workModeId, ct);
+            return mode?.Name;
         }
 
         return null;

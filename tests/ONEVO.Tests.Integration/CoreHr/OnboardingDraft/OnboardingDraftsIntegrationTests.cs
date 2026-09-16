@@ -9,7 +9,6 @@ using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
-using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
@@ -18,6 +17,7 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Tests.Integration.Support;
 using Xunit;
@@ -62,7 +62,6 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
         var user = new User { Id = Guid.NewGuid(), TenantId = _tenantId, Email = "hr@onboarding-drafts-rls.onevo.dev", PasswordHash = "not-a-real-hash", FirstName = "HR", LastName = "Starter", IsActive = true };
         _userId = user.Id;
         db.Users.Add(user);
-        db.WorkModes.Add(new WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true });
 
         await db.SaveChangesAsync();
 
@@ -169,7 +168,7 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
     private SaveOnboardingDraftCommand NewCommand(
         Guid? draftId = null, string lastSavedStep = "employee_details", string? ifMatch = null) => new(
         draftId, "Ada", "Lovelace", $"{Guid.NewGuid():N}@onboarding-drafts-rls-test.onevo.dev", _legalEntityId, null, null,
-        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null, lastSavedStep, ifMatch, null);
+        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, null, null, null, lastSavedStep, ifMatch, null);
 
     private async Task CreateRestrictedRoleAsync()
     {
@@ -203,7 +202,7 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
                 GRANT SELECT, INSERT, UPDATE, DELETE ON onboarding_drafts TO {RestrictedRoleName};
                 GRANT SELECT ON tenants, legal_entities, departments, positions, employees,
                     users, employment_types, employment_statuses, position_access_templates,
-                    tenant_subscriptions, work_modes TO {RestrictedRoleName};
+                    tenant_subscriptions, tenant_work_modes TO {RestrictedRoleName};
             ";
             await grantTables.ExecuteNonQueryAsync();
         }

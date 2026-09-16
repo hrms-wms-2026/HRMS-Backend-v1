@@ -6,8 +6,8 @@ using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 
@@ -67,8 +67,12 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
         var dependents = await _profile.ListDependentsAsync(tenantId, employee.Id, ct);
         var bankDetail = await _profile.GetPrimaryBankDetailAsync(tenantId, employee.Id, ct);
 
-        var workModes = await _workModes.ListActiveAsync(ct);
-        var workModeLabel = workModes.FirstOrDefault(w => w.Id == employee.WorkModeId)?.Label ?? "Unknown";
+        var workModeLabel = "Unknown";
+        if (employee.WorkModeId is { } employeeWorkModeId)
+        {
+            var workMode = await _workModes.GetByIdAsync(tenantId, employeeWorkModeId, ct);
+            workModeLabel = workMode?.Name ?? "Unknown";
+        }
 
         string? legalEntityTimezone = null;
         if (employee.LegalEntityId is Guid legalEntityId)

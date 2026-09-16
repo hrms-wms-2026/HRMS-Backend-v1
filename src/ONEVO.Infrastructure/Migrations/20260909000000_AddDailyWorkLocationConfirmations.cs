@@ -43,6 +43,11 @@ namespace ONEVO.Infrastructure.Migrations
                 columns: new[] { "tenant_id", "employee_id", "work_date" },
                 unique: true);
 
+            migrationBuilder.CreateIndex(
+                name: "ix_daily_work_location_confirmations_employee_id",
+                table: "daily_work_location_confirmations",
+                column: "employee_id");
+
             foreach (var table in TenantTables)
             {
                 migrationBuilder.Sql($@"

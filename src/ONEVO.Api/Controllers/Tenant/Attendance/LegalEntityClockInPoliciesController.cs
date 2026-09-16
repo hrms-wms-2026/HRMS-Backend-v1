@@ -118,9 +118,6 @@ public class LegalEntityClockInPoliciesController : ControllerBase
             ToScope(request.Scope),
             request.EffectiveFrom,
             request.EffectiveTo,
-            request.LocationVerificationRequired,
-            request.AllowedRadiusMeters,
-            ToWorkAreaRules(request.WorkAreaRules),
             request.CorrectionRequiresApproval,
             request.NotificationRecipientResolver,
             ToLateRules(request.LateDeductionRules),
@@ -135,9 +132,6 @@ public class LegalEntityClockInPoliciesController : ControllerBase
             ToScope(request.Scope),
             request.EffectiveFrom,
             request.EffectiveTo,
-            request.LocationVerificationRequired,
-            request.AllowedRadiusMeters,
-            ToWorkAreaRules(request.WorkAreaRules),
             request.CorrectionRequiresApproval,
             request.NotificationRecipientResolver,
             ToLateRules(request.LateDeductionRules),
@@ -145,32 +139,6 @@ public class LegalEntityClockInPoliciesController : ControllerBase
 
     private static ClockInPolicyScopeInput ToScope(ClockInPolicyScopeRequest scope)
         => new(scope.Type, scope.DepartmentIds, scope.PositionIds, scope.EmployeeIds);
-
-    private static WorkAreaRulesInput ToWorkAreaRules(WorkAreaRulesRequest rules)
-        => new(
-            new WorkAreaSourceRulesInput(
-                rules.Onsite.BiometricEnabled,
-                rules.Onsite.WebEnabled,
-                rules.Onsite.TrayEnabled,
-                rules.Onsite.PhotoRequired),
-            new RemoteWorkAreaRulesInput(
-                rules.Remote.BiometricEnabled,
-                rules.Remote.WebEnabled,
-                rules.Remote.TrayEnabled,
-                rules.Remote.PhotoRequired,
-                rules.Remote.LocationCheckRequired),
-            new HybridWorkAreaRulesInput(
-                rules.Hybrid.BiometricEnabled,
-                rules.Hybrid.WebEnabled,
-                rules.Hybrid.TrayEnabled,
-                rules.Hybrid.PhotoRequired,
-                rules.Hybrid.LocationCheckRequired,
-                rules.Hybrid.SourceRule),
-            new FieldWorkAreaRulesInput(
-                rules.Field.BiometricEnabled,
-                rules.Field.WebEnabled,
-                rules.Field.TrayEnabled,
-                rules.Field.PhotoRequirement));
 
     private static IReadOnlyList<LateDeductionRuleInput> ToLateRules(
         IReadOnlyList<LateDeductionRuleRequest>? rules)

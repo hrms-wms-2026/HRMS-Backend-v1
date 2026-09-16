@@ -17,8 +17,9 @@ using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.BulkOnboarding;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
-using ONEVO.Tests.Integration.Support;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using Xunit;
+using WorkModeEntity = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
 
 namespace ONEVO.Tests.Integration.CoreHr.BulkOnboarding;
 
@@ -30,6 +31,7 @@ public sealed class BulkOnboardingValidateTests : IAsyncLifetime
     private Guid _tenantId;
     private Guid _legalEntityId;
     private Guid _userId;
+    private Guid _workModeId;
 
     public async Task InitializeAsync()
     {
@@ -58,7 +60,16 @@ public sealed class BulkOnboardingValidateTests : IAsyncLifetime
         _legalEntityId = legalEntity.Id;
         db.LegalEntities.Add(legalEntity);
         db.EmploymentTypes.Add(new EmploymentType { Id = 1, Code = "full_time", Label = "Full-Time" });
-        db.WorkModes.Add(new WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true });
+
+        var workMode = new WorkModeEntity
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, LegalEntityId = _legalEntityId,
+            Name = "Onsite", WebEnabled = true, IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        _workModeId = workMode.Id;
+        db.TimeAttendanceWorkModes.Add(workMode);
+
         await db.SaveChangesAsync();
         _userId = Guid.NewGuid();
     }
@@ -102,7 +113,7 @@ public sealed class BulkOnboardingValidateTests : IAsyncLifetime
             new StubCurrentUser(_tenantId, _userId),
             _clock);
         var result = await upload.Handle(
-            new UploadBulkOnboardingBatchCommand("employees.csv", System.Text.Encoding.UTF8.GetBytes(csv), _legalEntityId, 1, "full_time", null),
+            new UploadBulkOnboardingBatchCommand("employees.csv", System.Text.Encoding.UTF8.GetBytes(csv), _legalEntityId, _workModeId, "full_time", null),
             CancellationToken.None);
         Assert.True(result.IsSuccess);
         return result.Value!.Id;

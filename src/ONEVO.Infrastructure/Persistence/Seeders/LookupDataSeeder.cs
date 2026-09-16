@@ -43,7 +43,6 @@ public class LookupDataSeeder : IHostedService
     {
         await SeedAsync(db, db.EmploymentTypes, EmploymentTypes(), e => e.Id, "employment types", ct);
         await SeedAsync(db, db.EmploymentStatuses, EmploymentStatuses(), e => e.Id, "employment statuses", ct);
-        await SeedAsync(db, db.WorkModes, WorkModes(), e => e.Id, "work modes", ct);
         await SeedAsync(db, db.ApprovalStatuses, ApprovalStatuses(), e => e.Id, "approval statuses", ct);
         await SeedAsync(db, db.Severities, Severities(), e => e.Id, "severities", ct);
         await SeedAsync(db, db.VersionStatuses, VersionStatuses(), e => e.Id, "version statuses", ct);
@@ -95,13 +94,6 @@ public class LookupDataSeeder : IHostedService
         new() { Id = 4, Code = "terminated",  Label = "Terminated"  },
         new() { Id = 5, Code = "offboarding", Label = "Offboarding" },
         new() { Id = 6, Code = "resigned",    Label = "Resigned"    },
-    ];
-
-    private static WorkMode[] WorkModes() =>
-    [
-        new() { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true },
-        new() { Id = 2, Code = "remote",  Label = "Remote",  IsActive = true },
-        new() { Id = 3, Code = "hybrid",  Label = "Hybrid",  IsActive = true },
     ];
 
     private static ApprovalStatus[] ApprovalStatuses() =>

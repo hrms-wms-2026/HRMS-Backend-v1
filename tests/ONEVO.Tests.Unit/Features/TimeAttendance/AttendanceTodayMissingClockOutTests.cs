@@ -4,14 +4,13 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using ONEVO.Domain.Lookups;
 
 namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 
@@ -77,10 +76,11 @@ public sealed class AttendanceTodayMissingClockOutTests
         currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         currentUser.SetupGet(x => x.UserId).Returns(UserId);
 
+        var onsiteWorkModeId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
         var employee = new Employee
         {
             Id = EmployeeId, UserId = UserId, TenantId = TenantId,
-            LegalEntityId = LegalEntityId, WorkModeId = 1
+            LegalEntityId = LegalEntityId, WorkModeId = onsiteWorkModeId
         };
         var legalEntity = new LegalEntity
         {
@@ -118,8 +118,12 @@ public sealed class AttendanceTodayMissingClockOutTests
             .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
 
         var workModes = new Mock<IWorkModeRepository>();
-        workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new WorkMode { Id = 1, Code = "onsite", Label = "On-site" }]);
+        workModes.Setup(x => x.GetByIdAsync(TenantId, onsiteWorkModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode
+            {
+                Id = onsiteWorkModeId, TenantId = TenantId, LegalEntityId = LegalEntityId,
+                Name = "Onsite", IsActive = true
+            });
 
         var dateTime = new Mock<IDateTimeProvider>();
         dateTime.SetupGet(x => x.UtcNow).Returns(UtcNow);
@@ -132,9 +136,12 @@ public sealed class AttendanceTodayMissingClockOutTests
         var expectedWorkAreas = new ExpectedWorkAreaResolver(
             dateTime.Object, workModes.Object, workAreaChangeRequests.Object);
 
+        var toggles = new Mock<IMonitoringToggleResolver>();
+
         var service = new AttendanceTodayStateService(
             currentUser.Object, dateTime.Object, employees.Object, legalEntities.Object,
-            policies.Object, attendance.Object, authority.Object, expectedWorkAreas);
+            policies.Object, attendance.Object, authority.Object, expectedWorkAreas,
+            workModes.Object, toggles.Object);
 
         return new Fixture(service);
     }

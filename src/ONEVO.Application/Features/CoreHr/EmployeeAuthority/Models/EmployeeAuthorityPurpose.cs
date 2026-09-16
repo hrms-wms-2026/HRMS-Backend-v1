@@ -17,4 +17,5 @@ public enum EmployeeAuthorityPurpose
     OnboardingApproval,
     OffboardingApproval,
     EmployeeLifecycleApproval,
+    DeviceChangeApproval,
 }

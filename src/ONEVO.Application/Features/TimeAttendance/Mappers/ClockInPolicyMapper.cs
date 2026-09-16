@@ -29,32 +29,6 @@ public static class ClockInPolicyMapper
                 entity.EmployeeIds ?? Array.Empty<Guid>()),
             entity.EffectiveFrom,
             entity.EffectiveTo,
-            entity.LocationVerificationRequired,
-            entity.AllowedRadiusMeters,
-            new WorkAreaRulesResponse(
-                new WorkAreaSourceRulesResponse(
-                    entity.OnsiteBiometricEnabled,
-                    entity.OnsiteWebEnabled,
-                    entity.OnsiteTrayEnabled,
-                    entity.OnsitePhotoRequired),
-                new RemoteWorkAreaRulesResponse(
-                    entity.RemoteBiometricEnabled,
-                    entity.RemoteWebEnabled,
-                    entity.RemoteTrayEnabled,
-                    entity.RemotePhotoRequired,
-                    entity.RemoteLocationCheckRequired),
-                new HybridWorkAreaRulesResponse(
-                    entity.EitherBiometricEnabled,
-                    entity.EitherWebEnabled,
-                    entity.EitherTrayEnabled,
-                    entity.EitherPhotoRequired,
-                    entity.EitherLocationCheckRequired,
-                    entity.EitherSourceRule),
-                new FieldWorkAreaRulesResponse(
-                    entity.FieldBiometricEnabled,
-                    entity.FieldWebEnabled,
-                    entity.FieldTrayEnabled,
-                    entity.FieldPhotoRequirement)),
             entity.CorrectionRequiresApproval,
             entity.NotificationRecipientResolver,
             rules,
@@ -77,33 +51,6 @@ public static class ClockInPolicyMapper
             entity.LateDeductionRules.Count,
             entity.CreatedAt,
             entity.UpdatedAt);
-    }
-
-    public static void ApplyWorkAreaRules(ClockInPolicy entity, WorkAreaRulesInput rules)
-    {
-        entity.OnsiteBiometricEnabled = rules.Onsite.BiometricEnabled;
-        entity.OnsiteWebEnabled = rules.Onsite.WebEnabled;
-        entity.OnsiteTrayEnabled = rules.Onsite.TrayEnabled;
-        entity.OnsitePhotoRequired = rules.Onsite.PhotoRequired;
-
-        entity.RemoteBiometricEnabled = rules.Remote.BiometricEnabled;
-        entity.RemoteWebEnabled = rules.Remote.WebEnabled;
-        entity.RemoteTrayEnabled = rules.Remote.TrayEnabled;
-        entity.RemotePhotoRequired = rules.Remote.PhotoRequired;
-        entity.RemoteLocationCheckRequired = rules.Remote.LocationCheckRequired;
-
-        // API/UI "hybrid" maps to inventory either_* persistence columns.
-        entity.EitherBiometricEnabled = rules.Hybrid.BiometricEnabled;
-        entity.EitherWebEnabled = rules.Hybrid.WebEnabled;
-        entity.EitherTrayEnabled = rules.Hybrid.TrayEnabled;
-        entity.EitherPhotoRequired = rules.Hybrid.PhotoRequired;
-        entity.EitherLocationCheckRequired = rules.Hybrid.LocationCheckRequired;
-        entity.EitherSourceRule = rules.Hybrid.SourceRule.Trim();
-
-        entity.FieldBiometricEnabled = rules.Field.BiometricEnabled;
-        entity.FieldWebEnabled = rules.Field.WebEnabled;
-        entity.FieldTrayEnabled = rules.Field.TrayEnabled;
-        entity.FieldPhotoRequirement = rules.Field.PhotoRequirement.Trim();
     }
 
     public static void ApplyScope(ClockInPolicy entity, ClockInPolicyScopeInput scope)

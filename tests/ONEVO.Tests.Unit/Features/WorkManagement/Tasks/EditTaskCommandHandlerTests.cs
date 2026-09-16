@@ -37,7 +37,8 @@ public class EditTaskCommandHandlerTests
         string title = "Old",
         string priority = WorkTaskPriorities.Medium,
         int progressPercent = 0,
-        Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null)
+        Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null,
+        Mock<ITaskAssetLinker>? assetLinker = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -95,7 +96,8 @@ public class EditTaskCommandHandlerTests
         var handler = new EditTaskCommandHandler(
             currentUser.Object, tasks.Object, objectives.Object, slack, unitOfWork.Object, sprints.Object,
             identity.Object, editLogRepository.Object, percentageLogRepository.Object,
-            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object);
+            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
+            (assetLinker ?? new Mock<ITaskAssetLinker>()).Object);
 
         return (handler, tasks, editLogs, callerEmployeeId, task, percentageLogs);
     }
@@ -329,5 +331,20 @@ public class EditTaskCommandHandlerTests
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task Handle_WithAttachmentFileIds_CallsAssetLinker()
+    {
+        var assetLinker = new Mock<ITaskAssetLinker>();
+        var (handler, _, _, _, _, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, assetLinker: assetLinker);
+        var fileId = Guid.NewGuid();
+        var command = new EditTaskCommand(TaskId, "Updated", "<p>new desc</p>", "medium", null, null, null, null, null, new[] { fileId });
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        assetLinker.Verify(x => x.SyncAttachmentsAsync(TenantId, UserId, TaskId, new[] { fileId }, It.IsAny<CancellationToken>()), Times.Once);
+        assetLinker.Verify(x => x.SyncDescriptionImagesAsync(TenantId, UserId, TaskId, "<p>new desc</p>", It.IsAny<CancellationToken>()), Times.Once);
     }
 }

@@ -2,7 +2,9 @@ using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.TrayActivation.Exceptions;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Models;
 using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
@@ -106,6 +108,103 @@ public class TrayEnrollmentServiceTests
             It.IsAny<TrayDeviceRefreshToken>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task IssueAsync_WhenNoActiveDeviceExists_IssuesCredentialsNormally()
+    {
+        var repository = new Mock<ITrayActivationRepository>();
+        repository.Setup(r => r.FindActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TrayDeviceRegistration?)null);
+        var deviceChangeRequests = new Mock<IDeviceChangeRequestRepository>();
+        var service = CreateService(repository, TokenService(), deviceChangeRequests: deviceChangeRequests);
+
+        var result = await service.IssueAsync(Request(), CancellationToken.None);
+
+        result.AccessToken.Should().Be("access-token");
+        deviceChangeRequests.Verify(r => r.UpsertPendingAsync(
+            It.IsAny<DeviceChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task IssueAsync_WhenSameFingerprintAsActiveDevice_IssuesCredentialsNormally()
+    {
+        var repository = new Mock<ITrayActivationRepository>();
+        repository.Setup(r => r.FindActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TrayDeviceRegistration
+            {
+                Id = Guid.NewGuid(), UserId = UserId, TenantId = TenantId,
+                DeviceFingerprint = "fingerprint", IsActive = true,
+            });
+        var deviceChangeRequests = new Mock<IDeviceChangeRequestRepository>();
+        var service = CreateService(repository, TokenService(), deviceChangeRequests: deviceChangeRequests);
+
+        var result = await service.IssueAsync(Request(), CancellationToken.None);
+
+        result.AccessToken.Should().Be("access-token");
+        deviceChangeRequests.Verify(r => r.UpsertPendingAsync(
+            It.IsAny<DeviceChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task IssueAsync_WhenDifferentFingerprintThanActiveDevice_RaisesRequestAndThrows()
+    {
+        var existingDeviceId = Guid.NewGuid();
+        var repository = new Mock<ITrayActivationRepository>();
+        repository.Setup(r => r.FindActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TrayDeviceRegistration
+            {
+                Id = existingDeviceId, UserId = UserId, TenantId = TenantId,
+                DeviceFingerprint = "fp-old", IsActive = true,
+            });
+        DeviceChangeRequest? raised = null;
+        var deviceChangeRequests = new Mock<IDeviceChangeRequestRepository>();
+        deviceChangeRequests
+            .Setup(r => r.UpsertPendingAsync(It.IsAny<DeviceChangeRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<DeviceChangeRequest, CancellationToken>((r, _) => raised = r)
+            .Returns(Task.CompletedTask);
+        var service = CreateService(repository, TokenService(), deviceChangeRequests: deviceChangeRequests);
+
+        var act = () => service.IssueAsync(Request(), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DeviceChangePendingException>();
+        raised.Should().NotBeNull();
+        raised!.Status.Should().Be(DeviceChangeRequest.StatusPending);
+        raised.CurrentDeviceRegistrationId.Should().Be(existingDeviceId);
+        raised.NewDeviceFingerprint.Should().Be("fingerprint");
+        raised.LegalEntityId.Should().Be(LegalEntityId);
+        deviceChangeRequests.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task IssueAsync_WhenDifferentFingerprintAndRequestHasNoLegalEntity_FallsBackToEmployeesDefaultLegalEntity()
+    {
+        var repository = new Mock<ITrayActivationRepository>();
+        repository.Setup(r => r.FindActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TrayDeviceRegistration
+            {
+                Id = Guid.NewGuid(), UserId = UserId, TenantId = TenantId,
+                DeviceFingerprint = "fp-old", IsActive = true,
+            });
+        var fallbackLegalEntityId = Guid.NewGuid();
+        var employees = new Mock<IEmployeeRepository>();
+        employees.Setup(r => r.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee { LegalEntityId = fallbackLegalEntityId });
+        DeviceChangeRequest? raised = null;
+        var deviceChangeRequests = new Mock<IDeviceChangeRequestRepository>();
+        deviceChangeRequests
+            .Setup(r => r.UpsertPendingAsync(It.IsAny<DeviceChangeRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<DeviceChangeRequest, CancellationToken>((r, _) => raised = r)
+            .Returns(Task.CompletedTask);
+        var requestWithoutLegalEntity = new TrayEnrollmentRequest(
+            TenantId, UserId, null, "DESKTOP-7K2Q", "Windows 11", "fingerprint");
+        var service = CreateService(repository, TokenService(), deviceChangeRequests: deviceChangeRequests, employees: employees);
+
+        var act = () => service.IssueAsync(requestWithoutLegalEntity, CancellationToken.None);
+
+        await act.Should().ThrowAsync<DeviceChangePendingException>();
+        raised.Should().NotBeNull();
+        raised!.LegalEntityId.Should().Be(fallbackLegalEntityId);
+    }
+
     private static TrayEnrollmentRequest Request() => new(
         TenantId,
         UserId,
@@ -117,7 +216,9 @@ public class TrayEnrollmentServiceTests
     private static TrayEnrollmentService CreateService(
         Mock<ITrayActivationRepository> repository,
         Mock<ITrayTokenService> tokens,
-        Mock<IUserRepository>? userRepository = null)
+        Mock<IUserRepository>? userRepository = null,
+        Mock<IDeviceChangeRequestRepository>? deviceChangeRequests = null,
+        Mock<IEmployeeRepository>? employees = null)
     {
         var tenantRepository = new Mock<ITenantRepository>();
         tenantRepository.Setup(r => r.GetByIdAsync(TenantId, It.IsAny<CancellationToken>()))
@@ -129,7 +230,9 @@ public class TrayEnrollmentServiceTests
             tenantRepository.Object,
             new Mock<ITenantContextSwitcher>().Object,
             tokens.Object,
-            new Mock<IDateTimeProvider>().Object);
+            new Mock<IDateTimeProvider>().Object,
+            deviceChangeRequests?.Object ?? new Mock<IDeviceChangeRequestRepository>().Object,
+            employees?.Object ?? new Mock<IEmployeeRepository>().Object);
     }
 
     private static Mock<ITrayTokenService> TokenService()

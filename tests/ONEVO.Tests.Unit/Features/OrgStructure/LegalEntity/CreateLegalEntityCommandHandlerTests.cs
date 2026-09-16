@@ -12,6 +12,7 @@ public class CreateLegalEntityCommandHandlerTests
 {
     private readonly Mock<ILegalEntityRepository> _legalEntities = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
+    private readonly Mock<IWorkModeSeeder> _workModeSeeder = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
@@ -25,7 +26,7 @@ public class CreateLegalEntityCommandHandlerTests
             .ReturnsAsync(false);
         _legalEntities.Setup(r => r.RegistrationNumberExistsForTenantAsync(TenantId, It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
-        return new CreateLegalEntityCommandHandler(_legalEntities.Object, _currentUser.Object);
+        return new CreateLegalEntityCommandHandler(_legalEntities.Object, _currentUser.Object, _workModeSeeder.Object);
     }
 
     private static CreateLegalEntityCommand ValidCommand(Guid? parentId = null) => new(
@@ -60,6 +61,8 @@ public class CreateLegalEntityCommandHandlerTests
             It.Is<LegalEntityEntity>(e => e.TenantId == TenantId && e.IsPrimary == false && e.IsActive == true),
             It.IsAny<CancellationToken>()), Times.Once);
         _legalEntities.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _workModeSeeder.Verify(
+            s => s.SeedDefaultsAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -162,7 +165,7 @@ public class CreateLegalEntityCommandHandlerTests
     public async Task Handle_NotAuthenticated_ReturnsForbidden()
     {
         _currentUser.SetupGet(c => c.IsAuthenticated).Returns(false);
-        var sut = new CreateLegalEntityCommandHandler(_legalEntities.Object, _currentUser.Object);
+        var sut = new CreateLegalEntityCommandHandler(_legalEntities.Object, _currentUser.Object, _workModeSeeder.Object);
 
         var result = await sut.Handle(ValidCommand(), CancellationToken.None);
 

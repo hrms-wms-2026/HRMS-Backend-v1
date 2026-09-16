@@ -231,7 +231,7 @@ public class CreateProjectCommandHandlerTests
     }
 
     private static FileRecordDto MakeFile(string name) => new(
-        Guid.NewGuid(), TenantId, $"key/{name}", name, name, "image/png", 10, "abc", "completed", DateTimeOffset.UtcNow);
+        Guid.NewGuid(), TenantId, $"key/{name}", name, name, "image/png", 10, "abc", "completed", DateTimeOffset.UtcNow, Guid.NewGuid(), null);
 
     private static void CaptureAssets(HandlerSetup setup, List<EntityAsset> assets)
     {

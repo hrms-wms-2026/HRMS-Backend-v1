@@ -8,6 +8,7 @@ using ONEVO.Domain.Features.Auth.Entities;
 using PersonalCalendarEvent = ONEVO.Domain.Features.Calendar.Entities.CalendarEvent;
 using PersonalCalendarEventParticipant = ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipant;
 using HolidayCalendarSettings = ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings;
+using TimeAttendanceWorkMode = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
 using ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities;
@@ -100,6 +101,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<TrayDeviceRegistration> TrayDeviceRegistrations => Set<TrayDeviceRegistration>();
     public DbSet<TrayDeviceRefreshToken> TrayDeviceRefreshTokens => Set<TrayDeviceRefreshToken>();
     public DbSet<TrayDeviceAuthorization> TrayDeviceAuthorizations => Set<TrayDeviceAuthorization>();
+    public DbSet<DeviceChangeRequest> DeviceChangeRequests => Set<DeviceChangeRequest>();
 
     // Monitoring - Employee Check-In
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
@@ -240,7 +242,6 @@ public class ApplicationDbContext : DbContext
     // Lookups
     public DbSet<EmploymentType> EmploymentTypes => Set<EmploymentType>();
     public DbSet<EmploymentStatus> EmploymentStatuses => Set<EmploymentStatus>();
-    public DbSet<WorkMode> WorkModes => Set<WorkMode>();
     public DbSet<ApprovalStatus> ApprovalStatuses => Set<ApprovalStatus>();
     public DbSet<Severity> Severities => Set<Severity>();
 
@@ -262,6 +263,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<LeaveBalanceAudit> LeaveBalanceAudits => Set<LeaveBalanceAudit>();
     public DbSet<LeaveRequestInfoMessage> LeaveRequestInfoMessages => Set<LeaveRequestInfoMessage>();
     public DbSet<LeaveRequestDayAllocation> LeaveRequestDayAllocations => Set<LeaveRequestDayAllocation>();
+
+    // Time & Attendance - Work Mode (per-legal-entity, Guid-keyed)
+    public DbSet<TimeAttendanceWorkMode> TimeAttendanceWorkModes => Set<TimeAttendanceWorkMode>();
 
     // Time & Attendance - Clock-in Policy foundation
     public DbSet<ClockInPolicy> ClockInPolicies => Set<ClockInPolicy>();

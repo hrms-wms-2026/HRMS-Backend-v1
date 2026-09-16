@@ -19,4 +19,5 @@ public record UpdateMonitoringFeatureTogglesCommand(
     bool WorkLocationVerification,
     bool IdentityVerification,
     bool Biometric,
-    int IdleThresholdMinutes) : IRequest<Result<MonitoringFeatureTogglesResponse>>;
+    int IdleThresholdMinutes,
+    int? AllowedRadiusMeters) : IRequest<Result<MonitoringFeatureTogglesResponse>>;

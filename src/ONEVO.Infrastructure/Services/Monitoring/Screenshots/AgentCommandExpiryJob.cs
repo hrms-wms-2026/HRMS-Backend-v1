@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.Screenshots;
@@ -26,12 +27,7 @@ public sealed class AgentCommandExpiryJob : BackgroundService
         {
             try
             {
-                await using var scope = _services.CreateAsyncScope();
-                var repo = scope.ServiceProvider.GetRequiredService<IAgentCommandRepository>();
-                var expired = await repo.ExpireStaleCommandsAsync(DateTimeOffset.UtcNow, stoppingToken);
-
-                if (expired > 0)
-                    _logger.LogInformation("Expired {Count} stale agent commands.", expired);
+                await RunOnceAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -42,5 +38,26 @@ public sealed class AgentCommandExpiryJob : BackgroundService
                 _logger.LogError(ex, "AgentCommandExpiryJob encountered an error.");
             }
         }
+    }
+
+    /// <summary>Public entry for tests / manual triggers - same precedent as
+    /// ActivityDailySummaryJob.RunAggregationAsync.</summary>
+    public async Task RunOnceAsync(CancellationToken ct)
+    {
+        await using var scope = _services.CreateAsyncScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IAgentCommandRepository>();
+        var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
+
+        // agent_commands is under FORCE row-level security with an admin-or-matching-
+        // tenant policy. This is a single cross-tenant bulk UPDATE (no per-tenant writes
+        // to stage), so admin mode for the whole call is sufficient - a background scope
+        // otherwise defaults to system mode, which the policy admits for neither USING
+        // nor WITH CHECK, so the update would silently match zero rows.
+        tenantContext.SetAdminMode();
+
+        var expired = await repo.ExpireStaleCommandsAsync(DateTimeOffset.UtcNow, ct);
+
+        if (expired > 0)
+            _logger.LogInformation("Expired {Count} stale agent commands.", expired);
     }
 }

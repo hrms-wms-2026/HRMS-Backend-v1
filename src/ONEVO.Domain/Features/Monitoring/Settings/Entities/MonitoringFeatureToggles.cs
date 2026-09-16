@@ -30,6 +30,12 @@ public class MonitoringFeatureToggles : ITenantOwnedEntity
     /// </summary>
     public int? IdleThresholdMinutes { get; set; }
 
+    /// <summary>
+    /// Maximum radius in meters from the configured work location. Null = no radius restriction.
+    /// Used by WorkLocationVerification to validate clock-in proximity.
+    /// </summary>
+    public int? AllowedRadiusMeters { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

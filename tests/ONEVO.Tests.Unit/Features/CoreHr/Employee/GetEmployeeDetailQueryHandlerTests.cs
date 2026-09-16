@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 
@@ -20,8 +21,10 @@ public sealed class GetEmployeeDetailQueryHandlerTests
     private readonly Mock<IEncryptionService> _encryption = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<IEmploymentTypeRepository> _employmentTypes = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _employeeId = Guid.NewGuid();
+    private readonly Guid _workModeId = Guid.NewGuid();
     private readonly DateTimeOffset _now = DateTimeOffset.Parse("2026-08-15T12:00:00Z");
 
     public GetEmployeeDetailQueryHandlerTests()
@@ -48,7 +51,8 @@ public sealed class GetEmployeeDetailQueryHandlerTests
             _invitationTokenRepository.Object,
             _encryption.Object,
             _currentUser.Object,
-            _clock.Object);
+            _clock.Object,
+            _employmentTypes.Object);
 
     private void ArrangeVisibleEmployee()
     {
@@ -66,8 +70,13 @@ public sealed class GetEmployeeDetailQueryHandlerTests
                 LastName = "Lovelace",
                 Email = "ada@test.dev",
                 EmployeeNumber = "E-001",
-                HireDate = new DateOnly(2024, 1, 15)
+                HireDate = new DateOnly(2024, 1, 15),
+                EmploymentTypeId = 1,
+                WorkModeId = _workModeId
             });
+        _employmentTypes
+            .Setup(r => r.GetCodeByIdAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("full_time");
         _currentUser.Setup(u => u.HasPermission("org:manage")).Returns(true);
         _employeeRepository
             .Setup(r => r.GetVisibleByIdAsync(
@@ -103,6 +112,19 @@ public sealed class GetEmployeeDetailQueryHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Remote", result.Value!.JobInformation.WorkModeLabel);
+    }
+
+    [Fact]
+    public async Task Handle_IncludesEmploymentTypeCodeAndWorkModeIdForEditForm()
+    {
+        ArrangeVisibleEmployee();
+        _currentUser.Setup(c => c.HasPermission("employees:read:sensitive")).Returns(false);
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("full_time", result.Value!.JobInformation.EmploymentTypeCode);
+        Assert.Equal(_workModeId, result.Value!.JobInformation.WorkModeId);
     }
 
     [Fact]

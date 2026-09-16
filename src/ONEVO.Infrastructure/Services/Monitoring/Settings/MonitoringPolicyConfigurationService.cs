@@ -65,7 +65,7 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
         CancellationToken ct = default)
     {
         var normalizedScope = scopeType.Trim().ToLowerInvariant();
-        if (normalizedScope is not ("department" or "position" or "role"))
+        if (normalizedScope is not ("department" or "position" or "role" or "work_mode"))
             return Result<MonitoringPolicyOverrideResponse>.UnprocessableEntity("Monitoring override scope is not supported.");
         if (scopeId == Guid.Empty)
             return Result<MonitoringPolicyOverrideResponse>.UnprocessableEntity("A valid monitoring override target is required.");
@@ -103,6 +103,7 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
         entity.IdentityVerification = request.IdentityVerification;
         entity.Biometric = request.Biometric;
         entity.IdleThresholdMinutes = request.IdleThresholdMinutes;
+        entity.AllowedRadiusMeters = request.AllowedRadiusMeters;
         entity.OverrideReason = request.OverrideReason?.Trim() ?? string.Empty;
         entity.SetById = actorId;
         entity.UpdatedAt = now;
@@ -141,6 +142,7 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
     // repeat the tenantId-in-body anti-pattern this controller otherwise avoids. A null
     // legalEntityId (no active company context) fails closed for these two scopes. Role scope is
     // tenant-wide by design (roles are not legal-entity-scoped in Phase 1) and unaffected.
+    // Work mode scope is legal-entity-scoped (like department/position) per the TimeAttendance feature.
     private async Task<bool> TargetExistsAsync(Guid tenantId, string scopeType, Guid scopeId, Guid? legalEntityId, CancellationToken ct) => scopeType switch
     {
         "department" => legalEntityId is Guid deptLegalEntityId &&
@@ -148,6 +150,8 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
         "position" => legalEntityId is Guid posLegalEntityId &&
             await _db.Positions.AnyAsync(x => x.Id == scopeId && x.TenantId == tenantId && x.IsActive && x.LegalEntityId == posLegalEntityId, ct),
         "role" => await _db.Roles.AnyAsync(x => x.Id == scopeId && x.TenantId == tenantId, ct),
+        "work_mode" => legalEntityId is Guid workModeLegalEntityId &&
+            await _db.TimeAttendanceWorkModes.AnyAsync(x => x.Id == scopeId && x.TenantId == tenantId && x.IsActive && x.LegalEntityId == workModeLegalEntityId, ct),
         _ => false
     };
 
@@ -156,6 +160,7 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
         "department" => await _db.Departments.Where(x => x.Id == scopeId).Select(x => x.Name).FirstOrDefaultAsync(ct) ?? "Department",
         "position" => await _db.Positions.Where(x => x.Id == scopeId).Select(x => x.Name).FirstOrDefaultAsync(ct) ?? "Position",
         "role" => await _db.Roles.Where(x => x.Id == scopeId).Select(x => x.Name).FirstOrDefaultAsync(ct) ?? "Role",
+        "work_mode" => await _db.TimeAttendanceWorkModes.Where(x => x.Id == scopeId).Select(x => x.Name).FirstOrDefaultAsync(ct) ?? "Work mode",
         _ => "Monitoring override"
     };
 
@@ -164,5 +169,5 @@ public sealed class MonitoringPolicyConfigurationService : IMonitoringPolicyConf
         x.DocumentTracking, x.CommunicationTracking, x.ScreenshotCapture,
         x.AutoScreenshotCapture, x.MeetingDetection, x.DeviceTracking,
         x.WorkLocationVerification, x.IdentityVerification, x.Biometric,
-        x.IdleThresholdMinutes, x.OverrideReason, x.UpdatedAt);
+        x.IdleThresholdMinutes, x.AllowedRadiusMeters, x.OverrideReason, x.UpdatedAt);
 }
