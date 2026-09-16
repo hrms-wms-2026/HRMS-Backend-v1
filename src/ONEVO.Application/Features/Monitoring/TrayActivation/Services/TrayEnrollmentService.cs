@@ -51,7 +51,7 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
         TrayEnrollmentRequest request,
         CancellationToken ct)
     {
-        var existingDevice = await _repository.FindLatestActiveDeviceForUserAsync(
+        var existingDevice = await _repository.FindActiveDeviceForUserAsync(
             request.UserId, request.TenantId, ct);
 
         if (existingDevice is not null && existingDevice.DeviceFingerprint != request.DeviceFingerprint)

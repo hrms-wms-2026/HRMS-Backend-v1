@@ -172,6 +172,17 @@ public class EfTrayActivationRepository : ITrayActivationRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<TrayDeviceRegistration?> FindActiveDeviceForUserAsync(
+        Guid userId, Guid tenantId, CancellationToken ct)
+    {
+        return await _db.TrayDeviceRegistrations
+            .Where(d => d.UserId == userId
+                && d.TenantId == tenantId
+                && d.IsActive)
+            .OrderByDescending(d => d.ActivatedAt)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task UpdateDeviceLastSeenAsync(
         Guid deviceRegistrationId, DateTimeOffset lastSeenAt, CancellationToken ct)
     {

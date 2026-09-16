@@ -112,7 +112,7 @@ public class TrayEnrollmentServiceTests
     public async Task IssueAsync_WhenNoActiveDeviceExists_IssuesCredentialsNormally()
     {
         var repository = new Mock<ITrayActivationRepository>();
-        repository.Setup(r => r.FindLatestActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+        repository.Setup(r => r.FindActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((TrayDeviceRegistration?)null);
         var deviceChangeRequests = new Mock<IDeviceChangeRequestRepository>();
         var service = CreateService(repository, TokenService(), deviceChangeRequests: deviceChangeRequests);
@@ -128,7 +128,7 @@ public class TrayEnrollmentServiceTests
     public async Task IssueAsync_WhenSameFingerprintAsActiveDevice_IssuesCredentialsNormally()
     {
         var repository = new Mock<ITrayActivationRepository>();
-        repository.Setup(r => r.FindLatestActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+        repository.Setup(r => r.FindActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TrayDeviceRegistration
             {
                 Id = Guid.NewGuid(), UserId = UserId, TenantId = TenantId,
@@ -149,7 +149,7 @@ public class TrayEnrollmentServiceTests
     {
         var existingDeviceId = Guid.NewGuid();
         var repository = new Mock<ITrayActivationRepository>();
-        repository.Setup(r => r.FindLatestActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+        repository.Setup(r => r.FindActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TrayDeviceRegistration
             {
                 Id = existingDeviceId, UserId = UserId, TenantId = TenantId,
@@ -178,7 +178,7 @@ public class TrayEnrollmentServiceTests
     public async Task IssueAsync_WhenDifferentFingerprintAndRequestHasNoLegalEntity_FallsBackToEmployeesDefaultLegalEntity()
     {
         var repository = new Mock<ITrayActivationRepository>();
-        repository.Setup(r => r.FindLatestActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
+        repository.Setup(r => r.FindActiveDeviceForUserAsync(UserId, TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TrayDeviceRegistration
             {
                 Id = Guid.NewGuid(), UserId = UserId, TenantId = TenantId,
