@@ -125,43 +125,44 @@ public class SubmitCheckInCommandHandler
                 {
                     var workAreaResult = await _expectedWorkAreas.ResolveAsync(
                         employee, legalEntity, DateOnly.FromDateTime(now.UtcDateTime), cancellationToken);
-                    // TODO(Task 10): ExpectedWorkAreaResolver (Task 5) now returns the WorkMode's
-                    // actual name instead of a fixed classification - matching by name here is a
-                    // minimal compile-fix preserving prior "remote" behavior for the seeded default.
-                    if (workAreaResult.IsSuccess
-                        && string.Equals(workAreaResult.Value!.WorkModeName, "remote", StringComparison.OrdinalIgnoreCase))
+
+                    // Work modes with "Let employee choose daily" register location via the daily
+                    // office/home/other confirmation screen instead (ConfirmWorkLocationCommandHandler,
+                    // which runs before every clock-in) - this branch only owns the fixed
+                    // self-registering case, so it must not also fire for those employees.
+                    if (workAreaResult is { IsSuccess: true, Value.SelfRegistersLocation: true }
+                        && checkIn.Latitude is double latitude && checkIn.Longitude is double longitude)
                     {
-                        // First-ever location fix for a remote employee becomes their registered
+                        // First-ever location fix for a self-registering employee becomes their
                         // reference point - no separate "confirm your location" screen. Only ever
                         // set once this way; changing it afterward requires an approved
                         // LocationChangeRequest the employee then opts into (below).
-                        if (checkIn.Latitude is double latitude && checkIn.Longitude is double longitude)
-                        {
-                            var existingLocation = await _workLocations.GetByEmployeeIdAsync(
-                                _device.TenantId, employee.Id, cancellationToken);
-                            if (existingLocation is null)
-                            {
-                                await _workLocations.AddAsync(new EmployeeWorkLocation
-                                {
-                                    Id = Guid.NewGuid(),
-                                    TenantId = _device.TenantId,
-                                    EmployeeId = employee.Id,
-                                    Latitude = latitude,
-                                    Longitude = longitude,
-                                    AccuracyMeters = checkIn.LocationAccuracy,
-                                    RegisteredAt = now,
-                                    UpdatedAt = now
-                                }, cancellationToken);
-                            }
-                        }
-
-                        // An approved-but-undecided change request re-prompts on every clock-in
-                        // until the employee opts in - saying no earlier just meant "not this time".
-                        var approvedRequest = await _locationChangeRequests.GetActiveForEmployeeAsync(
+                        var existingLocation = await _workLocations.GetByEmployeeIdAsync(
                             _device.TenantId, employee.Id, cancellationToken);
-                        if (approvedRequest is { Status: LocationChangeRequest.StatusApproved })
-                            pendingLocationChangeRequestId = approvedRequest.Id;
+                        if (existingLocation is null)
+                        {
+                            await _workLocations.AddAsync(new EmployeeWorkLocation
+                            {
+                                Id = Guid.NewGuid(),
+                                TenantId = _device.TenantId,
+                                EmployeeId = employee.Id,
+                                Latitude = latitude,
+                                Longitude = longitude,
+                                AccuracyMeters = checkIn.LocationAccuracy,
+                                RegisteredAt = now,
+                                UpdatedAt = now
+                            }, cancellationToken);
+                        }
                     }
+
+                    // An approved-but-undecided change request re-prompts on every clock-in until the
+                    // employee opts in - saying no earlier just meant "not this time". Independent of
+                    // the work mode's location behavior: it is about updating an existing registered
+                    // point, not about whether one gets auto-registered above.
+                    var approvedRequest = await _locationChangeRequests.GetActiveForEmployeeAsync(
+                        _device.TenantId, employee.Id, cancellationToken);
+                    if (approvedRequest is { Status: LocationChangeRequest.StatusApproved })
+                        pendingLocationChangeRequestId = approvedRequest.Id;
                 }
             }
         }

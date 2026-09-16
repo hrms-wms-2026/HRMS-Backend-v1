@@ -747,7 +747,12 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         employee.LegalEntityId = definition.LegalEntityId;
         employee.EmploymentTypeId = SmokeDefaultEmploymentTypeId;
         employee.EmploymentStatusId = SmokeDefaultEmploymentStatusId;
-        employee.WorkModeId = workModeId;
+        // Only ever assign a resolved default - never downgrade an already-assigned WorkModeId to
+        // null just because ResolveDefaultWorkModeIdAsync's by-name lookup missed this run (e.g.
+        // the seeded "Onsite" row was renamed/deleted). That silent reset broke every downstream
+        // resolver keyed on WorkModeId (schedule display, clock-in policy) on every dev restart.
+        if (workModeId is not null)
+            employee.WorkModeId = workModeId;
         employee.UpdatedAt = now;
     }
 

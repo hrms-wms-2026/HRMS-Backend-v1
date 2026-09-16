@@ -39,7 +39,8 @@ public class LegalEntityWorkModesController : ControllerBase
         var result = await _mediator.Send(
             new CreateWorkModeCommand(
                 legalEntityId, request.Name, request.BiometricEnabled, request.WebEnabled,
-                request.TrayEnabled, request.PhotoRequired),
+                request.TrayEnabled, request.PhotoRequired,
+                request.SelfRegistersLocation, request.AllowsDailyLocationChoice),
             ct);
         return result.IsSuccess
             ? CreatedAtAction(nameof(List), new { legalEntityId }, result.Value)
@@ -54,7 +55,8 @@ public class LegalEntityWorkModesController : ControllerBase
         var result = await _mediator.Send(
             new UpdateWorkModeCommand(
                 id, request.Name, request.BiometricEnabled, request.WebEnabled,
-                request.TrayEnabled, request.PhotoRequired),
+                request.TrayEnabled, request.PhotoRequired,
+                request.SelfRegistersLocation, request.AllowsDailyLocationChoice),
             ct);
         return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }

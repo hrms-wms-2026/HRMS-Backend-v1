@@ -38,10 +38,19 @@ public sealed class ExpectedWorkAreaResolver(
 
         if (approved is not null)
         {
+            // The change request only cached the requested mode's Id/Name at approval time - its
+            // location-behavior flags can only be read from the WorkMode itself, and may have
+            // changed since (an admin could have re-toggled it). Fall back to office-checked
+            // (both false) if the requested mode was since deleted, rather than failing outright.
+            var requestedMode = approved.RequestedWorkModeId is Guid requestedWorkModeId
+                ? await workModes.GetByIdAsync(employee.TenantId, requestedWorkModeId, ct)
+                : null;
             return Result<ExpectedWorkAreaResolution>.Success(
                 new ExpectedWorkAreaResolution(
                     approved.RequestedWorkModeId, approved.RequestedWorkModeName,
-                    schedule.Timezone, SourceApprovedRequest));
+                    schedule.Timezone, SourceApprovedRequest,
+                    requestedMode?.SelfRegistersLocation ?? false,
+                    requestedMode?.AllowsDailyLocationChoice ?? false));
         }
 
         if (employee.WorkModeId is not Guid workModeId)
@@ -52,6 +61,8 @@ public sealed class ExpectedWorkAreaResolver(
             return Result<ExpectedWorkAreaResolution>.Conflict("The employee's assigned work mode was not found.");
 
         return Result<ExpectedWorkAreaResolution>.Success(
-            new ExpectedWorkAreaResolution(mode.Id, mode.Name, schedule.Timezone, SourceActiveWorkMode));
+            new ExpectedWorkAreaResolution(
+                mode.Id, mode.Name, schedule.Timezone, SourceActiveWorkMode,
+                mode.SelfRegistersLocation, mode.AllowsDailyLocationChoice));
     }
 }

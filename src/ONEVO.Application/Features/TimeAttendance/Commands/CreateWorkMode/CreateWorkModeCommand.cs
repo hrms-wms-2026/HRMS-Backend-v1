@@ -10,4 +10,6 @@ public record CreateWorkModeCommand(
     bool BiometricEnabled,
     bool WebEnabled,
     bool TrayEnabled,
-    bool PhotoRequired) : IRequest<Result<WorkModeResponse>>;
+    bool PhotoRequired,
+    bool SelfRegistersLocation,
+    bool AllowsDailyLocationChoice) : IRequest<Result<WorkModeResponse>>;

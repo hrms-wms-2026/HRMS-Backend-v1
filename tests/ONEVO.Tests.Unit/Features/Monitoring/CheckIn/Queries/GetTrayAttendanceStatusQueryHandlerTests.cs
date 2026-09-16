@@ -118,6 +118,8 @@ public class GetTrayAttendanceStatusQueryHandlerTests
         Guid.NewGuid(),
         "Remote",
         "active_employee_work_mode",
+        false,
+        false,
         new ClockInPolicy { Id = Guid.NewGuid() },
         "configured",
         new AllowedClockInMethods(false, true, false, false, false, null),

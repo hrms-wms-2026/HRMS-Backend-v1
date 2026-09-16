@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -39,74 +40,7 @@ public sealed class SprintLifecycleJob : BackgroundService
         {
             try
             {
-                await using var scope = _services.CreateAsyncScope();
-                var sprints = scope.ServiceProvider.GetRequiredService<ISprintRepository>();
-                var tasks = scope.ServiceProvider.GetRequiredService<IWorkTaskRepository>();
-                var statuses = scope.ServiceProvider.GetRequiredService<ITaskStatusRepository>();
-
-                var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
-                var candidates = (await sprints.GetByStatusAsync(SprintStatuses.Future, stoppingToken))
-                    .Concat(await sprints.GetByStatusAsync(SprintStatuses.Active, stoppingToken));
-
-                var advancedCount = 0;
-                foreach (var sprint in candidates)
-                {
-                    var allTasksComplete = false;
-                    if (sprint.Status == SprintStatuses.Active)
-                    {
-                        var sprintTasks = await tasks.GetBySprintIdAsync(sprint.TenantId, sprint.Id, stoppingToken);
-                        allTasksComplete = sprintTasks.Count > 0;
-                        foreach (var task in sprintTasks)
-                        {
-                            var status = await statuses.GetByIdForTenantAsync(sprint.TenantId, task.StatusId, stoppingToken);
-                            if (status is null || !status.MarksTaskComplete)
-                            {
-                                allTasksComplete = false;
-                                break;
-                            }
-                        }
-                    }
-
-                    var next = DetermineNextStatus(sprint.Status, sprint.StartDate, sprint.EndDate, today, allTasksComplete);
-                    if (next is null)
-                        continue;
-
-                    sprint.Status = next;
-                    sprint.UpdatedAt = DateTimeOffset.UtcNow;
-                    sprints.Update(sprint);
-                    advancedCount++;
-
-                    if (next == SprintStatuses.Incomplete)
-                    {
-                        var members = scope.ServiceProvider.GetRequiredService<IProjectMemberRepository>();
-                        var membership = scope.ServiceProvider.GetRequiredService<IMilestoneMembershipCoordinator>();
-                        var notifications = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
-                        var objectives = scope.ServiceProvider.GetRequiredService<IObjectiveRepository>();
-
-                        var objective = await objectives.GetByIdForTenantAsync(sprint.TenantId, sprint.ObjectiveId, stoppingToken);
-                        if (objective is not null)
-                        {
-                            var activeMembers = await members.ListActiveForObjectiveAsync(sprint.TenantId, sprint.ObjectiveId, stoppingToken);
-                            foreach (var member in activeMembers)
-                            {
-                                var assignee = await membership.GetActiveAssigneeAsync(sprint.TenantId, member.EmployeeId, stoppingToken);
-                                if (assignee is null) continue;
-
-                                await notifications.SendTemplatedAsync(
-                                    sprint.TenantId, assignee.UserId, "work_sprint_incomplete",
-                                    new Dictionary<string, string> { ["sprintName"] = sprint.Name, ["objectiveName"] = objective.Title },
-                                    "sprint", sprint.Id, stoppingToken);
-                            }
-                        }
-                    }
-                }
-
-                if (advancedCount > 0)
-                {
-                    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-                    await db.SaveChangesAsync(stoppingToken);
-                    _logger.LogInformation("SprintLifecycleJob advanced {Count} sprints.", advancedCount);
-                }
+                await RunOnceAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -116,6 +50,114 @@ public sealed class SprintLifecycleJob : BackgroundService
             {
                 _logger.LogError(ex, "SprintLifecycleJob encountered an error.");
             }
+        }
+    }
+
+    /// <summary>Public entry for tests / manual triggers - same precedent as
+    /// ActivityDailySummaryJob.RunAggregationAsync.</summary>
+    public async Task RunOnceAsync(CancellationToken ct)
+    {
+        await using var scope = _services.CreateAsyncScope();
+        var sprints = scope.ServiceProvider.GetRequiredService<ISprintRepository>();
+        var tasks = scope.ServiceProvider.GetRequiredService<IWorkTaskRepository>();
+        var statuses = scope.ServiceProvider.GetRequiredService<ITaskStatusRepository>();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
+        var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
+        var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+
+        // sprints, work_tasks and related tables are under FORCE row-level security. A
+        // background scope defaults to system mode, which the tenant_isolation policy
+        // admits for neither - so the cross-tenant sweep below needs admin mode, and each
+        // tenant's sprints need that tenant's context established before reading/writing
+        // them. Mirrors LocationRuleEvaluatorJob/ActivityDailySummaryJob.
+        tenantContext.SetAdminMode();
+
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
+        var candidates = (await sprints.GetByStatusAsync(SprintStatuses.Future, ct))
+            .Concat(await sprints.GetByStatusAsync(SprintStatuses.Active, ct))
+            .ToList();
+
+        var advancedCount = 0;
+
+        // Grouped tenant-major so each tenant's sprint advances - and save - happen while
+        // that tenant's context is active on the connection, before switching to the next
+        // tenant. A single batched SaveChangesAsync across tenants would flush every
+        // tenant's changes under whichever tenant was switched to last, and every earlier
+        // tenant's rows would fail the RLS WITH CHECK constraint.
+        foreach (var tenantGroup in candidates.GroupBy(s => s.TenantId))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var tenantId = tenantGroup.Key;
+            var tenant = await tenants.GetByIdAsync(tenantId, ct);
+            if (tenant is null) continue;
+            await tenantSwitcher.SwitchToTenantAsync(
+                new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
+
+            var tenantAdvanced = 0;
+
+            foreach (var sprint in tenantGroup)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var allTasksComplete = false;
+                if (sprint.Status == SprintStatuses.Active)
+                {
+                    var sprintTasks = await tasks.GetBySprintIdAsync(sprint.TenantId, sprint.Id, ct);
+                    allTasksComplete = sprintTasks.Count > 0;
+                    foreach (var task in sprintTasks)
+                    {
+                        var status = await statuses.GetByIdForTenantAsync(sprint.TenantId, task.StatusId, ct);
+                        if (status is null || !status.MarksTaskComplete)
+                        {
+                            allTasksComplete = false;
+                            break;
+                        }
+                    }
+                }
+
+                var next = DetermineNextStatus(sprint.Status, sprint.StartDate, sprint.EndDate, today, allTasksComplete);
+                if (next is null)
+                    continue;
+
+                sprint.Status = next;
+                sprint.UpdatedAt = DateTimeOffset.UtcNow;
+                sprints.Update(sprint);
+                tenantAdvanced++;
+
+                if (next == SprintStatuses.Incomplete)
+                {
+                    var members = scope.ServiceProvider.GetRequiredService<IProjectMemberRepository>();
+                    var membership = scope.ServiceProvider.GetRequiredService<IMilestoneMembershipCoordinator>();
+                    var notifications = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
+                    var objectives = scope.ServiceProvider.GetRequiredService<IObjectiveRepository>();
+
+                    var objective = await objectives.GetByIdForTenantAsync(sprint.TenantId, sprint.ObjectiveId, ct);
+                    if (objective is not null)
+                    {
+                        var activeMembers = await members.ListActiveForObjectiveAsync(sprint.TenantId, sprint.ObjectiveId, ct);
+                        foreach (var member in activeMembers)
+                        {
+                            var assignee = await membership.GetActiveAssigneeAsync(sprint.TenantId, member.EmployeeId, ct);
+                            if (assignee is null) continue;
+
+                            await notifications.SendTemplatedAsync(
+                                sprint.TenantId, assignee.UserId, "work_sprint_incomplete",
+                                new Dictionary<string, string> { ["sprintName"] = sprint.Name, ["objectiveName"] = objective.Title },
+                                "sprint", sprint.Id, ct);
+                        }
+                    }
+                }
+            }
+
+            if (tenantAdvanced > 0)
+            {
+                await db.SaveChangesAsync(ct);
+                _logger.LogInformation("SprintLifecycleJob advanced {Count} sprints for tenant {TenantId}.", tenantAdvanced, tenantId);
+            }
+
+            advancedCount += tenantAdvanced;
         }
     }
 

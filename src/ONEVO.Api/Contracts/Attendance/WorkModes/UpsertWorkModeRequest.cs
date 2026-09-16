@@ -5,4 +5,6 @@ public record UpsertWorkModeRequest(
     bool BiometricEnabled,
     bool WebEnabled,
     bool TrayEnabled,
-    bool PhotoRequired);
+    bool PhotoRequired,
+    bool SelfRegistersLocation,
+    bool AllowsDailyLocationChoice);

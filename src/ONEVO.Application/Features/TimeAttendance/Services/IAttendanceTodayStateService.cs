@@ -31,6 +31,8 @@ public sealed record AttendanceTodayContext(
     Guid? ExpectedWorkModeId,
     string? ExpectedWorkModeName,
     string ExpectedWorkAreaSource,
+    bool SelfRegistersLocation,
+    bool AllowsDailyLocationChoice,
     ClockInPolicy? EffectivePolicy,
     string PolicyStatus,
     AllowedClockInMethods AllowedClockInMethods,

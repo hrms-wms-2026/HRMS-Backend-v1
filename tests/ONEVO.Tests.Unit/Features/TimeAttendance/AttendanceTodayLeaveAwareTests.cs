@@ -120,7 +120,7 @@ public sealed class AttendanceTodayLeaveAwareTests
         var expectedWorkAreas = new Mock<IExpectedWorkAreaResolver>();
         expectedWorkAreas.Setup(x => x.ResolveAsync(It.IsAny<Employee>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(
-                new ExpectedWorkAreaResolution(Guid.NewGuid(), "remote", "UTC", "active_employee_work_mode")));
+                new ExpectedWorkAreaResolution(Guid.NewGuid(), "remote", "UTC", "active_employee_work_mode", false, false)));
         var leaves = new Mock<ILeaveRequestReadRepository>();
         leaves.Setup(x => x.ListApprovedCoveringAsync(
                 TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))

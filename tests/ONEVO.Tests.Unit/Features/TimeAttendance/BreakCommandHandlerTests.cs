@@ -448,6 +448,8 @@ public sealed class BreakCommandHandlerTests
             expectedWorkModeId ?? RemoteWorkModeId,
             expectedWorkModeName,
             "active_employee_work_mode",
+            false,
+            false,
             new ClockInPolicy { Id = Guid.NewGuid() },
             "configured",
             new AllowedClockInMethods(true, false, false, false, false, null),

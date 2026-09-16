@@ -65,6 +65,8 @@ public class CreateWorkModeCommandHandler : IRequestHandler<CreateWorkModeComman
             WebEnabled = request.WebEnabled,
             TrayEnabled = request.TrayEnabled,
             PhotoRequired = request.PhotoRequired,
+            SelfRegistersLocation = request.SelfRegistersLocation,
+            AllowsDailyLocationChoice = request.AllowsDailyLocationChoice,
             IsSystemSeeded = false,
             DisplayOrder = activeCount,
             IsActive = true,

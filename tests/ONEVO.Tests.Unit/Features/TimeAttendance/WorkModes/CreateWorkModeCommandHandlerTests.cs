@@ -38,7 +38,7 @@ public class CreateWorkModeCommandHandlerTests
         var handler = CreateHandler();
 
         var result = await handler.Handle(
-            new CreateWorkModeCommand(_legalEntityId, "Field", false, true, false, false), CancellationToken.None);
+            new CreateWorkModeCommand(_legalEntityId, "Field", false, true, false, false, false, false), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
@@ -55,7 +55,7 @@ public class CreateWorkModeCommandHandlerTests
         var handler = CreateHandler();
 
         var result = await handler.Handle(
-            new CreateWorkModeCommand(_legalEntityId, "Remote", false, true, false, false), CancellationToken.None);
+            new CreateWorkModeCommand(_legalEntityId, "Remote", false, true, false, false, false, false), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
@@ -71,11 +71,13 @@ public class CreateWorkModeCommandHandlerTests
         var handler = CreateHandler();
 
         var result = await handler.Handle(
-            new CreateWorkModeCommand(_legalEntityId, "Client Site", true, true, false, true), CancellationToken.None);
+            new CreateWorkModeCommand(_legalEntityId, "Client Site", true, true, false, true, true, false), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Client Site", result.Value!.Name);
         Assert.True(result.Value.PhotoRequired);
+        Assert.True(result.Value.SelfRegistersLocation);
+        Assert.False(result.Value.AllowsDailyLocationChoice);
         Assert.False(result.Value.IsSystemSeeded);
         _workModes.Verify(x => x.AddAsync(It.IsAny<Domain.Features.TimeAttendance.Entities.WorkMode>(), It.IsAny<CancellationToken>()), Times.Once);
         _workModes.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);

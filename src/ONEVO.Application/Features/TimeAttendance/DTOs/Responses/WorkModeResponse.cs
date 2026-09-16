@@ -8,6 +8,8 @@ public record WorkModeResponse(
     bool WebEnabled,
     bool TrayEnabled,
     bool PhotoRequired,
+    bool SelfRegistersLocation,
+    bool AllowsDailyLocationChoice,
     bool IsSystemSeeded,
     int DisplayOrder,
     bool IsActive,

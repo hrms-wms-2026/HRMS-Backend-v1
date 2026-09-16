@@ -611,7 +611,7 @@ public sealed class AttendanceReadHandlerTests
         var workModeId = Guid.NewGuid();
         expectedWorkAreas.Setup(x => x.ResolveAsync(It.IsAny<Employee>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(
-                new ExpectedWorkAreaResolution(workModeId, workModeCode, legalEntity.Timezone!, "active_employee_work_mode")));
+                new ExpectedWorkAreaResolution(workModeId, workModeCode, legalEntity.Timezone!, "active_employee_work_mode", false, false)));
         var dateTime = new Mock<IDateTimeProvider>(); dateTime.SetupGet(x => x.UtcNow).Returns(DateTimeOffset.Parse(localTimeUtc));
         var workModes = new Mock<IWorkModeRepository>();
         workModes.Setup(x => x.GetByIdAsync(TenantId, workModeId, It.IsAny<CancellationToken>()))

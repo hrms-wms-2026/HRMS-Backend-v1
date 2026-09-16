@@ -13,6 +13,8 @@ public static class WorkModeMapper
         entity.WebEnabled,
         entity.TrayEnabled,
         entity.PhotoRequired,
+        entity.SelfRegistersLocation,
+        entity.AllowsDailyLocationChoice,
         entity.IsSystemSeeded,
         entity.DisplayOrder,
         entity.IsActive,

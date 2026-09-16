@@ -96,12 +96,19 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
             && todayContextResult.Value!.AllowedClockInMethods.PhotoRequired;
         var scheduleStart = todayContextResult.IsSuccess ? todayContextResult.Value!.Schedule.Start : null;
         var scheduleEnd = todayContextResult.IsSuccess ? todayContextResult.Value!.Schedule.End : null;
+        var allowsDailyLocationChoice = todayContextResult.IsSuccess
+            && todayContextResult.Value!.AllowsDailyLocationChoice;
+        var selfRegistersLocation = todayContextResult.IsSuccess
+            && todayContextResult.Value!.SelfRegistersLocation;
+        var officeLatitude = todayContextResult.IsSuccess ? todayContextResult.Value!.LegalEntity.OfficeLatitude : null;
+        var officeLongitude = todayContextResult.IsSuccess ? todayContextResult.Value!.LegalEntity.OfficeLongitude : null;
 
         return Result<TrayAgentPolicyDto>.Success(new TrayAgentPolicyDto(
             ComputeVersion(
                 locationEnabled, activityEnabled, appUsageEnabled, screenshotEnabled, autoScreenshotEnabled,
                 cameraEnabled, idleThresholdMinutes, trayClockInEnabled, biometricEnabled, webEnabled,
-                photoRequiredEnabled, allowedRadiusMeters, scheduleStart, scheduleEnd),
+                photoRequiredEnabled, allowedRadiusMeters, scheduleStart, scheduleEnd,
+                allowsDailyLocationChoice, selfRegistersLocation, officeLatitude, officeLongitude),
             activityEnabled,
             appUsageEnabled,
             screenshotEnabled,
@@ -117,7 +124,11 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
             BiometricEnabled: biometricEnabled,
             WebEnabled: webEnabled,
             PhotoRequiredEnabled: photoRequiredEnabled,
-            AllowedRadiusMeters: allowedRadiusMeters));
+            AllowedRadiusMeters: allowedRadiusMeters,
+            AllowsDailyLocationChoice: allowsDailyLocationChoice,
+            SelfRegistersLocation: selfRegistersLocation,
+            OfficeLatitude: officeLatitude,
+            OfficeLongitude: officeLongitude));
     }
 
     public static string ComputeVersion(
@@ -134,10 +145,14 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
         bool photoRequired,
         int? allowedRadiusMeters,
         TimeOnly? scheduleStart = null,
-        TimeOnly? scheduleEnd = null)
+        TimeOnly? scheduleEnd = null,
+        bool allowsDailyLocationChoice = false,
+        bool selfRegistersLocation = false,
+        double? officeLatitude = null,
+        double? officeLongitude = null)
     {
         var fingerprint =
-            $"{locationEnabled}:{activityEnabled}:{appUsageEnabled}:{screenshotEnabled}:{autoScreenshotEnabled}:{cameraEnabled}:{idleThresholdMinutes}:{trayClockInEnabled}:{biometricEnabled}:{webEnabled}:{photoRequired}:{allowedRadiusMeters}:{scheduleStart}:{scheduleEnd}";
+            $"{locationEnabled}:{activityEnabled}:{appUsageEnabled}:{screenshotEnabled}:{autoScreenshotEnabled}:{cameraEnabled}:{idleThresholdMinutes}:{trayClockInEnabled}:{biometricEnabled}:{webEnabled}:{photoRequired}:{allowedRadiusMeters}:{scheduleStart}:{scheduleEnd}:{allowsDailyLocationChoice}:{selfRegistersLocation}:{officeLatitude}:{officeLongitude}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint)))[..16];
     }
 }

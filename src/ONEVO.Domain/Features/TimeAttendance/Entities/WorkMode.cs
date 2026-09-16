@@ -13,6 +13,16 @@ public class WorkMode : ITenantOwnedEntity
     public bool TrayEnabled { get; set; }
     public bool PhotoRequired { get; set; }
 
+    // Location behavior - independent toggles, not a fixed Onsite/Remote/Hybrid classification.
+    // Neither set: employee's location is checked against the legal entity's configured office
+    // point (LegalEntity.OfficeLatitude/OfficeLongitude). SelfRegistersLocation: their first
+    // clock-in/check-in becomes their own permanent reference point instead (see
+    // SubmitCheckInCommandHandler). AllowsDailyLocationChoice: skips both of the above and keeps
+    // the daily office/home/other confirmation screen (ConfirmWorkLocationCommandHandler) for
+    // employees whose work arrangement genuinely varies day to day.
+    public bool SelfRegistersLocation { get; set; }
+    public bool AllowsDailyLocationChoice { get; set; }
+
     // Provenance only - never blocks edit or deactivation. Shown in the UI as a "default" badge.
     public bool IsSystemSeeded { get; set; }
 

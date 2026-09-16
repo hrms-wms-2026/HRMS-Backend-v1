@@ -125,7 +125,7 @@ public sealed class AttendanceTodayStateServiceTests
         expectedWorkAreas
             .Setup(x => x.ResolveAsync(It.IsAny<Employee>(), It.IsAny<ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(
-                new ExpectedWorkAreaResolution(Guid.NewGuid(), "remote", legalEntity.Timezone!, "active_employee_work_mode")));
+                new ExpectedWorkAreaResolution(Guid.NewGuid(), "remote", legalEntity.Timezone!, "active_employee_work_mode", false, false)));
 
         var dateTime = new Mock<IDateTimeProvider>();
         dateTime.Setup(x => x.UtcNow).Returns(DateTimeOffset.Parse("2026-08-21T10:00:00+00:00"));

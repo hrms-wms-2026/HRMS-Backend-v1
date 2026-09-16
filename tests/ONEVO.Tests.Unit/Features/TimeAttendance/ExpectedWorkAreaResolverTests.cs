@@ -36,7 +36,11 @@ public class ExpectedWorkAreaResolverTests
                 _tenantId, _legalEntityId, employee.Id, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((WorkAreaChangeRequest?)null);
         _workModes.Setup(x => x.GetByIdAsync(_tenantId, workModeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new WorkMode { Id = workModeId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Hybrid", IsActive = true });
+            .ReturnsAsync(new WorkMode
+            {
+                Id = workModeId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Hybrid",
+                IsActive = true, SelfRegistersLocation = true, AllowsDailyLocationChoice = false
+            });
 
         var result = await CreateResolver().ResolveAsync(employee, legalEntity, DateOnly.FromDateTime(DateTime.UtcNow));
 
@@ -44,6 +48,8 @@ public class ExpectedWorkAreaResolverTests
         Assert.Equal(workModeId, result.Value!.WorkModeId);
         Assert.Equal("Hybrid", result.Value.WorkModeName);
         Assert.Equal(ExpectedWorkAreaResolver.SourceActiveWorkMode, result.Value.Source);
+        Assert.True(result.Value.SelfRegistersLocation);
+        Assert.False(result.Value.AllowsDailyLocationChoice);
     }
 
     [Fact]
@@ -61,17 +67,55 @@ public class ExpectedWorkAreaResolverTests
             .ReturnsAsync(new WorkAreaChangeRequest
             {
                 Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = employee.Id, LegalEntityId = _legalEntityId,
-                Date = date, RequestedWorkModeId = requestedWorkModeId, RequestedWorkModeName = "Remote",
+                Date = date, RequestedWorkModeId = requestedWorkModeId, RequestedWorkModeName = "Field Crew",
                 Status = WorkAreaChangeRequest.StatusApproved
+            });
+        _workModes.Setup(x => x.GetByIdAsync(_tenantId, requestedWorkModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode
+            {
+                Id = requestedWorkModeId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Field Crew",
+                IsActive = true, SelfRegistersLocation = true, AllowsDailyLocationChoice = false
             });
 
         var result = await CreateResolver().ResolveAsync(employee, legalEntity, date);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(requestedWorkModeId, result.Value!.WorkModeId);
-        Assert.Equal("Remote", result.Value.WorkModeName);
+        Assert.Equal("Field Crew", result.Value.WorkModeName);
         Assert.Equal(ExpectedWorkAreaResolver.SourceApprovedRequest, result.Value.Source);
-        _workModes.Verify(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        // The requested mode's OWN location-behavior flags must be read live from WorkMode - the
+        // change request only cached Id/Name at approval time, and an admin could have re-toggled
+        // the mode's flags since.
+        Assert.True(result.Value.SelfRegistersLocation);
+        Assert.False(result.Value.AllowsDailyLocationChoice);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ApprovedRequestTargetsDeletedWorkMode_FallsBackToOfficeChecked()
+    {
+        var permanentWorkModeId = Guid.NewGuid();
+        var requestedWorkModeId = Guid.NewGuid();
+        var employee = new Employee
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantId, LegalEntityId = _legalEntityId, WorkModeId = permanentWorkModeId
+        };
+        var legalEntity = new LegalEntity { Id = _legalEntityId, TenantId = _tenantId, Timezone = "UTC" };
+        var date = DateOnly.FromDateTime(DateTime.UtcNow);
+        _changeRequests.Setup(x => x.GetApprovedForDateAsync(_tenantId, _legalEntityId, employee.Id, date, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkAreaChangeRequest
+            {
+                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = employee.Id, LegalEntityId = _legalEntityId,
+                Date = date, RequestedWorkModeId = requestedWorkModeId, RequestedWorkModeName = "Deleted Mode",
+                Status = WorkAreaChangeRequest.StatusApproved
+            });
+        _workModes.Setup(x => x.GetByIdAsync(_tenantId, requestedWorkModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WorkMode?)null);
+
+        var result = await CreateResolver().ResolveAsync(employee, legalEntity, date);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.SelfRegistersLocation);
+        Assert.False(result.Value.AllowsDailyLocationChoice);
     }
 
     [Fact]

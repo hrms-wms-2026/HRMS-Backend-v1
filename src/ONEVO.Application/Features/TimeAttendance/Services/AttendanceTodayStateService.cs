@@ -82,6 +82,8 @@ public sealed class AttendanceTodayStateService(
             expectedArea.WorkModeId,
             expectedArea.WorkModeName,
             expectedArea.Source,
+            expectedArea.SelfRegistersLocation,
+            expectedArea.AllowsDailyLocationChoice,
             policy.Policy,
             policy.Status,
             policy.AllowedMethods,

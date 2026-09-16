@@ -17,4 +17,6 @@ public sealed record ExpectedWorkAreaResolution(
     Guid? WorkModeId,
     string? WorkModeName,
     string Timezone,
-    string Source);
+    string Source,
+    bool SelfRegistersLocation,
+    bool AllowsDailyLocationChoice);

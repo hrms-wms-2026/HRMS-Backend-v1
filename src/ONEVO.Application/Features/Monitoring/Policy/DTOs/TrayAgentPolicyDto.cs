@@ -19,4 +19,8 @@ public sealed record TrayAgentPolicyDto(
     [property: JsonPropertyName("biometric_enabled")] bool BiometricEnabled = false,
     [property: JsonPropertyName("web_enabled")] bool WebEnabled = false,
     [property: JsonPropertyName("photo_required_enabled")] bool PhotoRequiredEnabled = false,
-    [property: JsonPropertyName("allowed_radius_meters")] int? AllowedRadiusMeters = null);
+    [property: JsonPropertyName("allowed_radius_meters")] int? AllowedRadiusMeters = null,
+    [property: JsonPropertyName("allows_daily_location_choice")] bool AllowsDailyLocationChoice = false,
+    [property: JsonPropertyName("self_registers_location")] bool SelfRegistersLocation = false,
+    [property: JsonPropertyName("office_latitude")] double? OfficeLatitude = null,
+    [property: JsonPropertyName("office_longitude")] double? OfficeLongitude = null);

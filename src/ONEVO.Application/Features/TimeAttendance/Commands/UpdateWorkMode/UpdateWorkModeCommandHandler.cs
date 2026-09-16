@@ -43,6 +43,8 @@ public class UpdateWorkModeCommandHandler : IRequestHandler<UpdateWorkModeComman
         workMode.WebEnabled = request.WebEnabled;
         workMode.TrayEnabled = request.TrayEnabled;
         workMode.PhotoRequired = request.PhotoRequired;
+        workMode.SelfRegistersLocation = request.SelfRegistersLocation;
+        workMode.AllowsDailyLocationChoice = request.AllowsDailyLocationChoice;
         workMode.UpdatedAt = _clock.UtcNow;
 
         _workModes.Update(workMode);
