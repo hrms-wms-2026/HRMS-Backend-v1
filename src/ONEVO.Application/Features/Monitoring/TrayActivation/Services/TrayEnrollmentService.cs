@@ -1,5 +1,6 @@
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Legal.Services;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.DTOs.Responses;
@@ -26,6 +27,7 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
     private readonly IDateTimeProvider _clock;
     private readonly IDeviceChangeRequestRepository _deviceChangeRequests;
     private readonly IEmployeeRepository _employees;
+    private readonly ILegalAcceptanceChecker _legalChecker;
 
     public TrayEnrollmentService(
         ITrayActivationRepository repository,
@@ -35,7 +37,8 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
         ITrayTokenService tokenService,
         IDateTimeProvider clock,
         IDeviceChangeRequestRepository deviceChangeRequests,
-        IEmployeeRepository employees)
+        IEmployeeRepository employees,
+        ILegalAcceptanceChecker legalChecker)
     {
         _repository = repository;
         _userRepository = userRepository;
@@ -45,6 +48,7 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
         _clock = clock;
         _deviceChangeRequests = deviceChangeRequests;
         _employees = employees;
+        _legalChecker = legalChecker;
     }
 
     public async Task<TrayAuthResponseDto> IssueAsync(
@@ -117,6 +121,7 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
             device.Id, request.UserId, request.TenantId, request.LegalEntityId);
         var (employeeName, employeeEmail, employeeNumber, profileStatus, tenantSlug) = await ResolveEmployeeIdentityAsync(
             request.UserId, request.TenantId, request.LegalEntityId, ct);
+        var legalCheck = await _legalChecker.CheckAsync(request.TenantId, request.UserId, ct);
 
         return new TrayAuthResponseDto(
             accessToken,
@@ -127,7 +132,9 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
             employeeEmail,
             employeeNumber,
             profileStatus,
-            tenantSlug);
+            tenantSlug,
+            RequiresLegalAcceptance: !legalCheck.IsComplete,
+            PendingLegalDocuments: legalCheck.PendingDocuments);
     }
 
     private async Task<(string? Name, string? Email, string? Number, string Status, string? TenantSlug)> ResolveEmployeeIdentityAsync(

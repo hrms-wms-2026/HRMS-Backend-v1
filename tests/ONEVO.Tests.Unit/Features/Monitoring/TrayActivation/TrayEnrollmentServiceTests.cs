@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Legal.Services;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
@@ -175,6 +176,39 @@ public class TrayEnrollmentServiceTests
     }
 
     [Fact]
+    public async Task IssueAsync_WhenLegalCheckerReportsPending_SetsRequiresLegalAcceptanceAndDocuments()
+    {
+        var pendingDoc = new PendingLegalDocumentDto("privacy_policy", "2.0", "Privacy Policy", DateTimeOffset.UtcNow, null, "/api/v1/legal/documents/privacy_policy/2.0", "hash");
+        var legalChecker = new Mock<ILegalAcceptanceChecker>();
+        legalChecker.Setup(c => c.CheckAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegalAcceptanceCheckResult(
+                LegalAcceptanceStatus.Pending, IsComplete: false, PendingDocuments: new[] { pendingDoc }));
+        var repository = new Mock<ITrayActivationRepository>();
+        var service = CreateService(repository, TokenService(), legalChecker: legalChecker);
+
+        var result = await service.IssueAsync(Request(), CancellationToken.None);
+
+        result.RequiresLegalAcceptance.Should().BeTrue();
+        result.PendingLegalDocuments.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task IssueAsync_WhenLegalCheckerReportsComplete_LeavesRequiresLegalAcceptanceFalse()
+    {
+        var legalChecker = new Mock<ILegalAcceptanceChecker>();
+        legalChecker.Setup(c => c.CheckAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegalAcceptanceCheckResult(
+                LegalAcceptanceStatus.Complete, IsComplete: true, PendingDocuments: Array.Empty<PendingLegalDocumentDto>()));
+        var repository = new Mock<ITrayActivationRepository>();
+        var service = CreateService(repository, TokenService(), legalChecker: legalChecker);
+
+        var result = await service.IssueAsync(Request(), CancellationToken.None);
+
+        result.RequiresLegalAcceptance.Should().BeFalse();
+        (result.PendingLegalDocuments ?? Array.Empty<PendingLegalDocumentDto>()).Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task IssueAsync_WhenDifferentFingerprintAndRequestHasNoLegalEntity_FallsBackToEmployeesDefaultLegalEntity()
     {
         var repository = new Mock<ITrayActivationRepository>();
@@ -218,7 +252,8 @@ public class TrayEnrollmentServiceTests
         Mock<ITrayTokenService> tokens,
         Mock<IUserRepository>? userRepository = null,
         Mock<IDeviceChangeRequestRepository>? deviceChangeRequests = null,
-        Mock<IEmployeeRepository>? employees = null)
+        Mock<IEmployeeRepository>? employees = null,
+        Mock<ILegalAcceptanceChecker>? legalChecker = null)
     {
         var tenantRepository = new Mock<ITenantRepository>();
         tenantRepository.Setup(r => r.GetByIdAsync(TenantId, It.IsAny<CancellationToken>()))
@@ -232,7 +267,17 @@ public class TrayEnrollmentServiceTests
             tokens.Object,
             new Mock<IDateTimeProvider>().Object,
             deviceChangeRequests?.Object ?? new Mock<IDeviceChangeRequestRepository>().Object,
-            employees?.Object ?? new Mock<IEmployeeRepository>().Object);
+            employees?.Object ?? new Mock<IEmployeeRepository>().Object,
+            legalChecker?.Object ?? DefaultLegalChecker().Object);
+    }
+
+    private static Mock<ILegalAcceptanceChecker> DefaultLegalChecker()
+    {
+        var legalChecker = new Mock<ILegalAcceptanceChecker>();
+        legalChecker.Setup(c => c.CheckAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegalAcceptanceCheckResult(
+                LegalAcceptanceStatus.Complete, IsComplete: true, PendingDocuments: Array.Empty<PendingLegalDocumentDto>()));
+        return legalChecker;
     }
 
     private static Mock<ITrayTokenService> TokenService()
