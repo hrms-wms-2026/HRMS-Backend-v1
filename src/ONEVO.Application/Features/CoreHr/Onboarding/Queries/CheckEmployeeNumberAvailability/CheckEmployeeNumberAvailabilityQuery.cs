@@ -5,5 +5,5 @@ namespace ONEVO.Application.Features.CoreHr.Onboarding.Queries.CheckEmployeeNumb
 
 public sealed record EmployeeNumberAvailabilityResponse(string EmployeeNumber, bool Available);
 
-public sealed record CheckEmployeeNumberAvailabilityQuery(string? EmployeeNumber)
+public sealed record CheckEmployeeNumberAvailabilityQuery(string? EmployeeNumber, Guid? ExcludeEmployeeId = null)
     : IRequest<Result<EmployeeNumberAvailabilityResponse>>;

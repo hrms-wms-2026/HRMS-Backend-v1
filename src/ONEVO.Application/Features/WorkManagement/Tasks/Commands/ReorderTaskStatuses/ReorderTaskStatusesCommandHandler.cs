@@ -8,6 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskStatuses;
 
@@ -57,44 +58,53 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
             return Result<IReadOnlyList<TaskStatusResponse>>.Forbidden("Only an owner or member of this project can restructure the board.");
 
         // Defense in depth beyond the validator (which runs in the MediatR pipeline in production,
-        // but not when a test calls Handle directly) - exactly one complete status, always.
+        // but not when a test calls Handle directly).
         if (request.Updates is null || request.Updates.Any(u => u is null))
             return Result<IReadOnlyList<TaskStatusResponse>>.Failure("Updates must not contain null entries.", 422);
 
-        if (request.Updates.Count(u => u.MarksTaskComplete) != 1)
-            return Result<IReadOnlyList<TaskStatusResponse>>.Failure("Exactly one status must be marked as the complete status.", 422);
-
         if (request.Updates.Select(u => u.StatusId).Distinct().Count() != request.Updates.Count)
             return Result<IReadOnlyList<TaskStatusResponse>>.Failure("Updates must not contain duplicate status IDs.", 422);
+
+        if (request.Updates.Count(u => u.Category == TaskStatusCategories.Done) > 1)
+            return Result<IReadOnlyList<TaskStatusResponse>>.Failure("At most one status in a single reorder call may be marked Done.", 422);
 
         var existing = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
         var byId = existing.ToDictionary(s => s.Id);
 
         foreach (var update in request.Updates)
         {
-            if (!byId.TryGetValue(update.StatusId, out var status))
+            if (!byId.ContainsKey(update.StatusId))
                 return Result<IReadOnlyList<TaskStatusResponse>>.NotFound($"Status {update.StatusId} not found on this milestone.");
-
-            status.DisplayOrder = update.DisplayOrder;
-            status.Visibility = update.Visibility;
-            status.MarksTaskComplete = update.MarksTaskComplete;
-            status.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
-        if (existing.Count(s => s.MarksTaskComplete) != 1)
-            return Result<IReadOnlyList<TaskStatusResponse>>.Failure("Exactly one status must be marked as the complete status.", 422);
+        var updatesById = request.Updates.ToDictionary(u => u.StatusId);
+        var categories = existing.Select(s => updatesById.TryGetValue(s.Id, out var update) ? update.Category : s.Category).ToList();
+        if (categories.Count(c => c == TaskStatusCategories.Done) != 1)
+            return Result<IReadOnlyList<TaskStatusResponse>>.Failure("A project must always have exactly one Done status.", 422);
+        if (!categories.Contains(TaskStatusCategories.Active))
+            return Result<IReadOnlyList<TaskStatusResponse>>.Failure("A project must always have at least one Active status.", 422);
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            foreach (var status in existing.Where(s => request.Updates.Any(u => u.StatusId == s.Id)))
+            foreach (var update in request.Updates)
+            {
+                var status = byId[update.StatusId];
+                status.DisplayOrder = update.DisplayOrder;
+                status.Visibility = update.Visibility;
+                status.Category = update.Category;
+                status.Color = update.Color;
+                status.MarksTaskComplete = update.Category == TaskStatusCategories.Done;
+                status.UpdatedAt = DateTimeOffset.UtcNow;
                 _statuses.Update(status);
+            }
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<IReadOnlyList<TaskStatusResponse>>.Success(
                 existing.OrderBy(s => s.DisplayOrder)
-                    .Select(s => new TaskStatusResponse(s.Id, s.Name, s.DisplayOrder, s.RequiresApproval, s.ApproverId, s.MarksTaskComplete, s.Visibility))
+                    .Select(s => new TaskStatusResponse(s.Id, s.Name, s.DisplayOrder, s.RequiresApproval, s.ApproverId, s.MarksTaskComplete, s.Visibility, s.Category, s.Color))
                     .ToList());
         }, ct);
     }
 }
+

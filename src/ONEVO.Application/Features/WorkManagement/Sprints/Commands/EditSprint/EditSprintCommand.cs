@@ -4,4 +4,4 @@ using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 
 namespace ONEVO.Application.Features.WorkManagement.Sprints.Commands.EditSprint;
 
-public sealed record EditSprintCommand(Guid SprintId, string Name, DateOnly StartDate, DateOnly EndDate) : IRequest<Result<SprintResponse>>;
+public sealed record EditSprintCommand(Guid SprintId, string Name, string? Goal, DateOnly? StartDate, DateOnly? EndDate) : IRequest<Result<SprintResponse>>;

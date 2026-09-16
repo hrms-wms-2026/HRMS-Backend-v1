@@ -53,7 +53,7 @@ public class LegalEntityLogoCommandHandlerTests
         _fileStorage.Setup(f => f.UploadAsync(
                 TenantId, UserId, "logo.png", "image/png", UploadPurposeCatalog.CompanyLogo, content, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileRecordDto>.Success(new FileRecordDto(
-                uploadedFileId, TenantId, "key", "logo.png", "logo.png", "image/png", 3, new string('a', 64), "PendingScan", DateTimeOffset.UtcNow)));
+                uploadedFileId, TenantId, "key", "logo.png", "logo.png", "image/png", 3, new string('a', 64), "PendingScan", DateTimeOffset.UtcNow, Guid.NewGuid(), null)));
         var sut = new SetLegalEntityLogoCommandHandler(_legalEntities.Object, _currentUser.Object, _fileStorage.Object);
 
         var result = await sut.Handle(

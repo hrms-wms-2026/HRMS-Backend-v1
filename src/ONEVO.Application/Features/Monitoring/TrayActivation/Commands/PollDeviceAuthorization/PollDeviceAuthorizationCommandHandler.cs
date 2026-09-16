@@ -4,6 +4,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Models;
 using ONEVO.Application.Features.Monitoring.TrayActivation.DTOs.Responses;
+using ONEVO.Application.Features.Monitoring.TrayActivation.Exceptions;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Services;
@@ -83,15 +84,27 @@ public sealed class PollDeviceAuthorizationCommandHandler
                 return Failure("access_denied", "Device authorization was denied.");
             }
 
-            var credentials = await _enrollmentService.IssueAsync(
-                new TrayEnrollmentRequest(
-                    authorization.ApprovedTenantId.Value,
-                    authorization.ApprovedUserId.Value,
-                    authorization.ApprovedLegalEntityId,
-                    authorization.DeviceName,
-                    authorization.DeviceOs,
-                    request.DeviceFingerprint),
-                innerCt);
+            TrayAuthResponseDto credentials;
+            try
+            {
+                credentials = await _enrollmentService.IssueAsync(
+                    new TrayEnrollmentRequest(
+                        authorization.ApprovedTenantId.Value,
+                        authorization.ApprovedUserId.Value,
+                        authorization.ApprovedLegalEntityId,
+                        authorization.DeviceName,
+                        authorization.DeviceOs,
+                        request.DeviceFingerprint),
+                    innerCt);
+            }
+            catch (DeviceChangePendingException)
+            {
+                authorization.Status = DeviceAuthorizationStatus.Consumed;
+                authorization.ConsumedAt = now;
+                await _unitOfWork.SaveChangesAsync(innerCt);
+                return Failure("device_change_pending",
+                    "A different device is already approved for your account. A request has been sent for approval.");
+            }
 
             authorization.Status = DeviceAuthorizationStatus.Consumed;
             authorization.ConsumedAt = now;

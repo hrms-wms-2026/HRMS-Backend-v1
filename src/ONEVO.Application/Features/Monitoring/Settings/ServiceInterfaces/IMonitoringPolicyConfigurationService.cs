@@ -50,4 +50,5 @@ public sealed record MonitoringPolicyOverrideRequest(
     bool? IdentityVerification,
     bool? Biometric,
     int? IdleThresholdMinutes,
-    string? OverrideReason);
+    string? OverrideReason,
+    int? AllowedRadiusMeters);

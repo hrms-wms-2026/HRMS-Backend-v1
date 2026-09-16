@@ -11,8 +11,9 @@ public sealed class WorkAreaChangeRequestConfiguration : IEntityTypeConfiguratio
         builder.ToTable("work_area_change_requests");
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Date).HasColumnName("date").IsRequired();
-        builder.Property(x => x.CurrentExpectedWorkArea).HasMaxLength(10).IsRequired();
-        builder.Property(x => x.RequestedWorkArea).HasMaxLength(10).IsRequired();
+        builder.Property(x => x.CurrentWorkModeName).HasMaxLength(120).IsRequired();
+        builder.Property(x => x.RequestedWorkModeName).HasMaxLength(120).IsRequired();
+        builder.Property(x => x.LegacyWorkAreaLabel).HasMaxLength(10);
         builder.Property(x => x.Reason).HasColumnType("text").IsRequired();
         builder.Property(x => x.Status).HasMaxLength(20).IsRequired().IsConcurrencyToken();
         builder.Property(x => x.ReviewComment).HasColumnType("text");
@@ -32,5 +33,9 @@ public sealed class WorkAreaChangeRequestConfiguration : IEntityTypeConfiguratio
             .WithMany().HasForeignKey(x => x.LegalEntityId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ONEVO.Domain.Features.InfrastructureModule.Entities.User>()
             .WithMany().HasForeignKey(x => x.ReviewedById).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode>()
+            .WithMany().HasForeignKey(x => x.CurrentWorkModeId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode>()
+            .WithMany().HasForeignKey(x => x.RequestedWorkModeId).OnDelete(DeleteBehavior.Restrict);
     }
 }

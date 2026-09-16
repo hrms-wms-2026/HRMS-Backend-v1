@@ -13,7 +13,8 @@ public record EmployeeDetailResponse(
 public record EmployeeDetailJobInformation(
     string EmployeeNumber, Guid? LegalEntityId, string? LegalEntityName, string? DepartmentName, string? PositionName,
     Guid? PositionId, string? ReportingManagerName, string EmploymentTypeLabel, string Status,
-    DateOnly HireDate, DateOnly? ProbationEndDate, string? WorkModeLabel);
+    DateOnly HireDate, DateOnly? ProbationEndDate, string? WorkModeLabel,
+    string EmploymentTypeCode, Guid? WorkModeId);
 
 public record EmployeeDetailPersonalInformation(
     string FirstName, string LastName, string Email, string? Phone, DateOnly? DateOfBirth,

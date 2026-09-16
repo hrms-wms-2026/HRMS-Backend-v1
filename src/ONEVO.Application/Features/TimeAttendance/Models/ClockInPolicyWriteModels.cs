@@ -6,39 +6,6 @@ public record ClockInPolicyScopeInput(
     IReadOnlyList<Guid>? PositionIds,
     IReadOnlyList<Guid>? EmployeeIds);
 
-public record WorkAreaSourceRulesInput(
-    bool BiometricEnabled,
-    bool WebEnabled,
-    bool TrayEnabled,
-    bool PhotoRequired);
-
-public record RemoteWorkAreaRulesInput(
-    bool BiometricEnabled,
-    bool WebEnabled,
-    bool TrayEnabled,
-    bool PhotoRequired,
-    bool LocationCheckRequired);
-
-public record HybridWorkAreaRulesInput(
-    bool BiometricEnabled,
-    bool WebEnabled,
-    bool TrayEnabled,
-    bool PhotoRequired,
-    bool LocationCheckRequired,
-    string SourceRule);
-
-public record FieldWorkAreaRulesInput(
-    bool BiometricEnabled,
-    bool WebEnabled,
-    bool TrayEnabled,
-    string PhotoRequirement);
-
-public record WorkAreaRulesInput(
-    WorkAreaSourceRulesInput Onsite,
-    RemoteWorkAreaRulesInput Remote,
-    HybridWorkAreaRulesInput Hybrid,
-    FieldWorkAreaRulesInput Field);
-
 public record LateDeductionRuleInput(
     int LateArrivalMinute,
     decimal Multiplier,

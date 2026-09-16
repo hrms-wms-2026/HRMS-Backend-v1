@@ -15,8 +15,10 @@ using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
 using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 
@@ -56,14 +58,15 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
         _seatEntitlementService
             .Setup(s => s.EvaluateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SeatDecision(SeatDecisionStatus.Undetermined, null, 0, 0, null, false, true, "no source"));
-        _workModeRepository.Setup(r => r.ExistsActiveAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _workModeRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid tenantId, Guid id, CancellationToken _) => new WorkMode { Id = id, TenantId = tenantId, IsActive = true });
         _legalEntityRepository.Setup(r => r.GetByIdForTenantAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(new LegalEntity { IsActive = true });
         _positionRepository.Setup(r => r.GetByIdForLegalEntityAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(new Position { IsActive = true });
         _draftRepository
             .Setup(r => r.GetResponseByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid tenantId, Guid id, CancellationToken _) =>
                 new OnboardingDraftResponse(id, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
-                    null, null, "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
+                    null, null, "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, null, null, null,
                     null, OnboardingDraftStatus.WaitingForSeat, OnboardingDraftReason.WaitingForSeat,
                     OnboardingWizardStep.EmployeeDetails, _userId, "1", null, null, null));
     }
@@ -84,7 +87,7 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
 
     private SaveOnboardingDraftCommand ValidCommand(Guid? draftId = null, Guid? positionId = null, string? ifMatch = null) => new(
         draftId, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, positionId,
-        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null,
+        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, Guid.NewGuid(), null, null,
         OnboardingWizardStep.EmployeeDetails, ifMatch, null);
 
     [Fact]
@@ -176,7 +179,7 @@ public sealed class SaveOnboardingDraftCommandHandlerTests
     {
         var command = new SaveOnboardingDraftCommand(
             null, "Ada", "Lovelace", "ada@test.dev", Guid.NewGuid(), null, null,
-            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "E-001", 1, null, null,
+            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "E-001", null, null, null,
             OnboardingWizardStep.EmployeeDetails, null, null);
         _employeeRepository
             .Setup(r => r.EmployeeNumberExistsAsync(_tenantId, "E-001", null, It.IsAny<CancellationToken>()))

@@ -80,7 +80,7 @@ public sealed class TrayMonitoringPolicyIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetPolicy_AutoScreenshotOff_ReturnsInactivityDisabled()
+    public async Task GetPolicy_ScreenshotOn_ReturnsInactivityEnabled_EvenIfAutoScreenshotOff()
     {
         var slug = $"pol-off-{Guid.NewGuid():N}"[..20];
         var user = await SeedActiveUserAsync(slug, $"{slug}@test.dev", "TestPass1!");
@@ -96,7 +96,7 @@ public sealed class TrayMonitoringPolicyIntegrationTests : IAsyncLifetime
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("screenshot_enabled").GetBoolean().Should().BeTrue();
-        body.GetProperty("inactivity_screenshot_enabled").GetBoolean().Should().BeFalse();
+        body.GetProperty("inactivity_screenshot_enabled").GetBoolean().Should().BeTrue();
     }
 
     /// <summary>
@@ -216,7 +216,7 @@ public sealed class TrayMonitoringPolicyIntegrationTests : IAsyncLifetime
             Id = Guid.NewGuid(), TenantId = tenant.Id, UserId = user.Id,
             LegalEntityId = legalEntity.Id, EmployeeNumber = Guid.NewGuid().ToString("N")[..8],
             FirstName = "Test", LastName = "User", Email = email,
-            EmploymentTypeId = 1, EmploymentStatusId = 1, WorkModeId = 1,
+            EmploymentTypeId = 1, EmploymentStatusId = 1, WorkModeId = null,
             HireDate = new DateOnly(2025, 1, 1), CreatedAt = DateTimeOffset.UtcNow,
             CreatedById = user.Id
         });

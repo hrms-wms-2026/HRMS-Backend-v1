@@ -6,4 +6,6 @@ public interface IProjectCategoryRepository
 {
     Task<ProjectCategory?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<ProjectCategory>> GetAllForTenantAsync(Guid tenantId, bool includeInactive = false, CancellationToken ct = default);
+    Task<bool> ExistsByNameAsync(Guid tenantId, string name, CancellationToken ct = default);
+    Task AddAsync(ProjectCategory category, CancellationToken ct = default);
 }

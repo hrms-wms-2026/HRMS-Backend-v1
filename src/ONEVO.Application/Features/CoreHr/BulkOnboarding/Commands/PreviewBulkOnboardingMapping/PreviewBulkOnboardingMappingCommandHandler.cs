@@ -3,8 +3,8 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.RepositoryInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.PreviewBulkOnboardingMapping;
 
@@ -60,13 +60,14 @@ public class PreviewBulkOnboardingMappingCommandHandler
         var resolvedPosition = positionName is null ? null :
             positions.FirstOrDefault(p => string.Equals(p.Name, positionName, StringComparison.OrdinalIgnoreCase));
 
-        var workModes = await _workModeRepository.ListActiveAsync(ct);
+        var workModes = await _workModeRepository.ListByLegalEntityAsync(
+            _currentUser.TenantId, batch.LegalEntityId, includeInactive: false, ct);
         var resolvedWorkMode = workModeName is null ? null :
-            workModes.FirstOrDefault(w => string.Equals(w.Code, workModeName, StringComparison.OrdinalIgnoreCase));
+            workModes.FirstOrDefault(w => string.Equals(w.Name, workModeName, StringComparison.OrdinalIgnoreCase));
 
         return Result<RowPreviewResult>.Success(new RowPreviewResult(
             Get("firstName"), Get("lastName"), Get("workEmail"), Get("startDate"), Get("employmentType"),
-            resolvedWorkMode?.Code, resolvedDepartment?.Name, resolvedPosition?.Name,
+            resolvedWorkMode?.Name, resolvedDepartment?.Name, resolvedPosition?.Name,
             null,
             Get("employeeNumber")));
     }

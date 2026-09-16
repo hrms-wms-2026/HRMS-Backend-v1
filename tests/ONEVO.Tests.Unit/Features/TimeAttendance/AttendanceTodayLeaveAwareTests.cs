@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
@@ -86,7 +87,7 @@ public sealed class AttendanceTodayLeaveAwareTests
         var employee = new Employee
         {
             Id = EmployeeId, UserId = UserId, TenantId = TenantId,
-            LegalEntityId = LegalEntityId, WorkModeId = 1
+            LegalEntityId = LegalEntityId, WorkModeId = Guid.NewGuid()
         };
         var legalEntity = new LegalEntity
         {
@@ -106,8 +107,7 @@ public sealed class AttendanceTodayLeaveAwareTests
             .ReturnsAsync([new ClockInPolicy
             {
                 Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId,
-                ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1),
-                RemoteWebEnabled = true
+                ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1)
             }]);
         var attendance = new Mock<IAttendanceReadRepository>();
         attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
@@ -120,7 +120,7 @@ public sealed class AttendanceTodayLeaveAwareTests
         var expectedWorkAreas = new Mock<IExpectedWorkAreaResolver>();
         expectedWorkAreas.Setup(x => x.ResolveAsync(It.IsAny<Employee>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(
-                new ExpectedWorkAreaResolution("remote", "UTC", "active_employee_work_mode")));
+                new ExpectedWorkAreaResolution(Guid.NewGuid(), "remote", "UTC", "active_employee_work_mode", false, false)));
         var leaves = new Mock<ILeaveRequestReadRepository>();
         leaves.Setup(x => x.ListApprovedCoveringAsync(
                 TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
@@ -134,10 +134,14 @@ public sealed class AttendanceTodayLeaveAwareTests
         var dateTime = new Mock<IDateTimeProvider>();
         dateTime.SetupGet(x => x.UtcNow).Returns(now ?? UtcNow);
 
+        var workModes = new Mock<IWorkModeRepository>();
+        var toggles = new Mock<IMonitoringToggleResolver>();
+
         return new Fixture(
             new AttendanceTodayStateService(
                 currentUser.Object, dateTime.Object, employees.Object, legalEntities.Object,
-                policies.Object, attendance.Object, authority.Object, expectedWorkAreas.Object, leaves.Object));
+                policies.Object, attendance.Object, authority.Object, expectedWorkAreas.Object,
+                workModes.Object, toggles.Object, leaves.Object));
     }
 
     private sealed record Fixture(AttendanceTodayStateService Service);

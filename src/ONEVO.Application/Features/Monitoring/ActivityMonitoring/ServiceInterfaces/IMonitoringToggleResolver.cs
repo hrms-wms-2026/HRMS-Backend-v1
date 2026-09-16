@@ -32,7 +32,7 @@ public interface IMonitoringToggleResolver
 
     /// <summary>
     /// Resolves the effective idle-inactivity threshold, in minutes, for the given employee -
-    /// same employee → role → position → department → tenant → default(5) chain as
+    /// same employee → work mode → role → position → department → tenant → default(2) chain as
     /// <see cref="IsEnabledAsync"/>.
     /// </summary>
     Task<int> GetIdleThresholdMinutesAsync(
@@ -41,6 +41,23 @@ public interface IMonitoringToggleResolver
         CancellationToken ct = default);
 
     Task<int> GetIdleThresholdMinutesAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid legalEntityId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves the effective allowed geofence radius, in meters, for the given employee - same
+    /// employee → work mode → role → position → department → tenant chain as
+    /// <see cref="IsEnabledAsync"/> and <see cref="GetIdleThresholdMinutesAsync"/>. Null when no
+    /// tier configures a radius (no proximity restriction).
+    /// </summary>
+    Task<int?> GetAllowedRadiusMetersAsync(
+        Guid tenantId,
+        Guid employeeId,
+        CancellationToken ct = default);
+
+    Task<int?> GetAllowedRadiusMetersAsync(
         Guid tenantId,
         Guid userId,
         Guid legalEntityId,

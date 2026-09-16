@@ -5,8 +5,8 @@ using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
-using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using Xunit;
@@ -32,7 +32,7 @@ public sealed class BulkOnboardingRowValidatorTests
         {
             LegalEntityId = Guid.NewGuid(),
             DefaultEmploymentType = "full_time",
-            DefaultWorkModeId = 1,
+            DefaultWorkModeId = Guid.NewGuid(),
         };
         _employeeRepositoryMock
             .Setup(r => r.EmployeeExistsInLegalEntityAsync(
@@ -51,7 +51,7 @@ public sealed class BulkOnboardingRowValidatorTests
             .Setup(r => r.ListByLegalEntityAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Position>());
         _workModeRepositoryMock
-            .Setup(r => r.ListActiveAsync(It.IsAny<CancellationToken>()))
+            .Setup(r => r.ListByLegalEntityAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         _checklistTemplateRepositoryMock
             .Setup(r => r.ListOnboardingMatchesAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))

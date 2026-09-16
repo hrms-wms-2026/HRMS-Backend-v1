@@ -60,17 +60,30 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
         _clock,
         _todayState.Object);
 
-    private AttendanceTodayContext BuildContext(AllowedClockInMethods allowedMethods, AttendanceSchedule? schedule = null) => new(
+    private AttendanceTodayContext BuildContext(
+        AllowedClockInMethods allowedMethods,
+        AttendanceSchedule? schedule = null,
+        bool selfRegistersLocation = false,
+        bool allowsDailyLocationChoice = false,
+        double? officeLatitude = null,
+        double? officeLongitude = null) => new(
         new Employee { Id = Guid.NewGuid(), TenantId = _tenantId, UserId = _userId, LegalEntityId = _legalEntityId },
-        new LegalEntity { Id = _legalEntityId, TenantId = _tenantId, Timezone = "Asia/Colombo" },
+        new LegalEntity
+        {
+            Id = _legalEntityId, TenantId = _tenantId, Timezone = "Asia/Colombo",
+            OfficeLatitude = officeLatitude, OfficeLongitude = officeLongitude
+        },
         "Asia/Colombo",
         TimeZoneInfo.Utc,
         DateOnly.FromDateTime(_clock.UtcNow.UtcDateTime),
         _clock.UtcNow,
         _clock.UtcNow,
         schedule ?? new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
+        Guid.NewGuid(),
         "remote",
         "active_employee_work_mode",
+        selfRegistersLocation,
+        allowsDailyLocationChoice,
         null,
         "configured",
         allowedMethods,
@@ -85,6 +98,11 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
         _toggles.Setup(t => t.GetIdleThresholdMinutesAsync(
                 _tenantId, _userId, _legalEntityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(minutes);
+
+    private void SetAllowedRadiusMeters(int? meters) =>
+        _toggles.Setup(t => t.GetAllowedRadiusMetersAsync(
+                _tenantId, _userId, _legalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(meters);
 
     [Fact]
     public async Task Unauthenticated_device_returns_401()
@@ -110,7 +128,7 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
     }
 
     [Fact]
-    public async Task Screenshot_prompt_requires_activity_capture_and_auto_capture()
+    public async Task Screenshot_and_activity_enable_inactivity_prompt_even_if_auto_capture_off()
     {
         Set(MonitoringCapability.ActivityMonitoring, true);
         Set(MonitoringCapability.ApplicationTracking, true);
@@ -124,8 +142,22 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
         result.Value!.ActivitySignalEnabled.Should().BeTrue();
         result.Value.AppUsageEnabled.Should().BeTrue();
         result.Value.ScreenshotEnabled.Should().BeTrue();
-        result.Value.InactivityScreenshotEnabled.Should().BeFalse();
+        result.Value.InactivityScreenshotEnabled.Should().BeTrue();
         result.Value.CameraVerificationEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Screenshot_off_disables_inactivity_prompt()
+    {
+        Set(MonitoringCapability.ActivityMonitoring, true);
+        Set(MonitoringCapability.ScreenshotCapture, false);
+        Set(MonitoringCapability.AutoScreenshotCapture, true);
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ScreenshotEnabled.Should().BeFalse();
+        result.Value.InactivityScreenshotEnabled.Should().BeFalse();
     }
 
     [Fact]
@@ -205,6 +237,75 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
     }
 
     [Fact]
+    public async Task Work_mode_allows_daily_location_choice_flows_into_dto()
+    {
+        _todayState.Setup(t => t.ResolveContextAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(BuildContext(
+                new AllowedClockInMethods(Web: true, DesktopTray: true, Biometric: false, PhotoRequired: false, LocationRequired: false, AllowedRadiusMeters: null),
+                allowsDailyLocationChoice: true)));
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.AllowsDailyLocationChoice.Should().BeTrue();
+        result.Value.SelfRegistersLocation.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Work_mode_self_registers_location_flows_into_dto()
+    {
+        _todayState.Setup(t => t.ResolveContextAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(BuildContext(
+                new AllowedClockInMethods(Web: true, DesktopTray: true, Biometric: false, PhotoRequired: false, LocationRequired: false, AllowedRadiusMeters: null),
+                selfRegistersLocation: true)));
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.SelfRegistersLocation.Should().BeTrue();
+        result.Value.AllowsDailyLocationChoice.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Today_state_resolution_failure_returns_both_location_flags_false()
+    {
+        _todayState.Setup(t => t.ResolveContextAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.NotFound("no employee"));
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.SelfRegistersLocation.Should().BeFalse();
+        result.Value.AllowsDailyLocationChoice.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Legal_entity_office_coordinates_flow_into_dto()
+    {
+        _todayState.Setup(t => t.ResolveContextAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(BuildContext(
+                new AllowedClockInMethods(Web: true, DesktopTray: true, Biometric: false, PhotoRequired: false, LocationRequired: false, AllowedRadiusMeters: null),
+                officeLatitude: 6.9271,
+                officeLongitude: 79.8612)));
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.OfficeLatitude.Should().Be(6.9271);
+        result.Value.OfficeLongitude.Should().Be(79.8612);
+    }
+
+    [Fact]
+    public async Task No_office_configured_on_legal_entity_returns_null_coordinates()
+    {
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.OfficeLatitude.Should().BeNull();
+        result.Value.OfficeLongitude.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Configured_legal_entity_schedule_flows_into_dto()
     {
         // Default BuildContext() schedule is legal-entity-configured 09:00-17:30 (see ctor setup).
@@ -242,6 +343,50 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
         var changedResult = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
 
         changedResult.Value!.Version.Should().NotBe(configuredResult.Value!.Version);
+    }
+
+    [Fact]
+    public async Task Handle_ResolvesAllowedRadiusMetersFromMonitoringResolver()
+    {
+        SetAllowedRadiusMeters(175);
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.AllowedRadiusMeters.Should().Be(175);
+    }
+
+    [Fact]
+    public async Task Handle_SurfacesWorkModeMethodFlagsFromAllowedClockInMethods()
+    {
+        _todayState.Setup(t => t.ResolveContextAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(BuildContext(
+                new AllowedClockInMethods(Web: false, DesktopTray: true, Biometric: true, PhotoRequired: true, LocationRequired: false, AllowedRadiusMeters: null))));
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.BiometricEnabled.Should().BeTrue();
+        result.Value.WebEnabled.Should().BeFalse();
+        result.Value.PhotoRequiredEnabled.Should().BeTrue();
+        result.Value.TrayClockInEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ComputeVersion_ChangesWhenAllowedRadiusMetersChanges()
+    {
+        var v1 = GetEffectiveTrayPolicyQueryHandler.ComputeVersion(
+            locationEnabled: true, activityEnabled: true, appUsageEnabled: true, screenshotEnabled: true,
+            autoScreenshotEnabled: true, cameraEnabled: true, idleThresholdMinutes: 2,
+            trayClockInEnabled: true, biometricEnabled: false, webEnabled: true, photoRequired: false,
+            allowedRadiusMeters: 100);
+        var v2 = GetEffectiveTrayPolicyQueryHandler.ComputeVersion(
+            locationEnabled: true, activityEnabled: true, appUsageEnabled: true, screenshotEnabled: true,
+            autoScreenshotEnabled: true, cameraEnabled: true, idleThresholdMinutes: 2,
+            trayClockInEnabled: true, biometricEnabled: false, webEnabled: true, photoRequired: false,
+            allowedRadiusMeters: 200);
+
+        v1.Should().NotBe(v2);
     }
 
     private sealed class FrozenClock : IDateTimeProvider

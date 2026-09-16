@@ -120,7 +120,8 @@ public class UpdateLegalEntityGeneralSettingsCommandValidator
         // Office location is all-or-nothing: partially configuring it would leave a
         // legal entity with a point but no way to know it's really the office - the
         // on-site location warning simply never fires until both are set. The radius
-        // for that check comes from ClockInPolicy.AllowedRadiusMeters, not from here.
+        // for that check comes from MonitoringFeatureToggles.AllowedRadiusMeters, not from here
+        // (moved off ClockInPolicy in Task 14).
         RuleFor(x => x.OfficeLatitude)
             .NotNull().WithMessage("Office latitude and longitude must be set together.")
             .InclusiveBetween(-90, 90).WithMessage("Office latitude must be between -90 and 90.")

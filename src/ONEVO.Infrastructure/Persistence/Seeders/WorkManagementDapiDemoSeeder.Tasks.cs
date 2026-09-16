@@ -146,6 +146,8 @@ public sealed partial class WorkManagementDapiDemoSeeder
                 ObjectiveId = null,
                 Name = name,
                 DisplayOrder = order,
+                Category = name == "Done" ? TaskStatusCategories.Done : order == 0 ? TaskStatusCategories.NotStarted : TaskStatusCategories.Active,
+                Color = name == "Done" ? "#16A34A" : order == 0 ? "#94A3B8" : name == "Review" ? "#7C3AED" : "#2563EB",
                 MarksTaskComplete = name == "Done",
                 CreatedById = DapiOwnerUserId,
                 CreatedAt = now
@@ -414,3 +416,4 @@ public sealed partial class WorkManagementDapiDemoSeeder
         }
     }
 }
+

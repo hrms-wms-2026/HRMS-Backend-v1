@@ -161,4 +161,21 @@ public sealed class EmployeeNumberAvailabilityQueryHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
     }
+
+    [Fact]
+    public async Task Availability_PassesExcludeEmployeeIdThrough_SoEditingAnEmployeesOwnNumberIsAvailable()
+    {
+        var employeeId = Guid.NewGuid();
+        _employees
+            .Setup(r => r.EmployeeNumberExistsAsync(_tenantId, "DAPI-0005", employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await new CheckEmployeeNumberAvailabilityQueryHandler(_employees.Object, _currentUser.Object)
+            .Handle(new CheckEmployeeNumberAvailabilityQuery("DAPI-0005", employeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.Available);
+        _employees.Verify(
+            r => r.EmployeeNumberExistsAsync(_tenantId, "DAPI-0005", employeeId, It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

@@ -119,7 +119,7 @@ public sealed class BulkOnboardingBatchProcessor : BackgroundService
                 EmploymentType: Get("employmentType") ?? batch.DefaultEmploymentType ?? string.Empty,
                 StartDate: DateOnly.TryParse(Get("startDate"), out var startDate) ? startDate : default,
                 EmployeeNumber: Get("employeeNumber"),
-                WorkModeId: row.ResolvedWorkModeId ?? batch.DefaultWorkModeId ?? 0,
+                WorkModeId: row.ResolvedWorkModeId ?? batch.DefaultWorkModeId,
                 SelectedTemplateId: row.ResolvedTemplateId,
                 EditedTasksJson: null,
                 LastSavedStep: OnboardingWizardStep.ReviewAndSubmit,

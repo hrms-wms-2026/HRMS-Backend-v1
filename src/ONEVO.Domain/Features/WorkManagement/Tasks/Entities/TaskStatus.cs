@@ -8,6 +8,13 @@ public static class TaskStatusVisibilities
     public const string Private = "private";
 }
 
+public static class TaskStatusCategories
+{
+    public const string NotStarted = "not_started";
+    public const string Active = "active";
+    public const string Done = "done";
+}
+
 /// <summary>
 /// Configurable task-status definitions. A row with ObjectiveId == null is a Project-level
 /// template; a row with ObjectiveId set is that Objective's own independently-customizable copy.
@@ -23,4 +30,6 @@ public class TaskStatus : BaseEntity
     public Guid? ApproverId { get; set; }
     public bool MarksTaskComplete { get; set; }
     public string Visibility { get; set; } = TaskStatusVisibilities.Public;
+    public string Category { get; set; } = TaskStatusCategories.NotStarted;
+    public string Color { get; set; } = "#94A3B8";
 }

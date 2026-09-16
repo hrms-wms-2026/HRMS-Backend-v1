@@ -159,7 +159,7 @@ public sealed class SeatEntitlementServiceTests
         WorkEmail = $"{Guid.NewGuid():N}@test.dev",
         LegalEntityId = Guid.NewGuid(),
         EmploymentType = "full_time",
-        WorkModeId = 1,
+        WorkModeId = Guid.NewGuid(),
         StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
         Status = status,
         StartedById = Guid.NewGuid(),

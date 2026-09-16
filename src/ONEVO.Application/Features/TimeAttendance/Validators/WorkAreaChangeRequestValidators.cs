@@ -9,17 +9,11 @@ public sealed class PreviewWorkAreaChangeRequestCommandValidator
     public PreviewWorkAreaChangeRequestCommandValidator()
     {
         RuleFor(x => x.Date).Must(x => x != default).WithMessage("A date is required.");
-        RuleFor(x => x.RequestedWorkArea)
-            .NotEmpty()
-            .Must(IsSupportedWorkArea)
-            .WithMessage("Requested work area must be onsite or remote.");
+        RuleFor(x => x.RequestedWorkModeId).NotEmpty().WithMessage("A work mode must be selected.");
         RuleFor(x => x.Reason)
             .Must(reason => !string.IsNullOrWhiteSpace(reason))
             .WithMessage("A reason is required.");
     }
-
-    internal static bool IsSupportedWorkArea(string? value)
-        => value?.Trim().ToLowerInvariant() is "onsite" or "remote";
 }
 
 public sealed class CreateWorkAreaChangeRequestCommandValidator
@@ -28,10 +22,7 @@ public sealed class CreateWorkAreaChangeRequestCommandValidator
     public CreateWorkAreaChangeRequestCommandValidator()
     {
         RuleFor(x => x.Date).Must(x => x != default).WithMessage("A date is required.");
-        RuleFor(x => x.RequestedWorkArea)
-            .NotEmpty()
-            .Must(PreviewWorkAreaChangeRequestCommandValidator.IsSupportedWorkArea)
-            .WithMessage("Requested work area must be onsite or remote.");
+        RuleFor(x => x.RequestedWorkModeId).NotEmpty().WithMessage("A work mode must be selected.");
         RuleFor(x => x.Reason)
             .Must(reason => !string.IsNullOrWhiteSpace(reason))
             .WithMessage("A reason is required.");

@@ -15,10 +15,12 @@ using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
 using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
@@ -53,6 +55,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _legalEntityId = Guid.NewGuid();
+    private readonly Guid _workModeId = Guid.NewGuid();
 
     public FinalizeOnboardingDraftCommandHandlerTests()
     {
@@ -65,7 +68,8 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
             .Setup(r => r.GetByIdForTenantAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegalEntity { IsActive = true });
 
-        _workModeRepository.Setup(r => r.ExistsActiveAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _workModeRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid tenantId, Guid id, CancellationToken _) => new WorkMode { Id = id, TenantId = tenantId, IsActive = true });
         _employmentTypeRepository.Setup(r => r.GetIdByCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         _employeeRepository
@@ -138,7 +142,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         EmploymentType = "full_time",
         StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
         EmployeeNumber = "EMP-001",
-        WorkModeId = 1,
+        WorkModeId = _workModeId,
         SelectedTemplateId = selectedTemplateId,
         EditedTasksJson = editedTasksJson,
         Status = status,
@@ -315,7 +319,8 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
     {
         var draft = ValidDraft();
         SetupDraft(draft);
-        _workModeRepository.Setup(r => r.ExistsActiveAsync(draft.WorkModeId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _workModeRepository.Setup(r => r.GetByIdAsync(_tenantId, draft.WorkModeId!.Value, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode { Id = draft.WorkModeId.Value, TenantId = _tenantId, IsActive = false });
 
         var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
 

@@ -1914,8 +1914,8 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(30)")
                         .HasColumnName("default_employment_type");
 
-                    b.Property<int?>("DefaultWorkModeId")
-                        .HasColumnType("integer")
+                    b.Property<Guid?>("DefaultWorkModeId")
+                        .HasColumnType("uuid")
                         .HasColumnName("default_work_mode_id");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
@@ -2044,8 +2044,8 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("resolved_template_id");
 
-                    b.Property<int?>("ResolvedWorkModeId")
-                        .HasColumnType("integer")
+                    b.Property<Guid?>("ResolvedWorkModeId")
+                        .HasColumnType("uuid")
                         .HasColumnName("resolved_work_mode_id");
 
                     b.Property<int>("RowNumber")
@@ -2278,8 +2278,8 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
-                    b.Property<int>("WorkModeId")
-                        .HasColumnType("integer")
+                    b.Property<Guid?>("WorkModeId")
+                        .HasColumnType("uuid")
                         .HasColumnName("work_mode_id");
 
                     b.Property<uint?>("xmin")
@@ -2293,6 +2293,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("ix_employees_user_id");
+
+                    b.HasIndex("WorkModeId")
+                        .HasDatabaseName("ix_employees_work_mode_id");
 
                     b.HasIndex("TenantId", "EmployeeNumber")
                         .IsUnique()
@@ -3040,8 +3043,8 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(320)")
                         .HasColumnName("work_email");
 
-                    b.Property<int>("WorkModeId")
-                        .HasColumnType("integer")
+                    b.Property<Guid?>("WorkModeId")
+                        .HasColumnType("uuid")
                         .HasColumnName("work_mode_id");
 
                     b.Property<uint>("xmin")
@@ -4377,6 +4380,97 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_platform_service_keys_updated_by_id");
 
                     b.ToTable("platform_service_keys", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.DevPlatform.SystemConfig.TrayReleases.Entities.TrayAppRelease", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("channel");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<string>("DownloadUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("download_url");
+
+                    b.Property<long>("FileSizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("file_size_bytes");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("MinSupportedVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("min_supported_version");
+
+                    b.Property<string>("MinimumWindowsVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("minimum_windows_version");
+
+                    b.Property<string>("Publisher")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("publisher");
+
+                    b.Property<string>("ReleaseNotes")
+                        .HasColumnType("text")
+                        .HasColumnName("release_notes");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("sha256");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("source");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tray_app_releases");
+
+                    b.HasIndex("Channel", "IsActive")
+                        .HasDatabaseName("ix_tray_app_releases_channel_is_active");
+
+                    b.HasIndex("Channel", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ix_tray_app_releases_channel_version");
+
+                    b.ToTable("tray_app_releases", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.InfrastructureModule.Entities.Tenant", b =>
@@ -6500,6 +6594,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("activity_monitoring");
 
+                    b.Property<int?>("AllowedRadiusMeters")
+                        .HasColumnType("integer")
+                        .HasColumnName("allowed_radius_meters");
+
                     b.Property<bool?>("ApplicationTracking")
                         .HasColumnType("boolean")
                         .HasColumnName("application_tracking");
@@ -6591,6 +6689,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("activity_monitoring");
 
+                    b.Property<int?>("AllowedRadiusMeters")
+                        .HasColumnType("integer")
+                        .HasColumnName("allowed_radius_meters");
+
                     b.Property<bool>("ApplicationTracking")
                         .HasColumnType("boolean")
                         .HasColumnName("application_tracking");
@@ -6680,6 +6782,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("activity_monitoring");
 
+                    b.Property<int?>("AllowedRadiusMeters")
+                        .HasColumnType("integer")
+                        .HasColumnName("allowed_radius_meters");
+
                     b.Property<bool?>("ApplicationTracking")
                         .HasColumnType("boolean")
                         .HasColumnName("application_tracking");
@@ -6764,6 +6870,90 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ux_monitoring_policy_overrides_tenant_scope");
 
                     b.ToTable("monitoring_policy_overrides", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.DeviceChangeRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CurrentDeviceRegistrationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("current_device_registration_id");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<Guid?>("LegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_entity_id");
+
+                    b.Property<string>("NewDeviceFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("new_device_fingerprint");
+
+                    b.Property<string>("NewDeviceName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("new_device_name");
+
+                    b.Property<string>("NewDeviceOs")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("new_device_os");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<string>("ReviewComment")
+                        .HasColumnType("text")
+                        .HasColumnName("review_comment");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<Guid?>("ReviewedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reviewed_by_id");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_device_change_requests");
+
+                    b.HasIndex("CurrentDeviceRegistrationId")
+                        .HasDatabaseName("ix_device_change_requests_current_device_registration_id");
+
+                    b.HasIndex("ReviewedById")
+                        .HasDatabaseName("ix_device_change_requests_reviewed_by_id");
+
+                    b.HasIndex("TenantId", "EmployeeId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_device_change_requests_pending_employee")
+                        .HasFilter("status = 'pending'");
+
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("ix_device_change_requests_tenant_status");
+
+                    b.ToTable("device_change_requests", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.TrayActivationCode", b =>
@@ -9733,10 +9923,13 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("employee_id");
 
-                    b.Property<string>("ExpectedWorkArea")
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
-                        .HasColumnName("expected_work_area");
+                    b.Property<Guid?>("ExpectedWorkModeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("expected_work_mode_id");
+
+                    b.Property<string>("ExpectedWorkModeName")
+                        .HasColumnType("text")
+                        .HasColumnName("expected_work_mode_name");
 
                     b.Property<bool>("ExpectedWorkingDay")
                         .HasColumnType("boolean")
@@ -9930,10 +10123,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<int?>("AllowedRadiusMeters")
-                        .HasColumnType("integer")
-                        .HasColumnName("allowed_radius_meters");
-
                     b.Property<bool>("CorrectionRequiresApproval")
                         .HasColumnType("boolean")
                         .HasColumnName("correction_requires_approval");
@@ -9958,53 +10147,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("date")
                         .HasColumnName("effective_to");
 
-                    b.Property<bool>("EitherBiometricEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("either_biometric_enabled");
-
-                    b.Property<bool>("EitherLocationCheckRequired")
-                        .HasColumnType("boolean")
-                        .HasColumnName("either_location_check_required");
-
-                    b.Property<bool>("EitherPhotoRequired")
-                        .HasColumnType("boolean")
-                        .HasColumnName("either_photo_required");
-
-                    b.Property<string>("EitherSourceRule")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("either_source_rule");
-
-                    b.Property<bool>("EitherTrayEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("either_tray_enabled");
-
-                    b.Property<bool>("EitherWebEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("either_web_enabled");
-
                     b.PrimitiveCollection<Guid[]>("EmployeeIds")
                         .HasColumnType("uuid[]")
                         .HasColumnName("employee_ids");
-
-                    b.Property<bool>("FieldBiometricEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("field_biometric_enabled");
-
-                    b.Property<string>("FieldPhotoRequirement")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("field_photo_requirement");
-
-                    b.Property<bool>("FieldTrayEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("field_tray_enabled");
-
-                    b.Property<bool>("FieldWebEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("field_web_enabled");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
@@ -10013,10 +10158,6 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid>("LegalEntityId")
                         .HasColumnType("uuid")
                         .HasColumnName("legal_entity_id");
-
-                    b.Property<bool>("LocationVerificationRequired")
-                        .HasColumnType("boolean")
-                        .HasColumnName("location_verification_required");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -10030,45 +10171,9 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("notification_recipient_resolver");
 
-                    b.Property<bool>("OnsiteBiometricEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("onsite_biometric_enabled");
-
-                    b.Property<bool>("OnsitePhotoRequired")
-                        .HasColumnType("boolean")
-                        .HasColumnName("onsite_photo_required");
-
-                    b.Property<bool>("OnsiteTrayEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("onsite_tray_enabled");
-
-                    b.Property<bool>("OnsiteWebEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("onsite_web_enabled");
-
                     b.PrimitiveCollection<Guid[]>("PositionIds")
                         .HasColumnType("uuid[]")
                         .HasColumnName("position_ids");
-
-                    b.Property<bool>("RemoteBiometricEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("remote_biometric_enabled");
-
-                    b.Property<bool>("RemoteLocationCheckRequired")
-                        .HasColumnType("boolean")
-                        .HasColumnName("remote_location_check_required");
-
-                    b.Property<bool>("RemotePhotoRequired")
-                        .HasColumnType("boolean")
-                        .HasColumnName("remote_photo_required");
-
-                    b.Property<bool>("RemoteTrayEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("remote_tray_enabled");
-
-                    b.Property<bool>("RemoteWebEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("remote_web_enabled");
 
                     b.Property<string>("ScopeType")
                         .IsRequired()
@@ -10373,11 +10478,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("CurrentExpectedWorkArea")
+                    b.Property<Guid?>("CurrentWorkModeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("current_work_mode_id");
+
+                    b.Property<string>("CurrentWorkModeName")
                         .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
-                        .HasColumnName("current_expected_work_area");
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("current_work_mode_name");
 
                     b.Property<DateOnly>("Date")
                         .HasColumnType("date")
@@ -10386,6 +10495,11 @@ namespace ONEVO.Infrastructure.Migrations
                     b.Property<Guid>("EmployeeId")
                         .HasColumnType("uuid")
                         .HasColumnName("employee_id");
+
+                    b.Property<string>("LegacyWorkAreaLabel")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("legacy_work_area_label");
 
                     b.Property<Guid>("LegalEntityId")
                         .HasColumnType("uuid")
@@ -10400,11 +10514,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("requested_at");
 
-                    b.Property<string>("RequestedWorkArea")
+                    b.Property<Guid?>("RequestedWorkModeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_work_mode_id");
+
+                    b.Property<string>("RequestedWorkModeName")
                         .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)")
-                        .HasColumnName("requested_work_area");
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("requested_work_mode_name");
 
                     b.Property<string>("ReviewComment")
                         .HasColumnType("text")
@@ -10432,11 +10550,17 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_work_area_change_requests");
 
+                    b.HasIndex("CurrentWorkModeId")
+                        .HasDatabaseName("ix_work_area_change_requests_current_work_mode_id");
+
                     b.HasIndex("EmployeeId")
                         .HasDatabaseName("ix_work_area_change_requests_employee_id");
 
                     b.HasIndex("LegalEntityId")
                         .HasDatabaseName("ix_work_area_change_requests_legal_entity_id");
+
+                    b.HasIndex("RequestedWorkModeId")
+                        .HasDatabaseName("ix_work_area_change_requests_requested_work_mode_id");
 
                     b.HasIndex("ReviewedById")
                         .HasDatabaseName("ix_work_area_change_requests_reviewed_by_id");
@@ -10453,6 +10577,89 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasDatabaseName("ix_work_area_change_requests_tenant_legal_entity_status");
 
                     b.ToTable("work_area_change_requests", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("AllowsDailyLocationChoice")
+                        .HasColumnType("boolean")
+                        .HasColumnName("allows_daily_location_choice");
+
+                    b.Property<bool>("BiometricEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("biometric_enabled");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("display_order");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsSystemSeeded")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_system_seeded");
+
+                    b.Property<Guid>("LegalEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_entity_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("PhotoRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("photo_required");
+
+                    b.Property<bool>("SelfRegistersLocation")
+                        .HasColumnType("boolean")
+                        .HasColumnName("self_registers_location");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<bool>("TrayEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("tray_enabled");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<bool>("WebEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("web_enabled");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tenant_work_modes");
+
+                    b.HasIndex("LegalEntityId")
+                        .HasDatabaseName("ix_tenant_work_modes_legal_entity_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_tenant_work_modes_tenant_id");
+
+                    b.HasIndex("TenantId", "LegalEntityId")
+                        .HasDatabaseName("ix_tenant_work_modes_tenant_id_legal_entity_id");
+
+                    b.HasIndex("TenantId", "LegalEntityId", "IsActive")
+                        .HasDatabaseName("ix_tenant_work_modes_tenant_le_active");
+
+                    b.ToTable("tenant_work_modes", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEvent", b =>
@@ -11327,17 +11534,17 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
 
-                    b.Property<DateOnly>("EndDate")
+                    b.Property<DateOnly?>("EndDate")
                         .HasColumnType("date")
                         .HasColumnName("end_date");
+
+                    b.Property<string>("Goal")
+                        .HasColumnType("text")
+                        .HasColumnName("goal");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean")
                         .HasColumnName("is_deleted");
-
-                    b.Property<bool>("IsManuallyOverridden")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_manually_overridden");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -11349,11 +11556,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("objective_id");
 
+                    b.Property<DateTimeOffset?>("OverdueNotifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("overdue_notified_at");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid")
                         .HasColumnName("project_id");
 
-                    b.Property<DateOnly>("StartDate")
+                    b.Property<DateOnly?>("StartDate")
                         .HasColumnType("date")
                         .HasColumnName("start_date");
 
@@ -11879,6 +12090,22 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("approver_id");
 
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("not_started")
+                        .HasColumnName("category");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasDefaultValue("#94A3B8")
+                        .HasColumnName("color");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -12353,38 +12580,6 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("severities", (string)null);
                 });
 
-            modelBuilder.Entity("ONEVO.Domain.Lookups.WorkMode", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("code");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Label")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("label");
-
-                    b.HasKey("Id")
-                        .HasName("pk_work_modes");
-
-                    b.HasIndex("Code")
-                        .IsUnique()
-                        .HasDatabaseName("ix_work_modes_code");
-
-                    b.ToTable("work_modes", (string)null);
-                });
-
             modelBuilder.Entity("ONEVO.Domain.Features.Auth.Entities.LegalLoginChallenge", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.Auth.Entities.LegalLoginChallenge", null)
@@ -12623,6 +12818,15 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_checklist_templates_positions_position_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.Employee", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode", null)
+                        .WithMany()
+                        .HasForeignKey("WorkModeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_employees_time_attendance_work_modes_work_mode_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.EmployeeAddress", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
@@ -12746,12 +12950,11 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_onboarding_drafts_positions_position_id");
 
-                    b.HasOne("ONEVO.Domain.Lookups.WorkMode", null)
+                    b.HasOne("ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode", null)
                         .WithMany()
                         .HasForeignKey("WorkModeId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_onboarding_drafts_work_modes_work_mode_id");
+                        .HasConstraintName("fk_onboarding_drafts_time_attendance_work_modes_work_mode_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment", b =>
@@ -13293,6 +13496,21 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasConstraintName("fk_monitoring_feature_toggles_legal_entities_legal_entity_id");
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.DeviceChangeRequest", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.TrayDeviceRegistration", null)
+                        .WithMany()
+                        .HasForeignKey("CurrentDeviceRegistrationId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_device_change_requests_tray_device_registrations_current_de");
+
+                    b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_device_change_requests_users_reviewed_by_id");
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Monitoring.TrayActivation.Entities.TrayActivationCode", b =>
                 {
                     b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
@@ -13765,6 +13983,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.WorkAreaChangeRequest", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode", null)
+                        .WithMany()
+                        .HasForeignKey("CurrentWorkModeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_work_area_change_requests_time_attendance_work_modes_curren");
+
                     b.HasOne("ONEVO.Domain.Features.CoreHr.Entities.Employee", null)
                         .WithMany()
                         .HasForeignKey("EmployeeId")
@@ -13779,11 +14003,27 @@ namespace ONEVO.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_work_area_change_requests_legal_entities_legal_entity_id");
 
+                    b.HasOne("ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedWorkModeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_work_area_change_requests_time_attendance_work_modes_reques");
+
                     b.HasOne("ONEVO.Domain.Features.InfrastructureModule.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("ReviewedById")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_work_area_change_requests_users_reviewed_by_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("LegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_work_modes_legal_entities_legal_entity_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities.CalendarEvent", b =>

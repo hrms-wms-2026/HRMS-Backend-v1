@@ -44,7 +44,8 @@ public class UpdateMonitoringFeatureTogglesCommandHandlerTests
         WorkLocationVerification: false,
         IdentityVerification: false,
         Biometric: false,
-        IdleThresholdMinutes: 5);
+        IdleThresholdMinutes: 5,
+        AllowedRadiusMeters: null);
 
     [Fact]
     public async Task Handle_NoExistingRow_CreatesNewRow()

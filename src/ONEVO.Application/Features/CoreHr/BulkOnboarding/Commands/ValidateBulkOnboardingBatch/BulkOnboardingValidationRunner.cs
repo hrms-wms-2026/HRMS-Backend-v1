@@ -5,9 +5,9 @@ using ONEVO.Application.Features.CoreHr.BulkOnboarding.Models;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.BulkOnboarding.Services;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 
@@ -282,15 +282,14 @@ public sealed class BulkOnboardingValidationRunner : IBulkOnboardingValidationRu
     {
         var departments = await _departments.ListByLegalEntityAsync(tenantId, legalEntityId, includeInactive: false, ct);
         var positions = await _positions.ListByLegalEntityAsync(tenantId, legalEntityId, includeInactive: false, departmentId: null, ct);
-        var workModes = await _workModes.ListActiveAsync(ct);
+        var workModes = await _workModes.ListByLegalEntityAsync(tenantId, legalEntityId, includeInactive: false, ct);
         var templates = await _checklistTemplates.ListOnboardingMatchesAsync(tenantId, legalEntityId, null, null, ct);
 
         return new Dictionary<string, IReadOnlyList<(string Id, string Label)>>(StringComparer.OrdinalIgnoreCase)
         {
             ["department"] = departments.Select(d => (d.Id.ToString(), d.Name)).ToList(),
             ["position"] = positions.Select(p => (p.Id.ToString(), p.Name)).ToList(),
-            ["workMode"] = workModes.Select(w => (w.Id.ToString(), w.Label)).Concat(
-                workModes.Select(w => (w.Id.ToString(), w.Code))).Distinct().ToList(),
+            ["workMode"] = workModes.Select(w => (w.Id.ToString(), w.Name)).ToList(),
             ["checklistTemplate"] = templates.Select(t => (t.Template.Id.ToString(), t.Template.Name)).ToList(),
             ["employmentType"] =
             [

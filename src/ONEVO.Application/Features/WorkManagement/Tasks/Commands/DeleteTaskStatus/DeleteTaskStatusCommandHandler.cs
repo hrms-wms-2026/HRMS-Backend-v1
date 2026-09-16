@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
 
@@ -60,6 +61,16 @@ public class DeleteTaskStatusCommandHandler : IRequestHandler<DeleteTaskStatusCo
 
         if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))
             return Result.Forbidden("Only an owner or member of this project can delete task statuses.");
+
+        if (status.Category == TaskStatusCategories.Done)
+            return Result.Conflict("A project must always have exactly one Done status; edit it instead of deleting it.");
+
+        if (status.Category == TaskStatusCategories.Active)
+        {
+            var siblings = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
+            if (siblings.Count(s => s.Category == TaskStatusCategories.Active) <= 1)
+                return Result.Conflict("A project must always have at least one Active status.");
+        }
 
         if (await _tasks.AnyActiveByStatusIdAsync(tenantId, status.Id, ct))
             return Result.Conflict("Move all tasks out of this status before deleting it.");

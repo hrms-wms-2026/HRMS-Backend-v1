@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.DTOs.Responses;
+using ONEVO.Application.Features.Monitoring.TrayActivation.Exceptions;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Models;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
@@ -53,15 +54,26 @@ public class ExchangeActivationCodeCommandHandler
                 "replaced_by_new_activation",
                 ct);
 
-            var credentials = await _enrollmentService.IssueAsync(
-                new TrayEnrollmentRequest(
-                    activationCode.TenantId,
-                    activationCode.UserId,
-                    activationCode.LegalEntityId,
-                    request.DeviceName,
-                    request.DeviceOs,
-                    request.DeviceFingerprint),
-                ct);
+            TrayAuthResponseDto credentials;
+            try
+            {
+                credentials = await _enrollmentService.IssueAsync(
+                    new TrayEnrollmentRequest(
+                        activationCode.TenantId,
+                        activationCode.UserId,
+                        activationCode.LegalEntityId,
+                        request.DeviceName,
+                        request.DeviceOs,
+                        request.DeviceFingerprint),
+                    ct);
+            }
+            catch (DeviceChangePendingException)
+            {
+                await _unitOfWork.SaveChangesAsync(ct);
+                return Result<TrayAuthResponseDto>.Failure(
+                    "A different device is already approved for your account. A request has been sent for approval.",
+                    409, "device_change_pending");
+            }
 
             await _unitOfWork.SaveChangesAsync(ct);
             return Result<TrayAuthResponseDto>.Success(credentials);

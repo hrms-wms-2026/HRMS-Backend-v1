@@ -30,13 +30,15 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ITaskAssetLinker _assetLinker;
 
     public CreateTaskCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
         IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
         ISprintRepository sprints, ITaskCategoryRepository categories, IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork,
         IMilestoneMembershipCoordinator membership,
-        ICalendarEventRepository calendarEvents)
+        ICalendarEventRepository calendarEvents,
+        ITaskAssetLinker assetLinker)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -50,6 +52,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         _unitOfWork = unitOfWork;
         _membership = membership;
         _calendarEvents = calendarEvents;
+        _assetLinker = assetLinker;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(CreateTaskCommand request, CancellationToken ct)
@@ -91,7 +94,8 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         }
 
         var statuses = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
-        var defaultStatus = statuses.Where(s => !s.MarksTaskComplete).OrderBy(s => s.DisplayOrder).FirstOrDefault();
+        var defaultStatus = statuses.Where(s => s.Category == TaskStatusCategories.NotStarted).OrderBy(s => s.DisplayOrder).FirstOrDefault()
+            ?? statuses.Where(s => s.Category == TaskStatusCategories.Active).OrderBy(s => s.DisplayOrder).FirstOrDefault();
         if (defaultStatus is null)
             return Result<WorkTaskResponse>.Failure("No task statuses configured for this milestone yet.", 422);
 
@@ -134,6 +138,9 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
 
             await _tasks.AddAsync(task, innerCt);
             await _unitOfWork.SaveChangesAsync(innerCt);
+
+            await _assetLinker.SyncAttachmentsAsync(tenantId, userId, task.Id, request.AttachmentFileIds ?? Array.Empty<Guid>(), innerCt);
+            await _assetLinker.SyncDescriptionImagesAsync(tenantId, userId, task.Id, task.Description, innerCt);
 
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,

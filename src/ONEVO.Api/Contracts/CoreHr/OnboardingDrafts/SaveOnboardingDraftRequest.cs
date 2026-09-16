@@ -10,7 +10,7 @@ public record SaveOnboardingDraftRequest(
     string EmploymentType,
     DateOnly StartDate,
     string? EmployeeNumber,
-    int WorkModeId,
+    Guid? WorkModeId,
     Guid? SelectedTemplateId,
     string? EditedTasksJson,
     string LastSavedStep,

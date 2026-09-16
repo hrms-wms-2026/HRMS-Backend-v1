@@ -15,6 +15,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.SetMyAvatar;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateBankDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmergencyContact;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmployeeJobDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
@@ -107,6 +108,22 @@ public class EmployeesController : ControllerBase
 
         return result.IsSuccess
             ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Update an existing employee's Employee Number, Employment Type, and Work Mode -
+    /// the three Job & Organizational Details fields with no other dedicated update flow.
+    /// Position/reporting-manager changes stay on change-position.</summary>
+    [HttpPut("{id:guid}/job-details")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> UpdateJobDetails(
+        Guid id, [FromBody] UpdateEmployeeJobDetailsRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new UpdateEmployeeJobDetailsCommand(id, request.EmployeeNumber, request.EmploymentTypeCode, request.WorkModeId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

@@ -65,6 +65,9 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
     private TenantSession _requesterA = null!;
     private Guid _requesterAEmployeeId;
     private Guid _requesterAUserId;
+    private Guid _requesterAWorkModeId;
+    private Guid _remoteWorkModeId;
+    private Guid _onsiteWorkModeId;
 
     private TenantSession _requesterA2 = null!;
     private Guid _requesterA2EmployeeId;
@@ -91,6 +94,9 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
     public Guid TenantAId => _tenantAId;
     public TenantSession RequesterA => _requesterA;
     public Guid RequesterAEmployeeId => _requesterAEmployeeId;
+    public Guid RequesterAWorkModeId => _requesterAWorkModeId;
+    public Guid RemoteWorkModeId => _remoteWorkModeId;
+    public Guid OnsiteWorkModeId => _onsiteWorkModeId;
     public TenantSession RequesterA2 => _requesterA2;
     public Guid RequesterA2EmployeeId => _requesterA2EmployeeId;
     public TenantSession RequesterA3 => _requesterA3;
@@ -146,26 +152,45 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
         await SeedClockInPolicyAsync(_tenantAId, _legalEntityAId, _ownerAUserId);
         await SeedClockInPolicyAsync(_tenantBId, legalEntityBId, ownerBUserId);
 
+        // Legal entity creation auto-seeds default work modes (Remote/Hybrid/Onsite) via
+        // WorkModeSeeder - reuse those instead of creating new ones. WorkModeSeeder's defaults are
+        // WebEnabled=true only (Tray/Biometric/PhotoRequired all false); the Remote row is bumped
+        // here so Today's AllowedClockInMethods response provably switches branch on the approved
+        // override (Onsite keeps the seeded all-off-but-web defaults).
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var remoteWorkMode = await db.TimeAttendanceWorkModes
+                .SingleAsync(w => w.TenantId == _tenantAId && w.LegalEntityId == _legalEntityAId && w.Name == "Remote");
+            remoteWorkMode.TrayEnabled = true;
+            remoteWorkMode.PhotoRequired = true;
+            _remoteWorkModeId = remoteWorkMode.Id;
+            _onsiteWorkModeId = await db.TimeAttendanceWorkModes.AsNoTracking()
+                .Where(w => w.TenantId == _tenantAId && w.LegalEntityId == _legalEntityAId && w.Name == "Onsite")
+                .Select(w => w.Id).SingleAsync();
+            await db.SaveChangesAsync();
+        }
+
         _approverPositionId = await SeedPositionAsync(_tenantAId, _legalEntityAId, "Approver Position", null);
         var requesterPositionId = await SeedPositionAsync(_tenantAId, _legalEntityAId, "Requester Position", _approverPositionId);
         var requesterPosition2Id = await SeedPositionAsync(_tenantAId, _legalEntityAId, "Requester Position 2", _approverPositionId);
         var requesterPosition3Id = await SeedPositionAsync(_tenantAId, _legalEntityAId, "Requester Position 3", _approverPositionId);
         var requesterPosition4Id = await SeedPositionAsync(_tenantAId, _legalEntityAId, "Requester Position 4", _approverPositionId);
 
-        (_approverA, _approverAEmployeeId, _approverAUserId) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, ownerA.Host, "approver@wa-run-a.test", _legalEntityAId, "WA-A-APR-001", workModeId: 1);
-        (_requesterA, _requesterAEmployeeId, _requesterAUserId) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, ownerA.Host, "requester@wa-run-a.test", _legalEntityAId, "WA-A-REQ-001", workModeId: 1);
-        (_requesterA2, _requesterA2EmployeeId, _) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, ownerA.Host, "requester2@wa-run-a.test", _legalEntityAId, "WA-A-REQ-002", workModeId: 1);
-        (_requesterA3, _requesterA3EmployeeId, _) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, ownerA.Host, "requester3@wa-run-a.test", _legalEntityAId, "WA-A-REQ-003", workModeId: 1);
-        (_requesterA4, var requesterA4EmployeeId, _) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, ownerA.Host, "requester4@wa-run-a.test", _legalEntityAId, "WA-A-REQ-004", workModeId: 1);
-        (_wrongApproverA, _, var wrongApproverAUserId) = await SeedEmployeeFixtureUserAsync(
-            _tenantAId, ownerA.Host, "wrong-approver@wa-run-a.test", _legalEntityAId, "WA-A-WRG-001", workModeId: 1);
-        (_approverB, _, var approverBUserId) = await SeedEmployeeFixtureUserAsync(
-            _tenantBId, ownerB.Host, "approver@wa-run-b.test", legalEntityBId, "WA-B-APR-001", workModeId: 1);
+        (_approverA, _approverAEmployeeId, _approverAUserId, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "approver@wa-run-a.test", _legalEntityAId, "WA-A-APR-001");
+        (_requesterA, _requesterAEmployeeId, _requesterAUserId, _requesterAWorkModeId) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "requester@wa-run-a.test", _legalEntityAId, "WA-A-REQ-001");
+        (_requesterA2, _requesterA2EmployeeId, _, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "requester2@wa-run-a.test", _legalEntityAId, "WA-A-REQ-002");
+        (_requesterA3, _requesterA3EmployeeId, _, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "requester3@wa-run-a.test", _legalEntityAId, "WA-A-REQ-003");
+        (_requesterA4, var requesterA4EmployeeId, _, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "requester4@wa-run-a.test", _legalEntityAId, "WA-A-REQ-004");
+        (_wrongApproverA, _, var wrongApproverAUserId, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantAId, ownerA.Host, "wrong-approver@wa-run-a.test", _legalEntityAId, "WA-A-WRG-001");
+        (_approverB, _, var approverBUserId, _) = await SeedEmployeeFixtureUserAsync(
+            _tenantBId, ownerB.Host, "approver@wa-run-b.test", legalEntityBId, "WA-B-APR-001");
 
         await AssignPrimaryPositionAsync(_tenantAId, _approverAEmployeeId, _approverPositionId, _ownerAUserId, null);
         await AssignPrimaryPositionAsync(_tenantAId, _requesterAEmployeeId, requesterPositionId, _ownerAUserId, _approverAEmployeeId);
@@ -227,27 +252,11 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
             ScopeType = ClockInPolicy.ScopeFullCompany,
             EffectiveFrom = new DateOnly(2020, 1, 1),
             EffectiveTo = null,
-            LocationVerificationRequired = false,
-            // Onsite and Remote branches are deliberately distinguished on tray/photo so Today's
-            // AllowedClockInMethods response provably switches branch on the approved override,
-            // while both keep Web enabled (the approval-after-clock-in scenario clocks in as
-            // On-site first via web, before any override exists).
-            OnsiteWebEnabled = true,
-            OnsiteTrayEnabled = false,
-            OnsiteBiometricEnabled = false,
-            OnsitePhotoRequired = false,
-            RemoteWebEnabled = true,
-            RemoteTrayEnabled = true,
-            RemoteBiometricEnabled = false,
-            RemotePhotoRequired = true,
-            EitherWebEnabled = true,
-            EitherTrayEnabled = false,
-            EitherBiometricEnabled = false,
-            EitherPhotoRequired = false,
-            FieldWebEnabled = false,
-            FieldTrayEnabled = false,
-            FieldBiometricEnabled = false,
-            FieldPhotoRequirement = ClockInPolicy.FieldPhotoOff,
+            // Clock-in methods are no longer sourced from this policy's flattened per-area flags
+            // (AttendanceTodayStateService.ResolveAllowedMethods reads WorkMode.TrayEnabled/
+            // WebEnabled/BiometricEnabled/PhotoRequired directly) - only its presence, as the one
+            // active full-company policy, gates PolicyStatus == "configured". See the Remote
+            // WorkMode update above for where tray/photo are actually distinguished.
             CorrectionRequiresApproval = false,
             IsActive = true,
             CreatedById = createdById,
@@ -411,13 +420,20 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
         return new TenantSession(host, sessionCookie, csrfHeader);
     }
 
-    private async Task<(TenantSession Session, Guid EmployeeId, Guid UserId)> SeedEmployeeFixtureUserAsync(
-        Guid tenantId, string host, string email, Guid legalEntityId, string employeeNumber, int workModeId)
+    private async Task<(TenantSession Session, Guid EmployeeId, Guid UserId, Guid WorkModeId)> SeedEmployeeFixtureUserAsync(
+        Guid tenantId, string host, string email, Guid legalEntityId, string employeeNumber, string workModeName = "Onsite")
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
         var now = DateTimeOffset.UtcNow;
+
+        // Legal entity creation auto-seeds default work modes (Remote/Hybrid/Onsite) via
+        // WorkModeSeeder - reuse those instead of creating new ones.
+        var workModeId = await db.TimeAttendanceWorkModes.AsNoTracking()
+            .Where(w => w.TenantId == tenantId && w.LegalEntityId == legalEntityId && w.Name == workModeName)
+            .Select(w => w.Id)
+            .SingleAsync();
 
         var userId = Guid.NewGuid();
         db.Add(new User
@@ -471,7 +487,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTestsFixture : IA
         await db.SaveChangesAsync();
 
         var session = await LoginViaBaseHostAsync(host, email, FixtureUserPassword);
-        return (session, employeeId, userId);
+        return (session, employeeId, userId, workModeId);
     }
 
     private async Task<Guid> GetTenantIdAsync(string host)
@@ -626,12 +642,12 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
     [Fact]
     public async Task FullLifecycle_SubmitApproveClockInHistory_ReflectsApprovedRemoteOverride()
     {
-        // Step 0 (negative, folded in): an unsupported requested work area is rejected by the
+        // Step 0 (negative, folded in): an empty/unselected work mode is rejected by the
         // request-level FluentValidation rule before any valid request is created, and does not
         // consume the one-active-request-per-day slot.
         var unsupportedResponse = await _fixture.SendAsync(HttpMethod.Post, _fixture.RequesterA.Host,
             "/api/v1/attendance/work-area-change-requests",
-            new { date = _fixture.WorkDate, requestedWorkArea = "field", reason = "Unsupported" },
+            new { date = _fixture.WorkDate, requestedWorkModeId = Guid.Empty, reason = "Unsupported" },
             cookie: _fixture.RequesterA.SessionCookie, csrfToken: _fixture.RequesterA.CsrfHeader);
         unsupportedResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
@@ -644,26 +660,26 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
         // Step 2: preview.
         var preview = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA,
             "/api/v1/attendance/work-area-change-requests/preview",
-            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Home repair appointment" });
+            new { date = _fixture.WorkDate, requestedWorkModeId = _fixture.RemoteWorkModeId, reason = "Home repair appointment" });
         preview.status.Should().Be(HttpStatusCode.OK, preview.json.ValueKind == JsonValueKind.Undefined ? "(empty body)" : preview.json.GetRawText());
-        preview.json.GetProperty("currentExpectedWorkArea").GetString().Should().Be("onsite");
-        preview.json.GetProperty("requestedWorkArea").GetString().Should().Be("remote");
+        preview.json.GetProperty("currentWorkModeName").GetString().Should().Be("Onsite");
+        preview.json.GetProperty("requestedWorkModeName").GetString().Should().Be("Remote");
         preview.json.GetProperty("receiver").GetProperty("userId").GetGuid().Should().Be(_fixture.ApproverAUserId);
 
         // Step 3: submit.
         var create = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA,
             "/api/v1/attendance/work-area-change-requests",
-            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Home repair appointment" });
+            new { date = _fixture.WorkDate, requestedWorkModeId = _fixture.RemoteWorkModeId, reason = "Home repair appointment" });
         create.status.Should().Be(HttpStatusCode.Created);
         create.json.GetProperty("status").GetString().Should().Be(WorkAreaChangeRequest.StatusPending);
-        create.json.GetProperty("requestedWorkArea").GetString().Should().Be("remote");
+        create.json.GetProperty("requestedWorkModeName").GetString().Should().Be("Remote");
         create.json.TryGetProperty("tenantId", out _).Should().BeFalse("tenant id is server-internal and must not be exposed");
         var requestId = create.json.GetProperty("id").GetGuid();
 
         // A second active request for the same employee/date is rejected while the first is pending.
         var duplicate = await _fixture.SendAsync(HttpMethod.Post, _fixture.RequesterA.Host,
             "/api/v1/attendance/work-area-change-requests",
-            new { date = _fixture.WorkDate, requestedWorkArea = "onsite", reason = "Duplicate attempt" },
+            new { date = _fixture.WorkDate, requestedWorkModeId = _fixture.OnsiteWorkModeId, reason = "Duplicate attempt" },
             cookie: _fixture.RequesterA.SessionCookie, csrfToken: _fixture.RequesterA.CsrfHeader);
         duplicate.StatusCode.Should().Be(HttpStatusCode.Conflict);
 
@@ -696,7 +712,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
         approve.status.Should().Be(HttpStatusCode.OK);
         approve.json.GetProperty("status").GetString().Should().Be(WorkAreaChangeRequest.StatusApproved);
         approve.json.GetProperty("reviewedById").GetGuid().Should().Be(_fixture.ApproverAUserId);
-        approve.json.GetProperty("requestedWorkArea").GetString().Should().Be("remote");
+        approve.json.GetProperty("requestedWorkModeName").GetString().Should().Be("Remote");
 
         // Approving an already-decided request returns the existing conflict behavior.
         var reapprove = await _fixture.PostJsonAuthenticatedAsync(_fixture.ApproverA,
@@ -722,7 +738,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
         {
             var record = await verifyDb.AttendanceRecords.AsNoTracking()
                 .SingleAsync(x => x.TenantId == _fixture.TenantAId && x.EmployeeId == _fixture.RequesterAEmployeeId && x.Date == _fixture.WorkDate);
-            record.ExpectedWorkArea.Should().Be("remote");
+            record.ExpectedWorkModeName.Should().Be("Remote");
         }
 
         // Step 8: Today after clock-in still reflects the persisted snapshot.
@@ -747,7 +763,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
             .CountAsync(x => x.TenantId == _fixture.TenantAId && x.EmployeeId == _fixture.RequesterAEmployeeId && x.Date == _fixture.WorkDate))
             .Should().Be(1);
         var employee = await db.Employees.AsNoTracking().SingleAsync(x => x.Id == _fixture.RequesterAEmployeeId);
-        employee.WorkModeId.Should().Be(1, "approval must never mutate the employee's permanent WorkModeId");
+        employee.WorkModeId.Should().Be(_fixture.RequesterAWorkModeId, "approval must never mutate the employee's permanent WorkModeId");
     }
 
     [Fact]
@@ -770,7 +786,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
 
         var create = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA2,
             "/api/v1/attendance/work-area-change-requests",
-            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Family emergency" });
+            new { date = _fixture.WorkDate, requestedWorkModeId = _fixture.RemoteWorkModeId, reason = "Family emergency" });
         create.status.Should().Be(HttpStatusCode.Created);
         var requestId = create.json.GetProperty("id").GetGuid();
 
@@ -781,7 +797,8 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
         await using (var db = _fixture.OpenScopedDb())
         {
             var record = await db.AttendanceRecords.AsNoTracking().SingleAsync(x => x.Id == attendanceRecordId);
-            record.ExpectedWorkArea.Should().Be("remote");
+            record.ExpectedWorkModeId.Should().Be(_fixture.RemoteWorkModeId);
+            record.ExpectedWorkModeName.Should().Be("Remote");
             record.ActualStart.Should().Be(actualStart);
             record.ActualEnd.Should().BeNull();
             record.AttendanceSource.Should().Be("web");
@@ -803,7 +820,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
     {
         var firstRequest = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA3,
             "/api/v1/attendance/work-area-change-requests",
-            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Reason one" });
+            new { date = _fixture.WorkDate, requestedWorkModeId = _fixture.RemoteWorkModeId, reason = "Reason one" });
         firstRequest.status.Should().Be(HttpStatusCode.Created);
         var firstId = firstRequest.json.GetProperty("id").GetGuid();
 
@@ -818,7 +835,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
         // A new request is allowed once the previous one reached a terminal state.
         var secondRequest = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA3,
             "/api/v1/attendance/work-area-change-requests",
-            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Reason two" });
+            new { date = _fixture.WorkDate, requestedWorkModeId = _fixture.RemoteWorkModeId, reason = "Reason two" });
         secondRequest.status.Should().Be(HttpStatusCode.Created);
         var secondId = secondRequest.json.GetProperty("id").GetGuid();
 
@@ -844,18 +861,18 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
 
         var unauthenticatedCreate = await _fixture.SendAsync(HttpMethod.Post, _fixture.RequesterA.Host,
             "/api/v1/attendance/work-area-change-requests",
-            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "No session" });
+            new { date = _fixture.WorkDate, requestedWorkModeId = _fixture.RemoteWorkModeId, reason = "No session" });
         unauthenticatedCreate.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
 
         var missingCsrf = await _fixture.SendAsync(HttpMethod.Post, _fixture.RequesterA.Host,
             "/api/v1/attendance/work-area-change-requests",
-            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Missing token" },
+            new { date = _fixture.WorkDate, requestedWorkModeId = _fixture.RemoteWorkModeId, reason = "Missing token" },
             cookie: _fixture.RequesterA.SessionCookie);
         missingCsrf.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
         var invalidCsrf = await _fixture.SendAsync(HttpMethod.Post, _fixture.RequesterA.Host,
             "/api/v1/attendance/work-area-change-requests",
-            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Invalid token" },
+            new { date = _fixture.WorkDate, requestedWorkModeId = _fixture.RemoteWorkModeId, reason = "Invalid token" },
             cookie: _fixture.RequesterA.SessionCookie, csrfToken: "not-the-real-token");
         invalidCsrf.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -869,7 +886,7 @@ public sealed class WorkAreaChangeRequestRuntimeHttpIntegrationTests : IClassFix
         // permanently-pending request behind for that employee/_fixture.WorkDate.
         var create = await _fixture.PostJsonAuthenticatedAsync(_fixture.RequesterA4,
             "/api/v1/attendance/work-area-change-requests",
-            new { date = _fixture.WorkDate, requestedWorkArea = "remote", reason = "Tenant isolation fixture" });
+            new { date = _fixture.WorkDate, requestedWorkModeId = _fixture.RemoteWorkModeId, reason = "Tenant isolation fixture" });
         create.status.Should().Be(HttpStatusCode.Created);
         var requestId = create.json.GetProperty("id").GetGuid();
 

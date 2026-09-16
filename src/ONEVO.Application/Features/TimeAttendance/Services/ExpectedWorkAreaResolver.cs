@@ -1,7 +1,6 @@
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -39,30 +38,31 @@ public sealed class ExpectedWorkAreaResolver(
 
         if (approved is not null)
         {
-            var requestedArea = approved.RequestedWorkArea.Trim().ToLowerInvariant();
-            return requestedArea is WorkAreaChangeRequest.WorkAreaOnsite or WorkAreaChangeRequest.WorkAreaRemote
-                ? Result<ExpectedWorkAreaResolution>.Success(
-                    new ExpectedWorkAreaResolution(requestedArea, schedule.Timezone, SourceApprovedRequest))
-                : Result<ExpectedWorkAreaResolution>.Conflict(
-                    "The approved work-area change request has an unsupported requested work area.");
+            // The change request only cached the requested mode's Id/Name at approval time - its
+            // location-behavior flags can only be read from the WorkMode itself, and may have
+            // changed since (an admin could have re-toggled it). Fall back to office-checked
+            // (both false) if the requested mode was since deleted, rather than failing outright.
+            var requestedMode = approved.RequestedWorkModeId is Guid requestedWorkModeId
+                ? await workModes.GetByIdAsync(employee.TenantId, requestedWorkModeId, ct)
+                : null;
+            return Result<ExpectedWorkAreaResolution>.Success(
+                new ExpectedWorkAreaResolution(
+                    approved.RequestedWorkModeId, approved.RequestedWorkModeName,
+                    schedule.Timezone, SourceApprovedRequest,
+                    requestedMode?.SelfRegistersLocation ?? false,
+                    requestedMode?.AllowsDailyLocationChoice ?? false));
         }
 
-        var mode = (await workModes.ListActiveAsync(ct))
-            .FirstOrDefault(x => x.Id == employee.WorkModeId);
-        var code = mode?.Code?.Trim().ToLowerInvariant();
+        if (employee.WorkModeId is not Guid workModeId)
+            return Result<ExpectedWorkAreaResolution>.Conflict("The employee work mode is not configured.");
 
-        var expected = code switch
-        {
-            "onsite" or "on_site" => "onsite",
-            "remote" => "remote",
-            "hybrid" => "either",
-            "field" => "field",
-            _ => null
-        };
+        var mode = await workModes.GetByIdAsync(employee.TenantId, workModeId, ct);
+        if (mode is null)
+            return Result<ExpectedWorkAreaResolution>.Conflict("The employee's assigned work mode was not found.");
 
-        return expected is null
-            ? Result<ExpectedWorkAreaResolution>.Conflict("The employee work mode is not configured.")
-            : Result<ExpectedWorkAreaResolution>.Success(
-                new ExpectedWorkAreaResolution(expected, schedule.Timezone, SourceActiveWorkMode));
+        return Result<ExpectedWorkAreaResolution>.Success(
+            new ExpectedWorkAreaResolution(
+                mode.Id, mode.Name, schedule.Timezone, SourceActiveWorkMode,
+                mode.SelfRegistersLocation, mode.AllowsDailyLocationChoice));
     }
 }

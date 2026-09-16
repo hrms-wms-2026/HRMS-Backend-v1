@@ -17,8 +17,6 @@ public class ClockInPolicyConfiguration : IEntityTypeConfiguration<ClockInPolicy
         builder.Property(p => p.DepartmentIds).HasColumnType("uuid[]");
         builder.Property(p => p.PositionIds).HasColumnType("uuid[]");
         builder.Property(p => p.EmployeeIds).HasColumnType("uuid[]");
-        builder.Property(p => p.EitherSourceRule).HasMaxLength(30).IsRequired();
-        builder.Property(p => p.FieldPhotoRequirement).HasMaxLength(20).IsRequired();
         builder.Property(p => p.NotificationRecipientResolver).HasMaxLength(50).IsRequired();
 
         builder.HasIndex(p => p.TenantId)

@@ -7,6 +7,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
@@ -29,6 +30,7 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
     private readonly IEncryptionService _encryption;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
+    private readonly IEmploymentTypeRepository _employmentTypes;
 
     public GetEmployeeDetailQueryHandler(
         IEmployeeRepository employeeRepository,
@@ -37,7 +39,8 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         IInvitationTokenRepository invitationTokenRepository,
         IEncryptionService encryption,
         ICurrentUser currentUser,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IEmploymentTypeRepository employmentTypes)
     {
         _employeeRepository = employeeRepository;
         _visibilityScopeResolver = visibilityScopeResolver;
@@ -46,6 +49,7 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         _encryption = encryption;
         _currentUser = currentUser;
         _clock = clock;
+        _employmentTypes = employmentTypes;
     }
 
     public async Task<Result<EmployeeDetailResponse>> Handle(GetEmployeeDetailQuery request, CancellationToken ct)
@@ -97,10 +101,13 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
             attendanceSummary = items.FirstOrDefault()?.AttendanceSummary;
         }
 
+        var employmentTypeCode = await _employmentTypes.GetCodeByIdAsync(existing.EmploymentTypeId, ct) ?? string.Empty;
+
         var jobInformation = new EmployeeDetailJobInformation(
             visible.EmployeeNumber, existing.LegalEntityId, visible.LegalEntityName, visible.DepartmentName, visible.PositionName,
             visible.PositionId, visible.ReportingManagerName, visible.EmploymentTypeLabel, visible.Status,
-            existing.HireDate, existing.ProbationEndDate, visible.WorkModeLabel);
+            existing.HireDate, existing.ProbationEndDate, visible.WorkModeLabel,
+            employmentTypeCode, existing.WorkModeId);
 
         var personalInformation = new EmployeeDetailPersonalInformation(
             existing.FirstName, existing.LastName, existing.Email, existing.Phone, existing.DateOfBirth,

@@ -37,7 +37,10 @@ public class AttendanceRecord : ITenantOwnedEntity
     public TimeOnly? ScheduledStart { get; set; }
     public TimeOnly? ScheduledEnd { get; set; }
     public int? RequiredWorkMinutes { get; set; }
-    public string? ExpectedWorkArea { get; set; }
+
+    public Guid? ExpectedWorkModeId { get; set; }
+    public string? ExpectedWorkModeName { get; set; }
+
     public string? ScheduleTimezone { get; set; }
     public bool IsHoliday { get; set; }
     public string? HolidayName { get; set; }

@@ -24,11 +24,13 @@ public class IngestActivitySnapshotsCommandHandlerTests
     private readonly Mock<ITrayCurrentDevice> _device = new();
     private readonly Mock<ITenantRepository> _tenants = new();
     private readonly Mock<ITenantContextSwitcher> _switcher = new();
+    private readonly Mock<ITrayEmployeeIdentityResolver> _employeeIdentity = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly FakeUnitOfWork _uow = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _employeeId = Guid.NewGuid();
     private readonly Guid _deviceId = Guid.NewGuid();
 
     public IngestActivitySnapshotsCommandHandlerTests()
@@ -50,6 +52,12 @@ public class IngestActivitySnapshotsCommandHandlerTests
         _toggles.Setup(t => t.IsEnabledAsync(
                 _tenantId, _userId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+
+        // The resolved real Employee.Id is what gets persisted - distinct from the raw UserId so
+        // tests can tell whether the handler stored the resolved value or the JWT identity.
+        _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
+                _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_employeeId);
     }
 
     private IngestActivitySnapshotsCommandHandler CreateSut() => new(
@@ -59,6 +67,7 @@ public class IngestActivitySnapshotsCommandHandlerTests
         _device.Object,
         _tenants.Object,
         _switcher.Object,
+        _employeeIdentity.Object,
         _clock,
         _uow,
         NullLogger<IngestActivitySnapshotsCommandHandler>.Instance);
@@ -102,8 +111,28 @@ public class IngestActivitySnapshotsCommandHandlerTests
         savedBuffer.AgentDeviceId.Should().Be(_deviceId);
         savedBuffer.PayloadJson.Should().NotBeNullOrWhiteSpace();
         savedSnapshots.Should().NotBeNull().And.HaveCount(1);
-        savedSnapshots!.First().EmployeeId.Should().Be(_userId);
+        savedSnapshots!.First().EmployeeId.Should().Be(_employeeId);
         savedSnapshots.First().KeyboardEventsCount.Should().Be(5);
+    }
+
+    [Fact]
+    public async Task No_employee_resolved_falls_back_to_UserId()
+    {
+        _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
+                _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_userId);
+
+        IEnumerable<ActivitySnapshot>? savedSnapshots = null;
+        _snapshots.Setup(s => s.AddRangeAsync(It.IsAny<IEnumerable<ActivitySnapshot>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<ActivitySnapshot>, CancellationToken>((list, _) => savedSnapshots = list.ToList())
+            .Returns(Task.CompletedTask);
+
+        var cmd = new IngestActivitySnapshotsCommand { Snapshots = [Item(_clock.UtcNow.AddMinutes(-1))] };
+
+        var result = await CreateSut().Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        savedSnapshots!.First().EmployeeId.Should().Be(_userId);
     }
 
     [Fact]

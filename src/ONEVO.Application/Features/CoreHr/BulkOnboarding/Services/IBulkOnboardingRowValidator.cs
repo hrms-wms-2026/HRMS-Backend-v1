@@ -20,7 +20,7 @@ public sealed record RowValidationOutcome(
     string WorkEmail,
     DateOnly? StartDate,
     string EmploymentType,
-    int? WorkModeId,
+    Guid? WorkModeId,
     string? EmployeeNumber,
     Guid? ReportsToEmployeeId)
 {

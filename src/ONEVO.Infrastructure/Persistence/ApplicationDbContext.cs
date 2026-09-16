@@ -10,6 +10,7 @@ using PersonalCalendarEventParticipant = ONEVO.Domain.Features.Calendar.Entities
 using ExternalCalendarConnection = ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarConnection;
 using ExternalCalendarEventLink = ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarEventLink;
 using HolidayCalendarSettings = ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings;
+using TimeAttendanceWorkMode = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.DevPlatform.Compliance.Entities;
 using ONEVO.Domain.Features.DevPlatform.ConfigurationTemplates.Entities;
@@ -19,6 +20,7 @@ using ONEVO.Domain.Features.SharedPlatform.TenantIntegrations.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities;
+using ONEVO.Domain.Features.DevPlatform.SystemConfig.TrayReleases.Entities;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -102,6 +104,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<TrayDeviceRegistration> TrayDeviceRegistrations => Set<TrayDeviceRegistration>();
     public DbSet<TrayDeviceRefreshToken> TrayDeviceRefreshTokens => Set<TrayDeviceRefreshToken>();
     public DbSet<TrayDeviceAuthorization> TrayDeviceAuthorizations => Set<TrayDeviceAuthorization>();
+    public DbSet<DeviceChangeRequest> DeviceChangeRequests => Set<DeviceChangeRequest>();
 
     // Monitoring - Employee Check-In
     public DbSet<EmployeeCheckIn> EmployeeCheckIns => Set<EmployeeCheckIn>();
@@ -204,6 +207,7 @@ public class ApplicationDbContext : DbContext
 
     // System Config - Platform Service Keys (Phase 1 canonical table)
     public DbSet<PlatformServiceKey> PlatformServiceKeys => Set<PlatformServiceKey>();
+    public DbSet<TrayAppRelease> TrayAppReleases => Set<TrayAppRelease>();
 
     // System Config - Provider Catalog (Phase 1 canonical table)
     public DbSet<PlatformProvider> PlatformProviders => Set<PlatformProvider>();
@@ -242,7 +246,6 @@ public class ApplicationDbContext : DbContext
     // Lookups
     public DbSet<EmploymentType> EmploymentTypes => Set<EmploymentType>();
     public DbSet<EmploymentStatus> EmploymentStatuses => Set<EmploymentStatus>();
-    public DbSet<WorkMode> WorkModes => Set<WorkMode>();
     public DbSet<ApprovalStatus> ApprovalStatuses => Set<ApprovalStatus>();
     public DbSet<Severity> Severities => Set<Severity>();
 
@@ -264,6 +267,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<LeaveBalanceAudit> LeaveBalanceAudits => Set<LeaveBalanceAudit>();
     public DbSet<LeaveRequestInfoMessage> LeaveRequestInfoMessages => Set<LeaveRequestInfoMessage>();
     public DbSet<LeaveRequestDayAllocation> LeaveRequestDayAllocations => Set<LeaveRequestDayAllocation>();
+
+    // Time & Attendance - Work Mode (per-legal-entity, Guid-keyed)
+    public DbSet<TimeAttendanceWorkMode> TimeAttendanceWorkModes => Set<TimeAttendanceWorkMode>();
 
     // Time & Attendance - Clock-in Policy foundation
     public DbSet<ClockInPolicy> ClockInPolicies => Set<ClockInPolicy>();

@@ -20,6 +20,7 @@ using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using ONEVO.Infrastructure.Security;
 using ONEVO.Infrastructure.Services.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;

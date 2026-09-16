@@ -73,7 +73,9 @@ public class AchieveObjectiveCommandHandler : IRequestHandler<AchieveObjectiveCo
             return Result<ObjectiveChangeOutcomeResponse>.Failure("All sub-milestones must be achieved before this one can be.");
 
         var sprints = await _sprints.GetByObjectiveIdAsync(tenantId, objective.Id, ct);
-        if (sprints.Any(s => s.Status is not (SprintStatuses.Complete or SprintStatuses.Achieved)))
+        // A Draft sprint has no work committed yet and shouldn't permanently block achieving the
+        // Objective - only an Active sprint (real, committed, unfinished work) blocks it.
+        if (sprints.Any(s => s.Status is SprintStatuses.Active))
             return Result<ObjectiveChangeOutcomeResponse>.Failure("All sprints on this milestone must be Complete or Achieved before it can be achieved.");
 
         if (objective.CreatedById == userId)

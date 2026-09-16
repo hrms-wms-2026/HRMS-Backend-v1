@@ -6,39 +6,6 @@ public record ClockInPolicyScopeRequest(
     IReadOnlyList<Guid>? PositionIds = null,
     IReadOnlyList<Guid>? EmployeeIds = null);
 
-public record WorkAreaSourceRulesRequest(
-    bool BiometricEnabled,
-    bool WebEnabled,
-    bool TrayEnabled,
-    bool PhotoRequired);
-
-public record RemoteWorkAreaRulesRequest(
-    bool BiometricEnabled,
-    bool WebEnabled,
-    bool TrayEnabled,
-    bool PhotoRequired,
-    bool LocationCheckRequired);
-
-public record HybridWorkAreaRulesRequest(
-    bool BiometricEnabled,
-    bool WebEnabled,
-    bool TrayEnabled,
-    bool PhotoRequired,
-    bool LocationCheckRequired,
-    string SourceRule);
-
-public record FieldWorkAreaRulesRequest(
-    bool BiometricEnabled,
-    bool WebEnabled,
-    bool TrayEnabled,
-    string PhotoRequirement);
-
-public record WorkAreaRulesRequest(
-    WorkAreaSourceRulesRequest Onsite,
-    RemoteWorkAreaRulesRequest Remote,
-    HybridWorkAreaRulesRequest Hybrid,
-    FieldWorkAreaRulesRequest Field);
-
 public record LateDeductionRuleRequest(
     int LateArrivalMinute,
     decimal Multiplier,
@@ -49,9 +16,6 @@ public record UpsertClockInPolicyRequest(
     ClockInPolicyScopeRequest Scope,
     DateOnly EffectiveFrom,
     DateOnly? EffectiveTo,
-    bool LocationVerificationRequired,
-    int? AllowedRadiusMeters,
-    WorkAreaRulesRequest WorkAreaRules,
     bool CorrectionRequiresApproval,
     string NotificationRecipientResolver,
     IReadOnlyList<LateDeductionRuleRequest>? LateDeductionRules,
