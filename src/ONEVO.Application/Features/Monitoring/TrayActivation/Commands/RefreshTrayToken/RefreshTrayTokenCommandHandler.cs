@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Legal.Services;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.DTOs.Responses;
@@ -25,6 +26,7 @@ public class RefreshTrayTokenCommandHandler
     private readonly ITrayTokenService _tokenService;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ILegalAcceptanceChecker _legalChecker;
 
     public RefreshTrayTokenCommandHandler(
         ITrayActivationRepository repository,
@@ -33,7 +35,8 @@ public class RefreshTrayTokenCommandHandler
         ITenantContextSwitcher tenantSwitcher,
         ITrayTokenService tokenService,
         IDateTimeProvider clock,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        ILegalAcceptanceChecker legalChecker)
     {
         _repository = repository;
         _userRepository = userRepository;
@@ -42,6 +45,7 @@ public class RefreshTrayTokenCommandHandler
         _tokenService = tokenService;
         _clock = clock;
         _unitOfWork = unitOfWork;
+        _legalChecker = legalChecker;
     }
 
     public async Task<Result<TrayAuthResponseDto>> Handle(
@@ -98,6 +102,7 @@ public class RefreshTrayTokenCommandHandler
 
         var (employeeName, employeeEmail, employeeNumber, profileStatus) = await ResolveEmployeeIdentityAsync(
             existingToken.UserId, existingToken.TenantId, device.LegalEntityId, cancellationToken);
+        var legalCheck = await _legalChecker.CheckAsync(existingToken.TenantId, existingToken.UserId, cancellationToken);
 
         return Result<TrayAuthResponseDto>.Success(new TrayAuthResponseDto(
             accessToken,
@@ -107,7 +112,9 @@ public class RefreshTrayTokenCommandHandler
             employeeName,
             employeeEmail,
             employeeNumber,
-            profileStatus));
+            profileStatus,
+            RequiresLegalAcceptance: !legalCheck.IsComplete,
+            PendingLegalDocuments: legalCheck.PendingDocuments));
     }
 
     /// <summary>
