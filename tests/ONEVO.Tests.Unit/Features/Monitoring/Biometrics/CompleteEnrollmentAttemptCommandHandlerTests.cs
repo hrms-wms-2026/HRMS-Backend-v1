@@ -71,7 +71,7 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
                 It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileRecordDto>.Success(new FileRecordDto(
                 Guid.NewGuid(), _tenantId, "tenants/x/files/y/z.jpg", "reference-photo.jpg", "z.jpg",
-                "image/jpeg", 3, "checksum", "available", DateTimeOffset.UtcNow)));
+                "image/jpeg", 3, "checksum", "available", DateTimeOffset.UtcNow, _employeeId, null)));
 
         var result = await CreateSut().Handle(new CompleteEnrollmentAttemptCommand(_attemptId), CancellationToken.None);
 
@@ -156,7 +156,7 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
                 UploadPurposeCatalog.BiometricReferencePhoto, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileRecordDto>.Success(new FileRecordDto(
                 referenceFileId, _tenantId, "tenants/x/files/y/z.jpg", "reference-photo.jpg", "z.jpg",
-                "image/jpeg", 3, "checksum", "available", DateTimeOffset.UtcNow)));
+                "image/jpeg", 3, "checksum", "available", DateTimeOffset.UtcNow, _employeeId, null)));
 
         var result = await CreateSut().Handle(new CompleteEnrollmentAttemptCommand(_attemptId), CancellationToken.None);
 

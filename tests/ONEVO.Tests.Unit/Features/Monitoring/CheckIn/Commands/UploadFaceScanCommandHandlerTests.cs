@@ -69,7 +69,7 @@ public class UploadFaceScanCommandHandlerTests
                 UploadPurposeCatalog.MonitoringFaceScan, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileRecordDto>.Success(new FileRecordDto(
                 uploadedFileId, _tenantId, "tenants/x/files/y/scan.jpg", "scan.jpg", "scan.jpg",
-                "image/jpeg", 3, "checksum", "available", DateTimeOffset.UtcNow)));
+                "image/jpeg", 3, "checksum", "available", DateTimeOffset.UtcNow, _userId, null)));
 
         return (checkIn, uploadedFileId);
     }

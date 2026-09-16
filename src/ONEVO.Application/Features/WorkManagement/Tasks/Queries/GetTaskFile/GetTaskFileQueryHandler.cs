@@ -5,7 +5,6 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
-using ONEVO.Application.Features.Storage.File.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -26,7 +25,6 @@ public sealed class GetTaskFileQueryHandler : IRequestHandler<GetTaskFileQuery, 
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IEntityAssetRepository _entityAssets;
-    private readonly IFileRecordRepository _fileRecords;
     private readonly IWorkTaskRepository _tasks;
     private readonly IProjectRepository _projects;
     private readonly IProjectMemberRepository _members;
@@ -35,13 +33,12 @@ public sealed class GetTaskFileQueryHandler : IRequestHandler<GetTaskFileQuery, 
 
     public GetTaskFileQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IEntityAssetRepository entityAssets,
-        IFileRecordRepository fileRecords, IWorkTaskRepository tasks, IProjectRepository projects,
+        IWorkTaskRepository tasks, IProjectRepository projects,
         IProjectMemberRepository members, IPermissionResolver permissionResolver, IFileStorageService fileStorage)
     {
         _currentUser = currentUser;
         _identity = identity;
         _entityAssets = entityAssets;
-        _fileRecords = fileRecords;
         _tasks = tasks;
         _projects = projects;
         _members = members;
@@ -63,8 +60,8 @@ public sealed class GetTaskFileQueryHandler : IRequestHandler<GetTaskFileQuery, 
 
         if (link is null)
         {
-            var record = await _fileRecords.GetByIdAsync(tenantId, request.FileId, ct);
-            if (record is null || record.DeletedAt is not null || record.UploadedByUserId != userId)
+            var recordResult = await _fileStorage.GetRecordAsync(tenantId, request.FileId, ct);
+            if (!recordResult.IsSuccess || recordResult.Value!.DeletedAt is not null || recordResult.Value.UploadedByUserId != userId)
                 return Result<FileStreamDto>.NotFound("File not found.");
 
             return await _fileStorage.OpenReadAsync(tenantId, request.FileId, ct);

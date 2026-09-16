@@ -66,7 +66,7 @@ public class SubmitPeriodicScreenshotCommandHandlerTests
 
     private FileRecordDto MakeFileRecord(Guid id) => new(
         id, _tenantId, $"tenants/{_tenantId}/files/{id}/shot.jpg", "shot.jpg", "shot.jpg",
-        "image/jpeg", 1024, "checksum", "available", DateTimeOffset.UtcNow);
+        "image/jpeg", 1024, "checksum", "available", DateTimeOffset.UtcNow, _userId, null);
 
     [Fact]
     public async Task Handle_UploadFails_ReturnsFailureAndDoesNotCreateAsset()

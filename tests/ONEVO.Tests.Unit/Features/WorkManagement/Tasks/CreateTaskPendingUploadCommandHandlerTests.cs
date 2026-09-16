@@ -48,7 +48,7 @@ public class CreateTaskPendingUploadCommandHandlerTests
         fileStorage.Setup(x => x.UploadAsync(
                 TenantId, UserId, "a.png", "image/png", UploadPurposeCatalog.TaskAttachment, stream, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileRecordDto>.Success(new FileRecordDto(
-                fileId, TenantId, "key", "a.png", "a.png", "image/png", 3, new string('a', 64), "available", DateTimeOffset.UtcNow)));
+                fileId, TenantId, "key", "a.png", "a.png", "image/png", 3, new string('a', 64), "available", DateTimeOffset.UtcNow, Guid.NewGuid(), null)));
 
         var result = await handler.Handle(
             new CreateTaskPendingUploadCommand(UploadPurposeCatalog.TaskAttachment, "a.png", "image/png", stream), CancellationToken.None);

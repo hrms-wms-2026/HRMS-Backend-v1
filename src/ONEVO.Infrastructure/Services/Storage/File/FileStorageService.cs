@@ -230,7 +230,9 @@ public sealed class FileStorageService : IFileStorageService
             fileRecord.FileSizeBytes,
             fileRecord.ChecksumSha256,
             fileRecord.Status,
-            fileRecord.CreatedAt));
+            fileRecord.CreatedAt,
+            fileRecord.UploadedByUserId,
+            fileRecord.DeletedAt));
     }
 
     public async Task<Result> CancelReservationAsync(
@@ -376,6 +378,30 @@ public sealed class FileStorageService : IFileStorageService
             _logger.LogError(ex, "R2 read failed for tenant {TenantId}, file {FileId}.", tenantId, fileId);
             return Result<FileStreamDto>.Failure("file_read_failed", 502);
         }
+    }
+
+    public async Task<Result<FileRecordDto>> GetRecordAsync(
+        Guid tenantId, Guid fileRecordId, CancellationToken ct = default)
+    {
+        var record = await _fileRecords.GetByIdAsync(tenantId, fileRecordId, ct);
+        if (record is null)
+        {
+            return Result<FileRecordDto>.NotFound("File not found.");
+        }
+
+        return Result<FileRecordDto>.Success(new FileRecordDto(
+            record.Id,
+            record.TenantId,
+            record.StorageKey,
+            record.OriginalFileName,
+            record.SafeFileName,
+            record.ContentType,
+            record.FileSizeBytes,
+            record.ChecksumSha256,
+            record.Status,
+            record.CreatedAt,
+            record.UploadedByUserId,
+            record.DeletedAt));
     }
 
     public async Task<Result> DeleteAsync(Guid tenantId, Guid userId, Guid fileRecordId, CancellationToken ct = default)

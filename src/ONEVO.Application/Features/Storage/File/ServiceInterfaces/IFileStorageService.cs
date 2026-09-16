@@ -91,6 +91,21 @@ public interface IFileStorageService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Looks up a file record's metadata (including <see cref="FileRecordDto.UploadedByUserId"/>
+    /// and <see cref="FileRecordDto.DeletedAt"/>) for a caller that needs to validate ownership
+    /// or existence of an untrusted, client-supplied file id before deciding whether to link,
+    /// read, or delete it - e.g. confirming a file was uploaded by the current user before
+    /// attaching it to a task. This is the sanctioned replacement for querying
+    /// IFileRecordRepository directly; no other feature code may do that. Returns 404 when the
+    /// file record does not exist within the tenant. Interpreting DeletedAt/UploadedByUserId is
+    /// the caller's responsibility, same trust model as <see cref="OpenReadAsync"/>.
+    /// </summary>
+    Task<Result<FileRecordDto>> GetRecordAsync(
+        Guid tenantId,
+        Guid fileRecordId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Soft-deletes a file this tenant owns: marks the file_records row
     /// deleted, best-effort deletes the underlying object, and releases the
     /// bytes it was consuming back to the tenant's used-storage quota.

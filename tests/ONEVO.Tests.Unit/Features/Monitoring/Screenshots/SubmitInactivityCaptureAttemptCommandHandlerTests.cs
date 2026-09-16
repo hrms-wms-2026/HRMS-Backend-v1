@@ -109,7 +109,7 @@ public class SubmitInactivityCaptureAttemptCommandHandlerTests
                 It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileRecordDto>.Success(new FileRecordDto(
                 fileRecordId, _tenantId, "tenants/x/files/y/shot.jpg", "shot.jpg", "shot.jpg",
-                "image/jpeg", 1024, "checksum", "available", DateTimeOffset.UtcNow)));
+                "image/jpeg", 1024, "checksum", "available", DateTimeOffset.UtcNow, _employeeId, null)));
 
         MonitoringEvidenceAsset? savedAsset = null;
         _assetsRepo.Setup(r => r.Add(It.IsAny<MonitoringEvidenceAsset>()))

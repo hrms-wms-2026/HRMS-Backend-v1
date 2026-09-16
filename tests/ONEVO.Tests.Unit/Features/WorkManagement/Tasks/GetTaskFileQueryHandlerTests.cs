@@ -4,7 +4,6 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
-using ONEVO.Application.Features.Storage.File.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -12,7 +11,6 @@ using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskFile;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
-using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using Xunit;
@@ -30,7 +28,6 @@ public class GetTaskFileQueryHandlerTests
     private static readonly Guid ObjectiveId = Guid.NewGuid();
 
     private Mock<IEntityAssetRepository> _assets = new();
-    private Mock<IFileRecordRepository> _fileRecords = new();
     private Mock<IWorkTaskRepository> _tasks = new();
     private Mock<IProjectRepository> _projects = new();
     private Mock<IProjectMemberRepository> _members = new();
@@ -38,6 +35,10 @@ public class GetTaskFileQueryHandlerTests
     private Mock<IFileStorageService> _fileStorage = new();
     private Mock<ICallerIdentityResolver> _identity = new();
     private Mock<ICurrentUser> _currentUser = new();
+
+    private static FileRecordDto FileRecord(Guid uploadedBy) => new(
+        FileId, TenantId, "k", "a.png", "a.png", "image/png", 10, new string('a', 64),
+        "available", DateTimeOffset.UtcNow, uploadedBy, null);
 
     private GetTaskFileQueryHandler Build()
     {
@@ -47,7 +48,7 @@ public class GetTaskFileQueryHandlerTests
         _identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(EmployeeId);
 
         return new GetTaskFileQueryHandler(
-            _currentUser.Object, _identity.Object, _assets.Object, _fileRecords.Object, _tasks.Object,
+            _currentUser.Object, _identity.Object, _assets.Object, _tasks.Object,
             _projects.Object, _members.Object, _permissions.Object, _fileStorage.Object);
     }
 
@@ -55,12 +56,8 @@ public class GetTaskFileQueryHandlerTests
     public async Task Handle_UnlinkedFileOwnedByCaller_StreamsIt()
     {
         _assets.Setup(x => x.GetByFileRecordIdAsync(TenantId, FileId, It.IsAny<CancellationToken>())).ReturnsAsync((EntityAsset?)null);
-        _fileRecords.Setup(x => x.GetByIdAsync(TenantId, FileId, It.IsAny<CancellationToken>())).ReturnsAsync(new FileRecord
-        {
-            Id = FileId, TenantId = TenantId, StorageKey = "k", OriginalFileName = "a.png", SafeFileName = "a.png",
-            ContentType = "image/png", FileSizeBytes = 10, ChecksumSha256 = new string('a', 64),
-            UploadedByUserId = UserId, Status = FileRecordStatus.Available, CreatedAt = DateTimeOffset.UtcNow
-        });
+        _fileStorage.Setup(x => x.GetRecordAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(FileRecord(UserId)));
         _fileStorage.Setup(x => x.OpenReadAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileStreamDto>.Success(new FileStreamDto(Stream.Null, "image/png")));
 
@@ -73,12 +70,8 @@ public class GetTaskFileQueryHandlerTests
     public async Task Handle_UnlinkedFileOwnedBySomeoneElse_ReturnsNotFound()
     {
         _assets.Setup(x => x.GetByFileRecordIdAsync(TenantId, FileId, It.IsAny<CancellationToken>())).ReturnsAsync((EntityAsset?)null);
-        _fileRecords.Setup(x => x.GetByIdAsync(TenantId, FileId, It.IsAny<CancellationToken>())).ReturnsAsync(new FileRecord
-        {
-            Id = FileId, TenantId = TenantId, StorageKey = "k", OriginalFileName = "a.png", SafeFileName = "a.png",
-            ContentType = "image/png", FileSizeBytes = 10, ChecksumSha256 = new string('a', 64),
-            UploadedByUserId = Guid.NewGuid(), Status = FileRecordStatus.Available, CreatedAt = DateTimeOffset.UtcNow
-        });
+        _fileStorage.Setup(x => x.GetRecordAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(FileRecord(Guid.NewGuid())));
 
         var result = await Build().Handle(new GetTaskFileQuery(FileId), CancellationToken.None);
 

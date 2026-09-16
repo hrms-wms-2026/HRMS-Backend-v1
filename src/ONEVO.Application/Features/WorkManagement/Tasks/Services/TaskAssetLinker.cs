@@ -2,7 +2,6 @@ using System.Text.RegularExpressions;
 using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.Helpers;
-using ONEVO.Application.Features.Storage.File.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
 
@@ -15,15 +14,12 @@ public sealed class TaskAssetLinker : ITaskAssetLinker
 
     private readonly IEntityAssetRepository _assets;
     private readonly IFileStorageService _fileStorage;
-    private readonly IFileRecordRepository _fileRecords;
     private readonly IUnitOfWork _unitOfWork;
 
-    public TaskAssetLinker(
-        IEntityAssetRepository assets, IFileStorageService fileStorage, IFileRecordRepository fileRecords, IUnitOfWork unitOfWork)
+    public TaskAssetLinker(IEntityAssetRepository assets, IFileStorageService fileStorage, IUnitOfWork unitOfWork)
     {
         _assets = assets;
         _fileStorage = fileStorage;
-        _fileRecords = fileRecords;
         _unitOfWork = unitOfWork;
     }
 
@@ -59,8 +55,8 @@ public sealed class TaskAssetLinker : ITaskAssetLinker
             if (currentFileIds.Contains(fileId))
                 continue;
 
-            var record = await _fileRecords.GetByIdAsync(tenantId, fileId, ct);
-            if (record is null || record.DeletedAt is not null || record.UploadedByUserId != userId)
+            var recordResult = await _fileStorage.GetRecordAsync(tenantId, fileId, ct);
+            if (!recordResult.IsSuccess || recordResult.Value!.DeletedAt is not null || recordResult.Value.UploadedByUserId != userId)
                 continue;
 
             var existingLink = await _assets.GetByFileRecordIdAsync(tenantId, fileId, ct);
