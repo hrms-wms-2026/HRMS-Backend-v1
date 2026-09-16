@@ -48,7 +48,15 @@ public sealed class WorkModeDataMigrationTests : IAsyncLifetime
     private const string PreBackfillMigration = "20260913235156_ReworkWorkAreaChangeRequestToWorkModeIds";
     private const string CurrentTipMigration = "20260914015437_AddEmployeeMonitoringOverrideAllowedRadiusMeters";
     private const string BackfillMigration = "20260914090000_BackfillWorkModesFromLegacyData";
-    private const string DropMigration = "20260914100000_DropLegacyWorkAreaColumns";
+
+    // tenant_work_modes gained allows_daily_location_choice/self_registers_location after this
+    // task was originally pinned (AddWorkModeLocationFlags). EF's compiled WorkMode entity always
+    // projects every column it currently knows about regardless of which migration the physical
+    // schema was moved to, so querying WorkMode via EF between BackfillMigration and this point
+    // fails with "column ... does not exist" unless the schema is brought forward to include them
+    // first. Migrating here also carries DropLegacyWorkAreaColumns and the tray-identity
+    // backfills along with it - none of them touch data this test's assertions depend on.
+    private const string LatestMigration = "20260916095727_BackfillTrayEmployeeIdentityPhase2";
 
     private PostgreSqlContainer _postgres = null!;
     private string _migratorConnectionString = null!;
@@ -209,6 +217,9 @@ public sealed class WorkModeDataMigrationTests : IAsyncLifetime
             await context.Database.GetService<IMigrator>().MigrateAsync(BackfillMigration);
 
         await using (var context = CreateContext())
+            await context.Database.GetService<IMigrator>().MigrateAsync(LatestMigration);
+
+        await using (var context = CreateContext())
         {
             // 1. Both legal entities have exactly 3 tenant_work_modes rows each, named Remote/Hybrid/Onsite.
             var withPolicyModes = await context.Set<WorkMode>()
@@ -258,9 +269,7 @@ public sealed class WorkModeDataMigrationTests : IAsyncLifetime
             reloadedFieldAttendance.ExpectedWorkModeName.Should().Be("field");
         }
 
-        await using (var context = CreateContext())
-            await context.Database.GetService<IMigrator>().MigrateAsync(DropMigration);
-
+        // DropMigration already ran as part of the MigrateAsync(LatestMigration) call above.
         await using (var connection = new NpgsqlConnection(_migratorConnectionString))
         {
             await connection.OpenAsync();
