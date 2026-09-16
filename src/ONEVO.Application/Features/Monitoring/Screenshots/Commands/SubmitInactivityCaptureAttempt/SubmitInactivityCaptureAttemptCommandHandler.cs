@@ -7,7 +7,6 @@ using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
-using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
@@ -20,11 +19,11 @@ public class SubmitInactivityCaptureAttemptCommandHandler
     private readonly IFileStorageService _fileStorage;
     private readonly IEvidenceAssetRepository _assets;
     private readonly IInactivityCaptureAttemptRepository _attempts;
-    private readonly ITrayActivationRepository _trayRepo;
     private readonly ITrayCurrentDevice _device;
     private readonly ITenantRepository _tenants;
     private readonly ITenantContextSwitcher _tenantSwitcher;
     private readonly IMonitoringToggleResolver _toggles;
+    private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<SubmitInactivityCaptureAttemptCommandHandler> _logger;
@@ -33,11 +32,11 @@ public class SubmitInactivityCaptureAttemptCommandHandler
         IFileStorageService fileStorage,
         IEvidenceAssetRepository assets,
         IInactivityCaptureAttemptRepository attempts,
-        ITrayActivationRepository trayRepo,
         ITrayCurrentDevice device,
         ITenantRepository tenants,
         ITenantContextSwitcher tenantSwitcher,
         IMonitoringToggleResolver toggles,
+        ITrayEmployeeIdentityResolver employeeIdentity,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
         ILogger<SubmitInactivityCaptureAttemptCommandHandler> logger)
@@ -45,11 +44,11 @@ public class SubmitInactivityCaptureAttemptCommandHandler
         _fileStorage = fileStorage;
         _assets = assets;
         _attempts = attempts;
-        _trayRepo = trayRepo;
         _device = device;
         _tenants = tenants;
         _tenantSwitcher = tenantSwitcher;
         _toggles = toggles;
+        _employeeIdentity = employeeIdentity;
         _clock = clock;
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -93,8 +92,13 @@ public class SubmitInactivityCaptureAttemptCommandHandler
             return Result<Guid>.Conflict("attempt_already_recorded");
         }
 
-        var registeredDevice = await _trayRepo.FindActiveDeviceAsync(deviceId, tenantId, ct);
-        var employeeId = registeredDevice?.UserId ?? _device.UserId;
+        var userId = _device.UserId;
+        // Resolves the real CoreHR Employee.Id to store, falling back to the raw UserId when no
+        // Employee row exists yet - see ITrayEmployeeIdentityResolver's own doc comment. Toggle
+        // resolution below deliberately keeps using the raw userId - see that resolver's own
+        // doc comment on why it must not receive this resolved value.
+        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            tenantId, userId, _device.LegalEntityId, ct);
 
         Guid? evidenceAssetId = null;
         var now = _clock.UtcNow;
@@ -102,11 +106,11 @@ public class SubmitInactivityCaptureAttemptCommandHandler
         if (request.Outcome == InactivityCaptureOutcomes.Captured)
         {
             var activityEnabled = await _toggles.IsEnabledAsync(
-                tenantId, employeeId, MonitoringCapability.ActivityMonitoring, ct);
+                tenantId, userId, MonitoringCapability.ActivityMonitoring, ct);
             var screenshotEnabled = await _toggles.IsEnabledAsync(
-                tenantId, employeeId, MonitoringCapability.ScreenshotCapture, ct);
+                tenantId, userId, MonitoringCapability.ScreenshotCapture, ct);
             var autoScreenshotEnabled = await _toggles.IsEnabledAsync(
-                tenantId, employeeId, MonitoringCapability.AutoScreenshotCapture, ct);
+                tenantId, userId, MonitoringCapability.AutoScreenshotCapture, ct);
 
             if (!activityEnabled || !screenshotEnabled || !autoScreenshotEnabled)
             {
@@ -116,7 +120,7 @@ public class SubmitInactivityCaptureAttemptCommandHandler
                 return Result<Guid>.Forbidden("policy_rejected");
             }
 
-            var idleThresholdMinutes = await _toggles.GetIdleThresholdMinutesAsync(tenantId, employeeId, ct);
+            var idleThresholdMinutes = await _toggles.GetIdleThresholdMinutesAsync(tenantId, userId, ct);
             if (request.IdleDurationSeconds < idleThresholdMinutes * 60)
                 return Result<Guid>.Failure("idle_too_short", 400);
 

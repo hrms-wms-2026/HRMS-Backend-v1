@@ -28,11 +28,13 @@ public class UploadFaceScanCommandHandlerTests
     private readonly Mock<IFileStorageService> _fileStorage = new();
     private readonly Mock<IBiometricProfileRepository> _profiles = new();
     private readonly Mock<IFaceMatchService> _faceMatch = new();
+    private readonly Mock<ITrayEmployeeIdentityResolver> _employeeIdentity = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _employeeId = Guid.NewGuid();
 
     public UploadFaceScanCommandHandlerTests()
     {
@@ -44,11 +46,16 @@ public class UploadFaceScanCommandHandlerTests
             .ReturnsAsync(new Tenant { Id = _tenantId, Slug = "acme" });
         _tenantSwitcher.Setup(s => s.SwitchToTenantAsync(It.IsAny<TenantRegistryEntry>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        // The resolved real Employee.Id is what the profile lookup must match - distinct from the
+        // raw UserId so tests can tell whether the handler used the resolved value.
+        _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
+                _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_employeeId);
     }
 
     private UploadFaceScanCommandHandler CreateSut() => new(
         _repository.Object, _device.Object, _tenants.Object, _tenantSwitcher.Object,
-        _fileStorage.Object, _profiles.Object, _faceMatch.Object, _clock, _unitOfWork.Object);
+        _fileStorage.Object, _profiles.Object, _faceMatch.Object, _employeeIdentity.Object, _clock, _unitOfWork.Object);
 
     private (EmployeeCheckIn CheckIn, Guid UploadedFileId) SetupSuccessfulUploadPath()
     {
@@ -72,10 +79,10 @@ public class UploadFaceScanCommandHandlerTests
     {
         var (checkIn, uploadedFileId) = SetupSuccessfulUploadPath();
         var referenceFileId = Guid.NewGuid();
-        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BiometricProfile
             {
-                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _userId,
+                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employeeId,
                 Status = BiometricProfileStatus.Enrolled, ReferencePhotoFileId = referenceFileId
             });
         _fileStorage.Setup(f => f.OpenReadAsync(_tenantId, referenceFileId, It.IsAny<CancellationToken>()))
@@ -99,10 +106,10 @@ public class UploadFaceScanCommandHandlerTests
     {
         var (checkIn, uploadedFileId) = SetupSuccessfulUploadPath();
         var referenceFileId = Guid.NewGuid();
-        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BiometricProfile
             {
-                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _userId,
+                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employeeId,
                 Status = BiometricProfileStatus.Enrolled, ReferencePhotoFileId = referenceFileId
             });
         _fileStorage.Setup(f => f.OpenReadAsync(_tenantId, referenceFileId, It.IsAny<CancellationToken>()))
@@ -125,7 +132,7 @@ public class UploadFaceScanCommandHandlerTests
     public async Task NoBiometricProfile_SetsNoReferencePhoto_WithoutCallingFaceMatch()
     {
         var (checkIn, _) = SetupSuccessfulUploadPath();
-        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((BiometricProfile?)null);
 
         var result = await CreateSut().Handle(
@@ -143,10 +150,10 @@ public class UploadFaceScanCommandHandlerTests
     {
         var (checkIn, uploadedFileId) = SetupSuccessfulUploadPath();
         var referenceFileId = Guid.NewGuid();
-        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BiometricProfile
             {
-                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _userId,
+                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employeeId,
                 Status = BiometricProfileStatus.Enrolled, ReferencePhotoFileId = referenceFileId
             });
         _fileStorage.Setup(f => f.OpenReadAsync(_tenantId, referenceFileId, It.IsAny<CancellationToken>()))
@@ -170,10 +177,10 @@ public class UploadFaceScanCommandHandlerTests
     {
         var (checkIn, uploadedFileId) = SetupSuccessfulUploadPath();
         var referenceFileId = Guid.NewGuid();
-        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BiometricProfile
             {
-                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _userId,
+                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employeeId,
                 Status = BiometricProfileStatus.Enrolled, ReferencePhotoFileId = referenceFileId
             });
         _fileStorage.Setup(f => f.OpenReadAsync(_tenantId, referenceFileId, It.IsAny<CancellationToken>()))
@@ -196,10 +203,10 @@ public class UploadFaceScanCommandHandlerTests
     {
         var (checkIn, uploadedFileId) = SetupSuccessfulUploadPath();
         var referenceFileId = Guid.NewGuid();
-        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BiometricProfile
             {
-                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _userId,
+                Id = Guid.NewGuid(), TenantId = _tenantId, EmployeeId = _employeeId,
                 Status = BiometricProfileStatus.Enrolled, ReferencePhotoFileId = referenceFileId
             });
         _fileStorage.Setup(f => f.OpenReadAsync(_tenantId, referenceFileId, It.IsAny<CancellationToken>()))

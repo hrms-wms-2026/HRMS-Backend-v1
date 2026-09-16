@@ -23,6 +23,7 @@ public class UploadFaceScanCommandHandler
     private readonly IFileStorageService _fileStorage;
     private readonly IBiometricProfileRepository _profiles;
     private readonly IFaceMatchService _faceMatch;
+    private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
 
@@ -34,6 +35,7 @@ public class UploadFaceScanCommandHandler
         IFileStorageService fileStorage,
         IBiometricProfileRepository profiles,
         IFaceMatchService faceMatch,
+        ITrayEmployeeIdentityResolver employeeIdentity,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork)
     {
@@ -44,6 +46,7 @@ public class UploadFaceScanCommandHandler
         _fileStorage = fileStorage;
         _profiles = profiles;
         _faceMatch = faceMatch;
+        _employeeIdentity = employeeIdentity;
         _clock = clock;
         _unitOfWork = unitOfWork;
     }
@@ -134,7 +137,11 @@ public class UploadFaceScanCommandHandler
     private async Task<(string Status, float? Similarity)> VerifyAgainstReferencePhotoAsync(
         Guid capturedFileId, CancellationToken ct)
     {
-        var profile = await _profiles.GetByEmployeeIdAsync(_device.TenantId, _device.UserId, ct);
+        // Must match whatever CompleteEnrollmentAttemptCommandHandler resolved when it stored the
+        // BiometricProfile - see ITrayEmployeeIdentityResolver's own doc comment.
+        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            _device.TenantId, _device.UserId, _device.LegalEntityId, ct);
+        var profile = await _profiles.GetByEmployeeIdAsync(_device.TenantId, employeeId, ct);
         if (profile?.ReferencePhotoFileId is null)
             return (MonitoringFaceScanStatus.NoReferencePhoto, null);
 

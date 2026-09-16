@@ -24,11 +24,13 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
     private readonly Mock<ITrayCurrentDevice> _device = new();
     private readonly Mock<IFaceLivenessService> _liveness = new();
     private readonly Mock<IFileStorageService> _fileStorage = new();
+    private readonly Mock<ITrayEmployeeIdentityResolver> _employeeIdentity = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly BiometricEnrollmentOptions _options = new() { LivenessConfidenceThreshold = 90f, SessionTtlMinutes = 3 };
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _employeeId = Guid.NewGuid();
     private readonly Guid _attemptId = Guid.NewGuid();
 
     public CompleteEnrollmentAttemptCommandHandlerTests()
@@ -36,14 +38,20 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
         _device.Setup(d => d.IsAuthenticated).Returns(true);
         _device.Setup(d => d.TenantId).Returns(_tenantId);
         _device.Setup(d => d.UserId).Returns(_userId);
+        // The resolved real Employee.Id is what gets looked up/persisted - distinct from the raw
+        // UserId so tests can tell whether the handler used the resolved value or the JWT identity.
+        _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
+                _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_employeeId);
     }
 
     private CompleteEnrollmentAttemptCommandHandler CreateSut() => new(
-        _attempts.Object, _profiles.Object, _device.Object, _liveness.Object, _fileStorage.Object, _clock, Options.Create(_options));
+        _attempts.Object, _profiles.Object, _device.Object, _liveness.Object, _fileStorage.Object,
+        _employeeIdentity.Object, _clock, Options.Create(_options));
 
     private BiometricEnrollmentAttempt PendingAttempt(DateTimeOffset createdAt) => new()
     {
-        Id = _attemptId, TenantId = _tenantId, EmployeeId = _userId, AgentDeviceId = Guid.NewGuid(),
+        Id = _attemptId, TenantId = _tenantId, EmployeeId = _employeeId, AgentDeviceId = Guid.NewGuid(),
         AwsSessionId = "aws-session-123", Region = "us-east-1", ChallengeType = "FaceMovementAndLightChallenge",
         Status = BiometricEnrollmentStatus.Pending, CreatedAt = createdAt
     };
@@ -52,11 +60,11 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
     public async Task HighConfidenceSuccess_CreatesProfileAndMarksAttemptSucceeded()
     {
         var attempt = PendingAttempt(_clock.UtcNow);
-        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
+        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _employeeId, _attemptId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(attempt);
         _liveness.Setup(l => l.GetSessionResultAsync("aws-session-123", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FaceLivenessOutcome("SUCCEEDED", 97.5f, new MemoryStream(new byte[] { 1, 2, 3 })));
-        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((BiometricProfile?)null);
         _fileStorage.Setup(f => f.UploadAsync(
                 It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
@@ -78,7 +86,7 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
     public async Task LowConfidence_MarksAttemptFailed_ReturnsUnprocessableEntity()
     {
         var attempt = PendingAttempt(_clock.UtcNow);
-        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
+        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _employeeId, _attemptId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(attempt);
         _liveness.Setup(l => l.GetSessionResultAsync("aws-session-123", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FaceLivenessOutcome("SUCCEEDED", 42f, new MemoryStream(new byte[] { 1, 2, 3 })));
@@ -95,7 +103,7 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
     public async Task ExpiredAttempt_ReturnsFailure_WithoutCallingAws()
     {
         var attempt = PendingAttempt(_clock.UtcNow.AddMinutes(-10));
-        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
+        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _employeeId, _attemptId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(attempt);
 
         var result = await CreateSut().Handle(new CompleteEnrollmentAttemptCommand(_attemptId), CancellationToken.None);
@@ -108,7 +116,7 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
     [Fact]
     public async Task AttemptNotFound_ReturnsNotFound()
     {
-        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
+        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _employeeId, _attemptId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((BiometricEnrollmentAttempt?)null);
 
         var result = await CreateSut().Handle(new CompleteEnrollmentAttemptCommand(_attemptId), CancellationToken.None);
@@ -122,7 +130,7 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
     {
         var attempt = PendingAttempt(_clock.UtcNow);
         attempt.Status = BiometricEnrollmentStatus.Succeeded;
-        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
+        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _employeeId, _attemptId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(attempt);
 
         var result = await CreateSut().Handle(new CompleteEnrollmentAttemptCommand(_attemptId), CancellationToken.None);
@@ -137,14 +145,14 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
     {
         var attempt = PendingAttempt(_clock.UtcNow);
         var referenceFileId = Guid.NewGuid();
-        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
+        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _employeeId, _attemptId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(attempt);
         _liveness.Setup(l => l.GetSessionResultAsync("aws-session-123", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FaceLivenessOutcome("SUCCEEDED", 97.5f, new MemoryStream(new byte[] { 1, 2, 3 })));
-        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
+        _profiles.Setup(p => p.GetByEmployeeIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((BiometricProfile?)null);
         _fileStorage.Setup(f => f.UploadAsync(
-                _tenantId, _userId, It.IsAny<string>(), "image/jpeg",
+                _tenantId, _employeeId, It.IsAny<string>(), "image/jpeg",
                 UploadPurposeCatalog.BiometricReferencePhoto, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileRecordDto>.Success(new FileRecordDto(
                 referenceFileId, _tenantId, "tenants/x/files/y/z.jpg", "reference-photo.jpg", "z.jpg",
@@ -162,7 +170,7 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
     public async Task MissingReferenceImage_MarksAttemptFailed_ReturnsUnprocessableEntity_WithoutUploading()
     {
         var attempt = PendingAttempt(_clock.UtcNow);
-        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
+        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _employeeId, _attemptId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(attempt);
         _liveness.Setup(l => l.GetSessionResultAsync("aws-session-123", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FaceLivenessOutcome("SUCCEEDED", 97.5f, null));
@@ -181,7 +189,7 @@ public class CompleteEnrollmentAttemptCommandHandlerTests
     public async Task ReferencePhotoUploadFails_MarksAttemptFailed_ReturnsUploadError()
     {
         var attempt = PendingAttempt(_clock.UtcNow);
-        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _userId, _attemptId, It.IsAny<CancellationToken>()))
+        _attempts.Setup(a => a.GetByIdAsync(_tenantId, _employeeId, _attemptId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(attempt);
         _liveness.Setup(l => l.GetSessionResultAsync("aws-session-123", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FaceLivenessOutcome("SUCCEEDED", 97.5f, new MemoryStream(new byte[] { 1, 2, 3 })));
