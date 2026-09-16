@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using ONEVO.Application.Features.Auth.Legal.Services;
 
 namespace ONEVO.Application.Features.Monitoring.TrayActivation.DTOs.Responses;
 
@@ -11,4 +12,6 @@ public record TrayAuthResponseDto(
     [property: JsonPropertyName("employee_email")] string? EmployeeEmail = null,
     [property: JsonPropertyName("employee_number")] string? EmployeeNumber = null,
     [property: JsonPropertyName("employee_profile_status")] string EmployeeProfileStatus = "resolved",
-    [property: JsonPropertyName("tenant_slug")] string? TenantSlug = null);
+    [property: JsonPropertyName("tenant_slug")] string? TenantSlug = null,
+    [property: JsonPropertyName("legal_acceptance_required")] bool RequiresLegalAcceptance = false,
+    [property: JsonPropertyName("pending_legal_documents")] IReadOnlyList<PendingLegalDocumentDto>? PendingLegalDocuments = null);
