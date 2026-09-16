@@ -3,10 +3,12 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.DTOs.Responses;
+using ONEVO.Application.Features.Monitoring.TrayActivation.Exceptions;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Models;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
+using IEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 
 namespace ONEVO.Application.Features.Monitoring.TrayActivation.Services;
 
@@ -22,6 +24,8 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
     private readonly ITenantContextSwitcher _tenantSwitcher;
     private readonly ITrayTokenService _tokenService;
     private readonly IDateTimeProvider _clock;
+    private readonly IDeviceChangeRequestRepository _deviceChangeRequests;
+    private readonly IEmployeeRepository _employees;
 
     public TrayEnrollmentService(
         ITrayActivationRepository repository,
@@ -29,7 +33,9 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
         ITenantRepository tenantRepository,
         ITenantContextSwitcher tenantSwitcher,
         ITrayTokenService tokenService,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IDeviceChangeRequestRepository deviceChangeRequests,
+        IEmployeeRepository employees)
     {
         _repository = repository;
         _userRepository = userRepository;
@@ -37,12 +43,44 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
         _tenantSwitcher = tenantSwitcher;
         _tokenService = tokenService;
         _clock = clock;
+        _deviceChangeRequests = deviceChangeRequests;
+        _employees = employees;
     }
 
     public async Task<TrayAuthResponseDto> IssueAsync(
         TrayEnrollmentRequest request,
         CancellationToken ct)
     {
+        var existingDevice = await _repository.FindLatestActiveDeviceForUserAsync(
+            request.UserId, request.TenantId, ct);
+
+        if (existingDevice is not null && existingDevice.DeviceFingerprint != request.DeviceFingerprint)
+        {
+            // request.LegalEntityId can be null (e.g. "company_context_required" at enrollment
+            // time) - fall back to the employee's resolved default legal entity so the raised
+            // request is still visible in ListPendingEmployeeIdsAsync/ListApprovalInboxAsync,
+            // which filter by a specific non-null legal entity. Without this fallback a
+            // null-LegalEntityId request would never surface in any approver's inbox.
+            var legalEntityId = request.LegalEntityId
+                ?? (await _employees.GetDefaultForUserAsync(request.TenantId, request.UserId, ct))?.LegalEntityId;
+
+            await _deviceChangeRequests.UpsertPendingAsync(new DeviceChangeRequest
+            {
+                Id = Guid.NewGuid(),
+                TenantId = request.TenantId,
+                EmployeeId = request.UserId,
+                LegalEntityId = legalEntityId,
+                CurrentDeviceRegistrationId = existingDevice.Id,
+                NewDeviceFingerprint = request.DeviceFingerprint,
+                NewDeviceName = request.DeviceName,
+                NewDeviceOs = request.DeviceOs,
+                Status = DeviceChangeRequest.StatusPending,
+                RequestedAt = _clock.UtcNow,
+            }, ct);
+            await _deviceChangeRequests.SaveChangesAsync(ct);
+            throw new DeviceChangePendingException();
+        }
+
         var now = _clock.UtcNow;
         var device = new TrayDeviceRegistration
         {
