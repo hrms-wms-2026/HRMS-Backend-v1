@@ -45,6 +45,56 @@ public sealed class ProviderOptionQueriesTests
     }
 
     [Fact]
+    public void EverySeededServiceKeyProvider_HasACredentialDefinition()
+    {
+        using var db = BuildInMemoryDb();
+        var seeded = db.GetService<Microsoft.EntityFrameworkCore.Metadata.IDesignTimeModel>().Model
+            .FindEntityType(typeof(PlatformProvider))!
+            .GetSeedData()
+            .Where(row => PlatformProviderFamilies.PlatformServiceKeyFamilies.Contains((string)row["ProviderFamily"]!))
+            .Select(row => (string)row["ProviderKey"]!)
+            .ToList();
+
+        Assert.NotEmpty(seeded);
+        var missing = seeded
+            .Where(key => ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Definitions
+                .ServiceKeyDefinitionRegistry.Find(key) is null)
+            .ToList();
+
+        Assert.True(
+            missing.Count == 0,
+            $"Add a ServiceKeyDefinitionRegistry entry for: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public async Task ServiceKeyProviders_EachDescribeTheFormTheAdminUiShouldRender()
+    {
+        await using var db = BuildInMemoryDb();
+        db.PlatformProviders.AddRange(
+            Provider("resend", "Resend", PlatformProviderFamilies.TransactionalEmail),
+            Provider("cloudflare_r2", "Cloudflare R2", PlatformProviderFamilies.ObjectStorage),
+            Provider("aws_rekognition", "AWS Rekognition", PlatformProviderFamilies.AiVerification));
+        await db.SaveChangesAsync();
+        var handler = new ListServiceKeyProviderOptionsQueryHandler(new EfPlatformProviderRepository(db));
+
+        var result = await handler.Handle(new ListServiceKeyProviderOptionsQuery(), CancellationToken.None);
+
+        var options = result.Value!.ToDictionary(o => o.ProviderKey);
+        Assert.All(options.Values, o => Assert.NotEmpty(o.Fields));
+
+        Assert.Equal(["apiKey"], options["resend"].Fields.Select(f => f.Name));
+        Assert.Equal("live", options["resend"].VerificationMode);
+
+        Assert.Equal(6, options["cloudflare_r2"].Fields.Count);
+        Assert.Equal("format-only", options["cloudflare_r2"].VerificationMode);
+
+        var aws = options["aws_rekognition"];
+        Assert.Equal(["accessKeyId", "secretAccessKey", "region"], aws.Fields.Select(f => f.Name));
+        Assert.NotEmpty(aws.Fields.Single(f => f.Name == "region").Options);
+        Assert.Equal("secret", aws.Fields.Single(f => f.Name == "secretAccessKey").Kind);
+    }
+
+    [Fact]
     public async Task ServiceKeyProviders_MarksSendgridConfiguredAndActive_WhenActiveServiceKeyExists()
     {
         await using var db = BuildInMemoryDb();

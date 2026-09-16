@@ -61,10 +61,75 @@ public class PlatformServiceKeyVerificationServiceTests
         }
     }
 
+    private sealed class FakeAwsProbe(bool success) : IAwsIdentityProbe
+    {
+        public (string AccessKeyId, string Region)? LastCall { get; private set; }
+
+        public Task<AwsIdentityProbeResult> ProbeAsync(
+            string accessKeyId, string secretAccessKey, string region, CancellationToken ct)
+        {
+            LastCall = (accessKeyId, region);
+            return Task.FromResult(new AwsIdentityProbeResult(
+                success,
+                success ? "AWS credentials verified successfully." : "AWS rejected the credentials (InvalidClientTokenId)."));
+        }
+    }
+
+    private const string AwsBundle =
+        "{\"accessKeyId\":\"AKIAEXAMPLE\",\"secretAccessKey\":\"top-secret-value\",\"region\":\"eu-west-2\"}";
+
+    [Fact]
+    public async Task AwsRekognition_LiveVerification_PassesParsedFieldsToProbe()
+    {
+        var probe = new FakeAwsProbe(true);
+        var service = BuildService(
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            awsProbe: probe);
+
+        var result = await service.VerifyAsync(
+            PlatformServiceKeyCatalog.AwsRekognition, AwsBundle, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(("AKIAEXAMPLE", "eu-west-2"), probe.LastCall);
+    }
+
+    [Fact]
+    public async Task AwsRekognition_LiveVerification_ReportsRejection_WithoutLeakingSecret()
+    {
+        var service = BuildService(
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            awsProbe: new FakeAwsProbe(false));
+
+        var result = await service.VerifyAsync(
+            PlatformServiceKeyCatalog.AwsRekognition, AwsBundle, CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.DoesNotContain("top-secret-value", result.Message);
+    }
+
+    [Fact]
+    public async Task AwsRekognition_LegacyPlainStringCredential_IsRejectedWithoutCallingAws()
+    {
+        var probe = new FakeAwsProbe(true);
+        var service = BuildService(
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            awsProbe: probe);
+
+        var result = await service.VerifyAsync(
+            PlatformServiceKeyCatalog.AwsRekognition, "aws_key_12345678", CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Null(probe.LastCall);
+    }
+
     private static PlatformServiceKeyVerificationService BuildService(
         CapturingHandler resendHandler,
         CapturingHandler sendGridHandler,
-        CapturingLogger? logger = null)
+        CapturingLogger? logger = null,
+        IAwsIdentityProbe? awsProbe = null)
     {
         var factory = new NamedHttpClientFactory(new Dictionary<string, HttpMessageHandler>
         {
@@ -74,7 +139,8 @@ public class PlatformServiceKeyVerificationServiceTests
 
         return new PlatformServiceKeyVerificationService(
             factory,
-            logger ?? new CapturingLogger());
+            logger ?? new CapturingLogger(),
+            awsProbe ?? new FakeAwsProbe(true));
     }
 
     [Fact]
@@ -167,16 +233,14 @@ public class PlatformServiceKeyVerificationServiceTests
         var cloudflare = await service.VerifyAsync(
             PlatformServiceKeyCatalog.Cloudflare, "cf_token_12345678", CancellationToken.None);
         var r2 = await service.VerifyAsync(
-            PlatformServiceKeyCatalog.CloudflareR2, "r2_token_12345678", CancellationToken.None);
-        var rekognition = await service.VerifyAsync(
-            PlatformServiceKeyCatalog.AwsRekognition, "aws_key_12345678", CancellationToken.None);
+            PlatformServiceKeyCatalog.CloudflareR2,
+            "{\"accountId\":\"a\",\"bucketName\":\"b\",\"accessKeyId\":\"k\",\"secretAccessKey\":\"s\",\"endpoint\":\"https://a.r2.cloudflarestorage.com\"}",
+            CancellationToken.None);
 
         Assert.True(cloudflare.Success);
         Assert.True(r2.Success);
-        Assert.True(rekognition.Success);
         Assert.Contains("format-only", cloudflare.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("format-only", r2.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("format-only", rekognition.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("not wired", cloudflare.Message, StringComparison.OrdinalIgnoreCase);
     }
 

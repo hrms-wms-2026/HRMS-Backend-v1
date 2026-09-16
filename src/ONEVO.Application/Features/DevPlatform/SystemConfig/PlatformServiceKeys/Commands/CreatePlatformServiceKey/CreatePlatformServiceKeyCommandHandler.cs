@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Definitions;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Mappers;
@@ -19,8 +20,9 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKey
 public sealed record CreatePlatformServiceKeyCommand(
     string ServiceKey,
     string DisplayName,
-    string ApiKey,
-    Guid ActorPlatformUserId) : IRequest<Result<PlatformServiceKeyDto>>;
+    string? ApiKey,
+    Guid ActorPlatformUserId,
+    IReadOnlyDictionary<string, string>? Fields = null) : IRequest<Result<PlatformServiceKeyDto>>;
 
 public sealed class CreatePlatformServiceKeyCommandHandler
     : IRequestHandler<CreatePlatformServiceKeyCommand, Result<PlatformServiceKeyDto>>
@@ -63,9 +65,12 @@ public sealed class CreatePlatformServiceKeyCommandHandler
             return Result<PlatformServiceKeyDto>.Failure(
                 "displayName is required and must be at most 80 characters.", 400);
 
-        // 3. Validate API key presence (content is verified separately via /verify)
-        if (string.IsNullOrWhiteSpace(request.ApiKey))
-            return Result<PlatformServiceKeyDto>.Failure("apiKey is required.", 400);
+        // 3. Validate credential fields against the service key's definition
+        // (live/format checks against the provider run separately via /verify)
+        var credential = ServiceKeyDefinitionRegistry.BuildCredential(
+            request.ServiceKey, request.ApiKey, request.Fields);
+        if (!credential.IsSuccess)
+            return Result<PlatformServiceKeyDto>.Failure(credential.Error!, credential.StatusCode ?? 400);
 
         // 4. Enforce service_key uniqueness
         var existing = await _repo.GetByServiceKeyAsync(request.ServiceKey, cancellationToken);
@@ -91,7 +96,7 @@ public sealed class CreatePlatformServiceKeyCommandHandler
         }
 
         // 5. Encrypt - NEVER stored plaintext
-        var apiKeyEncrypted = _encryption.Encrypt(request.ApiKey);
+        var apiKeyEncrypted = _encryption.Encrypt(credential.Value!);
 
         var entity = new PlatformServiceKey
         {

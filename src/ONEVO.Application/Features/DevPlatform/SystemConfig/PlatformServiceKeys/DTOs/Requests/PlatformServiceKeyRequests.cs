@@ -8,7 +8,12 @@ public sealed class CreatePlatformServiceKeyRequest
 {
     public string ServiceKey { get; init; } = string.Empty;
     public string DisplayName { get; init; } = string.Empty;
-    public string ApiKey { get; init; } = string.Empty;
+
+    /// <summary>Legacy single-value credential; prefer <see cref="Fields"/>.</summary>
+    public string? ApiKey { get; init; }
+
+    /// <summary>Credential values keyed by the field names the provider option lists.</summary>
+    public Dictionary<string, string>? Fields { get; init; }
 }
 
 /// <summary>
@@ -26,5 +31,6 @@ public sealed class UpdatePlatformServiceKeyRequest
 /// </summary>
 public sealed class RotatePlatformServiceKeyRequest
 {
-    public string ApiKey { get; init; } = string.Empty;
+    public string? ApiKey { get; init; }
+    public Dictionary<string, string>? Fields { get; init; }
 }

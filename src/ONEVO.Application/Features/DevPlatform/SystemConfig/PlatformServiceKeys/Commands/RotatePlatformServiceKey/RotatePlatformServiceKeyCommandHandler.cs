@@ -1,6 +1,7 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Definitions;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Mappers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.RepositoryInterfaces;
@@ -14,8 +15,9 @@ namespace ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKey
 /// </summary>
 public sealed record RotatePlatformServiceKeyCommand(
     string ServiceKey,
-    string ApiKey,
-    Guid ActorPlatformUserId) : IRequest<Result<PlatformServiceKeyDto>>;
+    string? ApiKey,
+    Guid ActorPlatformUserId,
+    IReadOnlyDictionary<string, string>? Fields = null) : IRequest<Result<PlatformServiceKeyDto>>;
 
 public sealed class RotatePlatformServiceKeyCommandHandler
     : IRequestHandler<RotatePlatformServiceKeyCommand, Result<PlatformServiceKeyDto>>
@@ -35,16 +37,18 @@ public sealed class RotatePlatformServiceKeyCommandHandler
         RotatePlatformServiceKeyCommand request,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.ApiKey))
-            return Result<PlatformServiceKeyDto>.Failure("apiKey is required.", 400);
-
         var entity = await _repo.GetByServiceKeyAsync(request.ServiceKey, cancellationToken);
         if (entity is null)
             return Result<PlatformServiceKeyDto>.NotFound(
                 $"Platform service key '{request.ServiceKey}' was not found.");
 
+        var credential = ServiceKeyDefinitionRegistry.BuildCredential(
+            request.ServiceKey, request.ApiKey, request.Fields);
+        if (!credential.IsSuccess)
+            return Result<PlatformServiceKeyDto>.Failure(credential.Error!, credential.StatusCode ?? 400);
+
         // Encrypt replacement key — NEVER stored plaintext
-        entity.ApiKeyEncrypted = _encryption.Encrypt(request.ApiKey);
+        entity.ApiKeyEncrypted = _encryption.Encrypt(credential.Value!);
         entity.LastVerifiedAt = null;
         entity.UpdatedById = request.ActorPlatformUserId;
         entity.UpdatedAt = DateTimeOffset.UtcNow;

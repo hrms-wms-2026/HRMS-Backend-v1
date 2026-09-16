@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Definitions;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
 using ONEVO.Infrastructure.ExternalServices.Email;
@@ -23,13 +24,16 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<PlatformServiceKeyVerificationService> _logger;
+    private readonly IAwsIdentityProbe _awsIdentityProbe;
 
     public PlatformServiceKeyVerificationService(
         IHttpClientFactory httpClientFactory,
-        ILogger<PlatformServiceKeyVerificationService> logger)
+        ILogger<PlatformServiceKeyVerificationService> logger,
+        IAwsIdentityProbe awsIdentityProbe)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _awsIdentityProbe = awsIdentityProbe;
     }
 
     public async Task<PlatformServiceKeyVerificationResult> VerifyAsync(
@@ -70,16 +74,66 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
                 ct),
             PlatformServiceKeyCatalog.Cloudflare => FormatOnlyResult(
                 serviceKey, apiKeyPlaintext, checkedAt),
-            PlatformServiceKeyCatalog.CloudflareR2 => FormatOnlyResult(
+            PlatformServiceKeyCatalog.CloudflareR2 => BundleFormatResult(
                 serviceKey, apiKeyPlaintext, checkedAt),
-            PlatformServiceKeyCatalog.AwsRekognition => FormatOnlyResult(
-                serviceKey, apiKeyPlaintext, checkedAt),
+            PlatformServiceKeyCatalog.AwsRekognition => await VerifyAwsAsync(
+                apiKeyPlaintext, checkedAt, ct),
             _ => new PlatformServiceKeyVerificationResult
             {
                 Success = false,
                 CheckedAt = checkedAt,
                 Message = $"Service key '{serviceKey}' is not supported for verification."
             }
+        };
+    }
+
+    private static PlatformServiceKeyVerificationResult BundleFormatResult(
+        string serviceKey,
+        string storedCredential,
+        DateTimeOffset checkedAt)
+    {
+        var definition = ServiceKeyDefinitionRegistry.Find(serviceKey);
+        var check = definition?.AcceptRawCredential(storedCredential);
+        var success = check?.IsSuccess == true;
+        return new PlatformServiceKeyVerificationResult
+        {
+            Success = success,
+            CheckedAt = checkedAt,
+            Message = success
+                ? "Local format-only verification passed. Live provider check is not wired for this service."
+                : $"Stored credential for '{serviceKey}' is incomplete or malformed: {check?.Error}"
+        };
+    }
+
+    private async Task<PlatformServiceKeyVerificationResult> VerifyAwsAsync(
+        string storedCredential,
+        DateTimeOffset checkedAt,
+        CancellationToken ct)
+    {
+        var values = ServiceKeyDefinitionRegistry.Find(PlatformServiceKeyCatalog.AwsRekognition)
+            ?.TryParseCredential(storedCredential);
+        if (values is null
+            || !values.TryGetValue("accessKeyId", out var accessKeyId)
+            || !values.TryGetValue("secretAccessKey", out var secretAccessKey)
+            || !values.TryGetValue("region", out var region)
+            || string.IsNullOrWhiteSpace(accessKeyId)
+            || string.IsNullOrWhiteSpace(secretAccessKey)
+            || string.IsNullOrWhiteSpace(region))
+        {
+            return new PlatformServiceKeyVerificationResult
+            {
+                Success = false,
+                CheckedAt = checkedAt,
+                Message = "Stored AWS credential is incomplete. Rotate it with Access Key ID, Secret Access Key and Region."
+            };
+        }
+
+        var probe = await _awsIdentityProbe.ProbeAsync(accessKeyId, secretAccessKey, region, ct);
+        return new PlatformServiceKeyVerificationResult
+        {
+            Success = probe.Success,
+            CheckedAt = checkedAt,
+            Message = probe.Message
         };
     }
 

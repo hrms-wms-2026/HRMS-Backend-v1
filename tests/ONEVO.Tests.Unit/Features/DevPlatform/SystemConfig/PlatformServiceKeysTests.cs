@@ -558,7 +558,8 @@ public class PlatformServiceKeysTests
     {
         var service = new PlatformServiceKeyVerificationService(
             Mock.Of<IHttpClientFactory>(),
-            NullLogger<PlatformServiceKeyVerificationService>.Instance);
+            NullLogger<PlatformServiceKeyVerificationService>.Instance,
+            Mock.Of<ONEVO.Infrastructure.Services.SystemConfig.IAwsIdentityProbe>());
 
         var empty = await service.VerifyAsync("sendgrid", "", CancellationToken.None);
 
