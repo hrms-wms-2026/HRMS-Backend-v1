@@ -16,7 +16,7 @@ public record TrayAuthResponseDto(
     [property: JsonPropertyName("department_name")] string? DepartmentName = null,
     [property: JsonPropertyName("work_mode_label")] string? WorkModeLabel = null,
     [property: JsonPropertyName("office_name")] string? OfficeName = null,
-    [property: JsonPropertyName("organization_name")] string? OrganizationName = null);
+    [property: JsonPropertyName("organization_name")] string? OrganizationName = null,
     [property: JsonPropertyName("legal_acceptance_required")] bool RequiresLegalAcceptance = false,
     [property: JsonPropertyName("pending_legal_documents")] IReadOnlyList<PendingLegalDocumentDto>? PendingLegalDocuments = null,
     [property: JsonPropertyName("legal_challenge")] string? LegalChallenge = null,

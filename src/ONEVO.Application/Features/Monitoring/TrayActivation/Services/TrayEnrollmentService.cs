@@ -150,12 +150,7 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
             identity.DepartmentName,
             identity.WorkModeLabel,
             identity.OfficeName,
-            identity.OrganizationName);
-            employeeName,
-            employeeEmail,
-            employeeNumber,
-            profileStatus,
-            tenantSlug,
+            identity.OrganizationName,
             RequiresLegalAcceptance: isLegalAcceptancePending,
             PendingLegalDocuments: legalCheck.PendingDocuments,
             LegalChallenge: legalChallenge,

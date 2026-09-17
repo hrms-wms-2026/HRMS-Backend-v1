@@ -131,11 +131,7 @@ public class RefreshTrayTokenCommandHandler
             identity.DepartmentName,
             identity.WorkModeLabel,
             identity.OfficeName,
-            identity.OrganizationName));
-            employeeName,
-            employeeEmail,
-            employeeNumber,
-            profileStatus,
+            identity.OrganizationName,
             RequiresLegalAcceptance: isLegalAcceptancePending,
             PendingLegalDocuments: legalCheck.PendingDocuments,
             LegalChallenge: legalChallenge,
