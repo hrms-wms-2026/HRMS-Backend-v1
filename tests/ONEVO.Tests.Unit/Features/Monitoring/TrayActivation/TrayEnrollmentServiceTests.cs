@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Legal.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Legal.Services;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
@@ -193,6 +194,26 @@ public class TrayEnrollmentServiceTests
     }
 
     [Fact]
+    public async Task IssueAsync_WhenLegalCheckerReportsPending_IssuesLegalChallengeAndCsrfToken()
+    {
+        var pendingDoc = new PendingLegalDocumentDto("privacy_policy", "2.0", "Privacy Policy", DateTimeOffset.UtcNow, null, "/api/v1/legal/documents/privacy_policy/2.0", "hash");
+        var legalChecker = new Mock<ILegalAcceptanceChecker>();
+        legalChecker.Setup(c => c.CheckAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegalAcceptanceCheckResult(
+                LegalAcceptanceStatus.Pending, IsComplete: false, PendingDocuments: new[] { pendingDoc }));
+        var legalChallenges = new Mock<ILegalLoginChallengeRepository>();
+        legalChallenges.Setup(c => c.CreateAsync(TenantId, UserId, It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(("raw-challenge", "raw-csrf"));
+        var repository = new Mock<ITrayActivationRepository>();
+        var service = CreateService(repository, TokenService(), legalChecker: legalChecker, legalChallenges: legalChallenges);
+
+        var result = await service.IssueAsync(Request(), CancellationToken.None);
+
+        result.LegalChallenge.Should().Be("raw-challenge");
+        result.LegalCsrfToken.Should().Be("raw-csrf");
+    }
+
+    [Fact]
     public async Task IssueAsync_WhenLegalCheckerReportsComplete_LeavesRequiresLegalAcceptanceFalse()
     {
         var legalChecker = new Mock<ILegalAcceptanceChecker>();
@@ -269,7 +290,8 @@ public class TrayEnrollmentServiceTests
         Mock<IUserRepository>? userRepository = null,
         Mock<IDeviceChangeRequestRepository>? deviceChangeRequests = null,
         Mock<IEmployeeRepository>? employees = null,
-        Mock<ILegalAcceptanceChecker>? legalChecker = null)
+        Mock<ILegalAcceptanceChecker>? legalChecker = null,
+        Mock<ILegalLoginChallengeRepository>? legalChallenges = null)
     {
         var tenantRepository = new Mock<ITenantRepository>();
         tenantRepository.Setup(r => r.GetByIdAsync(TenantId, It.IsAny<CancellationToken>()))
@@ -284,7 +306,8 @@ public class TrayEnrollmentServiceTests
             new Mock<IDateTimeProvider>().Object,
             deviceChangeRequests?.Object ?? new Mock<IDeviceChangeRequestRepository>().Object,
             employees?.Object ?? new Mock<IEmployeeRepository>().Object,
-            legalChecker?.Object ?? DefaultLegalChecker().Object);
+            legalChecker?.Object ?? DefaultLegalChecker().Object,
+            legalChallenges?.Object ?? new Mock<ILegalLoginChallengeRepository>().Object);
     }
 
     private static Mock<ILegalAcceptanceChecker> DefaultLegalChecker()

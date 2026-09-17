@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Legal.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Legal.Services;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
@@ -16,8 +17,10 @@ public class RefreshTrayTokenCommandHandler
     : IRequestHandler<RefreshTrayTokenCommand, Result<TrayAuthResponseDto>>
 {
     private static readonly TimeSpan RefreshTokenLifetime = TimeSpan.FromDays(90);
+    private static readonly TimeSpan LegalChallengeLifetime = TimeSpan.FromMinutes(10);
     private const int AccessTokenExpiresInSeconds = 3600;
     private const int RefreshTokenExpiresInSeconds = 7_776_000;
+    private const string LegalChallengeOrigin = "tray";
 
     private readonly ITrayActivationRepository _repository;
     private readonly IUserRepository _userRepository;
@@ -27,6 +30,7 @@ public class RefreshTrayTokenCommandHandler
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILegalAcceptanceChecker _legalChecker;
+    private readonly ILegalLoginChallengeRepository _legalChallenges;
 
     public RefreshTrayTokenCommandHandler(
         ITrayActivationRepository repository,
@@ -36,7 +40,8 @@ public class RefreshTrayTokenCommandHandler
         ITrayTokenService tokenService,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
-        ILegalAcceptanceChecker legalChecker)
+        ILegalAcceptanceChecker legalChecker,
+        ILegalLoginChallengeRepository legalChallenges)
     {
         _repository = repository;
         _userRepository = userRepository;
@@ -46,6 +51,7 @@ public class RefreshTrayTokenCommandHandler
         _clock = clock;
         _unitOfWork = unitOfWork;
         _legalChecker = legalChecker;
+        _legalChallenges = legalChallenges;
     }
 
     public async Task<Result<TrayAuthResponseDto>> Handle(
@@ -103,6 +109,14 @@ public class RefreshTrayTokenCommandHandler
         var (employeeName, employeeEmail, employeeNumber, profileStatus) = await ResolveEmployeeIdentityAsync(
             existingToken.UserId, existingToken.TenantId, device.LegalEntityId, cancellationToken);
         var legalCheck = await _legalChecker.CheckAsync(existingToken.TenantId, existingToken.UserId, cancellationToken);
+        var isLegalAcceptancePending = legalCheck.Status == LegalAcceptanceStatus.Pending;
+        string? legalChallenge = null;
+        string? legalCsrfToken = null;
+        if (isLegalAcceptancePending)
+        {
+            (legalChallenge, legalCsrfToken) = await _legalChallenges.CreateAsync(
+                existingToken.TenantId, existingToken.UserId, LegalChallengeOrigin, LegalChallengeLifetime, cancellationToken);
+        }
 
         return Result<TrayAuthResponseDto>.Success(new TrayAuthResponseDto(
             accessToken,
@@ -113,8 +127,10 @@ public class RefreshTrayTokenCommandHandler
             employeeEmail,
             employeeNumber,
             profileStatus,
-            RequiresLegalAcceptance: legalCheck.Status == LegalAcceptanceStatus.Pending,
-            PendingLegalDocuments: legalCheck.PendingDocuments));
+            RequiresLegalAcceptance: isLegalAcceptancePending,
+            PendingLegalDocuments: legalCheck.PendingDocuments,
+            LegalChallenge: legalChallenge,
+            LegalCsrfToken: legalCsrfToken));
     }
 
     /// <summary>

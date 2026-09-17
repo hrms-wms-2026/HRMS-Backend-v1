@@ -23,4 +23,19 @@ public class TrayAuthResponseDtoTests
         Assert.Contains("\"legal_acceptance_required\":true", json);
         Assert.Contains("\"pending_legal_documents\":[", json);
     }
+
+    [Fact]
+    public void TrayAuthResponseDto_SerializesLegalChallengeAndCsrfTokenWithSnakeCaseNames()
+    {
+        var dto = new TrayAuthResponseDto(
+            AccessToken: "token", ExpiresInSeconds: 3600, RefreshToken: "refresh", RefreshExpiresInSeconds: 7776000,
+            RequiresLegalAcceptance: true,
+            LegalChallenge: "raw-challenge",
+            LegalCsrfToken: "raw-csrf");
+
+        var json = JsonSerializer.Serialize(dto);
+
+        Assert.Contains("\"legal_challenge\":\"raw-challenge\"", json);
+        Assert.Contains("\"legal_csrf_token\":\"raw-csrf\"", json);
+    }
 }

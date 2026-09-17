@@ -14,4 +14,6 @@ public record TrayAuthResponseDto(
     [property: JsonPropertyName("employee_profile_status")] string EmployeeProfileStatus = "resolved",
     [property: JsonPropertyName("tenant_slug")] string? TenantSlug = null,
     [property: JsonPropertyName("legal_acceptance_required")] bool RequiresLegalAcceptance = false,
-    [property: JsonPropertyName("pending_legal_documents")] IReadOnlyList<PendingLegalDocumentDto>? PendingLegalDocuments = null);
+    [property: JsonPropertyName("pending_legal_documents")] IReadOnlyList<PendingLegalDocumentDto>? PendingLegalDocuments = null,
+    [property: JsonPropertyName("legal_challenge")] string? LegalChallenge = null,
+    [property: JsonPropertyName("legal_csrf_token")] string? LegalCsrfToken = null);
