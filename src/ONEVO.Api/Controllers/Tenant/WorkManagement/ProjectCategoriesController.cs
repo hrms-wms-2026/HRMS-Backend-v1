@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.WorkManagement.Projects;
 using ONEVO.Api.Filters;
+using ONEVO.Application.Features.WorkManagement.Projects.Commands.CreateProjectCategory;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.ListProjectCategories;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
@@ -25,6 +26,18 @@ public class ProjectCategoriesController : ControllerBase
 
         return result.IsSuccess
             ? Ok(result.Value!.Select(c => c.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Creates a new Project Category for the tenant. Used by the "Add Category" action on the Create Project category picker.</summary>
+    [HttpPost]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> Create([FromBody] CreateProjectCategoryRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new CreateProjectCategoryCommand(request.Name), ct);
+
+        return result.IsSuccess
+            ? CreatedAtAction(nameof(List), null, result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }
