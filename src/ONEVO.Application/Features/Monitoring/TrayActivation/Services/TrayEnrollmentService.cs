@@ -115,7 +115,7 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
 
         var accessToken = _tokenService.GenerateAccessToken(
             device.Id, request.UserId, request.TenantId, request.LegalEntityId);
-        var (employeeName, employeeEmail, employeeNumber, profileStatus, tenantSlug) = await ResolveEmployeeIdentityAsync(
+        var identity = await ResolveEmployeeIdentityAsync(
             request.UserId, request.TenantId, request.LegalEntityId, ct);
 
         return new TrayAuthResponseDto(
@@ -123,14 +123,29 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
             AccessTokenExpiresInSeconds,
             rawRefreshToken,
             RefreshTokenExpiresInSeconds,
-            employeeName,
-            employeeEmail,
-            employeeNumber,
-            profileStatus,
-            tenantSlug);
+            identity.Name,
+            identity.Email,
+            identity.Number,
+            identity.Status,
+            identity.TenantSlug,
+            identity.DepartmentName,
+            identity.WorkModeLabel,
+            identity.OfficeName,
+            identity.OrganizationName);
     }
 
-    private async Task<(string? Name, string? Email, string? Number, string Status, string? TenantSlug)> ResolveEmployeeIdentityAsync(
+    private sealed record EmployeeIdentity(
+        string? Name,
+        string? Email,
+        string? Number,
+        string Status,
+        string? TenantSlug,
+        string? DepartmentName = null,
+        string? WorkModeLabel = null,
+        string? OfficeName = null,
+        string? OrganizationName = null);
+
+    private async Task<EmployeeIdentity> ResolveEmployeeIdentityAsync(
         Guid userId,
         Guid tenantId,
         Guid? legalEntityId,
@@ -138,7 +153,7 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
     {
         var tenant = await _tenantRepository.GetByIdAsync(tenantId, ct);
         if (tenant is null)
-            return (null, null, null, "profile_unavailable", null);
+            return new EmployeeIdentity(null, null, null, "profile_unavailable", null);
 
         await _tenantSwitcher.SwitchToTenantAsync(
             new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
@@ -146,23 +161,33 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
         var profile = await _repository.FindEmployeeProfileAsync(userId, tenantId, legalEntityId, ct);
         if (profile is not null)
         {
-            return (
+            return new EmployeeIdentity(
                 FullNameOrNull(profile.FirstName, profile.LastName),
                 profile.Email,
                 profile.EmployeeNumber,
                 "resolved",
-                tenant.Slug);
+                tenant.Slug,
+                profile.DepartmentName,
+                profile.WorkModeLabel,
+                profile.OfficeName,
+                profile.OrganizationName ?? tenant.Name);
         }
 
         var user = await _userRepository.GetByIdAsync(userId, ct);
         if (user is not null)
-            return (FullNameOrNull(user.FirstName, user.LastName), user.Email, null,
+            return new EmployeeIdentity(
+                FullNameOrNull(user.FirstName, user.LastName),
+                user.Email,
+                null,
                 legalEntityId.HasValue ? "profile_unavailable" : "company_context_required",
-                tenant.Slug);
+                tenant.Slug,
+                OrganizationName: tenant.Name);
 
-        return (null, null, null,
+        return new EmployeeIdentity(
+            null, null, null,
             legalEntityId.HasValue ? "profile_unavailable" : "company_context_required",
-            tenant.Slug);
+            tenant.Slug,
+            OrganizationName: tenant.Name);
     }
 
     private static string? FullNameOrNull(string first, string last)

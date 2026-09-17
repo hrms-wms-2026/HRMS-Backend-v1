@@ -216,9 +216,30 @@ public class EfTrayActivationRepository : ITrayActivationRepository
         if (legalEntityId.HasValue)
             query = query.Where(employee => employee.LegalEntityId == legalEntityId.Value);
 
-        var profiles = await query
-            .OrderBy(employee => employee.Id)
-            .Select(e => new TrayEmployeeProfile(e.FirstName, e.LastName, e.Email, e.EmployeeNumber))
+        var profiles = await (
+            from employee in query
+            join department in _db.Departments.AsNoTracking()
+                on employee.DepartmentId equals department.Id into departments
+            from department in departments.DefaultIfEmpty()
+            join workMode in _db.TimeAttendanceWorkModes.AsNoTracking()
+                on employee.WorkModeId equals workMode.Id into workModes
+            from workMode in workModes.DefaultIfEmpty()
+            join office in _db.LegalEntities.AsNoTracking()
+                on employee.LegalEntityId equals office.Id into offices
+            from office in offices.DefaultIfEmpty()
+            join tenant in _db.Tenants.AsNoTracking()
+                on employee.TenantId equals tenant.Id into tenants
+            from tenant in tenants.DefaultIfEmpty()
+            orderby employee.Id
+            select new TrayEmployeeProfile(
+                employee.FirstName,
+                employee.LastName,
+                employee.Email,
+                employee.EmployeeNumber,
+                department.Name,
+                workMode.Name,
+                office.Name,
+                tenant.Name))
             .Take(2)
             .ToListAsync(ct);
 

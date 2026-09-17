@@ -11,4 +11,8 @@ public record TrayAuthResponseDto(
     [property: JsonPropertyName("employee_email")] string? EmployeeEmail = null,
     [property: JsonPropertyName("employee_number")] string? EmployeeNumber = null,
     [property: JsonPropertyName("employee_profile_status")] string EmployeeProfileStatus = "resolved",
-    [property: JsonPropertyName("tenant_slug")] string? TenantSlug = null);
+    [property: JsonPropertyName("tenant_slug")] string? TenantSlug = null,
+    [property: JsonPropertyName("department_name")] string? DepartmentName = null,
+    [property: JsonPropertyName("work_mode_label")] string? WorkModeLabel = null,
+    [property: JsonPropertyName("office_name")] string? OfficeName = null,
+    [property: JsonPropertyName("organization_name")] string? OrganizationName = null);
