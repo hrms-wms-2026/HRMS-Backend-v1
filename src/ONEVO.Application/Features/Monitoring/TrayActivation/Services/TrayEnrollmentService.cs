@@ -1,5 +1,7 @@
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Legal.RepositoryInterfaces;
+using ONEVO.Application.Features.Auth.Legal.Services;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.DTOs.Responses;
@@ -15,8 +17,10 @@ namespace ONEVO.Application.Features.Monitoring.TrayActivation.Services;
 public sealed class TrayEnrollmentService : ITrayEnrollmentService
 {
     private static readonly TimeSpan RefreshTokenLifetime = TimeSpan.FromDays(90);
+    private static readonly TimeSpan LegalChallengeLifetime = TimeSpan.FromMinutes(10);
     private const int AccessTokenExpiresInSeconds = 3600;
     private const int RefreshTokenExpiresInSeconds = 7_776_000;
+    private const string LegalChallengeOrigin = "tray";
 
     private readonly ITrayActivationRepository _repository;
     private readonly IUserRepository _userRepository;
@@ -26,6 +30,8 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
     private readonly IDateTimeProvider _clock;
     private readonly IDeviceChangeRequestRepository _deviceChangeRequests;
     private readonly IEmployeeRepository _employees;
+    private readonly ILegalAcceptanceChecker _legalChecker;
+    private readonly ILegalLoginChallengeRepository _legalChallenges;
 
     public TrayEnrollmentService(
         ITrayActivationRepository repository,
@@ -35,7 +41,9 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
         ITrayTokenService tokenService,
         IDateTimeProvider clock,
         IDeviceChangeRequestRepository deviceChangeRequests,
-        IEmployeeRepository employees)
+        IEmployeeRepository employees,
+        ILegalAcceptanceChecker legalChecker,
+        ILegalLoginChallengeRepository legalChallenges)
     {
         _repository = repository;
         _userRepository = userRepository;
@@ -45,6 +53,8 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
         _clock = clock;
         _deviceChangeRequests = deviceChangeRequests;
         _employees = employees;
+        _legalChecker = legalChecker;
+        _legalChallenges = legalChallenges;
     }
 
     public async Task<TrayAuthResponseDto> IssueAsync(
@@ -117,6 +127,15 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
             device.Id, request.UserId, request.TenantId, request.LegalEntityId);
         var (employeeName, employeeEmail, employeeNumber, profileStatus, tenantSlug) = await ResolveEmployeeIdentityAsync(
             request.UserId, request.TenantId, request.LegalEntityId, ct);
+        var legalCheck = await _legalChecker.CheckAsync(request.TenantId, request.UserId, ct);
+        var isLegalAcceptancePending = legalCheck.Status == LegalAcceptanceStatus.Pending;
+        string? legalChallenge = null;
+        string? legalCsrfToken = null;
+        if (isLegalAcceptancePending)
+        {
+            (legalChallenge, legalCsrfToken) = await _legalChallenges.CreateAsync(
+                request.TenantId, request.UserId, LegalChallengeOrigin, LegalChallengeLifetime, ct);
+        }
 
         return new TrayAuthResponseDto(
             accessToken,
@@ -127,7 +146,11 @@ public sealed class TrayEnrollmentService : ITrayEnrollmentService
             employeeEmail,
             employeeNumber,
             profileStatus,
-            tenantSlug);
+            tenantSlug,
+            RequiresLegalAcceptance: isLegalAcceptancePending,
+            PendingLegalDocuments: legalCheck.PendingDocuments,
+            LegalChallenge: legalChallenge,
+            LegalCsrfToken: legalCsrfToken);
     }
 
     private async Task<(string? Name, string? Email, string? Number, string Status, string? TenantSlug)> ResolveEmployeeIdentityAsync(
