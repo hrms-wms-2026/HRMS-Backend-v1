@@ -106,7 +106,7 @@ public class RefreshTrayTokenCommandHandler
         var accessToken = _tokenService.GenerateAccessToken(
             device.Id, existingToken.UserId, existingToken.TenantId, device.LegalEntityId);
 
-        var (employeeName, employeeEmail, employeeNumber, profileStatus) = await ResolveEmployeeIdentityAsync(
+        var identity = await ResolveEmployeeIdentityAsync(
             existingToken.UserId, existingToken.TenantId, device.LegalEntityId, cancellationToken);
         var legalCheck = await _legalChecker.CheckAsync(existingToken.TenantId, existingToken.UserId, cancellationToken);
         var isLegalAcceptancePending = legalCheck.Status == LegalAcceptanceStatus.Pending;
@@ -123,10 +123,15 @@ public class RefreshTrayTokenCommandHandler
             AccessTokenExpiresInSeconds,
             newRawToken,
             RefreshTokenExpiresInSeconds,
-            employeeName,
-            employeeEmail,
-            employeeNumber,
-            profileStatus,
+            identity.Name,
+            identity.Email,
+            identity.Number,
+            identity.Status,
+            identity.TenantSlug,
+            identity.DepartmentName,
+            identity.WorkModeLabel,
+            identity.OfficeName,
+            identity.OrganizationName,
             RequiresLegalAcceptance: isLegalAcceptancePending,
             PendingLegalDocuments: legalCheck.PendingDocuments,
             LegalChallenge: legalChallenge,
@@ -143,27 +148,55 @@ public class RefreshTrayTokenCommandHandler
     /// identity fields simply stay null; the refresh token has already rotated, so this must not
     /// fail the whole refresh.
     /// </summary>
-    private async Task<(string? Name, string? Email, string? Number, string Status)> ResolveEmployeeIdentityAsync(
+    private sealed record EmployeeIdentity(
+        string? Name,
+        string? Email,
+        string? Number,
+        string Status,
+        string? TenantSlug = null,
+        string? DepartmentName = null,
+        string? WorkModeLabel = null,
+        string? OfficeName = null,
+        string? OrganizationName = null);
+
+    private async Task<EmployeeIdentity> ResolveEmployeeIdentityAsync(
         Guid userId, Guid tenantId, Guid? legalEntityId, CancellationToken ct)
     {
         var tenant = await _tenantRepository.GetByIdAsync(tenantId, ct);
         if (tenant is null)
-            return (null, null, null, "profile_unavailable");
+            return new EmployeeIdentity(null, null, null, "profile_unavailable");
 
         await _tenantSwitcher.SwitchToTenantAsync(
             new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
 
         var profile = await _repository.FindEmployeeProfileAsync(userId, tenantId, legalEntityId, ct);
         if (profile is not null)
-            return (FullNameOrNull(profile.FirstName, profile.LastName), profile.Email, profile.EmployeeNumber, "resolved");
+            return new EmployeeIdentity(
+                FullNameOrNull(profile.FirstName, profile.LastName),
+                profile.Email,
+                profile.EmployeeNumber,
+                "resolved",
+                tenant.Slug,
+                profile.DepartmentName,
+                profile.WorkModeLabel,
+                profile.OfficeName,
+                profile.OrganizationName ?? tenant.Name);
 
         var user = await _userRepository.GetByIdAsync(userId, ct);
         if (user is not null)
-            return (FullNameOrNull(user.FirstName, user.LastName), user.Email, null,
-                legalEntityId.HasValue ? "profile_unavailable" : "company_context_required");
+            return new EmployeeIdentity(
+                FullNameOrNull(user.FirstName, user.LastName),
+                user.Email,
+                null,
+                legalEntityId.HasValue ? "profile_unavailable" : "company_context_required",
+                tenant.Slug,
+                OrganizationName: tenant.Name);
 
-        return (null, null, null,
-            legalEntityId.HasValue ? "profile_unavailable" : "company_context_required");
+        return new EmployeeIdentity(
+            null, null, null,
+            legalEntityId.HasValue ? "profile_unavailable" : "company_context_required",
+            tenant.Slug,
+            OrganizationName: tenant.Name);
     }
 
     private static string? FullNameOrNull(string first, string last)

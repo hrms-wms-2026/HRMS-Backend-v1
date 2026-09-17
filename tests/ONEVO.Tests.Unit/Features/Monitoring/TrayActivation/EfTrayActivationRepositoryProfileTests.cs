@@ -4,6 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
@@ -39,6 +42,23 @@ public sealed class EfTrayActivationRepositoryProfileTests
 
         profile.Should().NotBeNull();
         profile!.EmployeeNumber.Should().Be("EMP-A");
+    }
+
+    [Fact]
+    public async Task SingleActiveEmployee_IncludesDepartmentOfficeAndWorkMode()
+    {
+        await using var db = BuildDb();
+        var ids = await SeedAsync(db, includeSecondActive: false, withOrgDetails: true);
+        var repository = new EfTrayActivationRepository(db, new Mock<IDateTimeProvider>().Object);
+
+        var profile = await repository.FindEmployeeProfileAsync(
+            ids.UserId, ids.TenantId, null, CancellationToken.None);
+
+        profile.Should().NotBeNull();
+        profile!.DepartmentName.Should().Be("Product Development");
+        profile.WorkModeLabel.Should().Be("Hybrid");
+        profile.OfficeName.Should().Be("Acme Head Office");
+        profile.OrganizationName.Should().Be("Acme Test");
     }
 
     [Fact]
@@ -96,7 +116,10 @@ public sealed class EfTrayActivationRepositoryProfileTests
     }
 
     private static async Task<Ids> SeedAsync(
-        ApplicationDbContext db, bool includeSecondActive, bool includeInactive = false)
+        ApplicationDbContext db,
+        bool includeSecondActive,
+        bool includeInactive = false,
+        bool withOrgDetails = false)
     {
         const int activeStatusId = 1;
         const int inactiveStatusId = 2;
@@ -104,10 +127,54 @@ public sealed class EfTrayActivationRepositoryProfileTests
         var userId = Guid.NewGuid();
         var legalEntityA = Guid.NewGuid();
         var legalEntityB = Guid.NewGuid();
+        Guid? departmentId = null;
+        Guid? workModeId = null;
+
         db.EmploymentStatuses.AddRange(
             new EmploymentStatus { Id = activeStatusId, Code = "active", Label = "Active" },
             new EmploymentStatus { Id = inactiveStatusId, Code = "inactive", Label = "Inactive" });
-        db.Employees.Add(Employee(tenantId, userId, legalEntityA, activeStatusId, "EMP-A"));
+
+        if (withOrgDetails)
+        {
+            departmentId = Guid.NewGuid();
+            workModeId = Guid.NewGuid();
+            db.Tenants.Add(new Tenant
+            {
+                Id = tenantId,
+                Name = "Acme Test",
+                Slug = "acme",
+                CompanySizeRange = "1-10",
+                Status = TenantStatus.Active
+            });
+            db.LegalEntities.Add(new LegalEntity
+            {
+                Id = legalEntityA,
+                TenantId = tenantId,
+                Name = "Acme Head Office",
+                CountryCode = "LK",
+                CurrencyCode = "LKR"
+            });
+            db.Departments.Add(new Department
+            {
+                Id = departmentId.Value,
+                TenantId = tenantId,
+                LegalEntityId = legalEntityA,
+                Name = "Product Development",
+                Code = "PD"
+            });
+            db.TimeAttendanceWorkModes.Add(new WorkMode
+            {
+                Id = workModeId.Value,
+                TenantId = tenantId,
+                LegalEntityId = legalEntityA,
+                Name = "Hybrid",
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
+        }
+
+        db.Employees.Add(Employee(
+            tenantId, userId, legalEntityA, activeStatusId, "EMP-A", departmentId, workModeId));
         if (includeSecondActive)
             db.Employees.Add(Employee(tenantId, userId, legalEntityB, activeStatusId, "EMP-B"));
         if (includeInactive)
@@ -117,12 +184,20 @@ public sealed class EfTrayActivationRepositoryProfileTests
     }
 
     private static Employee Employee(
-        Guid tenantId, Guid userId, Guid legalEntityId, int statusId, string number) => new()
+        Guid tenantId,
+        Guid userId,
+        Guid legalEntityId,
+        int statusId,
+        string number,
+        Guid? departmentId = null,
+        Guid? workModeId = null) => new()
     {
         Id = Guid.NewGuid(),
         TenantId = tenantId,
         UserId = userId,
         LegalEntityId = legalEntityId,
+        DepartmentId = departmentId,
+        WorkModeId = workModeId,
         EmploymentStatusId = statusId,
         EmployeeNumber = number,
         FirstName = number,

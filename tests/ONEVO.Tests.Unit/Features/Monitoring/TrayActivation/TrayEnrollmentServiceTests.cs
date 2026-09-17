@@ -81,6 +81,25 @@ public class TrayEnrollmentServiceTests
     }
 
     [Fact]
+    public async Task IssueAsync_ReturnsDepartmentOfficeAndWorkMode_WhenEmployeeProfileHasThem()
+    {
+        var repository = new Mock<ITrayActivationRepository>();
+        repository.Setup(r => r.FindEmployeeProfileAsync(
+                UserId, TenantId, LegalEntityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TrayEmployeeProfile(
+                "Ada", "Lovelace", "ada@example.com", "EMP-001",
+                "Product Development", "Hybrid", "Acme Head Office", "Acme Test"));
+        var service = CreateService(repository, TokenService());
+
+        var result = await service.IssueAsync(Request(), CancellationToken.None);
+
+        result.DepartmentName.Should().Be("Product Development");
+        result.WorkModeLabel.Should().Be("Hybrid");
+        result.OfficeName.Should().Be("Acme Head Office");
+        result.OrganizationName.Should().Be("Acme Test");
+    }
+
+    [Fact]
     public async Task IssueAsync_FallsBackToUserIdentity_WhenEmployeeIsMissing()
     {
         var repository = new Mock<ITrayActivationRepository>();
