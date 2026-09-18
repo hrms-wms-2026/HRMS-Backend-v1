@@ -77,6 +77,37 @@ public class ReorderTaskStatusesCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_InvalidFinalCategories_DoesNotMutateEntities()
+    {
+        var (handler, statuses) = Build(OwnerEmployeeId);
+        var active = statuses.Single(s => s.Id == Status3);
+        var result = await handler.Handle(new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
+        {
+            new(Status3, 9, TaskStatusVisibilities.Private, TaskStatusCategories.NotStarted, "#FFFFFF")
+        }), CancellationToken.None);
+        Assert.Equal(422, result.StatusCode);
+        Assert.Equal(TaskStatusCategories.Active, active.Category);
+        Assert.Equal(1, active.DisplayOrder);
+        Assert.Equal("#2563EB", active.Color);
+        Assert.Equal(TaskStatusVisibilities.Public, active.Visibility);
+    }
+
+    [Fact]
+    public async Task Handle_UnknownIdAfterValidUpdate_DoesNotMutateEntities()
+    {
+        var (handler, statuses) = Build(OwnerEmployeeId);
+        var first = statuses.Single(s => s.Id == Status1);
+        var result = await handler.Handle(new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
+        {
+            new(Status1, 9, TaskStatusVisibilities.Private, TaskStatusCategories.Active, "#FFFFFF"),
+            new(Guid.NewGuid(), 2, TaskStatusVisibilities.Public, TaskStatusCategories.Active, "#FFFFFF")
+        }), CancellationToken.None);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(TaskStatusCategories.NotStarted, first.Category);
+        Assert.Equal(0, first.DisplayOrder);
+        Assert.Equal("#94A3B8", first.Color);
+    }
+    [Fact]
     public async Task Handle_ValidReorder_AppliesCategoryAndColor()
     {
         var (handler, statuses) = Build(OwnerEmployeeId);
@@ -220,3 +251,4 @@ public class ReorderTaskStatusesCommandHandlerTests
         Assert.Equal(1, statuses.Single(s => s.Id == Status1).DisplayOrder);
     }
 }
+

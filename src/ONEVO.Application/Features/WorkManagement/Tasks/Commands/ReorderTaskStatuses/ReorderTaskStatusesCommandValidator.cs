@@ -17,7 +17,7 @@ public class ReorderTaskStatusesCommandValidator : AbstractValidator<ReorderTask
             {
                 update.RuleFor(u => u.Visibility).Must(v => v is TaskStatusVisibilities.Public or TaskStatusVisibilities.Private);
                 update.RuleFor(u => u.Category).Must(c => c is TaskStatusCategories.NotStarted or TaskStatusCategories.Active or TaskStatusCategories.Done);
-                update.RuleFor(u => u.Color).Matches("^#[0-9A-Fa-f]{6}$");
+                update.RuleFor(u => u.Color).NotEmpty().Matches("^#[0-9A-Fa-f]{6}$");
                 update.RuleFor(u => u.DisplayOrder).GreaterThanOrEqualTo(0);
             });
         RuleFor(x => x.Updates).Must(updates =>
@@ -32,3 +32,4 @@ public class ReorderTaskStatusesCommandValidator : AbstractValidator<ReorderTask
             .WithMessage("At most one status in a single reorder call may be marked Done.");
     }
 }
+

@@ -14,6 +14,7 @@ public class EditTaskStatusCommandValidator : AbstractValidator<EditTaskStatusCo
             .WithMessage("Visibility must be public or private.");
         RuleFor(x => x.Category).Must(c => c is TaskStatusCategories.NotStarted or TaskStatusCategories.Active or TaskStatusCategories.Done)
             .WithMessage("Category must be not_started, active, or done.");
-        RuleFor(x => x.Color).Matches("^#[0-9A-Fa-f]{6}$").WithMessage("Color must be a 6-digit hex code, e.g. #2563EB.");
+        RuleFor(x => x.Color).NotEmpty().Matches("^#[0-9A-Fa-f]{6}$").WithMessage("Color must be a 6-digit hex code, e.g. #2563EB.");
     }
 }
+

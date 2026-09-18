@@ -73,27 +73,30 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
 
         foreach (var update in request.Updates)
         {
-            if (!byId.TryGetValue(update.StatusId, out var status))
+            if (!byId.ContainsKey(update.StatusId))
                 return Result<IReadOnlyList<TaskStatusResponse>>.NotFound($"Status {update.StatusId} not found on this milestone.");
-
-            status.DisplayOrder = update.DisplayOrder;
-            status.Visibility = update.Visibility;
-            status.Category = update.Category;
-            status.Color = update.Color;
-            status.MarksTaskComplete = update.Category == TaskStatusCategories.Done;
-            status.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
-        if (existing.Count(s => s.Category == TaskStatusCategories.Done) != 1)
+        var updatesById = request.Updates.ToDictionary(u => u.StatusId);
+        var categories = existing.Select(s => updatesById.TryGetValue(s.Id, out var update) ? update.Category : s.Category).ToList();
+        if (categories.Count(c => c == TaskStatusCategories.Done) != 1)
             return Result<IReadOnlyList<TaskStatusResponse>>.Failure("A project must always have exactly one Done status.", 422);
-
-        if (existing.Count(s => s.Category == TaskStatusCategories.Active) < 1)
+        if (!categories.Contains(TaskStatusCategories.Active))
             return Result<IReadOnlyList<TaskStatusResponse>>.Failure("A project must always have at least one Active status.", 422);
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            foreach (var status in existing.Where(s => request.Updates.Any(u => u.StatusId == s.Id)))
+            foreach (var update in request.Updates)
+            {
+                var status = byId[update.StatusId];
+                status.DisplayOrder = update.DisplayOrder;
+                status.Visibility = update.Visibility;
+                status.Category = update.Category;
+                status.Color = update.Color;
+                status.MarksTaskComplete = update.Category == TaskStatusCategories.Done;
+                status.UpdatedAt = DateTimeOffset.UtcNow;
                 _statuses.Update(status);
+            }
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
@@ -104,3 +107,4 @@ public class ReorderTaskStatusesCommandHandler : IRequestHandler<ReorderTaskStat
         }, ct);
     }
 }
+

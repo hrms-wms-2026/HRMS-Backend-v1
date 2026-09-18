@@ -34,74 +34,74 @@ namespace ONEVO.Infrastructure.Migrations
             migrationBuilder.Sql("""
                 SET LOCAL app.tenant_context_mode = 'admin';
 
-                -- Done: the row already flagged complete in its scope.
-                UPDATE task_statuses d
-                SET category = 'done', color = '#16A34A'
-                WHERE d.marks_task_complete = true;
+                -- Only live rows choose the scope's single Done row. Prefer an existing
+                -- completion flag; historical duplicates and tied orders are resolved by id.
+                WITH ranked AS (
+                    SELECT id, row_number() OVER (
+                        PARTITION BY tenant_id, project_id, objective_id
+                        ORDER BY marks_task_complete DESC, display_order DESC, id) AS position
+                    FROM task_statuses WHERE NOT is_deleted
+                )
+                UPDATE task_statuses s SET category = 'done', color = '#16A34A'
+                FROM ranked r WHERE s.id = r.id AND r.position = 1;
 
-                -- Fallback Done: a scope with no marks_task_complete row at all (pre-dates the
-                -- "exactly one complete status" invariant enforced by ReorderTaskStatuses) - take
-                -- the highest DisplayOrder row in that scope.
-                UPDATE task_statuses d
-                SET category = 'done', color = '#16A34A'
-                WHERE d.category IS NULL
-                  AND d.display_order = (
-                      SELECT MAX(s.display_order) FROM task_statuses s
-                      WHERE s.tenant_id = d.tenant_id AND s.project_id = d.project_id
-                        AND s.objective_id IS NOT DISTINCT FROM d.objective_id
-                  );
+                WITH ranked AS (
+                    SELECT id, row_number() OVER (
+                        PARTITION BY tenant_id, project_id, objective_id
+                        ORDER BY display_order, id) AS position
+                    FROM task_statuses WHERE NOT is_deleted AND category IS NULL
+                )
+                UPDATE task_statuses s SET category = 'not_started', color = '#94A3B8'
+                FROM ranked r WHERE s.id = r.id AND r.position = 1;
 
-                -- Not Started: the lowest-DisplayOrder row remaining in each scope.
-                UPDATE task_statuses n
-                SET category = 'not_started', color = '#94A3B8'
-                WHERE n.category IS NULL
-                  AND n.display_order = (
-                      SELECT MIN(s.display_order) FROM task_statuses s
-                      WHERE s.tenant_id = n.tenant_id AND s.project_id = n.project_id
-                        AND s.objective_id IS NOT DISTINCT FROM n.objective_id
-                        AND s.category IS NULL
-                  );
+                UPDATE task_statuses SET category = 'active', color = '#2563EB'
+                WHERE NOT is_deleted AND category IS NULL;
 
-                -- Active: everything else remaining.
-                UPDATE task_statuses a
-                SET category = 'active', color = '#2563EB'
-                WHERE a.category IS NULL;
+                -- Deleted rows still need non-null columns but cannot satisfy live invariants.
+                UPDATE task_statuses
+                SET category = CASE WHEN marks_task_complete THEN 'done' ELSE 'not_started' END,
+                    color = CASE WHEN marks_task_complete THEN '#16A34A' ELSE '#94A3B8' END
+                WHERE is_deleted;
+                UPDATE task_statuses SET marks_task_complete = (category = 'done');
 
-                -- Repair pass: any scope left with zero Active rows (e.g. a project that only ever
-                -- had 2 statuses) gets a synthetic "In Progress" Active row, so clock-in's "find
-                -- first Active status" can never come up empty. Guarded against the unique
-                -- (tenant_id, project_id, objective_id, name) index too, in case a row named
-                -- "In Progress" already exists in that scope under a different category.
+                -- A collision must not skip repair. Select the first unused suffix, including
+                -- deleted names because the existing unique name index covers physical rows.
                 INSERT INTO task_statuses (
                     id, tenant_id, project_id, objective_id, name, display_order,
                     requires_approval, approver_id, marks_task_complete, visibility,
                     category, color, created_at, created_by_id, is_deleted
                 )
-                SELECT
-                    gen_random_uuid(), scope.tenant_id, scope.project_id, scope.objective_id,
-                    'In Progress', scope.max_order + 1,
+                SELECT gen_random_uuid(), scope.tenant_id, scope.project_id, scope.objective_id,
+                    available.name, scope.max_order + 1,
                     false, NULL, false, 'public', 'active', '#2563EB', now(),
                     (SELECT s.created_by_id FROM task_statuses s
                      WHERE s.tenant_id = scope.tenant_id AND s.project_id = scope.project_id
-                       AND s.objective_id IS NOT DISTINCT FROM scope.objective_id
-                     ORDER BY s.display_order LIMIT 1),
-                    false
+                       AND s.objective_id IS NOT DISTINCT FROM scope.objective_id AND NOT s.is_deleted
+                     ORDER BY s.display_order, s.id LIMIT 1), false
                 FROM (
-                    SELECT tenant_id, project_id, objective_id, MAX(display_order) AS max_order
+                    SELECT tenant_id, project_id, objective_id, MAX(display_order) AS max_order,
+                        COUNT(*) AS row_count
                     FROM task_statuses
                     GROUP BY tenant_id, project_id, objective_id
+                    HAVING bool_or(NOT is_deleted)
                 ) scope
+                CROSS JOIN LATERAL (
+                    SELECT CASE WHEN n = 0 THEN 'In Progress'
+                        ELSE 'In Progress (' || n || ')' END AS name
+                    FROM generate_series(0, scope.row_count) n
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM task_statuses s
+                        WHERE s.tenant_id = scope.tenant_id AND s.project_id = scope.project_id
+                          AND s.objective_id IS NOT DISTINCT FROM scope.objective_id
+                          AND s.name = CASE WHEN n = 0 THEN 'In Progress'
+                              ELSE 'In Progress (' || n || ')' END)
+                    ORDER BY n LIMIT 1
+                ) available
                 WHERE NOT EXISTS (
-                    SELECT 1 FROM task_statuses s3
-                    WHERE s3.tenant_id = scope.tenant_id AND s3.project_id = scope.project_id
-                      AND s3.objective_id IS NOT DISTINCT FROM scope.objective_id
-                      AND s3.category = 'active'
-                )
-                AND NOT EXISTS (
-                    SELECT 1 FROM task_statuses s4
-                    WHERE s4.tenant_id = scope.tenant_id AND s4.project_id = scope.project_id
-                      AND s4.objective_id IS NOT DISTINCT FROM scope.objective_id
-                      AND s4.name = 'In Progress'
+                    SELECT 1 FROM task_statuses s
+                    WHERE s.tenant_id = scope.tenant_id AND s.project_id = scope.project_id
+                      AND s.objective_id IS NOT DISTINCT FROM scope.objective_id
+                      AND NOT s.is_deleted AND s.category = 'active'
                 );
             """);
 
@@ -135,3 +135,4 @@ namespace ONEVO.Infrastructure.Migrations
         }
     }
 }
+
