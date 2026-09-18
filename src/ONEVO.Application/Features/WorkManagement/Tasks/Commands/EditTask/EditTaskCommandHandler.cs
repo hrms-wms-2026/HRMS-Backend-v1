@@ -6,6 +6,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
@@ -27,12 +28,15 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
     private readonly ITaskEditLogRepository _editLogs;
     private readonly ITaskPercentageLogRepository _percentageLogs;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly ITaskAssignmentRepository _assignments;
 
     public EditTaskCommandHandler(
         ICurrentUser currentUser, IWorkTaskRepository tasks, IObjectiveRepository objectives,
         IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork, ISprintRepository sprints,
         ICallerIdentityResolver identity, ITaskEditLogRepository editLogs, ITaskPercentageLogRepository percentageLogs,
-        ICalendarEventRepository calendarEvents)
+        ICalendarEventRepository calendarEvents, IMilestoneMembershipCoordinator membership,
+        ITaskAssignmentRepository assignments)
     {
         _currentUser = currentUser;
         _tasks = tasks;
@@ -44,6 +48,8 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         _editLogs = editLogs;
         _percentageLogs = percentageLogs;
         _calendarEvents = calendarEvents;
+        _membership = membership;
+        _assignments = assignments;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(EditTaskCommand request, CancellationToken ct)
@@ -59,6 +65,14 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         var task = await _tasks.GetTrackedByIdForTenantAsync(tenantId, request.TaskId, ct);
         if (task is null)
             return Result<WorkTaskResponse>.NotFound("Task not found.");
+
+        var objective = await _objectives.GetByIdForTenantAsync(tenantId, task.ObjectiveId, ct);
+        if (objective is null)
+            return Result<WorkTaskResponse>.NotFound("Objective not found.");
+
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
+            return Result<WorkTaskResponse>.Forbidden(
+                "Only this milestone's owner can edit tasks directly. Non-owner members must submit a task edit request.");
 
         if (task.SprintId.HasValue)
         {
@@ -86,10 +100,6 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
 
         if (request.EstimatedHours.HasValue && request.EstimatedHours.Value != task.EstimatedHours)
         {
-            var objective = await _objectives.GetByIdForTenantAsync(tenantId, task.ObjectiveId, ct);
-            if (objective is null)
-                return Result<WorkTaskResponse>.NotFound("Objective not found.");
-
             var slack = await _slack.CalculateAsync(tenantId, objective, excludingTaskId: task.Id, ct: ct);
             if (request.EstimatedHours.Value > slack)
                 return Result<WorkTaskResponse>.Conflict(
@@ -153,10 +163,14 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
+            var assignments = await _assignments.GetByTaskIdAsync(task.Id, innerCt);
+            var assigneeIds = assignments.Select(a => a.EmployeeId).ToList();
+
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
                 task.CategoryId, task.StatusId, task.Priority, task.StoryPoints,
-                task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId));
+                task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
+                assigneeIds));
         }, ct);
     }
 }

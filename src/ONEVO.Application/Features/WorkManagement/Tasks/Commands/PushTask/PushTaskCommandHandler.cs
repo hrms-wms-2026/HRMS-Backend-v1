@@ -17,10 +17,12 @@ public class PushTaskCommandHandler : IRequestHandler<PushTaskCommand, Result<Wo
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly ITaskPercentageLogRepository _percentageLogs;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ITaskAssignmentRepository _assignments;
 
     public PushTaskCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IWorkTaskRepository tasks,
-        ITaskClockingSessionRepository sessions, ITaskPercentageLogRepository percentageLogs, IUnitOfWork unitOfWork)
+        ITaskClockingSessionRepository sessions, ITaskPercentageLogRepository percentageLogs, IUnitOfWork unitOfWork,
+        ITaskAssignmentRepository assignments)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -28,6 +30,7 @@ public class PushTaskCommandHandler : IRequestHandler<PushTaskCommand, Result<Wo
         _sessions = sessions;
         _percentageLogs = percentageLogs;
         _unitOfWork = unitOfWork;
+        _assignments = assignments;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(PushTaskCommand request, CancellationToken ct)
@@ -81,10 +84,14 @@ public class PushTaskCommandHandler : IRequestHandler<PushTaskCommand, Result<Wo
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
+            var assignments = await _assignments.GetByTaskIdAsync(task.Id, innerCt);
+            var assigneeIds = assignments.Select(a => a.EmployeeId).ToList();
+
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
                 task.CategoryId, task.StatusId, task.Priority, task.StoryPoints,
-                task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId));
+                task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
+                assigneeIds));
         }, ct);
     }
 }

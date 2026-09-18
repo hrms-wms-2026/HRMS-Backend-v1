@@ -182,6 +182,10 @@ public class ApproveTaskEditRequestCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result<WorkTaskResponse>>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
+        var assignments = new Mock<ITaskAssignmentRepository>();
+        assignments.Setup(x => x.GetByTaskIdAsync(TaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<TaskAssignment>());
+
         var handler = new ApproveTaskEditRequestCommandHandler(
             currentUser.Object,
             identity.Object,
@@ -195,7 +199,8 @@ public class ApproveTaskEditRequestCommandHandlerTests
             unitOfWork.Object,
             editLogRepository.Object,
             percentageLogRepository.Object,
-            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object);
+            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
+            assignments.Object);
 
         return (handler, task, tasks, requests, editLogs, percentageLogs);
 
