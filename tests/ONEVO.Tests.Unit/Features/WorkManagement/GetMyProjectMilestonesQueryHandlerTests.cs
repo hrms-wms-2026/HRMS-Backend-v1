@@ -244,6 +244,55 @@ public class GetMyProjectMilestonesQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_CallerIsOwner_IsEffectiveOwnerTrue()
+    {
+        var (handler, _) = BuildHandler(
+            new List<ProjectMember> { Membership(MilestoneId) },
+            new List<Objective> { Milestone() },
+            OwnerAndManagerNames,
+            callerId: OwnerId);
+
+        var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(Assert.Single(result.Value!).IsEffectiveOwner);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsActiveNonOwnerMember_IsEffectiveOwnerFalse()
+    {
+        // Unlike IsOwner (IsEffectiveManagerAsync semantics), IsEffectiveOwner must stay
+        // owner-only - a plain active member is not the owner, and gates like the task-edit
+        // save-vs-request decision must not treat them as one.
+        var (handler, _) = BuildHandler(
+            new List<ProjectMember> { Membership(MilestoneId, isActive: true) },
+            new List<Objective> { Milestone() },
+            OwnerAndManagerNames);
+
+        var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var item = Assert.Single(result.Value!);
+        Assert.True(item.IsOwner);
+        Assert.False(item.IsEffectiveOwner);
+    }
+
+    [Fact]
+    public async Task Handle_CallerOwnsAncestorButHasNoMembershipRowAnywhere_ChildIsEffectiveOwnerTrue()
+    {
+        var (handler, _) = BuildHandler(
+            new List<ProjectMember>(),
+            new List<Objective> { DefaultObjective(), Milestone() },
+            OwnerAndManagerNames,
+            callerId: OwnerId);
+
+        var result = await handler.Handle(new GetMyProjectMilestonesQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.All(result.Value!, m => Assert.True(m.IsEffectiveOwner));
+    }
+
+    [Fact]
     public async Task Handle_ActiveMemberOfAncestor_CascadesToChildObjectiveWithNoDirectRow()
     {
         // The actual bug: caller is only ever added to the parent (Default) objective, never
