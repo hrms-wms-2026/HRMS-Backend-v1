@@ -108,7 +108,7 @@ public class TasksController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Resolves Work Management notification click-through targets (Board / Approvals).</summary>
+    /// <summary>Resolves Work Management notification click-through targets (Board / Approvals / Tree).</summary>
     [HttpGet("notification-navigation")]
     public async Task<IActionResult> NotificationNavigation(
         [FromQuery] string relatedEntityType, [FromQuery] Guid relatedEntityId, CancellationToken ct)

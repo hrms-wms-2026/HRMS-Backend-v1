@@ -5,7 +5,11 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RejectObjectiveChangeRequest;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
+using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement;
@@ -26,8 +30,8 @@ public class RejectObjectiveChangeRequestCommandHandlerTests
         ReportingManagerId = ManagerEmployeeId, Status = ObjectiveChangeRequestStatuses.Pending, CreatedAt = DateTimeOffset.UtcNow
     };
 
-    private (RejectObjectiveChangeRequestCommandHandler Handler, Mock<IObjectiveChangeRequestRepository> Requests) BuildHandler(
-        ObjectiveChangeRequest? request, Guid? callerId = null)
+    private (RejectObjectiveChangeRequestCommandHandler Handler, Mock<IObjectiveChangeRequestRepository> Requests, Mock<INotificationDispatcher> Notifications) BuildHandler(
+        ObjectiveChangeRequest? request, Guid? callerId = null, Objective? objective = null, Employee? requesterAssignee = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -43,8 +47,10 @@ public class RejectObjectiveChangeRequestCommandHandlerTests
         var requests = new Mock<IObjectiveChangeRequestRepository>();
         requests.Setup(x => x.GetByIdForTenantAsync(TenantId, RequestId, It.IsAny<CancellationToken>())).ReturnsAsync(request);
 
-        var objectives = new Mock<ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces.IObjectiveRepository>();
-        var membership = new Mock<ONEVO.Application.Features.WorkManagement.Objectives.Services.IMilestoneMembershipCoordinator>();
+        var objectives = new Mock<IObjectiveRepository>();
+        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(requesterAssignee);
         var notifications = new Mock<INotificationDispatcher>();
 
         var unitOfWork = new Mock<IUnitOfWork>();
@@ -53,13 +59,13 @@ public class RejectObjectiveChangeRequestCommandHandlerTests
         var handler = new RejectObjectiveChangeRequestCommandHandler(
             currentUser.Object, identity.Object, requests.Object, objectives.Object,
             membership.Object, notifications.Object, unitOfWork.Object);
-        return (handler, requests);
+        return (handler, requests, notifications);
     }
 
     [Fact]
     public async Task Handle_Reject_MarksRejectedOnly()
     {
-        var (handler, requests) = BuildHandler(PendingRequest());
+        var (handler, requests, _) = BuildHandler(PendingRequest());
 
         var result = await handler.Handle(new RejectObjectiveChangeRequestCommand(RequestId), CancellationToken.None);
 
@@ -70,7 +76,7 @@ public class RejectObjectiveChangeRequestCommandHandlerTests
     [Fact]
     public async Task Handle_CallerNotReportingManager_ReturnsForbidden()
     {
-        var (handler, _) = BuildHandler(PendingRequest(), callerId: OtherUserId);
+        var (handler, _, _) = BuildHandler(PendingRequest(), callerId: OtherUserId);
 
         var result = await handler.Handle(new RejectObjectiveChangeRequestCommand(RequestId), CancellationToken.None);
 
@@ -81,11 +87,33 @@ public class RejectObjectiveChangeRequestCommandHandlerTests
     [Fact]
     public async Task Handle_RequestNotFound_ReturnsNotFound()
     {
-        var (handler, _) = BuildHandler(null);
+        var (handler, _, _) = BuildHandler(null);
 
         var result = await handler.Handle(new RejectObjectiveChangeRequestCommand(RequestId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_RejectEdit_NotifiesRequesterWithEditDecidedTemplate()
+    {
+        var editRequest = new ObjectiveChangeRequest
+        {
+            Id = RequestId, TenantId = TenantId, ObjectiveId = ObjectiveId, RequestType = ObjectiveChangeRequestTypes.Edit,
+            ReportingManagerId = ManagerEmployeeId, RequestedById = OtherEmployeeId,
+            Status = ObjectiveChangeRequestStatuses.Pending, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var objective = new Objective { Id = ObjectiveId, TenantId = TenantId, Title = "Sub Module" };
+        var requesterAssignee = new Employee { Id = OtherEmployeeId, TenantId = TenantId, UserId = Guid.NewGuid() };
+        var (handler, _, notifications) = BuildHandler(editRequest, objective: objective, requesterAssignee: requesterAssignee);
+
+        var result = await handler.Handle(new RejectObjectiveChangeRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        notifications.Verify(x => x.SendTemplatedAsync(
+            TenantId, requesterAssignee.UserId, "work_objective_edit_request_decided",
+            It.Is<IReadOnlyDictionary<string, string>>(d => d["decision"] == "rejected" && d["objectiveName"] == "Sub Module"),
+            "objective_change_request", RequestId, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

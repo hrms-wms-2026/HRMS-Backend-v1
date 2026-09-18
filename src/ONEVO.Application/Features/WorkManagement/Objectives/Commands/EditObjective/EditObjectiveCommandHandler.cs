@@ -7,7 +7,6 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
-using ONEVO.Application.Features.WorkManagement.Objectives.Helpers;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
@@ -17,16 +16,22 @@ namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObje
 
 public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand, Result<ObjectiveEditOutcomeResponse>>
 {
+    // Payloads are stored camelCase so the frontend can JSON.parse PayloadJson directly (matches
+    // its own DTO field names) instead of only ever seeing System.Text.Json's PascalCase default.
+    public static readonly JsonSerializerOptions PayloadJsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly INotificationDispatcher _notifications;
 
     public EditObjectiveCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IObjectiveChangeRequestRepository changeRequests, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
+        IObjectiveChangeRequestRepository changeRequests, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership,
+        INotificationDispatcher notifications)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -34,6 +39,7 @@ public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand,
         _changeRequests = changeRequests;
         _unitOfWork = unitOfWork;
         _membership = membership;
+        _notifications = notifications;
     }
 
     public async Task<Result<ObjectiveEditOutcomeResponse>> Handle(EditObjectiveCommand request, CancellationToken ct)
@@ -65,63 +71,61 @@ public class EditObjectiveCommandHandler : IRequestHandler<EditObjectiveCommand,
             return Result<ObjectiveEditOutcomeResponse>.Forbidden("Only this milestone's head can edit it.");
 
         // Every non-default Objective always has a parent (Task 5 sets ParentObjectiveId at
-        // creation) - loaded to run the conflict check against it.
-        var parent = await _objectives.GetByIdForTenantAsync(tenantId, objective.ParentObjectiveId!.Value, ct);
-        if (parent is null)
+        // creation).
+        if (objective.ParentObjectiveId is null)
             return Result<ObjectiveEditOutcomeResponse>.NotFound("Parent objective not found.");
 
-        // At most one pending change request per Objective (design intent) - this gates every
-        // edit attempt uniformly, not just the ones that would themselves create a new pending
-        // request. Otherwise an immediate edit could apply on top of - and later be silently
-        // overwritten by - a stale pending request's eventual approval.
+        // At most one pending change request per Objective (design intent) - otherwise a second
+        // edit could later be silently overwritten by a stale pending request's own approval.
         if (await _changeRequests.HasPendingForObjectiveAsync(tenantId, objective.Id, ct))
             return Result<ObjectiveEditOutcomeResponse>.Conflict("A change request is already pending for this objective.");
 
-        var conflicts = ObjectiveParentConstraintChecker.Conflicts(parent, request.StartDate, request.EndDate, request.AllocatedHours);
-        var isCreator = objective.CreatedById == userId;
+        // Every edit always routes through the Reporting Manager / parent milestone's head for
+        // approval - the head of a milestone can no longer apply their own edits directly,
+        // regardless of whether the edit conflicts with the parent's constraints or who created
+        // the milestone. The approver validates parent-constraint conflicts (and may adjust the
+        // requested fields) at approval time - see ApproveObjectiveChangeRequestCommandHandler.
+        var payload = new EditObjectiveRequestPayload(request.Title.Trim(), request.Description?.Trim(), request.StartDate, request.EndDate, request.AllocatedHours);
+        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [callerEmployeeId.Value], ct);
+        var requesterDisplayName = names.GetValueOrDefault(callerEmployeeId.Value) ?? "A teammate";
 
-        // Non-conflicting edits always apply immediately, regardless of who's asking. Conflicting
-        // edits also apply immediately if the caller is the Objective's own creator - a creator
-        // never needs approval for their own creation (design §4).
-        if (!conflicts || isCreator)
+        return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            var now = DateTimeOffset.UtcNow;
-            objective.Title = request.Title.Trim();
-            objective.Description = request.Description?.Trim();
-            objective.StartDate = request.StartDate;
-            objective.EndDate = request.EndDate;
-            objective.AllocatedHours = request.AllocatedHours;
-            objective.UpdatedAt = now;
+            var changeRequest = new ObjectiveChangeRequest
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                ObjectiveId = objective.Id,
+                RequestType = ObjectiveChangeRequestTypes.Edit,
+                RequestedById = callerEmployeeId.Value,
+                // Objective.ReportingManagerId is only ever null for the Default Objective, already
+                // excluded above - safe to unwrap here.
+                ReportingManagerId = objective.ReportingManagerId!.Value,
+                Status = ObjectiveChangeRequestStatuses.Pending,
+                PayloadJson = JsonSerializer.Serialize(payload, PayloadJsonOptions),
+                CreatedById = userId,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
 
-            _objectives.Update(objective);
-            await _unitOfWork.SaveChangesAsync(ct);
+            await _changeRequests.AddAsync(changeRequest, innerCt);
+
+            var manager = await _membership.GetActiveAssigneeAsync(tenantId, objective.ReportingManagerId!.Value, innerCt);
+            if (manager is not null)
+            {
+                await _notifications.SendTemplatedAsync(
+                    tenantId, manager.UserId, "work_objective_edit_request_created",
+                    new Dictionary<string, string>
+                    {
+                        ["requesterName"] = requesterDisplayName,
+                        ["objectiveName"] = objective.Title
+                    },
+                    "objective_change_request", changeRequest.Id, innerCt);
+            }
+
+            await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<ObjectiveEditOutcomeResponse>.Success(
-                new ObjectiveEditOutcomeResponse(Applied: true, ObjectiveMapper.ToDetail(objective), PendingRequest: null));
-        }
-
-        var payload = new EditObjectiveRequestPayload(request.Title.Trim(), request.Description?.Trim(), request.StartDate, request.EndDate, request.AllocatedHours);
-
-        var changeRequest = new ObjectiveChangeRequest
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            ObjectiveId = objective.Id,
-            RequestType = ObjectiveChangeRequestTypes.Edit,
-            RequestedById = callerEmployeeId.Value,
-            // Objective.ReportingManagerId is only ever null for the Default Objective, already
-            // excluded above - safe to unwrap here.
-            ReportingManagerId = objective.ReportingManagerId!.Value,
-            Status = ObjectiveChangeRequestStatuses.Pending,
-            PayloadJson = JsonSerializer.Serialize(payload),
-            CreatedById = userId,
-            CreatedAt = DateTimeOffset.UtcNow
-        };
-
-        await _changeRequests.AddAsync(changeRequest, ct);
-        await _unitOfWork.SaveChangesAsync(ct);
-
-        return Result<ObjectiveEditOutcomeResponse>.Success(
-            new ObjectiveEditOutcomeResponse(Applied: false, Objective: null, ObjectiveMapper.ToResponse(changeRequest)));
+                new ObjectiveEditOutcomeResponse(Applied: false, Objective: null, ObjectiveMapper.ToResponse(changeRequest)));
+        }, ct);
     }
 }

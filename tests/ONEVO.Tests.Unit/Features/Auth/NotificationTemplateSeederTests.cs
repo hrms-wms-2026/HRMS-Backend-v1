@@ -75,7 +75,7 @@ public sealed class NotificationTemplateSeederTests : IDisposable
         Assert.Contains("leave_request_cancelled_by_employee", codes);
         Assert.Contains("leave_request_cancelled_by_hr", codes);
         Assert.Contains("leave_request_partially_cancelled", codes);
-        Assert.Equal(28, codes.Count);
+        Assert.Equal(31, codes.Count);
         var expectedCodes = new[]
         {
             "work_task_creation_request_created",
@@ -83,6 +83,8 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "work_task_edit_request_decided",
             "work_allocation_extend_request_created",
             "work_allocation_extend_request_decided",
+            "work_objective_edit_request_created",
+            "work_objective_edit_request_decided",
             "work_sprint_completed",
             "work_sprint_incomplete",
             "work_sprint_achieved",
@@ -100,6 +102,7 @@ public sealed class NotificationTemplateSeederTests : IDisposable
             "work_area_change_request_decided",
             "work_area_change_request_cancelled",
             "work_project_member_invited",
+            "work_objective_invitation_created",
             "work_project_member_accepted",
             "calendar_event_participant_added",
             "calendar_event_updated",
