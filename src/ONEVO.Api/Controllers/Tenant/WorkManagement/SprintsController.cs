@@ -8,6 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Sprints.Commands.AchieveSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.CompleteSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.CreateSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.EditSprint;
+using ONEVO.Application.Features.WorkManagement.Sprints.Commands.StartSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetObjectiveSprints;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetProjectSprints;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetSprintTasks;
@@ -39,6 +40,17 @@ public class SprintsController : ControllerBase
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditSprintRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new EditSprintCommand(id, request.Name, request.StartDate, request.EndDate), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("sprints/{id:guid}/start")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> Start(Guid id, [FromBody] StartSprintRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new StartSprintCommand(id, request.StartDate, request.EndDate, request.Goal), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
