@@ -120,7 +120,8 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
         }
 
         var statuses = await _statuses.GetProjectTemplateAsync(tenantId, objective.ProjectId, ct);
-        var defaultStatus = statuses.Where(s => !s.MarksTaskComplete).OrderBy(s => s.DisplayOrder).FirstOrDefault();
+        var defaultStatus = statuses.Where(s => s.Category == TaskStatusCategories.NotStarted).OrderBy(s => s.DisplayOrder).FirstOrDefault()
+            ?? statuses.Where(s => s.Category == TaskStatusCategories.Active).OrderBy(s => s.DisplayOrder).FirstOrDefault();
         if (defaultStatus is null)
             return Result<WorkTaskResponse>.Failure("No task statuses configured for this milestone yet.", 422);
 
@@ -175,3 +176,4 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
         }, ct);
     }
 }
+

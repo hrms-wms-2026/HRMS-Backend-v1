@@ -15,7 +15,11 @@ public static class WorkTaskViewModelMapper
 
     public static TaskStatusViewModel ToViewModel(this TaskStatusResponse dto) => new(
         dto.Id, dto.Name, dto.DisplayOrder, dto.RequiresApproval,
-        dto.ApproverId, dto.MarksTaskComplete, dto.Visibility);
+        dto.ApproverId, dto.MarksTaskComplete, dto.Visibility, dto.Category, dto.Color);
+
+    public static ClockInTaskViewModel ToViewModel(this ClockInTaskResponse dto) => new(
+        dto.MovedToStatus is null ? null : new TaskStatusMoveInfoViewModel(
+            dto.MovedToStatus.Id, dto.MovedToStatus.Name, dto.MovedToStatus.Color));
 
     public static TaskCategoryViewModel ToViewModel(this TaskCategoryResponse dto) => new(dto.Id, dto.Name, dto.DisplayOrder);
 

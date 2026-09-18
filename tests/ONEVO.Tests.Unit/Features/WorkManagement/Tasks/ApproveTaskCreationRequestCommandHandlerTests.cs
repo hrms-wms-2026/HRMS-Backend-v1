@@ -50,7 +50,8 @@ public class ApproveTaskCreationRequestCommandHandlerTests
     private (ApproveTaskCreationRequestCommandHandler Handler, Mock<IWorkTaskRepository> Tasks, Mock<ITaskCreationRequestRepository> Requests) BuildApprove(
         decimal allocatedHours, decimal existingTaskSum, decimal requestedHours, Guid? callerEmployeeId = null, bool sprintLess = false,
         bool? callerIsEffectiveManager = null, bool categoryExists = true, Guid? categoryProjectId = null,
-        Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null)
+        Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null,
+        IReadOnlyList<TaskStatusEntity>? template = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
         var currentUser = new Mock<ICurrentUser>();
@@ -89,7 +90,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
 
         var statuses = new Mock<ITaskStatusRepository>();
         statuses.Setup(x => x.GetProjectTemplateAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TaskStatusEntity>
+            .ReturnsAsync(template ?? new List<TaskStatusEntity>
             {
                 new() { Id = DefaultStatusId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, Name = "To Do", DisplayOrder = 0, CreatedAt = DateTimeOffset.UtcNow }
             });
@@ -127,6 +128,34 @@ public class ApproveTaskCreationRequestCommandHandlerTests
         return (handler, tasks, requests);
     }
 
+    [Fact]
+    public async Task Handle_NotStartedAfterActive_PrefersNotStarted()
+    {
+        var expected = Guid.NewGuid();
+        var (handler, _, _) = BuildApprove(100, 0, 10, template: new List<TaskStatusEntity>
+        {
+            new() { Id = Guid.NewGuid(), Category = TaskStatusCategories.Active, DisplayOrder = 0 },
+            new() { Id = expected, Category = TaskStatusCategories.NotStarted, DisplayOrder = 2 }
+        });
+        var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expected, result.Value!.StatusId);
+    }
+
+    [Fact]
+    public async Task Handle_NoNotStarted_UsesLowestActive()
+    {
+        var expected = Guid.NewGuid();
+        var (handler, _, _) = BuildApprove(100, 0, 10, template: new List<TaskStatusEntity>
+        {
+            new() { Id = Guid.NewGuid(), Category = TaskStatusCategories.Done, DisplayOrder = 0, MarksTaskComplete = true },
+            new() { Id = Guid.NewGuid(), Category = TaskStatusCategories.Active, DisplayOrder = 5 },
+            new() { Id = expected, Category = TaskStatusCategories.Active, DisplayOrder = 2 }
+        });
+        var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expected, result.Value!.StatusId);
+    }
     [Fact]
     public async Task Handle_OwnerWithinSlack_ApprovesAndCreatesTask()
     {
@@ -384,3 +413,4 @@ public class CancelTaskCreationRequestCommandHandlerTests
         requests.Verify(x => x.Update(It.IsAny<TaskCreationRequest>()), Times.Never);
     }
 }
+

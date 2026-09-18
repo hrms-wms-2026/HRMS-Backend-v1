@@ -232,7 +232,7 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> CreateStatus(Guid projectId, [FromBody] CreateTaskStatusRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateTaskStatusCommand(
-            projectId, request.Name, request.DisplayOrder, request.Visibility, request.MarksTaskComplete,
+            projectId, request.Name, request.DisplayOrder, request.Visibility, request.Category, request.Color,
             request.RequiresApproval, request.ApproverId), ct);
 
         return result.IsSuccess
@@ -248,7 +248,7 @@ public class TasksController : ControllerBase
         var result = await _mediator.Send(new ReorderTaskStatusesCommand(
             projectId,
             request.Updates.Select(u => new TaskStatusOrderUpdate(
-                u.StatusId, u.DisplayOrder, u.Visibility, u.MarksTaskComplete)).ToList()), ct);
+                u.StatusId, u.DisplayOrder, u.Visibility, u.Category, u.Color)).ToList()), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.Select(s => s.ToViewModel()).ToList())
@@ -260,7 +260,8 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> EditStatus(Guid id, [FromBody] EditTaskStatusRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new EditTaskStatusCommand(
-            id, request.Name, request.DisplayOrder, request.RequiresApproval, request.ApproverId, request.Visibility), ct);
+            id, request.Name, request.DisplayOrder, request.RequiresApproval, request.ApproverId,
+            request.Visibility, request.Category, request.Color), ct);
 
         return result.IsSuccess
             ? NoContent()
@@ -379,7 +380,7 @@ public class TasksController : ControllerBase
         var result = await _mediator.Send(new ClockInTaskCommand(id), ct);
 
         return result.IsSuccess
-            ? NoContent()
+            ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
