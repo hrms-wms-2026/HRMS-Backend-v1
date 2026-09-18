@@ -94,7 +94,8 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         }
 
         var statuses = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
-        var defaultStatus = statuses.Where(s => !s.MarksTaskComplete).OrderBy(s => s.DisplayOrder).FirstOrDefault();
+        var defaultStatus = statuses.Where(s => s.Category == TaskStatusCategories.NotStarted).OrderBy(s => s.DisplayOrder).FirstOrDefault()
+            ?? statuses.Where(s => s.Category == TaskStatusCategories.Active).OrderBy(s => s.DisplayOrder).FirstOrDefault();
         if (defaultStatus is null)
             return Result<WorkTaskResponse>.Failure("No task statuses configured for this milestone yet.", 422);
 
