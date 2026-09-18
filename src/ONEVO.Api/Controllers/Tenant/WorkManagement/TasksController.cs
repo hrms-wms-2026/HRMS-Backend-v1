@@ -380,7 +380,7 @@ public class TasksController : ControllerBase
         var result = await _mediator.Send(new ClockInTaskCommand(id), ct);
 
         return result.IsSuccess
-            ? NoContent()
+            ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

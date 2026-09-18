@@ -65,6 +65,10 @@ public sealed record TaskStatusViewModel(
     Guid? ApproverId, bool MarksTaskComplete, string Visibility,
     string Category, string Color);
 
+public sealed record TaskStatusMoveInfoViewModel(Guid Id, string Name, string Color);
+
+public sealed record ClockInTaskViewModel(TaskStatusMoveInfoViewModel? MovedToStatus);
+
 public sealed record TaskEditRequestViewModel(
     Guid Id, Guid TaskId, string Status, TaskEditRequestPayload Payload,
     string RequestedByName, DateTimeOffset CreatedAt);
