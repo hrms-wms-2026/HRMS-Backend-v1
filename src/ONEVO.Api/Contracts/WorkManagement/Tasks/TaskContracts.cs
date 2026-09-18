@@ -28,13 +28,15 @@ public sealed record AddReasonRequest(string Reason);
 public sealed record AssignTaskRequest(Guid EmployeeId);
 
 public sealed record EditTaskStatusRequest(
-    string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, string Visibility);
+    string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, string Visibility,
+    string Category, string Color);
 
 public sealed record CreateTaskStatusRequest(
-    string Name, int DisplayOrder, string Visibility, bool MarksTaskComplete, bool RequiresApproval, Guid? ApproverId);
+    string Name, int DisplayOrder, string Visibility, string Category, string Color,
+    bool RequiresApproval, Guid? ApproverId);
 
 public sealed record TaskStatusOrderUpdateRequest(
-    Guid StatusId, int DisplayOrder, string Visibility, bool MarksTaskComplete);
+    Guid StatusId, int DisplayOrder, string Visibility, string Category, string Color);
 
 public sealed record ReorderTaskStatusesRequest(List<TaskStatusOrderUpdateRequest> Updates);
 
@@ -60,7 +62,8 @@ public sealed record WorkTaskViewModel(
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,
-    Guid? ApproverId, bool MarksTaskComplete, string Visibility);
+    Guid? ApproverId, bool MarksTaskComplete, string Visibility,
+    string Category, string Color);
 
 public sealed record TaskEditRequestViewModel(
     Guid Id, Guid TaskId, string Status, TaskEditRequestPayload Payload,
