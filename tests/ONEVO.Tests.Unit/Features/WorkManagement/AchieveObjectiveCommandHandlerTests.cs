@@ -202,6 +202,17 @@ public class AchieveObjectiveCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_OnlyDraftSprints_Succeeds()
+    {
+        var (handler, objectives, _, _) = BuildHandler(SubObjective(createdById: HeadUserId),
+            sprints: new List<Sprint> { SprintOnObjective(SprintStatuses.Draft) });
+
+        var result = await handler.Handle(new AchieveObjectiveCommand(ObjectiveId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
     public async Task Handle_SprintNeitherCompleteNorAchieved_ReturnsFailure()
     {
         var (handler, objectives, _, _) = BuildHandler(

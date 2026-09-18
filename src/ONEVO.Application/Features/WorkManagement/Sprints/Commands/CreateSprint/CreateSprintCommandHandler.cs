@@ -56,7 +56,11 @@ public class CreateSprintCommandHandler : IRequestHandler<CreateSprintCommand, R
         {
             var now = DateTimeOffset.UtcNow;
             var today = DateOnly.FromDateTime(now.UtcDateTime);
-            var initialStatus = request.StartDate <= today ? SprintStatuses.Active : SprintStatuses.Future;
+            // SprintStatuses.Future no longer exists post-redesign; Draft is the nearest remaining
+            // constant. This date-driven computation itself is superseded by Task 2's
+            // CreateSprintCommand rewrite (always-Draft, dateless creation) - kept only so this
+            // handler still compiles and behaves as before until that task lands.
+            var initialStatus = request.StartDate <= today ? SprintStatuses.Active : SprintStatuses.Draft;
 
             var sprint = new Sprint
             {
@@ -69,7 +73,7 @@ public class CreateSprintCommandHandler : IRequestHandler<CreateSprintCommand, R
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<SprintResponse>.Success(new SprintResponse(
-                sprint.Id, sprint.ObjectiveId, sprint.Name, sprint.StartDate, sprint.EndDate, sprint.Status,
+                sprint.Id, sprint.ObjectiveId, sprint.Name, sprint.Goal, sprint.StartDate, sprint.EndDate, sprint.Status,
                 sprint.CompletedAt, sprint.AchievedAt));
         }, ct);
     }

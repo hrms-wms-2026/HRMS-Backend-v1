@@ -6,7 +6,7 @@ namespace ONEVO.Tests.Unit.Features.WorkManagement.Sprints;
 public class SprintConfigurationTests
 {
     [Fact]
-    public void Sprint_DefaultsStatusToFuture()
+    public void Sprint_DefaultsStatusToDraft()
     {
         var sprint = new Sprint
         {
@@ -15,6 +15,6 @@ public class SprintConfigurationTests
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        Assert.Equal(SprintStatuses.Future, sprint.Status);
+        Assert.Equal(SprintStatuses.Draft, sprint.Status);
     }
 }

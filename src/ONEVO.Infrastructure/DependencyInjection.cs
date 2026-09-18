@@ -565,7 +565,7 @@ public static class DependencyInjection
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IInactivityCaptureAttemptRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfInactivityCaptureAttemptRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
-        services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
+        // services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>(); // restored in Task 6, rewritten
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();

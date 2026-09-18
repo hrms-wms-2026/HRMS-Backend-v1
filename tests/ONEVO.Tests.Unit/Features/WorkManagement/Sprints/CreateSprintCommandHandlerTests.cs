@@ -60,14 +60,17 @@ public class CreateSprintCommandHandlerTests
     [Fact]
     public async Task Handle_StartDateInFuture_CreatesWithFutureStatus()
     {
+        // SprintStatuses.Future was removed by the lifecycle redesign (Task 1); this handler's
+        // date-driven initialStatus computation is itself superseded in Task 2, which will rewrite
+        // this test. Draft is the nearest remaining constant for the not-yet-active branch.
         var (handler, sprints) = Build(OwnerEmployeeId);
         var command = new CreateSprintCommand(ObjectiveId, "Sprint 1", DateOnly.FromDateTime(DateTime.UtcNow.AddDays(7)), DateOnly.FromDateTime(DateTime.UtcNow.AddDays(21)));
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(SprintStatuses.Future, result.Value!.Status);
-        sprints.Verify(x => x.AddAsync(It.Is<Sprint>(s => s.Status == SprintStatuses.Future), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(SprintStatuses.Draft, result.Value!.Status);
+        sprints.Verify(x => x.AddAsync(It.Is<Sprint>(s => s.Status == SprintStatuses.Draft), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

@@ -65,6 +65,6 @@ public sealed class GetProjectSprintsQueryHandler : IRequestHandler<GetProjectSp
 
         return Result<IReadOnlyList<SprintResponse>>.Success(
             sprints.Select(s => new SprintResponse(
-                s.Id, s.ObjectiveId, s.Name, s.StartDate, s.EndDate, s.Status, s.CompletedAt, s.AchievedAt)).ToList());
+                s.Id, s.ObjectiveId, s.Name, s.Goal, s.StartDate, s.EndDate, s.Status, s.CompletedAt, s.AchievedAt)).ToList());
     }
 }

@@ -80,7 +80,7 @@ public class EditSprintCommandHandlerTests
     public async Task Handle_TerminalSprint_ReturnsConflict(string status)
     {
         var (handler, sprint) = Build(status);
-        var command = new EditSprintCommand(SprintId, "New Name", sprint.StartDate, sprint.EndDate);
+        var command = new EditSprintCommand(SprintId, "New Name", sprint.StartDate!.Value, sprint.EndDate!.Value);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -93,7 +93,7 @@ public class EditSprintCommandHandlerTests
     public async Task Handle_NotOwner_ReturnsForbidden()
     {
         var (handler, sprint) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId);
-        var command = new EditSprintCommand(SprintId, "New Name", sprint.StartDate, sprint.EndDate);
+        var command = new EditSprintCommand(SprintId, "New Name", sprint.StartDate!.Value, sprint.EndDate!.Value);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
