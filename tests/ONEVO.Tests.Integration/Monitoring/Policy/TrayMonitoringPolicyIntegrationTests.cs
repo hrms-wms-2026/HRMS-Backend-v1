@@ -80,7 +80,7 @@ public sealed class TrayMonitoringPolicyIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetPolicy_AutoScreenshotOff_ReturnsInactivityDisabled()
+    public async Task GetPolicy_ScreenshotOn_ReturnsInactivityEnabled_EvenIfAutoScreenshotOff()
     {
         var slug = $"pol-off-{Guid.NewGuid():N}"[..20];
         var user = await SeedActiveUserAsync(slug, $"{slug}@test.dev", "TestPass1!");
@@ -96,7 +96,7 @@ public sealed class TrayMonitoringPolicyIntegrationTests : IAsyncLifetime
 
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("screenshot_enabled").GetBoolean().Should().BeTrue();
-        body.GetProperty("inactivity_screenshot_enabled").GetBoolean().Should().BeFalse();
+        body.GetProperty("inactivity_screenshot_enabled").GetBoolean().Should().BeTrue();
     }
 
     /// <summary>

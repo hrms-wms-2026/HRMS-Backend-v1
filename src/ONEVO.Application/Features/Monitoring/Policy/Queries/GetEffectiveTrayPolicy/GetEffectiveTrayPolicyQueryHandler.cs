@@ -82,7 +82,10 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
         var allowedRadiusMeters = await _toggles.GetAllowedRadiusMetersAsync(
             tenantId, employeeId, legalEntityId, cancellationToken);
 
-        var inactivityEnabled = activityEnabled && screenshotEnabled && autoScreenshotEnabled;
+        // Screenshot capture + activity monitoring is what the Monitoring UI exposes
+        // ("Screenshot capture" + "Activity check threshold"). AutoScreenshotCapture is
+        // not on that screen, so requiring it left the tray prompt/Allow path dark.
+        var inactivityEnabled = activityEnabled && screenshotEnabled;
         var now = _clock.UtcNow;
 
         var todayContextResult = await _todayState.ResolveContextAsync(tenantId, employeeId, cancellationToken);

@@ -128,7 +128,7 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
     }
 
     [Fact]
-    public async Task Screenshot_prompt_requires_activity_capture_and_auto_capture()
+    public async Task Screenshot_and_activity_enable_inactivity_prompt_even_if_auto_capture_off()
     {
         Set(MonitoringCapability.ActivityMonitoring, true);
         Set(MonitoringCapability.ApplicationTracking, true);
@@ -142,8 +142,22 @@ public class GetEffectiveTrayPolicyQueryHandlerTests
         result.Value!.ActivitySignalEnabled.Should().BeTrue();
         result.Value.AppUsageEnabled.Should().BeTrue();
         result.Value.ScreenshotEnabled.Should().BeTrue();
-        result.Value.InactivityScreenshotEnabled.Should().BeFalse();
+        result.Value.InactivityScreenshotEnabled.Should().BeTrue();
         result.Value.CameraVerificationEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Screenshot_off_disables_inactivity_prompt()
+    {
+        Set(MonitoringCapability.ActivityMonitoring, true);
+        Set(MonitoringCapability.ScreenshotCapture, false);
+        Set(MonitoringCapability.AutoScreenshotCapture, true);
+
+        var result = await CreateSut().Handle(new GetEffectiveTrayPolicyQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ScreenshotEnabled.Should().BeFalse();
+        result.Value.InactivityScreenshotEnabled.Should().BeFalse();
     }
 
     [Fact]
