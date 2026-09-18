@@ -279,4 +279,95 @@ public class MilestoneMembershipCoordinatorTests
 
         Assert.False(result);
     }
+
+    // --- IsEffectiveOwnerAsync: same tree, but unlike IsEffectiveManagerAsync plain active
+    // membership must NOT count - only OwnerId (self or an ancestor's) does. ---
+
+    [Fact]
+    public async Task IsEffectiveOwnerAsync_SelfOwner_ReturnsTrue()
+    {
+        var root = MakeObjective(RootId, null, OtherEmployeeId);
+        var child = MakeObjective(ChildId, RootId, OtherEmployeeId);
+        var grandchild = MakeObjective(GrandchildId, ChildId, EmployeeId);
+        var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
+        var (coordinator, _) = BuildTreeCoordinator(root, child, grandchild, sibling);
+
+        var result = await coordinator.IsEffectiveOwnerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task IsEffectiveOwnerAsync_SelfActiveMemberNotOwner_ReturnsFalse()
+    {
+        var root = MakeObjective(RootId, null, OtherEmployeeId);
+        var child = MakeObjective(ChildId, RootId, OtherEmployeeId);
+        var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
+        var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
+        var (coordinator, members) = BuildTreeCoordinator(root, child, grandchild, sibling);
+        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, GrandchildId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = GrandchildId, EmployeeId = EmployeeId, IsActive = true } });
+
+        var result = await coordinator.IsEffectiveOwnerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task IsEffectiveOwnerAsync_ParentOwner_ReturnsTrue()
+    {
+        var root = MakeObjective(RootId, null, OtherEmployeeId);
+        var child = MakeObjective(ChildId, RootId, EmployeeId);
+        var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
+        var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
+        var (coordinator, _) = BuildTreeCoordinator(root, child, grandchild, sibling);
+
+        var result = await coordinator.IsEffectiveOwnerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task IsEffectiveOwnerAsync_GrandparentActiveMemberNotOwner_ReturnsFalse()
+    {
+        var root = MakeObjective(RootId, null, OtherEmployeeId);
+        var child = MakeObjective(ChildId, RootId, OtherEmployeeId);
+        var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
+        var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
+        var (coordinator, members) = BuildTreeCoordinator(root, child, grandchild, sibling);
+        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, RootId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new ProjectMember { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = RootId, EmployeeId = EmployeeId, IsActive = true } });
+
+        var result = await coordinator.IsEffectiveOwnerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task IsEffectiveOwnerAsync_SiblingOwner_ReturnsFalse()
+    {
+        var root = MakeObjective(RootId, null, OtherEmployeeId);
+        var child = MakeObjective(ChildId, RootId, OtherEmployeeId);
+        var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
+        var sibling = MakeObjective(SiblingId, null, EmployeeId);
+        var (coordinator, _) = BuildTreeCoordinator(root, child, grandchild, sibling);
+
+        var result = await coordinator.IsEffectiveOwnerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task IsEffectiveOwnerAsync_NoRelationship_ReturnsFalse()
+    {
+        var root = MakeObjective(RootId, null, OtherEmployeeId);
+        var child = MakeObjective(ChildId, RootId, OtherEmployeeId);
+        var grandchild = MakeObjective(GrandchildId, ChildId, OtherEmployeeId);
+        var sibling = MakeObjective(SiblingId, null, OtherEmployeeId);
+        var (coordinator, _) = BuildTreeCoordinator(root, child, grandchild, sibling);
+
+        var result = await coordinator.IsEffectiveOwnerAsync(TenantId, GrandchildId, EmployeeId, CancellationToken.None);
+
+        Assert.False(result);
+    }
 }

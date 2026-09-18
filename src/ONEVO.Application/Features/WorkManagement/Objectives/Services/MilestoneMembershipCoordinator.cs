@@ -101,4 +101,21 @@ public class MilestoneMembershipCoordinator : IMilestoneMembershipCoordinator
 
         return false;
     }
+
+    public async Task<bool> IsEffectiveOwnerAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default)
+    {
+        var cursor = await _objectives.GetByIdForTenantAsync(tenantId, objectiveId, ct);
+
+        while (cursor is not null)
+        {
+            if (cursor.OwnerId == employeeId)
+                return true;
+
+            cursor = cursor.ParentObjectiveId is null
+                ? null
+                : await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
+        }
+
+        return false;
+    }
 }

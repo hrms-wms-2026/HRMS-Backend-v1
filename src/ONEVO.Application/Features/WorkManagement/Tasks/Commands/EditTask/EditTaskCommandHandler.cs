@@ -70,7 +70,7 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         if (objective is null)
             return Result<WorkTaskResponse>.NotFound("Objective not found.");
 
-        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
+        if (!await _membership.IsEffectiveOwnerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<WorkTaskResponse>.Forbidden(
                 "Only this milestone's owner can edit tasks directly. Non-owner members must submit a task edit request.");
 

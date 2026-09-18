@@ -38,7 +38,7 @@ public class EditTaskCommandHandlerTests
         string title = "Old",
         string priority = WorkTaskPriorities.Medium,
         int progressPercent = 0,
-        bool callerIsEffectiveManager = true,
+        bool callerIsEffectiveOwner = true,
         Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null)
     {
         var currentUser = new Mock<ICurrentUser>();
@@ -95,8 +95,8 @@ public class EditTaskCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result<WorkTaskResponse>>> op, CancellationToken ct) => op(ct));
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
-        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerIsEffectiveManager);
+        membership.Setup(x => x.IsEffectiveOwnerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveOwner);
 
         var assignments = new Mock<ITaskAssignmentRepository>();
         assignments.Setup(x => x.GetByTaskIdAsync(TaskId, It.IsAny<CancellationToken>()))
@@ -151,7 +151,7 @@ public class EditTaskCommandHandlerTests
     public async Task Handle_CallerNotEffectiveManager_ReturnsForbiddenWithoutUpdatingTask()
     {
         var (handler, _, editLogs, _, task, _) = Build(
-            allocatedHours: 100m, existingSumExcludingThisTask: 40m, callerIsEffectiveManager: false);
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m, callerIsEffectiveOwner: false);
         var command = new EditTaskCommand(
             task.Id, "Attempted Title", task.Description, task.Priority, task.DueDate,
             task.EstimatedHours, task.StoryPoints, null, null);
