@@ -39,7 +39,7 @@ public class SprintsController : ControllerBase
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditSprintRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new EditSprintCommand(id, request.Name, request.StartDate, request.EndDate), ct);
+        var result = await _mediator.Send(new EditSprintCommand(id, request.Name, request.Goal, request.StartDate, request.EndDate), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())

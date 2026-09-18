@@ -1,7 +1,7 @@
 namespace ONEVO.Api.Contracts.WorkManagement.Sprints;
 
 public sealed record CreateSprintRequest(string Name, string? Goal);
-public sealed record EditSprintRequest(string Name, DateOnly StartDate, DateOnly EndDate);
+public sealed record EditSprintRequest(string Name, string? Goal, DateOnly? StartDate, DateOnly? EndDate);
 
 // Added ahead of the tasks that wire them up (StartSprintCommand / CompleteSprintCommand rework) -
 // the API contracts are part of Task 1's response-shape foundation; the commands/handlers/controller
