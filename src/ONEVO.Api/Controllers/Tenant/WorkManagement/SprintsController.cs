@@ -59,9 +59,9 @@ public class SprintsController : ControllerBase
 
     [HttpPost("sprints/{id:guid}/complete")]
     [RequirePermission("projects:access")]
-    public async Task<IActionResult> Complete(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Complete(Guid id, [FromBody] CompleteSprintRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new CompleteSprintCommand(id), ct);
+        var result = await _mediator.Send(new CompleteSprintCommand(id, request.Disposition, request.TargetSprintId), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())

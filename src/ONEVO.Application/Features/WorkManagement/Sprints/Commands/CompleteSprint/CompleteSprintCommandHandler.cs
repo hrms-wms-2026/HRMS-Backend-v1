@@ -49,6 +49,12 @@ public class CompleteSprintCommandHandler : IRequestHandler<CompleteSprintComman
         if (!_currentUser.IsAuthenticated)
             return Result<SprintResponse>.Forbidden("Authentication required.");
 
+        if (request.Disposition is not ("backlog" or "sprint"))
+            return Result<SprintResponse>.Failure("Unrecognized disposition.", 422);
+
+        if (request.Disposition == "sprint" && request.TargetSprintId is null)
+            return Result<SprintResponse>.Failure("A target sprint is required when moving tasks to another sprint.", 422);
+
         var tenantId = _currentUser.TenantId;
         var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, _currentUser.UserId, ct);
         if (callerEmployeeId is null)
@@ -65,17 +71,27 @@ public class CompleteSprintCommandHandler : IRequestHandler<CompleteSprintComman
         if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<SprintResponse>.Forbidden("Only this milestone's owner can complete sprints.");
 
-        var tasks = await _tasks.GetBySprintIdAsync(tenantId, sprint.Id, ct);
-        var distinctStatusIds = tasks.Select(t => t.StatusId).Distinct().ToList();
-        foreach (var statusId in distinctStatusIds)
+        if (request.Disposition == "sprint")
         {
-            var status = await _statuses.GetByIdForTenantAsync(tenantId, statusId, ct);
-            if (status is null || !status.MarksTaskComplete)
-                return Result<SprintResponse>.Failure("Every task in this sprint must be in a complete status before it can be marked Complete.", 422);
+            var targetSprint = await _sprints.GetByIdForTenantAsync(tenantId, request.TargetSprintId!.Value, ct);
+            if (targetSprint is null || targetSprint.ObjectiveId != objective.Id)
+                return Result<SprintResponse>.Failure("Target sprint must belong to the same milestone.", 422);
         }
+
+        var tasks = await _tasks.GetBySprintIdAsync(tenantId, sprint.Id, ct);
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
+            foreach (var task in tasks)
+            {
+                var status = await _statuses.GetByIdForTenantAsync(tenantId, task.StatusId, innerCt);
+                if (status is not null && status.MarksTaskComplete) continue;
+
+                task.SprintId = request.Disposition == "sprint" ? request.TargetSprintId : null;
+                task.UpdatedAt = DateTimeOffset.UtcNow;
+                _tasks.Update(task);
+            }
+
             sprint.Status = SprintStatuses.Complete;
             sprint.CompletedAt = DateTimeOffset.UtcNow;
             sprint.UpdatedAt = DateTimeOffset.UtcNow;
