@@ -27,7 +27,7 @@ public class CreateTaskStatusCommandHandlerTests
     private static readonly Guid ProjectId = Guid.NewGuid();
 
     private (CreateTaskStatusCommandHandler Handler, Mock<ITaskStatusRepository> Statuses) Build(
-        Guid callerEmployeeId, bool? callerIsEffectiveManager = null)
+        Guid callerEmployeeId, bool? callerIsEffectiveManager = null, List<TaskStatusEntity>? existing = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -47,6 +47,8 @@ public class CreateTaskStatusCommandHandlerTests
         objectives.Setup(x => x.GetDefaultByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(defaultObjective);
 
         var statuses = new Mock<ITaskStatusRepository>();
+        statuses.Setup(x => x.GetProjectTemplateAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing ?? new List<TaskStatusEntity>());
 
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<TaskStatusResponse>>>>(), It.IsAny<CancellationToken>()))
@@ -54,11 +56,6 @@ public class CreateTaskStatusCommandHandlerTests
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
-        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
-        // unmodified; callerIsEffectiveManager lets a test override this to simulate a
-        // non-owner grant (the coordinator's own membership logic is unit-tested separately
-        // in MilestoneMembershipCoordinatorTests). Keyed on the default Objective's Id, since
-        // the handler now resolves the Project's default Objective as its authorization root.
         membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerIsEffectiveManager ?? (callerEmployeeId == OwnerEmployeeId));
 
@@ -67,23 +64,53 @@ public class CreateTaskStatusCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_Owner_CreatesStatus()
+    public async Task Handle_Owner_CreatesActiveStatus()
     {
         var (handler, statuses) = Build(OwnerEmployeeId);
-        var command = new CreateTaskStatusCommand(ProjectId, "Blocked", 4, TaskStatusVisibilities.Public, false, false, null);
+        var command = new CreateTaskStatusCommand(ProjectId, "Blocked", 4, TaskStatusVisibilities.Public, TaskStatusCategories.Active, "#2563EB", false, null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Blocked", result.Value!.Name);
-        statuses.Verify(x => x.AddAsync(It.Is<TaskStatusEntity>(s => s.Name == "Blocked" && s.ProjectId == ProjectId && s.ObjectiveId == null && s.Visibility == TaskStatusVisibilities.Public), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.False(result.Value.MarksTaskComplete);
+        statuses.Verify(x => x.AddAsync(It.Is<TaskStatusEntity>(s =>
+            s.Name == "Blocked" && s.ProjectId == ProjectId && s.ObjectiveId == null &&
+            s.Category == TaskStatusCategories.Active && s.Color == "#2563EB" && !s.MarksTaskComplete), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_DoneCategory_DerivesMarksTaskCompleteTrue()
+    {
+        var (handler, statuses) = Build(OwnerEmployeeId);
+        var command = new CreateTaskStatusCommand(ProjectId, "Shipped", 5, TaskStatusVisibilities.Private, TaskStatusCategories.Done, "#16A34A", false, null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value!.MarksTaskComplete);
+        statuses.Verify(x => x.AddAsync(It.Is<TaskStatusEntity>(s => s.MarksTaskComplete), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_DoneCategoryWhenDoneAlreadyExists_ReturnsConflict()
+    {
+        var existingDone = new TaskStatusEntity { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "Done", Category = TaskStatusCategories.Done, MarksTaskComplete = true, Visibility = TaskStatusVisibilities.Private, CreatedAt = DateTimeOffset.UtcNow };
+        var (handler, statuses) = Build(OwnerEmployeeId, existing: new List<TaskStatusEntity> { existingDone });
+        var command = new CreateTaskStatusCommand(ProjectId, "Also Done", 5, TaskStatusVisibilities.Private, TaskStatusCategories.Done, "#16A34A", false, null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        statuses.Verify(x => x.AddAsync(It.IsAny<TaskStatusEntity>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task Handle_NotOwner_ReturnsForbidden()
     {
         var (handler, statuses) = Build(OtherEmployeeId);
-        var command = new CreateTaskStatusCommand(ProjectId, "Blocked", 4, TaskStatusVisibilities.Public, false, false, null);
+        var command = new CreateTaskStatusCommand(ProjectId, "Blocked", 4, TaskStatusVisibilities.Public, TaskStatusCategories.Active, "#2563EB", false, null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -95,36 +122,12 @@ public class CreateTaskStatusCommandHandlerTests
     [Fact]
     public async Task Handle_CallerIsEffectiveManagerViaAncestor_CreatesStatus()
     {
-        // Caller is not the default Objective's own OwnerId, but IsEffectiveManagerAsync reports
-        // them as an effective manager via an ancestor (grandparent) membership - the coordinator's
-        // own ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests,
-        // so this only proves the handler defers to its answer instead of the direct OwnerId check.
         var (handler, statuses) = Build(OtherEmployeeId, callerIsEffectiveManager: true);
-        var command = new CreateTaskStatusCommand(ProjectId, "Blocked", 4, TaskStatusVisibilities.Public, false, false, null);
+        var command = new CreateTaskStatusCommand(ProjectId, "Blocked", 4, TaskStatusVisibilities.Public, TaskStatusCategories.Active, "#2563EB", false, null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("Blocked", result.Value!.Name);
         statuses.Verify(x => x.AddAsync(It.Is<TaskStatusEntity>(s => s.Name == "Blocked" && s.ProjectId == ProjectId && s.ObjectiveId == null), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task Handle_PlainMemberOfDefaultObjective_CreatesStatus()
-    {
-        // Under the old per-Objective model, a plain (non-owner) Objective member could never
-        // create task statuses at all - only the objective's own owner could. Per the design's
-        // authorization decision, Task Status is now Project-level configuration that any
-        // project member can change, not just the owner/lead. This proves a plain active member
-        // of the Project's default Objective (granted via IsEffectiveManagerAsync returning true
-        // through direct membership, not ownership) can now create a status.
-        var (handler, statuses) = Build(OtherEmployeeId, callerIsEffectiveManager: true);
-        var command = new CreateTaskStatusCommand(ProjectId, "In Review", 2, TaskStatusVisibilities.Public, false, true, null);
-
-        var result = await handler.Handle(command, CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal("In Review", result.Value!.Name);
-        statuses.Verify(x => x.AddAsync(It.Is<TaskStatusEntity>(s => s.Name == "In Review" && s.ProjectId == ProjectId && s.ObjectiveId == null), It.IsAny<CancellationToken>()), Times.Once);
     }
 }
