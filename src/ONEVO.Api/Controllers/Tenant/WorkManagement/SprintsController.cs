@@ -27,7 +27,7 @@ public class SprintsController : ControllerBase
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Create(Guid objectiveId, [FromBody] CreateSprintRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new CreateSprintCommand(objectiveId, request.Name, request.StartDate, request.EndDate), ct);
+        var result = await _mediator.Send(new CreateSprintCommand(objectiveId, request.Name, request.Goal), ct);
 
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())

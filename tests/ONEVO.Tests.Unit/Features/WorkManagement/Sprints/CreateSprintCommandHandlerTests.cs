@@ -40,10 +40,6 @@ public class CreateSprintCommandHandlerTests
 
         var sprints = new Mock<ISprintRepository>();
 
-        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
-        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
-        // ancestor-cascade grant (the coordinator's own ancestor-walk logic is unit-tested
-        // separately in MilestoneMembershipCoordinatorTests).
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerIsEffectiveManager ?? (objective.OwnerId == callerEmployeeId));
@@ -58,50 +54,40 @@ public class CreateSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_StartDateInFuture_CreatesWithFutureStatus()
+    public async Task Handle_ValidRequest_CreatesDraftSprintWithNoDates()
     {
-        // SprintStatuses.Future was removed by the lifecycle redesign (Task 1); this handler's
-        // date-driven initialStatus computation is itself superseded in Task 2, which will rewrite
-        // this test. Draft is the nearest remaining constant for the not-yet-active branch.
         var (handler, sprints) = Build(OwnerEmployeeId);
-        var command = new CreateSprintCommand(ObjectiveId, "Sprint 1", DateOnly.FromDateTime(DateTime.UtcNow.AddDays(7)), DateOnly.FromDateTime(DateTime.UtcNow.AddDays(21)));
+        var command = new CreateSprintCommand(ObjectiveId, "Sprint 1", "Ship the thing");
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(SprintStatuses.Draft, result.Value!.Status);
-        sprints.Verify(x => x.AddAsync(It.Is<Sprint>(s => s.Status == SprintStatuses.Draft), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Null(result.Value!.StartDate);
+        Assert.Null(result.Value!.EndDate);
+        Assert.Equal("Ship the thing", result.Value!.Goal);
+        sprints.Verify(x => x.AddAsync(
+            It.Is<Sprint>(s => s.Status == SprintStatuses.Draft && s.StartDate == null && s.EndDate == null && s.Goal == "Ship the thing"),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Handle_StartDateTodayOrEarlier_CreatesWithActiveStatus()
+    public async Task Handle_NoGoal_CreatesWithNullGoal()
     {
         var (handler, sprints) = Build(OwnerEmployeeId);
-        var command = new CreateSprintCommand(ObjectiveId, "Sprint 1", DateOnly.FromDateTime(DateTime.UtcNow), DateOnly.FromDateTime(DateTime.UtcNow.AddDays(14)));
+        var command = new CreateSprintCommand(ObjectiveId, "Sprint 1", null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(SprintStatuses.Active, result.Value!.Status);
-    }
-
-    [Fact]
-    public async Task Handle_EndDateBeforeStartDate_ReturnsFailure()
-    {
-        var (handler, sprints) = Build(OwnerEmployeeId);
-        var command = new CreateSprintCommand(ObjectiveId, "Sprint 1", DateOnly.FromDateTime(DateTime.UtcNow.AddDays(14)), DateOnly.FromDateTime(DateTime.UtcNow));
-
-        var result = await handler.Handle(command, CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        sprints.Verify(x => x.AddAsync(It.IsAny<Sprint>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Null(result.Value!.Goal);
     }
 
     [Fact]
     public async Task Handle_NotOwner_ReturnsForbidden()
     {
         var (handler, sprints) = Build(OtherEmployeeId);
-        var command = new CreateSprintCommand(ObjectiveId, "Sprint 1", DateOnly.FromDateTime(DateTime.UtcNow), DateOnly.FromDateTime(DateTime.UtcNow.AddDays(14)));
+        var command = new CreateSprintCommand(ObjectiveId, "Sprint 1", null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -112,12 +98,8 @@ public class CreateSprintCommandHandlerTests
     [Fact]
     public async Task Handle_CallerIsEffectiveManagerViaCascade_CreatesSprint()
     {
-        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
-        // an effective manager via an ancestor membership - the coordinator's own ancestor-walk
-        // logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so this only
-        // proves the handler defers to its answer instead of the direct OwnerId check.
         var (handler, sprints) = Build(OtherEmployeeId, callerIsEffectiveManager: true);
-        var command = new CreateSprintCommand(ObjectiveId, "Sprint 1", DateOnly.FromDateTime(DateTime.UtcNow), DateOnly.FromDateTime(DateTime.UtcNow.AddDays(14)));
+        var command = new CreateSprintCommand(ObjectiveId, "Sprint 1", null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
