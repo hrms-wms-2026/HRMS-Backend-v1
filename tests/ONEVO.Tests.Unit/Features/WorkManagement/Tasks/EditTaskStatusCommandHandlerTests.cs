@@ -26,8 +26,9 @@ public class EditTaskStatusCommandHandlerTests
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid StatusId = Guid.NewGuid();
 
-    private (EditTaskStatusCommandHandler Handler, Mock<ITaskStatusRepository> Statuses) Build(
-        Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null, Guid? statusObjectiveId = null)
+    private (EditTaskStatusCommandHandler Handler, Mock<ITaskStatusRepository> Statuses, TaskStatusEntity Status) Build(
+        string statusCategory, Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null,
+        Guid? statusObjectiveId = null, List<TaskStatusEntity>? siblings = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -42,85 +43,109 @@ public class EditTaskStatusCommandHandlerTests
 
         var status = new TaskStatusEntity
         {
-            Id = StatusId,
-            TenantId = TenantId,
-            ProjectId = ProjectId,
-            ObjectiveId = statusObjectiveId,
-            Name = "In Progress",
-            Visibility = TaskStatusVisibilities.Public,
-            CreatedAt = DateTimeOffset.UtcNow
+            Id = StatusId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = statusObjectiveId,
+            Name = "In Progress", Category = statusCategory,
+            MarksTaskComplete = statusCategory == TaskStatusCategories.Done,
+            Visibility = TaskStatusVisibilities.Public, CreatedAt = DateTimeOffset.UtcNow
         };
+        var all = new List<TaskStatusEntity>(siblings ?? new List<TaskStatusEntity>()) { status };
         var statuses = new Mock<ITaskStatusRepository>();
-        statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, StatusId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(status);
+        statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, StatusId, It.IsAny<CancellationToken>())).ReturnsAsync(status);
+        statuses.Setup(x => x.GetProjectTemplateAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(all);
 
-        var project = new Project
-        {
-            Id = ProjectId,
-            TenantId = TenantId,
-            IsActive = true,
-            Name = "Proj",
-            Identifier = "PRJ",
-            CreatedAt = DateTimeOffset.UtcNow
-        };
+        var project = new Project { Id = ProjectId, TenantId = TenantId, IsActive = true, Name = "Proj", Identifier = "PRJ", CreatedAt = DateTimeOffset.UtcNow };
         var projects = new Mock<IProjectRepository>();
-        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(project);
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
 
-        var defaultObjective = new Objective
-        {
-            Id = ObjectiveId,
-            TenantId = TenantId,
-            ProjectId = ProjectId,
-            OwnerId = OwnerEmployeeId,
-            IsActive = true,
-            Title = "Obj",
-            CreatedAt = DateTimeOffset.UtcNow
-        };
+        var defaultObjective = new Objective { Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, OwnerId = OwnerEmployeeId, IsActive = true, Title = "Obj", CreatedAt = DateTimeOffset.UtcNow };
         var objectives = new Mock<IObjectiveRepository>();
-        objectives.Setup(x => x.GetDefaultByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(defaultObjective);
+        objectives.Setup(x => x.GetDefaultByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(defaultObjective);
 
         var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(
-                It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
+        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
-        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
-        // unmodified; callerIsEffectiveManager lets a test override this to simulate a
-        // non-owner grant (the coordinator's own membership logic is unit-tested separately
-        // in MilestoneMembershipCoordinatorTests). Keyed on the default Objective's Id, since
-        // the handler now resolves the Project's default Objective as its authorization root.
         membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerIsEffectiveManager ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
 
         var handler = new EditTaskStatusCommandHandler(
             currentUser.Object, identity.Object, statuses.Object, objectives.Object, projects.Object, unitOfWork.Object, membership.Object);
-        return (handler, statuses);
+        return (handler, statuses, status);
     }
 
     [Fact]
-    public async Task Handle_Owner_UpdatesVisibility()
+    public async Task Handle_Owner_UpdatesVisibilityAndColor()
     {
-        var (handler, statuses) = Build();
-        var command = new EditTaskStatusCommand(
-            StatusId, "Review", 2, false, null, TaskStatusVisibilities.Private);
+        var (handler, statuses, _) = Build(TaskStatusCategories.Active);
+        var command = new EditTaskStatusCommand(StatusId, "Review", 2, false, null, TaskStatusVisibilities.Private, TaskStatusCategories.Active, "#7C3AED");
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        statuses.Verify(x => x.Update(
-            It.Is<TaskStatusEntity>(s => s.Visibility == TaskStatusVisibilities.Private)), Times.Once);
+        statuses.Verify(x => x.Update(It.Is<TaskStatusEntity>(s =>
+            s.Visibility == TaskStatusVisibilities.Private && s.Color == "#7C3AED" && !s.MarksTaskComplete)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ChangeToDoneWhenAnotherDoneExists_ReturnsConflict()
+    {
+        var otherDone = new TaskStatusEntity { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "Done", Category = TaskStatusCategories.Done, MarksTaskComplete = true, Visibility = TaskStatusVisibilities.Private, CreatedAt = DateTimeOffset.UtcNow };
+        var (handler, statuses, _) = Build(TaskStatusCategories.Active, siblings: new List<TaskStatusEntity> { otherDone });
+        var command = new EditTaskStatusCommand(StatusId, "Review", 2, false, null, TaskStatusVisibilities.Public, TaskStatusCategories.Done, "#16A34A");
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        statuses.Verify(x => x.Update(It.IsAny<TaskStatusEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_MoveTheOnlyDoneRowOutOfDone_ReturnsConflict()
+    {
+        var (handler, statuses, _) = Build(TaskStatusCategories.Done);
+        var command = new EditTaskStatusCommand(StatusId, "Done", 3, false, null, TaskStatusVisibilities.Private, TaskStatusCategories.Active, "#2563EB");
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        statuses.Verify(x => x.Update(It.IsAny<TaskStatusEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_MoveTheOnlyActiveRowOutOfActive_ReturnsConflict()
+    {
+        var (handler, statuses, _) = Build(TaskStatusCategories.Active);
+        var command = new EditTaskStatusCommand(StatusId, "To Do", 0, false, null, TaskStatusVisibilities.Public, TaskStatusCategories.NotStarted, "#94A3B8");
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        statuses.Verify(x => x.Update(It.IsAny<TaskStatusEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_MoveOneOfTwoActiveRowsToNotStarted_Succeeds()
+    {
+        var otherActive = new TaskStatusEntity { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "Review", Category = TaskStatusCategories.Active, Visibility = TaskStatusVisibilities.Public, CreatedAt = DateTimeOffset.UtcNow };
+        var (handler, statuses, _) = Build(TaskStatusCategories.Active, siblings: new List<TaskStatusEntity> { otherActive });
+        var command = new EditTaskStatusCommand(StatusId, "To Do", 0, false, null, TaskStatusVisibilities.Public, TaskStatusCategories.NotStarted, "#94A3B8");
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        statuses.Verify(x => x.Update(It.Is<TaskStatusEntity>(s => s.Category == TaskStatusCategories.NotStarted)), Times.Once);
     }
 
     [Fact]
     public async Task Handle_NotOwner_ReturnsForbidden()
     {
-        var (handler, statuses) = Build(callerEmployeeId: OtherEmployeeId);
-        var command = new EditTaskStatusCommand(
-            StatusId, "Review", 2, false, null, TaskStatusVisibilities.Private);
+        var (handler, statuses, _) = Build(TaskStatusCategories.Active, callerEmployeeId: OtherEmployeeId);
+        var command = new EditTaskStatusCommand(StatusId, "Review", 2, false, null, TaskStatusVisibilities.Private, TaskStatusCategories.Active, "#7C3AED");
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -130,33 +155,10 @@ public class EditTaskStatusCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerIsEffectiveManagerViaAncestor_UpdatesVisibility()
-    {
-        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
-        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
-        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
-        // this only proves the handler defers to its answer instead of the direct OwnerId check.
-        var (handler, statuses) = Build(callerEmployeeId: OtherEmployeeId, callerIsEffectiveManager: true);
-        var command = new EditTaskStatusCommand(
-            StatusId, "Review", 2, false, null, TaskStatusVisibilities.Private);
-
-        var result = await handler.Handle(command, CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        statuses.Verify(x => x.Update(
-            It.Is<TaskStatusEntity>(s => s.Visibility == TaskStatusVisibilities.Private)), Times.Once);
-    }
-
-    [Fact]
     public async Task Handle_StatusHasObjectiveId_ReturnsNotFound()
     {
-        // Orphaned per-Objective status copies from before this rework (rows with ObjectiveId
-        // set) must stay inaccessible through this now-Project-scoped endpoint - only the
-        // Project's shared template rows (ObjectiveId == null) are editable here. Proves the
-        // guard rejects a non-template row even with an otherwise-valid StatusId.
-        var (handler, statuses) = Build(statusObjectiveId: ObjectiveId);
-        var command = new EditTaskStatusCommand(
-            StatusId, "Review", 2, false, null, TaskStatusVisibilities.Private);
+        var (handler, statuses, _) = Build(TaskStatusCategories.Active, statusObjectiveId: ObjectiveId);
+        var command = new EditTaskStatusCommand(StatusId, "Review", 2, false, null, TaskStatusVisibilities.Private, TaskStatusCategories.Active, "#7C3AED");
 
         var result = await handler.Handle(command, CancellationToken.None);
 

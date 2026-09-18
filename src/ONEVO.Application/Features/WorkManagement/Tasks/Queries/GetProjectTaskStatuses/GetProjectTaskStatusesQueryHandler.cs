@@ -40,6 +40,6 @@ public class GetProjectTaskStatusesQueryHandler : IRequestHandler<GetProjectTask
         => statuses.OrderBy(s => s.DisplayOrder)
             .Select(s => new TaskStatusResponse(
                 s.Id, s.Name, s.DisplayOrder, s.RequiresApproval,
-                s.ApproverId, s.MarksTaskComplete, s.Visibility))
+                s.ApproverId, s.MarksTaskComplete, s.Visibility, s.Category, s.Color))
             .ToList();
 }

@@ -10,6 +10,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 using Xunit;
 
@@ -26,8 +27,8 @@ public class DeleteTaskStatusCommandHandlerTests
     private static readonly Guid StatusId = Guid.NewGuid();
 
     private (DeleteTaskStatusCommandHandler Handler, Mock<ITaskStatusRepository> Statuses) Build(
-        bool anyTasksInStatus, Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null,
-        Guid? statusObjectiveId = null)
+        string statusCategory, bool anyTasksInStatus, Guid? callerEmployeeId = null,
+        bool? callerIsEffectiveManager = null, Guid? statusObjectiveId = null, List<TaskStatusEntity>? siblings = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -40,9 +41,11 @@ public class DeleteTaskStatusCommandHandlerTests
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(resolvedCallerEmployeeId);
 
-        var status = new TaskStatusEntity { Id = StatusId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = statusObjectiveId, Name = "Blocked", CreatedAt = DateTimeOffset.UtcNow };
+        var status = new TaskStatusEntity { Id = StatusId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = statusObjectiveId, Name = "Blocked", Category = statusCategory, CreatedAt = DateTimeOffset.UtcNow };
+        var all = new List<TaskStatusEntity>(siblings ?? new List<TaskStatusEntity>()) { status };
         var statuses = new Mock<ITaskStatusRepository>();
         statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, StatusId, It.IsAny<CancellationToken>())).ReturnsAsync(status);
+        statuses.Setup(x => x.GetProjectTemplateAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(all);
 
         var project = new Project { Id = ProjectId, TenantId = TenantId, IsActive = true, Name = "Proj", Identifier = "PRJ", CreatedAt = DateTimeOffset.UtcNow };
         var projects = new Mock<IProjectRepository>();
@@ -61,11 +64,6 @@ public class DeleteTaskStatusCommandHandlerTests
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
-        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
-        // unmodified; callerIsEffectiveManager lets a test override this to simulate a
-        // non-owner grant (the coordinator's own membership logic is unit-tested separately
-        // in MilestoneMembershipCoordinatorTests). Keyed on the default Objective's Id, since
-        // the handler now resolves the Project's default Objective as its authorization root.
         membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerIsEffectiveManager ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
 
@@ -74,9 +72,45 @@ public class DeleteTaskStatusCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_NoTasksInStatus_RemovesIt()
+    public async Task Handle_DeleteOneOfTwoActiveRows_Succeeds()
     {
-        var (handler, statuses) = Build(anyTasksInStatus: false);
+        var otherActive = new TaskStatusEntity { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "Review", Category = TaskStatusCategories.Active, CreatedAt = DateTimeOffset.UtcNow };
+        var (handler, statuses) = Build(TaskStatusCategories.Active, anyTasksInStatus: false, siblings: new List<TaskStatusEntity> { otherActive });
+
+        var result = await handler.Handle(new DeleteTaskStatusCommand(StatusId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        statuses.Verify(x => x.Remove(It.Is<TaskStatusEntity>(s => s.Id == StatusId)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_DeleteTheLastActiveRow_ReturnsConflict()
+    {
+        var (handler, statuses) = Build(TaskStatusCategories.Active, anyTasksInStatus: false);
+
+        var result = await handler.Handle(new DeleteTaskStatusCommand(StatusId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        statuses.Verify(x => x.Remove(It.IsAny<TaskStatusEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_DeleteTheSoleDoneRow_ReturnsConflict()
+    {
+        var (handler, statuses) = Build(TaskStatusCategories.Done, anyTasksInStatus: false);
+
+        var result = await handler.Handle(new DeleteTaskStatusCommand(StatusId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        statuses.Verify(x => x.Remove(It.IsAny<TaskStatusEntity>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_DeleteANotStartedRowWithNoSiblingConstraint_Succeeds()
+    {
+        var (handler, statuses) = Build(TaskStatusCategories.NotStarted, anyTasksInStatus: false);
 
         var result = await handler.Handle(new DeleteTaskStatusCommand(StatusId), CancellationToken.None);
 
@@ -87,7 +121,8 @@ public class DeleteTaskStatusCommandHandlerTests
     [Fact]
     public async Task Handle_PhysicalTaskReferenceStillUsesStatus_ReturnsConflict()
     {
-        var (handler, statuses) = Build(anyTasksInStatus: true);
+        var otherActive = new TaskStatusEntity { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "Review", Category = TaskStatusCategories.Active, CreatedAt = DateTimeOffset.UtcNow };
+        var (handler, statuses) = Build(TaskStatusCategories.Active, anyTasksInStatus: true, siblings: new List<TaskStatusEntity> { otherActive });
 
         var result = await handler.Handle(new DeleteTaskStatusCommand(StatusId), CancellationToken.None);
 
@@ -99,7 +134,7 @@ public class DeleteTaskStatusCommandHandlerTests
     [Fact]
     public async Task Handle_NotOwner_ReturnsForbidden()
     {
-        var (handler, statuses) = Build(anyTasksInStatus: false, callerEmployeeId: OtherEmployeeId);
+        var (handler, statuses) = Build(TaskStatusCategories.NotStarted, anyTasksInStatus: false, callerEmployeeId: OtherEmployeeId);
 
         var result = await handler.Handle(new DeleteTaskStatusCommand(StatusId), CancellationToken.None);
 
@@ -109,28 +144,9 @@ public class DeleteTaskStatusCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerIsEffectiveManagerViaAncestor_RemovesIt()
-    {
-        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
-        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
-        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
-        // this only proves the handler defers to its answer instead of the direct OwnerId check.
-        var (handler, statuses) = Build(anyTasksInStatus: false, callerEmployeeId: OtherEmployeeId, callerIsEffectiveManager: true);
-
-        var result = await handler.Handle(new DeleteTaskStatusCommand(StatusId), CancellationToken.None);
-
-        Assert.True(result.IsSuccess);
-        statuses.Verify(x => x.Remove(It.Is<TaskStatusEntity>(s => s.Id == StatusId)), Times.Once);
-    }
-
-    [Fact]
     public async Task Handle_StatusHasObjectiveId_ReturnsNotFound()
     {
-        // Orphaned per-Objective status copies from before this rework (rows with ObjectiveId
-        // set) must stay inaccessible through this now-Project-scoped endpoint - only the
-        // Project's shared template rows (ObjectiveId == null) are deletable here. Proves the
-        // guard rejects a non-template row even with an otherwise-valid StatusId.
-        var (handler, statuses) = Build(anyTasksInStatus: false, statusObjectiveId: ObjectiveId);
+        var (handler, statuses) = Build(TaskStatusCategories.NotStarted, anyTasksInStatus: false, statusObjectiveId: ObjectiveId);
 
         var result = await handler.Handle(new DeleteTaskStatusCommand(StatusId), CancellationToken.None);
 

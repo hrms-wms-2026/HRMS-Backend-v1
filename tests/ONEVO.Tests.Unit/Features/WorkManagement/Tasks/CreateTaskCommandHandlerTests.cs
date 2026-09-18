@@ -42,7 +42,7 @@ public class CreateTaskCommandHandlerTests
         Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null,
         bool categoryExists = true, Guid? categoryProjectId = null,
         Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null,
-        Mock<ITaskAssetLinker>? assetLinker = null)
+        Mock<ITaskAssetLinker>? assetLinker = null, IReadOnlyList<TaskStatusEntity>? template = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? EmployeeId;
 
@@ -69,7 +69,7 @@ public class CreateTaskCommandHandlerTests
 
         var statuses = new Mock<ITaskStatusRepository>();
         statuses.Setup(x => x.GetProjectTemplateAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TaskStatusEntity>
+            .ReturnsAsync(template ?? new List<TaskStatusEntity>
             {
                 new() { Id = DefaultStatusId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, Name = "To Do", DisplayOrder = 0, CreatedAt = DateTimeOffset.UtcNow }
             });
@@ -114,6 +114,47 @@ public class CreateTaskCommandHandlerTests
         return (handler, tasks, sprints);
     }
 
+    [Fact]
+    public async Task Handle_NotStartedPreferredOverEarlierActive_UsesFirstNotStarted()
+    {
+        var first = Guid.NewGuid();
+        var (handler, _, _) = BuildHandler(Owned(100), 0, template: new List<TaskStatusEntity>
+        {
+            new() { Id = Guid.NewGuid(), Category = TaskStatusCategories.Active, DisplayOrder = 0 },
+            new() { Id = Guid.NewGuid(), Category = TaskStatusCategories.NotStarted, DisplayOrder = 3 },
+            new() { Id = first, Category = TaskStatusCategories.NotStarted, DisplayOrder = 2 }
+        });
+        var result = await handler.Handle(new CreateTaskCommand(ObjectiveId, "Task", null, CategoryId, "medium", null, null, null, null), CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(first, result.Value!.StatusId);
+    }
+
+    [Fact]
+    public async Task Handle_NoNotStarted_UsesFirstActive()
+    {
+        var first = Guid.NewGuid();
+        var (handler, _, _) = BuildHandler(Owned(100), 0, template: new List<TaskStatusEntity>
+        {
+            new() { Id = Guid.NewGuid(), Category = TaskStatusCategories.Done, DisplayOrder = 0, MarksTaskComplete = true },
+            new() { Id = Guid.NewGuid(), Category = TaskStatusCategories.Active, DisplayOrder = 4 },
+            new() { Id = first, Category = TaskStatusCategories.Active, DisplayOrder = 2 }
+        });
+        var result = await handler.Handle(new CreateTaskCommand(ObjectiveId, "Task", null, CategoryId, "medium", null, null, null, null), CancellationToken.None);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(first, result.Value!.StatusId);
+    }
+
+    [Fact]
+    public async Task Handle_OnlyDoneStatus_RejectsWithoutCreatingTask()
+    {
+        var (handler, tasks, _) = BuildHandler(Owned(100), 0, template: new List<TaskStatusEntity>
+        {
+            new() { Id = Guid.NewGuid(), Category = TaskStatusCategories.Done, MarksTaskComplete = true }
+        });
+        var result = await handler.Handle(new CreateTaskCommand(ObjectiveId, "Task", null, CategoryId, "medium", null, null, null, null), CancellationToken.None);
+        Assert.Equal(422, result.StatusCode);
+        tasks.Verify(x => x.AddAsync(It.IsAny<WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
     [Fact]
     public async Task Handle_OwnerWithinSlack_CreatesTask()
     {
@@ -336,3 +377,4 @@ public class CreateTaskCommandHandlerTests
         assetLinker.Verify(x => x.SyncDescriptionImagesAsync(TenantId, UserId, result.Value!.Id, "<p>desc</p>", It.IsAny<CancellationToken>()), Times.Once);
     }
 }
+
