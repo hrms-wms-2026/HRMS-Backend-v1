@@ -355,21 +355,21 @@ public sealed class TrayActivationIntegrationTests : IClassFixture<TrayActivatio
     }
 
     [Fact]
-    public async Task Generate_ExceedsRateLimit_Returns429OnFourthRequest()
+    public async Task Generate_ExceedsRateLimit_Returns429OnSixthRequest()
     {
         var user = await _fixture.SeedActiveUserAsync("gen-rate-test", "gen-rate@test.dev", "RatePass1!");
         var session = await _fixture.LoginAndGetSessionAsync(user);
 
-        // First 3 requests must succeed
-        for (var i = 0; i < 3; i++)
+        // First 5 requests in the 10-minute window must succeed
+        for (var i = 0; i < 5; i++)
         {
             var ok = await _fixture.PostGenerateAsync(session);
             ok.StatusCode.Should().Be(
                 HttpStatusCode.OK,
-                $"request {i + 1} of 3 should succeed");
+                $"request {i + 1} of 5 should succeed");
         }
 
-        // Fourth request in the same hour must be rejected
+        // Sixth request in the same window must be rejected
         var tooMany = await _fixture.PostGenerateAsync(session);
 
         tooMany.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
