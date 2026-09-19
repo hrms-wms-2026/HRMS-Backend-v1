@@ -12,7 +12,9 @@ public class GenerateActivationCodeCommandHandler
     : IRequestHandler<GenerateActivationCodeCommand, Result<ActivationCodeResponseDto>>
 {
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(10);
-    private const int MaxCodesPerHour = 3;
+    // Generation is user-triggered (a button), so this only stops spam, not normal use.
+    private const int MaxCodesPerWindow = 5;
+    private static readonly TimeSpan RateLimitWindow = TimeSpan.FromMinutes(10);
     private const int CodeExpiresInSeconds = 600;
 
     private readonly ITrayActivationRepository _repository;
@@ -45,11 +47,11 @@ public class GenerateActivationCodeCommandHandler
                 "Select an active company before creating a tray activation code.");
 
         var recentCount = await _repository.CountRecentCodesForUserAsync(
-            userId, tenantId, now.AddHours(-1), cancellationToken);
+            userId, tenantId, now.Subtract(RateLimitWindow), cancellationToken);
 
-        if (recentCount >= MaxCodesPerHour)
+        if (recentCount >= MaxCodesPerWindow)
             return Result<ActivationCodeResponseDto>.Failure(
-                "Too many activation codes requested. Please wait before trying again.", 429);
+                "Too many activation codes requested. Please wait a few minutes before trying again.", 429);
 
         var rawCode = GenerateCode();
         var codeHash = HashCode(rawCode);
