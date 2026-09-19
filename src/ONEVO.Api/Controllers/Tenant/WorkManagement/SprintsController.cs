@@ -8,7 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Sprints.Commands.AchieveSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.CompleteSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.CreateSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.EditSprint;
-using ONEVO.Application.Features.WorkManagement.Sprints.Commands.SetSprintStatus;
+using ONEVO.Application.Features.WorkManagement.Sprints.Commands.StartSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetObjectiveSprints;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetProjectSprints;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetSprintTasks;
@@ -28,7 +28,7 @@ public class SprintsController : ControllerBase
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Create(Guid objectiveId, [FromBody] CreateSprintRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new CreateSprintCommand(objectiveId, request.Name, request.StartDate, request.EndDate), ct);
+        var result = await _mediator.Send(new CreateSprintCommand(objectiveId, request.Name, request.Goal), ct);
 
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())
@@ -39,7 +39,18 @@ public class SprintsController : ControllerBase
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditSprintRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new EditSprintCommand(id, request.Name, request.StartDate, request.EndDate), ct);
+        var result = await _mediator.Send(new EditSprintCommand(id, request.Name, request.Goal, request.StartDate, request.EndDate), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("sprints/{id:guid}/start")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> Start(Guid id, [FromBody] StartSprintRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new StartSprintCommand(id, request.StartDate, request.EndDate, request.Goal), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
@@ -48,9 +59,9 @@ public class SprintsController : ControllerBase
 
     [HttpPost("sprints/{id:guid}/complete")]
     [RequirePermission("projects:access")]
-    public async Task<IActionResult> Complete(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Complete(Guid id, [FromBody] CompleteSprintRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new CompleteSprintCommand(id), ct);
+        var result = await _mediator.Send(new CompleteSprintCommand(id, request.Disposition, request.TargetSprintId), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
@@ -62,17 +73,6 @@ public class SprintsController : ControllerBase
     public async Task<IActionResult> Achieve(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new AchieveSprintCommand(id), ct);
-
-        return result.IsSuccess
-            ? Ok(result.Value!.ToViewModel())
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    [HttpPatch("sprints/{id:guid}/status")]
-    [RequirePermission("projects:access")]
-    public async Task<IActionResult> SetStatus(Guid id, [FromBody] SetSprintStatusRequest request, CancellationToken ct)
-    {
-        var result = await _mediator.Send(new SetSprintStatusCommand(id, request.Status), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())

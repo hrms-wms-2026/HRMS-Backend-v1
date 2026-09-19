@@ -37,9 +37,6 @@ public class EditSprintCommandHandler : IRequestHandler<EditSprintCommand, Resul
         if (!_currentUser.IsAuthenticated)
             return Result<SprintResponse>.Forbidden("Authentication required.");
 
-        if (request.EndDate < request.StartDate)
-            return Result<SprintResponse>.Failure("End date must not be before start date.");
-
         var tenantId = _currentUser.TenantId;
         var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, _currentUser.UserId, ct);
         if (callerEmployeeId is null)
@@ -59,17 +56,28 @@ public class EditSprintCommandHandler : IRequestHandler<EditSprintCommand, Resul
         if (sprint.Status is SprintStatuses.Complete or SprintStatuses.Achieved)
             return Result<SprintResponse>.Conflict("This sprint has already ended and can no longer be edited.");
 
+        if (sprint.Status == SprintStatuses.Draft && (request.StartDate is not null || request.EndDate is not null))
+            return Result<SprintResponse>.Failure("A Draft sprint has no dates yet - start it to set dates.", 422);
+
+        if (sprint.Status == SprintStatuses.Active && request.StartDate is not null && request.EndDate is not null
+            && request.EndDate < request.StartDate)
+            return Result<SprintResponse>.Failure("End date must not be before start date.");
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             sprint.Name = request.Name.Trim();
-            sprint.StartDate = request.StartDate;
-            sprint.EndDate = request.EndDate;
+            sprint.Goal = request.Goal?.Trim();
+            if (sprint.Status == SprintStatuses.Active && request.StartDate is not null && request.EndDate is not null)
+            {
+                sprint.StartDate = request.StartDate;
+                sprint.EndDate = request.EndDate;
+            }
             sprint.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<SprintResponse>.Success(new SprintResponse(
-                sprint.Id, sprint.ObjectiveId, sprint.Name, sprint.StartDate, sprint.EndDate, sprint.Status,
+                sprint.Id, sprint.ObjectiveId, sprint.Name, sprint.Goal, sprint.StartDate, sprint.EndDate, sprint.Status,
                 sprint.CompletedAt, sprint.AchievedAt));
         }, ct);
     }
