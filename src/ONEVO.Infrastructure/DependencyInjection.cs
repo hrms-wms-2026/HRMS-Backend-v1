@@ -105,6 +105,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Serv
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformProviders.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.SystemConfig;
 using ONEVO.Infrastructure.Persistence.Repositories.SharedPlatform;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
@@ -432,6 +433,7 @@ public static class DependencyInjection
 
         // System Config - Platform Service Keys (Phase 1 canonical table)
         services.AddScoped<IPlatformServiceKeyRepository, EfPlatformServiceKeyRepository>();
+        services.AddScoped<ITrayAppReleaseRepository, EfTrayAppReleaseRepository>();
         services.AddScoped<IPlatformServiceKeyVerificationService, PlatformServiceKeyVerificationService>();
         services.AddScoped<IPlatformServiceKeyResolver, PlatformServiceKeyResolver>();
 
