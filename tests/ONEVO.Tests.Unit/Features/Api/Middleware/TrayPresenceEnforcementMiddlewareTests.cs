@@ -10,6 +10,7 @@ using ONEVO.Api.Middleware;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Options;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 using Xunit;
@@ -35,7 +36,8 @@ public class TrayPresenceEnforcementMiddlewareTests
         string mode,
         TrayDeviceRegistration? device,
         bool authenticated = true,
-        bool allowWithoutActiveTray = false)
+        bool allowWithoutActiveTray = false,
+        bool userRequiresTray = true)
     {
         var tenantContext = new Mock<ITenantContext>();
         tenantContext.Setup(c => c.ContextMode).Returns(TenantContextMode.Tenant);
@@ -51,7 +53,13 @@ public class TrayPresenceEnforcementMiddlewareTests
             .Setup(r => r.FindLatestActiveDeviceForUserAsync(_userId, _tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(device);
 
+        var requirement = new Mock<ITrayPresenceRequirementEvaluator>();
+        requirement
+            .Setup(r => r.IsRequiredForCurrentUserAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(userRequiresTray);
+
         var sp = new Mock<IServiceProvider>();
+        sp.Setup(s => s.GetService(typeof(ITrayPresenceRequirementEvaluator))).Returns(requirement.Object);
         sp.Setup(s => s.GetService(typeof(ITenantContext))).Returns(tenantContext.Object);
         sp.Setup(s => s.GetService(typeof(IOptions<TrayPresenceOptions>))).Returns(options);
         sp.Setup(s => s.GetService(typeof(ITrayActivationRepository))).Returns(repository.Object);
@@ -108,6 +116,18 @@ public class TrayPresenceEnforcementMiddlewareTests
 
         _nextCalled.Should().BeFalse();
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status428PreconditionRequired);
+    }
+
+    [Fact]
+    public async Task EnforceMode_NoConnectedDevice_UserNotRequiredToRunTray_Passes()
+    {
+        var sut = Build(_next);
+        var ctx = MakeContext("Enforce", device: null, userRequiresTray: false);
+
+        await sut.InvokeAsync(ctx, NullLogger<TrayPresenceEnforcementMiddleware>.Instance);
+
+        _nextCalled.Should().BeTrue();
+        ctx.Response.StatusCode.Should().Be(200);
     }
 
     [Fact]

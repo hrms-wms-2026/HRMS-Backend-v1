@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Options;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 
 namespace ONEVO.Api.Middleware;
@@ -61,13 +62,18 @@ public sealed class TrayPresenceEnforcementMiddleware
 
         if (!connected)
         {
-            await WriteRequired(context);
-            return;
+            // Only users the data says must run the tray are blocked: the tenant has the monitoring
+            // module and this user has a monitoring capability enabled. Everyone else passes.
+            var requirement = context.RequestServices.GetRequiredService<ITrayPresenceRequirementEvaluator>();
+            if (await requirement.IsRequiredForCurrentUserAsync(context.RequestAborted))
+            {
+                await WriteRequired(context);
+                return;
+            }
         }
 
         await _next(context);
     }
-
     private static async Task LogObserveResultAsync(
         HttpContext context,
         ITenantContext tenantContext,
@@ -86,7 +92,11 @@ public sealed class TrayPresenceEnforcementMiddleware
         var connected = device?.LastSeenAt is { } lastSeen
             && lastSeen > clock.UtcNow.AddSeconds(-options.GracePeriodSeconds);
         if (!connected)
-            logger.LogInformation("tray_presence_would_block");
+        {
+            var requirement = context.RequestServices.GetRequiredService<ITrayPresenceRequirementEvaluator>();
+            if (await requirement.IsRequiredForCurrentUserAsync(context.RequestAborted))
+                logger.LogInformation("tray_presence_would_block");
+        }
     }
 
     private static async Task WriteRequired(HttpContext context)

@@ -36,6 +36,9 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(assembly);
 
         services.AddScoped<
+            ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPresenceRequirementEvaluator,
+            ONEVO.Application.Features.Monitoring.TrayActivation.Services.TrayPresenceRequirementEvaluator>();
+        services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.Services.IClockInPolicyScopeMembershipValidator,
             ONEVO.Application.Features.TimeAttendance.Services.ClockInPolicyScopeMembershipValidator>();
         services.AddScoped<
