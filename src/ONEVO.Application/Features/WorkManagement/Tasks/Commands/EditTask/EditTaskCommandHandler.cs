@@ -71,6 +71,20 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
                 return Result<WorkTaskResponse>.Forbidden("This task's sprint has been achieved and is now frozen.");
         }
 
+        // Omitted (null) means "leave the current sprint assignment alone" - existing callers of this
+        // endpoint (e.g. the task edit form) never send SprintId at all, so treating null as "clear the
+        // sprint" here would silently kick every edited task out of its sprint. Only an explicit value
+        // moves the task; there is no way to unassign back to the backlog through this field yet.
+        Sprint? targetSprint = null;
+        if (request.SprintId.HasValue && request.SprintId.Value != task.SprintId)
+        {
+            targetSprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId.Value, ct);
+            if (targetSprint is null || targetSprint.ObjectiveId != task.ObjectiveId)
+                return Result<WorkTaskResponse>.Conflict("Target sprint must belong to the same module.");
+            if (targetSprint.Status == SprintStatuses.Achieved)
+                return Result<WorkTaskResponse>.Forbidden("Cannot move a task into an achieved sprint.");
+        }
+
         // R3: a member of an active event cannot have its due date moved outside that event's window.
         if (request.DueDate != task.DueDate)
         {
@@ -117,6 +131,8 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         TrackChange("storyPoints", task.StoryPoints, request.StoryPoints);
         if (request.ProgressPercent.HasValue)
             TrackChange("progressPercent", task.ProgressPercent, request.ProgressPercent.Value);
+        if (targetSprint is not null)
+            TrackChange("sprintId", task.SprintId, targetSprint.Id);
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
@@ -127,6 +143,8 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
             task.DueDate = request.DueDate;
             task.EstimatedHours = request.EstimatedHours;
             task.StoryPoints = request.StoryPoints;
+            if (targetSprint is not null)
+                task.SprintId = targetSprint.Id;
 
             if (request.ProgressPercent.HasValue && request.ProgressPercent.Value != task.ProgressPercent)
             {

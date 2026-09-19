@@ -80,6 +80,6 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
             : await _sprints.GetByObjectiveIdAsync(tenantId, request.ObjectiveId, ct);
 
         return Result<IReadOnlyList<SprintResponse>>.Success(
-            sprints.Select(s => new SprintResponse(s.Id, s.ObjectiveId, s.Name, s.StartDate, s.EndDate, s.Status, s.CompletedAt, s.AchievedAt)).ToList());
+            sprints.Select(s => new SprintResponse(s.Id, s.ObjectiveId, s.Name, s.Goal, s.StartDate, s.EndDate, s.Status, s.CompletedAt, s.AchievedAt)).ToList());
     }
 }

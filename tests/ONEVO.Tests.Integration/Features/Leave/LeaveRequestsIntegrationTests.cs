@@ -86,8 +86,9 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         await CreatePolicyAsync("Annual Policy", leaveTypeId, legalEntityId, 17.5m);
         var employeeId = await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
 
+        var leaveDay = FutureWeekdayUtc();
         var generate = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/entitlements/generate",
-            new { year = 2026, legalEntityId },
+            new { year = leaveDay.Year, legalEntityId },
             cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
         generate.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -95,8 +96,8 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
             new
             {
                 leaveTypeId,
-                startAt = "2026-09-14T09:00:00Z",
-                endAt = "2026-09-14T18:00:00Z",
+                startAt = $"{leaveDay:yyyy-MM-dd}T09:00:00Z",
+                endAt = $"{leaveDay:yyyy-MM-dd}T18:00:00Z",
                 reason = "Family event",
                 fileRecordIds = Array.Empty<Guid>()
             },
@@ -148,16 +149,17 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
         await EnsureWorkWindowAsync(legalEntityId);
         await CreatePolicyAsync("Sick Policy", leaveTypeId, legalEntityId, 10m);
         await EnsureEmployeeInLegalEntityAsync(_tenantId, legalEntityId);
+        var leaveDay = FutureWeekdayUtc();
         var generate = await SendAsync(HttpMethod.Post, _owner.Host, "/api/v1/leave/entitlements/generate",
-            new { year = 2026, legalEntityId },
+            new { year = leaveDay.Year, legalEntityId },
             cookie: _owner.SessionCookie, csrfToken: _owner.CsrfHeader);
         generate.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var body = new
         {
             leaveTypeId,
-            startAt = "2026-09-15T09:00:00Z",
-            endAt = "2026-09-15T18:00:00Z",
+            startAt = $"{leaveDay:yyyy-MM-dd}T09:00:00Z",
+            endAt = $"{leaveDay:yyyy-MM-dd}T18:00:00Z",
             reason = (string?)null,
             fileRecordIds = Array.Empty<Guid>()
         };
@@ -266,6 +268,16 @@ public class LeaveRequestsIntegrationTests : IAsyncLifetime
             .Where(x => x.TenantId == tenantId && x.IsPrimary)
             .Select(x => x.Id)
             .SingleAsync();
+    }
+
+    // The API rejects a leave start date in the past, so fixtures must be relative to "now" rather than
+    // hardcoded - a fixed date silently turns these tests into failures once the calendar passes it.
+    private static DateTime FutureWeekdayUtc(int minDaysAhead = 14)
+    {
+        var day = DateTime.UtcNow.Date.AddDays(minDaysAhead);
+        while (day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+            day = day.AddDays(1);
+        return day;
     }
 
     private async Task EnsureWorkWindowAsync(Guid legalEntityId)

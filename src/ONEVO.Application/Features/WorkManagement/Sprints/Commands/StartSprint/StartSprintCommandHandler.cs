@@ -9,22 +9,12 @@ using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 
-namespace ONEVO.Application.Features.WorkManagement.Sprints.Commands.SetSprintStatus;
+namespace ONEVO.Application.Features.WorkManagement.Sprints.Commands.StartSprint;
 
-/// <summary>
-/// The Objective owner's manual override - any status, any time, bypassing the normal gates
-/// (CompleteSprintCommand's all-tasks-complete check, AchieveSprintCommand's not-already-achieved
-/// check). Marks Sprint.IsManuallyOverridden so SprintLifecycleJob's date-driven sweep stops
-/// touching this sprint - the override has to stick, not get reverted by the next tick.
-/// </summary>
-public class SetSprintStatusCommandHandler : IRequestHandler<SetSprintStatusCommand, Result<SprintResponse>>
+/// <summary>Draft -> Active. The one point where a sprint's dates are ever set - there is no
+/// date-driven auto-advance anymore (see SprintLifecycleJob).</summary>
+public class StartSprintCommandHandler : IRequestHandler<StartSprintCommand, Result<SprintResponse>>
 {
-    private static readonly HashSet<string> ValidStatuses = new(StringComparer.Ordinal)
-    {
-        SprintStatuses.Future, SprintStatuses.Active, SprintStatuses.Complete,
-        SprintStatuses.Incomplete, SprintStatuses.Achieved
-    };
-
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveRepository _objectives;
@@ -32,7 +22,7 @@ public class SetSprintStatusCommandHandler : IRequestHandler<SetSprintStatusComm
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMilestoneMembershipCoordinator _membership;
 
-    public SetSprintStatusCommandHandler(
+    public StartSprintCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
         ISprintRepository sprints, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
     {
@@ -44,13 +34,13 @@ public class SetSprintStatusCommandHandler : IRequestHandler<SetSprintStatusComm
         _membership = membership;
     }
 
-    public async Task<Result<SprintResponse>> Handle(SetSprintStatusCommand request, CancellationToken ct)
+    public async Task<Result<SprintResponse>> Handle(StartSprintCommand request, CancellationToken ct)
     {
         if (!_currentUser.IsAuthenticated)
             return Result<SprintResponse>.Forbidden("Authentication required.");
 
-        if (!ValidStatuses.Contains(request.Status))
-            return Result<SprintResponse>.Failure("Unrecognized sprint status.", 422);
+        if (request.EndDate < request.StartDate)
+            return Result<SprintResponse>.Failure("End date must not be before start date.");
 
         var tenantId = _currentUser.TenantId;
         var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, _currentUser.UserId, ct);
@@ -66,21 +56,24 @@ public class SetSprintStatusCommandHandler : IRequestHandler<SetSprintStatusComm
             return Result<SprintResponse>.NotFound("Objective not found.");
 
         if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
-            return Result<SprintResponse>.Forbidden("Only this milestone's owner can change a sprint's status.");
+            return Result<SprintResponse>.Forbidden("Only this milestone's owner can start sprints.");
+
+        if (sprint.Status != SprintStatuses.Draft)
+            return Result<SprintResponse>.Conflict("Only a Draft sprint can be started.");
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            sprint.Status = request.Status;
-            sprint.CompletedAt = request.Status == SprintStatuses.Complete ? DateTimeOffset.UtcNow : null;
-            sprint.AchievedAt = request.Status == SprintStatuses.Achieved ? DateTimeOffset.UtcNow : null;
-            sprint.IsManuallyOverridden = true;
+            sprint.StartDate = request.StartDate;
+            sprint.EndDate = request.EndDate;
+            if (request.Goal is not null) sprint.Goal = request.Goal.Trim();
+            sprint.Status = SprintStatuses.Active;
             sprint.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<SprintResponse>.Success(new SprintResponse(
-                sprint.Id, sprint.ObjectiveId, sprint.Name, sprint.StartDate, sprint.EndDate, sprint.Status,
-                sprint.CompletedAt, sprint.AchievedAt));
+                sprint.Id, sprint.ObjectiveId, sprint.Name, sprint.Goal, sprint.StartDate, sprint.EndDate,
+                sprint.Status, sprint.CompletedAt, sprint.AchievedAt));
         }, ct);
     }
 }
