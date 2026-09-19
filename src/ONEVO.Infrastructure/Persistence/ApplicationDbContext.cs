@@ -18,6 +18,7 @@ using ONEVO.Domain.Features.SharedPlatform.TenantIntegrations.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entities;
+using ONEVO.Domain.Features.DevPlatform.SystemConfig.TrayReleases.Entities;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -204,6 +205,7 @@ public class ApplicationDbContext : DbContext
 
     // System Config - Platform Service Keys (Phase 1 canonical table)
     public DbSet<PlatformServiceKey> PlatformServiceKeys => Set<PlatformServiceKey>();
+    public DbSet<TrayAppRelease> TrayAppReleases => Set<TrayAppRelease>();
 
     // System Config - Provider Catalog (Phase 1 canonical table)
     public DbSet<PlatformProvider> PlatformProviders => Set<PlatformProvider>();
