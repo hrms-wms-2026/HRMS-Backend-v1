@@ -53,6 +53,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddApplication();
 builder.Services.Configure<ONEVO.Application.Features.Monitoring.TrayActivation.Options.TrayPresenceOptions>(
     builder.Configuration.GetSection("TrayPresence"));
+builder.Services.Configure<ONEVO.Api.Configuration.TrayReleasesOptions>(
+    builder.Configuration.GetSection(ONEVO.Api.Configuration.TrayReleasesOptions.SectionName));
 
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddMemoryCache();
