@@ -1,6 +1,8 @@
 using Moq;
+using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -50,7 +52,9 @@ public sealed class GetProjectTasksQueryHandlerTests
         bool hasReadPermission,
         IReadOnlyList<WorkTask>? tasks = null,
         IReadOnlyList<TaskAssignment>? assignments = null,
-        bool authenticated = true)
+        bool authenticated = true,
+        IReadOnlyDictionary<Guid, EmployeeIdentityDto>? identities = null,
+        string? signedAvatarUrl = "https://files.example.test/signed-avatar")
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
@@ -60,6 +64,12 @@ public sealed class GetProjectTasksQueryHandlerTests
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(EmployeeId);
+        identity.Setup(x => x.ResolveIdentitiesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(identities ?? new Dictionary<Guid, EmployeeIdentityDto>());
+
+        var fileStorage = new Mock<IFileStorageService>();
+        fileStorage.Setup(x => x.GetSignedUrlAsync(TenantId, It.IsAny<Guid>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(signedAvatarUrl is null ? Result<string>.Failure("not found", 404) : Result<string>.Success(signedAvatarUrl));
 
         var projects = new Mock<IProjectRepository>();
         projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
@@ -91,7 +101,7 @@ public sealed class GetProjectTasksQueryHandlerTests
             .ReturnsAsync(new Dictionary<Guid, int>());
 
         return new GetProjectTasksQueryHandler(
-            currentUser.Object, identity.Object, projects.Object, members.Object,
+            currentUser.Object, identity.Object, fileStorage.Object, projects.Object, members.Object,
             permissions.Object, taskRepository.Object, assignmentRepository.Object, sessionRepository.Object,
             CalendarEventRepositoryMocks.Empty().Object);
     }
@@ -156,6 +166,66 @@ public sealed class GetProjectTasksQueryHandlerTests
         var result = await handler.Handle(new GetProjectTasksQuery(ProjectId), CancellationToken.None);
 
         Assert.Equal(new[] { EmployeeId }, Assert.Single(result.Value!).AssigneeEmployeeIds);
+    }
+
+    [Fact]
+    public async Task Handle_PopulatesAssigneeIdentitiesWithResolvedNameAndSignedAvatarUrl()
+    {
+        var task = Task(ObjectiveA, "Assigned");
+        var assigneeId = Guid.NewGuid();
+        var assignment = new TaskAssignment
+        {
+            Id = Guid.NewGuid(),
+            TaskId = task.Id,
+            EmployeeId = assigneeId,
+            UserId = UserId,
+            AssignedById = UserId,
+            AssignedAt = DateTimeOffset.UtcNow
+        };
+        var avatarFileId = Guid.NewGuid();
+        var identities = new Dictionary<Guid, EmployeeIdentityDto>
+        {
+            [assigneeId] = new EmployeeIdentityDto("Nevi Peiris", avatarFileId)
+        };
+        var handler = BuildHandler(
+            ActiveProject(), Array.Empty<Guid>(), hasReadPermission: true, new[] { task }, new[] { assignment },
+            identities: identities, signedAvatarUrl: "https://files.example.test/nevi-avatar");
+
+        var result = await handler.Handle(new GetProjectTasksQuery(ProjectId), CancellationToken.None);
+
+        var resolved = Assert.Single(Assert.Single(result.Value!).Assignees!);
+        Assert.Equal(assigneeId, resolved.EmployeeId);
+        Assert.Equal("Nevi Peiris", resolved.Name);
+        Assert.Equal("https://files.example.test/nevi-avatar", resolved.AvatarUrl);
+    }
+
+    [Fact]
+    public async Task Handle_AssigneeWithNoAvatarUploaded_ResolvesNameWithNullAvatarUrl()
+    {
+        var task = Task(ObjectiveA, "Assigned");
+        var assigneeId = Guid.NewGuid();
+        var assignment = new TaskAssignment
+        {
+            Id = Guid.NewGuid(),
+            TaskId = task.Id,
+            EmployeeId = assigneeId,
+            UserId = UserId,
+            AssignedById = UserId,
+            AssignedAt = DateTimeOffset.UtcNow
+        };
+        var identities = new Dictionary<Guid, EmployeeIdentityDto>
+        {
+            [assigneeId] = new EmployeeIdentityDto("Sam Perera", AvatarFileId: null)
+        };
+        var handler = BuildHandler(
+            ActiveProject(), Array.Empty<Guid>(), hasReadPermission: true, new[] { task }, new[] { assignment },
+            identities: identities);
+
+        var result = await handler.Handle(new GetProjectTasksQuery(ProjectId), CancellationToken.None);
+
+        var resolved = Assert.Single(Assert.Single(result.Value!).Assignees!);
+        Assert.Equal("Sam Perera", resolved.Name);
+        Assert.Null(resolved.AvatarUrl);
     }
 
     [Fact]

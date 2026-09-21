@@ -26,4 +26,17 @@ public class CallerIdentityResolver : ICallerIdentityResolver
         }
         return result;
     }
+
+    public async Task<IReadOnlyDictionary<Guid, EmployeeIdentityDto>> ResolveIdentitiesByEmployeeIdAsync(
+        Guid tenantId, IReadOnlyList<Guid> employeeIds, CancellationToken ct = default)
+    {
+        var result = new Dictionary<Guid, EmployeeIdentityDto>();
+        foreach (var employeeId in employeeIds.Distinct())
+        {
+            var employee = await _employees.GetByIdAsync(tenantId, employeeId, ct);
+            if (employee is not null)
+                result[employeeId] = new EmployeeIdentityDto($"{employee.FirstName} {employee.LastName}", employee.AvatarFileId);
+        }
+        return result;
+    }
 }

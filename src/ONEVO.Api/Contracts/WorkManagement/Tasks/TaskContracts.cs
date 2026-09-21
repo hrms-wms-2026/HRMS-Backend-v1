@@ -52,13 +52,16 @@ public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrde
 
 public sealed record TaskAttachmentViewModel(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
 
+public sealed record TaskAssigneeIdentityViewModel(Guid EmployeeId, string Name, string? AvatarUrl);
+
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
     Guid CategoryId, Guid StatusId, string Priority, int? StoryPoints,
     DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent,
     Guid? SprintId, IReadOnlyList<Guid> AssigneeEmployeeIds, Guid? OpenClockSessionEmployeeId,
     DateTimeOffset? OpenClockSessionClockInAt, int TotalLoggedMinutes,
-    IReadOnlyList<TaskAttachmentViewModel> Attachments);
+    IReadOnlyList<TaskAttachmentViewModel> Attachments,
+    IReadOnlyList<TaskAssigneeIdentityViewModel> Assignees);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,
