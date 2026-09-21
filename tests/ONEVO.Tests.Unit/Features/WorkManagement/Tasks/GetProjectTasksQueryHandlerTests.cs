@@ -54,7 +54,8 @@ public sealed class GetProjectTasksQueryHandlerTests
         IReadOnlyList<TaskAssignment>? assignments = null,
         bool authenticated = true,
         IReadOnlyDictionary<Guid, EmployeeIdentityDto>? identities = null,
-        string? signedAvatarUrl = "https://files.example.test/signed-avatar")
+        string? signedAvatarUrl = "https://files.example.test/signed-avatar",
+        IReadOnlyList<ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus>? statuses = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
@@ -100,10 +101,14 @@ public sealed class GetProjectTasksQueryHandlerTests
                 TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, int>());
 
+        var statusRepository = new Mock<ITaskStatusRepository>();
+        statusRepository.Setup(x => x.GetProjectTemplateAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(statuses ?? Array.Empty<ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus>());
+
         return new GetProjectTasksQueryHandler(
             currentUser.Object, identity.Object, fileStorage.Object, projects.Object, members.Object,
             permissions.Object, taskRepository.Object, assignmentRepository.Object, sessionRepository.Object,
-            CalendarEventRepositoryMocks.Empty().Object);
+            CalendarEventRepositoryMocks.Empty().Object, statusRepository.Object);
     }
 
     [Fact]
@@ -226,6 +231,46 @@ public sealed class GetProjectTasksQueryHandlerTests
         var resolved = Assert.Single(Assert.Single(result.Value!).Assignees!);
         Assert.Equal("Sam Perera", resolved.Name);
         Assert.Null(resolved.AvatarUrl);
+    }
+
+    [Fact]
+    public async Task Handle_ExcludesSubtasksFromTopLevelList()
+    {
+        var parent = Task(ObjectiveA, "Parent");
+        var child = Task(ObjectiveA, "Child");
+        child.ParentTaskId = parent.Id;
+        var handler = BuildHandler(ActiveProject(), Array.Empty<Guid>(), hasReadPermission: true, new[] { parent, child });
+
+        var result = await handler.Handle(new GetProjectTasksQuery(ProjectId), CancellationToken.None);
+
+        Assert.Equal(parent.Id, Assert.Single(result.Value!).Id);
+    }
+
+    [Fact]
+    public async Task Handle_ComputesSubtaskProgressCounts()
+    {
+        var doneStatusId = Guid.NewGuid();
+        var parent = Task(ObjectiveA, "Parent");
+        var doneChild = Task(ObjectiveA, "Done child");
+        doneChild.ParentTaskId = parent.Id;
+        doneChild.StatusId = doneStatusId;
+        var openChild = Task(ObjectiveA, "Open child");
+        openChild.ParentTaskId = parent.Id;
+        var statuses = new[]
+        {
+            new ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus
+            {
+                Id = doneStatusId, TenantId = TenantId, Name = "Done", MarksTaskComplete = true, DisplayOrder = 1
+            }
+        };
+        var handler = BuildHandler(ActiveProject(), Array.Empty<Guid>(), hasReadPermission: true,
+            new[] { parent, doneChild, openChild }, statuses: statuses);
+
+        var result = await handler.Handle(new GetProjectTasksQuery(ProjectId), CancellationToken.None);
+
+        var response = Assert.Single(result.Value!);
+        Assert.Equal(2, response.SubtaskTotalCount);
+        Assert.Equal(1, response.SubtaskCompletedCount);
     }
 
     [Fact]

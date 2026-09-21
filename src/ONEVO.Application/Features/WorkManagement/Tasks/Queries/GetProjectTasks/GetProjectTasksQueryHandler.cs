@@ -26,6 +26,7 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ITaskStatusRepository _statuses;
 
     public GetProjectTasksQueryHandler(
         ICurrentUser currentUser,
@@ -37,7 +38,8 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         IWorkTaskRepository tasks,
         ITaskAssignmentRepository assignments,
         ITaskClockingSessionRepository sessions,
-        ICalendarEventRepository calendarEvents)
+        ICalendarEventRepository calendarEvents,
+        ITaskStatusRepository statuses)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -49,6 +51,7 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         _assignments = assignments;
         _sessions = sessions;
         _calendarEvents = calendarEvents;
+        _statuses = statuses;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetProjectTasksQuery request, CancellationToken ct)
@@ -75,9 +78,17 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             ? null
             : (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct)).ToHashSet();
 
-        var items = await _tasks.GetByProjectAsync(tenantId, project.Id, ct);
+        var allItems = await _tasks.GetByProjectAsync(tenantId, project.Id, ct);
         if (accessibleObjectiveIds is not null)
-            items = items.Where(t => accessibleObjectiveIds.Contains(t.ObjectiveId)).ToList();
+            allItems = allItems.Where(t => accessibleObjectiveIds.Contains(t.ObjectiveId)).ToList();
+
+        var statuses = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
+        var completingStatusIds = statuses.Where(status => status.MarksTaskComplete).Select(status => status.Id).ToHashSet();
+        var subtasksByParentId = allItems
+            .Where(task => task.ParentTaskId is not null)
+            .GroupBy(task => task.ParentTaskId!.Value)
+            .ToDictionary(group => group.Key, group => group.ToList());
+        var items = allItems.Where(task => task.ParentTaskId is null).ToList();
 
         var assignments = await _assignments.GetByTaskIdsAsync(items.Select(t => t.Id).ToList(), ct);
         var assigneesByTaskId = assignments
@@ -139,7 +150,10 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             eventLink?.EventName,
             Attachments: null,
             Assignees: assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>())
-                .Select(employeeId => assigneeIdentityByEmployeeId[employeeId]).ToList())).ToList();
+                .Select(employeeId => assigneeIdentityByEmployeeId[employeeId]).ToList(),
+            ParentTaskId: t.ParentTaskId,
+            SubtaskTotalCount: subtasksByParentId.GetValueOrDefault(t.Id)?.Count ?? 0,
+            SubtaskCompletedCount: subtasksByParentId.GetValueOrDefault(t.Id)?.Count(subtask => completingStatusIds.Contains(subtask.StatusId)) ?? 0)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }
