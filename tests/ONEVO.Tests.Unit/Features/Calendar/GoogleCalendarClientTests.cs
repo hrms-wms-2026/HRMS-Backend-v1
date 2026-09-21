@@ -1,0 +1,310 @@
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Infrastructure.ExternalServices.Calendar;
+using Xunit;
+
+namespace ONEVO.Tests.Unit.Features.Calendar;
+
+public sealed class GoogleCalendarClientTests
+{
+    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            => Task.FromResult(respond(request));
+    }
+
+    private static HttpResponseMessage JsonResponse(object body) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
+    };
+
+    [Fact]
+    public async Task ListEventsAsync_FollowsNextPageToken_AccumulatesAllPagesAndUsesFinalPageSyncToken()
+    {
+        var requestedUrls = new List<string>();
+        var handler = new StubHandler(request =>
+        {
+            var url = request.RequestUri!.ToString();
+            requestedUrls.Add(url);
+
+            if (url.Contains("pageToken=page-2-token"))
+            {
+                return JsonResponse(new
+                {
+                    items = new object[]
+                    {
+                        new
+                        {
+                            id = "evt-page2",
+                            etag = "\"etag-page2\"",
+                            summary = "Page 2 Event",
+                            start = new { dateTime = "2026-09-12T09:00:00+00:00", timeZone = "UTC" },
+                            end = new { dateTime = "2026-09-12T10:00:00+00:00", timeZone = "UTC" },
+                            status = "confirmed"
+                        }
+                    },
+                    nextSyncToken = "final-sync-token"
+                });
+            }
+
+            return JsonResponse(new
+            {
+                items = new object[]
+                {
+                    new
+                    {
+                        id = "evt-page1",
+                        etag = "\"etag-page1\"",
+                        summary = "Page 1 Event",
+                        start = new { dateTime = "2026-09-10T09:00:00+00:00", timeZone = "UTC" },
+                        end = new { dateTime = "2026-09-10T10:00:00+00:00", timeZone = "UTC" },
+                        status = "confirmed"
+                    }
+                },
+                nextPageToken = "page-2-token"
+            });
+        });
+        var sut = new GoogleCalendarClient(new HttpClient(handler));
+
+        var result = await sut.ListEventsAsync("at-1", "primary", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(7), CancellationToken.None);
+
+        Assert.Equal(2, requestedUrls.Count);
+        Assert.DoesNotContain("pageToken", requestedUrls[0]);
+        Assert.Contains("pageToken=page-2-token", requestedUrls[1]);
+        // Follow-up page requests must not carry syncToken alongside pageToken.
+        Assert.DoesNotContain("syncToken", requestedUrls[1]);
+
+        Assert.Equal(2, result.Events.Count);
+        Assert.Contains(result.Events, e => e.Id == "evt-page1");
+        Assert.Contains(result.Events, e => e.Id == "evt-page2");
+        Assert.Equal("final-sync-token", result.NextSyncToken);
+    }
+
+    [Fact]
+    public async Task ListEventsAsync_WindowBasedFollowUpPage_PreservesTimeMinTimeMaxAndSingleEvents()
+    {
+        var requestedUrls = new List<string>();
+        var handler = new StubHandler(request =>
+        {
+            var url = request.RequestUri!.ToString();
+            requestedUrls.Add(url);
+
+            if (url.Contains("pageToken="))
+                return JsonResponse(new { items = Array.Empty<object>(), nextSyncToken = "final-sync-token" });
+
+            return JsonResponse(new { items = Array.Empty<object>(), nextPageToken = "page-2-token" });
+        });
+        var sut = new GoogleCalendarClient(new HttpClient(handler));
+        var windowStart = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
+        var windowEnd = new DateTimeOffset(2026, 9, 30, 0, 0, 0, TimeSpan.Zero);
+
+        await sut.ListEventsAsync("at-1", "primary", null, windowStart, windowEnd, CancellationToken.None);
+
+        Assert.Equal(2, requestedUrls.Count);
+        // The follow-up (page 2) request must carry the SAME timeMin/timeMax/singleEvents as page 1 -
+        // per Google's pagination contract, only pageToken is new/different across pages.
+        Assert.Contains($"timeMin={Uri.EscapeDataString(windowStart.ToString("O"))}", requestedUrls[1]);
+        Assert.Contains($"timeMax={Uri.EscapeDataString(windowEnd.ToString("O"))}", requestedUrls[1]);
+        Assert.Contains("singleEvents=true", requestedUrls[1]);
+        Assert.Contains("pageToken=page-2-token", requestedUrls[1]);
+        Assert.DoesNotContain("syncToken", requestedUrls[1]);
+    }
+
+    [Fact]
+    public async Task ListEventsAsync_SyncTokenBasedFollowUpPage_OnlyCarriesPageToken()
+    {
+        var requestedUrls = new List<string>();
+        var handler = new StubHandler(request =>
+        {
+            var url = request.RequestUri!.ToString();
+            requestedUrls.Add(url);
+
+            if (url.Contains("pageToken="))
+                return JsonResponse(new { items = Array.Empty<object>(), nextSyncToken = "final-sync-token" });
+
+            return JsonResponse(new { items = Array.Empty<object>(), nextPageToken = "page-2-token" });
+        });
+        var sut = new GoogleCalendarClient(new HttpClient(handler));
+
+        await sut.ListEventsAsync("at-1", "primary", "incremental-sync-token", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(7), CancellationToken.None);
+
+        Assert.Equal(2, requestedUrls.Count);
+        Assert.Contains("syncToken=incremental-sync-token", requestedUrls[0]);
+        // Follow-up page of a syncToken-based (incremental) sync must carry ONLY pageToken - no
+        // timeMin/timeMax/syncToken - matching Google's contract that syncToken and pageToken must
+        // never appear together on the same request.
+        Assert.Contains("pageToken=page-2-token", requestedUrls[1]);
+        Assert.DoesNotContain("timeMin", requestedUrls[1]);
+        Assert.DoesNotContain("timeMax", requestedUrls[1]);
+        Assert.DoesNotContain("syncToken", requestedUrls[1]);
+    }
+
+    [Fact]
+    public async Task ListEventsAsync_MoreThanMaxPagesAvailable_StopsAtMaxPages_AndReturnsNullSyncToken()
+    {
+        const int maxPages = 25; // mirrors GoogleCalendarClient's private MaxPages constant
+        var requestCount = 0;
+        var handler = new StubHandler(request =>
+        {
+            requestCount++;
+            // Every page (including a hypothetical page maxPages+1) reports a further
+            // nextPageToken, simulating a provider that never terminates pagination. No page ever
+            // returns nextSyncToken, matching Google's contract that it only appears on the true
+            // final page - which this stub never reaches.
+            return JsonResponse(new
+            {
+                items = new object[]
+                {
+                    new
+                    {
+                        id = $"evt-page{requestCount}",
+                        etag = $"\"etag-page{requestCount}\"",
+                        summary = $"Page {requestCount} Event",
+                        start = new { dateTime = "2026-09-10T09:00:00+00:00", timeZone = "UTC" },
+                        end = new { dateTime = "2026-09-10T10:00:00+00:00", timeZone = "UTC" },
+                        status = "confirmed"
+                    }
+                },
+                nextPageToken = $"page-{requestCount + 1}-token"
+            });
+        });
+        var sut = new GoogleCalendarClient(new HttpClient(handler));
+
+        var result = await sut.ListEventsAsync("at-1", "primary", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(7), CancellationToken.None);
+
+        Assert.Equal(maxPages, requestCount);
+        Assert.Equal(maxPages, result.Events.Count);
+        Assert.Null(result.NextSyncToken);
+    }
+
+    [Fact]
+    public async Task ListEventsAsync_ParsesTimedAndAllDayEvents_AndCapturesNextSyncToken()
+    {
+        var handler = new StubHandler(_ => JsonResponse(new
+        {
+            items = new object[]
+            {
+                new
+                {
+                    id = "evt-timed",
+                    etag = "\"etag-1\"",
+                    summary = "Timed Event",
+                    description = "A timed event",
+                    start = new { dateTime = "2026-09-10T09:00:00+00:00", timeZone = "UTC" },
+                    end = new { dateTime = "2026-09-10T10:00:00+00:00", timeZone = "UTC" },
+                    location = "Room 1",
+                    status = "confirmed"
+                },
+                new
+                {
+                    id = "evt-allday",
+                    etag = "\"etag-2\"",
+                    summary = "All Day Event",
+                    description = (string?)null,
+                    start = new { date = "2026-09-11" },
+                    end = new { date = "2026-09-12" },
+                    location = (string?)null,
+                    status = "confirmed"
+                }
+            },
+            nextSyncToken = "sync-token-123"
+        }));
+        var sut = new GoogleCalendarClient(new HttpClient(handler));
+
+        var result = await sut.ListEventsAsync("at-1", "primary", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(7), CancellationToken.None);
+
+        Assert.Equal("sync-token-123", result.NextSyncToken);
+        Assert.Equal(2, result.Events.Count);
+
+        var timed = result.Events[0];
+        Assert.Equal("evt-timed", timed.Id);
+        Assert.False(timed.IsAllDay);
+        Assert.Equal("UTC", timed.Timezone);
+        Assert.Equal(new DateTimeOffset(2026, 9, 10, 9, 0, 0, TimeSpan.Zero), timed.Start);
+        Assert.Equal(new DateTimeOffset(2026, 9, 10, 10, 0, 0, TimeSpan.Zero), timed.End);
+        Assert.False(timed.IsCancelled);
+
+        var allDay = result.Events[1];
+        Assert.Equal("evt-allday", allDay.Id);
+        Assert.True(allDay.IsAllDay);
+        Assert.Null(allDay.Timezone);
+        Assert.Equal(new DateTimeOffset(2026, 9, 11, 0, 0, 0, TimeSpan.Zero), allDay.Start);
+        Assert.Equal(new DateTimeOffset(2026, 9, 12, 0, 0, 0, TimeSpan.Zero), allDay.End);
+    }
+
+    [Fact]
+    public async Task ListEventsAsync_ParsesCancelledStubEvent_WithoutThrowing()
+    {
+        var handler = new StubHandler(_ => JsonResponse(new
+        {
+            items = new object[]
+            {
+                new
+                {
+                    id = "evt-cancelled",
+                    kind = "calendar#event",
+                    etag = "\"etag-cancelled\"",
+                    status = "cancelled"
+                }
+            },
+            nextSyncToken = "sync-token-456"
+        }));
+        var sut = new GoogleCalendarClient(new HttpClient(handler));
+
+        var result = await sut.ListEventsAsync("at-1", "primary", "prior-sync-token", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(7), CancellationToken.None);
+
+        Assert.Single(result.Events);
+        var cancelled = result.Events[0];
+        Assert.Equal("evt-cancelled", cancelled.Id);
+        Assert.Equal("\"etag-cancelled\"", cancelled.Etag);
+        Assert.True(cancelled.IsCancelled);
+    }
+
+    [Fact]
+    public async Task InsertEventAsync_PostsToEventsUrl_AndParsesResponse()
+    {
+        HttpRequestMessage? capturedRequest = null;
+        var handler = new StubHandler(request =>
+        {
+            capturedRequest = request;
+            return JsonResponse(new
+            {
+                id = "evt-new",
+                etag = "\"etag-new\"",
+                summary = "New Event",
+                description = "Created",
+                start = new { dateTime = "2026-09-15T13:00:00+00:00", timeZone = "UTC" },
+                end = new { dateTime = "2026-09-15T14:00:00+00:00", timeZone = "UTC" },
+                location = "HQ",
+                status = "confirmed"
+            });
+        });
+        var sut = new GoogleCalendarClient(new HttpClient(handler));
+
+        var toInsert = new GoogleCalendarEventDto(
+            Id: string.Empty,
+            Etag: null,
+            Title: "New Event",
+            Description: "Created",
+            Start: new DateTimeOffset(2026, 9, 15, 13, 0, 0, TimeSpan.Zero),
+            End: new DateTimeOffset(2026, 9, 15, 14, 0, 0, TimeSpan.Zero),
+            IsAllDay: false,
+            Timezone: "UTC",
+            Location: "HQ",
+            IsCancelled: false,
+            IsPrivate: false);
+
+        var result = await sut.InsertEventAsync("at-1", "primary", toInsert, CancellationToken.None);
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(HttpMethod.Post, capturedRequest!.Method);
+        Assert.Equal("https://www.googleapis.com/calendar/v3/calendars/primary/events", capturedRequest.RequestUri!.ToString());
+
+        Assert.Equal("evt-new", result.Id);
+        Assert.Equal("New Event", result.Title);
+        Assert.Equal("HQ", result.Location);
+        Assert.False(result.IsAllDay);
+    }
+}

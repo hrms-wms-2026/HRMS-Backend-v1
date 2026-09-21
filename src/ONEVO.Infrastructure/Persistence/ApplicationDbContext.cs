@@ -7,6 +7,8 @@ using ONEVO.Domain.Common;
 using ONEVO.Domain.Features.Auth.Entities;
 using PersonalCalendarEvent = ONEVO.Domain.Features.Calendar.Entities.CalendarEvent;
 using PersonalCalendarEventParticipant = ONEVO.Domain.Features.Calendar.Entities.CalendarEventParticipant;
+using ExternalCalendarConnection = ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarConnection;
+using ExternalCalendarEventLink = ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarEventLink;
 using HolidayCalendarSettings = ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings;
 using TimeAttendanceWorkMode = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -316,6 +318,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<PersonalCalendarEvent> PersonalCalendarEvents => Set<PersonalCalendarEvent>();
     public DbSet<PersonalCalendarEventParticipant> CalendarEventParticipants => Set<PersonalCalendarEventParticipant>();
+    public DbSet<ExternalCalendarConnection> ExternalCalendarConnections => Set<ExternalCalendarConnection>();
+    public DbSet<ExternalCalendarEventLink> ExternalCalendarEventLinks => Set<ExternalCalendarEventLink>();
     public DbSet<HolidayCalendarSettings> HolidayCalendarSettings => Set<HolidayCalendarSettings>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

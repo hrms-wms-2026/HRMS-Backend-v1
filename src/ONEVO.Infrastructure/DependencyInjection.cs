@@ -74,6 +74,7 @@ using ONEVO.Infrastructure.Identity.Passwords;
 using ONEVO.Infrastructure.Identity.Tenancy;
 using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Identity.Tokens;
+using ONEVO.Infrastructure.ExternalServices.Calendar;
 using ONEVO.Infrastructure.ExternalServices.Email;
 using ONEVO.Infrastructure.ExternalServices.GitHub;
 using ONEVO.Infrastructure.Configuration;
@@ -349,6 +350,8 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>();
         services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.ICalendarEventRepository>(
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>());
+        services.AddScoped<IExternalCalendarConnectionRepository, EfExternalCalendarConnectionRepository>();
+        services.AddScoped<IExternalCalendarEventLinkRepository, EfExternalCalendarEventLinkRepository>();
         services.AddScoped<ICalendarRecurrenceExpander, IcalNetRecurrenceExpander>();
         services.AddScoped<ICalendarNotificationSender, CalendarNotificationSender>();
         services.AddScoped<ICalendarTimezoneResolver, CalendarTimezoneResolver>();
@@ -460,10 +463,18 @@ public static class DependencyInjection
         services.AddScoped<IUserIntegrationConnectionRepository, EfUserIntegrationConnectionRepository>();
         services.AddDataProtection();
         services.AddSingleton<IOAuthStateProtector, OAuthStateProtector>();
+        services.AddScoped<ICalendarOAuthStateProtector, CalendarOAuthStateProtector>();
         services.AddHttpClient<IGitHubOAuthClient, GitHubOAuthTokenClient>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(15);
         });
+        services.AddHttpClient<ICalendarOAuthTokenExchangeClient, ONEVO.Infrastructure.ExternalServices.Calendar.CalendarOAuthTokenExchangeClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddHttpClient<IGoogleCalendarClient, GoogleCalendarClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        services.AddHttpClient<IMicrosoftGraphCalendarClient, MicrosoftGraphCalendarClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        services.AddScoped<ICalendarSyncService, CalendarSyncService>();
 
         // Tenant cache invalidation
         services.AddScoped<ITenantCacheInvalidator, TenantCacheInvalidator>();
@@ -574,6 +585,7 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfInactivityCaptureAttemptRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
         services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
+        services.AddHostedService<Services.Calendar.CalendarSyncJob>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();

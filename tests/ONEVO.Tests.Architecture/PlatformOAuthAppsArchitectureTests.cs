@@ -133,10 +133,11 @@ public class PlatformOAuthAppsArchitectureTests
     [Fact]
     public void NoForbiddenLaterStepEntity_IsIntroduced()
     {
-        // Provider-specific calendar, email, AI, and Slack entities remain later-step work.
+        // Provider-specific email, AI, and Slack entities remain later-step work.
+        // ExternalCalendarConnection shipped as part of Calendar external sync (Google/Outlook) -
+        // removed from this forbidden list accordingly.
         var forbiddenTypeNames = new[]
         {
-            "ExternalCalendarConnection",
             "EmailCredential",
             "AiProviderConfig",
             "TenantAiProviderOverride",

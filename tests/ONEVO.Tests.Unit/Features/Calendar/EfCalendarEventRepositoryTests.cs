@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Calendar;
@@ -181,6 +182,79 @@ public sealed class EfCalendarEventRepositoryTests
         Assert.NotNull(found);
         Assert.Equal(child.Id, found!.Id);
         Assert.Null(notFound);
+    }
+
+    [Fact]
+    public async Task GetInDateRangeForEmployeeAsync_ReturnsEventsTheEmployeeOwns_EvenWithNoParticipantRow()
+    {
+        // Regression test: synced external events (CalendarSyncService.UpsertPulledEventAsync)
+        // and participant-less personal blocks (CreateCalendarEventCommandHandler with an empty
+        // ParticipantEmployeeIds list) both set only CreatedById, never a CalendarEventParticipant
+        // row. Before this fix, GetInDateRangeForEmployeeAsync's participant-only filter made both
+        // invisible to CheckCalendarConflictsQuery - an employee could look fully available while
+        // genuinely busy with a synced or personal-block event.
+        var ownerUserId = Guid.NewGuid();
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        await using var db = BuildInMemoryDb(currentUser.Object);
+        db.Employees.Add(new Employee
+        {
+            Id = EmployeeId, TenantId = TenantId, UserId = ownerUserId, EmployeeNumber = "E1",
+            FirstName = "Test", LastName = "Employee", Email = "test@example.com",
+            HireDate = DateOnly.FromDateTime(DateTime.UtcNow), CreatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        // AuditableEntityInterceptor stamps CreatedById from ICurrentUser on save (see the note
+        // on GetInDateRangeForCallerAsync_ReturnsEventsCreatedByCaller_WithinRange above) - the
+        // mock's UserId must match the employee's own UserId at the moment this event is saved.
+        currentUser.SetupGet(x => x.UserId).Returns(ownerUserId);
+        var ownedEvent = MakeEvent(startDate: new DateTimeOffset(2026, 9, 10, 9, 0, 0, TimeSpan.Zero));
+        ownedEvent.SourceType = CalendarEventSourceTypes.ExternalSync;
+        db.PersonalCalendarEvents.Add(ownedEvent);
+        await db.SaveChangesAsync();
+
+        currentUser.SetupGet(x => x.UserId).Returns(Guid.NewGuid());
+        var someoneElsesEvent = MakeEvent(startDate: new DateTimeOffset(2026, 9, 12, 9, 0, 0, TimeSpan.Zero));
+        db.PersonalCalendarEvents.Add(someoneElsesEvent);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfCalendarEventRepository(db);
+        var result = await repository.GetInDateRangeForEmployeeAsync(TenantId, EmployeeId, RangeStart, RangeEnd, CancellationToken.None);
+
+        Assert.Single(result);
+        Assert.Equal(ownedEvent.Id, result[0].Id);
+    }
+
+    [Fact]
+    public async Task GetInDateRangeForEmployeeAsync_StillReturnsEventsWhereEmployeeIsParticipant()
+    {
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.UserId).Returns(Guid.NewGuid());
+        await using var db = BuildInMemoryDb(currentUser.Object);
+        db.Employees.Add(new Employee
+        {
+            Id = EmployeeId, TenantId = TenantId, UserId = Guid.NewGuid(), EmployeeNumber = "E1",
+            FirstName = "Test", LastName = "Employee", Email = "test@example.com",
+            HireDate = DateOnly.FromDateTime(DateTime.UtcNow), CreatedAt = DateTimeOffset.UtcNow
+        });
+        var invitedEvent = MakeEvent(startDate: new DateTimeOffset(2026, 9, 15, 9, 0, 0, TimeSpan.Zero));
+        db.PersonalCalendarEvents.Add(invitedEvent);
+        db.CalendarEventParticipants.Add(new CalendarEventParticipant
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, EventId = invitedEvent.Id, EmployeeId = EmployeeId,
+            ResponseStatus = CalendarEventParticipantStatuses.Pending, CreatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfCalendarEventRepository(db);
+        var result = await repository.GetInDateRangeForEmployeeAsync(TenantId, EmployeeId, RangeStart, RangeEnd, CancellationToken.None);
+
+        Assert.Single(result);
+        Assert.Equal(invitedEvent.Id, result[0].Id);
     }
 
     [Fact]
