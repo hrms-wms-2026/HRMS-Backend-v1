@@ -47,7 +47,10 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        if (!_environment.IsDevelopment() && !_environment.IsEnvironment("Test"))
+        // Local `dotnet run` only. Must not run in Test/CI — integration hosts boot every
+        // IHostedService, and a throw or a blocked SaveChanges here hangs ApiBoot/Leave tests
+        // until the 10-minute blame-hang timeout.
+        if (!_environment.IsDevelopment())
             return;
 
         try
@@ -57,14 +60,15 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
             var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
 
             tenantContext.SetAdminMode();
-            await SeedAsync(db, tenantContext, cancellationToken);
-            await db.SaveChangesAsync(cancellationToken);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            await SeedAsync(db, tenantContext, timeout.Token);
+            await db.SaveChangesAsync(timeout.Token);
             _logger.LogInformation("Dapi leave sample data seeded (types, policy, {Year} entitlements).", SeedYear);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "DapiLeaveSampleSeeder failed. Startup will stop.");
-            throw;
+            _logger.LogError(ex, "DapiLeaveSampleSeeder failed. Leave sample data was skipped; host continues.");
         }
     }
 
@@ -230,6 +234,7 @@ public sealed class DapiLeaveSampleSeeder : IHostedService
             RequiresApproval = true,
             DefaultDaysPerYear = days,
             ApplicableGender = LeaveGenderRestrictions.All,
+            AcceptedDocumentTypes = [],
             IsActive = true,
             CreatedAt = now
         });
