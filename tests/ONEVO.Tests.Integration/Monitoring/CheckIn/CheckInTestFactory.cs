@@ -69,13 +69,14 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
             services.RemoveAll<IFileStorageService>();
             services.AddSingleton<IFileStorageService, NoOpFileStorageService>();
 
-            // Stub AWS Rekognition-backed face matching: constructing the real
-            // RekognitionFaceMatchService pulls in IAmazonRekognition, whose client
-            // resolves AWS credentials eagerly at construction time and throws when
-            // none are configured (as in CI/local test envs) — this fake keeps DI
-            // resolvable without needing real AWS credentials or making network calls.
+            // Stub AWS Rekognition-backed face matching/quality so check-in tests stay
+            // offline. Runtime clients now resolve credentials from platform_service_keys
+            // via AwsRekognitionClientFactory; these fakes keep DI resolvable without
+            // an aws_rekognition row or network calls.
             services.RemoveAll<IFaceMatchService>();
             services.AddSingleton<IFaceMatchService, NoOpFaceMatchService>();
+            services.RemoveAll<IFaceQualityService>();
+            services.AddSingleton<IFaceQualityService, NoOpFaceQualityService>();
         });
     }
 
@@ -123,6 +124,12 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
     {
         public Task<FaceMatchOutcome> CompareAsync(Stream referenceImage, Stream capturedImage, CancellationToken ct)
             => Task.FromResult(new FaceMatchOutcome(false, 0f));
+    }
+
+    private sealed class NoOpFaceQualityService : IFaceQualityService
+    {
+        public Task<FaceQualityOutcome> AnalyzeAsync(Stream image, CancellationToken ct)
+            => Task.FromResult(new FaceQualityOutcome(false, false, false, null, null));
     }
 
     private sealed class NoOpFileStorageService : IFileStorageService

@@ -109,10 +109,10 @@ public class SubmitInactivityCaptureAttemptCommandHandler
                 tenantId, userId, MonitoringCapability.ActivityMonitoring, ct);
             var screenshotEnabled = await _toggles.IsEnabledAsync(
                 tenantId, userId, MonitoringCapability.ScreenshotCapture, ct);
-            var autoScreenshotEnabled = await _toggles.IsEnabledAsync(
-                tenantId, userId, MonitoringCapability.AutoScreenshotCapture, ct);
 
-            if (!activityEnabled || !screenshotEnabled || !autoScreenshotEnabled)
+            // Match GetEffectiveTrayPolicy: Activity + Screenshot capture is what the
+            // Monitoring UI exposes. AutoScreenshotCapture is not on that screen.
+            if (!activityEnabled || !screenshotEnabled)
             {
                 _logger.LogWarning(
                     "Inactivity capture rejected — policy disabled. AttemptId={AttemptId} TenantId={TenantId}",

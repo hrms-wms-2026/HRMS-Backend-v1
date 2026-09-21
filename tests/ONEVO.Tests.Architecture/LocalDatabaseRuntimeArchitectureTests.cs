@@ -87,6 +87,24 @@ public sealed class LocalDatabaseRuntimeArchitectureTests
     }
 
     [Fact]
+    public void LocalSetupScript_RestoresPackagesBeforeEfMigrationCommand()
+    {
+        var setupScript = File.ReadAllText(
+            FindRepositoryPath("ops", "postgres", "setup-local-db.ps1"));
+
+        var restoreIndex = setupScript.IndexOf(
+            "restore 'src\\ONEVO.Api\\ONEVO.Api.csproj'",
+            StringComparison.Ordinal);
+        var efMigrationIndex = setupScript.IndexOf("ef database update", StringComparison.Ordinal);
+
+        Assert.True(restoreIndex >= 0, "expected the script to restore the API project before EF tooling");
+        Assert.True(efMigrationIndex >= 0, "expected the script to run 'dotnet ef database update'");
+        Assert.True(
+            restoreIndex < efMigrationIndex,
+            "NuGet restore must run before EF migrations, because EF metadata requires project.assets.json");
+    }
+
+    [Fact]
     public void LocalSetupScript_RunsPostMigrationGrantsOnlyAfterEfMigrationCommand()
     {
         var setupScript = File.ReadAllText(
