@@ -64,6 +64,20 @@ public class GetMyProjectMilestonesQueryHandler : IRequestHandler<GetMyProjectMi
             return false;
         }
 
+        // Mirrors IMilestoneMembershipCoordinator.IsEffectiveOwnerAsync: owner-only, no plain-member
+        // fallback - for gates (task edit save-vs-request) that must stay stricter than IsEffectiveManager.
+        bool IsEffectiveOwner(Objective objective)
+        {
+            Objective? cursor = objective;
+            while (cursor is not null)
+            {
+                if (cursor.OwnerId == callerEmployeeId.Value)
+                    return true;
+                cursor = cursor.ParentObjectiveId is { } parentId ? objectivesById.GetValueOrDefault(parentId) : null;
+            }
+            return false;
+        }
+
         // Every objective the caller can act on: has a direct project_members row (any status - the
         // frontend filters by membershipIsActive as needed) OR is reachable via the ownership cascade.
         var relevant = allObjectives
@@ -103,7 +117,7 @@ public class GetMyProjectMilestonesQueryHandler : IRequestHandler<GetMyProjectMi
                 objective.OwnerId, ownerName, objective.ReportingManagerId, reportingManagerName,
                 objective.StartDate, objective.EndDate, objective.AllocatedHours, objective.CompletedHours,
                 objective.IsActive, objective.IsAchieved, objective.AchievedAt,
-                membershipIsActive, membershipRemovedAt, isEffectiveManager));
+                membershipIsActive, membershipRemovedAt, isEffectiveManager, IsEffectiveOwner(objective)));
         }
 
         return Result<IReadOnlyList<MyProjectMilestoneResponse>>.Success(items);

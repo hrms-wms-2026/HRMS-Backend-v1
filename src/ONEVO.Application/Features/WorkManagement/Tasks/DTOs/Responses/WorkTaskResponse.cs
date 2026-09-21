@@ -17,7 +17,7 @@ public sealed record TaskCreationRequestResponse(
     Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt);
 
 public sealed record TaskEditRequestResponse(
-    Guid Id, Guid TaskId, string Status, TaskEditRequestPayload Payload, string RequestedByName, DateTimeOffset CreatedAt);
+    Guid Id, Guid TaskId, Guid ObjectiveId, string Status, TaskEditRequestPayload Payload, string RequestedByName, DateTimeOffset CreatedAt);
 
 /// <summary>Returned alongside a 409 slack-conflict so the frontend can offer the extend-allocation flow (spec §3.2).</summary>
 public sealed record InsufficientAllocationResponse(decimal AvailableSlackHours, string SuggestedAction = "extend_allocation");

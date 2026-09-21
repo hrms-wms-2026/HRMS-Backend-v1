@@ -7,6 +7,7 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.ApproveObjectiveChangeRequest;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RejectObjectiveChangeRequest;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
+using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Queries.ListMyObjectiveChangeRequests;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AddObjectiveMember;
@@ -80,7 +81,7 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Edits a milestone. Non-conflicting edits apply immediately; edits that would conflict with the parent's date/hours constraints become a pending approval request unless the caller is the milestone's own creator. Frozen (400) once the milestone is Achieved.</summary>
+    /// <summary>Edits a milestone. Always creates a pending approval request routed to the milestone's Reporting Manager - the head can no longer apply their own edits directly. Frozen (400) once the milestone is Achieved.</summary>
     [HttpPut("{id:guid}")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditObjectiveRequest request, CancellationToken ct)
@@ -246,8 +247,13 @@ public class ObjectivesController : ControllerBase
         [FromBody] ApproveObjectiveChangeRequestRequest? request,
         CancellationToken ct)
     {
+        EditObjectiveRequestPayload? approvedEdit = request?.Title is not null
+            && request.StartDate is not null && request.EndDate is not null && request.AllocatedHours is not null
+            ? new EditObjectiveRequestPayload(request.Title, request.Description, request.StartDate.Value, request.EndDate.Value, request.AllocatedHours.Value)
+            : null;
+
         var result = await _mediator.Send(
-            new ApproveObjectiveChangeRequestCommand(requestId, request?.ApprovedAdditionalHours), ct);
+            new ApproveObjectiveChangeRequestCommand(requestId, request?.ApprovedAdditionalHours, approvedEdit), ct);
 
         return result.IsSuccess
             ? NoContent()

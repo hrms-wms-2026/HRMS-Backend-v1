@@ -33,6 +33,7 @@ public class ApproveTaskEditRequestCommandHandler
     private readonly ITaskEditLogRepository _editLogs;
     private readonly ITaskPercentageLogRepository _percentageLogs;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ITaskAssignmentRepository _assignments;
 
     public ApproveTaskEditRequestCommandHandler(
         ICurrentUser currentUser,
@@ -47,7 +48,8 @@ public class ApproveTaskEditRequestCommandHandler
         IUnitOfWork unitOfWork,
         ITaskEditLogRepository editLogs,
         ITaskPercentageLogRepository percentageLogs,
-        ICalendarEventRepository calendarEvents)
+        ICalendarEventRepository calendarEvents,
+        ITaskAssignmentRepository assignments)
 
     {
         _currentUser = currentUser;
@@ -63,6 +65,7 @@ public class ApproveTaskEditRequestCommandHandler
         _editLogs = editLogs;
         _percentageLogs = percentageLogs;
         _calendarEvents = calendarEvents;
+        _assignments = assignments;
 
     }
 
@@ -94,7 +97,7 @@ public class ApproveTaskEditRequestCommandHandler
         if (objective is null)
             return Result<WorkTaskResponse>.NotFound("Objective not found.");
 
-        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
+        if (!await _membership.IsEffectiveOwnerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<WorkTaskResponse>.Forbidden(
                 "Only this milestone's owner can decide this request.");
 
@@ -220,6 +223,9 @@ public class ApproveTaskEditRequestCommandHandler
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
+            var assignments = await _assignments.GetByTaskIdAsync(task.Id, innerCt);
+            var assigneeIds = assignments.Select(a => a.EmployeeId).ToList();
+
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id,
                 task.ObjectiveId,
@@ -234,7 +240,8 @@ public class ApproveTaskEditRequestCommandHandler
                 task.EstimatedHours,
                 task.CompletedHours,
                 task.ProgressPercent,
-                task.SprintId));
+                task.SprintId,
+                assigneeIds));
         }, ct);
     }
 }

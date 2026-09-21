@@ -2,6 +2,7 @@ using Moq;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AddObjectiveMember;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -33,7 +34,7 @@ public class AddObjectiveMemberCommandHandlerTests
         StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), CreatedAt = DateTimeOffset.UtcNow
     };
 
-    private (AddObjectiveMemberCommandHandler Handler, Mock<IProjectMemberInvitationRepository> Invitations, Mock<IMilestoneMembershipCoordinator> Membership) BuildHandler(
+    private (AddObjectiveMemberCommandHandler Handler, Mock<IProjectMemberInvitationRepository> Invitations, Mock<IMilestoneMembershipCoordinator> Membership, Mock<IOutboxWriter> OutboxWriter) BuildHandler(
         Objective? objective, Employee? assignee = null, Guid? callerId = null, bool explicitNullAssignee = false,
         bool alreadyActiveMember = false, ProjectMemberInvitation? existingPendingInvite = null, bool? callerIsEffectiveManager = null)
     {
@@ -50,6 +51,8 @@ public class AddObjectiveMemberCommandHandlerTests
             .ReturnsAsync(HeadEmployeeId);
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, OtherUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(OtherEmployeeId);
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [resolvedCallerEmployeeId] = "Inviter" });
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
@@ -74,15 +77,18 @@ public class AddObjectiveMemberCommandHandlerTests
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
+        var outboxWriter = new Mock<IOutboxWriter>();
+
         var handler = new AddObjectiveMemberCommandHandler(
-            currentUser.Object, identity.Object, objectives.Object, membership.Object, invitations.Object, unitOfWork.Object);
-        return (handler, invitations, membership);
+            currentUser.Object, identity.Object, objectives.Object, membership.Object, invitations.Object, unitOfWork.Object,
+            outboxWriter.Object);
+        return (handler, invitations, membership, outboxWriter);
     }
 
     [Fact]
     public async Task Handle_NewInvite_CreatesPendingMemberInvitationAndReturns202Shape()
     {
-        var (handler, invitations, membership) = BuildHandler(SubObjective());
+        var (handler, invitations, membership, outboxWriter) = BuildHandler(SubObjective());
 
         var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
 
@@ -95,12 +101,16 @@ public class AddObjectiveMemberCommandHandlerTests
             i.ObjectiveId == ObjectiveId && i.InvitedEmployeeId == MemberEmployeeId
             && i.InviteType == ProjectInvitationTypes.Member && i.Status == ProjectInvitationStatuses.Pending
             && i.InvitedById == HeadEmployeeId), It.IsAny<CancellationToken>()), Times.Once);
+        outboxWriter.Verify(x => x.EnqueueAsync(
+            OutboxMessageTypes.WorkNotification,
+            It.Is<WorkNotificationPayload>(p => p.TemplateCode == "work_objective_invitation_created" && p.RelatedEntityType == "project_member_invitation"),
+            TenantId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task Handle_AlreadyActiveMember_NoOpReturnsAlreadyMemberTrue()
     {
-        var (handler, invitations, _) = BuildHandler(SubObjective(), alreadyActiveMember: true);
+        var (handler, invitations, _, _) = BuildHandler(SubObjective(), alreadyActiveMember: true);
 
         var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
 
@@ -118,7 +128,7 @@ public class AddObjectiveMemberCommandHandlerTests
             Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, InvitedEmployeeId = MemberEmployeeId,
             InviteType = ProjectInvitationTypes.Member, Status = ProjectInvitationStatuses.Pending
         };
-        var (handler, _, _) = BuildHandler(SubObjective(), existingPendingInvite: existing);
+        var (handler, _, _, _) = BuildHandler(SubObjective(), existingPendingInvite: existing);
 
         var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
 
@@ -129,7 +139,7 @@ public class AddObjectiveMemberCommandHandlerTests
     [Fact]
     public async Task Handle_CallerNotHead_ReturnsForbidden()
     {
-        var (handler, _, _) = BuildHandler(SubObjective(), callerId: OtherUserId);
+        var (handler, _, _, _) = BuildHandler(SubObjective(), callerId: OtherUserId);
 
         var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
 
@@ -144,7 +154,7 @@ public class AddObjectiveMemberCommandHandlerTests
         // an effective manager via an ancestor (grandparent) membership - the coordinator's own
         // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
         // this only proves the handler defers to its answer instead of the direct OwnerId check.
-        var (handler, invitations, _) = BuildHandler(SubObjective(), callerId: OtherUserId, callerIsEffectiveManager: true);
+        var (handler, invitations, _, _) = BuildHandler(SubObjective(), callerId: OtherUserId, callerIsEffectiveManager: true);
 
         var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
 
@@ -158,7 +168,7 @@ public class AddObjectiveMemberCommandHandlerTests
     [Fact]
     public async Task Handle_MemberNotActiveEmployee_ReturnsBadRequest()
     {
-        var (handler, _, _) = BuildHandler(SubObjective(), explicitNullAssignee: true);
+        var (handler, _, _, _) = BuildHandler(SubObjective(), explicitNullAssignee: true);
 
         var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
 
@@ -169,7 +179,7 @@ public class AddObjectiveMemberCommandHandlerTests
     [Fact]
     public async Task Handle_ObjectiveAchieved_ReturnsBadRequest()
     {
-        var (handler, _, _) = BuildHandler(SubObjective(isAchieved: true));
+        var (handler, _, _, _) = BuildHandler(SubObjective(isAchieved: true));
 
         var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
 
@@ -180,7 +190,7 @@ public class AddObjectiveMemberCommandHandlerTests
     [Fact]
     public async Task Handle_ObjectiveNotFound_ReturnsNotFound()
     {
-        var (handler, _, _) = BuildHandler(null);
+        var (handler, _, _, _) = BuildHandler(null);
 
         var result = await handler.Handle(new AddObjectiveMemberCommand(ObjectiveId, MemberEmployeeId), CancellationToken.None);
 

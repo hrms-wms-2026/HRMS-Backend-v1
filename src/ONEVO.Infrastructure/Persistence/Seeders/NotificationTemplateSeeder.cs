@@ -74,6 +74,18 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "work_objective_edit_request_created",
+                InAppTitleTemplate = "Milestone edit requested",
+                InAppBodyTemplate = "{{requesterName}} requested edits to {{objectiveName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_objective_edit_request_decided",
+                InAppTitleTemplate = "Milestone edit {{decision}}",
+                InAppBodyTemplate = "Your edit request for {{objectiveName}} was {{decision}}."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "work_sprint_completed",
                 InAppTitleTemplate = "Sprint completed",
                 InAppBodyTemplate = "\"{{sprintName}}\" on {{objectiveName}} was marked Complete."
@@ -174,6 +186,12 @@ public class NotificationTemplateSeeder : IHostedService
                 Id = Guid.NewGuid(), Code = "work_project_member_invited",
                 InAppTitleTemplate = "You've been added to a project",
                 InAppBodyTemplate = "{{inviterName}} invited you to join {{projectName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_objective_invitation_created",
+                InAppTitleTemplate = "You've been invited to a milestone",
+                InAppBodyTemplate = "{{inviterName}} invited you to join {{objectiveName}} as {{inviteType}}."
             },
             new()
             {
