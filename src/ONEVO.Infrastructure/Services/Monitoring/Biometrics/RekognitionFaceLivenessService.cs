@@ -1,6 +1,4 @@
-using Amazon.Rekognition;
 using Amazon.Rekognition.Model;
-using Amazon.SecurityToken;
 using Amazon.SecurityToken.Model;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.ServiceInterfaces;
@@ -13,32 +11,33 @@ public class RekognitionFaceLivenessService : IFaceLivenessService
     private const string LivenessPermissionPolicy =
         """{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["rekognition:StartFaceLivenessSession"],"Resource":"*"}]}""";
 
-    private readonly IAmazonRekognition _rekognition;
-    private readonly IAmazonSecurityTokenService _sts;
+    private readonly IAwsRekognitionClientFactory _clients;
     private readonly AwsRekognitionOptions _options;
 
     public RekognitionFaceLivenessService(
-        IAmazonRekognition rekognition, IAmazonSecurityTokenService sts, IOptions<AwsRekognitionOptions> options)
+        IAwsRekognitionClientFactory clients, IOptions<AwsRekognitionOptions> options)
     {
-        _rekognition = rekognition;
-        _sts = sts;
+        _clients = clients;
         _options = options.Value;
     }
 
     public async Task<FaceLivenessSession> CreateSessionAsync(CancellationToken ct)
     {
-        var response = await _rekognition.CreateFaceLivenessSessionAsync(new CreateFaceLivenessSessionRequest
+        var rekognition = await _clients.GetRekognitionAsync(ct);
+        var region = await _clients.GetRegionAsync(ct);
+        var response = await rekognition.CreateFaceLivenessSessionAsync(new CreateFaceLivenessSessionRequest
         {
             ClientRequestToken = Guid.NewGuid().ToString(),
             Settings = new CreateFaceLivenessSessionRequestSettings { AuditImagesLimit = 1 }
         }, ct);
 
-        return new FaceLivenessSession(response.SessionId, _options.Region);
+        return new FaceLivenessSession(response.SessionId, region);
     }
 
     public async Task<FaceLivenessOutcome> GetSessionResultAsync(string sessionId, CancellationToken ct)
     {
-        var response = await _rekognition.GetFaceLivenessSessionResultsAsync(
+        var rekognition = await _clients.GetRekognitionAsync(ct);
+        var response = await rekognition.GetFaceLivenessSessionResultsAsync(
             new GetFaceLivenessSessionResultsRequest { SessionId = sessionId }, ct);
 
         return new FaceLivenessOutcome(
@@ -52,9 +51,11 @@ public class RekognitionFaceLivenessService : IFaceLivenessService
         var sessionName = $"liveness-{sessionId}";
         if (sessionName.Length > 64) sessionName = sessionName[..64];
 
-        var response = await _sts.AssumeRoleAsync(new AssumeRoleRequest
+        var sts = await _clients.GetStsAsync(ct);
+        var roleArn = await _clients.GetLivenessRoleArnAsync(ct);
+        var response = await sts.AssumeRoleAsync(new AssumeRoleRequest
         {
-            RoleArn = _options.LivenessRoleArn,
+            RoleArn = roleArn,
             RoleSessionName = sessionName,
             DurationSeconds = _options.RoleSessionDurationSeconds,
             Policy = LivenessPermissionPolicy

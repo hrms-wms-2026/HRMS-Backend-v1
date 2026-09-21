@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
 using ONEVO.Infrastructure.ExternalServices.Email;
+using ONEVO.Infrastructure.Services.Monitoring.Biometrics;
 
 namespace ONEVO.Infrastructure.Services.SystemConfig;
 
@@ -22,13 +23,16 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
     private const string SendGridVerifyUrl = "https://api.sendgrid.com/v3/scopes";
 
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IAwsRekognitionConnectionProbe _rekognitionProbe;
     private readonly ILogger<PlatformServiceKeyVerificationService> _logger;
 
     public PlatformServiceKeyVerificationService(
         IHttpClientFactory httpClientFactory,
+        IAwsRekognitionConnectionProbe rekognitionProbe,
         ILogger<PlatformServiceKeyVerificationService> logger)
     {
         _httpClientFactory = httpClientFactory;
+        _rekognitionProbe = rekognitionProbe;
         _logger = logger;
     }
 
@@ -72,14 +76,44 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
                 serviceKey, apiKeyPlaintext, checkedAt),
             PlatformServiceKeyCatalog.CloudflareR2 => FormatOnlyResult(
                 serviceKey, apiKeyPlaintext, checkedAt),
-            PlatformServiceKeyCatalog.AwsRekognition => FormatOnlyResult(
-                serviceKey, apiKeyPlaintext, checkedAt),
+            PlatformServiceKeyCatalog.AwsRekognition => await VerifyAwsRekognitionBundleAsync(
+                apiKeyPlaintext, checkedAt, ct),
             _ => new PlatformServiceKeyVerificationResult
             {
                 Success = false,
                 CheckedAt = checkedAt,
                 Message = $"Service key '{serviceKey}' is not supported for verification."
             }
+        };
+    }
+
+    private async Task<PlatformServiceKeyVerificationResult> VerifyAwsRekognitionBundleAsync(
+        string apiKeyPlaintext,
+        DateTimeOffset checkedAt,
+        CancellationToken ct)
+    {
+        if (!AwsRekognitionCredentialBundle.TryParse(apiKeyPlaintext, out var bundle) || !bundle.HasAccessKeys)
+        {
+            return new PlatformServiceKeyVerificationResult
+            {
+                Success = false,
+                CheckedAt = checkedAt,
+                Message = "AWS Rekognition key must be Access Key ID, Secret Access Key, and region."
+            };
+        }
+
+        var region = string.IsNullOrWhiteSpace(bundle.Region) ? "us-east-1" : bundle.Region.Trim();
+        var probe = await _rekognitionProbe.ProbeAsync(
+            bundle.AccessKeyId.Trim(), bundle.SecretAccessKey.Trim(), region, ct);
+
+        return new PlatformServiceKeyVerificationResult
+        {
+            Success = probe.Success,
+            CheckedAt = checkedAt,
+            Message = probe.Message,
+            Identity = probe.Identity,
+            Region = probe.Region ?? region,
+            Service = probe.Success ? "Amazon Rekognition" : null
         };
     }
 

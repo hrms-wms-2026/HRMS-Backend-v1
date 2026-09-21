@@ -8,12 +8,13 @@ namespace ONEVO.Infrastructure.Services.Monitoring.Biometrics;
 
 public class RekognitionFaceMatchService : IFaceMatchService
 {
-    private readonly IAmazonRekognition _rekognition;
+    private readonly IAwsRekognitionClientFactory _clients;
     private readonly AwsRekognitionOptions _options;
 
-    public RekognitionFaceMatchService(IAmazonRekognition rekognition, IOptions<AwsRekognitionOptions> options)
+    public RekognitionFaceMatchService(
+        IAwsRekognitionClientFactory clients, IOptions<AwsRekognitionOptions> options)
     {
-        _rekognition = rekognition;
+        _clients = clients;
         _options = options.Value;
     }
 
@@ -21,8 +22,9 @@ public class RekognitionFaceMatchService : IFaceMatchService
     {
         var sourceBytes = await ToMemoryStreamAsync(referenceImage, ct);
         var targetBytes = await ToMemoryStreamAsync(capturedImage, ct);
+        var rekognition = await _clients.GetRekognitionAsync(ct);
 
-        var response = await _rekognition.CompareFacesAsync(new CompareFacesRequest
+        var response = await rekognition.CompareFacesAsync(new CompareFacesRequest
         {
             SourceImage = new Image { Bytes = sourceBytes },
             TargetImage = new Image { Bytes = targetBytes },

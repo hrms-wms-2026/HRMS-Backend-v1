@@ -244,9 +244,15 @@ if ($RunMigrations) {
             $migrationConnection,
             'Process')
 
-        Write-Host "Applying EF migrations with the onevo_migrator connection..."
         Push-Location $repoRoot
         try {
+            Write-Host "Restoring NuGet packages required by EF tooling..."
+            & $dotnetCommand.Source restore 'src\ONEVO.Api\ONEVO.Api.csproj'
+            if ($LASTEXITCODE -ne 0) {
+                throw "NuGet restore exited with code $LASTEXITCODE. EF migrations require project.assets.json."
+            }
+
+            Write-Host "Applying EF migrations with the onevo_migrator connection..."
             & $dotnetCommand.Source ef database update `
                 --project 'src\ONEVO.Infrastructure\ONEVO.Infrastructure.csproj' `
                 --startup-project 'src\ONEVO.Api\ONEVO.Api.csproj'

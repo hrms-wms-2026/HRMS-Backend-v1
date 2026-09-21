@@ -52,7 +52,7 @@ public static class DevCertificateBootstrapper
         Directory.CreateDirectory(Path.GetDirectoryName(resolvedCertPath)!);
 
         Console.WriteLine("[CERTIFICATE] Local HTTPS certificate not found - generating with mkcert...");
-        RunMkcert(mkcertExecutable, ["-install"]);
+        RunMkcert(mkcertExecutable, ["-install"], allowSecondaryTrustStoreFailure: true);
 
         var sanList = new List<string> { rootDomain, "127.0.0.1", "::1" };
         sanList.AddRange(TenantSubdomains.Select(sub => $"{sub}.{rootDomain}"));
@@ -60,9 +60,25 @@ public static class DevCertificateBootstrapper
 
         var generateArgs = new List<string> { "-key-file", resolvedKeyPath, "-cert-file", resolvedCertPath };
         generateArgs.AddRange(sanList);
-        RunMkcert(mkcertExecutable, generateArgs);
+        RunMkcert(mkcertExecutable, generateArgs, allowSecondaryTrustStoreFailure: false);
 
         Console.WriteLine($"[CERTIFICATE] Generated {resolvedCertPath}");
+    }
+
+    /// <summary>
+    /// mkcert -install can return a non-zero exit after the OS trust store already has the
+    /// local CA, because it also tries secondary stores (a JDK keystore under Program Files
+    /// needs elevation). Kestrel and Chromium browsers only need the OS store, so generation
+    /// can continue in that case.
+    /// </summary>
+    public static bool CanContinueAfterMkcertInstall(int exitCode, string output)
+    {
+        if (exitCode == 0)
+        {
+            return true;
+        }
+
+        return output.Contains("installed in the system trust store", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? FindMkcertExecutable()
@@ -104,9 +120,20 @@ public static class DevCertificateBootstrapper
         return null;
     }
 
-    private static void RunMkcert(string executable, IEnumerable<string> arguments)
+    private static void RunMkcert(
+        string executable,
+        IEnumerable<string> arguments,
+        bool allowSecondaryTrustStoreFailure)
     {
-        var startInfo = new ProcessStartInfo(executable) { UseShellExecute = false };
+        var startInfo = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        // Restrict to the OS trust store. mkcert otherwise also tries a JDK keystore, which
+        // fails without elevation on a typical Windows JDK install under Program Files.
+        startInfo.Environment["TRUST_STORES"] = "system";
         foreach (var arg in arguments)
         {
             startInfo.ArgumentList.Add(arg);
@@ -114,12 +141,34 @@ public static class DevCertificateBootstrapper
 
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"Failed to start '{executable}'.");
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
         process.WaitForExit();
-
-        if (process.ExitCode != 0)
+        var output = stdoutTask.GetAwaiter().GetResult() + stderrTask.GetAwaiter().GetResult();
+        if (!string.IsNullOrWhiteSpace(output))
         {
-            throw new InvalidOperationException(
-                $"mkcert exited with code {process.ExitCode} running: {executable} {string.Join(' ', arguments)}");
+            Console.Write(output);
+            if (!output.EndsWith('\n') && !output.EndsWith('\r'))
+            {
+                Console.WriteLine();
+            }
         }
+
+        if (process.ExitCode == 0)
+        {
+            return;
+        }
+
+        if (allowSecondaryTrustStoreFailure && CanContinueAfterMkcertInstall(process.ExitCode, output))
+        {
+            Console.WriteLine(
+                "[CERTIFICATE] mkcert -install reported a secondary trust-store error. " +
+                "The Windows/system store already has the local CA, so certificate generation will continue.");
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"mkcert exited with code {process.ExitCode} running: {executable} {string.Join(' ', arguments)}" +
+            (string.IsNullOrWhiteSpace(output) ? string.Empty : $"{Environment.NewLine}{output}"));
     }
 }

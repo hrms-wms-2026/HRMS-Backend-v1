@@ -435,6 +435,9 @@ public static class DependencyInjection
         services.AddScoped<IPlatformServiceKeyRepository, EfPlatformServiceKeyRepository>();
         services.AddScoped<ITrayAppReleaseRepository, EfTrayAppReleaseRepository>();
         services.AddScoped<IPlatformServiceKeyVerificationService, PlatformServiceKeyVerificationService>();
+        services.AddScoped<
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.IAwsRekognitionConnectionProbe,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.AwsRekognitionConnectionProbe>();
         services.AddScoped<IPlatformServiceKeyResolver, PlatformServiceKeyResolver>();
 
         // System Config - metadata-only provider catalog
@@ -527,15 +530,18 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces.IBiometricProfileRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Biometrics.EfBiometricProfileRepository>();
-        services.AddDefaultAWSOptions(configuration.GetAWSOptions());
-        services.AddAWSService<Amazon.Rekognition.IAmazonRekognition>();
-        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>();
+        services.AddScoped<
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.IAwsRekognitionClientFactory,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.AwsRekognitionClientFactory>();
         services.AddScoped<
             ONEVO.Application.Common.ServiceInterfaces.IFaceLivenessService,
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceLivenessService>();
         services.AddScoped<
             ONEVO.Application.Common.ServiceInterfaces.IFaceMatchService,
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceMatchService>();
+        services.AddScoped<
+            ONEVO.Application.Common.ServiceInterfaces.IFaceQualityService,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceQualityService>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces.IProductivityReportRepository,

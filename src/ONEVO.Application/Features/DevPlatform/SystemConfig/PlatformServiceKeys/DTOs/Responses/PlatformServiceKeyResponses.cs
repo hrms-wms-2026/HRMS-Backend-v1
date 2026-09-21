@@ -23,4 +23,7 @@ public sealed class ServiceKeyVerificationResultDto
     public bool Success { get; init; }
     public DateTimeOffset CheckedAt { get; init; }
     public string Message { get; init; } = string.Empty;
+    public string? Identity { get; init; }
+    public string? Region { get; init; }
+    public string? Service { get; init; }
 }
