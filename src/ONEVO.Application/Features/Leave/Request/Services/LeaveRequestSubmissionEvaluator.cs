@@ -3,6 +3,8 @@ using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Leave.Calendar.Helpers;
+using ONEVO.Application.Features.Leave.Calendar.Services;
 using ONEVO.Application.Features.Leave.Cancellation.Options;
 using ONEVO.Application.Features.Leave.Entitlement.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.Mappers;
@@ -46,7 +48,7 @@ public sealed class LeaveRequestSubmissionEvaluator
     private readonly ILeavePolicyRepository _policies;
     private readonly ILeaveRequestRepository _requests;
     private readonly LeaveRequestHourCalculator _hourCalculator;
-    private readonly ILeaveHolidayProvider _holidays;
+    private readonly ILeaveCalendarHolidayProvider _holidays;
     private readonly ILeaveApproverResolver _approvers;
     private readonly ILeaveRequestConflictProvider _conflicts;
     private readonly ILeaveTeamAbsenceWarningService _teamAbsence;
@@ -60,7 +62,7 @@ public sealed class LeaveRequestSubmissionEvaluator
         ILeavePolicyRepository policies,
         ILeaveRequestRepository requests,
         LeaveRequestHourCalculator hourCalculator,
-        ILeaveHolidayProvider holidays,
+        ILeaveCalendarHolidayProvider holidays,
         ILeaveApproverResolver approvers,
         ILeaveRequestConflictProvider conflicts,
         ILeaveTeamAbsenceWarningService teamAbsence,
@@ -172,7 +174,9 @@ public sealed class LeaveRequestSubmissionEvaluator
             workingDays = [];
         }
 
-        var holidays = await _holidays.ListHolidaysAsync(tenantId, legalEntityId, startDate, endDate, ct);
+        var holidayRows = await _holidays.ListHolidaysAsync(
+            tenantId, [legalEntityId], startDate, endDate, ct);
+        var holidays = LeaveCalendarHolidayDates.DistinctDates(holidayRows);
         var calculated = _hourCalculator.Calculate(new LeaveRequestHourCalculationInput(
             startLocal,
             endLocal,

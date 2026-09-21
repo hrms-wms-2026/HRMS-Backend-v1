@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Leave.Calendar.Services;
 using ONEVO.Application.Features.Leave.Entitlement.Helpers;
 using ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces;
 using ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces;
@@ -276,8 +277,13 @@ public class LeaveRequestSubmissionEvaluatorTests
             Approvers.Setup(x => x.ResolveAsync(TenantId, Employee.Id, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new LeaveApproverResolution([new LeaveApproverResolutionRow(Guid.NewGuid(), 1, null)]));
 
-            var holidays = new Mock<ILeaveHolidayProvider>();
-            holidays.Setup(x => x.ListHolidaysAsync(TenantId, LegalEntityId, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            var holidays = new Mock<ILeaveCalendarHolidayProvider>();
+            holidays.Setup(x => x.ListHolidaysAsync(
+                    TenantId,
+                    It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(LegalEntityId)),
+                    It.IsAny<DateOnly>(),
+                    It.IsAny<DateOnly>(),
+                    It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
 
             var conflicts = new Mock<ILeaveRequestConflictProvider>();
