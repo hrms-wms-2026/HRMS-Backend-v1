@@ -5,6 +5,8 @@ using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Leave.Calendar.Helpers;
+using ONEVO.Application.Features.Leave.Calendar.Services;
 using ONEVO.Application.Features.Leave.Cancellation.DTOs.Responses;
 using ONEVO.Application.Features.Leave.Cancellation.Helpers;
 using ONEVO.Application.Features.Leave.Cancellation.Mappers;
@@ -50,7 +52,7 @@ public sealed class CancelLeaveRequestCommandHandler
     private readonly LeaveCancellationClassifier _classifier;
     private readonly LeaveRequestDayAllocationBuilder _allocationBuilder;
     private readonly LeaveRequestHourCalculator _hourCalculator;
-    private readonly ILeaveHolidayProvider _holidays;
+    private readonly ILeaveCalendarHolidayProvider _holidays;
     private readonly ILeavePolicyRepository _policies;
     private readonly IOutboxWriter _outbox;
     private readonly INotificationDispatcher _notifications;
@@ -65,7 +67,7 @@ public sealed class CancelLeaveRequestCommandHandler
         LeaveCancellationClassifier classifier,
         LeaveRequestDayAllocationBuilder allocationBuilder,
         LeaveRequestHourCalculator hourCalculator,
-        ILeaveHolidayProvider holidays,
+        ILeaveCalendarHolidayProvider holidays,
         ILeavePolicyRepository policies,
         IOutboxWriter outbox,
         INotificationDispatcher notifications,
@@ -274,8 +276,12 @@ public sealed class CancelLeaveRequestCommandHandler
         var endLocal = LeaveRequestHourCalculator.ToNaiveLocalClock(state.Request.EndAt, zone);
         var startDate = DateOnly.FromDateTime(startLocal.UtcDateTime);
         var endDate = DateOnly.FromDateTime(endLocal.UtcDateTime);
-        var holidays = await _holidays.ListHolidaysAsync(
-            _currentUser.TenantId, state.Employee.LegalEntityId, startDate, endDate, ct);
+        IReadOnlyCollection<Guid> legalEntityIds = state.Employee.LegalEntityId is Guid id
+            ? [id]
+            : [];
+        var holidayRows = await _holidays.ListHolidaysAsync(
+            _currentUser.TenantId, legalEntityIds, startDate, endDate, ct);
+        var holidays = LeaveCalendarHolidayDates.DistinctDates(holidayRows);
         var calculated = _hourCalculator.Calculate(new LeaveRequestHourCalculationInput(
             startLocal,
             endLocal,

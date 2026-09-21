@@ -253,8 +253,6 @@ public static class DependencyInjection
         });
         services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.IHolidayCalendarSettingsRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfHolidayCalendarSettingsRepository>();
-        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveHolidayProvider,
-            ONEVO.Infrastructure.Services.Calendar.NagerHolidaysProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveCalendarHolidayProvider,
             ONEVO.Infrastructure.Services.Calendar.NagerHolidaysProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveRequestConflictProvider,
@@ -671,6 +669,7 @@ public static class DependencyInjection
         services.AddHostedService<DevSmokeTestTenantSeeder>();
         services.AddHostedService<WorkManagementDapiDemoSeeder>();
         services.AddHostedService<DapiOrgStructureSeeder>();
+        services.AddHostedService<DapiLeaveSampleSeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
         services.AddHostedService<ProjectsAccessBootstrapSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();
