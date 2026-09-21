@@ -48,6 +48,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskHistory;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTasks;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskById;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetSubtasks;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTaskCategories;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTaskStatuses;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetWorkNotificationNavigation;
@@ -183,6 +184,17 @@ public class TasksController : ControllerBase
 
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("tasks/{parentTaskId:guid}/subtasks")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> GetSubtasks(Guid parentTaskId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetSubtasksQuery(parentTaskId), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(task => task.ToViewModel()).ToList())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
