@@ -25,9 +25,12 @@ public class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
             .HasDatabaseName("ix_tasks_one_short_id_per_tenant");
         builder.HasIndex(t => new { t.TenantId, t.ProjectId, t.CategoryId })
             .HasDatabaseName("ix_tasks_tenant_id_project_id_category_id");
+        builder.HasIndex(t => new { t.TenantId, t.ParentTaskId })
+            .HasDatabaseName("ix_tasks_tenant_id_parent_task_id");
 
         builder.HasOne<TaskStatusEntity>().WithMany().HasForeignKey(t => t.StatusId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Sprint>().WithMany().HasForeignKey(t => t.SprintId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<TaskCategory>().WithMany().HasForeignKey(t => t.CategoryId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<WorkTask>().WithMany().HasForeignKey(t => t.ParentTaskId).OnDelete(DeleteBehavior.Restrict);
     }
 }
