@@ -80,19 +80,22 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
         TenantB = await ProvisionAndLoginOwnerAsync("ta-int-b", "Task Attach Int B Co", "owner-b@ta-int.test");
 
         var categoryId = await SeedProjectCategoryAsync(TenantA.TenantId, "General");
-        await SeedEmployeeForOwnerAsync(TenantA.TenantId, "owner-a@ta-int.test");
+        TenantAEmployeeId = await SeedEmployeeForOwnerAsync(TenantA.TenantId, "owner-a@ta-int.test");
         await SeedEmployeeForOwnerAsync(TenantB.TenantId, "owner-b@ta-int.test");
 
         var projectResponse = await SendCreateProjectAsync(TenantA, categoryId, "Task Attachment Project", "TAI1");
         projectResponse.StatusCode.Should().Be(HttpStatusCode.Created, await projectResponse.Content.ReadAsStringAsync());
         var projectJson = await ReadJsonAsync(projectResponse);
+        TenantAProjectId = projectJson.GetProperty("project").GetProperty("id").GetGuid();
         TenantAObjectiveId = projectJson.GetProperty("defaultObjective").GetProperty("id").GetGuid();
 
-        var taskCategoryId = await SeedTaskCategoryAsync(TenantA.TenantId, projectJson.GetProperty("project").GetProperty("id").GetGuid());
+        var taskCategoryId = await SeedTaskCategoryAsync(TenantA.TenantId, TenantAProjectId);
         TaskCategoryId = taskCategoryId;
     }
 
     public Guid TaskCategoryId { get; private set; }
+    public Guid TenantAProjectId { get; private set; }
+    public Guid TenantAEmployeeId { get; private set; }
 
     public async Task DisposeAsync()
     {
@@ -148,6 +151,17 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
 
     public async Task<HttpResponseMessage> SendGetTaskAsync(TenantSession session, Guid taskId)
         => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/tasks/{taskId}"));
+
+    public Task<HttpResponseMessage> SendCreateSubtaskAsync(TenantSession session, Guid parentTaskId, Guid? assigneeEmployeeId = null)
+        => SendJsonAsync(HttpMethod.Post, session.Host, $"/api/v1/work/tasks/{parentTaskId}/subtasks",
+            new { title = "Integrated child", priority = "high", dueDate = (DateOnly?)null, assigneeEmployeeId },
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+
+    public async Task<HttpResponseMessage> SendGetSubtasksAsync(TenantSession session, Guid parentTaskId)
+        => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/tasks/{parentTaskId}/subtasks"));
+
+    public async Task<HttpResponseMessage> SendGetProjectTasksAsync(TenantSession session, Guid projectId)
+        => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/projects/{projectId}/tasks"));
 
     public async Task<HttpResponseMessage> SendGetTaskFileAsync(TenantSession session, Guid fileId)
         => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/tasks/files/{fileId}"));
@@ -225,7 +239,7 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
         return category.Id;
     }
 
-    private async Task SeedEmployeeForOwnerAsync(Guid tenantId, string ownerEmail)
+    private async Task<Guid> SeedEmployeeForOwnerAsync(Guid tenantId, string ownerEmail)
     {
         using var scope = _factory.Services.CreateScope();
         var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
@@ -234,7 +248,7 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var user = await db.Users.SingleAsync(u => u.TenantId == tenantId && u.Email == ownerEmail);
 
-        db.Employees.Add(new ONEVO.Domain.Features.CoreHr.Entities.Employee
+        var employee = new ONEVO.Domain.Features.CoreHr.Entities.Employee
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
@@ -247,8 +261,10 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
             EmploymentStatusId = ONEVO.Domain.Lookups.EmploymentStatusIds.Active,
             CreatedById = user.Id,
             CreatedAt = DateTimeOffset.UtcNow
-        });
+        };
+        db.Employees.Add(employee);
         await db.SaveChangesAsync();
+        return employee.Id;
     }
 
     /// <summary>
@@ -487,6 +503,39 @@ public sealed class TaskAttachmentsIntegrationTests : IClassFixture<TaskAttachme
     public TaskAttachmentsIntegrationTests(TaskAttachmentsIntegrationTestsFixture fixture)
     {
         _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task CreateSubtask_ThenFetchBoardAndChildren_PersistsRelationshipAssignmentAndCounts()
+    {
+        var parentResponse = await _fixture.SendCreateTaskAsync(
+            _fixture.TenantA, _fixture.TenantAObjectiveId, _fixture.TaskCategoryId, "Integrated parent");
+        parentResponse.StatusCode.Should().Be(HttpStatusCode.Created, await parentResponse.Content.ReadAsStringAsync());
+        var parent = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(parentResponse);
+        var parentTaskId = parent.GetProperty("id").GetGuid();
+
+        var createChildResponse = await _fixture.SendCreateSubtaskAsync(
+            _fixture.TenantA, parentTaskId, _fixture.TenantAEmployeeId);
+        createChildResponse.StatusCode.Should().Be(HttpStatusCode.Created, await createChildResponse.Content.ReadAsStringAsync());
+        var child = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(createChildResponse);
+        child.GetProperty("parentTaskId").GetGuid().Should().Be(parentTaskId);
+        child.GetProperty("assigneeEmployeeIds").EnumerateArray().Single().GetGuid().Should().Be(_fixture.TenantAEmployeeId);
+
+        var boardResponse = await _fixture.SendGetProjectTasksAsync(_fixture.TenantA, _fixture.TenantAProjectId);
+        boardResponse.StatusCode.Should().Be(HttpStatusCode.OK, await boardResponse.Content.ReadAsStringAsync());
+        var board = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(boardResponse);
+        var boardParent = board.EnumerateArray().Single(task => task.GetProperty("id").GetGuid() == parentTaskId);
+        boardParent.GetProperty("subtaskTotalCount").GetInt32().Should().Be(1);
+        boardParent.GetProperty("subtaskCompletedCount").GetInt32().Should().Be(0);
+        board.EnumerateArray().Should().NotContain(task => task.GetProperty("id").GetGuid() == child.GetProperty("id").GetGuid());
+
+        var childrenResponse = await _fixture.SendGetSubtasksAsync(_fixture.TenantA, parentTaskId);
+        childrenResponse.StatusCode.Should().Be(HttpStatusCode.OK, await childrenResponse.Content.ReadAsStringAsync());
+        var children = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(childrenResponse);
+        children.EnumerateArray().Single().GetProperty("id").GetGuid().Should().Be(child.GetProperty("id").GetGuid());
+
+        var crossTenantResponse = await _fixture.SendGetSubtasksAsync(_fixture.TenantB, parentTaskId);
+        crossTenantResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
