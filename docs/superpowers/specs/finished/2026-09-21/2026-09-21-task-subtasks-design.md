@@ -1,6 +1,9 @@
 # Task Subtasks — Design
 
-Date: 2026-09-21
+**Status:** Approved 2026-09-21 (chat brainstorm). Companion: `Hrms--Web-application---front-end---v1/docs/superpowers/specs/next/2026-09-21-task-subtasks-design.md` (same document).
+
+**Status (implementation):** backend plan finished 2026-09-21; frontend companion remains tracked in the frontend repository.
+
 Repos touched: `HRMS-Backend-v1`, `Hrms--Web-application---front-end---v1`
 
 ## Problem
