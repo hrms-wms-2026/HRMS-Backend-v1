@@ -187,7 +187,9 @@ public class PlatformServiceKeyVerificationServiceTests
         var cloudflare = await service.VerifyAsync(
             PlatformServiceKeyCatalog.Cloudflare, "cf_token_12345678", CancellationToken.None);
         var r2 = await service.VerifyAsync(
-            PlatformServiceKeyCatalog.CloudflareR2, "r2_token_12345678", CancellationToken.None);
+            PlatformServiceKeyCatalog.CloudflareR2,
+            "{\"accountId\":\"a\",\"bucketName\":\"b\",\"accessKeyId\":\"k\",\"secretAccessKey\":\"s\",\"endpoint\":\"https://a.r2.cloudflarestorage.com\"}",
+            CancellationToken.None);
 
         Assert.True(cloudflare.Success);
         Assert.True(r2.Success);

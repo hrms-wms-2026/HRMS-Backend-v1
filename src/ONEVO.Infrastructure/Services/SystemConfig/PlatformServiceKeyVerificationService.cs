@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using Microsoft.Extensions.Logging;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Definitions;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
 using ONEVO.Infrastructure.ExternalServices.Email;
@@ -74,7 +75,7 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
                 ct),
             PlatformServiceKeyCatalog.Cloudflare => FormatOnlyResult(
                 serviceKey, apiKeyPlaintext, checkedAt),
-            PlatformServiceKeyCatalog.CloudflareR2 => FormatOnlyResult(
+            PlatformServiceKeyCatalog.CloudflareR2 => BundleFormatResult(
                 serviceKey, apiKeyPlaintext, checkedAt),
             PlatformServiceKeyCatalog.AwsRekognition => await VerifyAwsRekognitionBundleAsync(
                 apiKeyPlaintext, checkedAt, ct),
@@ -114,6 +115,23 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
             Identity = probe.Identity,
             Region = probe.Region ?? region,
             Service = probe.Success ? "Amazon Rekognition" : null
+        };
+    }
+
+    private static PlatformServiceKeyVerificationResult BundleFormatResult(
+        string serviceKey,
+        string storedCredential,
+        DateTimeOffset checkedAt)
+    {
+        var check = ServiceKeyDefinitionRegistry.Find(serviceKey)?.AcceptRawCredential(storedCredential);
+        var success = check?.IsSuccess == true;
+        return new PlatformServiceKeyVerificationResult
+        {
+            Success = success,
+            CheckedAt = checkedAt,
+            Message = success
+                ? "Local format-only verification passed. Live provider check is not wired for this service."
+                : $"Stored credential for '{serviceKey}' is incomplete or malformed: {check?.Error}"
         };
     }
 
