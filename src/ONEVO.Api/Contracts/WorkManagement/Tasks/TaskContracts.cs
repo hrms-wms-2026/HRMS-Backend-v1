@@ -27,6 +27,8 @@ public sealed record AddReasonRequest(string Reason);
 
 public sealed record AssignTaskRequest(Guid EmployeeId);
 
+public sealed record CreateSubtaskRequest(string Title, string? Priority, DateOnly? DueDate, Guid? AssigneeEmployeeId);
+
 public sealed record EditTaskStatusRequest(
     string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, string Visibility,
     string Category, string Color);

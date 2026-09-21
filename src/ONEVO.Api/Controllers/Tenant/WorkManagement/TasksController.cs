@@ -13,6 +13,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CancelTaskEditReq
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CancelTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ClockInTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTask;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateSubtask;
 
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskEditRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCreationRequest;
@@ -167,6 +168,18 @@ public class TasksController : ControllerBase
         var result = await _mediator.Send(new CreateTaskCommand(
             objectiveId, request.Title, request.Description, request.CategoryId, request.Priority,
             request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId, request.AttachmentFileIds), ct);
+
+        return result.IsSuccess
+            ? StatusCode(201, result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("tasks/{parentTaskId:guid}/subtasks")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> CreateSubtask(Guid parentTaskId, [FromBody] CreateSubtaskRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new CreateSubtaskCommand(
+            parentTaskId, request.Title, request.Priority, request.DueDate, request.AssigneeEmployeeId), ct);
 
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())
