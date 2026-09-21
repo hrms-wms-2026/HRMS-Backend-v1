@@ -17,7 +17,8 @@ public sealed record WorkTaskResponse(
     DateTimeOffset? OpenClockSessionClockInAt = null, int TotalLoggedMinutes = 0,
     Guid? ActiveEventId = null, string? ActiveEventName = null,
     IReadOnlyList<TaskAttachmentDto>? Attachments = null,
-    IReadOnlyList<TaskAssigneeIdentityDto>? Assignees = null);
+    IReadOnlyList<TaskAssigneeIdentityDto>? Assignees = null,
+    Guid? ParentTaskId = null, int SubtaskTotalCount = 0, int SubtaskCompletedCount = 0);
 
 public sealed record TaskCreationRequestResponse(
     Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt);
