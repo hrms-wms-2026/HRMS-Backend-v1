@@ -114,14 +114,17 @@ public sealed class ExpectedWorkAreaResolverIntegrationTestsFixture : IAsyncLife
         command.CommandText = """
             INSERT INTO work_area_change_requests
                 (id, tenant_id, employee_id, legal_entity_id, date,
-                 current_expected_work_area, requested_work_area, reason, status, requested_at)
-            VALUES ($1, $2, $3, $4, $5, 'onsite', $6, 'fixture', $7, now());
+                 current_work_mode_id, current_work_mode_name, requested_work_mode_id, requested_work_mode_name,
+                 reason, status, requested_at)
+            VALUES ($1, $2, $3, $4, $5, $6, 'onsite', $7, $8, 'fixture', $9, now());
             """;
         command.Parameters.AddWithValue(Guid.NewGuid());
         command.Parameters.AddWithValue(tenantId);
         command.Parameters.AddWithValue(employeeId);
         command.Parameters.AddWithValue(legalEntityId);
         command.Parameters.AddWithValue(date);
+        command.Parameters.AddWithValue(Guid.NewGuid());
+        command.Parameters.AddWithValue(Guid.NewGuid());
         command.Parameters.AddWithValue(requestedWorkArea);
         command.Parameters.AddWithValue(status);
         await command.ExecuteNonQueryAsync();
@@ -166,7 +169,7 @@ public sealed class ExpectedWorkAreaResolverIntegrationTests : IClassFixture<Exp
         var result = await _fixture.Repository().GetApprovedForDateAsync(tenantId, legalEntityId, employeeId, date);
 
         result.Should().NotBeNull();
-        result!.RequestedWorkArea.Should().Be("remote");
+        result!.RequestedWorkModeName.Should().Be("remote");
     }
 
     [Theory]

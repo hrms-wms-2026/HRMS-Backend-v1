@@ -17,10 +17,12 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskEditRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCategory;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskPendingUpload;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskCategory;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskPendingUpload;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskCategory;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
@@ -39,6 +41,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskProgress;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskEditRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyTaskCreationRequests;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetMyProjectTasks;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskFile;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskHistory;
 
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetObjectiveTasks;
@@ -70,6 +73,42 @@ public class TasksController : ControllerBase
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("tasks/pending-uploads")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> CreatePendingUpload([FromForm] TaskPendingUploadFormRequest request, CancellationToken ct)
+    {
+        await using var stream = request.File.OpenReadStream();
+        var result = await _mediator.Send(new CreateTaskPendingUploadCommand(
+            request.Purpose, request.File.FileName, request.File.ContentType, stream), ct);
+
+        return result.IsSuccess
+            ? StatusCode(201, new TaskPendingUploadViewModel(
+                result.Value!.Id, result.Value.OriginalFileName, result.Value.FileSizeBytes, result.Value.ContentType))
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpDelete("tasks/pending-uploads/{fileId:guid}")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> DeletePendingUpload(Guid fileId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new DeleteTaskPendingUploadCommand(fileId), ct);
+
+        return result.IsSuccess
+            ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("tasks/files/{fileId:guid}")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> GetFile(Guid fileId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetTaskFileQuery(fileId), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return File(result.Value!.Content, result.Value!.ContentType);
     }
 
     [HttpGet("my-deadlines")]
@@ -127,7 +166,7 @@ public class TasksController : ControllerBase
     {
         var result = await _mediator.Send(new CreateTaskCommand(
             objectiveId, request.Title, request.Description, request.CategoryId, request.Priority,
-            request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId), ct);
+            request.DueDate, request.EstimatedHours, request.StoryPoints, request.SprintId, request.AttachmentFileIds), ct);
 
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())
@@ -193,7 +232,7 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> CreateStatus(Guid projectId, [FromBody] CreateTaskStatusRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new CreateTaskStatusCommand(
-            projectId, request.Name, request.DisplayOrder, request.Visibility, request.MarksTaskComplete,
+            projectId, request.Name, request.DisplayOrder, request.Visibility, request.Category, request.Color,
             request.RequiresApproval, request.ApproverId), ct);
 
         return result.IsSuccess
@@ -209,7 +248,7 @@ public class TasksController : ControllerBase
         var result = await _mediator.Send(new ReorderTaskStatusesCommand(
             projectId,
             request.Updates.Select(u => new TaskStatusOrderUpdate(
-                u.StatusId, u.DisplayOrder, u.Visibility, u.MarksTaskComplete)).ToList()), ct);
+                u.StatusId, u.DisplayOrder, u.Visibility, u.Category, u.Color)).ToList()), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.Select(s => s.ToViewModel()).ToList())
@@ -221,7 +260,8 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> EditStatus(Guid id, [FromBody] EditTaskStatusRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new EditTaskStatusCommand(
-            id, request.Name, request.DisplayOrder, request.RequiresApproval, request.ApproverId, request.Visibility), ct);
+            id, request.Name, request.DisplayOrder, request.RequiresApproval, request.ApproverId,
+            request.Visibility, request.Category, request.Color), ct);
 
         return result.IsSuccess
             ? NoContent()
@@ -292,7 +332,8 @@ public class TasksController : ControllerBase
     {
         var result = await _mediator.Send(new EditTaskCommand(
             id, request.Title, request.Description, request.Priority, request.DueDate,
-            request.EstimatedHours, request.StoryPoints, request.ProgressPercent, request.Reason), ct);
+            request.EstimatedHours, request.StoryPoints, request.ProgressPercent, request.Reason,
+            request.AttachmentFileIds, request.SprintId), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
@@ -340,7 +381,7 @@ public class TasksController : ControllerBase
         var result = await _mediator.Send(new ClockInTaskCommand(id), ct);
 
         return result.IsSuccess
-            ? NoContent()
+            ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

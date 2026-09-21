@@ -30,13 +30,14 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
     private readonly ICalendarEventRepository _calendarEvents;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly ITaskAssignmentRepository _assignments;
+    private readonly ITaskAssetLinker _assetLinker;
 
     public EditTaskCommandHandler(
         ICurrentUser currentUser, IWorkTaskRepository tasks, IObjectiveRepository objectives,
         IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork, ISprintRepository sprints,
         ICallerIdentityResolver identity, ITaskEditLogRepository editLogs, ITaskPercentageLogRepository percentageLogs,
         ICalendarEventRepository calendarEvents, IMilestoneMembershipCoordinator membership,
-        ITaskAssignmentRepository assignments)
+        ITaskAssignmentRepository assignments, ITaskAssetLinker assetLinker)
     {
         _currentUser = currentUser;
         _tasks = tasks;
@@ -50,6 +51,7 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         _calendarEvents = calendarEvents;
         _membership = membership;
         _assignments = assignments;
+        _assetLinker = assetLinker;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(EditTaskCommand request, CancellationToken ct)
@@ -58,7 +60,8 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
             return Result<WorkTaskResponse>.Forbidden("Authentication required.");
 
         var tenantId = _currentUser.TenantId;
-        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, _currentUser.UserId, ct);
+        var userId = _currentUser.UserId;
+        var callerEmployeeId = await _identity.ResolveCallerEmployeeIdAsync(tenantId, userId, ct);
         if (callerEmployeeId is null)
             return Result<WorkTaskResponse>.Forbidden("No employee record for the current user.");
 
@@ -79,6 +82,20 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
             var sprint = await _sprints.GetByIdForTenantAsync(tenantId, task.SprintId.Value, ct);
             if (sprint is not null && sprint.Status == SprintStatuses.Achieved)
                 return Result<WorkTaskResponse>.Forbidden("This task's sprint has been achieved and is now frozen.");
+        }
+
+        // Omitted (null) means "leave the current sprint assignment alone" - existing callers of this
+        // endpoint (e.g. the task edit form) never send SprintId at all, so treating null as "clear the
+        // sprint" here would silently kick every edited task out of its sprint. Only an explicit value
+        // moves the task; there is no way to unassign back to the backlog through this field yet.
+        Sprint? targetSprint = null;
+        if (request.SprintId.HasValue && request.SprintId.Value != task.SprintId)
+        {
+            targetSprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId.Value, ct);
+            if (targetSprint is null || targetSprint.ObjectiveId != task.ObjectiveId)
+                return Result<WorkTaskResponse>.Conflict("Target sprint must belong to the same module.");
+            if (targetSprint.Status == SprintStatuses.Achieved)
+                return Result<WorkTaskResponse>.Forbidden("Cannot move a task into an achieved sprint.");
         }
 
         // R3: a member of an active event cannot have its due date moved outside that event's window.
@@ -123,6 +140,8 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         TrackChange("storyPoints", task.StoryPoints, request.StoryPoints);
         if (request.ProgressPercent.HasValue)
             TrackChange("progressPercent", task.ProgressPercent, request.ProgressPercent.Value);
+        if (targetSprint is not null)
+            TrackChange("sprintId", task.SprintId, targetSprint.Id);
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
@@ -133,6 +152,8 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
             task.DueDate = request.DueDate;
             task.EstimatedHours = request.EstimatedHours;
             task.StoryPoints = request.StoryPoints;
+            if (targetSprint is not null)
+                task.SprintId = targetSprint.Id;
 
             if (request.ProgressPercent.HasValue && request.ProgressPercent.Value != task.ProgressPercent)
             {
@@ -165,6 +186,9 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
 
             var assignments = await _assignments.GetByTaskIdAsync(task.Id, innerCt);
             var assigneeIds = assignments.Select(a => a.EmployeeId).ToList();
+
+            await _assetLinker.SyncAttachmentsAsync(tenantId, userId, task.Id, request.AttachmentFileIds ?? Array.Empty<Guid>(), innerCt);
+            await _assetLinker.SyncDescriptionImagesAsync(tenantId, userId, task.Id, task.Description, innerCt);
 
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,

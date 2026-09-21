@@ -23,11 +23,13 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
     private readonly Mock<ITrayCurrentDevice> _device = new();
     private readonly Mock<ITenantRepository> _tenants = new();
     private readonly Mock<ITenantContextSwitcher> _switcher = new();
+    private readonly Mock<ITrayEmployeeIdentityResolver> _employeeIdentity = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly FakeUnitOfWork _uow = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _employeeId = Guid.NewGuid();
     private readonly Guid _deviceId = Guid.NewGuid();
 
     public IngestAppUsageSnapshotsCommandHandlerTests()
@@ -49,6 +51,10 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
         _toggles.Setup(t => t.IsEnabledAsync(
                 _tenantId, _userId, MonitoringCapability.ApplicationTracking, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+
+        _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
+                _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_employeeId);
     }
 
     private IngestAppUsageSnapshotsCommandHandler CreateSut() => new(
@@ -57,6 +63,7 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
         _device.Object,
         _tenants.Object,
         _switcher.Object,
+        _employeeIdentity.Object,
         _clock,
         _uow,
         NullLogger<IngestAppUsageSnapshotsCommandHandler>.Instance);
@@ -82,7 +89,7 @@ public class IngestAppUsageSnapshotsCommandHandlerTests
         result.IsSuccess.Should().BeTrue();
         _uow.SaveCallCount.Should().Be(1);
         saved.Should().NotBeNull().And.HaveCount(1);
-        saved!.First().EmployeeId.Should().Be(_userId);
+        saved!.First().EmployeeId.Should().Be(_employeeId);
         saved.First().ProcessName.Should().Be("code.exe");
         saved.First().TenantId.Should().Be(_tenantId);
         saved.First().AgentDeviceId.Should().Be(_deviceId);

@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
@@ -76,8 +77,12 @@ public sealed class AttendanceReadHandlerTests
     public async Task Today_MapsOnsitePolicyFieldsAndDoesNotUseEmploymentType()
     {
         var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:00:00+00:00", workModeCode: "onsite", employmentTypeId: 99);
-        fixture.Policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new ClockInPolicy { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1), OnsiteWebEnabled = true, RemoteWebEnabled = false }]);
+        fixture.WorkModes.Setup(x => x.GetByIdAsync(TenantId, fixture.WorkModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode
+            {
+                Id = fixture.WorkModeId, TenantId = TenantId, LegalEntityId = LegalEntityId,
+                Name = "onsite", IsActive = true, WebEnabled = true
+            });
 
         var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
 
@@ -250,12 +255,12 @@ public sealed class AttendanceReadHandlerTests
     public async Task Today_MapsAllowedMethodsFromWorkMode(string mode)
     {
         var fixture = CreateFixture(workModeCode: mode);
-        var policy = new ClockInPolicy { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1) };
-        if (mode == "onsite") policy.OnsiteWebEnabled = true;
-        else if (mode == "remote") policy.RemoteWebEnabled = true;
-        else if (mode == "hybrid") policy.EitherWebEnabled = true;
-        else policy.FieldWebEnabled = true;
-        fixture.Policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync([policy]);
+        fixture.WorkModes.Setup(x => x.GetByIdAsync(TenantId, fixture.WorkModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode
+            {
+                Id = fixture.WorkModeId, TenantId = TenantId, LegalEntityId = LegalEntityId,
+                Name = mode, IsActive = true, WebEnabled = true
+            });
 
         var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
 
@@ -588,7 +593,7 @@ public sealed class AttendanceReadHandlerTests
         currentUser.Setup(x => x.HasPermission("attendance:read")).Returns(true);
         currentUser.Setup(x => x.HasPermission("monitoring:read")).Returns(hasMonitoringRead);
 
-        var employee = new Employee { Id = EmployeeId, UserId = UserId, TenantId = TenantId, LegalEntityId = LegalEntityId, WorkModeId = 1, EmploymentTypeId = employmentTypeId };
+        var employee = new Employee { Id = EmployeeId, UserId = UserId, TenantId = TenantId, LegalEntityId = LegalEntityId, WorkModeId = Guid.NewGuid(), EmploymentTypeId = employmentTypeId };
         var legalEntity = new LegalEntity { Id = LegalEntityId, TenantId = TenantId, Timezone = "Asia/Colombo", StandardWorkingDays = "[1,2,3,4,5]", WorkStartTime = new(9, 0), WorkEndTime = new(17, 30), BreakDurationMinutes = 60 };
         var employees = new Mock<IEmployeeRepository>(); employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
         employees.Setup(x => x.GetByIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(employee);
@@ -596,17 +601,26 @@ public sealed class AttendanceReadHandlerTests
         checkIns.Setup(x => x.ListForUserInRangeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<EmployeeCheckIn>());
         var legalEntities = new Mock<ILegalEntityRepository>(); legalEntities.Setup(x => x.GetByIdForTenantAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>())).ReturnsAsync(legalEntity);
-        var policies = new Mock<IClockInPolicyRepository>(); policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync([new ClockInPolicy { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1), RemoteWebEnabled = true }]);
+        var policies = new Mock<IClockInPolicyRepository>(); policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync([new ClockInPolicy { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1) }]);
         var attendance = new Mock<IAttendanceReadRepository>(); attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>())).ReturnsAsync((AttendanceRecord?)null); attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var authority = new Mock<IEmployeeAuthorityResolver>(); authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
         var expectedWorkAreas = new Mock<IExpectedWorkAreaResolver>();
         var activitySummaries = new Mock<IActivityDailySummaryRepository>();
         activitySummaries.Setup(x => x.GetAsync(TenantId, It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((ActivityDailySummary?)null);
+        var workModeId = Guid.NewGuid();
         expectedWorkAreas.Setup(x => x.ResolveAsync(It.IsAny<Employee>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(
-                new ExpectedWorkAreaResolution(ToExpectedWorkArea(workModeCode), legalEntity.Timezone!, "active_employee_work_mode")));
+                new ExpectedWorkAreaResolution(workModeId, workModeCode, legalEntity.Timezone!, "active_employee_work_mode", false, false)));
         var dateTime = new Mock<IDateTimeProvider>(); dateTime.SetupGet(x => x.UtcNow).Returns(DateTimeOffset.Parse(localTimeUtc));
+        var workModes = new Mock<IWorkModeRepository>();
+        workModes.Setup(x => x.GetByIdAsync(TenantId, workModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode
+            {
+                Id = workModeId, TenantId = TenantId, LegalEntityId = LegalEntityId,
+                Name = workModeCode, IsActive = true
+            });
+        var toggles = new Mock<IMonitoringToggleResolver>();
         var todayState = new ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService(
             currentUser.Object,
             dateTime.Object,
@@ -615,7 +629,9 @@ public sealed class AttendanceReadHandlerTests
             policies.Object,
             attendance.Object,
             authority.Object,
-            expectedWorkAreas.Object);
+            expectedWorkAreas.Object,
+            workModes.Object,
+            toggles.Object);
         return new Fixture(
             new AttendanceReadHandler(
                 currentUser.Object,
@@ -632,14 +648,10 @@ public sealed class AttendanceReadHandlerTests
             authority,
             legalEntity,
             activitySummaries,
-            checkIns);
+            checkIns,
+            workModes,
+            workModeId);
     }
 
-    private static string ToExpectedWorkArea(string workModeCode) => workModeCode switch
-    {
-        "hybrid" => "either",
-        _ => workModeCode
-    };
-
-    private sealed record Fixture(AttendanceReadHandler Handler, Mock<IAttendanceReadRepository> Attendance, Mock<IClockInPolicyRepository> Policies, Mock<IEmployeeAuthorityResolver> Authority, LegalEntity LegalEntity, Mock<IActivityDailySummaryRepository> ActivitySummaries, Mock<ICheckInRepository> CheckIns);
+    private sealed record Fixture(AttendanceReadHandler Handler, Mock<IAttendanceReadRepository> Attendance, Mock<IClockInPolicyRepository> Policies, Mock<IEmployeeAuthorityResolver> Authority, LegalEntity LegalEntity, Mock<IActivityDailySummaryRepository> ActivitySummaries, Mock<ICheckInRepository> CheckIns, Mock<IWorkModeRepository> WorkModes, Guid WorkModeId);
 }

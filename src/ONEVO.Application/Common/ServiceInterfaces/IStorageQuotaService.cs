@@ -68,4 +68,12 @@ public interface IStorageQuotaService
     /// successful upload completion.
     /// </summary>
     Task<Result> CommitReservedStorageAsync(Guid tenantId, long bytes, CancellationToken ct = default);
+
+    /// <summary>
+    /// Releases <paramref name="bytes"/> of already-committed usage back to the
+    /// pool. Used when a linked file is explicitly deleted (e.g. an attachment
+    /// or inline image removed from a task). Always succeeds, idempotent floor
+    /// at zero, mirroring <see cref="ReleaseReservedStorageAsync"/>.
+    /// </summary>
+    Task<Result> ReleaseUsedStorageAsync(Guid tenantId, long bytes, CancellationToken ct = default);
 }

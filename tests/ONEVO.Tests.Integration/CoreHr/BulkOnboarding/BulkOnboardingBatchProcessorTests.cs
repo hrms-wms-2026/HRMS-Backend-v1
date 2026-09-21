@@ -23,12 +23,15 @@ using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.BulkOnboarding;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using ONEVO.Infrastructure.Services.CoreHr.BulkOnboarding;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Tests.Integration.Support;
 using Xunit;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
 using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
+using WorkModeEntity = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
 
 namespace ONEVO.Tests.Integration.CoreHr.BulkOnboarding;
 
@@ -43,13 +46,14 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
     private Guid _legalEntityB;
     private Guid _userA;
     private Guid _userB;
+    private Guid _workModeIdA;
+    private Guid _workModeIdB;
 
     public async Task InitializeAsync()
     {
         _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext(new TenantContextAccessor());
-        db.WorkModes.Add(new WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true });
         db.EmploymentTypes.Add(new EmploymentType { Id = 1, Code = "full_time", Label = "Full-Time" });
 
         var tenantA = new Tenant
@@ -91,6 +95,23 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
         _legalEntityA = legalA.Id;
         _legalEntityB = legalB.Id;
         db.LegalEntities.AddRange(legalA, legalB);
+
+        var workModeA = new WorkModeEntity
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantA, LegalEntityId = _legalEntityA,
+            Name = "Onsite", WebEnabled = true, IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        var workModeB = new WorkModeEntity
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantB, LegalEntityId = _legalEntityB,
+            Name = "Onsite", WebEnabled = true, IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        _workModeIdA = workModeA.Id;
+        _workModeIdB = workModeB.Id;
+        db.TimeAttendanceWorkModes.AddRange(workModeA, workModeB);
+
         await db.SaveChangesAsync();
         _userA = Guid.NewGuid();
         _userB = Guid.NewGuid();
@@ -211,7 +232,7 @@ public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
             Id = Guid.NewGuid(),
             TenantId = tenantId,
             LegalEntityId = legalEntityId,
-            DefaultWorkModeId = 1,
+            DefaultWorkModeId = legalEntityId == _legalEntityA ? _workModeIdA : _workModeIdB,
             DefaultEmploymentType = "full_time",
             ColumnMappingJson = JsonSerializer.Serialize(mapping),
             OriginalFileName = "employees.csv",

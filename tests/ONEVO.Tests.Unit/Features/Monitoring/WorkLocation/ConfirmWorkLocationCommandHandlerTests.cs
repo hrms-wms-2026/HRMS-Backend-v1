@@ -20,25 +20,32 @@ public class ConfirmWorkLocationCommandHandlerTests
     private readonly Mock<ITrayCurrentDevice> _device = new();
     private readonly Mock<ITenantRepository> _tenants = new();
     private readonly Mock<ITenantContextSwitcher> _switcher = new();
+    private readonly Mock<ITrayEmployeeIdentityResolver> _employeeIdentity = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly FakeUnitOfWork _uow = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
+    private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _employeeId = Guid.NewGuid();
 
     public ConfirmWorkLocationCommandHandlerTests()
     {
         _device.Setup(d => d.IsAuthenticated).Returns(true);
         _device.Setup(d => d.TenantId).Returns(_tenantId);
-        _device.Setup(d => d.UserId).Returns(_employeeId);
+        _device.Setup(d => d.UserId).Returns(_userId);
         _tenants.Setup(t => t.GetByIdAsync(_tenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Tenant { Id = _tenantId, Name = "Test", Slug = "test", Status = TenantStatus.Active });
+        // The resolved real Employee.Id is what gets persisted - distinct from the raw UserId so
+        // tests can tell whether the handler stored the resolved value or the JWT identity.
+        _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
+                _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_employeeId);
         _clock.UtcNow = new DateTimeOffset(2026, 9, 9, 8, 0, 0, TimeSpan.Zero);
     }
 
     private ConfirmWorkLocationCommandHandler MakeHandler() => new(
         _device.Object, _confirmations.Object, _workLocations.Object,
-        _tenants.Object, _switcher.Object, _clock, _uow);
+        _tenants.Object, _switcher.Object, _employeeIdentity.Object, _clock, _uow);
 
     [Fact]
     public async Task Handle_FirstHomeConfirmationWithFix_RegistersEmployeeWorkLocation()

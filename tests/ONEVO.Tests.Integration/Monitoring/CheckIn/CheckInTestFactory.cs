@@ -166,7 +166,9 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
                     0,
                     checksumSha256,
                     "available",
-                    DateTimeOffset.UtcNow)));
+                    DateTimeOffset.UtcNow,
+                    Guid.NewGuid(),
+                    null)));
         }
 
         public Task<Result> CancelReservationAsync(
@@ -197,7 +199,9 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
                     size,
                     "test-checksum",
                     "available",
-                    DateTimeOffset.UtcNow)));
+                    DateTimeOffset.UtcNow,
+                    userId,
+                    null)));
         }
 
         public Task<Result<string>> GetSignedUrlAsync(
@@ -211,5 +215,14 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
             Guid fileId,
             CancellationToken ct = default)
             => Task.FromResult(Result<FileStreamDto>.NotFound("File not found."));
+
+        public Task<Result<FileRecordDto>> GetRecordAsync(
+            Guid tenantId,
+            Guid fileRecordId,
+            CancellationToken ct = default)
+            => Task.FromResult(Result<FileRecordDto>.NotFound("File not found."));
+
+        public Task<Result> DeleteAsync(Guid tenantId, Guid userId, Guid fileRecordId, CancellationToken ct = default)
+            => Task.FromResult(Result.Success());
     }
 }

@@ -34,7 +34,10 @@ public sealed partial class WorkManagementDapiDemoSeeder : IHostedService
     private const string DemoUserPassword = "Password123!";
     private const int DemoEmploymentTypeId = 1;
     private const int DemoEmploymentStatusId = 1;
-    private const int DemoWorkModeId = 1;
+
+    // WorkMode is per-legal-entity (WorkModeSeeder), not a single shared global row - resolved by
+    // name against DapiLegalEntityId's seeded defaults instead of a fixed id.
+    private const string DemoWorkModeName = "Onsite";
 
     private readonly IServiceProvider _services;
     private readonly IHostEnvironment _environment;
@@ -119,6 +122,12 @@ public sealed partial class WorkManagementDapiDemoSeeder : IHostedService
             ["dabi"] = await ResolveDapiOwnerEmployeeIdAsync(db, ct)
         };
 
+        var demoWorkModeId = await db.TimeAttendanceWorkModes
+            .Where(w => w.TenantId == DapiTenantId && w.LegalEntityId == DapiLegalEntityId
+                && w.Name == DemoWorkModeName && w.IsActive)
+            .Select(w => (Guid?)w.Id)
+            .FirstOrDefaultAsync(ct);
+
         foreach (var person in WorkManagementDapiDemoData.Persons)
         {
             var userId = DeterministicGuid($"dapi-demo:user:{person.Key}");
@@ -160,7 +169,7 @@ public sealed partial class WorkManagementDapiDemoSeeder : IHostedService
                     LegalEntityId = DapiLegalEntityId,
                     EmploymentTypeId = DemoEmploymentTypeId,
                     EmploymentStatusId = DemoEmploymentStatusId,
-                    WorkModeId = DemoWorkModeId,
+                    WorkModeId = demoWorkModeId,
                     HireDate = person.HireDate,
                     CreatedById = DapiOwnerUserId,
                     CreatedAt = now

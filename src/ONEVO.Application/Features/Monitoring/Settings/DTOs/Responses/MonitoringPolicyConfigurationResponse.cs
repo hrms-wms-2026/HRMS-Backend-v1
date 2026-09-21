@@ -19,6 +19,7 @@ public sealed record MonitoringPolicyOverrideResponse(
     bool? IdentityVerification,
     bool? Biometric,
     int? IdleThresholdMinutes,
+    int? AllowedRadiusMeters,
     string OverrideReason,
     DateTimeOffset UpdatedAt);
 

@@ -39,7 +39,9 @@ public class EditTaskCommandHandlerTests
         string priority = WorkTaskPriorities.Medium,
         int progressPercent = 0,
         bool callerIsEffectiveOwner = true,
-        Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null)
+        Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null,
+        Mock<ITaskAssetLinker>? assetLinker = null,
+        IReadOnlyList<Sprint>? otherSprints = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -71,6 +73,11 @@ public class EditTaskCommandHandlerTests
         {
             sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, sprint.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(sprint);
+        }
+        foreach (var other in otherSprints ?? Array.Empty<Sprint>())
+        {
+            sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, other.Id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(other);
         }
 
         var callerEmployeeId = UserId;
@@ -105,7 +112,8 @@ public class EditTaskCommandHandlerTests
         var handler = new EditTaskCommandHandler(
             currentUser.Object, tasks.Object, objectives.Object, slack, unitOfWork.Object, sprints.Object,
             identity.Object, editLogRepository.Object, percentageLogRepository.Object,
-            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object, membership.Object, assignments.Object);
+            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object, membership.Object, assignments.Object,
+            (assetLinker ?? new Mock<ITaskAssetLinker>()).Object);
 
         return (handler, tasks, editLogs, callerEmployeeId, task, percentageLogs);
     }
@@ -356,5 +364,90 @@ public class EditTaskCommandHandlerTests
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task Handle_WithAttachmentFileIds_CallsAssetLinker()
+    {
+        var assetLinker = new Mock<ITaskAssetLinker>();
+        var (handler, _, _, _, _, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, assetLinker: assetLinker);
+        var fileId = Guid.NewGuid();
+        var command = new EditTaskCommand(TaskId, "Updated", "<p>new desc</p>", "medium", null, null, null, null, null, new[] { fileId });
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        assetLinker.Verify(x => x.SyncAttachmentsAsync(TenantId, UserId, TaskId, new[] { fileId }, It.IsAny<CancellationToken>()), Times.Once);
+        assetLinker.Verify(x => x.SyncDescriptionImagesAsync(TenantId, UserId, TaskId, "<p>new desc</p>", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SprintIdOmitted_LeavesTaskSprintUnchanged()
+    {
+        var currentSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "S1", Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow };
+        var (handler, _, _, _, task, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, sprint: currentSprint);
+        // Mirrors every existing caller of this endpoint (e.g. the task edit form), which never sends SprintId at all.
+        var command = new EditTaskCommand(task.Id, task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours, task.StoryPoints, null, null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(currentSprint.Id, task.SprintId);
+    }
+
+    [Fact]
+    public async Task Handle_SprintIdProvided_MovesTaskToTargetSprintInSameObjective()
+    {
+        var targetSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "S2", Status = SprintStatuses.Draft, CreatedAt = DateTimeOffset.UtcNow };
+        var (handler, _, editLogs, _, task, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, otherSprints: new[] { targetSprint });
+        var command = new EditTaskCommand(task.Id, task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours, task.StoryPoints, null, null, SprintId: targetSprint.Id);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(targetSprint.Id, task.SprintId);
+        var log = Assert.Single(editLogs);
+        Assert.Contains("\"sprintId\"", log.NewValuesJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Handle_SprintIdInDifferentObjective_ReturnsConflict()
+    {
+        var targetSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = Guid.NewGuid(), Name = "Other module's sprint", Status = SprintStatuses.Draft, CreatedAt = DateTimeOffset.UtcNow };
+        var (handler, _, _, _, task, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, otherSprints: new[] { targetSprint });
+        var command = new EditTaskCommand(task.Id, task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours, task.StoryPoints, null, null, SprintId: targetSprint.Id);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Null(task.SprintId);
+    }
+
+    [Fact]
+    public async Task Handle_SprintIdTargetsAchievedSprint_ReturnsForbidden()
+    {
+        var achievedTarget = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "Frozen", Status = SprintStatuses.Achieved, CreatedAt = DateTimeOffset.UtcNow };
+        var (handler, _, _, _, task, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, otherSprints: new[] { achievedTarget });
+        var command = new EditTaskCommand(task.Id, task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours, task.StoryPoints, null, null, SprintId: achievedTarget.Id);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Null(task.SprintId);
+    }
+
+    [Fact]
+    public async Task Handle_SprintIdEqualsCurrentSprint_WritesNoSprintChangeLog()
+    {
+        var currentSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "S1", Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow };
+        var (handler, _, editLogs, _, task, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, sprint: currentSprint);
+        var command = new EditTaskCommand(task.Id, task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours, task.StoryPoints, null, null, SprintId: currentSprint.Id);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(editLogs);
     }
 }

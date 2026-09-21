@@ -35,7 +35,7 @@ public sealed class EfWorkAreaChangeRequestRepositoryTests
 
         result.Should().NotBeNull();
         result!.Id.Should().Be(approved.Id);
-        result.RequestedWorkArea.Should().Be("remote");
+        result.RequestedWorkModeName.Should().Be("remote");
     }
 
     [Theory]
@@ -148,8 +148,10 @@ public sealed class EfWorkAreaChangeRequestRepositoryTests
             EmployeeId = employeeId,
             LegalEntityId = legalEntityId,
             Date = date,
-            CurrentExpectedWorkArea = "onsite",
-            RequestedWorkArea = requestedWorkArea,
+            CurrentWorkModeId = Guid.NewGuid(),
+            CurrentWorkModeName = "onsite",
+            RequestedWorkModeId = Guid.NewGuid(),
+            RequestedWorkModeName = requestedWorkArea,
             Reason = "Reason",
             Status = status,
             RequestedAt = new DateTimeOffset(2026, 8, 24, 8, 0, 0, TimeSpan.Zero)

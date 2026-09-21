@@ -79,18 +79,39 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
             tenantId, employeeId, legalEntityId, MonitoringCapability.IdentityVerification, cancellationToken);
         var idleThresholdMinutes = await _toggles.GetIdleThresholdMinutesAsync(
             tenantId, employeeId, legalEntityId, cancellationToken);
+        var allowedRadiusMeters = await _toggles.GetAllowedRadiusMetersAsync(
+            tenantId, employeeId, legalEntityId, cancellationToken);
 
-        var inactivityEnabled = activityEnabled && screenshotEnabled && autoScreenshotEnabled;
+        // Screenshot capture + activity monitoring is what the Monitoring UI exposes
+        // ("Screenshot capture" + "Activity check threshold"). AutoScreenshotCapture is
+        // not on that screen, so requiring it left the tray prompt/Allow path dark.
+        var inactivityEnabled = activityEnabled && screenshotEnabled;
         var now = _clock.UtcNow;
 
         var todayContextResult = await _todayState.ResolveContextAsync(tenantId, employeeId, cancellationToken);
         var trayClockInEnabled = todayContextResult.IsSuccess
             && todayContextResult.Value!.AllowedClockInMethods.DesktopTray;
+        var biometricEnabled = todayContextResult.IsSuccess
+            && todayContextResult.Value!.AllowedClockInMethods.Biometric;
+        var webEnabled = todayContextResult.IsSuccess
+            && todayContextResult.Value!.AllowedClockInMethods.Web;
+        var photoRequiredEnabled = todayContextResult.IsSuccess
+            && todayContextResult.Value!.AllowedClockInMethods.PhotoRequired;
         var scheduleStart = todayContextResult.IsSuccess ? todayContextResult.Value!.Schedule.Start : null;
         var scheduleEnd = todayContextResult.IsSuccess ? todayContextResult.Value!.Schedule.End : null;
+        var allowsDailyLocationChoice = todayContextResult.IsSuccess
+            && todayContextResult.Value!.AllowsDailyLocationChoice;
+        var selfRegistersLocation = todayContextResult.IsSuccess
+            && todayContextResult.Value!.SelfRegistersLocation;
+        var officeLatitude = todayContextResult.IsSuccess ? todayContextResult.Value!.LegalEntity.OfficeLatitude : null;
+        var officeLongitude = todayContextResult.IsSuccess ? todayContextResult.Value!.LegalEntity.OfficeLongitude : null;
 
         return Result<TrayAgentPolicyDto>.Success(new TrayAgentPolicyDto(
-            ComputeVersion(locationEnabled, activityEnabled, appUsageEnabled, screenshotEnabled, autoScreenshotEnabled, cameraEnabled, idleThresholdMinutes, trayClockInEnabled, scheduleStart, scheduleEnd),
+            ComputeVersion(
+                locationEnabled, activityEnabled, appUsageEnabled, screenshotEnabled, autoScreenshotEnabled,
+                cameraEnabled, idleThresholdMinutes, trayClockInEnabled, biometricEnabled, webEnabled,
+                photoRequiredEnabled, allowedRadiusMeters, scheduleStart, scheduleEnd,
+                allowsDailyLocationChoice, selfRegistersLocation, officeLatitude, officeLongitude),
             activityEnabled,
             appUsageEnabled,
             screenshotEnabled,
@@ -102,10 +123,18 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
             LocationTrackingEnabled: locationEnabled,
             TrayClockInEnabled: trayClockInEnabled,
             ScheduleStart: scheduleStart,
-            ScheduleEnd: scheduleEnd));
+            ScheduleEnd: scheduleEnd,
+            BiometricEnabled: biometricEnabled,
+            WebEnabled: webEnabled,
+            PhotoRequiredEnabled: photoRequiredEnabled,
+            AllowedRadiusMeters: allowedRadiusMeters,
+            AllowsDailyLocationChoice: allowsDailyLocationChoice,
+            SelfRegistersLocation: selfRegistersLocation,
+            OfficeLatitude: officeLatitude,
+            OfficeLongitude: officeLongitude));
     }
 
-    internal static string ComputeVersion(
+    public static string ComputeVersion(
         bool locationEnabled,
         bool activityEnabled,
         bool appUsageEnabled,
@@ -114,11 +143,19 @@ public sealed class GetEffectiveTrayPolicyQueryHandler
         bool cameraEnabled,
         int idleThresholdMinutes,
         bool trayClockInEnabled,
+        bool biometricEnabled,
+        bool webEnabled,
+        bool photoRequired,
+        int? allowedRadiusMeters,
         TimeOnly? scheduleStart = null,
-        TimeOnly? scheduleEnd = null)
+        TimeOnly? scheduleEnd = null,
+        bool allowsDailyLocationChoice = false,
+        bool selfRegistersLocation = false,
+        double? officeLatitude = null,
+        double? officeLongitude = null)
     {
         var fingerprint =
-            $"{locationEnabled}:{activityEnabled}:{appUsageEnabled}:{screenshotEnabled}:{autoScreenshotEnabled}:{cameraEnabled}:{idleThresholdMinutes}:{trayClockInEnabled}:{scheduleStart}:{scheduleEnd}";
+            $"{locationEnabled}:{activityEnabled}:{appUsageEnabled}:{screenshotEnabled}:{autoScreenshotEnabled}:{cameraEnabled}:{idleThresholdMinutes}:{trayClockInEnabled}:{biometricEnabled}:{webEnabled}:{photoRequired}:{allowedRadiusMeters}:{scheduleStart}:{scheduleEnd}:{allowsDailyLocationChoice}:{selfRegistersLocation}:{officeLatitude}:{officeLongitude}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint)))[..16];
     }
 }

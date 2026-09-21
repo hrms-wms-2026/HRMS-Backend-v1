@@ -23,6 +23,7 @@ public class ConfirmWorkLocationCommandHandler : IRequestHandler<ConfirmWorkLoca
     private readonly IEmployeeWorkLocationRepository _workLocations;
     private readonly ITenantRepository _tenants;
     private readonly ITenantContextSwitcher _tenantSwitcher;
+    private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
 
@@ -32,6 +33,7 @@ public class ConfirmWorkLocationCommandHandler : IRequestHandler<ConfirmWorkLoca
         IEmployeeWorkLocationRepository workLocations,
         ITenantRepository tenants,
         ITenantContextSwitcher tenantSwitcher,
+        ITrayEmployeeIdentityResolver employeeIdentity,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork)
     {
@@ -40,6 +42,7 @@ public class ConfirmWorkLocationCommandHandler : IRequestHandler<ConfirmWorkLoca
         _workLocations = workLocations;
         _tenants = tenants;
         _tenantSwitcher = tenantSwitcher;
+        _employeeIdentity = employeeIdentity;
         _clock = clock;
         _unitOfWork = unitOfWork;
     }
@@ -60,7 +63,10 @@ public class ConfirmWorkLocationCommandHandler : IRequestHandler<ConfirmWorkLoca
             new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
 
         var tenantId = _device.TenantId;
-        var employeeId = _device.UserId;
+        // Resolves the real CoreHR Employee.Id to store, falling back to the raw UserId when no
+        // Employee row exists yet - see ITrayEmployeeIdentityResolver's own doc comment.
+        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            tenantId, _device.UserId, _device.LegalEntityId, ct);
         var now = _clock.UtcNow;
         var workDate = DateOnly.FromDateTime(now.UtcDateTime);
         var hasFix = request.Latitude is not null && request.Longitude is not null;

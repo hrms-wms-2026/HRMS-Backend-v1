@@ -34,7 +34,10 @@ public sealed partial class DapiOrgStructureSeeder : IHostedService
     internal const string NewHirePassword = "Password123!";
     internal const int DefaultEmploymentTypeId = 1;
     internal const int DefaultEmploymentStatusId = 1;
-    internal const int DefaultWorkModeId = 1;
+
+    // WorkMode is per-legal-entity (WorkModeSeeder), not a single shared global row - resolved by
+    // name against DapiLegalEntityId's seeded defaults instead of a fixed id.
+    internal const string DefaultWorkModeName = "Onsite";
 
     private readonly IServiceProvider _services;
     private readonly IHostEnvironment _environment;
@@ -102,9 +105,14 @@ public sealed partial class DapiOrgStructureSeeder : IHostedService
         var departmentIdByCode = await SeedDepartmentsAsync(db, now, ct);
         var positionIdByCode = await SeedPositionsAsync(db, departmentIdByCode, now, ct);
         var roleIdByName = await SeedRolesAsync(db, now, ct);
+        var defaultWorkModeId = await db.TimeAttendanceWorkModes
+            .Where(w => w.TenantId == DapiTenantId && w.LegalEntityId == DapiLegalEntityId
+                && w.Name == DefaultWorkModeName && w.IsActive)
+            .Select(w => (Guid?)w.Id)
+            .FirstOrDefaultAsync(ct);
 
         await SeedNewAccountsAsync(
-            db, passwordHasher, departmentIdByCode, positionIdByCode, roleIdByName, now, ct);
+            db, passwordHasher, departmentIdByCode, positionIdByCode, roleIdByName, defaultWorkModeId, now, ct);
         await BackfillOwnerAsync(db, departmentIdByCode, positionIdByCode, now, ct);
         await RestructureExistingEmployeesAsync(
             db, departmentIdByCode, positionIdByCode, roleIdByName, now, ct);

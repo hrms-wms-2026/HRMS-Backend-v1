@@ -105,6 +105,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Serv
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformProviders.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.SystemConfig;
 using ONEVO.Infrastructure.Persistence.Repositories.SharedPlatform;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
@@ -116,6 +117,7 @@ using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfa
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.AppUsage.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.DeviceState.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.TrayActivation;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.CheckIn;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.WorkSessions;
@@ -312,6 +314,7 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.ServiceInterfaces.IChecklistTemplateAssigneeResolver, ONEVO.Infrastructure.Services.CoreHr.Onboarding.ChecklistTemplateAssigneeResolver>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.Services.ChecklistTemplateTaskInputResolver>();
         services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();
+        services.AddScoped<IWorkModeSeeder, ONEVO.Infrastructure.Services.TimeAttendance.WorkModeSeeder>();
         services.AddScoped<IEmploymentTypeRepository, EfEmploymentTypeRepository>();
         services.AddScoped<EfSubscriptionRepository>();
         services.AddScoped<ISubscriptionPlanRepository>(sp => sp.GetRequiredService<EfSubscriptionRepository>());
@@ -391,6 +394,7 @@ public static class DependencyInjection
         services.AddScoped<IPermissionAutoGrantService, PermissionAutoGrantService>();
         services.AddScoped<ICallerIdentityResolver, CallerIdentityResolver>();
         services.AddScoped<IObjectiveAllocationSlackCalculator, ObjectiveAllocationSlackCalculator>();
+        services.AddScoped<ITaskAssetLinker, TaskAssetLinker>();
 
         // Auth: global email directory
         services.AddScoped<IGlobalEmailDirectoryRepository, EfGlobalEmailDirectoryRepository>();
@@ -429,6 +433,7 @@ public static class DependencyInjection
 
         // System Config - Platform Service Keys (Phase 1 canonical table)
         services.AddScoped<IPlatformServiceKeyRepository, EfPlatformServiceKeyRepository>();
+        services.AddScoped<ITrayAppReleaseRepository, EfTrayAppReleaseRepository>();
         services.AddScoped<IPlatformServiceKeyVerificationService, PlatformServiceKeyVerificationService>();
         services.AddScoped<IPlatformServiceKeyResolver, PlatformServiceKeyResolver>();
 
@@ -494,11 +499,13 @@ public static class DependencyInjection
 
         // Monitoring - Tray App Activation
         services.AddScoped<ITrayActivationRepository, EfTrayActivationRepository>();
+        services.AddScoped<IDeviceChangeRequestRepository, EfDeviceChangeRequestRepository>();
         services.AddSingleton<ITrayTokenService, TrayTokenService>();
 
         // Monitoring - Check-In
         services.AddScoped<ICheckInRepository, EfCheckInRepository>();
         services.AddScoped<ITrayCurrentDevice, TrayCurrentDeviceService>();
+        services.AddScoped<ITrayEmployeeIdentityResolver, TrayEmployeeIdentityResolver>();
 
         // Monitoring - Work Sessions (clock-in/break/clock-out)
         services.AddScoped<IWorkSessionRepository, EfWorkSessionRepository>();

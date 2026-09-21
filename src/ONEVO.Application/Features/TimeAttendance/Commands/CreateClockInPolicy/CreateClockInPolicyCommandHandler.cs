@@ -84,10 +84,6 @@ public class CreateClockInPolicyCommandHandler
             Name = request.Name.Trim(),
             EffectiveFrom = request.EffectiveFrom,
             EffectiveTo = request.EffectiveTo,
-            LocationVerificationRequired = request.LocationVerificationRequired,
-            AllowedRadiusMeters = request.LocationVerificationRequired
-                ? request.AllowedRadiusMeters
-                : request.AllowedRadiusMeters,
             CorrectionRequiresApproval = request.CorrectionRequiresApproval,
             NotificationRecipientResolver = string.IsNullOrWhiteSpace(request.NotificationRecipientResolver)
                 ? ClockInPolicy.NotificationManagementCoverageOwner
@@ -99,7 +95,6 @@ public class CreateClockInPolicyCommandHandler
         };
 
         ClockInPolicyMapper.ApplyScope(policy, request.Scope);
-        ClockInPolicyMapper.ApplyWorkAreaRules(policy, request.WorkAreaRules);
 
         foreach (var rule in request.LateDeductionRules.OrderBy(r => r.LateArrivalMinute))
         {

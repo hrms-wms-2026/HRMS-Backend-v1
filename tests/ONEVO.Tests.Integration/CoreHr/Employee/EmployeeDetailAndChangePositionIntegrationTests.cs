@@ -283,7 +283,8 @@ public sealed class EmployeeDetailAndChangePositionIntegrationTests : IAsyncLife
             new EfInvitationTokenRepository(db),
             _encryption,
             new StubCurrentUser(_tenantId, userId, orgManage, sensitive),
-            _clock);
+            _clock,
+            new EfEmploymentTypeRepository(db));
     }
 
     private ChangeEmployeePositionCommandHandler BuildChangePositionHandler(Guid userId)

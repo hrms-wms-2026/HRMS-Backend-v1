@@ -359,7 +359,7 @@ public sealed class AttendanceReadHandler(
                 record.ActualStart is not null && record.ActualEnd is null,
                 record.BreakMinutes,
                 AttendanceTodayStateService.CalculateWorkedMinutes(record, breakUsedMinutes, now),
-                NormalizeWorkMode(record.ExpectedWorkArea),
+                record.ExpectedWorkModeName?.ToLowerInvariant(),
                 record.AttendanceSource,
                 status.Status,
                 CanViewDetails: true,
@@ -393,11 +393,6 @@ public sealed class AttendanceReadHandler(
             return TimeZoneInfo.Utc;
         }
     }
-
-    private static string? NormalizeWorkMode(string? value)
-        => string.Equals(value, "either", StringComparison.OrdinalIgnoreCase)
-            ? "hybrid"
-            : value?.ToLowerInvariant();
 
     private static string? ValidateRange(DateOnly from, DateOnly to)
         => from > to ? "from must be less than or equal to to." : null;

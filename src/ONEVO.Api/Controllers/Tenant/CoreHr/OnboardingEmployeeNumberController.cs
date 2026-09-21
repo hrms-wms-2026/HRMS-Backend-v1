@@ -36,9 +36,10 @@ public sealed class OnboardingEmployeeNumberController(IMediator mediator) : Con
     [RequirePermission("employees:write")]
     public async Task<IActionResult> Availability(
         [FromQuery] string? employeeNumber,
+        [FromQuery] Guid? excludeEmployeeId,
         CancellationToken ct = default)
     {
-        var result = await mediator.Send(new CheckEmployeeNumberAvailabilityQuery(employeeNumber), ct);
+        var result = await mediator.Send(new CheckEmployeeNumberAvailabilityQuery(employeeNumber, excludeEmployeeId), ct);
         return result.IsSuccess
             ? Ok(new EmployeeNumberAvailabilityViewModel(
                 result.Value!.EmployeeNumber, result.Value.Available))

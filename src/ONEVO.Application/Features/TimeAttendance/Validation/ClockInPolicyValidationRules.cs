@@ -14,20 +14,6 @@ public static class ClockInPolicyValidationRules
         ClockInPolicy.ScopeEmployee
     ];
 
-    public static readonly string[] HybridSourceRules =
-    [
-        ClockInPolicy.HybridSourceOnsite,
-        ClockInPolicy.HybridSourceRemote,
-        ClockInPolicy.HybridSourceEmployeeChoice
-    ];
-
-    public static readonly string[] FieldPhotoRequirements =
-    [
-        ClockInPolicy.FieldPhotoOff,
-        ClockInPolicy.FieldPhotoOptional,
-        ClockInPolicy.FieldPhotoRequired
-    ];
-
     public static void ApplyScopeRules<T>(
         AbstractValidator<T> validator,
         System.Linq.Expressions.Expression<Func<T, ClockInPolicyScopeInput>> scopeSelector)

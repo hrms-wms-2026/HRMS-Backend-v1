@@ -11,14 +11,6 @@ public class ClockInPolicy : ITenantOwnedEntity
     public const string ScopePosition = "position";
     public const string ScopeEmployee = "employee";
 
-    public const string HybridSourceOnsite = "onsite";
-    public const string HybridSourceRemote = "remote";
-    public const string HybridSourceEmployeeChoice = "employee_choice";
-
-    public const string FieldPhotoOff = "off";
-    public const string FieldPhotoOptional = "optional";
-    public const string FieldPhotoRequired = "required";
-
     public const string NotificationManagementCoverageOwner = "management_coverage_owner";
 
     public Guid Id { get; set; }
@@ -31,32 +23,6 @@ public class ClockInPolicy : ITenantOwnedEntity
     public Guid[]? EmployeeIds { get; set; }
     public DateOnly EffectiveFrom { get; set; }
     public DateOnly? EffectiveTo { get; set; }
-    public bool LocationVerificationRequired { get; set; }
-    public int? AllowedRadiusMeters { get; set; }
-
-    public bool OnsiteBiometricEnabled { get; set; }
-    public bool OnsiteWebEnabled { get; set; }
-    public bool OnsiteTrayEnabled { get; set; }
-    public bool OnsitePhotoRequired { get; set; }
-
-    public bool RemoteBiometricEnabled { get; set; }
-    public bool RemoteWebEnabled { get; set; }
-    public bool RemoteTrayEnabled { get; set; }
-    public bool RemotePhotoRequired { get; set; }
-    public bool RemoteLocationCheckRequired { get; set; }
-
-    // Persisted as either_* columns (inventory). API/UI expose this work area as "hybrid".
-    public bool EitherBiometricEnabled { get; set; }
-    public bool EitherWebEnabled { get; set; }
-    public bool EitherTrayEnabled { get; set; }
-    public bool EitherPhotoRequired { get; set; }
-    public bool EitherLocationCheckRequired { get; set; }
-    public string EitherSourceRule { get; set; } = HybridSourceEmployeeChoice;
-
-    public bool FieldBiometricEnabled { get; set; }
-    public bool FieldWebEnabled { get; set; }
-    public bool FieldTrayEnabled { get; set; }
-    public string FieldPhotoRequirement { get; set; } = FieldPhotoOff;
 
     public bool CorrectionRequiresApproval { get; set; }
     public string NotificationRecipientResolver { get; set; } = NotificationManagementCoverageOwner;

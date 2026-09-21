@@ -80,9 +80,9 @@ public class AchieveSprintCommandHandlerTests
     }
 
     [Theory]
-    [InlineData(SprintStatuses.Future)]
+    [InlineData(SprintStatuses.Draft)]
     [InlineData(SprintStatuses.Active)]
-    [InlineData(SprintStatuses.Incomplete)]
+    [InlineData(SprintStatuses.Complete)]
     public async Task Handle_AnyNonTerminalStatus_MovesToAchieved(string startingStatus)
     {
         var (handler, sprint, _) = Build(startingStatus);

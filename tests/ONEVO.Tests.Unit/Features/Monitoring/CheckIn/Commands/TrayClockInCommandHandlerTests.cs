@@ -112,7 +112,7 @@ public class TrayClockInCommandHandlerTests
     }
 
     private static AttendanceTodayContext BuildContext() => new(
-        new Employee { Id = EmployeeId, TenantId = TenantId, UserId = UserId, LegalEntityId = LegalEntityId, WorkModeId = 1 },
+        new Employee { Id = EmployeeId, TenantId = TenantId, UserId = UserId, LegalEntityId = LegalEntityId, WorkModeId = Guid.NewGuid() },
         new LegalEntity { Id = LegalEntityId, TenantId = TenantId, Timezone = "Asia/Colombo" },
         "Asia/Colombo",
         TimeZoneInfo.FindSystemTimeZoneById("Asia/Colombo"),
@@ -120,9 +120,12 @@ public class TrayClockInCommandHandlerTests
         UtcNow,
         UtcNow,
         new AttendanceSchedule("configured", true, new(9, 0), new(17, 30), 510),
-        AttendanceRecord.WorkAreaRemote,
+        Guid.NewGuid(),
+        "Remote",
         "active_employee_work_mode",
-        new ClockInPolicy { Id = Guid.NewGuid(), RemoteTrayEnabled = true },
+        false,
+        false,
+        new ClockInPolicy { Id = Guid.NewGuid() },
         "configured",
         new AllowedClockInMethods(false, true, false, false, false, null),
         new AttendanceLocalDayWindow(UtcNow.AddHours(-8), UtcNow.AddHours(16)));

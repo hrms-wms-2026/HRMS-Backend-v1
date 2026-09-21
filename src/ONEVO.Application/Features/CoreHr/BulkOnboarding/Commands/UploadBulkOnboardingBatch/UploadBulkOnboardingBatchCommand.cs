@@ -8,6 +8,6 @@ public sealed record UploadBulkOnboardingBatchCommand(
     string OriginalFileName,
     byte[] FileContent,
     Guid LegalEntityId,
-    int? DefaultWorkModeId,
+    Guid? DefaultWorkModeId,
     string? DefaultEmploymentType,
     Guid? DefaultChecklistTemplateId) : IRequest<Result<BulkOnboardingBatchResponse>>;

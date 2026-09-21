@@ -663,7 +663,7 @@ public sealed class EfLegalEntityRepositoryTests
             LegalEntityId = legalEntityId,
             EmploymentTypeId = 1,
             EmploymentStatusId = 1,
-            WorkModeId = 1,
+            WorkModeId = Guid.NewGuid(),
             HireDate = new DateOnly(2025, 1, 1)
         };
     }

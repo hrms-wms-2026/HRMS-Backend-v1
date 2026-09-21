@@ -21,7 +21,7 @@ public static class MonitoringFeatureTogglesMapper
         entity is null
             ? new MonitoringFeatureTogglesResponse(
                 false, false, false, false, false, false, false, false, false, false, false,
-                DefaultIdleThresholdMinutes, null)
+                DefaultIdleThresholdMinutes, null, null)
             : new MonitoringFeatureTogglesResponse(
                 entity.ActivityMonitoring,
                 entity.ApplicationTracking,
@@ -35,5 +35,6 @@ public static class MonitoringFeatureTogglesMapper
                 entity.IdentityVerification,
                 entity.Biometric,
                 entity.IdleThresholdMinutes ?? DefaultIdleThresholdMinutes,
+                entity.AllowedRadiusMeters,
                 entity.UpdatedAt);
 }

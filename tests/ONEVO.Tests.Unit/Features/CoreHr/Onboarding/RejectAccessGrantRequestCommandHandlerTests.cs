@@ -61,7 +61,7 @@ public sealed class RejectAccessGrantRequestCommandHandlerTests
         LegalEntityId = Guid.NewGuid(),
         EmploymentType = "full_time",
         StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
-        WorkModeId = 1,
+        WorkModeId = Guid.NewGuid(),
         Status = OnboardingDraftStatus.WaitingForPositionApproval,
         DraftReason = OnboardingDraftReason.WaitingForPositionApproval,
         StartedById = _userId,

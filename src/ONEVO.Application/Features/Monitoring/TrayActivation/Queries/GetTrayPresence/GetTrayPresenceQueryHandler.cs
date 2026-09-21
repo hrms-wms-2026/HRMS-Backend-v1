@@ -6,6 +6,7 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.TrayActivation.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.TrayActivation.Options;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces;
 
 namespace ONEVO.Application.Features.Monitoring.TrayActivation.Queries.GetTrayPresence;
 
@@ -16,17 +17,20 @@ public sealed class GetTrayPresenceQueryHandler
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
     private readonly TrayPresenceOptions _options;
+    private readonly ITrayPresenceRequirementEvaluator _requirement;
 
     public GetTrayPresenceQueryHandler(
         ITrayActivationRepository repository,
         ICurrentUser currentUser,
         IDateTimeProvider clock,
-        IOptions<TrayPresenceOptions> options)
+        IOptions<TrayPresenceOptions> options,
+        ITrayPresenceRequirementEvaluator requirement)
     {
         _repository = repository;
         _currentUser = currentUser;
         _clock = clock;
         _options = options.Value;
+        _requirement = requirement;
     }
 
     public async Task<Result<TrayPresenceResponseDto>> Handle(
@@ -40,7 +44,8 @@ public sealed class GetTrayPresenceQueryHandler
             ct);
         var connected = device?.LastSeenAt is { } lastSeen
             && lastSeen > now.AddSeconds(-_options.GracePeriodSeconds);
-        var required = string.Equals(_options.Mode, "Enforce", StringComparison.OrdinalIgnoreCase);
+        var required = string.Equals(_options.Mode, "Enforce", StringComparison.OrdinalIgnoreCase)
+            && await _requirement.IsRequiredForCurrentUserAsync(ct);
         var validUntil = device?.LastSeenAt?.AddSeconds(_options.GracePeriodSeconds);
         var responseDevice = connected && device is not null && device.LastSeenAt is { } seen
             ? new TrayPresenceDeviceDto(device.Id, device.DeviceName, seen)

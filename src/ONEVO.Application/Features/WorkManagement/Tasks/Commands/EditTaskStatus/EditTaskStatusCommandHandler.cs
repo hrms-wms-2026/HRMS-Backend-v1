@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
 
@@ -61,6 +62,19 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
         if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))
             return Result.Forbidden("Only an owner or member of this project can change task status configuration.");
 
+        var siblings = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
+
+        if (request.Category == TaskStatusCategories.Done && status.Category != TaskStatusCategories.Done
+            && siblings.Any(s => s.Id != status.Id && s.Category == TaskStatusCategories.Done))
+            return Result.Conflict("This project already has a Done status; edit or delete it first.");
+
+        if (status.Category == TaskStatusCategories.Done && request.Category != TaskStatusCategories.Done)
+            return Result.Conflict("A project must always have exactly one Done status.");
+
+        if (status.Category == TaskStatusCategories.Active && request.Category != TaskStatusCategories.Active
+            && siblings.Count(s => s.Category == TaskStatusCategories.Active) <= 1)
+            return Result.Conflict("A project must always have at least one Active status.");
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             status.Name = request.Name.Trim();
@@ -68,6 +82,9 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
             status.RequiresApproval = request.RequiresApproval;
             status.ApproverId = request.ApproverId;
             status.Visibility = request.Visibility;
+            status.Category = request.Category;
+            status.Color = request.Color;
+            status.MarksTaskComplete = request.Category == TaskStatusCategories.Done;
             status.UpdatedAt = DateTimeOffset.UtcNow;
             _statuses.Update(status);
             await _unitOfWork.SaveChangesAsync(innerCt);

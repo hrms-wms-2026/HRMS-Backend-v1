@@ -8,6 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskStatus;
@@ -57,6 +58,13 @@ public class CreateTaskStatusCommandHandler : IRequestHandler<CreateTaskStatusCo
         if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))
             return Result<TaskStatusResponse>.Forbidden("Only an owner or member of this project can create task statuses.");
 
+        if (request.Category == TaskStatusCategories.Done)
+        {
+            var existing = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
+            if (existing.Any(s => s.Category == TaskStatusCategories.Done))
+                return Result<TaskStatusResponse>.Conflict("This project already has a Done status; edit or delete it first.");
+        }
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             var now = DateTimeOffset.UtcNow;
@@ -64,7 +72,9 @@ public class CreateTaskStatusCommandHandler : IRequestHandler<CreateTaskStatusCo
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = project.Id, ObjectiveId = null,
                 Name = request.Name.Trim(), DisplayOrder = request.DisplayOrder, Visibility = request.Visibility,
-                MarksTaskComplete = request.MarksTaskComplete, RequiresApproval = request.RequiresApproval,
+                Category = request.Category, Color = request.Color,
+                MarksTaskComplete = request.Category == TaskStatusCategories.Done,
+                RequiresApproval = request.RequiresApproval,
                 ApproverId = request.ApproverId, CreatedById = _currentUser.UserId, CreatedAt = now
             };
 
@@ -73,7 +83,7 @@ public class CreateTaskStatusCommandHandler : IRequestHandler<CreateTaskStatusCo
 
             return Result<TaskStatusResponse>.Success(new TaskStatusResponse(
                 status.Id, status.Name, status.DisplayOrder, status.RequiresApproval, status.ApproverId,
-                status.MarksTaskComplete, status.Visibility));
+                status.MarksTaskComplete, status.Visibility, status.Category, status.Color));
         }, ct);
     }
 }

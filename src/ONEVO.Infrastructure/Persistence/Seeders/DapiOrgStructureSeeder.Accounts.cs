@@ -14,6 +14,7 @@ public sealed partial class DapiOrgStructureSeeder
         Dictionary<string, Guid> departmentIdByCode,
         Dictionary<string, Guid> positionIdByCode,
         Dictionary<string, Guid> roleIdByName,
+        Guid? defaultWorkModeId,
         DateTimeOffset now,
         CancellationToken ct)
     {
@@ -71,7 +72,7 @@ public sealed partial class DapiOrgStructureSeeder
                     LegalEntityId = DapiLegalEntityId,
                     EmploymentTypeId = DefaultEmploymentTypeId,
                     EmploymentStatusId = DefaultEmploymentStatusId,
-                    WorkModeId = DefaultWorkModeId,
+                    WorkModeId = defaultWorkModeId,
                     HireDate = hire.HireDate,
                     CreatedById = DapiOwnerUserId,
                     CreatedAt = now

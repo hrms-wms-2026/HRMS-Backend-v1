@@ -21,6 +21,7 @@ public class CompleteEnrollmentAttemptCommandHandler
     private readonly ITrayCurrentDevice _device;
     private readonly IFaceLivenessService _liveness;
     private readonly IFileStorageService _fileStorage;
+    private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
     private readonly IDateTimeProvider _clock;
     private readonly BiometricEnrollmentOptions _options;
 
@@ -30,6 +31,7 @@ public class CompleteEnrollmentAttemptCommandHandler
         ITrayCurrentDevice device,
         IFaceLivenessService liveness,
         IFileStorageService fileStorage,
+        ITrayEmployeeIdentityResolver employeeIdentity,
         IDateTimeProvider clock,
         IOptions<BiometricEnrollmentOptions> options)
     {
@@ -38,6 +40,7 @@ public class CompleteEnrollmentAttemptCommandHandler
         _device = device;
         _liveness = liveness;
         _fileStorage = fileStorage;
+        _employeeIdentity = employeeIdentity;
         _clock = clock;
         _options = options.Value;
     }
@@ -49,7 +52,11 @@ public class CompleteEnrollmentAttemptCommandHandler
             return Result<BiometricProfileResponse>.Failure("A valid tray device token is required.", 401);
 
         var tenantId = _device.TenantId;
-        var employeeId = _device.UserId;
+        // Resolves the real CoreHR Employee.Id to look up/store, falling back to the raw UserId
+        // when no Employee row exists yet - see ITrayEmployeeIdentityResolver's own doc comment.
+        // Must match whatever CreateEnrollmentAttemptCommandHandler resolved for this attempt.
+        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            tenantId, _device.UserId, _device.LegalEntityId, ct);
         var now = _clock.UtcNow;
 
         var attempt = await _attempts.GetByIdAsync(tenantId, employeeId, request.AttemptId, ct);

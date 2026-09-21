@@ -13,6 +13,8 @@ public class TaskStatusConfiguration : IEntityTypeConfiguration<TaskStatusEntity
         builder.HasKey(s => s.Id);
         builder.Property(s => s.Name).HasMaxLength(100).IsRequired();
         builder.Property(s => s.Visibility).HasMaxLength(20).IsRequired().HasDefaultValue(TaskStatusVisibilities.Public);
+        builder.Property(s => s.Category).HasMaxLength(20).IsRequired().HasDefaultValue(TaskStatusCategories.NotStarted);
+        builder.Property(s => s.Color).HasMaxLength(7).IsRequired().HasDefaultValue("#94A3B8");
 
         builder.HasIndex(s => new { s.TenantId, s.ProjectId, s.ObjectiveId, s.DisplayOrder })
             .HasDatabaseName("ix_task_statuses_tenant_id_project_id_objective_id_display_order");

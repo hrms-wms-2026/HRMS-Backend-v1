@@ -18,10 +18,12 @@ public class CreateEnrollmentAttemptCommandHandlerTests
     private readonly Mock<IMonitoringToggleResolver> _toggles = new();
     private readonly Mock<ITrayCurrentDevice> _device = new();
     private readonly Mock<IFaceLivenessService> _liveness = new();
+    private readonly Mock<ITrayEmployeeIdentityResolver> _employeeIdentity = new();
     private readonly FakeDateTimeProvider _clock = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _employeeId = Guid.NewGuid();
     private readonly Guid _deviceId = Guid.NewGuid();
 
     public CreateEnrollmentAttemptCommandHandlerTests()
@@ -34,6 +36,12 @@ public class CreateEnrollmentAttemptCommandHandlerTests
         _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _userId, MonitoringCapability.Biometric, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
+        // The resolved real Employee.Id is what gets persisted - distinct from the raw UserId so
+        // tests can tell whether the handler stored the resolved value or the JWT identity.
+        _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
+                _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_employeeId);
+
         _liveness.Setup(l => l.CreateSessionAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FaceLivenessSession("aws-session-123", "us-east-1"));
         _liveness.Setup(l => l.AssumeLivenessRoleAsync("aws-session-123", It.IsAny<CancellationToken>()))
@@ -41,7 +49,7 @@ public class CreateEnrollmentAttemptCommandHandlerTests
     }
 
     private CreateEnrollmentAttemptCommandHandler CreateSut() =>
-        new(_attempts.Object, _toggles.Object, _device.Object, _liveness.Object, _clock);
+        new(_attempts.Object, _toggles.Object, _device.Object, _liveness.Object, _employeeIdentity.Object, _clock);
 
     [Fact]
     public async Task Happy_path_createsSessionAndPersistsPendingAttempt()
@@ -59,8 +67,12 @@ public class CreateEnrollmentAttemptCommandHandlerTests
         saved.Should().NotBeNull();
         saved!.Status.Should().Be(BiometricEnrollmentStatus.Pending);
         saved.TenantId.Should().Be(_tenantId);
-        saved.EmployeeId.Should().Be(_userId);
+        saved.EmployeeId.Should().Be(_employeeId);
         _attempts.Verify(a => a.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        // Toggle resolution must keep receiving the raw UserId, never the resolved EmployeeId -
+        // see ITrayEmployeeIdentityResolver's own doc comment on why.
+        _toggles.Verify(t => t.IsEnabledAsync(
+            _tenantId, _userId, MonitoringCapability.Biometric, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

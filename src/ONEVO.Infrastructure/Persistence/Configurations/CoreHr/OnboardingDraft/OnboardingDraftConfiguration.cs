@@ -26,7 +26,6 @@ public class OnboardingDraftConfiguration : IEntityTypeConfiguration<OnboardingD
         builder.Property(d => d.WorkEmail).HasMaxLength(320).IsRequired();
         builder.Property(d => d.EmploymentType).HasMaxLength(30).IsRequired();
         builder.Property(d => d.EmployeeNumber).HasMaxLength(20);
-        builder.Property(d => d.WorkModeId).IsRequired();
         builder.Property(d => d.Status).HasMaxLength(30).IsRequired();
         builder.Property(d => d.DraftReason).HasMaxLength(50);
         builder.Property(d => d.LastSavedStep).HasMaxLength(50).IsRequired();
@@ -41,7 +40,7 @@ public class OnboardingDraftConfiguration : IEntityTypeConfiguration<OnboardingD
             .WithMany().HasForeignKey(d => d.DepartmentId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ONEVO.Domain.Features.OrgStructure.Entities.Position>()
             .WithMany().HasForeignKey(d => d.PositionId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne<ONEVO.Domain.Lookups.WorkMode>()
+        builder.HasOne<ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode>()
             .WithMany().HasForeignKey(d => d.WorkModeId).OnDelete(DeleteBehavior.Restrict);
         // SelectedTemplateId: intentionally no HasOne - checklist_templates is not in this slice.
     }

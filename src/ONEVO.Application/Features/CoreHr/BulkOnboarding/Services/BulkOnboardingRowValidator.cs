@@ -5,6 +5,7 @@ using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 
@@ -191,29 +192,29 @@ public class BulkOnboardingRowValidator : IBulkOnboardingRowValidator
             }
         }
 
-        int? workModeId = batch.DefaultWorkModeId;
+        Guid? workModeId = batch.DefaultWorkModeId;
         var workModeCode = Get("workMode");
         if (workModeCode is not null)
         {
             var workModeMap = BulkOnboardingResolutionStateSerializer.FindValueMap(
                 resolutionState, "workMode", workModeCode);
             if (workModeMap?.TargetId is not null &&
-                int.TryParse(workModeMap.TargetId, out var mappedWorkModeId) &&
+                Guid.TryParse(workModeMap.TargetId, out var mappedWorkModeId) &&
                 string.Equals(workModeMap.Action, BulkOnboardingIssueTypes.Actions.MapExisting, StringComparison.Ordinal))
             {
                 workModeId = mappedWorkModeId;
             }
             else
             {
-                var lookupCode = workModeMap?.NewValue ?? workModeCode;
-                var workModes = await _workModeRepository.ListActiveAsync(ct);
+                var lookupName = workModeMap?.NewValue ?? workModeCode;
+                var workModes = await _workModeRepository.ListByLegalEntityAsync(
+                    tenantId, batch.LegalEntityId, includeInactive: false, ct);
                 var match = workModes.FirstOrDefault(w =>
-                    string.Equals(w.Code, lookupCode, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(w.Label, lookupCode, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(w.Name, lookupName, StringComparison.OrdinalIgnoreCase));
                 if (match is null)
                     return Invalid(
                         BulkOnboardingIssueTypes.WorkModeNotFound, "workMode",
-                        $"Work mode '{lookupCode}' is not a known work mode.", lookupCode);
+                        $"Work mode '{lookupName}' is not a known work mode.", lookupName);
                 workModeId = match.Id;
             }
         }

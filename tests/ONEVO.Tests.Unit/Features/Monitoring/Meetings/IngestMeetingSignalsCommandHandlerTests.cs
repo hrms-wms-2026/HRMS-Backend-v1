@@ -23,11 +23,13 @@ public class IngestMeetingSignalsCommandHandlerTests
     private readonly Mock<ITrayCurrentDevice> _device = new();
     private readonly Mock<ITenantRepository> _tenants = new();
     private readonly Mock<ITenantContextSwitcher> _switcher = new();
+    private readonly Mock<ITrayEmployeeIdentityResolver> _employeeIdentity = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly FakeUnitOfWork _uow = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _employeeId = Guid.NewGuid();
     private readonly Guid _deviceId = Guid.NewGuid();
 
     public IngestMeetingSignalsCommandHandlerTests()
@@ -43,11 +45,15 @@ public class IngestMeetingSignalsCommandHandlerTests
         _toggles.Setup(t => t.IsEnabledAsync(
                 _tenantId, _userId, MonitoringCapability.MeetingDetection, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+
+        _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
+                _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_employeeId);
     }
 
     private IngestMeetingSignalsCommandHandler CreateSut() => new(
         _signals.Object, _toggles.Object, _device.Object, _tenants.Object, _switcher.Object,
-        _clock, _uow, NullLogger<IngestMeetingSignalsCommandHandler>.Instance);
+        _employeeIdentity.Object, _clock, _uow, NullLogger<IngestMeetingSignalsCommandHandler>.Instance);
 
     private MeetingSignalItem Item(DateTimeOffset capturedAt, bool isRunning = true) => new()
     {
@@ -69,7 +75,7 @@ public class IngestMeetingSignalsCommandHandlerTests
         _uow.SaveCallCount.Should().Be(1);
         saved.Should().NotBeNull().And.HaveCount(1);
         saved!.First().ProcessName.Should().Be("teams.exe");
-        saved.First().EmployeeId.Should().Be(_userId);
+        saved.First().EmployeeId.Should().Be(_employeeId);
     }
 
     [Fact]

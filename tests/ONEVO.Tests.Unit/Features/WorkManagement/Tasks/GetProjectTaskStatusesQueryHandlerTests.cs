@@ -129,4 +129,34 @@ public class GetProjectTaskStatusesQueryHandlerTests
         var done = result.Value!.Single(s => s.Name == "Done");
         Assert.Equal(TaskStatusVisibilities.Private, done.Visibility);
     }
+
+    [Fact]
+    public async Task Handle_ReturnsCategoryAndColorForEachStatus()
+    {
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
+
+        var projects = new Mock<IProjectRepository>();
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ActiveProject());
+
+        var row = new TaskStatusEntity
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "In Process",
+            DisplayOrder = 1, Category = TaskStatusCategories.Active, Color = "#2563EB",
+            Visibility = TaskStatusVisibilities.Public, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var statuses = new Mock<ITaskStatusRepository>();
+        statuses.Setup(x => x.GetProjectTemplateAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TaskStatusEntity> { row });
+
+        var handler = new GetProjectTaskStatusesQueryHandler(currentUser.Object, projects.Object, statuses.Object);
+        var result = await handler.Handle(new GetProjectTaskStatusesQuery(ProjectId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var response = Assert.Single(result.Value!);
+        Assert.Equal(TaskStatusCategories.Active, response.Category);
+        Assert.Equal("#2563EB", response.Color);
+    }
 }

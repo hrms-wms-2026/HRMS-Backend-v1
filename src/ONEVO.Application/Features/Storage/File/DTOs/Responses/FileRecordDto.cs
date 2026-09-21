@@ -10,4 +10,6 @@ public sealed record FileRecordDto(
     long FileSizeBytes,
     string ChecksumSha256,
     string Status,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    Guid UploadedByUserId,
+    DateTimeOffset? DeletedAt);

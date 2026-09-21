@@ -36,6 +36,7 @@ public class CreateTenantCommandHandlerTests
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Mock<ITenantOwnerInvitationService> _invitationService = new();
     private readonly Mock<IWritableTenantContext> _tenantContext = new();
+    private readonly Mock<IWorkModeSeeder> _workModeSeeder = new();
 
     private CreateTenantCommandHandler BuildHandler() => new(
         _tenants.Object,
@@ -48,7 +49,8 @@ public class CreateTenantCommandHandlerTests
         _unitOfWork.Object,
         _clock.Object,
         _invitationService.Object,
-        _tenantContext.Object);
+        _tenantContext.Object,
+        _workModeSeeder.Object);
 
     private static CreateTenantCommand BaseCommand(TenantOwnerInviteRequest? ownerInvite = null) =>
         new("Acme Corp", "acme-corp", "office_it", "51-200",
@@ -97,6 +99,17 @@ public class CreateTenantCommandHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         _tenantContext.Verify(c => c.SetAdminMode(), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_SeedsDefaultWorkModesForThePrimaryLegalEntity()
+    {
+        var result = await BuildHandler().Handle(BaseCommand(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        _workModeSeeder.Verify(
+            s => s.SeedDefaultsAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

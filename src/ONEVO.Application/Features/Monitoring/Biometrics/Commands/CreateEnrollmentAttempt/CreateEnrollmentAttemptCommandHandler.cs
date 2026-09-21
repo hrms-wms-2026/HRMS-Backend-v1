@@ -19,6 +19,7 @@ public class CreateEnrollmentAttemptCommandHandler
     private readonly IMonitoringToggleResolver _toggleResolver;
     private readonly ITrayCurrentDevice _device;
     private readonly IFaceLivenessService _liveness;
+    private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
     private readonly IDateTimeProvider _clock;
 
     public CreateEnrollmentAttemptCommandHandler(
@@ -26,12 +27,14 @@ public class CreateEnrollmentAttemptCommandHandler
         IMonitoringToggleResolver toggleResolver,
         ITrayCurrentDevice device,
         IFaceLivenessService liveness,
+        ITrayEmployeeIdentityResolver employeeIdentity,
         IDateTimeProvider clock)
     {
         _attempts = attempts;
         _toggleResolver = toggleResolver;
         _device = device;
         _liveness = liveness;
+        _employeeIdentity = employeeIdentity;
         _clock = clock;
     }
 
@@ -45,11 +48,16 @@ public class CreateEnrollmentAttemptCommandHandler
         }
 
         var tenantId = _device.TenantId;
-        var employeeId = _device.UserId;
+        var userId = _device.UserId;
 
-        var enabled = await _toggleResolver.IsEnabledAsync(tenantId, employeeId, MonitoringCapability.Biometric, ct);
+        var enabled = await _toggleResolver.IsEnabledAsync(tenantId, userId, MonitoringCapability.Biometric, ct);
         if (!enabled)
             return Result<EnrollmentAttemptResponse>.Failure(MonitoringErrors.BiometricDisabled, 403);
+
+        // Resolves the real CoreHR Employee.Id to store, falling back to the raw UserId when no
+        // Employee row exists yet - see ITrayEmployeeIdentityResolver's own doc comment.
+        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            tenantId, userId, _device.LegalEntityId, ct);
 
         var session = await _liveness.CreateSessionAsync(ct);
         var credentials = await _liveness.AssumeLivenessRoleAsync(session.SessionId, ct);

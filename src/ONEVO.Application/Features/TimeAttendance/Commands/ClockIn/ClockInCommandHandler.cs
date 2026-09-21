@@ -127,7 +127,8 @@ public sealed class ClockInCommandHandler(
         record.ScheduledStart = context.Schedule.Start;
         record.ScheduledEnd = context.Schedule.End;
         record.RequiredWorkMinutes = context.Schedule.RequiredWorkMinutes;
-        record.ExpectedWorkArea = context.ExpectedWorkArea;
+        record.ExpectedWorkModeId = context.ExpectedWorkModeId;
+        record.ExpectedWorkModeName = context.ExpectedWorkModeName;
         record.ScheduleTimezone = context.Timezone;
         record.IsHoliday = false;
         record.HolidayName = null;

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.DeviceState.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
@@ -52,51 +53,77 @@ public sealed class WellnessRuleEvaluatorJob : BackgroundService
         var deviceState = scope.ServiceProvider.GetRequiredService<IDeviceStateSnapshotRepository>();
         var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
         var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
+        var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
+        var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
+        var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+
+        // device_state_snapshots and monitoring_notifications are under FORCE row-level
+        // security. A background scope defaults to system mode, which the tenant_isolation
+        // policy admits for neither - so the cross-tenant sweep needs admin mode, and each
+        // tenant's rows need that tenant's context established first. Mirrors
+        // LocationRuleEvaluatorJob.
+        tenantContext.SetAdminMode();
 
         var now = clock.UtcNow;
         var keys = await deviceState.GetActiveEmployeeKeysAsync(now - ActiveWindow, ct);
         var created = 0;
 
-        foreach (var (tenantId, employeeId) in keys)
+        foreach (var tenantGroup in keys.GroupBy(k => k.TenantId))
         {
             ct.ThrowIfCancellationRequested();
 
-            var recent = await deviceState.GetRecentAsync(tenantId, employeeId, now - LookbackWindow, ct);
-            var result = WellnessRuleEvaluator.Evaluate(recent, now);
+            var tenant = await tenants.GetByIdAsync(tenantGroup.Key, ct);
+            if (tenant is null) continue;
+            await tenantSwitcher.SwitchToTenantAsync(
+                new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
 
-            if (result.BreakReminderTriggered
-                && !await notifications.ExistsRecentAsync(tenantId, employeeId, NotificationType.BreakReminder, now - BreakReminderCooldown, ct))
+            var tenantCreated = 0;
+
+            foreach (var (tenantId, employeeId) in tenantGroup)
             {
-                await notifications.AddAsync(new Notification
+                ct.ThrowIfCancellationRequested();
+
+                var recent = await deviceState.GetRecentAsync(tenantId, employeeId, now - LookbackWindow, ct);
+                var result = WellnessRuleEvaluator.Evaluate(recent, now);
+
+                if (result.BreakReminderTriggered
+                    && !await notifications.ExistsRecentAsync(tenantId, employeeId, NotificationType.BreakReminder, now - BreakReminderCooldown, ct))
                 {
-                    Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId,
-                    Type = NotificationType.BreakReminder,
-                    Title = "Time for a break",
-                    Message = $"You've been active for {result.StreakMinutes} minutes straight. Consider taking a short break.",
-                    MetadataJson = $$"""{"streakMinutes":{{result.StreakMinutes}}}""",
-                    CreatedAt = now
-                }, ct);
-                created++;
+                    await notifications.AddAsync(new Notification
+                    {
+                        Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId,
+                        Type = NotificationType.BreakReminder,
+                        Title = "Time for a break",
+                        Message = $"You've been active for {result.StreakMinutes} minutes straight. Consider taking a short break.",
+                        MetadataJson = $$"""{"streakMinutes":{{result.StreakMinutes}}}""",
+                        CreatedAt = now
+                    }, ct);
+                    tenantCreated++;
+                }
+
+                if (result.LongIdleTriggered
+                    && !await notifications.ExistsRecentAsync(tenantId, employeeId, NotificationType.LongIdleAlert, now - LongIdleCooldown, ct))
+                {
+                    await notifications.AddAsync(new Notification
+                    {
+                        Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId,
+                        Type = NotificationType.LongIdleAlert,
+                        Title = "Still there?",
+                        Message = $"No activity detected for {result.StreakMinutes} minutes.",
+                        MetadataJson = $$"""{"idleMinutes":{{result.StreakMinutes}}}""",
+                        CreatedAt = now
+                    }, ct);
+                    tenantCreated++;
+                }
             }
 
-            if (result.LongIdleTriggered
-                && !await notifications.ExistsRecentAsync(tenantId, employeeId, NotificationType.LongIdleAlert, now - LongIdleCooldown, ct))
-            {
-                await notifications.AddAsync(new Notification
-                {
-                    Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId,
-                    Type = NotificationType.LongIdleAlert,
-                    Title = "Still there?",
-                    Message = $"No activity detected for {result.StreakMinutes} minutes.",
-                    MetadataJson = $$"""{"idleMinutes":{{result.StreakMinutes}}}""",
-                    CreatedAt = now
-                }, ct);
-                created++;
-            }
+            // Flushed per tenant while that tenant's context is active - see
+            // ActivityDailySummaryJob for why a single end-of-loop save is unsafe here.
+            if (tenantCreated > 0)
+                await notifications.SaveChangesAsync(ct);
+
+            created += tenantCreated;
         }
-
-        if (created > 0)
-            await notifications.SaveChangesAsync(ct);
 
         _logger.LogInformation(
             "Wellness rule evaluation finished. EmployeesScanned={Count} NotificationsCreated={Created}",

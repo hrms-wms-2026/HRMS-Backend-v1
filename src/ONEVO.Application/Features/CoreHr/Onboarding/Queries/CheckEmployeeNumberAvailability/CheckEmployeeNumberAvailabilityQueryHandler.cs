@@ -28,7 +28,7 @@ public sealed class CheckEmployeeNumberAvailabilityQueryHandler(
         if (!EmployeeNumberRules.IsValidFormat(employeeNumber))
             return Result<EmployeeNumberAvailabilityResponse>.Failure(EmployeeNumberRules.InvalidFormatMessage);
 
-        var exists = await employees.EmployeeNumberExistsAsync(tenantId, employeeNumber, excludeId: null, ct);
+        var exists = await employees.EmployeeNumberExistsAsync(tenantId, employeeNumber, request.ExcludeEmployeeId, ct);
         return Result<EmployeeNumberAvailabilityResponse>.Success(
             new EmployeeNumberAvailabilityResponse(employeeNumber, Available: !exists));
     }

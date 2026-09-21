@@ -12,4 +12,5 @@ public record UpdateMonitoringFeatureTogglesRequest(
     bool WorkLocationVerification,
     bool IdentityVerification,
     bool Biometric,
-    int IdleThresholdMinutes);
+    int IdleThresholdMinutes,
+    int? AllowedRadiusMeters);

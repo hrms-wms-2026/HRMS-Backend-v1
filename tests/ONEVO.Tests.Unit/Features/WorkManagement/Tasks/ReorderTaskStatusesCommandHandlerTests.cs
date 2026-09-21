@@ -27,6 +27,7 @@ public class ReorderTaskStatusesCommandHandlerTests
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid Status1 = Guid.NewGuid();
     private static readonly Guid Status2 = Guid.NewGuid();
+    private static readonly Guid Status3 = Guid.NewGuid();
 
     private (ReorderTaskStatusesCommandHandler Handler, List<TaskStatusEntity> Statuses) Build(
         Guid callerEmployeeId, bool? callerIsEffectiveManager = null)
@@ -47,10 +48,15 @@ public class ReorderTaskStatusesCommandHandlerTests
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetDefaultByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(defaultObjective);
 
+        // Status3 ("In Process", Active) is a fixed anchor most tests never include in Updates -
+        // it keeps the fixture satisfying "at least one Active" while Status1/Status2 are moved
+        // around by individual tests, the same way the pre-existing two-row fixture used to work
+        // before the Active-minimum invariant existed.
         var statusList = new List<TaskStatusEntity>
         {
-            new() { Id = Status1, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = null, Name = "To Do", DisplayOrder = 0, Visibility = TaskStatusVisibilities.Public, MarksTaskComplete = false, CreatedAt = DateTimeOffset.UtcNow },
-            new() { Id = Status2, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = null, Name = "Done", DisplayOrder = 1, Visibility = TaskStatusVisibilities.Private, MarksTaskComplete = true, CreatedAt = DateTimeOffset.UtcNow }
+            new() { Id = Status1, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = null, Name = "To Do", DisplayOrder = 0, Visibility = TaskStatusVisibilities.Public, Category = TaskStatusCategories.NotStarted, Color = "#94A3B8", CreatedAt = DateTimeOffset.UtcNow },
+            new() { Id = Status2, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = null, Name = "Done", DisplayOrder = 2, Visibility = TaskStatusVisibilities.Private, Category = TaskStatusCategories.Done, MarksTaskComplete = true, Color = "#16A34A", CreatedAt = DateTimeOffset.UtcNow },
+            new() { Id = Status3, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = null, Name = "In Process", DisplayOrder = 1, Visibility = TaskStatusVisibilities.Public, Category = TaskStatusCategories.Active, Color = "#2563EB", CreatedAt = DateTimeOffset.UtcNow }
         };
         var statuses = new Mock<ITaskStatusRepository>();
         statuses.Setup(x => x.GetProjectTemplateAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(statusList);
@@ -63,11 +69,6 @@ public class ReorderTaskStatusesCommandHandlerTests
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
-        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
-        // unmodified; callerIsEffectiveManager lets a test override this to simulate a
-        // non-owner grant (the coordinator's own membership logic is unit-tested separately
-        // in MilestoneMembershipCoordinatorTests). Keyed on the default Objective's Id, since
-        // the handler now resolves the Project's default Objective as its authorization root.
         membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerIsEffectiveManager ?? (callerEmployeeId == OwnerEmployeeId));
 
@@ -76,31 +77,64 @@ public class ReorderTaskStatusesCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ExactlyOneComplete_AppliesAllUpdates()
+    public async Task Handle_InvalidFinalCategories_DoesNotMutateEntities()
+    {
+        var (handler, statuses) = Build(OwnerEmployeeId);
+        var active = statuses.Single(s => s.Id == Status3);
+        var result = await handler.Handle(new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
+        {
+            new(Status3, 9, TaskStatusVisibilities.Private, TaskStatusCategories.NotStarted, "#FFFFFF")
+        }), CancellationToken.None);
+        Assert.Equal(422, result.StatusCode);
+        Assert.Equal(TaskStatusCategories.Active, active.Category);
+        Assert.Equal(1, active.DisplayOrder);
+        Assert.Equal("#2563EB", active.Color);
+        Assert.Equal(TaskStatusVisibilities.Public, active.Visibility);
+    }
+
+    [Fact]
+    public async Task Handle_UnknownIdAfterValidUpdate_DoesNotMutateEntities()
+    {
+        var (handler, statuses) = Build(OwnerEmployeeId);
+        var first = statuses.Single(s => s.Id == Status1);
+        var result = await handler.Handle(new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
+        {
+            new(Status1, 9, TaskStatusVisibilities.Private, TaskStatusCategories.Active, "#FFFFFF"),
+            new(Guid.NewGuid(), 2, TaskStatusVisibilities.Public, TaskStatusCategories.Active, "#FFFFFF")
+        }), CancellationToken.None);
+        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(TaskStatusCategories.NotStarted, first.Category);
+        Assert.Equal(0, first.DisplayOrder);
+        Assert.Equal("#94A3B8", first.Color);
+    }
+    [Fact]
+    public async Task Handle_ValidReorder_AppliesCategoryAndColor()
     {
         var (handler, statuses) = Build(OwnerEmployeeId);
         var command = new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
         {
-            new(Status1, DisplayOrder: 1, TaskStatusVisibilities.Public, MarksTaskComplete: false),
-            new(Status2, DisplayOrder: 0, TaskStatusVisibilities.Public, MarksTaskComplete: true)
+            new(Status1, 1, TaskStatusVisibilities.Public, TaskStatusCategories.NotStarted, "#94A3B8"),
+            new(Status2, 2, TaskStatusVisibilities.Public, TaskStatusCategories.Done, "#16A34A")
         });
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(1, statuses.Single(s => s.Id == Status1).DisplayOrder);
-        Assert.Equal(0, statuses.Single(s => s.Id == Status2).DisplayOrder);
         Assert.Equal(TaskStatusVisibilities.Public, statuses.Single(s => s.Id == Status2).Visibility);
+        Assert.True(statuses.Single(s => s.Id == Status2).MarksTaskComplete);
+        Assert.False(statuses.Single(s => s.Id == Status1).MarksTaskComplete);
     }
 
     [Fact]
-    public async Task Handle_ZeroCompleteStatuses_ReturnsFailure()
+    public async Task Handle_MoveTheDoneRowToActiveWithNoOtherDoneInBatch_ReturnsFailure()
     {
-        var (handler, statuses) = Build(OwnerEmployeeId);
+        // Status2 is the only Done row in the whole project; moving it to Active without also
+        // promoting some other row to Done leaves the full list with zero Done rows.
+        var (handler, _) = Build(OwnerEmployeeId);
         var command = new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
         {
-            new(Status1, 0, TaskStatusVisibilities.Public, MarksTaskComplete: false),
-            new(Status2, 1, TaskStatusVisibilities.Public, MarksTaskComplete: false)
+            new(Status2, 2, TaskStatusVisibilities.Public, TaskStatusCategories.Active, "#2563EB")
         });
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -110,28 +144,30 @@ public class ReorderTaskStatusesCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_TwoCompleteStatuses_ReturnsFailure()
-    {
-        var (handler, statuses) = Build(OwnerEmployeeId);
-        var command = new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
-        {
-            new(Status1, 0, TaskStatusVisibilities.Public, MarksTaskComplete: true),
-            new(Status2, 1, TaskStatusVisibilities.Public, MarksTaskComplete: true)
-        });
-
-        var result = await handler.Handle(command, CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(422, result.StatusCode);
-    }
-
-    [Fact]
-    public async Task Handle_PartialUpdateLeavesTwoCompleteStatuses_ReturnsFailure()
+    public async Task Handle_TwoDoneEntriesInSameBatch_ReturnsValidationFailure()
     {
         var (handler, _) = Build(OwnerEmployeeId);
         var command = new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
         {
-            new(Status1, 0, TaskStatusVisibilities.Public, MarksTaskComplete: true)
+            new(Status1, 0, TaskStatusVisibilities.Public, TaskStatusCategories.Done, "#16A34A"),
+            new(Status2, 1, TaskStatusVisibilities.Public, TaskStatusCategories.Done, "#16A34A")
+        });
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(422, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_MoveTheOnlyOtherActiveRowAndTheAnchorOutOfActive_ReturnsFailure()
+    {
+        // Moves both Status1 (currently NotStarted, left as NotStarted) and the anchor Status3
+        // (currently the project's only Active row) out of Active, leaving zero Active rows total.
+        var (handler, _) = Build(OwnerEmployeeId);
+        var command = new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
+        {
+            new(Status3, 0, TaskStatusVisibilities.Public, TaskStatusCategories.NotStarted, "#94A3B8")
         });
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -146,8 +182,8 @@ public class ReorderTaskStatusesCommandHandlerTests
         var (handler, _) = Build(OwnerEmployeeId);
         var command = new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
         {
-            new(Status2, 0, TaskStatusVisibilities.Public, MarksTaskComplete: true),
-            new(Status2, 1, TaskStatusVisibilities.Public, MarksTaskComplete: false)
+            new(Status2, 0, TaskStatusVisibilities.Public, TaskStatusCategories.Done, "#16A34A"),
+            new(Status2, 1, TaskStatusVisibilities.Public, TaskStatusCategories.Done, "#16A34A")
         });
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -175,7 +211,7 @@ public class ReorderTaskStatusesCommandHandlerTests
         var command = new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
         {
             null!,
-            new(Status2, 1, TaskStatusVisibilities.Public, MarksTaskComplete: true)
+            new(Status2, 1, TaskStatusVisibilities.Public, TaskStatusCategories.Done, "#16A34A")
         });
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -187,10 +223,10 @@ public class ReorderTaskStatusesCommandHandlerTests
     [Fact]
     public async Task Handle_NotOwner_ReturnsForbidden()
     {
-        var (handler, statuses) = Build(OtherEmployeeId);
+        var (handler, _) = Build(OtherEmployeeId);
         var command = new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
         {
-            new(Status1, 0, TaskStatusVisibilities.Public, false), new(Status2, 1, TaskStatusVisibilities.Public, true)
+            new(Status1, 0, TaskStatusVisibilities.Public, TaskStatusCategories.NotStarted, "#94A3B8")
         });
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -202,21 +238,17 @@ public class ReorderTaskStatusesCommandHandlerTests
     [Fact]
     public async Task Handle_CallerIsEffectiveManagerViaAncestor_AppliesAllUpdates()
     {
-        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
-        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
-        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
-        // this only proves the handler defers to its answer instead of the direct OwnerId check.
         var (handler, statuses) = Build(OtherEmployeeId, callerIsEffectiveManager: true);
         var command = new ReorderTaskStatusesCommand(ProjectId, new List<TaskStatusOrderUpdate>
         {
-            new(Status1, DisplayOrder: 1, TaskStatusVisibilities.Public, MarksTaskComplete: false),
-            new(Status2, DisplayOrder: 0, TaskStatusVisibilities.Public, MarksTaskComplete: true)
+            new(Status1, 1, TaskStatusVisibilities.Public, TaskStatusCategories.NotStarted, "#94A3B8"),
+            new(Status2, 2, TaskStatusVisibilities.Public, TaskStatusCategories.Done, "#16A34A")
         });
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(1, statuses.Single(s => s.Id == Status1).DisplayOrder);
-        Assert.Equal(0, statuses.Single(s => s.Id == Status2).DisplayOrder);
     }
 }
+

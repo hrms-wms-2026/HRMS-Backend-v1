@@ -36,6 +36,9 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(assembly);
 
         services.AddScoped<
+            ONEVO.Application.Features.Monitoring.TrayActivation.ServiceInterfaces.ITrayPresenceRequirementEvaluator,
+            ONEVO.Application.Features.Monitoring.TrayActivation.Services.TrayPresenceRequirementEvaluator>();
+        services.AddScoped<
             ONEVO.Application.Features.TimeAttendance.Services.IClockInPolicyScopeMembershipValidator,
             ONEVO.Application.Features.TimeAttendance.Services.ClockInPolicyScopeMembershipValidator>();
         services.AddScoped<
@@ -81,6 +84,7 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.ITrayEnrollmentService,
             ONEVO.Application.Features.Monitoring.TrayActivation.Services.TrayEnrollmentService>();
+        services.AddScoped<ONEVO.Application.Features.Monitoring.TrayActivation.Commands.DeviceChangeRequests.DeviceChangeRequestWorkflow>();
 
         services.AddScoped<IOutboxMessageHandler, WorkNotificationOutboxHandler>();
         services.AddScoped<IOutboxMessageHandler, ONEVO.Application.Features.Calendar.OutboxHandlers.CalendarEventInviteEmailOutboxHandler>();

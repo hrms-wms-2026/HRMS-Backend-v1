@@ -75,14 +75,10 @@ public sealed class ClockInPolicyControllerArchitectureTests
     }
 
     [Fact]
-    public void RequestContract_OmitsTenantId_AndUsesHybridNotEither()
+    public void RequestContract_OmitsTenantId()
     {
         var props = typeof(UpsertClockInPolicyRequest).GetProperties().Select(p => p.Name).ToList();
         Assert.DoesNotContain(props, n => string.Equals(n, "TenantId", StringComparison.OrdinalIgnoreCase));
-
-        var workAreaProps = typeof(WorkAreaRulesRequest).GetProperties().Select(p => p.Name).ToList();
-        Assert.Contains("Hybrid", workAreaProps);
-        Assert.DoesNotContain(workAreaProps, n => n.Contains("Either", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

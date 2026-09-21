@@ -4,14 +4,13 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
-using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
-using ONEVO.Domain.Lookups;
 
 namespace ONEVO.Tests.Unit.Features.TimeAttendance;
 
@@ -28,7 +27,7 @@ public sealed class AttendanceTodayBreaksTests
     private static readonly Guid LegalEntityId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
     private static readonly DateOnly WorkDate = new(2026, 8, 21);
     private static readonly DateTimeOffset UtcNow = new(2026, 8, 21, 9, 0, 0, TimeSpan.Zero);
-    private const int OnsiteWorkModeId = 1;
+    private static readonly Guid OnsiteWorkModeId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
 
     [Fact]
     public async Task Today_IncludesAnOpenBreakInterval_WithNoEndedAt()
@@ -111,8 +110,7 @@ public sealed class AttendanceTodayBreaksTests
         var policy = new ClockInPolicy
         {
             Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId,
-            ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1),
-            OnsiteWebEnabled = true
+            ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1)
         };
         var policies = new Mock<IClockInPolicyRepository>();
         policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>()))
@@ -125,7 +123,6 @@ public sealed class AttendanceTodayBreaksTests
                 Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId,
                 Date = WorkDate, ExpectedWorkingDay = true,
                 ScheduledStart = new(9, 0), ScheduledEnd = new(17, 0),
-                ExpectedWorkArea = AttendanceRecord.WorkAreaOnsite,
                 ActualStart = UtcNow.AddHours(-3), Status = AttendanceRecord.StatusActive
             });
         attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
@@ -136,8 +133,12 @@ public sealed class AttendanceTodayBreaksTests
             .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
 
         var workModes = new Mock<IWorkModeRepository>();
-        workModes.Setup(x => x.ListActiveAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new WorkMode { Id = OnsiteWorkModeId, Code = "onsite", Label = "On-site" }]);
+        workModes.Setup(x => x.GetByIdAsync(TenantId, OnsiteWorkModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode
+            {
+                Id = OnsiteWorkModeId, TenantId = TenantId, LegalEntityId = LegalEntityId,
+                Name = "Onsite", IsActive = true
+            });
 
         var dateTime = new Mock<IDateTimeProvider>();
         dateTime.SetupGet(x => x.UtcNow).Returns(UtcNow);
@@ -150,8 +151,11 @@ public sealed class AttendanceTodayBreaksTests
         var expectedWorkAreas = new ExpectedWorkAreaResolver(
             dateTime.Object, workModes.Object, workAreaChangeRequests.Object);
 
+        var toggles = new Mock<IMonitoringToggleResolver>();
+
         return new AttendanceTodayStateService(
             currentUser.Object, dateTime.Object, employees.Object, legalEntities.Object,
-            policies.Object, attendance.Object, authority.Object, expectedWorkAreas);
+            policies.Object, attendance.Object, authority.Object, expectedWorkAreas,
+            workModes.Object, toggles.Object);
     }
 }

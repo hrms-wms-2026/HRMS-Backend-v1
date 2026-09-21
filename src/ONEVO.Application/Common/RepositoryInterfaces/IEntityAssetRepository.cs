@@ -4,7 +4,7 @@ namespace ONEVO.Application.Common.RepositoryInterfaces;
 
 /// <summary>Projection of an entity_assets row joined with its file_records metadata, for listing.</summary>
 public sealed record EntityAssetWithFile(
-    Guid Id, Guid FileRecordId, string OriginalFileName, long FileSizeBytes, string ContentType, DateTimeOffset CreatedAt);
+    Guid Id, Guid FileRecordId, string OriginalFileName, long FileSizeBytes, string ContentType, DateTimeOffset CreatedAt, string AssetPurpose);
 
 public interface IEntityAssetRepository
 {
@@ -21,4 +21,9 @@ public interface IEntityAssetRepository
     Task<EntityAsset?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     Task DeleteAsync(EntityAsset asset, CancellationToken ct = default);
+
+    /// <summary>Finds the single asset row (if any) that links to this file record — used to
+    /// check whether an uploaded file is still an unlinked "pending upload" or already
+    /// attached to something.</summary>
+    Task<EntityAsset?> GetByFileRecordIdAsync(Guid tenantId, Guid fileRecordId, CancellationToken ct = default);
 }

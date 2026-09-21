@@ -36,7 +36,13 @@ public class EditSprintCommandHandlerTests
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(resolvedCallerEmployeeId);
 
-        var sprint = new Sprint { Id = SprintId, TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "Old", StartDate = new DateOnly(2026, 9, 1), EndDate = new DateOnly(2026, 9, 14), Status = sprintStatus, CreatedAt = DateTimeOffset.UtcNow };
+        var sprint = new Sprint
+        {
+            Id = SprintId, TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "Old",
+            StartDate = sprintStatus == SprintStatuses.Draft ? null : new DateOnly(2026, 9, 1),
+            EndDate = sprintStatus == SprintStatuses.Draft ? null : new DateOnly(2026, 9, 14),
+            Status = sprintStatus, CreatedAt = DateTimeOffset.UtcNow
+        };
         var sprints = new Mock<ISprintRepository>();
         sprints.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>())).ReturnsAsync(sprint);
 
@@ -65,7 +71,7 @@ public class EditSprintCommandHandlerTests
     public async Task Handle_ActiveSprint_UpdatesFields()
     {
         var (handler, sprint) = Build(SprintStatuses.Active);
-        var command = new EditSprintCommand(SprintId, "New Name", new DateOnly(2026, 9, 2), new DateOnly(2026, 9, 16));
+        var command = new EditSprintCommand(SprintId, "New Name", "Goal", new DateOnly(2026, 9, 2), new DateOnly(2026, 9, 16));
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -80,7 +86,7 @@ public class EditSprintCommandHandlerTests
     public async Task Handle_TerminalSprint_ReturnsConflict(string status)
     {
         var (handler, sprint) = Build(status);
-        var command = new EditSprintCommand(SprintId, "New Name", sprint.StartDate, sprint.EndDate);
+        var command = new EditSprintCommand(SprintId, "New Name", "Goal", sprint.StartDate!.Value, sprint.EndDate!.Value);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -93,7 +99,7 @@ public class EditSprintCommandHandlerTests
     public async Task Handle_NotOwner_ReturnsForbidden()
     {
         var (handler, sprint) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId);
-        var command = new EditSprintCommand(SprintId, "New Name", sprint.StartDate, sprint.EndDate);
+        var command = new EditSprintCommand(SprintId, "New Name", "Goal", sprint.StartDate!.Value, sprint.EndDate!.Value);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -110,11 +116,61 @@ public class EditSprintCommandHandlerTests
         // logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so this only
         // proves the handler defers to its answer instead of the direct OwnerId check.
         var (handler, sprint) = Build(SprintStatuses.Active, callerEmployeeId: OtherEmployeeId, callerIsEffectiveManager: true);
-        var command = new EditSprintCommand(SprintId, "New Name", new DateOnly(2026, 9, 2), new DateOnly(2026, 9, 16));
+        var command = new EditSprintCommand(SprintId, "New Name", "Goal", new DateOnly(2026, 9, 2), new DateOnly(2026, 9, 16));
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("New Name", sprint.Name);
+    }
+
+    [Fact]
+    public async Task Handle_DraftSprint_DatesProvided_ReturnsFailure()
+    {
+        var (handler, sprint) = Build(SprintStatuses.Draft);
+        var command = new EditSprintCommand(SprintId, "Renamed", "Goal", new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 14));
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(422, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_DraftSprint_NameAndGoalOnly_Succeeds()
+    {
+        var (handler, sprint) = Build(SprintStatuses.Draft);
+        var command = new EditSprintCommand(SprintId, "Renamed", "Goal", null, null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Renamed", sprint.Name);
+        Assert.Equal("Goal", sprint.Goal);
+        Assert.Null(sprint.StartDate);
+    }
+
+    [Fact]
+    public async Task Handle_ActiveSprint_DatesProvided_UpdatesThem()
+    {
+        var (handler, sprint) = Build(SprintStatuses.Active);
+        var command = new EditSprintCommand(SprintId, "Renamed", "Goal", new DateOnly(2026, 9, 5), new DateOnly(2026, 9, 20));
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new DateOnly(2026, 9, 5), sprint.StartDate);
+        Assert.Equal(new DateOnly(2026, 9, 20), sprint.EndDate);
+    }
+
+    [Fact]
+    public async Task Handle_ActiveSprint_EndBeforeStart_ReturnsFailure()
+    {
+        var (handler, sprint) = Build(SprintStatuses.Active);
+        var command = new EditSprintCommand(SprintId, "Renamed", "Goal", new DateOnly(2026, 9, 20), new DateOnly(2026, 9, 5));
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
     }
 }
