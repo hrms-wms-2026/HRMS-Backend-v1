@@ -19,7 +19,8 @@ public class RekognitionFaceMatchServiceTests
         FaceMatchSimilarityThreshold = 80f
     };
 
-    private RekognitionFaceMatchService CreateSut() => new(_rekognition.Object, Options.Create(_options));
+    private RekognitionFaceMatchService CreateSut() =>
+        new(new StubRekognitionClientFactory(_rekognition.Object), Options.Create(_options));
 
     private static MemoryStream Bytes(params byte[] b) => new(b.Length == 0 ? new byte[] { 1, 2, 3 } : b);
 

@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Infrastructure.ExternalServices.Email;
+using ONEVO.Infrastructure.Services.Monitoring.Biometrics;
 using ONEVO.Infrastructure.Services.SystemConfig;
 using Xunit;
 
@@ -61,75 +62,28 @@ public class PlatformServiceKeyVerificationServiceTests
         }
     }
 
-    private sealed class FakeAwsProbe(bool success) : IAwsIdentityProbe
+    private sealed class FakeRekognitionProbe : IAwsRekognitionConnectionProbe
     {
-        public (string AccessKeyId, string Region)? LastCall { get; private set; }
+        public AwsRekognitionProbeResult Result { get; set; } =
+            new(true, "Connected to Amazon Rekognition.", "onevo-rekognition", "eu-west-2");
 
-        public Task<AwsIdentityProbeResult> ProbeAsync(
+        public string? LastAccessKeyId { get; private set; }
+        public string? LastRegion { get; private set; }
+
+        public Task<AwsRekognitionProbeResult> ProbeAsync(
             string accessKeyId, string secretAccessKey, string region, CancellationToken ct)
         {
-            LastCall = (accessKeyId, region);
-            return Task.FromResult(new AwsIdentityProbeResult(
-                success,
-                success ? "AWS credentials verified successfully." : "AWS rejected the credentials (InvalidClientTokenId)."));
+            LastAccessKeyId = accessKeyId;
+            LastRegion = region;
+            return Task.FromResult(Result);
         }
-    }
-
-    private const string AwsBundle =
-        "{\"accessKeyId\":\"AKIAEXAMPLE\",\"secretAccessKey\":\"top-secret-value\",\"region\":\"eu-west-2\"}";
-
-    [Fact]
-    public async Task AwsRekognition_LiveVerification_PassesParsedFieldsToProbe()
-    {
-        var probe = new FakeAwsProbe(true);
-        var service = BuildService(
-            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
-            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
-            awsProbe: probe);
-
-        var result = await service.VerifyAsync(
-            PlatformServiceKeyCatalog.AwsRekognition, AwsBundle, CancellationToken.None);
-
-        Assert.True(result.Success);
-        Assert.Equal(("AKIAEXAMPLE", "eu-west-2"), probe.LastCall);
-    }
-
-    [Fact]
-    public async Task AwsRekognition_LiveVerification_ReportsRejection_WithoutLeakingSecret()
-    {
-        var service = BuildService(
-            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
-            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
-            awsProbe: new FakeAwsProbe(false));
-
-        var result = await service.VerifyAsync(
-            PlatformServiceKeyCatalog.AwsRekognition, AwsBundle, CancellationToken.None);
-
-        Assert.False(result.Success);
-        Assert.DoesNotContain("top-secret-value", result.Message);
-    }
-
-    [Fact]
-    public async Task AwsRekognition_LegacyPlainStringCredential_IsRejectedWithoutCallingAws()
-    {
-        var probe = new FakeAwsProbe(true);
-        var service = BuildService(
-            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
-            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
-            awsProbe: probe);
-
-        var result = await service.VerifyAsync(
-            PlatformServiceKeyCatalog.AwsRekognition, "aws_key_12345678", CancellationToken.None);
-
-        Assert.False(result.Success);
-        Assert.Null(probe.LastCall);
     }
 
     private static PlatformServiceKeyVerificationService BuildService(
         CapturingHandler resendHandler,
         CapturingHandler sendGridHandler,
         CapturingLogger? logger = null,
-        IAwsIdentityProbe? awsProbe = null)
+        IAwsRekognitionConnectionProbe? rekognitionProbe = null)
     {
         var factory = new NamedHttpClientFactory(new Dictionary<string, HttpMessageHandler>
         {
@@ -139,8 +93,8 @@ public class PlatformServiceKeyVerificationServiceTests
 
         return new PlatformServiceKeyVerificationService(
             factory,
-            logger ?? new CapturingLogger(),
-            awsProbe ?? new FakeAwsProbe(true));
+            rekognitionProbe ?? new FakeRekognitionProbe(),
+            logger ?? new CapturingLogger());
     }
 
     [Fact]
@@ -242,6 +196,43 @@ public class PlatformServiceKeyVerificationServiceTests
         Assert.Contains("format-only", cloudflare.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("format-only", r2.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("not wired", cloudflare.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AwsRekognition_ValidJsonBundle_ProbesAwsAndReturnsIdentity()
+    {
+        var probe = new FakeRekognitionProbe();
+        var service = BuildService(
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            rekognitionProbe: probe);
+
+        var result = await service.VerifyAsync(
+            PlatformServiceKeyCatalog.AwsRekognition,
+            """{"accessKeyId":"AKIAEXAMPLEKEY0001","secretAccessKey":"secret-access-key-value","region":"eu-west-2"}""",
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal("onevo-rekognition", result.Identity);
+        Assert.Equal("eu-west-2", result.Region);
+        Assert.Equal("Amazon Rekognition", result.Service);
+        Assert.Equal("AKIAEXAMPLEKEY0001", probe.LastAccessKeyId);
+        Assert.DoesNotContain("AKIAEXAMPLEKEY0001", result.Message);
+        Assert.DoesNotContain("secret-access-key-value", result.Message);
+    }
+
+    [Fact]
+    public async Task AwsRekognition_OpaqueString_Fails()
+    {
+        var service = BuildService(
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)),
+            new CapturingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)));
+
+        var result = await service.VerifyAsync(
+            PlatformServiceKeyCatalog.AwsRekognition, "aws_key_12345678", CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("Access Key ID", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

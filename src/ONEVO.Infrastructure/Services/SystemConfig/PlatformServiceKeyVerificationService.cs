@@ -4,6 +4,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.De
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
 using ONEVO.Infrastructure.ExternalServices.Email;
+using ONEVO.Infrastructure.Services.Monitoring.Biometrics;
 
 namespace ONEVO.Infrastructure.Services.SystemConfig;
 
@@ -23,17 +24,17 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
     private const string SendGridVerifyUrl = "https://api.sendgrid.com/v3/scopes";
 
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IAwsRekognitionConnectionProbe _rekognitionProbe;
     private readonly ILogger<PlatformServiceKeyVerificationService> _logger;
-    private readonly IAwsIdentityProbe _awsIdentityProbe;
 
     public PlatformServiceKeyVerificationService(
         IHttpClientFactory httpClientFactory,
-        ILogger<PlatformServiceKeyVerificationService> logger,
-        IAwsIdentityProbe awsIdentityProbe)
+        IAwsRekognitionConnectionProbe rekognitionProbe,
+        ILogger<PlatformServiceKeyVerificationService> logger)
     {
         _httpClientFactory = httpClientFactory;
+        _rekognitionProbe = rekognitionProbe;
         _logger = logger;
-        _awsIdentityProbe = awsIdentityProbe;
     }
 
     public async Task<PlatformServiceKeyVerificationResult> VerifyAsync(
@@ -76,7 +77,7 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
                 serviceKey, apiKeyPlaintext, checkedAt),
             PlatformServiceKeyCatalog.CloudflareR2 => BundleFormatResult(
                 serviceKey, apiKeyPlaintext, checkedAt),
-            PlatformServiceKeyCatalog.AwsRekognition => await VerifyAwsAsync(
+            PlatformServiceKeyCatalog.AwsRekognition => await VerifyAwsRekognitionBundleAsync(
                 apiKeyPlaintext, checkedAt, ct),
             _ => new PlatformServiceKeyVerificationResult
             {
@@ -87,13 +88,42 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
         };
     }
 
+    private async Task<PlatformServiceKeyVerificationResult> VerifyAwsRekognitionBundleAsync(
+        string apiKeyPlaintext,
+        DateTimeOffset checkedAt,
+        CancellationToken ct)
+    {
+        if (!AwsRekognitionCredentialBundle.TryParse(apiKeyPlaintext, out var bundle) || !bundle.HasAccessKeys)
+        {
+            return new PlatformServiceKeyVerificationResult
+            {
+                Success = false,
+                CheckedAt = checkedAt,
+                Message = "AWS Rekognition key must be Access Key ID, Secret Access Key, and region."
+            };
+        }
+
+        var region = string.IsNullOrWhiteSpace(bundle.Region) ? "us-east-1" : bundle.Region.Trim();
+        var probe = await _rekognitionProbe.ProbeAsync(
+            bundle.AccessKeyId.Trim(), bundle.SecretAccessKey.Trim(), region, ct);
+
+        return new PlatformServiceKeyVerificationResult
+        {
+            Success = probe.Success,
+            CheckedAt = checkedAt,
+            Message = probe.Message,
+            Identity = probe.Identity,
+            Region = probe.Region ?? region,
+            Service = probe.Success ? "Amazon Rekognition" : null
+        };
+    }
+
     private static PlatformServiceKeyVerificationResult BundleFormatResult(
         string serviceKey,
         string storedCredential,
         DateTimeOffset checkedAt)
     {
-        var definition = ServiceKeyDefinitionRegistry.Find(serviceKey);
-        var check = definition?.AcceptRawCredential(storedCredential);
+        var check = ServiceKeyDefinitionRegistry.Find(serviceKey)?.AcceptRawCredential(storedCredential);
         var success = check?.IsSuccess == true;
         return new PlatformServiceKeyVerificationResult
         {
@@ -102,38 +132,6 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
             Message = success
                 ? "Local format-only verification passed. Live provider check is not wired for this service."
                 : $"Stored credential for '{serviceKey}' is incomplete or malformed: {check?.Error}"
-        };
-    }
-
-    private async Task<PlatformServiceKeyVerificationResult> VerifyAwsAsync(
-        string storedCredential,
-        DateTimeOffset checkedAt,
-        CancellationToken ct)
-    {
-        var values = ServiceKeyDefinitionRegistry.Find(PlatformServiceKeyCatalog.AwsRekognition)
-            ?.TryParseCredential(storedCredential);
-        if (values is null
-            || !values.TryGetValue("accessKeyId", out var accessKeyId)
-            || !values.TryGetValue("secretAccessKey", out var secretAccessKey)
-            || !values.TryGetValue("region", out var region)
-            || string.IsNullOrWhiteSpace(accessKeyId)
-            || string.IsNullOrWhiteSpace(secretAccessKey)
-            || string.IsNullOrWhiteSpace(region))
-        {
-            return new PlatformServiceKeyVerificationResult
-            {
-                Success = false,
-                CheckedAt = checkedAt,
-                Message = "Stored AWS credential is incomplete. Rotate it with Access Key ID, Secret Access Key and Region."
-            };
-        }
-
-        var probe = await _awsIdentityProbe.ProbeAsync(accessKeyId, secretAccessKey, region, ct);
-        return new PlatformServiceKeyVerificationResult
-        {
-            Success = probe.Success,
-            CheckedAt = checkedAt,
-            Message = probe.Message
         };
     }
 

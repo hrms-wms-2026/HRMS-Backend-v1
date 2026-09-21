@@ -40,9 +40,30 @@ else {
     New-Item -ItemType Directory -Path $certsDir -Force | Out-Null
 
     Write-Host "Installing mkcert local root CA into the Windows/browser trust stores (idempotent, safe to re-run)..."
-    & $mkcertExecutable '-install'
-    if ($LASTEXITCODE -ne 0) {
-        throw "mkcert -install failed with exit code $LASTEXITCODE."
+    $previousTrustStores = $env:TRUST_STORES
+    $env:TRUST_STORES = 'system'
+    try {
+        $installOutput = & $mkcertExecutable '-install' 2>&1 | Out-String
+        $installExitCode = $LASTEXITCODE
+        if (-not [string]::IsNullOrWhiteSpace($installOutput)) {
+            Write-Host $installOutput.TrimEnd()
+        }
+        if ($installExitCode -ne 0) {
+            if ($installOutput -match 'installed in the system trust store') {
+                Write-Warning "mkcert -install reported a secondary trust-store error. The Windows/system store already has the local CA, so certificate generation will continue."
+            }
+            else {
+                throw "mkcert -install failed with exit code $installExitCode."
+            }
+        }
+    }
+    finally {
+        if ($null -eq $previousTrustStores) {
+            Remove-Item Env:TRUST_STORES -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:TRUST_STORES = $previousTrustStores
+        }
     }
 
     $sanList = @($RootDomain, '127.0.0.1', '::1')

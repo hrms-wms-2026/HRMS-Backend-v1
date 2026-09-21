@@ -89,7 +89,8 @@ public sealed class ProviderOptionQueriesTests
         Assert.Equal("format-only", options["cloudflare_r2"].VerificationMode);
 
         var aws = options["aws_rekognition"];
-        Assert.Equal(["accessKeyId", "secretAccessKey", "region"], aws.Fields.Select(f => f.Name));
+        Assert.Equal(["accessKeyId", "secretAccessKey", "region", "livenessRoleArn"], aws.Fields.Select(f => f.Name));
+        Assert.False(aws.Fields.Single(f => f.Name == "livenessRoleArn").Required);
         Assert.NotEmpty(aws.Fields.Single(f => f.Name == "region").Options);
         Assert.Equal("secret", aws.Fields.Single(f => f.Name == "secretAccessKey").Kind);
     }

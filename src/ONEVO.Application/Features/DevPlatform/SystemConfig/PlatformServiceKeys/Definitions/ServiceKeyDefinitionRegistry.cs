@@ -53,7 +53,10 @@ public static class ServiceKeyDefinitionRegistry
             new("accessKeyId", "Access Key ID", ServiceKeyFieldKinds.Text, Placeholder: "AKIA…"),
             new("secretAccessKey", "Secret Access Key", ServiceKeyFieldKinds.Secret),
             new("region", "Region", ServiceKeyFieldKinds.Select,
-                DefaultValue: "eu-west-2", Options: AwsRegions)
+                DefaultValue: "eu-west-2", Options: AwsRegions),
+            // Optional: when blank the runtime falls back to the AwsRekognition:LivenessRoleArn setting.
+            new("livenessRoleArn", "Liveness role ARN", ServiceKeyFieldKinds.Text, Required: false,
+                Placeholder: "arn:aws:iam::<account-id>:role/<role-name>")
         ])
     ];
 

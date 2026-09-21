@@ -179,6 +179,39 @@ public class SubmitInactivityCaptureAttemptCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_Captured_SucceedsWhenAutoScreenshotCaptureOff_IfScreenshotCaptureOn()
+    {
+        // Tray policy already enables the Allow prompt from Activity + Screenshot capture.
+        // AutoScreenshotCapture is not on the Monitoring UI, so requiring it here dropped
+        // allowed screenshots before they could appear on the daily report.
+        _toggles.Setup(t => t.IsEnabledAsync(_tenantId, _userId, MonitoringCapability.AutoScreenshotCapture, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var fileRecordId = Guid.NewGuid();
+        _fileStorage.Setup(f => f.UploadAsync(
+                _tenantId, _employeeId, It.IsAny<string>(), "image/jpeg",
+                It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(new FileRecordDto(
+                fileRecordId, _tenantId, "tenants/x/files/y/shot.jpg", "shot.jpg", "shot.jpg",
+                "image/jpeg", 1024, "checksum", "available", DateTimeOffset.UtcNow, _employeeId, null)));
+
+        MonitoringEvidenceAsset? savedAsset = null;
+        _assetsRepo.Setup(r => r.Add(It.IsAny<MonitoringEvidenceAsset>()))
+            .Callback<MonitoringEvidenceAsset>(a => savedAsset = a);
+
+        var result = await CreateHandler().Handle(
+            MakeCommand(InactivityCaptureOutcomes.Captured, new MemoryStream(new byte[] { 1, 2, 3 })),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        savedAsset.Should().NotBeNull();
+        savedAsset!.TriggerType.Should().Be("inactivity_approved");
+        _fileStorage.Verify(f => f.UploadAsync(
+            _tenantId, _employeeId, It.IsAny<string>(), "image/jpeg",
+            It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_Unauthenticated_Returns401()
     {
         _device.Setup(d => d.IsAuthenticated).Returns(false);
