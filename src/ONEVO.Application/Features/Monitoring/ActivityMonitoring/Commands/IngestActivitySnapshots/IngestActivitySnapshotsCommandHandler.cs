@@ -143,13 +143,36 @@ public class IngestActivitySnapshotsCommandHandler
             PayloadJson = payloadJson
         }, cancellationToken);
 
-        var entities = request.Snapshots
+        // Idempotency: a tray retry/resend after a slow or dropped response re-sends the same
+        // capture interval. GetMyWorkPatternQueryHandler sums ActiveSeconds/IdleSeconds across
+        // every row for the day, so inserting the same interval twice silently inflates it -
+        // skip anything this device has already reported before mapping/inserting.
+        var alreadyCaptured = await _snapshots.GetExistingCapturedAtsAsync(
+            tenantId, agentDeviceId, request.Snapshots.Select(s => s.CapturedAt).ToList(), cancellationToken);
+
+        var newSnapshots = request.Snapshots
+            .Where(item => !alreadyCaptured.Contains(item.CapturedAt))
+            .ToList();
+
+        if (newSnapshots.Count < request.Snapshots.Count)
+        {
+            _logger.LogInformation(
+                "Skipped {DuplicateCount} already-ingested snapshot(s) in this batch. TenantId={TenantId} DeviceId={DeviceId}",
+                request.Snapshots.Count - newSnapshots.Count,
+                tenantId,
+                agentDeviceId);
+        }
+
+        var entities = newSnapshots
             .Select(item => ActivitySnapshotMapper.ToEntity(
                 item, tenantId, employeeId, agentDeviceId, now))
             .ToList();
 
-        await _snapshots.AddRangeAsync(entities, cancellationToken);
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        if (entities.Count > 0)
+        {
+            await _snapshots.AddRangeAsync(entities, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
 
         return Result.Success();
     }

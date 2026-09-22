@@ -19,8 +19,11 @@ public class ActivitySnapshotConfiguration : IEntityTypeConfiguration<ActivitySn
             .IsDescending(false, false, true)
             .HasDatabaseName("ix_activity_snapshots_tenant_employee_captured");
 
-        // Device-scoped audit
+        // Device-scoped audit, and the idempotency key that stops a tray retry/resend from being
+        // ingested twice — GetMyWorkPatternQueryHandler sums ActiveSeconds/IdleSeconds across every
+        // row for the day, so a duplicated capture interval silently inflates those totals.
         builder.HasIndex(e => new { e.TenantId, e.AgentDeviceId, e.CapturedAt })
+            .IsUnique()
             .HasDatabaseName("ix_activity_snapshots_tenant_device_captured");
     }
 }
