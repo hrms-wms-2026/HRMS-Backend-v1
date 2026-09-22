@@ -14,4 +14,10 @@ public interface ITaskAssetLinker
 
     Task SyncDescriptionImagesAsync(
         Guid tenantId, Guid userId, Guid taskId, string? descriptionHtml, CancellationToken ct = default);
+
+    Task SyncCommentAttachmentsAsync(
+        Guid tenantId, Guid userId, Guid commentId, IReadOnlyList<Guid> desiredFileIds, CancellationToken ct = default);
+
+    Task SyncCommentDescriptionImagesAsync(
+        Guid tenantId, Guid userId, Guid commentId, string? contentHtml, CancellationToken ct = default);
 }

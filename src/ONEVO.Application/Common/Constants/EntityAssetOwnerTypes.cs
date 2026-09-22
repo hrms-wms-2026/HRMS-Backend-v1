@@ -6,4 +6,5 @@ public static class EntityAssetOwnerTypes
     public const string Project = "project";
     public const string Objective = "objective";
     public const string Task = "task";
+    public const string Comment = "comment";
 }
