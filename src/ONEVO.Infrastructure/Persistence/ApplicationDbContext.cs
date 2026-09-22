@@ -313,6 +313,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<TaskStatusChangeLog> TaskStatusChangeLogs => Set<TaskStatusChangeLog>();
     public DbSet<TaskClockingSession> TaskClockingSessions => Set<TaskClockingSession>();
     public DbSet<TaskPercentageLog> TaskPercentageLogs => Set<TaskPercentageLog>();
+    public DbSet<TaskComment> TaskComments => Set<TaskComment>();
+    public DbSet<TaskCommentLog> TaskCommentLogs => Set<TaskCommentLog>();
+    public DbSet<TaskCommentReaction> TaskCommentReactions => Set<TaskCommentReaction>();
 
     public DbSet<NotificationTemplate> NotificationTemplates => Set<NotificationTemplate>();
     public DbSet<Notification> Notifications => Set<Notification>();

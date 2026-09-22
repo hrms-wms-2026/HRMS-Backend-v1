@@ -369,6 +369,12 @@ public static class DependencyInjection
         services.AddScoped<ITaskClockingSessionRepository>(sp => sp.GetRequiredService<EfTaskClockingSessionRepository>());
         services.AddScoped<EfTaskPercentageLogRepository>();
         services.AddScoped<ITaskPercentageLogRepository>(sp => sp.GetRequiredService<EfTaskPercentageLogRepository>());
+        services.AddScoped<EfTaskCommentRepository>();
+        services.AddScoped<ITaskCommentRepository>(sp => sp.GetRequiredService<EfTaskCommentRepository>());
+        services.AddScoped<EfTaskCommentLogRepository>();
+        services.AddScoped<ITaskCommentLogRepository>(sp => sp.GetRequiredService<EfTaskCommentLogRepository>());
+        services.AddScoped<EfTaskCommentReactionRepository>();
+        services.AddScoped<ITaskCommentReactionRepository>(sp => sp.GetRequiredService<EfTaskCommentReactionRepository>());
 
         services.AddScoped<EfNotificationRepository>();
         services.AddScoped<INotificationRepository>(sp => sp.GetRequiredService<EfNotificationRepository>());
