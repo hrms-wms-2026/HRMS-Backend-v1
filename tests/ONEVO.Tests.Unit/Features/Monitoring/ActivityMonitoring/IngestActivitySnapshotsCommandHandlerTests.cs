@@ -58,6 +58,12 @@ public class IngestActivitySnapshotsCommandHandlerTests
         _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
                 _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(_employeeId);
+
+        // Default: this device has never reported any of the batch's timestamps before.
+        // Duplicate-detection tests override this per-case.
+        _snapshots.Setup(s => s.GetExistingCapturedAtsAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<DateTimeOffset>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlySet<DateTimeOffset>)new HashSet<DateTimeOffset>());
     }
 
     private IngestActivitySnapshotsCommandHandler CreateSut() => new(
@@ -183,6 +189,53 @@ public class IngestActivitySnapshotsCommandHandlerTests
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(400);
         result.Error.Should().Be(MonitoringErrors.SnapshotTooOld);
+    }
+
+    [Fact]
+    public async Task Snapshot_already_captured_by_this_device_is_skipped_not_reinserted()
+    {
+        var alreadySent = _clock.UtcNow.AddMinutes(-5);
+        var genuinelyNew = _clock.UtcNow.AddMinutes(-1);
+
+        _snapshots.Setup(s => s.GetExistingCapturedAtsAsync(
+                _tenantId, _deviceId, It.IsAny<IReadOnlyCollection<DateTimeOffset>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlySet<DateTimeOffset>)new HashSet<DateTimeOffset> { alreadySent });
+
+        IEnumerable<ActivitySnapshot>? savedSnapshots = null;
+        _snapshots.Setup(s => s.AddRangeAsync(It.IsAny<IEnumerable<ActivitySnapshot>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<ActivitySnapshot>, CancellationToken>((list, _) => savedSnapshots = list.ToList())
+            .Returns(Task.CompletedTask);
+
+        var cmd = new IngestActivitySnapshotsCommand
+        {
+            Snapshots = [Item(alreadySent), Item(genuinelyNew)]
+        };
+
+        var result = await CreateSut().Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        savedSnapshots.Should().NotBeNull().And.HaveCount(1);
+        savedSnapshots!.First().CapturedAt.Should().Be(genuinelyNew);
+    }
+
+    [Fact]
+    public async Task Whole_batch_already_captured_saves_nothing_and_does_not_call_SaveChanges()
+    {
+        var alreadySent = _clock.UtcNow.AddMinutes(-1);
+
+        _snapshots.Setup(s => s.GetExistingCapturedAtsAsync(
+                _tenantId, _deviceId, It.IsAny<IReadOnlyCollection<DateTimeOffset>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlySet<DateTimeOffset>)new HashSet<DateTimeOffset> { alreadySent });
+
+        var cmd = new IngestActivitySnapshotsCommand { Snapshots = [Item(alreadySent)] };
+
+        var result = await CreateSut().Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        _snapshots.Verify(
+            s => s.AddRangeAsync(It.IsAny<IEnumerable<ActivitySnapshot>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _uow.SaveCallCount.Should().Be(0);
     }
 
     [Fact]
