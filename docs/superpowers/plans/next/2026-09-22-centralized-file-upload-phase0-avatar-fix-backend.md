@@ -42,7 +42,7 @@ frontend has something real to build a URL from.
 - Produces: `MyPersonalInformationResponse.AvatarFileId` (`Guid?`) — Task 3's controller test and the
   frontend plan both rely on this exact property name and type (camelCase `avatarFileId` on the wire).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/ONEVO.Tests.Unit/Features/CoreHr/Employee/GetMyProfileQueryHandlerTests.cs` (new test,
 same file, alongside the existing two):
@@ -97,12 +97,12 @@ same file, alongside the existing two):
     }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~GetMyProfileQueryHandlerTests.Handle_ReturnsAvatarFileId_WhenEmployeeHasOneSet"`
 Expected: FAIL — compile error, `MyPersonalInformationResponse` has no `AvatarFileId` member yet.
 
-- [ ] **Step 3: Change the response record**
+- [x] **Step 3: Change the response record**
 
 In `src/ONEVO.Application/Features/CoreHr/Employee/DTOs/Responses/MyProfileResponse.cs`, replace:
 
@@ -124,7 +124,7 @@ public record MyPersonalInformationResponse(
     IReadOnlyList<MyAddressResponse> Addresses, string Version);
 ```
 
-- [ ] **Step 4: Populate it in the handler**
+- [x] **Step 4: Populate it in the handler**
 
 In `src/ONEVO.Application/Features/CoreHr/Employee/Queries/GetMyProfile/GetMyProfileQueryHandler.cs`,
 change the `MyPersonalInformationResponse` construction (lines 84-89) from:
@@ -149,12 +149,12 @@ to:
             versionToken?.ToString() ?? string.Empty);
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~GetMyProfileQueryHandlerTests"`
 Expected: PASS, all 3 tests in the file (the 2 pre-existing plus the new one) green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/CoreHr/Employee/DTOs/Responses/MyProfileResponse.cs src/ONEVO.Application/Features/CoreHr/Employee/Queries/GetMyProfile/GetMyProfileQueryHandler.cs tests/ONEVO.Tests.Unit/Features/CoreHr/Employee/GetMyProfileQueryHandlerTests.cs
@@ -174,7 +174,7 @@ git commit -m "fix: expose employee AvatarFileId from GetMyProfile instead of a 
 - Consumes: `Common.RepositoryInterfaces.IEmployeeRepository.GetByUserIdAsync(Guid tenantId, Guid userId, CancellationToken)` (already used identically in `SetMyAvatarCommandHandler`); `IFileStorageService.OpenReadAsync(Guid tenantId, Guid fileId, CancellationToken) : Task<Result<FileStreamDto>>` (already used identically in `GetLegalEntityLogoQueryHandler`).
 - Produces: `GetMyAvatarQuery` (no params, `IRequest<Result<FileStreamDto>>`) and `GetMyAvatarQueryHandler` — Task 3's controller sends this query.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ONEVO.Tests.Unit/Features/CoreHr/Employee/GetMyAvatarQueryHandlerTests.cs`:
 
@@ -258,12 +258,12 @@ public class GetMyAvatarQueryHandlerTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~GetMyAvatarQueryHandlerTests"`
 Expected: FAIL to compile — `GetMyAvatarQuery`/`GetMyAvatarQueryHandler` don't exist yet.
 
-- [ ] **Step 3: Write the query**
+- [x] **Step 3: Write the query**
 
 Create `src/ONEVO.Application/Features/CoreHr/Employee/Queries/GetMyAvatar/GetMyAvatarQuery.cs`:
 
@@ -277,7 +277,7 @@ namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyAvatar;
 public record GetMyAvatarQuery() : IRequest<Result<FileStreamDto>>;
 ```
 
-- [ ] **Step 4: Write the handler**
+- [x] **Step 4: Write the handler**
 
 Create `src/ONEVO.Application/Features/CoreHr/Employee/Queries/GetMyAvatar/GetMyAvatarQueryHandler.cs`:
 
@@ -321,12 +321,12 @@ public class GetMyAvatarQueryHandler : IRequestHandler<GetMyAvatarQuery, Result<
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit/ONEVO.Tests.Unit.csproj --filter "FullyQualifiedName~GetMyAvatarQueryHandlerTests"`
 Expected: PASS, all 3 tests green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/CoreHr/Employee/Queries/GetMyAvatar/ tests/ONEVO.Tests.Unit/Features/CoreHr/Employee/GetMyAvatarQueryHandlerTests.cs
@@ -344,7 +344,7 @@ git commit -m "feat: add GetMyAvatarQuery to stream the caller's own avatar"
 - Consumes: `GetMyAvatarQuery` (Task 2), `IMediator.Send` (already injected as `_mediator` in this controller).
 - Produces: `GET /api/v1/employees/me/avatar` — the frontend plan's `ProfileApiService.getAvatarUrl` builds URLs pointing at this exact route.
 
-- [ ] **Step 1: Add the `using` and the endpoint**
+- [x] **Step 1: Add the `using` and the endpoint**
 
 In `src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeesController.cs`, add to the `using` block (after
 the existing `using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;` line):
@@ -369,12 +369,14 @@ Then add this method immediately after `SetMyAvatar` (after line 199, before the
     }
 ```
 
-- [ ] **Step 2: Build to verify it compiles**
+- [x] **Step 2: Build to verify it compiles**
 
 Run: `dotnet build src/ONEVO.Api/ONEVO.Api.csproj`
 Expected: Build succeeded, 0 errors.
 
-- [ ] **Step 3: Manual verification against the dev API**
+- [ ] **Step 3: Manual verification against the dev API** — skipped by explicit user decision
+  2026-09-22 (automated coverage judged sufficient; this dev environment's custom-domain auth flow
+  makes ad hoc manual verification costly — do this when next actually using the feature).
 
 This is a thin controller wrapper around an already-unit-tested handler (Task 2), so no new
 integration test is required — verify manually instead:
@@ -385,7 +387,7 @@ integration test is required — verify manually instead:
    image bytes and the correct `Content-Type`.
 4. `GET /api/v1/employees/me/avatar` for a user with no avatar set — expect 404.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/ONEVO.Api/Controllers/Tenant/CoreHr/EmployeesController.cs
