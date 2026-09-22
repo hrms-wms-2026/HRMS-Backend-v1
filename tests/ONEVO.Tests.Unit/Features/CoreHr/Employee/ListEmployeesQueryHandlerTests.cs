@@ -190,6 +190,42 @@ public sealed class ListEmployeesQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ActiveOnlyTrue_PassesItThroughToTheRepositoryFilter()
+    {
+        var visibleId = Guid.NewGuid();
+        SetupVisibility(_defaultLegalEntityId, includesSelf: true, visibleId);
+
+        await CreateHandler().Handle(new ListEmployeesQuery(null, null, null, ActiveOnly: true), CancellationToken.None);
+
+        _employeeRepository.Verify(r => r.ListVisibleAsync(
+            _tenantId,
+            It.IsAny<EmployeeVisibilityScope>(),
+            It.Is<EmployeeListFilter>(f => f.ActiveOnly),
+            1,
+            25,
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ActiveOnlyOmitted_DefaultsToFalse_BackwardCompatible()
+    {
+        var visibleId = Guid.NewGuid();
+        SetupVisibility(_defaultLegalEntityId, includesSelf: true, visibleId);
+
+        await CreateHandler().Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
+
+        _employeeRepository.Verify(r => r.ListVisibleAsync(
+            _tenantId,
+            It.IsAny<EmployeeVisibilityScope>(),
+            It.Is<EmployeeListFilter>(f => !f.ActiveOnly),
+            1,
+            25,
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_WithAttendanceRead_PassesOneServerTimestampToBatchRepository()
     {
         _currentUser.Setup(x => x.HasPermission("attendance:read")).Returns(true);

@@ -9,4 +9,5 @@ public record ListEmployeesQuery(
     Guid? DepartmentId,
     Guid? LegalEntityId,
     int Page = 1,
-    int PageSize = 25) : IRequest<Result<EmployeeListPageResponse>>;
+    int PageSize = 25,
+    bool ActiveOnly = false) : IRequest<Result<EmployeeListPageResponse>>;
