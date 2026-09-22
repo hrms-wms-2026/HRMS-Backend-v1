@@ -2,7 +2,7 @@
 
 **Purpose:** Completed plans and point-in-time audit/fix reports. Everything here was moved from the flat `plans/` folder on 2026-08-06 as part of the `finished/` + `next/` restructure (see `docs/superpowers/rules/FILE_CREATION_RULES.md`). Files were **not** re-split or content-edited during the move — only relocated, per the migration rule (existing files get moved + status-tagged, not retroactively restructured into parts). The `plans/kajaa/` personal folder was also dissolved into this structure the same day — its 3 finished plans now live here too (see "From `kajaa/`" below).
 
-**Last updated:** 2026-08-27
+**Last updated:** 2026-09-21
 
 ## Layout: date subfolders
 
@@ -21,6 +21,9 @@ All 42 files from the 2026-08-06 batch move are treated as `finished` by default
 ## Files by date
 
 Each entry's **Related:** line is a wiki-link (`[[bare-filename]]`, no extension/path — resolve by searching this repo's `docs/superpowers/` tree) to the files it's most tightly connected to: a corresponding design in `specs/`, a sibling Part in the same report chain, or the report/plan it fixes or validates. Per [[FILE_CREATION_RULES]] rule 8, keep these links current when a file moves or a new related file is added.
+
+**`2026-09-21/`** (1)
+- `2026-09-21-task-subtasks-backend.md` — Adds the task parent FK/index, subtask create/list APIs, parent progress counts, top-level board filtering, validation, and real HTTP/PostgreSQL integration coverage. Related: [[2026-09-21-task-subtasks-design]].
 
 **`2026-07-27/`** (1)
 - `2026-07-27-forgot-password-restricted-role-http-rls-proof.md`

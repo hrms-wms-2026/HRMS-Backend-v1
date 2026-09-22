@@ -107,7 +107,8 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
             totalLoggedMinutes.GetValueOrDefault(task.Id, 0),
             activeEventLink?.CalendarEventId,
             activeEventLink?.EventName,
-            attachments);
+            attachments,
+            ParentTaskId: task.ParentTaskId);
 
         return Result<WorkTaskResponse>.Success(response);
     }

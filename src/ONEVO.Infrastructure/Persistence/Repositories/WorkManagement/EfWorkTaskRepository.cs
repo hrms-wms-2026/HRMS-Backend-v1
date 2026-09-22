@@ -24,6 +24,11 @@ public class EfWorkTaskRepository : IWorkTaskRepository
             .Where(t => t.TenantId == tenantId && t.ObjectiveId == objectiveId)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<WorkTask>> GetByParentTaskIdAsync(Guid tenantId, Guid parentTaskId, CancellationToken ct = default)
+        => await _db.WorkTasks.AsNoTracking()
+            .Where(t => t.TenantId == tenantId && t.ParentTaskId == parentTaskId)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<WorkTask>> GetByProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking()
             .Join(_db.Objectives,

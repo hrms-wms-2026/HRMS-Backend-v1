@@ -27,6 +27,8 @@ public sealed record AddReasonRequest(string Reason);
 
 public sealed record AssignTaskRequest(Guid EmployeeId);
 
+public sealed record CreateSubtaskRequest(string Title, string? Priority, DateOnly? DueDate, Guid? AssigneeEmployeeId);
+
 public sealed record EditTaskStatusRequest(
     string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, string Visibility,
     string Category, string Color);
@@ -52,13 +54,17 @@ public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrde
 
 public sealed record TaskAttachmentViewModel(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
 
+public sealed record TaskAssigneeIdentityViewModel(Guid EmployeeId, string Name, string? AvatarUrl);
+
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
     Guid CategoryId, Guid StatusId, string Priority, int? StoryPoints,
     DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent,
     Guid? SprintId, IReadOnlyList<Guid> AssigneeEmployeeIds, Guid? OpenClockSessionEmployeeId,
     DateTimeOffset? OpenClockSessionClockInAt, int TotalLoggedMinutes,
-    IReadOnlyList<TaskAttachmentViewModel> Attachments);
+    IReadOnlyList<TaskAttachmentViewModel> Attachments,
+    IReadOnlyList<TaskAssigneeIdentityViewModel> Assignees,
+    Guid? ParentTaskId, int SubtaskTotalCount, int SubtaskCompletedCount);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,

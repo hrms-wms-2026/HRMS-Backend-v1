@@ -80,19 +80,22 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
         TenantB = await ProvisionAndLoginOwnerAsync("ta-int-b", "Task Attach Int B Co", "owner-b@ta-int.test");
 
         var categoryId = await SeedProjectCategoryAsync(TenantA.TenantId, "General");
-        await SeedEmployeeForOwnerAsync(TenantA.TenantId, "owner-a@ta-int.test");
+        TenantAEmployeeId = await SeedEmployeeForOwnerAsync(TenantA.TenantId, "owner-a@ta-int.test");
         await SeedEmployeeForOwnerAsync(TenantB.TenantId, "owner-b@ta-int.test");
 
         var projectResponse = await SendCreateProjectAsync(TenantA, categoryId, "Task Attachment Project", "TAI1");
         projectResponse.StatusCode.Should().Be(HttpStatusCode.Created, await projectResponse.Content.ReadAsStringAsync());
         var projectJson = await ReadJsonAsync(projectResponse);
+        TenantAProjectId = projectJson.GetProperty("project").GetProperty("id").GetGuid();
         TenantAObjectiveId = projectJson.GetProperty("defaultObjective").GetProperty("id").GetGuid();
 
-        var taskCategoryId = await SeedTaskCategoryAsync(TenantA.TenantId, projectJson.GetProperty("project").GetProperty("id").GetGuid());
+        var taskCategoryId = await SeedTaskCategoryAsync(TenantA.TenantId, TenantAProjectId);
         TaskCategoryId = taskCategoryId;
     }
 
     public Guid TaskCategoryId { get; private set; }
+    public Guid TenantAProjectId { get; private set; }
+    public Guid TenantAEmployeeId { get; private set; }
 
     public async Task DisposeAsync()
     {
@@ -148,6 +151,21 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
 
     public async Task<HttpResponseMessage> SendGetTaskAsync(TenantSession session, Guid taskId)
         => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/tasks/{taskId}"));
+
+    public Task<HttpResponseMessage> SendEditTaskAsync(TenantSession session, Guid taskId, object body)
+        => SendJsonAsync(HttpMethod.Patch, session.Host, $"/api/v1/work/tasks/{taskId}", body,
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+
+    public Task<HttpResponseMessage> SendCreateSubtaskAsync(TenantSession session, Guid parentTaskId, Guid? assigneeEmployeeId = null)
+        => SendJsonAsync(HttpMethod.Post, session.Host, $"/api/v1/work/tasks/{parentTaskId}/subtasks",
+            new { title = "Integrated child", priority = "high", dueDate = (DateOnly?)null, assigneeEmployeeId },
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+
+    public async Task<HttpResponseMessage> SendGetSubtasksAsync(TenantSession session, Guid parentTaskId)
+        => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/tasks/{parentTaskId}/subtasks"));
+
+    public async Task<HttpResponseMessage> SendGetProjectTasksAsync(TenantSession session, Guid projectId)
+        => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/projects/{projectId}/tasks"));
 
     public async Task<HttpResponseMessage> SendGetTaskFileAsync(TenantSession session, Guid fileId)
         => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/tasks/files/{fileId}"));
@@ -225,7 +243,7 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
         return category.Id;
     }
 
-    private async Task SeedEmployeeForOwnerAsync(Guid tenantId, string ownerEmail)
+    private async Task<Guid> SeedEmployeeForOwnerAsync(Guid tenantId, string ownerEmail)
     {
         using var scope = _factory.Services.CreateScope();
         var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
@@ -234,7 +252,7 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var user = await db.Users.SingleAsync(u => u.TenantId == tenantId && u.Email == ownerEmail);
 
-        db.Employees.Add(new ONEVO.Domain.Features.CoreHr.Entities.Employee
+        var employee = new ONEVO.Domain.Features.CoreHr.Entities.Employee
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
@@ -247,8 +265,10 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
             EmploymentStatusId = ONEVO.Domain.Lookups.EmploymentStatusIds.Active,
             CreatedById = user.Id,
             CreatedAt = DateTimeOffset.UtcNow
-        });
+        };
+        db.Employees.Add(employee);
         await db.SaveChangesAsync();
+        return employee.Id;
     }
 
     /// <summary>
@@ -490,6 +510,39 @@ public sealed class TaskAttachmentsIntegrationTests : IClassFixture<TaskAttachme
     }
 
     [Fact]
+    public async Task CreateSubtask_ThenFetchBoardAndChildren_PersistsRelationshipAssignmentAndCounts()
+    {
+        var parentResponse = await _fixture.SendCreateTaskAsync(
+            _fixture.TenantA, _fixture.TenantAObjectiveId, _fixture.TaskCategoryId, "Integrated parent");
+        parentResponse.StatusCode.Should().Be(HttpStatusCode.Created, await parentResponse.Content.ReadAsStringAsync());
+        var parent = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(parentResponse);
+        var parentTaskId = parent.GetProperty("id").GetGuid();
+
+        var createChildResponse = await _fixture.SendCreateSubtaskAsync(
+            _fixture.TenantA, parentTaskId, _fixture.TenantAEmployeeId);
+        createChildResponse.StatusCode.Should().Be(HttpStatusCode.Created, await createChildResponse.Content.ReadAsStringAsync());
+        var child = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(createChildResponse);
+        child.GetProperty("parentTaskId").GetGuid().Should().Be(parentTaskId);
+        child.GetProperty("assigneeEmployeeIds").EnumerateArray().Single().GetGuid().Should().Be(_fixture.TenantAEmployeeId);
+
+        var boardResponse = await _fixture.SendGetProjectTasksAsync(_fixture.TenantA, _fixture.TenantAProjectId);
+        boardResponse.StatusCode.Should().Be(HttpStatusCode.OK, await boardResponse.Content.ReadAsStringAsync());
+        var board = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(boardResponse);
+        var boardParent = board.EnumerateArray().Single(task => task.GetProperty("id").GetGuid() == parentTaskId);
+        boardParent.GetProperty("subtaskTotalCount").GetInt32().Should().Be(1);
+        boardParent.GetProperty("subtaskCompletedCount").GetInt32().Should().Be(0);
+        board.EnumerateArray().Should().NotContain(task => task.GetProperty("id").GetGuid() == child.GetProperty("id").GetGuid());
+
+        var childrenResponse = await _fixture.SendGetSubtasksAsync(_fixture.TenantA, parentTaskId);
+        childrenResponse.StatusCode.Should().Be(HttpStatusCode.OK, await childrenResponse.Content.ReadAsStringAsync());
+        var children = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(childrenResponse);
+        children.EnumerateArray().Single().GetProperty("id").GetGuid().Should().Be(child.GetProperty("id").GetGuid());
+
+        var crossTenantResponse = await _fixture.SendGetSubtasksAsync(_fixture.TenantB, parentTaskId);
+        crossTenantResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task PendingUpload_ThenCreateTaskWithAttachment_ThenGetById_ShowsAttachment_ThenFileIsDownloadable()
     {
         var fileBytes = Encoding.UTF8.GetBytes("hello attachment world");
@@ -515,6 +568,44 @@ public sealed class TaskAttachmentsIntegrationTests : IClassFixture<TaskAttachme
         getFileResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var downloadedBytes = await getFileResponse.Content.ReadAsByteArrayAsync();
         downloadedBytes.Should().Equal(fileBytes);
+    }
+
+    /// <summary>
+    /// Regression test for a bug reported 2026-09-21: any task edit that changes DueDate 500'd
+    /// unconditionally (reproduced on a brand-new task, not data-specific). Root cause was in
+    /// EfCalendarEventRepository.ListActiveEventWindowsForTaskAsync, which the edit handler calls
+    /// to check active-event date windows whenever DueDate changes - it built two differently-joined
+    /// IQueryable&lt;ActiveEventWindow&gt; query-syntax expressions and called
+    /// `direct.Concat(viaModule).Distinct()` on them, which EF Core cannot translate to SQL
+    /// ("Unable to translate set operation after client projection has been applied"). Fixed by
+    /// materializing each side separately and merging/deduping client-side.
+    /// </summary>
+    [Fact]
+    public async Task EditTask_ChangingDueDateWithNoActiveCalendarEvents_Succeeds()
+    {
+        var createResponse = await _fixture.SendCreateTaskAsync(
+            _fixture.TenantA, _fixture.TenantAObjectiveId, _fixture.TaskCategoryId, "Edit due date repro");
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created, await createResponse.Content.ReadAsStringAsync());
+        var created = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(createResponse);
+        var taskId = created.GetProperty("id").GetGuid();
+
+        var editBody = new
+        {
+            title = "Edit due date repro",
+            description = (string?)null,
+            priority = "medium",
+            dueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),
+            estimatedHours = (decimal?)null,
+            storyPoints = (int?)null,
+            progressPercent = (int?)null,
+            reason = (string?)null,
+            attachmentFileIds = Array.Empty<Guid>(),
+            sprintId = (Guid?)null
+        };
+
+        var editResponse = await _fixture.SendEditTaskAsync(_fixture.TenantA, taskId, editBody);
+        var responseBody = await editResponse.Content.ReadAsStringAsync();
+        editResponse.StatusCode.Should().Be(HttpStatusCode.OK, responseBody);
     }
 
     [Fact]

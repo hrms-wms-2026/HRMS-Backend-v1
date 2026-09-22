@@ -2,7 +2,7 @@
 
 **Purpose:** Approved designs whose implementation isn't finished yet — either the plan is still `pending`, or no plan has been written. Stays flat, no date subfolders (the date-split is `finished/`-only).
 
-**Last updated:** 2026-09-09
+**Last updated:** 2026-09-21
 
 ## Files
 

@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -13,8 +14,11 @@ namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetProjectTask
 
 public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTasksQuery, Result<IReadOnlyList<WorkTaskResponse>>>
 {
+    private static readonly TimeSpan AvatarUrlExpiry = TimeSpan.FromMinutes(15);
+
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
+    private readonly IFileStorageService _fileStorage;
     private readonly IProjectRepository _projects;
     private readonly IProjectMemberRepository _members;
     private readonly IPermissionResolver _permissionResolver;
@@ -22,20 +26,24 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
     private readonly ITaskAssignmentRepository _assignments;
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ITaskStatusRepository _statuses;
 
     public GetProjectTasksQueryHandler(
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
+        IFileStorageService fileStorage,
         IProjectRepository projects,
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
         IWorkTaskRepository tasks,
         ITaskAssignmentRepository assignments,
         ITaskClockingSessionRepository sessions,
-        ICalendarEventRepository calendarEvents)
+        ICalendarEventRepository calendarEvents,
+        ITaskStatusRepository statuses)
     {
         _currentUser = currentUser;
         _identity = identity;
+        _fileStorage = fileStorage;
         _projects = projects;
         _members = members;
         _permissionResolver = permissionResolver;
@@ -43,6 +51,7 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         _assignments = assignments;
         _sessions = sessions;
         _calendarEvents = calendarEvents;
+        _statuses = statuses;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetProjectTasksQuery request, CancellationToken ct)
@@ -69,14 +78,47 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             ? null
             : (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct)).ToHashSet();
 
-        var items = await _tasks.GetByProjectAsync(tenantId, project.Id, ct);
+        var allItems = await _tasks.GetByProjectAsync(tenantId, project.Id, ct);
         if (accessibleObjectiveIds is not null)
-            items = items.Where(t => accessibleObjectiveIds.Contains(t.ObjectiveId)).ToList();
+            allItems = allItems.Where(t => accessibleObjectiveIds.Contains(t.ObjectiveId)).ToList();
+
+        var statuses = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
+        var completingStatusIds = statuses.Where(status => status.MarksTaskComplete).Select(status => status.Id).ToHashSet();
+        var subtasksByParentId = allItems
+            .Where(task => task.ParentTaskId is not null)
+            .GroupBy(task => task.ParentTaskId!.Value)
+            .ToDictionary(group => group.Key, group => group.ToList());
+        var items = allItems.Where(task => task.ParentTaskId is null).ToList();
 
         var assignments = await _assignments.GetByTaskIdsAsync(items.Select(t => t.Id).ToList(), ct);
         var assigneesByTaskId = assignments
             .GroupBy(a => a.TaskId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(a => a.EmployeeId).ToList());
+
+        // Coverage-free identity resolution (same reasoning as GetObjectiveMembersQueryHandler:
+        // management coverage is a People-module reporting-chain concept unrelated to WM task
+        // assignment, so GET /employees/{id} 403ing for most assignees must not block the board
+        // from showing their name/avatar). Signed once per distinct assignee across the whole
+        // response rather than per task, since the same person is often assigned to several tasks.
+        var distinctAssigneeIds = assigneesByTaskId.Values.SelectMany(ids => ids).Distinct().ToList();
+        var identitiesByEmployeeId = await _identity.ResolveIdentitiesByEmployeeIdAsync(tenantId, distinctAssigneeIds, ct);
+        var assigneeIdentityByEmployeeId = new Dictionary<Guid, TaskAssigneeIdentityDto>();
+        foreach (var employeeId in distinctAssigneeIds)
+        {
+            if (!identitiesByEmployeeId.TryGetValue(employeeId, out var identity))
+            {
+                assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(employeeId, "Unknown employee", null);
+                continue;
+            }
+
+            string? avatarUrl = null;
+            if (identity.AvatarFileId is { } avatarFileId)
+            {
+                var urlResult = await _fileStorage.GetSignedUrlAsync(tenantId, avatarFileId, AvatarUrlExpiry, ct);
+                avatarUrl = urlResult.IsSuccess ? urlResult.Value : null;
+            }
+            assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(employeeId, identity.Name, avatarUrl);
+        }
 
         // People filter (spec §6.2): keep only tasks assigned to one of the requested employees.
         if (request.AssigneeEmployeeIds is { Count: > 0 } wantedAssignees)
@@ -105,7 +147,13 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             openSession?.ClockInAt,
             totalLoggedMinutes.GetValueOrDefault(t.Id, 0),
             eventLinkByTaskId.TryGetValue(t.Id, out var eventLink) ? eventLink.CalendarEventId : (Guid?)null,
-            eventLink?.EventName)).ToList();
+            eventLink?.EventName,
+            Attachments: null,
+            Assignees: assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>())
+                .Select(employeeId => assigneeIdentityByEmployeeId[employeeId]).ToList(),
+            ParentTaskId: t.ParentTaskId,
+            SubtaskTotalCount: subtasksByParentId.GetValueOrDefault(t.Id)?.Count ?? 0,
+            SubtaskCompletedCount: subtasksByParentId.GetValueOrDefault(t.Id)?.Count(subtask => completingStatusIds.Contains(subtask.StatusId)) ?? 0)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

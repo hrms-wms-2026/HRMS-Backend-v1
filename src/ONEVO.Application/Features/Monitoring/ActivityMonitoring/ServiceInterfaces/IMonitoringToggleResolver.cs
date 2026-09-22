@@ -62,4 +62,21 @@ public interface IMonitoringToggleResolver
         Guid userId,
         Guid legalEntityId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether the employee's Work Mode requires a photo at clock-in (WorkMode.PhotoRequired).
+    /// This is identity verification's real source of truth - unlike the other capabilities,
+    /// it is not itself a MonitoringFeatureToggles/override tier chain, just a direct read of
+    /// the employee's assigned work mode. False when the employee has no work mode.
+    /// </summary>
+    Task<bool> IsPhotoRequiredAsync(
+        Guid tenantId,
+        Guid employeeId,
+        CancellationToken ct = default);
+
+    Task<bool> IsPhotoRequiredAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid legalEntityId,
+        CancellationToken ct = default);
 }

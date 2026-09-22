@@ -11,7 +11,10 @@ public static class WorkTaskViewModelMapper
         dto.AssigneeEmployeeIds ?? Array.Empty<Guid>(), dto.OpenClockSessionEmployeeId,
         dto.OpenClockSessionClockInAt, dto.TotalLoggedMinutes,
         (dto.Attachments ?? Array.Empty<TaskAttachmentDto>())
-            .Select(a => new TaskAttachmentViewModel(a.FileId, a.FileName, a.FileSizeBytes, a.ContentType)).ToList());
+            .Select(a => new TaskAttachmentViewModel(a.FileId, a.FileName, a.FileSizeBytes, a.ContentType)).ToList(),
+        (dto.Assignees ?? Array.Empty<TaskAssigneeIdentityDto>())
+            .Select(a => new TaskAssigneeIdentityViewModel(a.EmployeeId, a.Name, a.AvatarUrl)).ToList(),
+        dto.ParentTaskId, dto.SubtaskTotalCount, dto.SubtaskCompletedCount);
 
     public static TaskStatusViewModel ToViewModel(this TaskStatusResponse dto) => new(
         dto.Id, dto.Name, dto.DisplayOrder, dto.RequiresApproval,
