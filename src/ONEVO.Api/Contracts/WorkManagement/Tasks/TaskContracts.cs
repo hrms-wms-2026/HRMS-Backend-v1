@@ -124,14 +124,15 @@ public sealed record CurrentEmployeeViewModel(Guid EmployeeId);
 public sealed record TaskHistoryEntryViewModel(
     string Type, DateTimeOffset OccurredAt, Guid EmployeeId, string EmployeeName,
     TaskEditEntryDetails? Edit, TaskStatusChangeEntryDetails? StatusChange,
-    TaskClockSessionEntryDetails? ClockSession, TaskPercentageChangeEntryDetails? PercentageChange);
+    TaskClockSessionEntryDetails? ClockSession, TaskPercentageChangeEntryDetails? PercentageChange,
+    TaskCommentLogEntryDetails? Comment);
 
 public static class TaskHistoryViewModelMapper
 {
     public static IReadOnlyList<TaskHistoryEntryViewModel> ToViewModel(this TaskHistoryResponse response) =>
         response.Entries.Select(entry => new TaskHistoryEntryViewModel(
             entry.Type, entry.OccurredAt, entry.EmployeeId, entry.EmployeeName,
-            entry.Edit, entry.StatusChange, entry.ClockSession, entry.PercentageChange)).ToList();
+            entry.Edit, entry.StatusChange, entry.ClockSession, entry.PercentageChange, entry.Comment)).ToList();
 }
 
 public sealed record TaskPendingUploadViewModel(Guid FileId, string OriginalFileName, long FileSizeBytes, string ContentType);

@@ -21,6 +21,7 @@ public class GetTaskHistoryQueryHandlerTests
         IReadOnlyList<TaskStatusChangeLog>? statusChangeLogs = null,
         IReadOnlyList<TaskClockingSession>? sessions = null,
         IReadOnlyList<TaskPercentageLog>? percentageLogs = null,
+        IReadOnlyList<TaskCommentLog>? commentLogs = null,
         IReadOnlyDictionary<Guid, string>? displayNames = null,
         bool taskExists = true)
     {
@@ -56,9 +57,14 @@ public class GetTaskHistoryQueryHandlerTests
         percentageLogRepository.Setup(x => x.GetForTaskAsync(TenantId, TaskIdConst, It.IsAny<CancellationToken>()))
             .ReturnsAsync(percentageLogs ?? Array.Empty<TaskPercentageLog>());
 
+        var commentLogRepository = new Mock<ITaskCommentLogRepository>();
+        commentLogRepository.Setup(x => x.GetForTaskAsync(TenantId, TaskIdConst, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(commentLogs ?? Array.Empty<TaskCommentLog>());
+
         var handler = new GetTaskHistoryQueryHandler(
             currentUser.Object, identity.Object, tasks.Object, editLogRepository.Object,
-            statusChangeLogRepository.Object, sessionRepository.Object, percentageLogRepository.Object);
+            statusChangeLogRepository.Object, sessionRepository.Object, percentageLogRepository.Object,
+            commentLogRepository.Object);
         return (handler, task);
     }
 
@@ -170,6 +176,22 @@ public class GetTaskHistoryQueryHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal("A teammate", Assert.Single(result.Value!.Entries).EmployeeName);
+    }
+
+    [Fact]
+    public async Task Handle_CommentLogsPresent_IncludedInMergedFeed()
+    {
+        var commentId = Guid.NewGuid();
+        var (handler, _) = ArrangeHistoryHandler(
+            commentLogs: new[] { new TaskCommentLog { Id = Guid.NewGuid(), TaskId = TaskIdConst, CommentId = commentId, EmployeeId = EmployeeIdConst, Action = TaskCommentLogActions.Deleted, OccurredAt = At(0) } });
+
+        var result = await handler.Handle(new GetTaskHistoryQuery(TaskIdConst), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var entry = Assert.Single(result.Value!.Entries);
+        Assert.Equal(TaskHistoryEntryTypes.Comment, entry.Type);
+        Assert.Equal(commentId, entry.Comment!.CommentId);
+        Assert.Equal(TaskCommentLogActions.Deleted, entry.Comment.Action);
     }
 
     [Fact]

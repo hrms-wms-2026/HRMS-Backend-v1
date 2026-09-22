@@ -6,12 +6,16 @@ public static class TaskHistoryEntryTypes
     public const string StatusChange = "status_change";
     public const string ClockSession = "clock_session";
     public const string PercentageChange = "percentage_change";
+    public const string Comment = "comment";
 }
 
 public sealed record TaskHistoryEntryResponse(
     string Type, DateTimeOffset OccurredAt, Guid EmployeeId, string EmployeeName,
     TaskEditEntryDetails? Edit, TaskStatusChangeEntryDetails? StatusChange,
-    TaskClockSessionEntryDetails? ClockSession, TaskPercentageChangeEntryDetails? PercentageChange);
+    TaskClockSessionEntryDetails? ClockSession, TaskPercentageChangeEntryDetails? PercentageChange,
+    TaskCommentLogEntryDetails? Comment = null);
+
+public sealed record TaskCommentLogEntryDetails(Guid CommentId, string Action);
 
 public sealed record TaskEditEntryDetails(
     Guid LogId, string Source, Guid? EditRequestId, string OldValuesJson, string NewValuesJson, string? Reason);

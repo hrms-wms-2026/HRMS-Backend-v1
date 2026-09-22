@@ -17,11 +17,13 @@ public sealed class GetTaskHistoryQueryHandler : IRequestHandler<GetTaskHistoryQ
     private readonly ITaskStatusChangeLogRepository _statusChangeLogs;
     private readonly ITaskClockingSessionRepository _sessions;
     private readonly ITaskPercentageLogRepository _percentageLogs;
+    private readonly ITaskCommentLogRepository _commentLogs;
 
     public GetTaskHistoryQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IWorkTaskRepository tasks,
         ITaskEditLogRepository editLogs, ITaskStatusChangeLogRepository statusChangeLogs,
-        ITaskClockingSessionRepository sessions, ITaskPercentageLogRepository percentageLogs)
+        ITaskClockingSessionRepository sessions, ITaskPercentageLogRepository percentageLogs,
+        ITaskCommentLogRepository commentLogs)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -30,6 +32,7 @@ public sealed class GetTaskHistoryQueryHandler : IRequestHandler<GetTaskHistoryQ
         _statusChangeLogs = statusChangeLogs;
         _sessions = sessions;
         _percentageLogs = percentageLogs;
+        _commentLogs = commentLogs;
     }
 
     public async Task<Result<TaskHistoryResponse>> Handle(GetTaskHistoryQuery request, CancellationToken ct)
@@ -46,6 +49,7 @@ public sealed class GetTaskHistoryQueryHandler : IRequestHandler<GetTaskHistoryQ
         var statusChangeLogs = await _statusChangeLogs.GetForTaskAsync(tenantId, task.Id, ct);
         var sessions = await _sessions.GetForTaskAsync(tenantId, task.Id, ct);
         var percentageLogs = await _percentageLogs.GetForTaskAsync(tenantId, task.Id, ct);
+        var commentLogs = await _commentLogs.GetForTaskAsync(tenantId, task.Id, ct);
 
         var percentageLogsBySessionId = percentageLogs
             .Where(log => log.ClockingSessionId.HasValue)
@@ -87,6 +91,13 @@ public sealed class GetTaskHistoryQueryHandler : IRequestHandler<GetTaskHistoryQ
                 TaskHistoryEntryTypes.PercentageChange, log.ChangedAt, log.EmployeeId, string.Empty,
                 null, null, null,
                 new TaskPercentageChangeEntryDetails(log.Id, log.PreviousPercent, log.NewPercent, log.Source, log.Reason)));
+        }
+
+        foreach (var log in commentLogs)
+        {
+            entries.Add(new TaskHistoryEntryResponse(
+                TaskHistoryEntryTypes.Comment, log.OccurredAt, log.EmployeeId, string.Empty,
+                null, null, null, null, new TaskCommentLogEntryDetails(log.CommentId, log.Action)));
         }
 
         var employeeIds = entries.Select(entry => entry.EmployeeId).Distinct().ToList();
