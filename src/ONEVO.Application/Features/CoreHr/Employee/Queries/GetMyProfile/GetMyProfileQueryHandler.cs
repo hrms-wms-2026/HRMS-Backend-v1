@@ -84,7 +84,7 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
         var personalInformation = new MyPersonalInformationResponse(
             employee.FirstName, employee.LastName, employee.Email, employee.Phone,
             employee.DateOfBirth, employee.Gender, employee.NationalityId, null,
-            employee.DisplayTimezone, legalEntityTimezone, null,
+            employee.DisplayTimezone, legalEntityTimezone, employee.AvatarFileId,
             addresses.Select(a => new MyAddressResponse(a.Id, a.AddressType, a.AddressJson, a.IsPrimary)).ToList(),
             versionToken?.ToString() ?? string.Empty);
 

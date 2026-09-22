@@ -95,4 +95,52 @@ public class GetMyProfileQueryHandlerTests
         Assert.True(result.Value!.Security.MfaEnabled);
         Assert.Equal(lastUpdated, result.Value.Security.LastPasswordChangedAt);
     }
+
+    [Fact]
+    public async Task Handle_ReturnsAvatarFileId_WhenEmployeeHasOneSet()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var avatarFileId = Guid.NewGuid();
+
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(c => c.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(c => c.TenantId).Returns(tenantId);
+        currentUser.SetupGet(c => c.UserId).Returns(userId);
+
+        var commonRepo = new Mock<CommonEmployeeRepo>();
+        commonRepo.Setup(r => r.GetByUserIdAsync(tenantId, userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee
+            {
+                Id = employeeId, TenantId = tenantId, UserId = userId,
+                FirstName = "Jane", LastName = "Doe", Email = "jane@example.com",
+                HireDate = DateOnly.FromDateTime(DateTime.UtcNow), EmployeeNumber = "E-001",
+                AvatarFileId = avatarFileId
+            });
+
+        var featureRepo = new Mock<FeatureEmployeeRepo>();
+        var workModes = new Mock<IWorkModeRepository>();
+
+        var profileRepo = new Mock<IEmployeeProfileRepository>();
+        profileRepo.Setup(r => r.ListAddressesAsync(tenantId, employeeId, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        profileRepo.Setup(r => r.ListEmergencyContactsAsync(tenantId, employeeId, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        profileRepo.Setup(r => r.ListDependentsAsync(tenantId, employeeId, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        profileRepo.Setup(r => r.GetPrimaryBankDetailAsync(tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ONEVO.Domain.Features.CoreHr.Entities.EmployeeBankDetail?)null);
+
+        var users = new Mock<IUserRepository>();
+        users.Setup(u => u.GetByIdAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync((User?)null);
+        var userMfa = new Mock<IUserMfaRepository>();
+
+        var handler = new GetMyProfileQueryHandler(
+            commonRepo.Object, featureRepo.Object, profileRepo.Object, workModes.Object,
+            users.Object, userMfa.Object, new Mock<IEncryptionService>().Object,
+            new Mock<ILegalEntityRepository>().Object, currentUser.Object);
+
+        var result = await handler.Handle(new GetMyProfileQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(avatarFileId, result.Value!.PersonalInformation.AvatarFileId);
+    }
 }
