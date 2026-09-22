@@ -58,7 +58,10 @@ public class E2ETestFactory : WebApplicationFactory<Program>
                 // Outbox payloads are AES-encrypted at rest; tests need a key too.
                 ["Encryption:MasterKey"] = "e2e-test-encryption-master-key-!!",
                 // Fast outbox polling so the invite email lands quickly in tests.
-                ["Outbox:PollSeconds"] = "1"
+                ["Outbox:PollSeconds"] = "1",
+                // Leave/org E2E tests are not tray-gating tests. Smoke tenants can have
+                // activity_monitoring on, which would 428 calendar/leave GETs under Enforce.
+                ["TrayPresence:Mode"] = "Off"
             });
         });
 

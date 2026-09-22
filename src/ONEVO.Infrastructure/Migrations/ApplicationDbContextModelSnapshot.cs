@@ -1468,6 +1468,204 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("calendar_event_participants", (string)null);
                 });
 
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarConnection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<byte[]>("AccessTokenEncrypted")
+                        .HasColumnType("bytea")
+                        .HasColumnName("access_token_encrypted");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<byte[]>("DeltaLinkEncrypted")
+                        .HasColumnType("bytea")
+                        .HasColumnName("delta_link_encrypted");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("ExternalAccountEmail")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("external_account_email");
+
+                    b.Property<string>("ExternalCalendarId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("external_calendar_id");
+
+                    b.Property<string>("ExternalCalendarName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("external_calendar_name");
+
+                    b.Property<int>("FailureCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("failure_count");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text")
+                        .HasColumnName("last_error");
+
+                    b.Property<DateTimeOffset?>("LastSuccessfulSyncAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_successful_sync_at");
+
+                    b.Property<DateTimeOffset?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_synced_at");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("provider");
+
+                    b.Property<byte[]>("RefreshTokenEncrypted")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("refresh_token_encrypted");
+
+                    b.Property<string>("ScopesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("scopes");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("SyncDirection")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("sync_direction");
+
+                    b.Property<byte[]>("SyncTokenEncrypted")
+                        .HasColumnType("bytea")
+                        .HasColumnName("sync_token_encrypted");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_external_calendar_connections");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .HasDatabaseName("ix_external_calendar_connections_tenant_id_user_id");
+
+                    b.HasIndex("TenantId", "UserId", "Provider")
+                        .IsUnique()
+                        .HasDatabaseName("ix_external_calendar_connections_one_per_user_provider");
+
+                    b.ToTable("external_calendar_connections", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.ExternalCalendarEventLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CalendarEventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("calendar_event_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("ExternalCalendarConnectionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("external_calendar_connection_id");
+
+                    b.Property<string>("ExternalCalendarId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("external_calendar_id");
+
+                    b.Property<string>("ExternalEtag")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("external_etag");
+
+                    b.Property<string>("ExternalEventId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("external_event_id");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text")
+                        .HasColumnName("last_error");
+
+                    b.Property<DateTimeOffset?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_synced_at");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("SyncDirection")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("sync_direction");
+
+                    b.Property<string>("SyncStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("sync_status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_external_calendar_event_links");
+
+                    b.HasIndex("ExternalCalendarConnectionId", "ExternalEventId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_external_calendar_event_links_one_per_connection_event");
+
+                    b.HasIndex("TenantId", "CalendarEventId")
+                        .HasDatabaseName("ix_external_calendar_event_links_tenant_id_calendar_event_id");
+
+                    b.HasIndex("TenantId", "ExternalCalendarConnectionId")
+                        .HasDatabaseName("ix_external_calendar_event_links_tenant_id_connection_id");
+
+                    b.ToTable("external_calendar_event_links", (string)null);
+                });
+
             modelBuilder.Entity("ONEVO.Domain.Features.Calendar.Entities.HolidayCalendarSettings", b =>
                 {
                     b.Property<Guid>("Id")

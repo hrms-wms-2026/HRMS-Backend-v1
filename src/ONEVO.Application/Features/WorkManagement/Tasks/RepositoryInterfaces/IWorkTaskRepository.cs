@@ -50,6 +50,11 @@ public interface IWorkTaskRepository
 
     Task<IReadOnlyList<WorkTask>> GetBySprintIdAsync(Guid tenantId, Guid sprintId, CancellationToken ct = default);
 
+    /// <summary>TaskId -> ObjectiveId for this set of tasks - used to resolve which objective (and
+    /// therefore which project) a task-scoped request such as a pending task edit request belongs
+    /// to, without loading the full task rows.</summary>
+    Task<IReadOnlyDictionary<Guid, Guid>> GetObjectiveIdsByTaskIdsAsync(Guid tenantId, IReadOnlyList<Guid> taskIds, CancellationToken ct = default);
+
     /// <summary>True if any physical WorkTask row, including a soft-deleted row, has this StatusId
     /// within the tenant - used to block deleting a status while a restricted FK still references it.</summary>
     Task<bool> AnyActiveByStatusIdAsync(Guid tenantId, Guid statusId, CancellationToken ct = default);

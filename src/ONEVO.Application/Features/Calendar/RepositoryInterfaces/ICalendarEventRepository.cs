@@ -43,18 +43,26 @@ public interface ICalendarEventRepository
     Task<CalendarEventParticipant?> GetTrackedParticipantAsync(
         Guid tenantId, Guid eventId, Guid employeeId, CancellationToken ct = default);
 
-    /// <summary>Same shape as GetInDateRangeForCallerAsync, but scoped to one specific employee's
-    /// participation rather than the current caller - used for conflict-checking a participant
-    /// who is not the person making the request.</summary>
+    /// <summary>Same shape as GetInDateRangeForCallerAsync, but scoped to one specific employee
+    /// (as owner OR participant) rather than the current caller - used for conflict-checking a
+    /// participant who is not the person making the request. "Owner" covers synced external
+    /// events and participant-less personal blocks, neither of which ever get a
+    /// CalendarEventParticipant row.</summary>
     Task<IReadOnlyList<CalendarEvent>> GetInDateRangeForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
 
-    /// <summary>Same shape as GetRecurringMastersForCallerAsync, scoped to one specific employee's
-    /// participation.</summary>
+    /// <summary>Same shape as GetRecurringMastersForCallerAsync, scoped to one specific employee
+    /// as owner OR participant.</summary>
     Task<IReadOnlyList<CalendarEvent>> GetRecurringMastersForEmployeeAsync(
         Guid tenantId, Guid employeeId, DateTimeOffset to, CancellationToken ct = default);
     void Update(CalendarEvent calendarEvent);
     void Remove(CalendarEvent calendarEvent);
+
+    /// <summary>Manual events the caller created that changed after `since` and are not soft-deleted -
+    /// candidates for CalendarSyncService's push direction. Recurring masters/children are excluded
+    /// (Recurrence != None) - pushing recurring events to external providers is a follow-on, not this pass.</summary>
+    Task<IReadOnlyList<CalendarEvent>> GetManualEventsUpdatedSinceForUserAsync(
+        Guid tenantId, Guid userId, DateTimeOffset since, CancellationToken ct = default);
 
     /// <summary>Removes every 'holiday'-sourced event for the tenant in the given year - used to
     /// make holiday re-sync idempotent (delete-then-reinsert) instead of accumulating

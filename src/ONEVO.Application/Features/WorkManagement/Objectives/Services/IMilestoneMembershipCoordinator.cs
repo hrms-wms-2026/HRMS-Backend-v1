@@ -36,4 +36,13 @@ public interface IMilestoneMembershipCoordinator
     /// ancestors (walking up via ParentObjectiveId). Returns false if the Objective doesn't exist.
     /// </summary>
     Task<bool> IsEffectiveManagerAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default);
+
+    /// <summary>
+    /// True if the employee is the owner of this Objective or any of its ancestors (walking up via
+    /// ParentObjectiveId). Unlike IsEffectiveManagerAsync, plain active membership does NOT count -
+    /// use this for gates that must stay owner-only even where other objective actions allow any
+    /// active member (e.g. deciding a task edit request, or editing a task directly instead of
+    /// filing a request). Returns false if the Objective doesn't exist.
+    /// </summary>
+    Task<bool> IsEffectiveOwnerAsync(Guid tenantId, Guid objectiveId, Guid employeeId, CancellationToken ct = default);
 }

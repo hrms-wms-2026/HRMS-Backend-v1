@@ -96,7 +96,7 @@ public class CreateTaskEditRequestCommandHandler : IRequestHandler<CreateTaskEdi
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<TaskEditRequestResponse>.Success(
-                new TaskEditRequestResponse(entity.Id, entity.TaskId, entity.Status, payload, requesterDisplayName, entity.CreatedAt));
+                new TaskEditRequestResponse(entity.Id, entity.TaskId, objective.Id, entity.Status, payload, requesterDisplayName, entity.CreatedAt));
         }, ct);
     }
 }

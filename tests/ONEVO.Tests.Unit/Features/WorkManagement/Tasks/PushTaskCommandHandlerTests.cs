@@ -82,9 +82,13 @@ public class PushTaskCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result<WorkTaskResponse>>> operation, CancellationToken ct) => operation(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
+        var assignments = new Mock<ITaskAssignmentRepository>();
+        assignments.Setup(x => x.GetByTaskIdAsync(TaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<TaskAssignment>());
+
         var handler = new PushTaskCommandHandler(
             currentUser.Object, identity.Object, tasks.Object, sessionRepository.Object,
-            percentageLogRepository.Object, unitOfWork.Object);
+            percentageLogRepository.Object, unitOfWork.Object, assignments.Object);
         return (handler, sessions, percentageLogs, tasks, CallerEmployeeId, task, openSession);
     }
 

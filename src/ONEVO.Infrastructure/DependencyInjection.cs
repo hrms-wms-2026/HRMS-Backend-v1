@@ -74,6 +74,7 @@ using ONEVO.Infrastructure.Identity.Passwords;
 using ONEVO.Infrastructure.Identity.Tenancy;
 using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Identity.Tokens;
+using ONEVO.Infrastructure.ExternalServices.Calendar;
 using ONEVO.Infrastructure.ExternalServices.Email;
 using ONEVO.Infrastructure.ExternalServices.GitHub;
 using ONEVO.Infrastructure.Configuration;
@@ -252,8 +253,6 @@ public static class DependencyInjection
         });
         services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.IHolidayCalendarSettingsRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfHolidayCalendarSettingsRepository>();
-        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveHolidayProvider,
-            ONEVO.Infrastructure.Services.Calendar.NagerHolidaysProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveCalendarHolidayProvider,
             ONEVO.Infrastructure.Services.Calendar.NagerHolidaysProvider>();
         services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveRequestConflictProvider,
@@ -349,6 +348,8 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>();
         services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.ICalendarEventRepository>(
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>());
+        services.AddScoped<IExternalCalendarConnectionRepository, EfExternalCalendarConnectionRepository>();
+        services.AddScoped<IExternalCalendarEventLinkRepository, EfExternalCalendarEventLinkRepository>();
         services.AddScoped<ICalendarRecurrenceExpander, IcalNetRecurrenceExpander>();
         services.AddScoped<ICalendarNotificationSender, CalendarNotificationSender>();
         services.AddScoped<ICalendarTimezoneResolver, CalendarTimezoneResolver>();
@@ -435,6 +436,9 @@ public static class DependencyInjection
         services.AddScoped<IPlatformServiceKeyRepository, EfPlatformServiceKeyRepository>();
         services.AddScoped<ITrayAppReleaseRepository, EfTrayAppReleaseRepository>();
         services.AddScoped<IPlatformServiceKeyVerificationService, PlatformServiceKeyVerificationService>();
+        services.AddScoped<
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.IAwsRekognitionConnectionProbe,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.AwsRekognitionConnectionProbe>();
         services.AddScoped<IPlatformServiceKeyResolver, PlatformServiceKeyResolver>();
 
         // System Config - metadata-only provider catalog
@@ -457,10 +461,18 @@ public static class DependencyInjection
         services.AddScoped<IUserIntegrationConnectionRepository, EfUserIntegrationConnectionRepository>();
         services.AddDataProtection();
         services.AddSingleton<IOAuthStateProtector, OAuthStateProtector>();
+        services.AddScoped<ICalendarOAuthStateProtector, CalendarOAuthStateProtector>();
         services.AddHttpClient<IGitHubOAuthClient, GitHubOAuthTokenClient>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(15);
         });
+        services.AddHttpClient<ICalendarOAuthTokenExchangeClient, ONEVO.Infrastructure.ExternalServices.Calendar.CalendarOAuthTokenExchangeClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddHttpClient<IGoogleCalendarClient, GoogleCalendarClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        services.AddHttpClient<IMicrosoftGraphCalendarClient, MicrosoftGraphCalendarClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        services.AddScoped<ICalendarSyncService, CalendarSyncService>();
 
         // Tenant cache invalidation
         services.AddScoped<ITenantCacheInvalidator, TenantCacheInvalidator>();
@@ -527,15 +539,18 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces.IBiometricProfileRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Biometrics.EfBiometricProfileRepository>();
-        services.AddDefaultAWSOptions(configuration.GetAWSOptions());
-        services.AddAWSService<Amazon.Rekognition.IAmazonRekognition>();
-        services.AddAWSService<Amazon.SecurityToken.IAmazonSecurityTokenService>();
+        services.AddScoped<
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.IAwsRekognitionClientFactory,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.AwsRekognitionClientFactory>();
         services.AddScoped<
             ONEVO.Application.Common.ServiceInterfaces.IFaceLivenessService,
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceLivenessService>();
         services.AddScoped<
             ONEVO.Application.Common.ServiceInterfaces.IFaceMatchService,
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceMatchService>();
+        services.AddScoped<
+            ONEVO.Application.Common.ServiceInterfaces.IFaceQualityService,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceQualityService>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces.IProductivityReportRepository,
@@ -568,6 +583,7 @@ public static class DependencyInjection
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfInactivityCaptureAttemptRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
         services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
+        services.AddHostedService<Services.Calendar.CalendarSyncJob>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
@@ -653,6 +669,7 @@ public static class DependencyInjection
         services.AddHostedService<DevSmokeTestTenantSeeder>();
         services.AddHostedService<WorkManagementDapiDemoSeeder>();
         services.AddHostedService<DapiOrgStructureSeeder>();
+        services.AddHostedService<DapiLeaveSampleSeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
         services.AddHostedService<ProjectsAccessBootstrapSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();

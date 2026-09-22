@@ -15,15 +15,18 @@ public class GetMyTaskEditRequestsQueryHandler
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly ITaskEditRequestRepository _requests;
+    private readonly IWorkTaskRepository _tasks;
 
     public GetMyTaskEditRequestsQueryHandler(
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
-        ITaskEditRequestRepository requests)
+        ITaskEditRequestRepository requests,
+        IWorkTaskRepository tasks)
     {
         _currentUser = currentUser;
         _identity = identity;
         _requests = requests;
+        _tasks = tasks;
     }
 
     public async Task<Result<IReadOnlyList<TaskEditRequestResponse>>> Handle(
@@ -49,6 +52,8 @@ public class GetMyTaskEditRequestsQueryHandler
             .ToList();
         var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
             tenantId, requesterIds, ct);
+        var objectiveIdsByTaskId = await _tasks.GetObjectiveIdsByTaskIdsAsync(
+            tenantId, pending.Select(r => r.TaskId).Distinct().ToList(), ct);
 
         var items = pending.Select(r =>
         {
@@ -57,6 +62,7 @@ public class GetMyTaskEditRequestsQueryHandler
             return new TaskEditRequestResponse(
                 r.Id,
                 r.TaskId,
+                objectiveIdsByTaskId.GetValueOrDefault(r.TaskId),
                 r.Status,
                 payload,
                 requesterName,

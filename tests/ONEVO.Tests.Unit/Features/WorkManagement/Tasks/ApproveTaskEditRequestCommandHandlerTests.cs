@@ -45,7 +45,7 @@ public class ApproveTaskEditRequestCommandHandlerTests
         string sprintStatus = SprintStatuses.Active,
         decimal allocatedHours = 100m,
         decimal existingTaskSum = 20m,
-        bool? callerIsEffectiveManager = null,
+        bool? callerIsEffectiveOwner = null,
         string requestedTitle = "Updated title",
         int? payloadProgressPercent = null,
         int currentTaskPercent = 0,
@@ -141,10 +141,10 @@ public class ApproveTaskEditRequestCommandHandlerTests
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
-        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // unmodified; callerIsEffectiveOwner lets a test override this to simulate an
         // ancestor-cascade grant.
-        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerIsEffectiveManager ?? (objective.OwnerId == resolvedCallerEmployeeId));
+        membership.Setup(x => x.IsEffectiveOwnerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveOwner ?? (objective.OwnerId == resolvedCallerEmployeeId));
 
         var sprints = new Mock<ISprintRepository>();
         sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
@@ -182,6 +182,10 @@ public class ApproveTaskEditRequestCommandHandlerTests
             .Returns((Func<CancellationToken, Task<Result<WorkTaskResponse>>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
+        var assignments = new Mock<ITaskAssignmentRepository>();
+        assignments.Setup(x => x.GetByTaskIdAsync(TaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<TaskAssignment>());
+
         var handler = new ApproveTaskEditRequestCommandHandler(
             currentUser.Object,
             identity.Object,
@@ -195,7 +199,8 @@ public class ApproveTaskEditRequestCommandHandlerTests
             unitOfWork.Object,
             editLogRepository.Object,
             percentageLogRepository.Object,
-            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object);
+            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
+            assignments.Object);
 
         return (handler, task, tasks, requests, editLogs, percentageLogs);
 
@@ -286,13 +291,13 @@ public class ApproveTaskEditRequestCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerIsEffectiveManagerNotOwner_ApprovesRequest()
+    public async Task Handle_CallerIsAncestorOwnerNotDirectOwner_ApprovesRequest()
     {
-        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // Caller is not this objective's own OwnerId, but IsEffectiveOwnerAsync reports them as
         // an effective manager via an ancestor (grandparent) membership - the coordinator's own
         // ancestor-walk logic is unit-tested separately, so this only proves the handler defers to
         // its answer instead of the direct OwnerId check.
-        var (handler, task, tasks, requests, _, _) = Build(callerEmployeeId: OtherEmployeeId, callerIsEffectiveManager: true);
+        var (handler, task, tasks, requests, _, _) = Build(callerEmployeeId: OtherEmployeeId, callerIsEffectiveOwner: true);
 
         var result = await handler.Handle(new ApproveTaskEditRequestCommand(RequestId), CancellationToken.None);
 

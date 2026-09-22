@@ -4,6 +4,7 @@ using Moq;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Leave.Calendar.Services;
 using ONEVO.Application.Features.Leave.Cancellation.Commands;
 using ONEVO.Application.Features.Leave.Cancellation.Helpers;
 using ONEVO.Application.Features.Leave.Cancellation.Options;
@@ -355,8 +356,13 @@ public class CancelLeaveRequestCommandHandlerTests
                     It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<string?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
 
-            var holidays = new Mock<ILeaveHolidayProvider>();
-            holidays.Setup(x => x.ListHolidaysAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            var holidays = new Mock<ILeaveCalendarHolidayProvider>();
+            holidays.Setup(x => x.ListHolidaysAsync(
+                    It.IsAny<Guid>(),
+                    It.IsAny<IReadOnlyCollection<Guid>>(),
+                    It.IsAny<DateOnly>(),
+                    It.IsAny<DateOnly>(),
+                    It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
             var policies = new Mock<ILeavePolicyRepository>();
             policies.Setup(x => x.ListActiveAggregatesByLegalEntityIdsAsync(

@@ -1,24 +1,13 @@
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Leave.Calendar.Services;
-using ONEVO.Application.Features.Leave.Request.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Infrastructure.Services.Calendar;
 
 public sealed class NagerHolidaysProvider(INagerHolidaysClient client, IHolidayCalendarSettingsRepository settingsRepo)
-    : ILeaveHolidayProvider, ILeaveCalendarHolidayProvider
+    : ILeaveCalendarHolidayProvider
 {
-    public async Task<IReadOnlyList<DateOnly>> ListHolidaysAsync(
-        Guid tenantId, Guid? legalEntityId, DateOnly startDate, DateOnly endDate, CancellationToken ct = default)
-    {
-        if (legalEntityId is null) return [];
-        var settings = await settingsRepo.GetByLegalEntityAsync(tenantId, legalEntityId.Value, ct);
-        if (settings is null || !settings.HolidaySyncEnabled) return [];
-        var holidays = await FetchInRangeAsync(settings.EffectiveCountryCode, startDate, endDate, ct);
-        return holidays.Select(h => h.Date).ToList();
-    }
-
     public async Task<IReadOnlyList<LeaveCalendarHoliday>> ListHolidaysAsync(
         Guid tenantId, IReadOnlyCollection<Guid> legalEntityIds, DateOnly startDate, DateOnly endDate, CancellationToken ct = default)
     {

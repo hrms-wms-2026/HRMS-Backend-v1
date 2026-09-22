@@ -41,6 +41,11 @@ public class EfWorkTaskRepository : IWorkTaskRepository
             .Select(x => x.task)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyDictionary<Guid, Guid>> GetObjectiveIdsByTaskIdsAsync(Guid tenantId, IReadOnlyList<Guid> taskIds, CancellationToken ct = default)
+        => await _db.WorkTasks.AsNoTracking()
+            .Where(t => t.TenantId == tenantId && taskIds.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id, t => t.ObjectiveId, ct);
+
     public async Task<decimal> GetActiveAllocationSumByObjectiveIdAsync(Guid tenantId, Guid objectiveId, Guid? excludingTaskId = null, CancellationToken ct = default)
         => await _db.WorkTasks.AsNoTracking()
             .Where(t => t.TenantId == tenantId && t.ObjectiveId == objectiveId && t.Id != (excludingTaskId ?? Guid.Empty))

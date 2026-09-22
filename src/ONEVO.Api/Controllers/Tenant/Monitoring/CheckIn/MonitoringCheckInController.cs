@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Application.Features.Monitoring.CheckIn.Commands.SubmitCheckIn;
 using ONEVO.Application.Features.Monitoring.CheckIn.Commands.UploadFaceScan;
+using ONEVO.Application.Features.Monitoring.CheckIn.Commands.ValidateFacePhoto;
 
 namespace ONEVO.Api.Controllers.Tenant.Monitoring.CheckIn;
 
@@ -33,6 +34,33 @@ public class MonitoringCheckInController : ControllerBase
             request.LocationAccuracy,
             request.LocationAddress,
             request.DeviceSerialNumber), ct);
+
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return Ok(result.Value);
+    }
+
+    /// <summary>
+    /// Preview a clock-in/out selfie against AWS DetectFaces + CompareFaces without
+    /// creating a check-in. The tray uses this to gate Clock In: pass → proceed, fail → retake.
+    /// Accepts multipart/form-data with a single "face_scan" file field.
+    /// Authorization: Bearer {tray_access_token}
+    /// </summary>
+    [HttpPost("face-preview")]
+    [RequestSizeLimit(6 * 1024 * 1024)]
+    public async Task<IActionResult> ValidateFacePhoto(
+        IFormFile face_scan,
+        CancellationToken ct)
+    {
+        if (face_scan is null || face_scan.Length == 0)
+            return Problem("face_scan file is required.", statusCode: 400);
+
+        await using var stream = face_scan.OpenReadStream();
+        var result = await _mediator.Send(new ValidateFacePhotoCommand(
+            stream,
+            face_scan.ContentType,
+            face_scan.Length), ct);
 
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);

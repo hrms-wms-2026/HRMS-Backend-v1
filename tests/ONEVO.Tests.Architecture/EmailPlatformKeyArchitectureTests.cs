@@ -10,7 +10,8 @@ namespace ONEVO.Tests.Architecture;
 /// - The decrypted-key resolver may only be consumed inside Infrastructure, and
 ///   there only by the resolver implementation and the specific provider
 ///   adapters that are explicitly allowlisted below (the platform-key email
-///   sender, and the Cloudflare R2 object storage adapter).
+///   sender, the Cloudflare R2 object storage adapter, and the AWS Rekognition
+///   client factory).
 /// - Application email code (outbox handlers, contracts) stays EF-free.
 /// - No controller and no Application type may depend on the resolver.
 /// </summary>
@@ -54,7 +55,8 @@ public class EmailPlatformKeyArchitectureTests
         var allowed = new[]
         {
             "ONEVO.Infrastructure.ExternalServices.Email.PlatformKeyTransactionalEmailSender",
-            "ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.CloudflareR2ObjectStorageAdapter"
+            "ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.CloudflareR2ObjectStorageAdapter",
+            "ONEVO.Infrastructure.Services.Monitoring.Biometrics.AwsRekognitionClientFactory"
         };
         var offenders = TypesConsumingResolver(InfrastructureAssembly)
             .Select(t => t.FullName)

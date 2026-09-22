@@ -5,6 +5,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
@@ -37,6 +38,7 @@ public class EditTaskCommandHandlerTests
         string title = "Old",
         string priority = WorkTaskPriorities.Medium,
         int progressPercent = 0,
+        bool callerIsEffectiveOwner = true,
         Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null,
         Mock<ITaskAssetLinker>? assetLinker = null,
         IReadOnlyList<Sprint>? otherSprints = null)
@@ -99,10 +101,18 @@ public class EditTaskCommandHandlerTests
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<WorkTaskResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<WorkTaskResponse>>> op, CancellationToken ct) => op(ct));
 
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        membership.Setup(x => x.IsEffectiveOwnerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveOwner);
+
+        var assignments = new Mock<ITaskAssignmentRepository>();
+        assignments.Setup(x => x.GetByTaskIdAsync(TaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<TaskAssignment>());
+
         var handler = new EditTaskCommandHandler(
             currentUser.Object, tasks.Object, objectives.Object, slack, unitOfWork.Object, sprints.Object,
             identity.Object, editLogRepository.Object, percentageLogRepository.Object,
-            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object,
+            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object, membership.Object, assignments.Object,
             (assetLinker ?? new Mock<ITaskAssetLinker>()).Object);
 
         return (handler, tasks, editLogs, callerEmployeeId, task, percentageLogs);
@@ -143,6 +153,23 @@ public class EditTaskCommandHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_CallerNotEffectiveManager_ReturnsForbiddenWithoutUpdatingTask()
+    {
+        var (handler, _, editLogs, _, task, _) = Build(
+            allocatedHours: 100m, existingSumExcludingThisTask: 40m, callerIsEffectiveOwner: false);
+        var command = new EditTaskCommand(
+            task.Id, "Attempted Title", task.Description, task.Priority, task.DueDate,
+            task.EstimatedHours, task.StoryPoints, null, null);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.NotEqual("Attempted Title", task.Title);
+        Assert.Empty(editLogs);
     }
 
     [Fact]
