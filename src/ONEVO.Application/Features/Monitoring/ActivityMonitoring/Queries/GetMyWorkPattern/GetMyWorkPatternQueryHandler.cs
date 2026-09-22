@@ -6,6 +6,8 @@ using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
 using ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
+using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 
 namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetMyWorkPattern;
@@ -16,7 +18,8 @@ public sealed class GetMyWorkPatternQueryHandler(
     IEmployeeRepository employees,
     IActivityDailySummaryRepository summaries,
     IActivitySnapshotRepository snapshots,
-    IMeetingSignalRepository meetings)
+    IMeetingSignalRepository meetings,
+    IAttendanceTodayStateService todayState)
     : IRequestHandler<GetMyWorkPatternQuery, Result<WorkPatternResponse>>
 {
     private const int MeetingMinutesPerSample = 2;
@@ -64,18 +67,33 @@ public sealed class GetMyWorkPatternQueryHandler(
     private async Task<WorkPatternDayDto> BuildTodayDtoAsync(
         Guid tenantId, Guid employeeId, DateOnly today, CancellationToken ct)
     {
-        var snaps = await snapshots.GetAllByEmployeeDateAsync(tenantId, employeeId, today, ct);
+        // The tray keeps capturing snapshots straight through a break (it has no concept of
+        // attendance state), but the "Worked" figure this card is measured against
+        // (AttendanceTodayStateService.CalculateWorkedMinutes) explicitly subtracts break time.
+        // Left unfiltered, a snapshot captured mid-break still counted toward Focus/Admin/Idle
+        // here, so those could sum to more minutes than the employee was ever "Worked" for -
+        // exclude break-time samples so both cards measure the same clocked-in window.
+        var todayResult = await todayState.GetTodayAsync(tenantId, currentUser.UserId, ct);
+        var breaks = todayResult.IsSuccess ? todayResult.Value!.Breaks : Array.Empty<AttendanceTodayBreakInterval>();
+
+        var snaps = (await snapshots.GetAllByEmployeeDateAsync(tenantId, employeeId, today, ct))
+            .Where(s => !IsDuringBreak(s.CapturedAt, breaks))
+            .ToList();
         var focusMinutes = ActivityTimelineBuilder.BuildSegments(snaps)
             .Where(s => s.Type == ActivityTimelineBuilder.FocusType)
             .Sum(s => (int)(s.EndedAt - s.StartedAt).TotalMinutes);
         var activeMinutes = snaps.Sum(s => s.ActiveSeconds) / 60;
         var idleMinutes = snaps.Sum(s => s.IdleSeconds) / 60;
 
-        var meetingSignals = await meetings.GetAllByEmployeeDateAsync(tenantId, employeeId, today, ct);
+        var meetingSignals = (await meetings.GetAllByEmployeeDateAsync(tenantId, employeeId, today, ct))
+            .Where(s => !IsDuringBreak(s.CapturedAt, breaks));
         var meetingMinutes = meetingSignals.Count(s => s.IsMeetingAppRunning) * MeetingMinutesPerSample;
 
         return ToDto(today, focusMinutes, meetingMinutes, activeMinutes, idleMinutes);
     }
+
+    private static bool IsDuringBreak(DateTimeOffset capturedAt, IReadOnlyList<AttendanceTodayBreakInterval> breaks)
+        => breaks.Any(b => capturedAt >= b.StartedAt && capturedAt < (b.EndedAt ?? DateTimeOffset.MaxValue));
 
     // Focus and meeting minutes are computed from independent signal streams and are not
     // guaranteed disjoint (e.g. a focus streak spanning a meeting), so Admin can't go negative -
