@@ -18,6 +18,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmergencyContact
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmployeeJobDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyAvatar;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
@@ -196,6 +197,17 @@ public class EmployeesController : ControllerBase
         return result.IsSuccess
             ? Ok(new { avatarFileId = result.Value })
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Streams the caller's own avatar image. 404 if no avatar is set.</summary>
+    [HttpGet("me/avatar")]
+    public async Task<IActionResult> GetMyAvatar(CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetMyAvatarQuery(), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        return File(result.Value!.Content, result.Value!.ContentType);
     }
 
     /// <summary>Add an emergency contact for the caller's own profile.</summary>
