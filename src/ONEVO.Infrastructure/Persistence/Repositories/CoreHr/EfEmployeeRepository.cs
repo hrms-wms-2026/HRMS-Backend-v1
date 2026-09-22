@@ -13,6 +13,7 @@ using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
+using ONEVO.Domain.Lookups;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
@@ -154,6 +155,11 @@ public class EfEmployeeRepository : IEmployeeRepository
         if (filter.LegalEntityId is not null)
         {
             joined = joined.Where(row => row.legalEntity != null && row.legalEntity.Id == filter.LegalEntityId.Value);
+        }
+
+        if (filter.ActiveOnly)
+        {
+            joined = joined.Where(row => row.e.EmploymentStatusId == EmploymentStatusIds.Active);
         }
 
         var totalCount = await joined.CountAsync(ct);
