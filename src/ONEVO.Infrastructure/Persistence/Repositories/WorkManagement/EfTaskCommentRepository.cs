@@ -16,8 +16,13 @@ public class EfTaskCommentRepository : ITaskCommentRepository
     public async Task<TaskComment?> GetByIdForTenantAsync(Guid tenantId, Guid commentId, CancellationToken ct = default)
         => await _db.TaskComments.FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == commentId, ct);
 
+    // IgnoreQueryFilters() bypasses the soft-delete half of the composed query filter on
+    // purpose: a soft-deleted top-level comment with surviving replies must still be returned
+    // (as a tombstone) - filtering deleted rows out is this method's documented contract to leave
+    // to the caller, not something the global filter should silently do first. Tenant scoping is
+    // preserved manually via the TenantId equality below.
     public async Task<IReadOnlyList<TaskComment>> GetForTaskAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
-        => await _db.TaskComments.AsNoTracking()
+        => await _db.TaskComments.IgnoreQueryFilters().AsNoTracking()
             .Where(c => c.TenantId == tenantId && c.TaskId == taskId)
             .OrderBy(c => c.CreatedAt)
             .ToListAsync(ct);

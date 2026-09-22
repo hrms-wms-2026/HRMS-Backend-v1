@@ -109,6 +109,29 @@ public sealed class TaskCommentsIntegrationTestsFixture : IAsyncLifetime
         return created.GetProperty("id").GetGuid();
     }
 
+    /// <summary>Seeds a comment directly via the DbContext, authored by a synthetic employee id
+    /// that is never the tenant owner's own employee id. Used to exercise author-only edit/delete
+    /// enforcement without a second full login session — no fixture in this codebase already
+    /// provisions a second same-tenant member session, and building one (invite + accept-password
+    /// + session-exchange) is out of proportion to what this one access-control assertion needs:
+    /// the handler only compares comment.EmployeeId to the caller's own resolved employee id.</summary>
+    public async Task<Guid> SeedCommentAuthoredByOtherEmployeeAsync(Guid tenantId, Guid taskId, string content)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+        await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenantId, tenantId.ToString(), TenantStatus.Active, null));
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var comment = new ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskComment
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, TaskId = taskId, EmployeeId = Guid.NewGuid(),
+            Content = content, CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow
+        };
+        db.Set<ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskComment>().Add(comment);
+        await db.SaveChangesAsync();
+        return comment.Id;
+    }
+
     private async Task<HttpResponseMessage> SendCreateTaskAsync(
         TenantSession session, Guid objectiveId, Guid categoryId, string title)
     {
@@ -175,7 +198,7 @@ public sealed class TaskCommentsIntegrationTestsFixture : IAsyncLifetime
     public Task<HttpResponseMessage> SendGetCommentsAsync(TenantSession session, Guid taskId)
         => _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/tasks/{taskId}/comments"));
 
-    public Task<HttpResponseMessage> SendPendingUploadAsync(
+    public async Task<HttpResponseMessage> SendPendingUploadAsync(
         TenantSession session, string purpose, string fileName, string contentType, byte[] bytes)
     {
         using var content = new ByteArrayContent(bytes);
@@ -195,7 +218,7 @@ public sealed class TaskCommentsIntegrationTestsFixture : IAsyncLifetime
         request.Headers.Add("Cookie", session.SessionCookie);
         request.Headers.Add("X-CSRF-Token", session.CsrfHeader);
 
-        return _client.SendAsync(request);
+        return await _client.SendAsync(request);
     }
 
     public Task<HttpResponseMessage> SendGetTaskFileAsync(TenantSession session, Guid fileId)
@@ -543,5 +566,91 @@ public sealed class TaskCommentsIntegrationTests : IClassFixture<TaskCommentsInt
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK, await getResponse.Content.ReadAsStringAsync());
         var body = await getResponse.Content.ReadAsStringAsync();
         body.Should().Contain("First comment");
+    }
+
+    [Fact]
+    public async Task ReplyToReply_ReturnsBadRequest()
+    {
+        var taskId = await _fixture.SeedTaskAsync();
+        var topLevelId = await _fixture.PostCommentAsync(_fixture.TenantA, taskId, "root");
+        var replyId = await _fixture.PostReplyAsync(_fixture.TenantA, topLevelId, "first reply");
+
+        var response = await _fixture.SendPostReplyAsync(_fixture.TenantA, replyId, "nested reply");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task EditComment_AsNonAuthor_ReturnsForbidden()
+    {
+        var taskId = await _fixture.SeedTaskAsync();
+        var commentId = await _fixture.SeedCommentAuthoredByOtherEmployeeAsync(_fixture.TenantA.TenantId, taskId, "original");
+
+        var response = await _fixture.SendEditCommentAsync(_fixture.TenantA, commentId, "hijacked");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task DeleteComment_WithReplies_TombstonesButKeepsReplies()
+    {
+        var taskId = await _fixture.SeedTaskAsync();
+        var topLevelId = await _fixture.PostCommentAsync(_fixture.TenantA, taskId, "root");
+        await _fixture.PostReplyAsync(_fixture.TenantA, topLevelId, "a reply");
+
+        var deleteResponse = await _fixture.SendDeleteCommentAsync(_fixture.TenantA, topLevelId);
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var getResponse = await _fixture.SendGetCommentsAsync(_fixture.TenantA, taskId);
+        var getBody = await getResponse.Content.ReadAsStringAsync();
+        var comments = JsonDocument.Parse(getBody).RootElement.Clone();
+        comments.EnumerateArray().Should().ContainSingle(c => c.GetProperty("id").GetGuid() == topLevelId, getBody);
+        var topLevel = comments.EnumerateArray().Single(c => c.GetProperty("id").GetGuid() == topLevelId);
+        topLevel.GetProperty("isDeleted").GetBoolean().Should().BeTrue();
+        topLevel.GetProperty("content").GetString().Should().BeEmpty();
+        topLevel.GetProperty("replies").GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task AddReaction_ThenGetComments_ShowsGroupedReaction()
+    {
+        var taskId = await _fixture.SeedTaskAsync();
+        var commentId = await _fixture.PostCommentAsync(_fixture.TenantA, taskId, "react to me");
+
+        var addResponse = await _fixture.SendAddReactionAsync(_fixture.TenantA, commentId, "👍");
+        addResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var getResponse = await _fixture.SendGetCommentsAsync(_fixture.TenantA, taskId);
+        var comments = await TaskCommentsIntegrationTestsFixture.ReadJsonAsync(getResponse);
+        var comment = comments.EnumerateArray().Single(c => c.GetProperty("id").GetGuid() == commentId);
+        var reactions = comment.GetProperty("reactions").EnumerateArray().ToList();
+        reactions.Should().ContainSingle(r => r.GetProperty("emoji").GetString() == "👍"
+            && r.GetProperty("employeeIds").GetArrayLength() == 1);
+    }
+
+    [Fact]
+    public async Task CommentAttachment_UploadedThenLinked_ServedThroughGetTaskFile()
+    {
+        var taskId = await _fixture.SeedTaskAsync();
+        var fileBytes = System.Text.Encoding.UTF8.GetBytes("comment attachment bytes");
+        var uploadResponse = await _fixture.SendPendingUploadAsync(_fixture.TenantA, "comment_attachment", "note.pdf", "application/pdf", fileBytes);
+        uploadResponse.StatusCode.Should().Be(HttpStatusCode.Created, await uploadResponse.Content.ReadAsStringAsync());
+        var fileId = (await TaskCommentsIntegrationTestsFixture.ReadJsonAsync(uploadResponse)).GetProperty("fileId").GetGuid();
+
+        var postResponse = await _fixture.SendPostCommentAsync(_fixture.TenantA, taskId, "see attached", new[] { fileId });
+        postResponse.StatusCode.Should().Be(HttpStatusCode.OK, await postResponse.Content.ReadAsStringAsync());
+
+        var fileResponse = await _fixture.SendGetTaskFileAsync(_fixture.TenantA, fileId);
+        fileResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task GetComments_WithoutTaskVisibility_ReturnsNotFound()
+    {
+        var taskId = await _fixture.SeedTaskAsync();
+
+        var response = await _fixture.SendGetCommentsAsync(_fixture.TenantB, taskId);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }
