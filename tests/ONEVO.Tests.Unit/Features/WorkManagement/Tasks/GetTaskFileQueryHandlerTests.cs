@@ -1,17 +1,14 @@
 using Moq;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
-using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
 using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
-using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetTaskFile;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.Storage.EntityAssets.Entities;
-using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using Xunit;
 
@@ -24,17 +21,12 @@ public class GetTaskFileQueryHandlerTests
     private static readonly Guid EmployeeId = Guid.NewGuid();
     private static readonly Guid FileId = Guid.NewGuid();
     private static readonly Guid TaskId = Guid.NewGuid();
-    private static readonly Guid ProjectId = Guid.NewGuid();
-    private static readonly Guid ObjectiveId = Guid.NewGuid();
 
-    private Mock<IEntityAssetRepository> _assets = new();
-    private Mock<IWorkTaskRepository> _tasks = new();
-    private Mock<IProjectRepository> _projects = new();
-    private Mock<IProjectMemberRepository> _members = new();
-    private Mock<IPermissionResolver> _permissions = new();
-    private Mock<IFileStorageService> _fileStorage = new();
-    private Mock<ICallerIdentityResolver> _identity = new();
-    private Mock<ICurrentUser> _currentUser = new();
+    private readonly Mock<IEntityAssetRepository> _assets = new();
+    private readonly Mock<ITaskCommentRepository> _comments = new();
+    private readonly Mock<ITaskAccessResolver> _access = new();
+    private readonly Mock<IFileStorageService> _fileStorage = new();
+    private readonly Mock<ICurrentUser> _currentUser = new();
 
     private static FileRecordDto FileRecord(Guid uploadedBy) => new(
         FileId, TenantId, "k", "a.png", "a.png", "image/png", 10, new string('a', 64),
@@ -45,11 +37,9 @@ public class GetTaskFileQueryHandlerTests
         _currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
         _currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
         _currentUser.SetupGet(x => x.UserId).Returns(UserId);
-        _identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(EmployeeId);
 
         return new GetTaskFileQueryHandler(
-            _currentUser.Object, _identity.Object, _assets.Object, _tasks.Object,
-            _projects.Object, _members.Object, _permissions.Object, _fileStorage.Object);
+            _currentUser.Object, _assets.Object, _comments.Object, _access.Object, _fileStorage.Object);
     }
 
     [Fact]
@@ -82,17 +72,10 @@ public class GetTaskFileQueryHandlerTests
     [Fact]
     public async Task Handle_LinkedToAccessibleTask_StreamsIt()
     {
-        var link = new EntityAsset { Id = Guid.NewGuid(), TenantId = TenantId, OwnerType = "task", OwnerId = TaskId, AssetPurpose = "task_attachment", FileRecordId = FileId, CreatedByType = "user", CreatedAt = DateTimeOffset.UtcNow };
+        var link = new EntityAsset { Id = Guid.NewGuid(), TenantId = TenantId, OwnerType = EntityAssetOwnerTypes.Task, OwnerId = TaskId, AssetPurpose = "task_attachment", FileRecordId = FileId, CreatedByType = "user", CreatedAt = DateTimeOffset.UtcNow };
         _assets.Setup(x => x.GetByFileRecordIdAsync(TenantId, FileId, It.IsAny<CancellationToken>())).ReturnsAsync(link);
-        _tasks.Setup(x => x.GetByIdForTenantAsync(TenantId, TaskId, It.IsAny<CancellationToken>())).ReturnsAsync(new WorkTask
-        {
-            Id = TaskId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, ShortId = "P-1", Title = "T", CreatedAt = DateTimeOffset.UtcNow
-        });
-        _projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(new Project
-        {
-            Id = ProjectId, TenantId = TenantId, Identifier = "P", IsActive = true, CreatedAt = DateTimeOffset.UtcNow
-        });
-        _permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>())).ReturnsAsync(new List<string> { "projects:read" });
+        _access.Setup(x => x.ResolveViewableTaskAsync(TenantId, UserId, TaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<TaskAccessContext>.Success(new TaskAccessContext(new WorkTask { Id = TaskId, TenantId = TenantId }, EmployeeId)));
         _fileStorage.Setup(x => x.OpenReadAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileStreamDto>.Success(new FileStreamDto(Stream.Null, "image/png")));
 
@@ -104,19 +87,45 @@ public class GetTaskFileQueryHandlerTests
     [Fact]
     public async Task Handle_LinkedToInaccessibleTask_ReturnsNotFound()
     {
-        var link = new EntityAsset { Id = Guid.NewGuid(), TenantId = TenantId, OwnerType = "task", OwnerId = TaskId, AssetPurpose = "task_attachment", FileRecordId = FileId, CreatedByType = "user", CreatedAt = DateTimeOffset.UtcNow };
+        var link = new EntityAsset { Id = Guid.NewGuid(), TenantId = TenantId, OwnerType = EntityAssetOwnerTypes.Task, OwnerId = TaskId, AssetPurpose = "task_attachment", FileRecordId = FileId, CreatedByType = "user", CreatedAt = DateTimeOffset.UtcNow };
         _assets.Setup(x => x.GetByFileRecordIdAsync(TenantId, FileId, It.IsAny<CancellationToken>())).ReturnsAsync(link);
-        _tasks.Setup(x => x.GetByIdForTenantAsync(TenantId, TaskId, It.IsAny<CancellationToken>())).ReturnsAsync(new WorkTask
-        {
-            Id = TaskId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, ShortId = "P-1", Title = "T", CreatedAt = DateTimeOffset.UtcNow
-        });
-        _projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(new Project
-        {
-            Id = ProjectId, TenantId = TenantId, Identifier = "P", IsActive = true, CreatedAt = DateTimeOffset.UtcNow
-        });
-        _permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>())).ReturnsAsync(new List<string>());
-        _members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<Guid>());
+        _access.Setup(x => x.ResolveViewableTaskAsync(TenantId, UserId, TaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<TaskAccessContext>.NotFound("Task not found."));
+
+        var result = await Build().Handle(new GetTaskFileQuery(FileId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_FileLinkedToCommentOnViewableTask_ReturnsStream()
+    {
+        var commentId = Guid.NewGuid();
+        var link = new EntityAsset { Id = Guid.NewGuid(), TenantId = TenantId, OwnerType = EntityAssetOwnerTypes.Comment, OwnerId = commentId, AssetPurpose = "comment_attachment", FileRecordId = FileId, CreatedByType = "user", CreatedAt = DateTimeOffset.UtcNow };
+        _assets.Setup(x => x.GetByFileRecordIdAsync(TenantId, FileId, It.IsAny<CancellationToken>())).ReturnsAsync(link);
+        _comments.Setup(x => x.GetByIdForTenantAsync(TenantId, commentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TaskComment { Id = commentId, TaskId = TaskId, TenantId = TenantId });
+        _access.Setup(x => x.ResolveViewableTaskAsync(TenantId, UserId, TaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<TaskAccessContext>.Success(new TaskAccessContext(new WorkTask { Id = TaskId, TenantId = TenantId }, Guid.NewGuid())));
+        _fileStorage.Setup(x => x.OpenReadAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileStreamDto>.Success(new FileStreamDto(Stream.Null, "image/png")));
+
+        var result = await Build().Handle(new GetTaskFileQuery(FileId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task Handle_FileLinkedToCommentOnNonViewableTask_ReturnsNotFound()
+    {
+        var commentId = Guid.NewGuid();
+        var link = new EntityAsset { Id = Guid.NewGuid(), TenantId = TenantId, OwnerType = EntityAssetOwnerTypes.Comment, OwnerId = commentId, AssetPurpose = "comment_attachment", FileRecordId = FileId, CreatedByType = "user", CreatedAt = DateTimeOffset.UtcNow };
+        _assets.Setup(x => x.GetByFileRecordIdAsync(TenantId, FileId, It.IsAny<CancellationToken>())).ReturnsAsync(link);
+        _comments.Setup(x => x.GetByIdForTenantAsync(TenantId, commentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TaskComment { Id = commentId, TaskId = TaskId, TenantId = TenantId });
+        _access.Setup(x => x.ResolveViewableTaskAsync(TenantId, UserId, TaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<TaskAccessContext>.NotFound("Task not found."));
 
         var result = await Build().Handle(new GetTaskFileQuery(FileId), CancellationToken.None);
 
