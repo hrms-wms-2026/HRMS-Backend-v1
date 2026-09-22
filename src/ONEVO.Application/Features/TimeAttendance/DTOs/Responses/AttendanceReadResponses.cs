@@ -111,8 +111,25 @@ public sealed record CheckInLocationDto(
     double? LocationAccuracy,
     string? LocationAddress);
 
+/// <summary>One screenshot for the attendance day, with a short-lived Cloudflare read link.</summary>
+public sealed record AttendanceDayScreenshotDto(
+    Guid Id,
+    DateTimeOffset CapturedAt,
+    string EvidenceType,
+    string TriggerType,
+    string? Url);
+
+/// <summary>One idle-time activity check. Url is set only when the employee chose Allow.</summary>
+public sealed record AttendanceActivityCheckDto(
+    Guid Id,
+    DateTimeOffset PromptedAt,
+    string Outcome,
+    string? Url);
+
 public sealed record AttendanceDayDetailResponse(
     AttendanceHistoryRow Summary,
     IReadOnlyList<TimelineEvent> TimelineEvents,
     ActivityDailySummaryDto? DailyActivity,
-    IReadOnlyList<CheckInLocationDto> CheckIns);
+    IReadOnlyList<CheckInLocationDto> CheckIns,
+    IReadOnlyList<AttendanceDayScreenshotDto>? Screenshots = null,
+    IReadOnlyList<AttendanceActivityCheckDto>? ActivityChecks = null);

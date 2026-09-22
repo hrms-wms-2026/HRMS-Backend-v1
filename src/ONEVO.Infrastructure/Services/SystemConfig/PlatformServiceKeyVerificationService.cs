@@ -4,6 +4,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.De
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
 using ONEVO.Infrastructure.ExternalServices.Email;
+using ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2;
 using ONEVO.Infrastructure.Services.Monitoring.Biometrics;
 
 namespace ONEVO.Infrastructure.Services.SystemConfig;
@@ -11,9 +12,8 @@ namespace ONEVO.Infrastructure.Services.SystemConfig;
 /// <summary>
 /// Platform service key verification.
 ///
-/// Resend and SendGrid keys are verified with a lightweight live provider call that does
-/// not send email. Other supported services remain local format-only checks until their
-/// provider HTTP clients are wired.
+/// Resend, SendGrid, AWS Rekognition, and Cloudflare R2 are verified with a live
+/// provider call. Other supported services remain local format-only checks.
 ///
 /// SECURITY: the plaintext key is inspected in memory only and is NEVER logged.
 /// Provider response bodies are never logged or returned.
@@ -25,15 +25,18 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAwsRekognitionConnectionProbe _rekognitionProbe;
+    private readonly ICloudflareR2ConnectionProbe _r2Probe;
     private readonly ILogger<PlatformServiceKeyVerificationService> _logger;
 
     public PlatformServiceKeyVerificationService(
         IHttpClientFactory httpClientFactory,
         IAwsRekognitionConnectionProbe rekognitionProbe,
+        ICloudflareR2ConnectionProbe r2Probe,
         ILogger<PlatformServiceKeyVerificationService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _rekognitionProbe = rekognitionProbe;
+        _r2Probe = r2Probe;
         _logger = logger;
     }
 
@@ -75,8 +78,8 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
                 ct),
             PlatformServiceKeyCatalog.Cloudflare => FormatOnlyResult(
                 serviceKey, apiKeyPlaintext, checkedAt),
-            PlatformServiceKeyCatalog.CloudflareR2 => BundleFormatResult(
-                serviceKey, apiKeyPlaintext, checkedAt),
+            PlatformServiceKeyCatalog.CloudflareR2 => await VerifyCloudflareR2Async(
+                apiKeyPlaintext, checkedAt, ct),
             PlatformServiceKeyCatalog.AwsRekognition => await VerifyAwsRekognitionBundleAsync(
                 apiKeyPlaintext, checkedAt, ct),
             _ => new PlatformServiceKeyVerificationResult
@@ -115,6 +118,40 @@ public sealed class PlatformServiceKeyVerificationService : IPlatformServiceKeyV
             Identity = probe.Identity,
             Region = probe.Region ?? region,
             Service = probe.Success ? "Amazon Rekognition" : null
+        };
+    }
+
+    private async Task<PlatformServiceKeyVerificationResult> VerifyCloudflareR2Async(
+        string storedCredential,
+        DateTimeOffset checkedAt,
+        CancellationToken ct)
+    {
+        if (!CloudflareR2CredentialBundle.TryParse(storedCredential, out var bundle))
+        {
+            return new PlatformServiceKeyVerificationResult
+            {
+                Success = false,
+                CheckedAt = checkedAt,
+                Message = "Cloudflare R2 key must include account, bucket, access key, secret, and endpoint."
+            };
+        }
+
+        var probe = await _r2Probe.ProbeAsync(
+            bundle.AccessKeyId.Trim(),
+            bundle.SecretAccessKey.Trim(),
+            bundle.BucketName.Trim(),
+            bundle.Endpoint.Trim(),
+            bundle.Region,
+            ct);
+
+        return new PlatformServiceKeyVerificationResult
+        {
+            Success = probe.Success,
+            CheckedAt = checkedAt,
+            Message = probe.Message,
+            Identity = probe.Success ? probe.Bucket : null,
+            Region = probe.Region,
+            Service = probe.Success ? "Cloudflare R2" : null
         };
     }
 

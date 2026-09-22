@@ -5,10 +5,13 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.Queries;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
@@ -16,6 +19,7 @@ using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
 using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
+using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.TimeAttendance.Entities;
 
@@ -454,6 +458,104 @@ public sealed class AttendanceReadHandlerTests
     }
 
     [Fact]
+    public async Task DayDetail_Self_UsesLiveActivityWhenSummaryRowIsMissing()
+    {
+        var live = new Mock<IActivityLiveDaySummary>();
+        live.Setup(x => x.ComposeAsync(TenantId, EmployeeId, new DateOnly(2026, 8, 21), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityDailySummaryDto
+            {
+                EmployeeId = EmployeeId,
+                Date = new DateOnly(2026, 8, 21),
+                TotalActiveMinutes = 92,
+                TotalIdleMinutes = 37,
+                TopApps = [new AppUsageSummary { AppName = "chrome.exe", TotalSeconds = 1680, Category = "Productive" }]
+            });
+        var fixture = CreateFixture(liveActivity: live.Object);
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.DailyActivity.Should().NotBeNull();
+        result.Value.DailyActivity!.TotalActiveMinutes.Should().Be(92);
+        result.Value.DailyActivity.TotalIdleMinutes.Should().Be(37);
+        result.Value.DailyActivity.TopApps.Should().ContainSingle(app => app.AppName == "chrome.exe");
+    }
+
+    [Fact]
+    public async Task DayDetail_Self_ReturnsAllowSkipAndNoResponseChecks()
+    {
+        var checks = new Mock<IInactivityCaptureAttemptRepository>();
+        var assetId = Guid.NewGuid();
+        checks.Setup(x => x.ListForEmployeeInRangeAsync(
+                TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new InactivityCaptureAttempt { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, PromptedAt = DateTimeOffset.Parse("2026-08-21T04:10:00Z"), Outcome = InactivityCaptureOutcomes.Captured, EvidenceAssetId = assetId },
+                new InactivityCaptureAttempt { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, PromptedAt = DateTimeOffset.Parse("2026-08-21T05:10:00Z"), Outcome = InactivityCaptureOutcomes.Declined },
+                new InactivityCaptureAttempt { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, PromptedAt = DateTimeOffset.Parse("2026-08-21T06:10:00Z"), Outcome = InactivityCaptureOutcomes.TimedOut }
+            ]);
+
+        var fixture = CreateFixture(activityCheckRepo: checks.Object);
+        fixture.Evidence.Setup(x => x.ListForOwnersInRangeAsync(
+                TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new MonitoringEvidenceAsset { Id = assetId, TenantId = TenantId, EmployeeId = EmployeeId, FileRecordId = Guid.NewGuid(), CapturedAt = DateTimeOffset.Parse("2026-08-21T04:11:00Z"), EvidenceType = "screenshot", TriggerType = "inactivity_approved" }]);
+        fixture.Files.Setup(x => x.GetSignedUrlAsync(TenantId, It.IsAny<Guid>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<string>.Success("https://r2.example/allow.jpg"));
+
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ActivityChecks.Should().HaveCount(3);
+        result.Value.ActivityChecks![0].Outcome.Should().Be("captured");
+        result.Value.ActivityChecks[0].Url.Should().Be("https://r2.example/allow.jpg");
+        result.Value.ActivityChecks[1].Outcome.Should().Be("declined");
+        result.Value.ActivityChecks[1].Url.Should().BeNull();
+        result.Value.ActivityChecks[2].Outcome.Should().Be("timed_out");
+    }
+
+    [Fact]
+    public async Task DayDetail_Self_PrefersStoredSummaryOverLiveSnapshots()
+    {
+        var live = new Mock<IActivityLiveDaySummary>();
+        var fixture = CreateFixture(liveActivity: live.Object);
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        fixture.ActivitySummaries.Setup(x => x.GetAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityDailySummary { TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21), TotalActiveMinutes = 200 });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.DailyActivity!.TotalActiveMinutes.Should().Be(200);
+        live.Verify(x => x.ComposeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DayDetail_OtherEmployee_WithoutMonitoringRead_DoesNotComposeLiveActivity()
+    {
+        var live = new Mock<IActivityLiveDaySummary>();
+        var fixture = CreateFixture(liveActivity: live.Object);
+        var otherId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, otherId]));
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = otherId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, otherId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        fixture.Attendance.Setup(x => x.ListEmployeeIdentitiesAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, AttendanceHistoryEmployee> { [otherId] = new(otherId, "Jane Doe", "EMP-001", "Engineer", "Product", null) });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(otherId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.DailyActivity.Should().BeNull();
+        live.Verify(x => x.ComposeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task DayDetail_OtherEmployee_WithAttendanceReadAndMonitoringRead_ReturnsActivity()
     {
         var fixture = CreateFixture(hasMonitoringRead: true);
@@ -579,12 +681,53 @@ public sealed class AttendanceReadHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.CheckIns.Should().BeEmpty();
+        result.Value.Screenshots.Should().BeEmpty();
         fixture.CheckIns.Verify(
             x => x.ListForUserInRangeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()),
             Times.Never);
+        fixture.Evidence.Verify(
+            x => x.ListForOwnersInRangeAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
-    private static Fixture CreateFixture(string localTimeUtc = "2026-08-21T10:00:00+00:00", string workModeCode = "remote", int employmentTypeId = 1, bool hasMonitoringRead = false)
+    [Fact]
+    public async Task DayDetail_Self_ReturnsSignedScreenshotWithoutMonitoringRead()
+    {
+        var fixture = CreateFixture();
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        var fileId = Guid.NewGuid();
+        var asset = new MonitoringEvidenceAsset
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            EmployeeId = UserId,
+            FileRecordId = fileId,
+            EvidenceType = "screenshot",
+            TriggerType = "periodic",
+            CapturedAt = DateTimeOffset.Parse("2026-08-21T04:15:00+00:00")
+        };
+        fixture.Evidence.Setup(x => x.ListForOwnersInRangeAsync(
+                TenantId,
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(EmployeeId) && ids.Contains(UserId)),
+                It.IsAny<DateTimeOffset>(),
+                It.IsAny<DateTimeOffset>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([asset]);
+        fixture.Files.Setup(x => x.GetSignedUrlAsync(TenantId, fileId, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<string>.Success("https://r2.example/shot.jpg"));
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        var shot = result.Value!.Screenshots.Should().ContainSingle().Subject;
+        shot.Id.Should().Be(asset.Id);
+        shot.TriggerType.Should().Be("periodic");
+        shot.Url.Should().Be("https://r2.example/shot.jpg");
+    }
+
+    private static Fixture CreateFixture(string localTimeUtc = "2026-08-21T10:00:00+00:00", string workModeCode = "remote", int employmentTypeId = 1, bool hasMonitoringRead = false, IActivityLiveDaySummary? liveActivity = null, IInactivityCaptureAttemptRepository? activityCheckRepo = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -608,6 +751,16 @@ public sealed class AttendanceReadHandlerTests
         var activitySummaries = new Mock<IActivityDailySummaryRepository>();
         activitySummaries.Setup(x => x.GetAsync(TenantId, It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((ActivityDailySummary?)null);
+        var evidence = new Mock<IEvidenceAssetRepository>();
+        evidence.Setup(x => x.ListForOwnersInRangeAsync(
+                TenantId,
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<DateTimeOffset>(),
+                It.IsAny<DateTimeOffset>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var files = new Mock<IFileStorageService>();
         var workModeId = Guid.NewGuid();
         expectedWorkAreas.Setup(x => x.ResolveAsync(It.IsAny<Employee>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(
@@ -642,7 +795,11 @@ public sealed class AttendanceReadHandlerTests
                 legalEntities: legalEntities.Object,
                 dateTimeProvider: dateTime.Object,
                 activitySummaries: activitySummaries.Object,
-                checkIns: checkIns.Object),
+                checkIns: checkIns.Object,
+                evidenceAssets: evidence.Object,
+                fileStorage: files.Object,
+                liveActivity: liveActivity,
+                activityChecks: activityCheckRepo),
             attendance,
             policies,
             authority,
@@ -650,8 +807,21 @@ public sealed class AttendanceReadHandlerTests
             activitySummaries,
             checkIns,
             workModes,
-            workModeId);
+            workModeId,
+            evidence,
+            files);
     }
 
-    private sealed record Fixture(AttendanceReadHandler Handler, Mock<IAttendanceReadRepository> Attendance, Mock<IClockInPolicyRepository> Policies, Mock<IEmployeeAuthorityResolver> Authority, LegalEntity LegalEntity, Mock<IActivityDailySummaryRepository> ActivitySummaries, Mock<ICheckInRepository> CheckIns, Mock<IWorkModeRepository> WorkModes, Guid WorkModeId);
+    private sealed record Fixture(
+        AttendanceReadHandler Handler,
+        Mock<IAttendanceReadRepository> Attendance,
+        Mock<IClockInPolicyRepository> Policies,
+        Mock<IEmployeeAuthorityResolver> Authority,
+        LegalEntity LegalEntity,
+        Mock<IActivityDailySummaryRepository> ActivitySummaries,
+        Mock<ICheckInRepository> CheckIns,
+        Mock<IWorkModeRepository> WorkModes,
+        Guid WorkModeId,
+        Mock<IEvidenceAssetRepository> Evidence,
+        Mock<IFileStorageService> Files);
 }
