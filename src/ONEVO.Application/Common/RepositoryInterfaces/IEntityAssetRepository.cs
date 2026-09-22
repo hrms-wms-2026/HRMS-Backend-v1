@@ -6,6 +6,12 @@ namespace ONEVO.Application.Common.RepositoryInterfaces;
 public sealed record EntityAssetWithFile(
     Guid Id, Guid FileRecordId, string OriginalFileName, long FileSizeBytes, string ContentType, DateTimeOffset CreatedAt, string AssetPurpose);
 
+/// <summary>Same projection as EntityAssetWithFile but carrying OwnerId, for a batched
+/// multi-owner lookup (ListByOwnersAsync) — kept as its own record so existing single-owner
+/// callers of EntityAssetWithFile are unaffected.</summary>
+public sealed record EntityAssetWithFileAndOwner(
+    Guid OwnerId, Guid Id, Guid FileRecordId, string OriginalFileName, long FileSizeBytes, string ContentType, DateTimeOffset CreatedAt, string AssetPurpose);
+
 public interface IEntityAssetRepository
 {
     Task AddAsync(EntityAsset asset, CancellationToken ct = default);
@@ -17,6 +23,13 @@ public interface IEntityAssetRepository
     /// <summary>All assets for a single owner (e.g. every file attached to one objective), joined with file metadata, oldest first.</summary>
     Task<IReadOnlyList<EntityAssetWithFile>> ListByOwnerAsync(
         Guid tenantId, string ownerType, Guid ownerId, CancellationToken ct = default);
+
+    /// <summary>Batched sibling of ListByOwnerAsync for when the caller already has many
+    /// owner ids in hand (e.g. every comment on a task) and wants to avoid N+1 queries.
+    /// Returns EntityAssetWithFileAndOwner (not EntityAssetWithFile) so existing single-owner
+    /// callers are unaffected.</summary>
+    Task<IReadOnlyList<EntityAssetWithFileAndOwner>> ListByOwnersAsync(
+        Guid tenantId, string ownerType, IReadOnlyList<Guid> ownerIds, CancellationToken ct = default);
 
     Task<EntityAsset?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
