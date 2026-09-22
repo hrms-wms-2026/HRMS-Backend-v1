@@ -6,10 +6,11 @@
 
 This folder absorbed the former top-level `docs/superpowers/next-plan/` folder on 2026-08-06 as part of the `plans/` restructure into `finished/` and `next/` — see `FILE_CREATION_RULES.md` in `docs/superpowers/rules/`.
 
-**Last updated:** 2026-09-21
+**Last updated:** 2026-09-22
 
 ## Files
 
+- `2026-09-22-centralized-file-upload-phase0-avatar-fix-backend.md` — status: pending, not started. 3 tasks: exposes `AvatarFileId` (Guid?) from `GetMyProfileQuery` in place of the dead always-null `AvatarUrl` field, adds `GetMyAvatarQuery`/Handler mirroring `GetLegalEntityLogoQueryHandler`, and a new `GET /employees/me/avatar` streaming endpoint. Design: `../../specs/next/2026-09-22-centralized-file-upload-design.md`. Companion: `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-09-22-centralized-file-upload-phase0-avatar-fix-frontend.md` (depends on this plan shipping first). Phase 1 (generic FilesController + entity_assets extension to Employee/LegalEntity) and Phase 2 (frontend shared upload component) are separate, not-yet-written plans per the design's phased delivery.
 - `2026-09-09-leave-hourly-ledger/` — status: implemented on `feat/leave-hourly-ledger`. 3 parts: work-day hours + overnight window, hour calculator, hours schema/`StartAt`/`EndAt`/generate/migration. Design: `../../specs/next/2026-09-09-leave-hourly-ledger-design.md`. Companion: frontend repo same-named folder.
 - `2026-08-25-work-management-task-time-tracking-and-my-task/` — status: pending, not started. 10 parts:
   Parts 1-2 data model/migration + edit-payload extension, Parts 3-5 wire `TaskEditLog`/
