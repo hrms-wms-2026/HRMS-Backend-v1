@@ -28,6 +28,12 @@ public sealed class TrayPresenceRequirementEvaluatorTests
         _toggles
             .Setup(t => t.IsEnabledAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<MonitoringCapability>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
+        _toggles
+            .Setup(t => t.IsPhotoRequiredAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _toggles
+            .Setup(t => t.IsPhotoRequiredAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
         return new TrayPresenceRequirementEvaluator(_user.Object, _entitlements.Object, _toggles.Object);
     }
 
@@ -53,13 +59,46 @@ public sealed class TrayPresenceRequirementEvaluatorTests
 
     [Theory]
     [InlineData(MonitoringCapability.ActivityMonitoring)]
+    [InlineData(MonitoringCapability.ApplicationTracking)]
     [InlineData(MonitoringCapability.ScreenshotCapture)]
-    [InlineData(MonitoringCapability.Biometric)]
+    [InlineData(MonitoringCapability.WorkLocationVerification)]
     public async Task Required_WhenAnyMonitoringCapabilityIsEnabled(MonitoringCapability enabledCapability)
     {
         var sut = Build(moduleEnabled: true);
         _toggles
             .Setup(t => t.IsEnabledAsync(_tenantId, _userId, enabledCapability, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        Assert.True(await sut.IsRequiredForCurrentUserAsync(CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(MonitoringCapability.AutoScreenshotCapture)]
+    [InlineData(MonitoringCapability.DeviceTracking)]
+    [InlineData(MonitoringCapability.IdentityVerification)]
+    [InlineData(MonitoringCapability.DocumentTracking)]
+    [InlineData(MonitoringCapability.CommunicationTracking)]
+    [InlineData(MonitoringCapability.MeetingDetection)]
+    [InlineData(MonitoringCapability.Biometric)]
+    public async Task NotRequired_WhenOnlyANonGatingCapabilityIsEnabled(MonitoringCapability hiddenCapability)
+    {
+        // These capabilities have no checkbox on the Monitoring Configuration page - an admin
+        // can never turn them off, so they must never independently force the tray requirement
+        // (e.g. a stale seed default sitting at true forever).
+        var sut = Build(moduleEnabled: true);
+        _toggles
+            .Setup(t => t.IsEnabledAsync(_tenantId, _userId, hiddenCapability, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        Assert.False(await sut.IsRequiredForCurrentUserAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Required_WhenWorkModePhotoIsRequired_EvenIfNoCapabilityToggleIsEnabled()
+    {
+        var sut = Build(moduleEnabled: true);
+        _toggles
+            .Setup(t => t.IsPhotoRequiredAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         Assert.True(await sut.IsRequiredForCurrentUserAsync(CancellationToken.None));
@@ -71,7 +110,7 @@ public sealed class TrayPresenceRequirementEvaluatorTests
         var legalEntityId = Guid.NewGuid();
         var sut = Build(moduleEnabled: true, legalEntityId);
         _toggles
-            .Setup(t => t.IsEnabledAsync(_tenantId, _userId, legalEntityId, MonitoringCapability.DeviceTracking, It.IsAny<CancellationToken>()))
+            .Setup(t => t.IsEnabledAsync(_tenantId, _userId, legalEntityId, MonitoringCapability.ApplicationTracking, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         Assert.True(await sut.IsRequiredForCurrentUserAsync(CancellationToken.None));

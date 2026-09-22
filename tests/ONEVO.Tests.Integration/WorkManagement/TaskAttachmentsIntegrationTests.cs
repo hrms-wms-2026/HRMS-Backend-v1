@@ -152,6 +152,10 @@ public sealed class TaskAttachmentsIntegrationTestsFixture : IAsyncLifetime
     public async Task<HttpResponseMessage> SendGetTaskAsync(TenantSession session, Guid taskId)
         => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/tasks/{taskId}"));
 
+    public Task<HttpResponseMessage> SendEditTaskAsync(TenantSession session, Guid taskId, object body)
+        => SendJsonAsync(HttpMethod.Patch, session.Host, $"/api/v1/work/tasks/{taskId}", body,
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+
     public Task<HttpResponseMessage> SendCreateSubtaskAsync(TenantSession session, Guid parentTaskId, Guid? assigneeEmployeeId = null)
         => SendJsonAsync(HttpMethod.Post, session.Host, $"/api/v1/work/tasks/{parentTaskId}/subtasks",
             new { title = "Integrated child", priority = "high", dueDate = (DateOnly?)null, assigneeEmployeeId },
@@ -564,6 +568,44 @@ public sealed class TaskAttachmentsIntegrationTests : IClassFixture<TaskAttachme
         getFileResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var downloadedBytes = await getFileResponse.Content.ReadAsByteArrayAsync();
         downloadedBytes.Should().Equal(fileBytes);
+    }
+
+    /// <summary>
+    /// Regression test for a bug reported 2026-09-21: any task edit that changes DueDate 500'd
+    /// unconditionally (reproduced on a brand-new task, not data-specific). Root cause was in
+    /// EfCalendarEventRepository.ListActiveEventWindowsForTaskAsync, which the edit handler calls
+    /// to check active-event date windows whenever DueDate changes - it built two differently-joined
+    /// IQueryable&lt;ActiveEventWindow&gt; query-syntax expressions and called
+    /// `direct.Concat(viaModule).Distinct()` on them, which EF Core cannot translate to SQL
+    /// ("Unable to translate set operation after client projection has been applied"). Fixed by
+    /// materializing each side separately and merging/deduping client-side.
+    /// </summary>
+    [Fact]
+    public async Task EditTask_ChangingDueDateWithNoActiveCalendarEvents_Succeeds()
+    {
+        var createResponse = await _fixture.SendCreateTaskAsync(
+            _fixture.TenantA, _fixture.TenantAObjectiveId, _fixture.TaskCategoryId, "Edit due date repro");
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created, await createResponse.Content.ReadAsStringAsync());
+        var created = await TaskAttachmentsIntegrationTestsFixture.ReadJsonAsync(createResponse);
+        var taskId = created.GetProperty("id").GetGuid();
+
+        var editBody = new
+        {
+            title = "Edit due date repro",
+            description = (string?)null,
+            priority = "medium",
+            dueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),
+            estimatedHours = (decimal?)null,
+            storyPoints = (int?)null,
+            progressPercent = (int?)null,
+            reason = (string?)null,
+            attachmentFileIds = Array.Empty<Guid>(),
+            sprintId = (Guid?)null
+        };
+
+        var editResponse = await _fixture.SendEditTaskAsync(_fixture.TenantA, taskId, editBody);
+        var responseBody = await editResponse.Content.ReadAsStringAsync();
+        editResponse.StatusCode.Should().Be(HttpStatusCode.OK, responseBody);
     }
 
     [Fact]

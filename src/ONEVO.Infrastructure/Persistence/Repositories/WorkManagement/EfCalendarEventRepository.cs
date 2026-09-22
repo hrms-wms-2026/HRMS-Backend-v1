@@ -157,7 +157,15 @@ public sealed class EfCalendarEventRepository : ICalendarEventRepository
                 && calendarEvent.Status == CalendarEventStatuses.Active
             select new ActiveEventWindow(calendarEvent.Id, calendarEvent.Name, calendarEvent.StartDate, calendarEvent.EndDate);
 
-        return await direct.Concat(viaModule).Distinct().ToListAsync(ct);
+        // EF Core cannot translate `direct.Concat(viaModule).Distinct()` here: the two sides come
+        // from differently-shaped joins (CalendarEventTasks vs CalendarEventObjectives), and it
+        // throws "Unable to translate set operation after client projection has been applied" at
+        // execution time - reliably, on every call, not just for specific data. Run each side as
+        // its own round trip and merge/dedupe in memory instead; both result sets are tiny
+        // (a task's own active calendar events), so the extra round trip is negligible.
+        var directResults = await direct.ToListAsync(ct);
+        var viaModuleResults = await viaModule.ToListAsync(ct);
+        return directResults.Concat(viaModuleResults).Distinct().ToList();
     }
 
     public void Update(CalendarEvent calendarEvent) => _db.CalendarEvents.Update(calendarEvent);

@@ -478,6 +478,37 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         _ => null
     };
 
+    public async Task<bool> IsPhotoRequiredAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default) =>
+        await IsPhotoRequiredCoreAsync(tenantId, employeeId, null, ct);
+
+    public Task<bool> IsPhotoRequiredAsync(
+        Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default) =>
+        IsPhotoRequiredCoreAsync(tenantId, userId, legalEntityId, ct);
+
+    private async Task<bool> IsPhotoRequiredCoreAsync(
+        Guid tenantId, Guid userId, Guid? legalEntityId, CancellationToken ct)
+    {
+        var cacheKey = $"tenant:{tenantId}:monitoring-toggle:user:{userId}:legal-entity:{legalEntityId}:photo-required";
+        var cached = await _cache.GetAsync<bool?>(cacheKey, ct);
+        if (cached.HasValue)
+            return cached.Value;
+
+        var employee = await ResolveEmployeeAsync(tenantId, userId, legalEntityId, ct);
+        var resolved = false;
+        if (employee?.WorkModeId is Guid workModeId)
+        {
+            resolved = await _db.TimeAttendanceWorkModes
+                .AsNoTracking()
+                .Where(w => w.Id == workModeId && w.TenantId == tenantId)
+                .Select(w => w.PhotoRequired)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        await _cache.SetAsync(cacheKey, resolved, CacheTtl, ct);
+        return resolved;
+    }
+
     private static bool GetCapability(MonitoringFeatureToggles t, MonitoringCapability c) => c switch
     {
         MonitoringCapability.ActivityMonitoring => t.ActivityMonitoring,
