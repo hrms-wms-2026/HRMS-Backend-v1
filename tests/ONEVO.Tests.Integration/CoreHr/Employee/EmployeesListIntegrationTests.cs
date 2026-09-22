@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Moq;
 using Npgsql;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
@@ -8,6 +9,7 @@ using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Invite;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
@@ -134,7 +136,7 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
         var currentUser = BuildCurrentUser(tenantId, orgManage, callerOwnEmployeeId);
         var authorityResolver = BuildAuthorityResolver(db, currentUser);
 
-        return new ListEmployeesQueryHandler(employeeRepository, authorityResolver, currentUser, _clock);
+        return new ListEmployeesQueryHandler(employeeRepository, authorityResolver, new Mock<IFileStorageService>().Object, currentUser, _clock);
     }
 
     /// <summary>Builds a real EmployeeAuthorityResolver over the same restricted-role db context
@@ -166,6 +168,7 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
             employeeRepository,
             scopeResolver,
             new EfInvitationTokenRepository(db),
+            new Mock<IFileStorageService>().Object,
             currentUser,
             _clock);
     }

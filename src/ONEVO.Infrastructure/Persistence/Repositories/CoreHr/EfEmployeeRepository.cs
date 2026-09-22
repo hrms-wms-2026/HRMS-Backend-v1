@@ -333,7 +333,8 @@ public class EfEmployeeRepository : IEmployeeRepository
                     row.Row.manager != null ? row.Row.manager.FirstName + " " + row.Row.manager.LastName : null,
                     null,
                     null,
-                    monitoringWarnings.TryGetValue(row.Row.e.Id, out var overridden) ? overridden : row.AttendanceSummary))
+                    monitoringWarnings.TryGetValue(row.Row.e.Id, out var overridden) ? overridden : row.AttendanceSummary,
+                    AvatarFileId: row.Row.e.AvatarFileId))
                 .ToList();
 
             return (orderedRows, totalCount);
@@ -357,7 +358,12 @@ public class EfEmployeeRepository : IEmployeeRepository
                 row.empType != null ? row.empType.Label : row.e.EmploymentTypeId.ToString(),
                 row.empStatus != null ? row.empStatus.Code : "active",
                 row.manager != null ? row.manager.Id : (Guid?)null,
-                row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null))
+                row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null,
+                null,
+                null,
+                null,
+                null,
+                row.e.AvatarFileId))
             .ToListAsync(ct);
 
                 return (items, totalCount);
@@ -595,7 +601,10 @@ public class EfEmployeeRepository : IEmployeeRepository
                 null,
                 null,
                 row.Status,
-                row.ExpiresAt))
+                row.ExpiresAt,
+                null,
+                null,
+                row.e.AvatarFileId))
             .ToListAsync(ct);
     }
 
@@ -666,7 +675,8 @@ public class EfEmployeeRepository : IEmployeeRepository
                 null,
                 null,
                 null,
-                row.workMode != null ? row.workMode.Name : null))
+                row.workMode != null ? row.workMode.Name : null,
+                AvatarFileId: row.e.AvatarFileId))
             .FirstOrDefaultAsync(ct);
     }
 

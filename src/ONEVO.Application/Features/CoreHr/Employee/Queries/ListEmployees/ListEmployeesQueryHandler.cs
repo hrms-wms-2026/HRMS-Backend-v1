@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 
@@ -13,20 +14,24 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
 {
     private const string RequiredPermission = "employees:read";
     private const string AttendanceReadPermission = "attendance:read";
+    private static readonly TimeSpan AvatarUrlExpiry = TimeSpan.FromMinutes(15);
 
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IEmployeeAuthorityResolver _authorityResolver;
+    private readonly IFileStorageService _fileStorage;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTime;
 
     public ListEmployeesQueryHandler(
         IEmployeeRepository employeeRepository,
         IEmployeeAuthorityResolver authorityResolver,
+        IFileStorageService fileStorage,
         ICurrentUser currentUser,
         IDateTimeProvider dateTime)
     {
         _employeeRepository = employeeRepository;
         _authorityResolver = authorityResolver;
+        _fileStorage = fileStorage;
         _currentUser = currentUser;
         _dateTime = dateTime;
     }
@@ -125,6 +130,23 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
             // Defense in depth for alternate repository implementations and test doubles: an
             // employee-list caller without attendance:read must never receive sensitive state.
             items = items.Select(i => i with { AttendanceSummary = null }).ToList();
+        }
+
+        // Signed once per distinct avatar across the whole page rather than per row, same
+        // reasoning as GetProjectTasksQueryHandler/GetObjectiveMembersQueryHandler.
+        var distinctAvatarFileIds = items.Where(i => i.AvatarFileId is not null)
+            .Select(i => i.AvatarFileId!.Value).Distinct().ToList();
+        if (distinctAvatarFileIds.Count > 0)
+        {
+            var avatarUrlByFileId = new Dictionary<Guid, string?>();
+            foreach (var fileId in distinctAvatarFileIds)
+            {
+                var urlResult = await _fileStorage.GetSignedUrlAsync(_currentUser.TenantId, fileId, AvatarUrlExpiry, ct);
+                avatarUrlByFileId[fileId] = urlResult.IsSuccess ? urlResult.Value : null;
+            }
+            items = items.Select(i => i.AvatarFileId is { } fileId
+                ? i with { AvatarUrl = avatarUrlByFileId.GetValueOrDefault(fileId) }
+                : i).ToList();
         }
 
         return Result<EmployeeListPageResponse>.Success(

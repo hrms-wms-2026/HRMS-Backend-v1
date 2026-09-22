@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.Employee;
@@ -14,6 +15,7 @@ public sealed class ListEmployeesQueryHandlerTests
 {
     private readonly Mock<IEmployeeRepository> _employeeRepository = new();
     private readonly Mock<IEmployeeAuthorityResolver> _authorityResolver = new();
+    private readonly Mock<IFileStorageService> _fileStorage = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _dateTime = new();
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -53,7 +55,7 @@ public sealed class ListEmployeesQueryHandlerTests
         null, null, null, null, legalEntityId, null, "Full-Time", "onboarding", null, null, "pending", DateTimeOffset.UtcNow.AddHours(72));
 
     private ListEmployeesQueryHandler CreateHandler() =>
-        new(_employeeRepository.Object, _authorityResolver.Object, _currentUser.Object, _dateTime.Object);
+        new(_employeeRepository.Object, _authorityResolver.Object, _fileStorage.Object, _currentUser.Object, _dateTime.Object);
 
     private void SetupVisibility(Guid legalEntityId, bool includesSelf, params Guid[] employeeIds) =>
         _authorityResolver
@@ -313,5 +315,25 @@ public sealed class ListEmployeesQueryHandlerTests
 
         _employeeRepository.Verify(
             r => r.ListInvitedPendingByInviterAsync(_tenantId, _userId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ResolvesAvatarUrl_ForRowsWithAnAvatarFileId_AndLeavesOthersNull()
+    {
+        var avatarFileId = Guid.NewGuid();
+        var withAvatar = Item(Guid.NewGuid(), "Has Avatar", _defaultLegalEntityId) with { AvatarFileId = avatarFileId };
+        var withoutAvatar = Item(Guid.NewGuid(), "No Avatar", _defaultLegalEntityId);
+        SetupVisibility(_defaultLegalEntityId, includesSelf: true, withAvatar.Id, withoutAvatar.Id);
+        _employeeRepository
+            .Setup(r => r.ListVisibleAsync(_tenantId, It.IsAny<EmployeeVisibilityScope>(), It.IsAny<EmployeeListFilter>(), 1, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<EmployeeListItemResponse> { withAvatar, withoutAvatar }, 2));
+        _fileStorage
+            .Setup(f => f.GetSignedUrlAsync(_tenantId, avatarFileId, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ONEVO.Application.Common.Models.Result<string>.Success("https://r2.test/employee-avatar.png"));
+
+        var result = await CreateHandler().Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
+
+        Assert.Contains(result.Value!.Items, i => i.Id == withAvatar.Id && i.AvatarUrl == "https://r2.test/employee-avatar.png");
+        Assert.Contains(result.Value.Items, i => i.Id == withoutAvatar.Id && i.AvatarUrl == null);
     }
 }

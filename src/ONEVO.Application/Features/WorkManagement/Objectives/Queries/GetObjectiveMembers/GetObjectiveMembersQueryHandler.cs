@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -12,19 +13,23 @@ namespace ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObject
 
 public class GetObjectiveMembersQueryHandler : IRequestHandler<GetObjectiveMembersQuery, Result<ObjectiveMemberListResponse>>
 {
+    private static readonly TimeSpan AvatarUrlExpiry = TimeSpan.FromMinutes(15);
+
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
+    private readonly IFileStorageService _fileStorage;
     private readonly IObjectiveRepository _objectives;
     private readonly IProjectMemberRepository _members;
     private readonly IProjectMemberInvitationRepository _invitations;
     private readonly IPermissionResolver _permissionResolver;
 
     public GetObjectiveMembersQueryHandler(
-        ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
+        ICurrentUser currentUser, ICallerIdentityResolver identity, IFileStorageService fileStorage, IObjectiveRepository objectives,
         IProjectMemberRepository members, IProjectMemberInvitationRepository invitations, IPermissionResolver permissionResolver)
     {
         _currentUser = currentUser;
         _identity = identity;
+        _fileStorage = fileStorage;
         _objectives = objectives;
         _members = members;
         _invitations = invitations;
@@ -83,14 +88,29 @@ public class GetObjectiveMembersQueryHandler : IRequestHandler<GetObjectiveMembe
             .Concat(pendingInvites.Select(i => i.InvitedEmployeeId))
             .Distinct()
             .ToList();
-        var namesByEmployeeId = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, employeeIds, ct);
+        var identitiesByEmployeeId = await _identity.ResolveIdentitiesByEmployeeIdAsync(tenantId, employeeIds, ct);
+
+        var avatarUrlByEmployeeId = new Dictionary<Guid, string?>();
+        foreach (var employeeId in employeeIds)
+        {
+            if (!identitiesByEmployeeId.TryGetValue(employeeId, out var identity) || identity.AvatarFileId is not { } avatarFileId)
+            {
+                avatarUrlByEmployeeId[employeeId] = null;
+                continue;
+            }
+
+            var urlResult = await _fileStorage.GetSignedUrlAsync(tenantId, avatarFileId, AvatarUrlExpiry, ct);
+            avatarUrlByEmployeeId[employeeId] = urlResult.IsSuccess ? urlResult.Value : null;
+        }
+
+        string? NameOf(Guid employeeId) => identitiesByEmployeeId.GetValueOrDefault(employeeId)?.Name;
 
         var items = new List<ObjectiveMemberItemResponse>();
         items.AddRange(activeMembers.Select(m => new ObjectiveMemberItemResponse(
-            m.EmployeeId, namesByEmployeeId.GetValueOrDefault(m.EmployeeId), IsHead: m.EmployeeId == objective.OwnerId,
+            m.EmployeeId, NameOf(m.EmployeeId), avatarUrlByEmployeeId.GetValueOrDefault(m.EmployeeId), IsHead: m.EmployeeId == objective.OwnerId,
             Pending: false, InviteType: null, InvitationId: null, SinceOrInvitedAt: m.JoinedAt)));
         items.AddRange(pendingInvites.Select(i => new ObjectiveMemberItemResponse(
-            i.InvitedEmployeeId, namesByEmployeeId.GetValueOrDefault(i.InvitedEmployeeId), IsHead: false,
+            i.InvitedEmployeeId, NameOf(i.InvitedEmployeeId), avatarUrlByEmployeeId.GetValueOrDefault(i.InvitedEmployeeId), IsHead: false,
             Pending: true, InviteType: i.InviteType, InvitationId: i.Id, SinceOrInvitedAt: i.CreatedAt)));
 
         return Result<ObjectiveMemberListResponse>.Success(new ObjectiveMemberListResponse(items));

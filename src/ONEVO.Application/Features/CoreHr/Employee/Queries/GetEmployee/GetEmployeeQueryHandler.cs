@@ -6,15 +6,19 @@ using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 
 public class GetEmployeeQueryHandler : IRequestHandler<GetEmployeeQuery, Result<EmployeeListItemResponse>>
 {
+    private static readonly TimeSpan AvatarUrlExpiry = TimeSpan.FromMinutes(15);
+
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IEmployeeVisibilityScopeResolver _visibilityScopeResolver;
     private readonly IInvitationTokenRepository _invitationTokenRepository;
+    private readonly IFileStorageService _fileStorage;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
 
@@ -22,12 +26,14 @@ public class GetEmployeeQueryHandler : IRequestHandler<GetEmployeeQuery, Result<
         IEmployeeRepository employeeRepository,
         IEmployeeVisibilityScopeResolver visibilityScopeResolver,
         IInvitationTokenRepository invitationTokenRepository,
+        IFileStorageService fileStorage,
         ICurrentUser currentUser,
         IDateTimeProvider clock)
     {
         _employeeRepository = employeeRepository;
         _visibilityScopeResolver = visibilityScopeResolver;
         _invitationTokenRepository = invitationTokenRepository;
+        _fileStorage = fileStorage;
         _currentUser = currentUser;
         _clock = clock;
     }
@@ -78,10 +84,18 @@ public class GetEmployeeQueryHandler : IRequestHandler<GetEmployeeQuery, Result<
             }
         }
 
+        string? avatarUrl = null;
+        if (visible.AvatarFileId is { } avatarFileId)
+        {
+            var urlResult = await _fileStorage.GetSignedUrlAsync(_currentUser.TenantId, avatarFileId, AvatarUrlExpiry, ct);
+            avatarUrl = urlResult.IsSuccess ? urlResult.Value : null;
+        }
+
         return Result<EmployeeListItemResponse>.Success(visible with
         {
             InvitationStatus = InvitationStatusOf(invitation, _clock.UtcNow),
-            InvitationExpiresAt = invitation?.ExpiresAt
+            InvitationExpiresAt = invitation?.ExpiresAt,
+            AvatarUrl = avatarUrl
         });
     }
 

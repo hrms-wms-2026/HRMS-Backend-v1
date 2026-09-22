@@ -4,6 +4,7 @@ using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Tests.Unit.Features.CoreHr.EmployeeAuthority;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
@@ -55,7 +56,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), new Mock<IFileStorageService>().Object, currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -90,7 +91,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), new Mock<IFileStorageService>().Object, currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -111,7 +112,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), new Mock<IFileStorageService>().Object, currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -134,7 +135,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actorUserId] = null;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actorUserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), new Mock<IFileStorageService>().Object, currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -165,7 +166,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), new Mock<IFileStorageService>().Object, currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -197,7 +198,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), new Mock<IFileStorageService>().Object, currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -228,7 +229,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), new Mock<IFileStorageService>().Object, currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery("ada", null, null), CancellationToken.None);
 
