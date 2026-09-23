@@ -1813,7 +1813,7 @@ Behavior:
 - Keep `data-testid`s: `module-expand`, `module-checkbox`, `task-checkbox`; add `task-sprint-badge`.
 - Lazy loads with `TaskApiService.getTasks(objectiveId)` on first expand (and on first bulk tick), caching per module in a `moduleTasks` signal; on error caches `[]`.
 
-- [ ] **Step 1: Write the failing helper spec**
+- [x] **Step 1: Write the failing helper spec**
 
 ```ts
 // utils/module-task-selection.spec.ts
@@ -1862,7 +1862,7 @@ describe('module-task-selection', () => {
 });
 ```
 
-- [ ] **Step 2: Run — FAIL**, then implement:
+- [x] **Step 2: Run — FAIL**, then implement:
 
 ```ts
 // utils/module-task-selection.ts
@@ -1917,7 +1917,7 @@ export function moduleCheckState(
 }
 ```
 
-- [ ] **Step 3: Write the failing component spec**
+- [x] **Step 3: Write the failing component spec**
 
 ```ts
 // ui/module-task-picker/module-task-picker.component.spec.ts
@@ -1984,7 +1984,7 @@ describe('ModuleTaskPickerComponent', () => {
 });
 ```
 
-- [ ] **Step 4: Run — FAIL**, then implement the component:
+- [x] **Step 4: Run — FAIL**, then implement the component:
 
 ```ts
 // ui/module-task-picker/module-task-picker.component.ts
@@ -2121,9 +2121,9 @@ export class ModuleTaskPickerComponent {
 }
 ```
 
-- [ ] **Step 5: Run — PASS**: `npx vitest run src/app/modules/work/utils/module-task-selection.spec.ts src/app/modules/work/ui/module-task-picker`
+- [x] **Step 5: Run — PASS**: `npx vitest run src/app/modules/work/utils/module-task-selection.spec.ts src/app/modules/work/ui/module-task-picker`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/modules/work/utils/module-task-selection.ts src/app/modules/work/utils/module-task-selection.spec.ts src/app/modules/work/ui/module-task-picker
