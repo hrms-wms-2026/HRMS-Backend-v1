@@ -585,7 +585,7 @@ Rules (spec D2/D4), in `PrepareAsync`:
 3. For each remove id (distinct, not also in add): task must exist with `task.SprintId == sprint.Id`, else skip silently. Caller must own its module → else `Forbidden("You can only remove tasks from modules you own.")`.
 4. `Apply`: `ToAdd` → `SprintId = sprintId`; `ToRemove` → `SprintId = null`; set `UpdatedAt`, call `_tasks.Update(task)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // tests/ONEVO.Tests.Unit/Features/WorkManagement/Sprints/SprintTaskAssignmentServiceTests.cs
@@ -731,11 +731,11 @@ public class SprintTaskAssignmentServiceTests
 }
 ```
 
-- [ ] **Step 2: Run — FAIL**
+- [x] **Step 2: Run — FAIL**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~SprintTaskAssignmentServiceTests"`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Sprints/Services/ISprintTaskAssignmentService.cs
@@ -862,9 +862,9 @@ public class SprintTaskAssignmentService : ISprintTaskAssignmentService
 
 DI: `services.AddScoped<ISprintTaskAssignmentService, SprintTaskAssignmentService>();` below the A2 line.
 
-- [ ] **Step 4: Run — PASS** (10 tests)
+- [x] **Step 4: Run — PASS** (10 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Sprints/Services/ISprintTaskAssignmentService.cs src/ONEVO.Application/Features/WorkManagement/Sprints/Services/SprintTaskAssignmentService.cs src/ONEVO.Infrastructure/DependencyInjection.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Sprints/SprintTaskAssignmentServiceTests.cs

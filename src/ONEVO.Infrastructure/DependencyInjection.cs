@@ -418,6 +418,7 @@ public static class DependencyInjection
         // Work Management - Milestone & Achievement services
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();
         services.AddScoped<ISprintAccessService, SprintAccessService>();
+        services.AddScoped<ISprintTaskAssignmentService, SprintTaskAssignmentService>();
         services.AddScoped<IPermissionAutoGrantService, PermissionAutoGrantService>();
         services.AddScoped<ICallerIdentityResolver, CallerIdentityResolver>();
         services.AddScoped<IObjectiveAllocationSlackCalculator, ObjectiveAllocationSlackCalculator>();
