@@ -1,8 +1,6 @@
 using Moq;
-using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
-using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.Queries.GetObjectiveMembers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
@@ -56,13 +54,6 @@ public class GetObjectiveMembersQueryHandlerTests
                 [InvitedEmployeeId] = new("Invited Employee", null)
             });
 
-        var fileStorage = new Mock<IFileStorageService>();
-        if (memberAvatarFileId is { } avatarFileId)
-        {
-            fileStorage.Setup(x => x.GetSignedUrlAsync(TenantId, avatarFileId, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Result<string>.Success("https://r2.test/member-avatar.png"));
-        }
-
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
 
@@ -86,7 +77,7 @@ public class GetObjectiveMembersQueryHandlerTests
             .ReturnsAsync(permissions ?? ["projects:read"]);
 
         return new GetObjectiveMembersQueryHandler(
-            currentUser.Object, identity.Object, fileStorage.Object, objectives.Object, members.Object, invitations.Object, permissionResolver.Object);
+            currentUser.Object, identity.Object, objectives.Object, members.Object, invitations.Object, permissionResolver.Object);
     }
 
     [Fact]
@@ -122,7 +113,7 @@ public class GetObjectiveMembersQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ResolvesAvatarUrlForMembersWithAnAvatarFileId_AndNullForThoseWithout()
+    public async Task Handle_ReturnsAvatarFileIdForMembersWithAnAvatar_AndNullForThoseWithout()
     {
         var avatarFileId = Guid.NewGuid();
         var handler = BuildHandler(SubObjective(), memberAvatarFileId: avatarFileId);
@@ -130,9 +121,9 @@ public class GetObjectiveMembersQueryHandlerTests
         var result = await handler.Handle(new GetObjectiveMembersQuery(ObjectiveId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Contains(result.Value!.Items, i => i.EmployeeId == MemberEmployeeId && i.AvatarUrl == "https://r2.test/member-avatar.png");
-        Assert.Contains(result.Value.Items, i => i.EmployeeId == HeadEmployeeId && i.AvatarUrl == null);
-        Assert.Contains(result.Value.Items, i => i.EmployeeId == InvitedEmployeeId && i.AvatarUrl == null);
+        Assert.Contains(result.Value!.Items, i => i.EmployeeId == MemberEmployeeId && i.AvatarFileId == avatarFileId);
+        Assert.Contains(result.Value.Items, i => i.EmployeeId == HeadEmployeeId && i.AvatarFileId == null);
+        Assert.Contains(result.Value.Items, i => i.EmployeeId == InvitedEmployeeId && i.AvatarFileId == null);
     }
 
     [Fact]

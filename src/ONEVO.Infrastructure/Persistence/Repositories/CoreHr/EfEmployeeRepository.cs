@@ -333,8 +333,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                     row.Row.manager != null ? row.Row.manager.FirstName + " " + row.Row.manager.LastName : null,
                     null,
                     null,
-                    monitoringWarnings.TryGetValue(row.Row.e.Id, out var overridden) ? overridden : row.AttendanceSummary,
-                    AvatarFileId: row.Row.e.AvatarFileId))
+                    monitoringWarnings.TryGetValue(row.Row.e.Id, out var overridden) ? overridden : row.AttendanceSummary))
                 .ToList();
 
             return (orderedRows, totalCount);
@@ -362,8 +361,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                 null,
                 null,
                 null,
-                null,
-                row.e.AvatarFileId))
+                null))
             .ToListAsync(ct);
 
                 return (items, totalCount);
@@ -603,8 +601,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                 row.Status,
                 row.ExpiresAt,
                 null,
-                null,
-                row.e.AvatarFileId))
+                null))
             .ToListAsync(ct);
     }
 
@@ -675,8 +672,7 @@ public class EfEmployeeRepository : IEmployeeRepository
                 null,
                 null,
                 null,
-                row.workMode != null ? row.workMode.Name : null,
-                AvatarFileId: row.e.AvatarFileId))
+                row.workMode != null ? row.workMode.Name : null))
             .FirstOrDefaultAsync(ct);
     }
 

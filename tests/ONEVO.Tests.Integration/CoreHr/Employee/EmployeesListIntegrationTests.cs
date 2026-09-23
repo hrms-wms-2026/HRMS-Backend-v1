@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Moq;
 using Npgsql;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
@@ -9,7 +8,6 @@ using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Services;
-using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Invite;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
@@ -28,6 +26,7 @@ using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Tests.Integration.Support;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
+using EfEntityAssetRepository = ONEVO.Infrastructure.Persistence.Repositories.EfEntityAssetRepository;
 
 namespace ONEVO.Tests.Integration.CoreHr.Employee;
 
@@ -136,7 +135,8 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
         var currentUser = BuildCurrentUser(tenantId, orgManage, callerOwnEmployeeId);
         var authorityResolver = BuildAuthorityResolver(db, currentUser);
 
-        return new ListEmployeesQueryHandler(employeeRepository, authorityResolver, new Mock<IFileStorageService>().Object, currentUser, _clock);
+        return new ListEmployeesQueryHandler(
+            employeeRepository, authorityResolver, new EfEntityAssetRepository(db), currentUser, _clock);
     }
 
     /// <summary>Builds a real EmployeeAuthorityResolver over the same restricted-role db context
@@ -168,7 +168,7 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
             employeeRepository,
             scopeResolver,
             new EfInvitationTokenRepository(db),
-            new Mock<IFileStorageService>().Object,
+            new EfEntityAssetRepository(db),
             currentUser,
             _clock);
     }

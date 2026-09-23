@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
@@ -7,6 +8,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
@@ -21,6 +23,7 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
     private readonly IUserMfaRepository _userMfa;
     private readonly IEncryptionService _encryption;
     private readonly ILegalEntityRepository _legalEntities;
+    private readonly Common.RepositoryInterfaces.IEntityAssetRepository _entityAssets;
     private readonly ICurrentUser _currentUser;
 
     public GetMyProfileQueryHandler(
@@ -32,6 +35,7 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
         IUserMfaRepository userMfa,
         IEncryptionService encryption,
         ILegalEntityRepository legalEntities,
+        Common.RepositoryInterfaces.IEntityAssetRepository entityAssets,
         ICurrentUser currentUser)
     {
         _commonEmployees = commonEmployees;
@@ -42,6 +46,7 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
         _userMfa = userMfa;
         _encryption = encryption;
         _legalEntities = legalEntities;
+        _entityAssets = entityAssets;
         _currentUser = currentUser;
     }
 
@@ -81,10 +86,14 @@ public class GetMyProfileQueryHandler : IRequestHandler<GetMyProfileQuery, Resul
             legalEntityTimezone = legalEntity?.Timezone;
         }
 
+        var avatarFileIdByEmployeeId = await _entityAssets.GetPrimaryFileIdsByOwnerAsync(
+            tenantId, EntityAssetOwnerTypes.Employee, new[] { employee.Id }, UploadPurposeCatalog.EmployeeAvatar, ct);
+        var avatarFileId = avatarFileIdByEmployeeId.TryGetValue(employee.Id, out var fid) ? (Guid?)fid : null;
+
         var personalInformation = new MyPersonalInformationResponse(
             employee.FirstName, employee.LastName, employee.Email, employee.Phone,
             employee.DateOfBirth, employee.Gender, employee.NationalityId, null,
-            employee.DisplayTimezone, legalEntityTimezone, employee.AvatarFileId,
+            employee.DisplayTimezone, legalEntityTimezone, avatarFileId,
             addresses.Select(a => new MyAddressResponse(a.Id, a.AddressType, a.AddressJson, a.IsPrimary)).ToList(),
             versionToken?.ToString() ?? string.Empty);
 

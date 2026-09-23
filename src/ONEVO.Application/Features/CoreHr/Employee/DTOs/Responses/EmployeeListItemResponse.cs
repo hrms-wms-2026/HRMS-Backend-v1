@@ -42,5 +42,4 @@ public record EmployeeListItemResponse(
     DateTimeOffset? InvitationExpiresAt = null,
     EmployeeListAttendanceSummaryResponse? AttendanceSummary = null,
     string? WorkModeLabel = null,
-    Guid? AvatarFileId = null,
-    string? AvatarUrl = null);
+    Guid? AvatarFileId = null);

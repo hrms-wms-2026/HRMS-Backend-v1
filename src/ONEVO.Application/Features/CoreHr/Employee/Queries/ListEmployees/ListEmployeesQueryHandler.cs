@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
@@ -6,7 +7,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
-using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 
@@ -14,24 +15,22 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
 {
     private const string RequiredPermission = "employees:read";
     private const string AttendanceReadPermission = "attendance:read";
-    private static readonly TimeSpan AvatarUrlExpiry = TimeSpan.FromMinutes(15);
-
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IEmployeeAuthorityResolver _authorityResolver;
-    private readonly IFileStorageService _fileStorage;
+    private readonly Common.RepositoryInterfaces.IEntityAssetRepository _entityAssets;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTime;
 
     public ListEmployeesQueryHandler(
         IEmployeeRepository employeeRepository,
         IEmployeeAuthorityResolver authorityResolver,
-        IFileStorageService fileStorage,
+        Common.RepositoryInterfaces.IEntityAssetRepository entityAssets,
         ICurrentUser currentUser,
         IDateTimeProvider dateTime)
     {
         _employeeRepository = employeeRepository;
         _authorityResolver = authorityResolver;
-        _fileStorage = fileStorage;
+        _entityAssets = entityAssets;
         _currentUser = currentUser;
         _dateTime = dateTime;
     }
@@ -132,22 +131,15 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
             items = items.Select(i => i with { AttendanceSummary = null }).ToList();
         }
 
-        // Signed once per distinct avatar across the whole page rather than per row, same
-        // reasoning as GetProjectTasksQueryHandler/GetObjectiveMembersQueryHandler.
-        var distinctAvatarFileIds = items.Where(i => i.AvatarFileId is not null)
-            .Select(i => i.AvatarFileId!.Value).Distinct().ToList();
-        if (distinctAvatarFileIds.Count > 0)
-        {
-            var avatarUrlByFileId = new Dictionary<Guid, string?>();
-            foreach (var fileId in distinctAvatarFileIds)
-            {
-                var urlResult = await _fileStorage.GetSignedUrlAsync(_currentUser.TenantId, fileId, AvatarUrlExpiry, ct);
-                avatarUrlByFileId[fileId] = urlResult.IsSuccess ? urlResult.Value : null;
-            }
-            items = items.Select(i => i.AvatarFileId is { } fileId
-                ? i with { AvatarUrl = avatarUrlByFileId.GetValueOrDefault(fileId) }
-                : i).ToList();
-        }
+        var avatarFileIdByEmployeeId = await _entityAssets.GetPrimaryFileIdsByOwnerAsync(
+            _currentUser.TenantId,
+            EntityAssetOwnerTypes.Employee,
+            items.Select(i => i.Id).ToList(),
+            UploadPurposeCatalog.EmployeeAvatar,
+            ct);
+        items = items.Select(i => avatarFileIdByEmployeeId.TryGetValue(i.Id, out var fileId)
+            ? i with { AvatarFileId = fileId }
+            : i with { AvatarFileId = null }).ToList();
 
         return Result<EmployeeListPageResponse>.Success(
             new EmployeeListPageResponse(items, totalCount, page, pageSize));

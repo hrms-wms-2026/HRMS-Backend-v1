@@ -7,8 +7,8 @@ using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
-using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
+using EntityAssetRepository = ONEVO.Application.Common.RepositoryInterfaces.IEntityAssetRepository;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.Employee;
 
@@ -17,7 +17,7 @@ public sealed class GetEmployeeQueryHandlerTests
     private readonly Mock<IEmployeeRepository> _employeeRepository = new();
     private readonly Mock<IEmployeeVisibilityScopeResolver> _scopeResolver = new();
     private readonly Mock<IInvitationTokenRepository> _invitationTokenRepository = new();
-    private readonly Mock<IFileStorageService> _fileStorage = new();
+    private readonly Mock<EntityAssetRepository> _entityAssets = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
     private readonly Guid _tenantId = Guid.NewGuid();
@@ -39,10 +39,15 @@ public sealed class GetEmployeeQueryHandlerTests
         _scopeResolver
             .Setup(r => r.ResolveAsync(_tenantId, _userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EmployeeVisibilityScope(false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>()));
+        _entityAssets
+            .Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
     }
 
     private GetEmployeeQueryHandler CreateHandler() =>
-        new(_employeeRepository.Object, _scopeResolver.Object, _invitationTokenRepository.Object, _fileStorage.Object, _currentUser.Object, _clock.Object);
+        new(_employeeRepository.Object, _scopeResolver.Object, _invitationTokenRepository.Object, _entityAssets.Object, _currentUser.Object, _clock.Object);
 
     [Fact]
     public async Task Handle_ReturnsNotFound_WhenEmployeeDoesNotExistInTenant()
@@ -209,26 +214,24 @@ public sealed class GetEmployeeQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ResolvesAvatarUrl_WhenEmployeeHasAnAvatarFileId()
+    public async Task Handle_ResolvesAvatarFileId_FromEntityAssets()
     {
         var avatarFileId = Guid.NewGuid();
-        var response = new EmployeeListItemResponse(_employeeId, "E-001", "Ada Lovelace", "ada@test.dev", null, null, null, null, null, null, "full_time", "active", null, null)
-        {
-            AvatarFileId = avatarFileId
-        };
+        var response = new EmployeeListItemResponse(_employeeId, "E-001", "Ada Lovelace", "ada@test.dev", null, null, null, null, null, null, "full_time", "active", null, null);
         _employeeRepository
             .Setup(r => r.GetByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee { Id = _employeeId, TenantId = _tenantId });
         _employeeRepository
             .Setup(r => r.GetVisibleByIdAsync(_tenantId, It.IsAny<EmployeeVisibilityScope>(), _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(response);
-        _fileStorage
-            .Setup(f => f.GetSignedUrlAsync(_tenantId, avatarFileId, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<string>.Success("https://r2.test/employee-avatar.png"));
+        _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
+                _tenantId, "employee", It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(_employeeId)),
+                "employee_avatar", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid> { [_employeeId] = avatarFileId });
 
         var result = await CreateHandler().Handle(new GetEmployeeQuery(_employeeId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("https://r2.test/employee-avatar.png", result.Value!.AvatarUrl);
+        Assert.Equal(avatarFileId, result.Value!.AvatarFileId);
     }
 }

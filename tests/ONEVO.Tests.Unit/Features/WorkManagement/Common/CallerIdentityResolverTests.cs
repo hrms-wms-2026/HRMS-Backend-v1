@@ -9,11 +9,16 @@ namespace ONEVO.Tests.Unit.Features.WorkManagement.Common;
 public class CallerIdentityResolverTests
 {
     private readonly Mock<IEmployeeRepository> _employees = new();
+    private readonly Mock<IEntityAssetRepository> _entityAssets = new();
     private readonly CallerIdentityResolver _sut;
 
     public CallerIdentityResolverTests()
     {
-        _sut = new CallerIdentityResolver(_employees.Object);
+        _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
+        _sut = new CallerIdentityResolver(_employees.Object, _entityAssets.Object);
     }
 
     [Fact]

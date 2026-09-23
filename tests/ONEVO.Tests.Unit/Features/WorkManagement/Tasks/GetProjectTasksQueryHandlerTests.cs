@@ -274,6 +274,61 @@ public sealed class GetProjectTasksQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_PopulatesSubtaskAssigneeEmployeeIdsOnParent()
+    {
+        var parent = Task(ObjectiveA, "Parent");
+        var child = Task(ObjectiveA, "Child");
+        child.ParentTaskId = parent.Id;
+        var subtaskAssigneeId = Guid.NewGuid();
+        var assignment = new TaskAssignment
+        {
+            Id = Guid.NewGuid(),
+            TaskId = child.Id,
+            EmployeeId = subtaskAssigneeId,
+            UserId = UserId,
+            AssignedById = UserId,
+            AssignedAt = DateTimeOffset.UtcNow
+        };
+        var handler = BuildHandler(ActiveProject(), Array.Empty<Guid>(), hasReadPermission: true,
+            new[] { parent, child }, new[] { assignment });
+
+        var result = await handler.Handle(new GetProjectTasksQuery(ProjectId), CancellationToken.None);
+
+        var response = Assert.Single(result.Value!);
+        Assert.Equal(parent.Id, response.Id);
+        Assert.Empty(response.AssigneeEmployeeIds!);
+        Assert.Equal(new[] { subtaskAssigneeId }, response.SubtaskAssigneeEmployeeIds);
+    }
+
+    [Fact]
+    public async Task Handle_AssigneeFilter_MatchesParentViaSubtaskAssignment()
+    {
+        // A person assigned only to a subtask, not the parent, must still find the parent under
+        // an assignee filter - subtasks never appear as independent top-level cards, so without
+        // this the parent (and the person's only visible link to that work) would vanish.
+        var parent = Task(ObjectiveA, "Parent");
+        var child = Task(ObjectiveA, "Child");
+        child.ParentTaskId = parent.Id;
+        var subtaskAssigneeId = Guid.NewGuid();
+        var assignment = new TaskAssignment
+        {
+            Id = Guid.NewGuid(),
+            TaskId = child.Id,
+            EmployeeId = subtaskAssigneeId,
+            UserId = UserId,
+            AssignedById = UserId,
+            AssignedAt = DateTimeOffset.UtcNow
+        };
+        var handler = BuildHandler(ActiveProject(), Array.Empty<Guid>(), hasReadPermission: true,
+            new[] { parent, child }, new[] { assignment });
+
+        var result = await handler.Handle(
+            new GetProjectTasksQuery(ProjectId, new[] { subtaskAssigneeId }), CancellationToken.None);
+
+        Assert.Equal(parent.Id, Assert.Single(result.Value!).Id);
+    }
+
+    [Fact]
     public async Task Handle_MissingProject_ReturnsNotFound()
     {
         var handler = BuildHandler(null, Array.Empty<Guid>(), hasReadPermission: true);

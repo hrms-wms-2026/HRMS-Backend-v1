@@ -236,6 +236,12 @@ public sealed class EfPositionAssignmentRepositoryTests
         var avatarFileId = Guid.NewGuid();
         var employee = CreateEmployee(tenantId, "Jane", "Smith", avatarFileId);
         db.Employees.Add(employee);
+        db.EntityAssets.Add(new ONEVO.Domain.Features.Storage.EntityAssets.Entities.EntityAsset
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, OwnerType = "employee", OwnerId = employee.Id,
+            AssetPurpose = "employee_avatar", FileRecordId = avatarFileId, IsPrimary = true,
+            CreatedByType = "system", CreatedById = employee.Id
+        });
         db.PositionAssignments.Add(CreateAssignment(
             tenantId, employee.Id, positionId, PositionAssignmentKind.PrimaryEmployment, PositionAssignmentStatus.Active));
         await db.SaveChangesAsync();
@@ -354,7 +360,6 @@ public sealed class EfPositionAssignmentRepositoryTests
             TenantId = tenantId,
             FirstName = firstName,
             LastName = lastName,
-            AvatarFileId = avatarFileId,
         };
     }
 
