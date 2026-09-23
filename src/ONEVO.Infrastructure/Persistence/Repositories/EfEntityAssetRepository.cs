@@ -48,6 +48,19 @@ public class EfEntityAssetRepository : IEntityAssetRepository
         return results.OrderBy(x => x.CreatedAt).ToList();
     }
 
+    public async Task<IReadOnlyList<EntityAssetWithFileAndOwner>> ListByOwnersAsync(
+        Guid tenantId, string ownerType, IReadOnlyList<Guid> ownerIds, CancellationToken ct = default)
+    {
+        // Same EF Core translation limitation as ListByOwnerAsync above - order client-side.
+        var results = await _db.EntityAssets.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.OwnerType == ownerType && ownerIds.Contains(a.OwnerId))
+            .Join(_db.FileRecords.AsNoTracking(), a => a.FileRecordId, f => f.Id,
+                (a, f) => new EntityAssetWithFileAndOwner(a.OwnerId, a.Id, f.Id, f.OriginalFileName, f.FileSizeBytes, f.ContentType, a.CreatedAt, a.AssetPurpose))
+            .ToListAsync(ct);
+
+        return results.OrderBy(x => x.CreatedAt).ToList();
+    }
+
     public async Task<EntityAsset?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
         return await _db.EntityAssets.FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == id, ct);

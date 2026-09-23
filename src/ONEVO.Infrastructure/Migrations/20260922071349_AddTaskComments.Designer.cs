@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ONEVO.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922071349_AddTaskComments")]
+    partial class AddTaskComments
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2170,6 +2173,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<Guid?>("AvatarFileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("avatar_file_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -5764,7 +5771,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasName("pk_activity_snapshots");
 
                     b.HasIndex("TenantId", "AgentDeviceId", "CapturedAt")
-                        .IsUnique()
                         .HasDatabaseName("ix_activity_snapshots_tenant_device_captured");
 
                     b.HasIndex("TenantId", "EmployeeId", "CapturedAt")
@@ -7456,6 +7462,10 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_primary");
 
+                    b.Property<Guid?>("LogoFileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("logo_file_id");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -7542,6 +7552,9 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_legal_entities");
+
+                    b.HasIndex("LogoFileId")
+                        .HasDatabaseName("ix_legal_entities_logo_file_id");
 
                     b.HasIndex("ParentLegalEntityId")
                         .HasDatabaseName("ix_legal_entities_parent_legal_entity_id");
@@ -13748,6 +13761,12 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", b =>
                 {
+                    b.HasOne("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", null)
+                        .WithMany()
+                        .HasForeignKey("LogoFileId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_legal_entities_file_records_logo_file_id");
+
                     b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
                         .WithMany()
                         .HasForeignKey("ParentLegalEntityId")

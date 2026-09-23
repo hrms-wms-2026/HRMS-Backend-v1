@@ -38,4 +38,22 @@ public class UploadPurposeCatalogTests
         Assert.Equal(5 * 1024 * 1024, rule.MaxSizeBytes);
         Assert.DoesNotContain("application/pdf", rule.AllowedContentTypes);
     }
+
+    [Fact]
+    public void CommentAttachment_IsSupported_MatchesTaskAttachmentRule()
+    {
+        Assert.True(UploadPurposeCatalog.IsSupported(UploadPurposeCatalog.CommentAttachment));
+        var rule = UploadPurposeCatalog.GetRule(UploadPurposeCatalog.CommentAttachment)!;
+        Assert.Equal(25 * 1024 * 1024, rule.MaxSizeBytes);
+        Assert.Contains("application/zip", rule.AllowedContentTypes);
+    }
+
+    [Fact]
+    public void CommentDescriptionImage_IsSupported_ImageOnlyFiveMegabytes()
+    {
+        Assert.True(UploadPurposeCatalog.IsSupported(UploadPurposeCatalog.CommentDescriptionImage));
+        var rule = UploadPurposeCatalog.GetRule(UploadPurposeCatalog.CommentDescriptionImage)!;
+        Assert.Equal(5 * 1024 * 1024, rule.MaxSizeBytes);
+        Assert.DoesNotContain("application/pdf", rule.AllowedContentTypes);
+    }
 }

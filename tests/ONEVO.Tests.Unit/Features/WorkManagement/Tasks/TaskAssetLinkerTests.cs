@@ -131,4 +131,43 @@ public class TaskAssetLinkerTests
         assets.Verify(x => x.DeleteAsync(It.Is<EntityAsset>(a => a.Id == imageAsset.Id), It.IsAny<CancellationToken>()), Times.Once);
         fileStorage.Verify(x => x.DeleteAsync(TenantId, UserId, imageId, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task SyncCommentAttachmentsAsync_NewFileUploadedByCaller_LinksItUnderCommentOwnerType()
+    {
+        var (linker, assets, fileStorage) = Build();
+        var commentId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        fileStorage.Setup(x => x.GetRecordAsync(TenantId, fileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(Uploaded(fileId, UserId)));
+        assets.Setup(x => x.GetByFileRecordIdAsync(TenantId, fileId, It.IsAny<CancellationToken>())).ReturnsAsync((EntityAsset?)null);
+        assets.Setup(x => x.ListByOwnerAsync(TenantId, EntityAssetOwnerTypes.Comment, commentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EntityAssetWithFile>());
+
+        await linker.SyncCommentAttachmentsAsync(TenantId, UserId, commentId, new[] { fileId }, CancellationToken.None);
+
+        assets.Verify(x => x.AddAsync(It.Is<EntityAsset>(a =>
+            a.OwnerType == EntityAssetOwnerTypes.Comment && a.OwnerId == commentId &&
+            a.AssetPurpose == UploadPurposeCatalog.CommentAttachment && a.FileRecordId == fileId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SyncCommentDescriptionImagesAsync_ExtractsFileIdFromHtml_LinksItUnderCommentOwnerType()
+    {
+        var (linker, assets, fileStorage) = Build();
+        var commentId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var html = $"<p>See <img src=\"/api/v1/work/tasks/files/{fileId}\"></p>";
+        fileStorage.Setup(x => x.GetRecordAsync(TenantId, fileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(Uploaded(fileId, UserId)));
+        assets.Setup(x => x.GetByFileRecordIdAsync(TenantId, fileId, It.IsAny<CancellationToken>())).ReturnsAsync((EntityAsset?)null);
+        assets.Setup(x => x.ListByOwnerAsync(TenantId, EntityAssetOwnerTypes.Comment, commentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EntityAssetWithFile>());
+
+        await linker.SyncCommentDescriptionImagesAsync(TenantId, UserId, commentId, html, CancellationToken.None);
+
+        assets.Verify(x => x.AddAsync(It.Is<EntityAsset>(a =>
+            a.OwnerType == EntityAssetOwnerTypes.Comment &&
+            a.AssetPurpose == UploadPurposeCatalog.CommentDescriptionImage && a.FileRecordId == fileId), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

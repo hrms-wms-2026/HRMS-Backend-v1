@@ -25,27 +25,40 @@ public sealed class TaskAssetLinker : ITaskAssetLinker
 
     public Task SyncAttachmentsAsync(
         Guid tenantId, Guid userId, Guid taskId, IReadOnlyList<Guid> desiredFileIds, CancellationToken ct = default)
-        => SyncAsync(tenantId, userId, taskId, UploadPurposeCatalog.TaskAttachment, desiredFileIds, ct);
+        => SyncAsync(tenantId, userId, EntityAssetOwnerTypes.Task, taskId, UploadPurposeCatalog.TaskAttachment, desiredFileIds, ct);
 
     public Task SyncDescriptionImagesAsync(
         Guid tenantId, Guid userId, Guid taskId, string? descriptionHtml, CancellationToken ct = default)
     {
-        var desiredFileIds = string.IsNullOrEmpty(descriptionHtml)
+        var desiredFileIds = ExtractFileIds(descriptionHtml);
+        return SyncAsync(tenantId, userId, EntityAssetOwnerTypes.Task, taskId, UploadPurposeCatalog.TaskDescriptionImage, desiredFileIds, ct);
+    }
+
+    public Task SyncCommentAttachmentsAsync(
+        Guid tenantId, Guid userId, Guid commentId, IReadOnlyList<Guid> desiredFileIds, CancellationToken ct = default)
+        => SyncAsync(tenantId, userId, EntityAssetOwnerTypes.Comment, commentId, UploadPurposeCatalog.CommentAttachment, desiredFileIds, ct);
+
+    public Task SyncCommentDescriptionImagesAsync(
+        Guid tenantId, Guid userId, Guid commentId, string? contentHtml, CancellationToken ct = default)
+    {
+        var desiredFileIds = ExtractFileIds(contentHtml);
+        return SyncAsync(tenantId, userId, EntityAssetOwnerTypes.Comment, commentId, UploadPurposeCatalog.CommentDescriptionImage, desiredFileIds, ct);
+    }
+
+    private static IReadOnlyList<Guid> ExtractFileIds(string? html)
+        => string.IsNullOrEmpty(html)
             ? Array.Empty<Guid>()
-            : DescriptionImageRefPattern.Matches(descriptionHtml)
+            : DescriptionImageRefPattern.Matches(html)
                 .Select(m => Guid.TryParse(m.Groups[1].Value, out var id) ? id : (Guid?)null)
                 .Where(id => id.HasValue)
                 .Select(id => id!.Value)
                 .Distinct()
                 .ToArray();
 
-        return SyncAsync(tenantId, userId, taskId, UploadPurposeCatalog.TaskDescriptionImage, desiredFileIds, ct);
-    }
-
     private async Task SyncAsync(
-        Guid tenantId, Guid userId, Guid taskId, string purpose, IReadOnlyList<Guid> desiredFileIds, CancellationToken ct)
+        Guid tenantId, Guid userId, string ownerType, Guid ownerId, string purpose, IReadOnlyList<Guid> desiredFileIds, CancellationToken ct)
     {
-        var current = (await _assets.ListByOwnerAsync(tenantId, EntityAssetOwnerTypes.Task, taskId, ct))
+        var current = (await _assets.ListByOwnerAsync(tenantId, ownerType, ownerId, ct))
             .Where(a => a.AssetPurpose == purpose)
             .ToList();
         var currentFileIds = current.Select(a => a.FileRecordId).ToHashSet();
@@ -67,8 +80,8 @@ public sealed class TaskAssetLinker : ITaskAssetLinker
             {
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
-                OwnerType = EntityAssetOwnerTypes.Task,
-                OwnerId = taskId,
+                OwnerType = ownerType,
+                OwnerId = ownerId,
                 AssetPurpose = purpose,
                 FileRecordId = fileId,
                 IsPrimary = false,

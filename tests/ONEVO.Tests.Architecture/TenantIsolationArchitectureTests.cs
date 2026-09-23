@@ -380,6 +380,11 @@ public class TenantIsolationArchitectureTests
             // employee's number is still taken), while preserving tenant scoping with an explicit
             // TenantId predicate in EfEmployeeRepository.
             "EfEmployeeRepository.cs",
+            // Soft-delete-aware comment feed: GetForTaskAsync must see soft-deleted top-level
+            // comments too (a tombstone with surviving replies is rendered, not dropped), while
+            // preserving tenant scoping with an explicit TenantId predicate in
+            // EfTaskCommentRepository.
+            "EfTaskCommentRepository.cs",
         };
 
         var srcDirectory = FindSrcDirectory();
