@@ -15,6 +15,7 @@ public static class PlatformOAuthProviderCatalog
     public const string CapabilityAdminSso = "admin_sso";
     public const string CapabilityUserOAuth = "user_oauth";
     public const string CapabilityCalendar = "calendar";
+    public const string CapabilityMeetings = "meetings";
 
     private static readonly IReadOnlyDictionary<string, PlatformOAuthProviderDefinition> Definitions =
         new[]
@@ -62,9 +63,14 @@ public static class PlatformOAuthProviderCatalog
                 // ACCESS token to resolve the account's email - that Graph API call needs the
                 // User.Read delegated permission on the access token itself, which the OIDC scopes
                 // alone do not grant (confirmed: omitting it produces a 403 from Graph's /me endpoint).
-                DefaultScopes: new[] { "openid", "profile", "email", "offline_access", "User.Read", "Calendars.ReadWrite" },
+                // OnlineMeetings.ReadWrite lets MicrosoftGraphMeetingClient create/cancel a Teams
+                // meeting via POST/DELETE /me/onlineMeetings - a connection made before this scope
+                // was added won't carry it, which CreateEventMeetingCommandHandler treats the same
+                // as no connection at all (existing ExternalCalendarConnectionStatuses.ReauthRequired
+                // status already models "reconnect to pick up new scopes").
+                DefaultScopes: new[] { "openid", "profile", "email", "offline_access", "User.Read", "Calendars.ReadWrite", "OnlineMeetings.ReadWrite" },
                 ClientSecretRequired: true,
-                Capabilities: new[] { CapabilityUserOAuth, CapabilityCalendar }),
+                Capabilities: new[] { CapabilityUserOAuth, CapabilityCalendar, CapabilityMeetings }),
 
             new PlatformOAuthProviderDefinition(
                 Provider: "zoom",
