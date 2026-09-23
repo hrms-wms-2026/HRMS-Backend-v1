@@ -19,3 +19,12 @@ public static class SprintViewModelMapper
     public static SprintViewModel ToViewModel(this Application.Features.WorkManagement.Sprints.DTOs.Responses.SprintResponse dto) =>
         new(dto.Id, dto.ProjectId, dto.Name, dto.Goal, dto.StartDate, dto.EndDate, dto.Status, dto.CompletedAt, dto.AchievedAt, dto.CanManage);
 }
+
+public sealed record SprintActivityViewModel(
+    Guid Id, Guid EmployeeId, string Action, string? FromStatus, string? ToStatus, string? DetailsJson, DateTimeOffset OccurredAt);
+
+public static class SprintActivityViewModelMapper
+{
+    public static SprintActivityViewModel ToViewModel(this Application.Features.WorkManagement.Sprints.DTOs.Responses.SprintActivityResponse dto) =>
+        new(dto.Id, dto.EmployeeId, dto.Action, dto.FromStatus, dto.ToStatus, dto.DetailsJson, dto.OccurredAt);
+}

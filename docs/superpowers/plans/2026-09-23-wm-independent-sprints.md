@@ -1443,11 +1443,11 @@ git commit -m "Gate sprint lifecycle by creator/task-module owners and log every
 
 Shared access rule (both handlers): caller has `projects:read`/`*`, **or** `IProjectMemberRepository.HasActiveMembershipAsync(tenantId, sprint.ProjectId, callerEmployeeId)`; else 403 `"You do not have access to this project."`.
 
-- [ ] **Step 1: Failing tests** — Activity: (1) member → rows in repository order mapped 1:1; (2) non-member without permission → 403; (3) sprint missing → 404. SprintTasks: replace the module-walk cases with member / non-member cases; remove `IObjectiveRepository` from its fixture.
+- [x] **Step 1: Failing tests** — Activity: (1) member → rows in repository order mapped 1:1; (2) non-member without permission → 403; (3) sprint missing → 404. SprintTasks: replace the module-walk cases with member / non-member cases; remove `IObjectiveRepository` from its fixture.
 
-- [ ] **Step 2: Run — FAIL**
+- [x] **Step 2: Run — FAIL**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `GetSprintTasksQueryHandler`: drop `_objectives`; replace the block from `var objective = ...` through the end of the `if (!hasReadPermission) { ... }` with:
 ```csharp
@@ -1503,9 +1503,9 @@ Controller:
     }
 ```
 
-- [ ] **Step 4: Run — PASS**
+- [x] **Step 4: Run — PASS**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Queries/GetSprintTasks src/ONEVO.Application/Features/WorkManagement/Sprints/Queries/GetSprintActivity src/ONEVO.Application/Features/WorkManagement/Sprints/DTOs/Responses/SprintActivityResponse.cs src/ONEVO.Api/Contracts/WorkManagement/Sprints/SprintContracts.cs src/ONEVO.Api/Controllers/Tenant/WorkManagement/SprintsController.cs tests/ONEVO.Tests.Unit

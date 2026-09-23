@@ -12,6 +12,7 @@ using ONEVO.Application.Features.WorkManagement.Sprints.Commands.SetSprintTasks;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.StartSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetObjectiveSprints;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetProjectSprints;
+using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetSprintActivity;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetSprintTasks;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
@@ -99,6 +100,17 @@ public class SprintsController : ControllerBase
 
         return result.IsSuccess
             ? Ok(result.Value!.Select(t => t.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("sprints/{id:guid}/activity")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> GetActivity(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetSprintActivityQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(a => a.ToViewModel()).ToList())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
