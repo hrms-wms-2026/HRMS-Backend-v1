@@ -2157,7 +2157,7 @@ Behavior:
 - Edit: on open, load `taskApi.getBySprintId(sprint.id)` → `initialTaskIds` + `selectedTaskIds`. On save: `store.edit(...)` then, if the diff is non-empty, `store.setTasks(sprint.id, { addTaskIds: selected − initial, removeTaskIds: initial − selected }, projectId)`. Emit `saved` only if both succeed.
 - Name required: if empty show `nameError` "Sprint name is required." and don't call the store.
 
-- [ ] **Step 1: Rewrite the spec (failing)**
+- [x] **Step 1: Rewrite the spec (failing)**
 
 ```ts
 describe('SprintFormComponent', () => {
@@ -2227,9 +2227,9 @@ describe('SprintFormComponent', () => {
 });
 ```
 
-- [ ] **Step 2: Run — FAIL**
+- [x] **Step 2: Run — FAIL**
 
-- [ ] **Step 3: Implement** — keep the existing `app-modal`, inputs styling and date-range block; replace the Module dropdown with:
+- [x] **Step 3: Implement** — keep the existing `app-modal`, inputs styling and date-range block; replace the Module dropdown with:
 
 ```html
         <div class="sprint-form__tasks">
@@ -2331,9 +2331,9 @@ export interface SprintFormModuleOption { objectiveId: string; title: string; is
 ```
 Show `nameError` under the name input with the existing `.sprint-form__error` style. Remove `objectiveId`, `isObjectiveOwner`, `selectedObjectiveId`, `moduleError`, `moduleOptions`, `effectiveObjectiveId`, and the `WorkDropdownComponent` import. Add `ModuleTaskPickerComponent` to `imports`. Widen the modal if `app-modal` supports a size input (check `shared/ui/modal/modal.component.ts`; use its wide/large size if present).
 
-- [ ] **Step 4: Run — PASS**: `npx vitest run src/app/modules/work/ui/sprint-form`
+- [x] **Step 4: Run — PASS**: `npx vitest run src/app/modules/work/ui/sprint-form`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/app/modules/work/ui/sprint-form
