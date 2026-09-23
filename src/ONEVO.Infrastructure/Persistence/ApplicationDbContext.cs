@@ -306,6 +306,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<TaskCategory> TaskCategories => Set<TaskCategory>();
     public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
     public DbSet<Sprint> Sprints => Set<Sprint>();
+    public DbSet<SprintActivityLog> SprintActivityLogs => Set<SprintActivityLog>();
     public DbSet<TaskAssignment> TaskAssignments => Set<TaskAssignment>();
     public DbSet<TaskCreationRequest> TaskCreationRequests => Set<TaskCreationRequest>();
         public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();

@@ -71,7 +71,7 @@
 - `ISprintActivityLogRepository.AddAsync(SprintActivityLog, ct)`, `GetForSprintAsync(Guid tenantId, Guid sprintId, ct) → IReadOnlyList<SprintActivityLog>` (oldest first)
 - `SprintActivityLogFactory.Create(Guid tenantId, Guid sprintId, Guid employeeId, string action, string? fromStatus = null, string? toStatus = null, object? details = null) → SprintActivityLog`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```csharp
 // tests/ONEVO.Tests.Unit/Features/WorkManagement/Sprints/SprintActivityLogFactoryTests.cs
@@ -114,12 +114,12 @@ public class SprintActivityLogFactoryTests
 }
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~SprintActivityLogFactoryTests"`
 Expected: build error — `SprintActivityLogFactory` / `SprintActivityActions` not found.
 
-- [ ] **Step 3: Implement entity, factory, repository interface**
+- [x] **Step 3: Implement entity, factory, repository interface**
 
 ```csharp
 // src/ONEVO.Domain/Features/WorkManagement/Sprints/Entities/SprintActivityLog.cs
@@ -189,11 +189,11 @@ public interface ISprintActivityLogRepository
 }
 ```
 
-- [ ] **Step 4: Run the test — PASS**
+- [x] **Step 4: Run the test — PASS**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~SprintActivityLogFactoryTests"` → 2 passed.
 
-- [ ] **Step 5: EF configuration, repository, DbSet, DI**
+- [x] **Step 5: EF configuration, repository, DbSet, DI**
 
 ```csharp
 // src/ONEVO.Infrastructure/Persistence/Configurations/WorkManagement/SprintActivityLogConfiguration.cs
@@ -257,7 +257,7 @@ public class EfSprintActivityLogRepository : ISprintActivityLogRepository
         services.AddScoped<ISprintActivityLogRepository>(sp => sp.GetRequiredService<EfSprintActivityLogRepository>());
 ```
 
-- [ ] **Step 6: Generate migration and add RLS**
+- [x] **Step 6: Generate migration and add RLS**
 
 Run: `dotnet ef migrations add AddSprintActivityLogs --project src/ONEVO.Infrastructure --startup-project src/ONEVO.Api --configuration Release`
 
@@ -270,12 +270,12 @@ Open the generated `<ts>_AddSprintActivityLogs.cs`. Verify `Up` only creates `sp
 ```
 and at the **end** of `Up` (after `CreateIndex`) paste the `foreach (var table in TenantTables) { migrationBuilder.Sql($@" ALTER TABLE ... CREATE POLICY tenant_isolation ... "); }` block verbatim from `20260913152103_AddWorkModesRlsPolicyCoverage.cs` `Up`, and at the **start** of `Down` (before `DropTable`) the `DROP POLICY IF EXISTS` foreach block from that file's `Down`.
 
-- [ ] **Step 7: Build + architecture suite**
+- [x] **Step 7: Build + architecture suite**
 
 Run: `dotnet build src/ONEVO.Api --configuration Release` → succeeds.
 Run: `dotnet test tests/ONEVO.Tests.Architecture` → all pass (RLS coverage includes `sprint_activity_logs`).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Domain/Features/WorkManagement/Sprints/Entities/SprintActivityLog.cs src/ONEVO.Application/Features/WorkManagement/Sprints/RepositoryInterfaces/ISprintActivityLogRepository.cs src/ONEVO.Application/Features/WorkManagement/Sprints/Services/SprintActivityLogFactory.cs src/ONEVO.Infrastructure/Persistence/Configurations/WorkManagement/SprintActivityLogConfiguration.cs src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfSprintActivityLogRepository.cs src/ONEVO.Infrastructure/Persistence/ApplicationDbContext.cs src/ONEVO.Infrastructure/DependencyInjection.cs src/ONEVO.Infrastructure/Migrations/ tests/ONEVO.Tests.Unit/Features/WorkManagement/Sprints/SprintActivityLogFactoryTests.cs

@@ -355,6 +355,8 @@ public static class DependencyInjection
         services.AddScoped<ICalendarTimezoneResolver, CalendarTimezoneResolver>();
         services.AddScoped<EfSprintRepository>();
         services.AddScoped<ISprintRepository>(sp => sp.GetRequiredService<EfSprintRepository>());
+        services.AddScoped<EfSprintActivityLogRepository>();
+        services.AddScoped<ISprintActivityLogRepository>(sp => sp.GetRequiredService<EfSprintActivityLogRepository>());
         services.AddScoped<EfTaskAssignmentRepository>();
         services.AddScoped<ITaskAssignmentRepository>(sp => sp.GetRequiredService<EfTaskAssignmentRepository>());
         services.AddScoped<EfTaskCreationRequestRepository>();
