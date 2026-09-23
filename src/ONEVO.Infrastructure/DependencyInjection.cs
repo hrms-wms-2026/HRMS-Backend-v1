@@ -350,6 +350,8 @@ public static class DependencyInjection
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>());
         services.AddScoped<IExternalCalendarConnectionRepository, EfExternalCalendarConnectionRepository>();
         services.AddScoped<IExternalCalendarEventLinkRepository, EfExternalCalendarEventLinkRepository>();
+        services.AddScoped<ICalendarEventMeetingRepository, EfCalendarEventMeetingRepository>();
+        services.AddScoped<ICalendarEventMeetingAttendanceRepository, EfCalendarEventMeetingAttendanceRepository>();
         services.AddScoped<ICalendarRecurrenceExpander, IcalNetRecurrenceExpander>();
         services.AddScoped<ICalendarNotificationSender, CalendarNotificationSender>();
         services.AddScoped<ICalendarTimezoneResolver, CalendarTimezoneResolver>();
