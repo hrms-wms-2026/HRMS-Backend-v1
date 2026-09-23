@@ -2448,7 +2448,7 @@ const VERBS: Record<SprintActivityDto['action'], string> = {
 ```
 `{n}` = `JSON.parse(detailsJson).taskIds.length` (guard with try/catch → omit count). Use Angular `DatePipe` with format `'d MMM HH:mm'`. Error → "Couldn't load history."; empty → "No activity yet."
 
-- [ ] **Step 1: Failing spec**
+- [x] **Step 1: Failing spec**
 
 ```ts
 describe('SprintHistoryComponent', () => {
@@ -2473,11 +2473,11 @@ describe('SprintHistoryComponent', () => {
 });
 ```
 
-- [ ] **Step 2: Run — FAIL**, **Step 3: implement** (standalone component; `effect` on `sprintId` triggers `load()`; signals `entries`, `loading`, `error`, `expanded`), add `<app-sprint-history [sprintId]="sprint().id" />` inside sprint-tab's expanded block and add it to sprint-tab `imports`.
+- [x] **Step 2: Run — FAIL**, **Step 3: implement** (standalone component; `effect` on `sprintId` triggers `load()`; signals `entries`, `loading`, `error`, `expanded`), add `<app-sprint-history [sprintId]="sprint().id" />` inside sprint-tab's expanded block and add it to sprint-tab `imports`.
 
-- [ ] **Step 4: Run — PASS**: `npx vitest run src/app/modules/work/ui/sprint-history src/app/modules/work/ui/sprint-tab` (sprint-tab spec must provide a `SprintApiService` stub with `getActivity: () => of([])` and an `EmployeeDirectoryStore` stub if not already present).
+- [x] **Step 4: Run — PASS**: `npx vitest run src/app/modules/work/ui/sprint-history src/app/modules/work/ui/sprint-tab` (sprint-tab spec must provide a `SprintApiService` stub with `getActivity: () => of([])` and an `EmployeeDirectoryStore` stub if not already present).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/app/modules/work/ui/sprint-history src/app/modules/work/ui/sprint-tab
