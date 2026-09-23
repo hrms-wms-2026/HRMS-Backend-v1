@@ -18,7 +18,8 @@ public sealed record WorkTaskResponse(
     Guid? ActiveEventId = null, string? ActiveEventName = null,
     IReadOnlyList<TaskAttachmentDto>? Attachments = null,
     IReadOnlyList<TaskAssigneeIdentityDto>? Assignees = null,
-    Guid? ParentTaskId = null, int SubtaskTotalCount = 0, int SubtaskCompletedCount = 0);
+    Guid? ParentTaskId = null, int SubtaskTotalCount = 0, int SubtaskCompletedCount = 0,
+    IReadOnlyList<Guid>? SubtaskAssigneeEmployeeIds = null);
 
 public sealed record TaskCreationRequestResponse(
     Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt);

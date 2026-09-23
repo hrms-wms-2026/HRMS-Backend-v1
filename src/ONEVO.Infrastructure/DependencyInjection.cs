@@ -389,6 +389,22 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>();
         services.AddScoped<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>(
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>());
+        services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeEntityAssetAccessPolicy>();
+        services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>();
+        services.AddScoped<
+            ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IPrimaryEntityAssetLinker,
+            ONEVO.Application.Features.Storage.EntityAssets.Services.PrimaryEntityAssetLinker>();
+        services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IEntityAssetAccessPolicyResolver>(sp =>
+            new ONEVO.Application.Features.Storage.EntityAssets.Services.EntityAssetAccessPolicyResolver(
+                new Dictionary<string, ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IEntityAssetAccessPolicy>
+                {
+                    [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.Employee] =
+                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeEntityAssetAccessPolicy>(),
+                    [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.LegalEntity] =
+                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>()
+                    // Part 2 plan (Project/Objective/Task endpoint consolidation) adds the remaining
+                    // three owner types here when their controllers migrate to the generic resolve endpoint.
+                }));
 
         // Work Management - Milestone & Achievement services
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();

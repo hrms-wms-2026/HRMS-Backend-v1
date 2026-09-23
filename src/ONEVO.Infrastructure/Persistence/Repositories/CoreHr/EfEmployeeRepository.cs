@@ -357,7 +357,11 @@ public class EfEmployeeRepository : IEmployeeRepository
                 row.empType != null ? row.empType.Label : row.e.EmploymentTypeId.ToString(),
                 row.empStatus != null ? row.empStatus.Code : "active",
                 row.manager != null ? row.manager.Id : (Guid?)null,
-                row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null))
+                row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null,
+                null,
+                null,
+                null,
+                null))
             .ToListAsync(ct);
 
                 return (items, totalCount);
@@ -595,7 +599,9 @@ public class EfEmployeeRepository : IEmployeeRepository
                 null,
                 null,
                 row.Status,
-                row.ExpiresAt))
+                row.ExpiresAt,
+                null,
+                null))
             .ToListAsync(ct);
     }
 

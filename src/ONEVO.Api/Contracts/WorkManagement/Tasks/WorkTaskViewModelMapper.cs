@@ -14,7 +14,8 @@ public static class WorkTaskViewModelMapper
             .Select(a => new TaskAttachmentViewModel(a.FileId, a.FileName, a.FileSizeBytes, a.ContentType)).ToList(),
         (dto.Assignees ?? Array.Empty<TaskAssigneeIdentityDto>())
             .Select(a => new TaskAssigneeIdentityViewModel(a.EmployeeId, a.Name, a.AvatarUrl)).ToList(),
-        dto.ParentTaskId, dto.SubtaskTotalCount, dto.SubtaskCompletedCount);
+        dto.ParentTaskId, dto.SubtaskTotalCount, dto.SubtaskCompletedCount,
+        dto.SubtaskAssigneeEmployeeIds ?? Array.Empty<Guid>());
 
     public static TaskStatusViewModel ToViewModel(this TaskStatusResponse dto) => new(
         dto.Id, dto.Name, dto.DisplayOrder, dto.RequiresApproval,

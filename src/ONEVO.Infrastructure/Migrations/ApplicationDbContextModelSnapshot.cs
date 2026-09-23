@@ -2171,10 +2171,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid?>("AvatarFileId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("avatar_file_id");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -7460,10 +7456,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_primary");
 
-                    b.Property<Guid?>("LogoFileId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("logo_file_id");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -7550,9 +7542,6 @@ namespace ONEVO.Infrastructure.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_legal_entities");
-
-                    b.HasIndex("LogoFileId")
-                        .HasDatabaseName("ix_legal_entities_logo_file_id");
 
                     b.HasIndex("ParentLegalEntityId")
                         .HasDatabaseName("ix_legal_entities_parent_legal_entity_id");
@@ -13569,12 +13558,6 @@ namespace ONEVO.Infrastructure.Migrations
 
             modelBuilder.Entity("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", b =>
                 {
-                    b.HasOne("ONEVO.Domain.Features.Storage.File.Entities.FileRecord", null)
-                        .WithMany()
-                        .HasForeignKey("LogoFileId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_legal_entities_file_records_logo_file_id");
-
                     b.HasOne("ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity", null)
                         .WithMany()
                         .HasForeignKey("ParentLegalEntityId")

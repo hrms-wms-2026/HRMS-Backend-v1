@@ -83,14 +83,17 @@ public class GetObjectiveMembersQueryHandler : IRequestHandler<GetObjectiveMembe
             .Concat(pendingInvites.Select(i => i.InvitedEmployeeId))
             .Distinct()
             .ToList();
-        var namesByEmployeeId = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, employeeIds, ct);
+        var identitiesByEmployeeId = await _identity.ResolveIdentitiesByEmployeeIdAsync(tenantId, employeeIds, ct);
+
+        string? NameOf(Guid employeeId) => identitiesByEmployeeId.GetValueOrDefault(employeeId)?.Name;
+        Guid? AvatarFileIdOf(Guid employeeId) => identitiesByEmployeeId.GetValueOrDefault(employeeId)?.AvatarFileId;
 
         var items = new List<ObjectiveMemberItemResponse>();
         items.AddRange(activeMembers.Select(m => new ObjectiveMemberItemResponse(
-            m.EmployeeId, namesByEmployeeId.GetValueOrDefault(m.EmployeeId), IsHead: m.EmployeeId == objective.OwnerId,
+            m.EmployeeId, NameOf(m.EmployeeId), AvatarFileIdOf(m.EmployeeId), IsHead: m.EmployeeId == objective.OwnerId,
             Pending: false, InviteType: null, InvitationId: null, SinceOrInvitedAt: m.JoinedAt)));
         items.AddRange(pendingInvites.Select(i => new ObjectiveMemberItemResponse(
-            i.InvitedEmployeeId, namesByEmployeeId.GetValueOrDefault(i.InvitedEmployeeId), IsHead: false,
+            i.InvitedEmployeeId, NameOf(i.InvitedEmployeeId), AvatarFileIdOf(i.InvitedEmployeeId), IsHead: false,
             Pending: true, InviteType: i.InviteType, InvitationId: i.Id, SinceOrInvitedAt: i.CreatedAt)));
 
         return Result<ObjectiveMemberListResponse>.Success(new ObjectiveMemberListResponse(items));

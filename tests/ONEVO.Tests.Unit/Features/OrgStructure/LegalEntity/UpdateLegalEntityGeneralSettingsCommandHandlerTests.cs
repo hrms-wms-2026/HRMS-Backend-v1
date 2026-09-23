@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Moq;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -11,6 +12,7 @@ namespace ONEVO.Tests.Unit.Features.OrgStructure.LegalEntity;
 public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
 {
     private readonly Mock<ILegalEntityRepository> _legalEntities = new();
+    private readonly Mock<IEntityAssetRepository> _entityAssets = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _dateTimeProvider = new();
 
@@ -26,8 +28,12 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         _currentUser.Setup(c => c.HasPermission("legal_entity:update")).Returns(hasManagementAccess);
         _currentUser.Setup(c => c.HasPermission("legal_entity:delete")).Returns(false);
         _dateTimeProvider.SetupGet(d => d.UtcNow).Returns(FixedNow);
+        _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
         return new UpdateLegalEntityGeneralSettingsCommandHandler(
-            _legalEntities.Object, _currentUser.Object, _dateTimeProvider.Object);
+            _legalEntities.Object, _entityAssets.Object, _currentUser.Object, _dateTimeProvider.Object);
     }
 
     private static LegalEntityEntity ExistingEntity(Guid id) => new()
@@ -41,7 +47,6 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         CurrencyCode = "LKR",
         IsActive = true,
         IsPrimary = true,
-        LogoFileId = Guid.NewGuid(),
         ParentLegalEntityId = Guid.NewGuid(),
         CreatedAt = DateTimeOffset.UtcNow.AddDays(-10)
     };
@@ -127,7 +132,6 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
     public async Task Handle_ValidRequest_PreservesFieldsNotExposedInRequest()
     {
         var entity = ExistingEntity(Guid.NewGuid());
-        var originalLogoFileId = entity.LogoFileId;
         var originalParentId = entity.ParentLegalEntityId;
         var originalCreatedAt = entity.CreatedAt;
         var originalIsPrimary = entity.IsPrimary;
@@ -138,7 +142,6 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
 
         await sut.Handle(ValidCommand(entity.Id), CancellationToken.None);
 
-        entity.LogoFileId.Should().Be(originalLogoFileId);
         entity.ParentLegalEntityId.Should().Be(originalParentId);
         entity.CreatedAt.Should().Be(originalCreatedAt);
         entity.IsPrimary.Should().Be(originalIsPrimary);

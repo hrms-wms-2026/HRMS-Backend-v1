@@ -1,4 +1,5 @@
 using MediatR;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
@@ -6,6 +7,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
 using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 
@@ -13,20 +15,22 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
 {
     private const string RequiredPermission = "employees:read";
     private const string AttendanceReadPermission = "attendance:read";
-
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IEmployeeAuthorityResolver _authorityResolver;
+    private readonly Common.RepositoryInterfaces.IEntityAssetRepository _entityAssets;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTime;
 
     public ListEmployeesQueryHandler(
         IEmployeeRepository employeeRepository,
         IEmployeeAuthorityResolver authorityResolver,
+        Common.RepositoryInterfaces.IEntityAssetRepository entityAssets,
         ICurrentUser currentUser,
         IDateTimeProvider dateTime)
     {
         _employeeRepository = employeeRepository;
         _authorityResolver = authorityResolver;
+        _entityAssets = entityAssets;
         _currentUser = currentUser;
         _dateTime = dateTime;
     }
@@ -126,6 +130,16 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
             // employee-list caller without attendance:read must never receive sensitive state.
             items = items.Select(i => i with { AttendanceSummary = null }).ToList();
         }
+
+        var avatarFileIdByEmployeeId = await _entityAssets.GetPrimaryFileIdsByOwnerAsync(
+            _currentUser.TenantId,
+            EntityAssetOwnerTypes.Employee,
+            items.Select(i => i.Id).ToList(),
+            UploadPurposeCatalog.EmployeeAvatar,
+            ct);
+        items = items.Select(i => avatarFileIdByEmployeeId.TryGetValue(i.Id, out var fileId)
+            ? i with { AvatarFileId = fileId }
+            : i with { AvatarFileId = null }).ToList();
 
         return Result<EmployeeListPageResponse>.Success(
             new EmployeeListPageResponse(items, totalCount, page, pageSize));

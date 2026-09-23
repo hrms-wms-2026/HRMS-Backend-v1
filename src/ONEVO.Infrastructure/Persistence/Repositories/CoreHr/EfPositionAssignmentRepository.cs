@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Exceptions;
+using ONEVO.Application.Features.Storage.File.Helpers;
 using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
@@ -56,9 +58,12 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
         if (positionIds.Count == 0)
             return new Dictionary<Guid, PositionOccupancyPreview>();
 
+        var avatarAssets = EmployeeAvatarAssets(tenantId);
         var rows = await (
             from pa in _db.PositionAssignments.AsNoTracking()
             join e in _db.Employees.AsNoTracking() on pa.EmployeeId equals e.Id
+            join asset in avatarAssets on e.Id equals asset.OwnerId into assetJoin
+            from asset in assetJoin.DefaultIfEmpty()
             where pa.TenantId == tenantId
                 && e.TenantId == tenantId
                 && positionIds.Contains(pa.PositionId)
@@ -71,7 +76,7 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
                 EmployeeId = e.Id,
                 e.FirstName,
                 e.LastName,
-                e.AvatarFileId
+                AvatarFileId = asset == null ? (Guid?)null : asset.FileRecordId
             }).ToListAsync(ct);
 
         return rows
@@ -88,15 +93,19 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
     public async Task<IReadOnlyList<PositionActiveHolder>> GetActiveHoldersAsync(
         Guid tenantId, Guid positionId, CancellationToken ct = default)
     {
-        return await _db.PositionAssignments
-            .AsNoTracking()
-            .Where(pa => pa.TenantId == tenantId
+        var avatarAssets = EmployeeAvatarAssets(tenantId);
+        return await (
+            from pa in _db.PositionAssignments.AsNoTracking()
+            join e in _db.Employees.AsNoTracking() on pa.EmployeeId equals e.Id
+            join asset in avatarAssets on e.Id equals asset.OwnerId into assetJoin
+            from asset in assetJoin.DefaultIfEmpty()
+            where pa.TenantId == tenantId
                 && pa.PositionId == positionId
                 && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
-                && pa.AssignmentStatus == PositionAssignmentStatus.Active)
-            .Join(_db.Employees.AsNoTracking(),
-                pa => pa.EmployeeId, e => e.Id,
-                (pa, e) => new PositionActiveHolder(e.Id, e.FirstName, e.LastName, e.Email, e.AvatarFileId))
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active
+            select new PositionActiveHolder(
+                e.Id, e.FirstName, e.LastName, e.Email,
+                asset == null ? null : asset.FileRecordId))
             .ToListAsync(ct);
     }
 
@@ -121,14 +130,25 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
         if (positionIds.Count == 0)
             return new Dictionary<Guid, IReadOnlyList<PositionActiveHolder>>();
 
+        var avatarAssets = EmployeeAvatarAssets(tenantId);
         var rows = await (
             from pa in _db.PositionAssignments.AsNoTracking()
             join e in _db.Employees.AsNoTracking() on pa.EmployeeId equals e.Id
+            join asset in avatarAssets on e.Id equals asset.OwnerId into assetJoin
+            from asset in assetJoin.DefaultIfEmpty()
             where pa.TenantId == tenantId
                 && positionIds.Contains(pa.PositionId)
                 && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
                 && pa.AssignmentStatus == PositionAssignmentStatus.Active
-            select new { pa.PositionId, EmployeeId = e.Id, e.FirstName, e.LastName, e.Email, e.AvatarFileId })
+            select new
+            {
+                pa.PositionId,
+                EmployeeId = e.Id,
+                e.FirstName,
+                e.LastName,
+                e.Email,
+                AvatarFileId = asset == null ? (Guid?)null : asset.FileRecordId
+            })
             .ToListAsync(ct);
 
         return rows
@@ -143,24 +163,33 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
     public async Task<IReadOnlyList<ChecklistAssignee>> GetChecklistAssigneesAsync(
         Guid tenantId, Guid positionId, CancellationToken ct = default)
     {
-        return await _db.PositionAssignments
-            .AsNoTracking()
-            .Where(pa => pa.TenantId == tenantId
+        var avatarAssets = EmployeeAvatarAssets(tenantId);
+        return await (
+            from pa in _db.PositionAssignments.AsNoTracking()
+            join e in _db.Employees.AsNoTracking() on pa.EmployeeId equals e.Id
+            join asset in avatarAssets on e.Id equals asset.OwnerId into assetJoin
+            from asset in assetJoin.DefaultIfEmpty()
+            where pa.TenantId == tenantId
                 && pa.PositionId == positionId
                 && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
-                && pa.AssignmentStatus == PositionAssignmentStatus.Active)
-            .Join(_db.Employees.AsNoTracking(),
-                pa => pa.EmployeeId, e => e.Id,
-                (pa, e) => e)
-            .Where(e => e.EmploymentStatusId == EmploymentStatusIds.Active && e.UserId != Guid.Empty)
-            .Select(e => new ChecklistAssignee(
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active
+                && e.EmploymentStatusId == EmploymentStatusIds.Active
+                && e.UserId != Guid.Empty
+            select new ChecklistAssignee(
                 e.Id,
                 e.UserId,
                 ((e.FirstName + " " + e.LastName).Trim()),
                 e.Email,
-                e.AvatarFileId))
+                asset == null ? null : asset.FileRecordId))
             .ToListAsync(ct);
     }
+
+    private IQueryable<ONEVO.Domain.Features.Storage.EntityAssets.Entities.EntityAsset> EmployeeAvatarAssets(Guid tenantId)
+        => _db.EntityAssets.AsNoTracking().Where(a =>
+            a.TenantId == tenantId &&
+            a.OwnerType == EntityAssetOwnerTypes.Employee &&
+            a.AssetPurpose == UploadPurposeCatalog.EmployeeAvatar &&
+            a.IsPrimary);
 
     public async Task<bool> HasActivePrimaryInLegalEntityAsync(
         Guid tenantId, Guid employeeId, Guid legalEntityId, CancellationToken ct = default)

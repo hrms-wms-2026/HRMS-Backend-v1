@@ -1021,18 +1021,14 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
     }
 
     [Fact]
-    public async Task SetLogo_ValidImage_UploadsAndReturnsFileId()
+    public async Task LinkLogo_ValidPendingImage_ReturnsFileId()
     {
         var company = await _fixture.CreateCompanyAsync(_fixture.TenantA, "Logo Upload Co", "LOGOU1", "REG-LOGOU1");
-
-        using var content = new MultipartFormDataContent();
         var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }; // PNG magic bytes + padding
-        var fileContent = new ByteArrayContent(bytes);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-        content.Add(fileContent, "logo", "logo.png");
+        var fileId = await UploadPendingFileAsync(bytes, "image/png", "logo.png", "company_logo");
 
-        var response = await _fixture.SendMultipartAsync(HttpMethod.Put, _fixture.TenantA.Host,
-            $"/api/v1/org/legal-entities/{company.Id}/logo", content,
+        var response = await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/logo", new { fileId },
             cookie: _fixture.TenantA.SessionCookie, csrfToken: _fixture.TenantA.CsrfHeader);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
@@ -1041,7 +1037,7 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
     }
 
     [Fact]
-    public async Task SetLogo_OversizedFile_IsRejected()
+    public async Task UploadLogo_OversizedFile_IsRejected()
     {
         var company = await _fixture.CreateCompanyAsync(_fixture.TenantA, "Logo Oversize Co", "LOGOU2", "REG-LOGOU2");
 
@@ -1049,60 +1045,60 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
         var bytes = new byte[6 * 1024 * 1024]; // over the 5 MB company_logo purpose limit
         var fileContent = new ByteArrayContent(bytes);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-        content.Add(fileContent, "logo", "big.png");
+        content.Add(new StringContent("company_logo"), "purpose");
+        content.Add(fileContent, "file", "big.png");
 
-        var response = await _fixture.SendMultipartAsync(HttpMethod.Put, _fixture.TenantA.Host,
-            $"/api/v1/org/legal-entities/{company.Id}/logo", content,
+        var response = await _fixture.SendMultipartAsync(HttpMethod.Post, _fixture.TenantA.Host,
+            "/api/v1/files", content,
             cookie: _fixture.TenantA.SessionCookie, csrfToken: _fixture.TenantA.CsrfHeader);
 
         response.StatusCode.Should().NotBe(HttpStatusCode.OK);
     }
 
     [Fact]
-    public async Task SetLogo_WrongContentType_IsRejected()
+    public async Task UploadLogo_WrongContentType_IsRejected()
     {
         var company = await _fixture.CreateCompanyAsync(_fixture.TenantA, "Logo WrongType Co", "LOGOU3", "REG-LOGOU3");
 
         using var content = new MultipartFormDataContent();
         var fileContent = new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes("not an image"));
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
-        content.Add(fileContent, "logo", "notes.txt");
+        content.Add(new StringContent("company_logo"), "purpose");
+        content.Add(fileContent, "file", "notes.txt");
 
-        var response = await _fixture.SendMultipartAsync(HttpMethod.Put, _fixture.TenantA.Host,
-            $"/api/v1/org/legal-entities/{company.Id}/logo", content,
+        var response = await _fixture.SendMultipartAsync(HttpMethod.Post, _fixture.TenantA.Host,
+            "/api/v1/files", content,
             cookie: _fixture.TenantA.SessionCookie, csrfToken: _fixture.TenantA.CsrfHeader);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
-    public async Task GetLogo_NoLogoSet_Returns404()
+    public async Task GeneralSettings_NoLogoSet_ReturnsNullFileId()
     {
         var company = await _fixture.CreateCompanyAsync(_fixture.TenantA, "Logo NoneSet Co", "LOGOU4", "REG-LOGOU4");
 
         var response = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantA.Host,
-            $"/api/v1/org/legal-entities/{company.Id}/logo", body: null, cookie: _fixture.TenantA.SessionCookie);
+            $"/api/v1/org/legal-entities/{company.Id}/general-settings", body: null, cookie: _fixture.TenantA.SessionCookie);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ReadJsonAsync(response)).GetProperty("logoFileId").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]
-    public async Task GetLogo_AfterUpload_ReturnsImageBytes()
+    public async Task GetFile_AfterLogoLink_ReturnsImageBytes()
     {
         var company = await _fixture.CreateCompanyAsync(_fixture.TenantA, "Logo RoundTrip Co", "LOGOU5", "REG-LOGOU5");
 
-        using var uploadContent = new MultipartFormDataContent();
         var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
-        var fileContent = new ByteArrayContent(bytes);
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-        uploadContent.Add(fileContent, "logo", "logo.png");
-        var uploadResponse = await _fixture.SendMultipartAsync(HttpMethod.Put, _fixture.TenantA.Host,
-            $"/api/v1/org/legal-entities/{company.Id}/logo", uploadContent,
+        var fileId = await UploadPendingFileAsync(bytes, "image/png", "logo.png", "company_logo");
+        var linkResponse = await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/logo", new { fileId },
             cookie: _fixture.TenantA.SessionCookie, csrfToken: _fixture.TenantA.CsrfHeader);
-        uploadResponse.StatusCode.Should().Be(HttpStatusCode.OK, await uploadResponse.Content.ReadAsStringAsync());
+        linkResponse.StatusCode.Should().Be(HttpStatusCode.OK, await linkResponse.Content.ReadAsStringAsync());
 
         var getResponse = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantA.Host,
-            $"/api/v1/org/legal-entities/{company.Id}/logo", body: null, cookie: _fixture.TenantA.SessionCookie);
+            $"/api/v1/files/{fileId}", body: null, cookie: _fixture.TenantA.SessionCookie);
 
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         getResponse.Content.Headers.ContentType!.MediaType.Should().Be("image/png");
@@ -1111,23 +1107,22 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
     }
 
     [Fact]
-    public async Task RemoveLogo_ThenGetLogo_Returns404Again()
+    public async Task RemoveLogo_ThenGetFile_Returns404()
     {
         var company = await _fixture.CreateCompanyAsync(_fixture.TenantA, "Logo RemoveThenGet Co", "LOGOU6", "REG-LOGOU6");
 
-        using var uploadContent = new MultipartFormDataContent();
-        var fileContent = new ByteArrayContent(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
-        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-        uploadContent.Add(fileContent, "logo", "logo.png");
-        await _fixture.SendMultipartAsync(HttpMethod.Put, _fixture.TenantA.Host,
-            $"/api/v1/org/legal-entities/{company.Id}/logo", uploadContent,
+        var fileId = await UploadPendingFileAsync(
+            new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A },
+            "image/png", "logo.png", "company_logo");
+        await _fixture.SendAsync(HttpMethod.Put, _fixture.TenantA.Host,
+            $"/api/v1/org/legal-entities/{company.Id}/logo", new { fileId },
             cookie: _fixture.TenantA.SessionCookie, csrfToken: _fixture.TenantA.CsrfHeader);
 
         await _fixture.SendAsync(HttpMethod.Delete, _fixture.TenantA.Host, $"/api/v1/org/legal-entities/{company.Id}/logo",
             body: null, cookie: _fixture.TenantA.SessionCookie, csrfToken: _fixture.TenantA.CsrfHeader);
 
         var getResponse = await _fixture.SendAsync(HttpMethod.Get, _fixture.TenantA.Host,
-            $"/api/v1/org/legal-entities/{company.Id}/logo", body: null, cookie: _fixture.TenantA.SessionCookie);
+            $"/api/v1/files/{fileId}", body: null, cookie: _fixture.TenantA.SessionCookie);
         getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -1255,6 +1250,22 @@ public sealed class LegalEntitiesIntegrationTests : IClassFixture<LegalEntitiesI
     }
 
     // ── Provisioning helper (trimmed from TenantProvisioningE2ETests) ───────────
+
+    private async Task<Guid> UploadPendingFileAsync(
+        byte[] bytes, string contentType, string fileName, string purpose)
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent(purpose), "purpose");
+        var fileContent = new ByteArrayContent(bytes);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        content.Add(fileContent, "file", fileName);
+
+        var response = await _fixture.SendMultipartAsync(
+            HttpMethod.Post, _fixture.TenantA.Host, "/api/v1/files", content,
+            cookie: _fixture.TenantA.SessionCookie, csrfToken: _fixture.TenantA.CsrfHeader);
+        response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
+        return (await ReadJsonAsync(response)).GetProperty("fileId").GetGuid();
+    }
 
     private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
     {

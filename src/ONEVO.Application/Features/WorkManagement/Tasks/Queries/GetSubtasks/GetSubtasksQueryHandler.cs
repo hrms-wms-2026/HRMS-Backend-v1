@@ -22,11 +22,13 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
     private readonly IProjectMemberRepository _members;
     private readonly IPermissionResolver _permissionResolver;
     private readonly ITaskAssignmentRepository _assignments;
+    private readonly ITaskClockingSessionRepository _sessions;
 
     public GetSubtasksQueryHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IFileStorageService fileStorage,
         IWorkTaskRepository tasks, IProjectRepository projects, IProjectMemberRepository members,
-        IPermissionResolver permissionResolver, ITaskAssignmentRepository assignments)
+        IPermissionResolver permissionResolver, ITaskAssignmentRepository assignments,
+        ITaskClockingSessionRepository sessions)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -36,6 +38,7 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
         _members = members;
         _permissionResolver = permissionResolver;
         _assignments = assignments;
+        _sessions = sessions;
     }
 
     public async Task<Result<IReadOnlyList<WorkTaskResponse>>> Handle(GetSubtasksQuery request, CancellationToken ct)
@@ -99,10 +102,17 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
             assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(employeeId, employeeIdentity.Name, avatarUrl);
         }
 
+        var childIds = children.Select(child => child.Id).ToList();
+        var openSessions = await _sessions.GetOpenSessionsForTasksAsync(tenantId, childIds, ct);
+        var totalLoggedMinutes = await _sessions.GetTotalClosedSessionMinutesForTasksAsync(tenantId, childIds, ct);
+
         var responses = children.Select(task => new WorkTaskResponse(
             task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description, task.CategoryId, task.StatusId,
             task.Priority, task.StoryPoints, task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
             AssigneeEmployeeIds: assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>()),
+            OpenClockSessionEmployeeId: openSessions.TryGetValue(task.Id, out var openSession) ? openSession.EmployeeId : (Guid?)null,
+            OpenClockSessionClockInAt: openSession?.ClockInAt,
+            TotalLoggedMinutes: totalLoggedMinutes.GetValueOrDefault(task.Id, 0),
             Assignees: assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>())
                 .Select(employeeId => assigneeIdentityByEmployeeId[employeeId]).ToList(),
             ParentTaskId: task.ParentTaskId)).ToList();

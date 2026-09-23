@@ -21,6 +21,7 @@ using FeatureEfEmployeeRepository = ONEVO.Infrastructure.Persistence.Repositorie
 using EfEmployeeProfileRepository = ONEVO.Infrastructure.Persistence.Repositories.CoreHr.EfEmployeeProfileRepository;
 using EfWorkModeRepository = ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfWorkModeRepository;
 using EfLegalEntityRepository = ONEVO.Infrastructure.Persistence.Repositories.OrgStructure.EfLegalEntityRepository;
+using EfEntityAssetRepository = ONEVO.Infrastructure.Persistence.Repositories.EfEntityAssetRepository;
 using ONEVO.Tests.Integration.Support;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
@@ -162,6 +163,7 @@ public sealed class EmployeeProfileEndpointsIntegrationTests : IAsyncLifetime
             new EfUserMfaRepository(db),
             _encryption,
             new EfLegalEntityRepository(db),
+            new EfEntityAssetRepository(db),
             BuildCurrentUser(tenantId, userId, hasEmployeesWrite));
     }
 
