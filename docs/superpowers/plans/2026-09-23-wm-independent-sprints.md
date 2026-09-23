@@ -2383,17 +2383,17 @@ Changes:
 5. Dialog empty text → `No Draft or Active sprints in this project yet. Create one first.`
 6. Show the sprint's status next to each move target if the dialog doesn't already (check its template; if it only shows name/goal, add `<span class="move-tasks-dialog__option-meta">{{ target.sprint.status === 'active' ? 'Active' : 'Draft' }}</span>`).
 
-- [ ] **Step 1: Failing specs** in `task-backlog.component.spec.ts` (update the sprint fixtures to `projectId`/`canManage`, milestone fixtures to include `isEffectiveOwner`):
+- [x] **Step 1: Failing specs** in `task-backlog.component.spec.ts` (update the sprint fixtures to `projectId`/`canManage`, milestone fixtures to include `isEffectiveOwner`):
   - "Create Sprint button shows for a member who owns no module" (modules with `isOwner:false,isEffectiveOwner:false`).
   - "move targets include draft and active sprints across modules, exclude complete/achieved".
   - "move is blocked when a selected task's module is not effectively owned".
   - sprint-tab spec: "hides Start when canManage is false".
 
-- [ ] **Step 2: Run — FAIL**, **Step 3: implement**, **Step 4: Run — PASS**
+- [x] **Step 2: Run — FAIL**, **Step 3: implement**, **Step 4: Run — PASS**
 
 Run: `npx vitest run src/app/modules/work/feature/task-backlog src/app/modules/work/ui/sprint-tab src/app/modules/work/ui/move-tasks-to-sprint-dialog`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/app/modules/work/feature/task-backlog src/app/modules/work/ui/sprint-tab src/app/modules/work/ui/move-tasks-to-sprint-dialog
