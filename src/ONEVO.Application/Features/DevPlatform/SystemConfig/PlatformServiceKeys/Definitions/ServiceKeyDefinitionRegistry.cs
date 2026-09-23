@@ -37,7 +37,7 @@ public static class ServiceKeyDefinitionRegistry
         new(PlatformServiceKeyCatalog.Cloudflare, ServiceKeyVerificationMode.FormatOnly,
             [ApiKeyField("Cloudflare API token")]),
 
-        new(PlatformServiceKeyCatalog.CloudflareR2, ServiceKeyVerificationMode.FormatOnly,
+        new(PlatformServiceKeyCatalog.CloudflareR2, ServiceKeyVerificationMode.Live,
         [
             new("accountId", "Account ID", ServiceKeyFieldKinds.Text),
             new("bucketName", "Bucket name", ServiceKeyFieldKinds.Text),

@@ -8,8 +8,11 @@ using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Queries.GetActivityDailySummary;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
@@ -27,7 +30,11 @@ public sealed class AttendanceReadHandler(
     ILegalEntityRepository? legalEntities = null,
     IDateTimeProvider? dateTimeProvider = null,
     IActivityDailySummaryRepository? activitySummaries = null,
-    ICheckInRepository? checkIns = null)
+    ICheckInRepository? checkIns = null,
+    IEvidenceAssetRepository? evidenceAssets = null,
+    IFileStorageService? fileStorage = null,
+    IActivityLiveDaySummary? liveActivity = null,
+    IInactivityCaptureAttemptRepository? activityChecks = null)
     : IRequestHandler<GetAttendanceTodayQuery, Result<AttendanceTodayResponse>>,
       IRequestHandler<GetMyAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
       IRequestHandler<GetCoveredAttendanceHistoryQuery, Result<PagedResult<AttendanceHistoryRow>>>,
@@ -35,6 +42,8 @@ public sealed class AttendanceReadHandler(
       IRequestHandler<GetMyAttendanceMonthlySummaryQuery, Result<AttendanceMonthlySummaryResponse>>
 {
     private const string AttendanceReadPermission = "attendance:read";
+    private static readonly TimeSpan ScreenshotUrlExpiry = TimeSpan.FromMinutes(15);
+    private const int MaxScreenshotsPerDay = 100;
 
     // Kept as a plain code constant (not a configurable policy field) because this is a
     // display-only summary, not the payroll-affecting ClockInPolicy.LateArrivalMinute tiers -
@@ -248,13 +257,16 @@ public sealed class AttendanceReadHandler(
             var activityEntity = await activitySummaries.GetAsync(currentUser.TenantId, query.EmployeeId, query.Date, ct);
             if (activityEntity is not null)
                 dailyActivity = GetActivityDailySummaryQueryHandler.Map(activityEntity);
+            else if (liveActivity is not null)
+                dailyActivity = await liveActivity.ComposeAsync(currentUser.TenantId, query.EmployeeId, query.Date, ct);
         }
 
         var checkInLocations = Array.Empty<CheckInLocationDto>() as IReadOnlyList<CheckInLocationDto>;
-        if (canSeeActivity && checkIns is not null)
+        IReadOnlyList<AttendanceDayScreenshotDto> screenshots = [];
+        if (canSeeActivity)
         {
             var targetEmployee = await employees.GetByIdAsync(currentUser.TenantId, query.EmployeeId, ct);
-            if (targetEmployee is not null)
+            if (checkIns is not null && targetEmployee is not null)
             {
                 var checkInRecords = await checkIns.ListForUserInRangeAsync(
                     currentUser.TenantId, targetEmployee.UserId, dayWindow.Start, dayWindow.End, ct);
@@ -263,10 +275,61 @@ public sealed class AttendanceReadHandler(
                         c.Id, c.CheckedInAt, c.Latitude, c.Longitude, c.LocationAccuracy, c.LocationAddress))
                     .ToList();
             }
+
+            if (evidenceAssets is not null && fileStorage is not null)
+            {
+                var ownerIds = new List<Guid> { query.EmployeeId };
+                if (targetEmployee is not null && targetEmployee.UserId != Guid.Empty && targetEmployee.UserId != query.EmployeeId)
+                    ownerIds.Add(targetEmployee.UserId);
+
+                var assets = await evidenceAssets.ListForOwnersInRangeAsync(
+                    currentUser.TenantId, ownerIds, dayWindow.Start, dayWindow.End, MaxScreenshotsPerDay, ct);
+                var signed = new List<AttendanceDayScreenshotDto>(assets.Count);
+                foreach (var asset in assets)
+                {
+                    string? url = null;
+                    try
+                    {
+                        var urlResult = await fileStorage.GetSignedUrlAsync(
+                            currentUser.TenantId, asset.FileRecordId, ScreenshotUrlExpiry, ct);
+                        if (urlResult.IsSuccess)
+                            url = urlResult.Value;
+                    }
+                    catch
+                    {
+                        url = null;
+                    }
+
+                    signed.Add(new AttendanceDayScreenshotDto(
+                        asset.Id,
+                        asset.CapturedAt,
+                        asset.EvidenceType,
+                        asset.TriggerType,
+                        url));
+                }
+
+                screenshots = signed;
+            }
+        }
+
+        IReadOnlyList<AttendanceActivityCheckDto> checks = [];
+        if (canSeeActivity && activityChecks is not null)
+        {
+            var attempts = await activityChecks.ListForEmployeeInRangeAsync(
+                currentUser.TenantId, query.EmployeeId, dayWindow.Start, dayWindow.End, ct);
+            var urlByAsset = screenshots
+                .Where(shot => shot.Url is not null)
+                .ToDictionary(shot => shot.Id, shot => shot.Url);
+            checks = attempts.Select(attempt => new AttendanceActivityCheckDto(
+                attempt.Id,
+                attempt.PromptedAt,
+                attempt.Outcome,
+                attempt.EvidenceAssetId is Guid assetId && urlByAsset.TryGetValue(assetId, out var url) ? url : null))
+                .ToList();
         }
 
         return Result<AttendanceDayDetailResponse>.Success(
-            new AttendanceDayDetailResponse(summary, timelineEvents, dailyActivity, checkInLocations));
+            new AttendanceDayDetailResponse(summary, timelineEvents, dailyActivity, checkInLocations, screenshots, checks));
     }
 
     private async Task<IReadOnlyList<AttendanceHistoryRow>> BuildRowsAsync(

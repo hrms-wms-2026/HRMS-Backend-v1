@@ -560,6 +560,7 @@ public class PlatformServiceKeysTests
         var service = new PlatformServiceKeyVerificationService(
             Mock.Of<IHttpClientFactory>(),
             Mock.Of<IAwsRekognitionConnectionProbe>(),
+            Mock.Of<ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.ICloudflareR2ConnectionProbe>(),
             NullLogger<PlatformServiceKeyVerificationService>.Instance);
 
         var empty = await service.VerifyAsync("sendgrid", "", CancellationToken.None);
