@@ -1384,7 +1384,7 @@ Common edit for all four handlers:
    In **Complete**, compute `audience` **before** the task-disposition loop (moving tasks out would shrink the audience). Remove `IProjectMemberRepository _members` from both if no longer used; keep `IMilestoneMembershipCoordinator _membership` (for `GetActiveAssigneeAsync`); add `IProjectRepository _projects`.
 7. Return `SprintResponse.From(sprint, canManage: true)`.
 
-- [ ] **Step 1: Update tests first (they will fail to compile / fail)**
+- [x] **Step 1: Update tests first (they will fail to compile / fail)**
 
 In each of the four test files, change the builder: drop `IObjectiveRepository`/objective setup; add
 ```csharp
@@ -1409,15 +1409,15 @@ and sprint fixtures use `ProjectId = ProjectId` instead of `ObjectiveId = Object
 ```
 (extend `Build` to return the `logs` mock). Complete: add a test that a target sprint in a **different project** → 422, and one that a target in the **same project but from another module's tasks** is accepted. Complete/Achieve: assert `SendTemplatedAsync` is called once per audience member with `["objectiveName"] = project name`.
 
-- [ ] **Step 2: Run — FAIL**
+- [x] **Step 2: Run — FAIL**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~WorkManagement.Sprints"`
 
-- [ ] **Step 3: Implement the four handler changes above**
+- [x] **Step 3: Implement the four handler changes above**
 
-- [ ] **Step 4: Run — PASS** (whole Sprints folder)
+- [x] **Step 4: Run — PASS** (whole Sprints folder)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Sprints/Commands tests/ONEVO.Tests.Unit/Features/WorkManagement/Sprints

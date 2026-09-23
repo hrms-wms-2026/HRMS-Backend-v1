@@ -3,16 +3,15 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
-using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.CompleteSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
-using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
-using ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using Xunit;
@@ -26,7 +25,8 @@ public class CompleteSprintCommandHandlerTests
     private static readonly Guid UserId = Guid.NewGuid();
     private static readonly Guid OwnerEmployeeId = Guid.NewGuid();
     private static readonly Guid OtherEmployeeId = Guid.NewGuid();
-    private static readonly Guid ObjectiveId = Guid.NewGuid();
+    private static readonly Guid ProjectId = Guid.NewGuid();
+    private static readonly Guid OtherProjectId = Guid.NewGuid();
     private static readonly Guid SprintId = Guid.NewGuid();
     private static readonly Guid TargetSprintId = Guid.NewGuid();
     private static readonly Guid DoneStatusId = Guid.NewGuid();
@@ -34,8 +34,9 @@ public class CompleteSprintCommandHandlerTests
     private static readonly Guid MemberEmployeeId = Guid.NewGuid();
     private static readonly Guid MemberUserId = Guid.NewGuid();
 
-    private (CompleteSprintCommandHandler Handler, Sprint Sprint, List<WorkTask> Tasks, Mock<IWorkTaskRepository> TaskRepo, Mock<INotificationDispatcher> Notifications) Build(
-        IReadOnlyList<WorkTask> tasks, Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null, bool includeActiveMember = false)
+    private (CompleteSprintCommandHandler Handler, Sprint Sprint, Sprint TargetSprint, List<WorkTask> Tasks, Mock<IWorkTaskRepository> TaskRepo, Mock<INotificationDispatcher> Notifications, Mock<ISprintActivityLogRepository> Logs) Build(
+        IReadOnlyList<WorkTask> tasks, Guid? callerEmployeeId = null, bool? callerCanManage = null, bool includeAudienceMember = false,
+        string targetSprintStatus = SprintStatuses.Draft, Guid? targetSprintProjectId = null)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -50,28 +51,34 @@ public class CompleteSprintCommandHandlerTests
 
         var sprint = new Sprint
         {
-            Id = SprintId, TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "S1",
+            Id = SprintId, TenantId = TenantId, ProjectId = ProjectId, Name = "S1",
             StartDate = new DateOnly(2026, 9, 1), EndDate = new DateOnly(2026, 9, 14),
             Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
         };
         var targetSprint = new Sprint
         {
-            Id = TargetSprintId, TenantId = TenantId, ObjectiveId = ObjectiveId, Name = "S2",
-            Status = SprintStatuses.Draft, CreatedAt = DateTimeOffset.UtcNow
+            Id = TargetSprintId, TenantId = TenantId, ProjectId = targetSprintProjectId ?? ProjectId, Name = "S2",
+            Status = targetSprintStatus, CreatedAt = DateTimeOffset.UtcNow
         };
         var sprints = new Mock<ISprintRepository>();
         sprints.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>())).ReturnsAsync(sprint);
         sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, TargetSprintId, It.IsAny<CancellationToken>())).ReturnsAsync(targetSprint);
 
-        var objective = new Objective { Id = ObjectiveId, TenantId = TenantId, OwnerId = OwnerEmployeeId, IsActive = true, Title = "Obj", CreatedAt = DateTimeOffset.UtcNow };
-        var objectives = new Mock<IObjectiveRepository>();
-        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
+        var access = new Mock<ISprintAccessService>();
+        access.Setup(x => x.CanManageAsync(TenantId, sprint, UserId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerCanManage ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
+        access.Setup(x => x.GetAudienceEmployeeIdsAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(includeAudienceMember ? new List<Guid> { MemberEmployeeId } : new List<Guid>());
+
+        var logs = new Mock<ISprintActivityLogRepository>();
+
+        var project = new Project { Id = ProjectId, TenantId = TenantId, Name = "Proj", IsActive = true, CreatedAt = DateTimeOffset.UtcNow };
+        var projects = new Mock<IProjectRepository>();
+        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(project);
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
-        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(callerIsEffectiveManager ?? (objective.OwnerId == resolvedCallerEmployeeId));
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync((Employee?)null);
-        if (includeActiveMember)
+        if (includeAudienceMember)
         {
             membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, MemberEmployeeId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Employee { Id = MemberEmployeeId, TenantId = TenantId, UserId = MemberUserId });
@@ -86,12 +93,6 @@ public class CompleteSprintCommandHandlerTests
         statuses.Setup(x => x.GetByIdForTenantAsync(TenantId, TodoStatusId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TaskStatus { Id = TodoStatusId, TenantId = TenantId, Name = "To Do", MarksTaskComplete = false });
 
-        var members = new Mock<IProjectMemberRepository>();
-        members.Setup(x => x.ListActiveForObjectiveAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(includeActiveMember
-                ? new List<ProjectMember> { new() { EmployeeId = MemberEmployeeId, ObjectiveId = ObjectiveId, IsActive = true } }
-                : new List<ProjectMember>());
-
         var notifications = new Mock<INotificationDispatcher>();
 
         var unitOfWork = new Mock<IUnitOfWork>();
@@ -100,22 +101,22 @@ public class CompleteSprintCommandHandlerTests
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         var handler = new CompleteSprintCommandHandler(
-            currentUser.Object, identity.Object, objectives.Object, sprints.Object, taskRepo.Object, statuses.Object,
-            members.Object, membership.Object, notifications.Object, unitOfWork.Object);
+            currentUser.Object, identity.Object, sprints.Object, taskRepo.Object, statuses.Object, projects.Object,
+            access.Object, logs.Object, membership.Object, notifications.Object, unitOfWork.Object);
 
-        return (handler, sprint, tasks.ToList(), taskRepo, notifications);
+        return (handler, sprint, targetSprint, tasks.ToList(), taskRepo, notifications, logs);
     }
 
     private static WorkTask MakeTask(Guid statusId) => new()
     {
-        Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = ObjectiveId, SprintId = SprintId,
+        Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, SprintId = SprintId,
         StatusId = statusId, Title = "Task", CreatedAt = DateTimeOffset.UtcNow
     };
 
     [Fact]
     public async Task Handle_AllTasksAlreadyComplete_CompletesWithNoDisposition()
     {
-        var (handler, sprint, _, taskRepo, _) = Build(new List<WorkTask> { MakeTask(DoneStatusId) });
+        var (handler, sprint, _, _, taskRepo, _, _) = Build(new List<WorkTask> { MakeTask(DoneStatusId) });
 
         var result = await handler.Handle(new CompleteSprintCommand(SprintId, "backlog", null), CancellationToken.None);
 
@@ -129,7 +130,7 @@ public class CompleteSprintCommandHandlerTests
     public async Task Handle_IncompleteTasksWithBacklogDisposition_ClearsSprintId()
     {
         var incomplete = MakeTask(TodoStatusId);
-        var (handler, sprint, _, taskRepo, _) = Build(new List<WorkTask> { incomplete });
+        var (handler, sprint, _, _, taskRepo, _, _) = Build(new List<WorkTask> { incomplete });
 
         var result = await handler.Handle(new CompleteSprintCommand(SprintId, "backlog", null), CancellationToken.None);
 
@@ -142,7 +143,7 @@ public class CompleteSprintCommandHandlerTests
     public async Task Handle_IncompleteTasksWithSprintDisposition_MovesToTargetSprint()
     {
         var incomplete = MakeTask(TodoStatusId);
-        var (handler, sprint, _, taskRepo, _) = Build(new List<WorkTask> { incomplete });
+        var (handler, sprint, _, _, taskRepo, _, _) = Build(new List<WorkTask> { incomplete });
 
         var result = await handler.Handle(new CompleteSprintCommand(SprintId, "sprint", TargetSprintId), CancellationToken.None);
 
@@ -153,7 +154,7 @@ public class CompleteSprintCommandHandlerTests
     [Fact]
     public async Task Handle_SprintDispositionWithNoTargetId_ReturnsFailure()
     {
-        var (handler, _, _, _, _) = Build(new List<WorkTask> { MakeTask(TodoStatusId) });
+        var (handler, _, _, _, _, _, _) = Build(new List<WorkTask> { MakeTask(TodoStatusId) });
 
         var result = await handler.Handle(new CompleteSprintCommand(SprintId, "sprint", null), CancellationToken.None);
 
@@ -162,9 +163,9 @@ public class CompleteSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_NotEffectiveManager_ReturnsForbidden()
+    public async Task Handle_CannotManage_ReturnsForbidden()
     {
-        var (handler, sprint, _, _, _) = Build(new List<WorkTask> { MakeTask(DoneStatusId) }, callerEmployeeId: OtherEmployeeId);
+        var (handler, sprint, _, _, _, _, _) = Build(new List<WorkTask> { MakeTask(DoneStatusId) }, callerEmployeeId: OtherEmployeeId, callerCanManage: false);
 
         var result = await handler.Handle(new CompleteSprintCommand(SprintId, "backlog", null), CancellationToken.None);
 
@@ -174,14 +175,13 @@ public class CompleteSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_CallerIsEffectiveManagerViaCascade_CompletesSprint()
+    public async Task Handle_CallerCanManageViaTaskModuleOwnership_CompletesSprint()
     {
-        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
-        // an effective manager via an ancestor membership - the coordinator's own ancestor-walk
-        // logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so this only
-        // proves the handler defers to its answer instead of the direct OwnerId check.
-        var (handler, sprint, _, _, _) = Build(
-            new List<WorkTask> { MakeTask(DoneStatusId) }, callerEmployeeId: OtherEmployeeId, callerIsEffectiveManager: true);
+        // Caller is not the sprint's creator, but CanManageAsync reports them able to manage via
+        // task-module ownership - the service's own logic is unit-tested separately, so this only
+        // proves the handler defers to its answer.
+        var (handler, sprint, _, _, _, _, _) = Build(
+            new List<WorkTask> { MakeTask(DoneStatusId) }, callerEmployeeId: OtherEmployeeId, callerCanManage: true);
 
         var result = await handler.Handle(new CompleteSprintCommand(SprintId, "backlog", null), CancellationToken.None);
 
@@ -190,9 +190,36 @@ public class CompleteSprintCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_Complete_NotifiesObjectiveMembers()
+    public async Task Handle_TargetSprintInDifferentProject_ReturnsFailure()
     {
-        var (handler, _, _, _, notifications) = Build(new List<WorkTask> { MakeTask(DoneStatusId) }, includeActiveMember: true);
+        var (handler, _, _, _, _, _, _) = Build(new List<WorkTask> { MakeTask(TodoStatusId) }, targetSprintProjectId: OtherProjectId);
+
+        var result = await handler.Handle(new CompleteSprintCommand(SprintId, "sprint", TargetSprintId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(422, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_TargetSprintInSameProjectFromAnotherModule_IsAccepted()
+    {
+        // The target sprint belongs to the same project, but (per spec D2) may hold tasks owned by
+        // an entirely different module than the sprint being completed - that's fine, since the
+        // module-ownership gate lives on task assignment, not sprint-to-sprint moves.
+        var incomplete = MakeTask(TodoStatusId);
+        var (handler, sprint, targetSprint, _, taskRepo, _, _) = Build(new List<WorkTask> { incomplete }, targetSprintProjectId: ProjectId);
+
+        var result = await handler.Handle(new CompleteSprintCommand(SprintId, "sprint", TargetSprintId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TargetSprintId, incomplete.SprintId);
+        Assert.Equal(ProjectId, targetSprint.ProjectId);
+    }
+
+    [Fact]
+    public async Task Handle_Complete_NotifiesAudience()
+    {
+        var (handler, _, _, _, _, notifications, _) = Build(new List<WorkTask> { MakeTask(DoneStatusId) }, includeAudienceMember: true);
 
         var result = await handler.Handle(new CompleteSprintCommand(SprintId, "backlog", null), CancellationToken.None);
 
@@ -200,8 +227,22 @@ public class CompleteSprintCommandHandlerTests
         notifications.Verify(
             x => x.SendTemplatedAsync(
                 TenantId, MemberUserId, "work_sprint_completed",
-                It.Is<IReadOnlyDictionary<string, string>>(p => p["sprintName"] == "S1" && p["objectiveName"] == "Obj"),
+                It.Is<IReadOnlyDictionary<string, string>>(p => p["sprintName"] == "S1" && p["objectiveName"] == "Proj"),
                 "sprint", SprintId, It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_Complete_WritesCompletedLog()
+    {
+        var incomplete = MakeTask(TodoStatusId);
+        var (handler, _, _, _, _, _, logs) = Build(new List<WorkTask> { incomplete });
+
+        await handler.Handle(new CompleteSprintCommand(SprintId, "backlog", null), CancellationToken.None);
+
+        logs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l =>
+            l.Action == SprintActivityActions.Completed && l.FromStatus == SprintStatuses.Active && l.ToStatus == SprintStatuses.Complete
+            && l.DetailsJson != null && l.DetailsJson.Contains(incomplete.Id.ToString())),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

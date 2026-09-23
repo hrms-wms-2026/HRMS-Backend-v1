@@ -3,10 +3,9 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
-using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Sprints.Commands.StartSprint;
@@ -17,21 +16,21 @@ public class StartSprintCommandHandler : IRequestHandler<StartSprintCommand, Res
 {
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
-    private readonly IObjectiveRepository _objectives;
     private readonly ISprintRepository _sprints;
+    private readonly ISprintAccessService _access;
+    private readonly ISprintActivityLogRepository _logs;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IMilestoneMembershipCoordinator _membership;
 
     public StartSprintCommandHandler(
-        ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        ISprintRepository sprints, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
+        ICurrentUser currentUser, ICallerIdentityResolver identity,
+        ISprintRepository sprints, ISprintAccessService access, ISprintActivityLogRepository logs, IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
-        _objectives = objectives;
         _sprints = sprints;
+        _access = access;
+        _logs = logs;
         _unitOfWork = unitOfWork;
-        _membership = membership;
     }
 
     public async Task<Result<SprintResponse>> Handle(StartSprintCommand request, CancellationToken ct)
@@ -51,12 +50,8 @@ public class StartSprintCommandHandler : IRequestHandler<StartSprintCommand, Res
         if (sprint is null)
             return Result<SprintResponse>.NotFound("Sprint not found.");
 
-        var objective = await _objectives.GetByIdForTenantAsync(tenantId, sprint.ObjectiveId, ct);
-        if (objective is null)
-            return Result<SprintResponse>.NotFound("Objective not found.");
-
-        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
-            return Result<SprintResponse>.Forbidden("Only this milestone's owner can start sprints.");
+        if (!await _access.CanManageAsync(tenantId, sprint, _currentUser.UserId, callerEmployeeId.Value, ct))
+            return Result<SprintResponse>.Forbidden("Only the sprint's creator or an owner of one of its tasks' modules can start this sprint.");
 
         if (sprint.Status != SprintStatuses.Draft)
             return Result<SprintResponse>.Conflict("Only a Draft sprint can be started.");
@@ -68,6 +63,11 @@ public class StartSprintCommandHandler : IRequestHandler<StartSprintCommand, Res
             if (request.Goal is not null) sprint.Goal = request.Goal.Trim();
             sprint.Status = SprintStatuses.Active;
             sprint.UpdatedAt = DateTimeOffset.UtcNow;
+
+            await _logs.AddAsync(SprintActivityLogFactory.Create(
+                tenantId, sprint.Id, callerEmployeeId.Value, SprintActivityActions.Started,
+                SprintStatuses.Draft, SprintStatuses.Active,
+                new { startDate = request.StartDate, endDate = request.EndDate }), innerCt);
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
