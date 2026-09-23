@@ -13,6 +13,9 @@ public interface ISprintRepository
     /// <summary>Active sprints for one Objective - what non-owner members see in Backlog (spec permissions table).</summary>
     Task<IReadOnlyList<Sprint>> GetActiveByObjectiveIdAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
 
+    /// <summary>Sprints holding at least one task of this Module (spec §3.3 - the Tree tab's leaf expansion).</summary>
+    Task<IReadOnlyList<Sprint>> GetContainingObjectiveTasksAsync(Guid tenantId, Guid objectiveId, bool activeOnly, CancellationToken ct = default);
+
     /// <summary>Tenant-unscoped, for SprintLifecycleJob's periodic sweep across every tenant.</summary>
     Task<IReadOnlyList<Sprint>> GetByStatusAsync(string status, CancellationToken ct = default);
 

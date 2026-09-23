@@ -892,7 +892,7 @@ git commit -m "Add SprintTaskAssignmentService enforcing owner-only, one-sprint 
 - `ISprintRepository.GetContainingObjectiveTasksAsync(Guid tenantId, Guid objectiveId, bool activeOnly, CancellationToken ct)` — sprints having ≥1 task with `ObjectiveId == objectiveId`.
 - `ISprintRepository.GetByProjectAsync` now filters `s.ProjectId == projectId` directly (no Objective join).
 
-- [ ] **Step 1: Update the response + view model**
+- [x] **Step 1: Update the response + view model**
 
 ```csharp
 // SprintResponse.cs
@@ -924,7 +924,7 @@ public static class SprintViewModelMapper
 
 In each **command** handler (Create/Edit/Start/Complete/Achieve) replace the `new SprintResponse(sprint.Id, sprint.ObjectiveId, ...)` expression with `SprintResponse.From(sprint, canManage: true)` (the caller just passed the manage gate). Leave their gates untouched in this task.
 
-- [ ] **Step 2: Repository methods**
+- [x] **Step 2: Repository methods**
 
 `ISprintRepository` — add:
 ```csharp
@@ -952,7 +952,7 @@ In each **command** handler (Create/Edit/Start/Complete/Achieve) replace the `ne
 ```
 > Check the DbSet name for `WorkTask` in `ApplicationDbContext.cs` (`grep -n "DbSet<WorkTask>" src/ONEVO.Infrastructure/Persistence/ApplicationDbContext.cs`) and use it. Also check whether `WorkTask` rows are soft-deleted via `IsDeleted`; if a global query filter does not already exclude them, add `&& !t.IsDeleted`.
 
-- [ ] **Step 3: Write failing query tests**
+- [x] **Step 3: Write failing query tests**
 
 Rewrite `GetProjectSprintsQueryHandlerTests.cs` around the new constructor (Step 4 below). Required cases:
 1. `projects:read` caller → all project sprints, `CanManage` from `GetManageableSprintIdsAsync`.
@@ -985,7 +985,7 @@ Example for case 2:
 
 Rewrite `GetObjectiveSprintsQueryHandlerTests.cs`: keep the existing access-check cases (they still walk ancestors for module access), and change the data assertion so the handler calls `GetContainingObjectiveTasksAsync(tenantId, objectiveId, activeOnly)` and returns `CanManage` from `GetManageableSprintIdsAsync(tenantId, objective.ProjectId, …)`.
 
-- [ ] **Step 4: Implement the query handlers**
+- [x] **Step 4: Implement the query handlers**
 
 `GetProjectSprintsQueryHandler`: add `ISprintAccessService _access` to the constructor. Replace the `accessibleObjectiveIds` block and the projection with:
 ```csharp
@@ -1009,12 +1009,12 @@ Rewrite `GetObjectiveSprintsQueryHandlerTests.cs`: keep the existing access-chec
             sprints.Select(s => SprintResponse.From(s, manageable.Contains(s.Id))).ToList());
 ```
 
-- [ ] **Step 5: Run the sprint test folder — PASS**
+- [x] **Step 5: Run the sprint test folder — PASS**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~WorkManagement.Sprints"`
 Fix any other test fixture that constructed `SprintResponse` positionally (switch to `SprintResponse.From`). Also `grep -rn "SprintViewModel(" tests src` and fix.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Sprints src/ONEVO.Api/Contracts/WorkManagement/Sprints/SprintContracts.cs src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfSprintRepository.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Sprints

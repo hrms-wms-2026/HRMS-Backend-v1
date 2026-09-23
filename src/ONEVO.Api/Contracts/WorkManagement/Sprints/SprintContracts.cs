@@ -10,11 +10,11 @@ public sealed record StartSprintRequest(DateOnly StartDate, DateOnly EndDate, st
 public sealed record CompleteSprintRequest(string Disposition, Guid? TargetSprintId);
 
 public sealed record SprintViewModel(
-    Guid Id, Guid ObjectiveId, string Name, string? Goal, DateOnly? StartDate, DateOnly? EndDate,
-    string Status, DateTimeOffset? CompletedAt, DateTimeOffset? AchievedAt);
+    Guid Id, Guid ProjectId, string Name, string? Goal, DateOnly? StartDate, DateOnly? EndDate,
+    string Status, DateTimeOffset? CompletedAt, DateTimeOffset? AchievedAt, bool CanManage);
 
 public static class SprintViewModelMapper
 {
     public static SprintViewModel ToViewModel(this Application.Features.WorkManagement.Sprints.DTOs.Responses.SprintResponse dto) =>
-        new(dto.Id, dto.ObjectiveId, dto.Name, dto.Goal, dto.StartDate, dto.EndDate, dto.Status, dto.CompletedAt, dto.AchievedAt);
+        new(dto.Id, dto.ProjectId, dto.Name, dto.Goal, dto.StartDate, dto.EndDate, dto.Status, dto.CompletedAt, dto.AchievedAt, dto.CanManage);
 }

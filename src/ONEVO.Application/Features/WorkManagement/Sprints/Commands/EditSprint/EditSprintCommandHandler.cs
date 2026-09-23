@@ -76,9 +76,7 @@ public class EditSprintCommandHandler : IRequestHandler<EditSprintCommand, Resul
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
-            return Result<SprintResponse>.Success(new SprintResponse(
-                sprint.Id, sprint.ObjectiveId, sprint.Name, sprint.Goal, sprint.StartDate, sprint.EndDate, sprint.Status,
-                sprint.CompletedAt, sprint.AchievedAt));
+            return Result<SprintResponse>.Success(SprintResponse.From(sprint, canManage: true));
         }, ct);
     }
 }
