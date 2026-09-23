@@ -40,7 +40,7 @@ public class CreateTaskCommandHandlerTests
     private (CreateTaskCommandHandler Handler, Mock<IWorkTaskRepository> Tasks, Mock<ISprintRepository> Sprints) BuildHandler(
         Objective objective, decimal existingAllocationSum, string sprintStatus = SprintStatuses.Active,
         Guid? callerEmployeeId = null, bool? callerIsEffectiveManager = null,
-        bool categoryExists = true, Guid? categoryProjectId = null,
+        bool categoryExists = true, Guid? categoryProjectId = null, Guid? sprintProjectId = null,
         Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null,
         Mock<ITaskAssetLinker>? assetLinker = null, IReadOnlyList<TaskStatusEntity>? template = null)
     {
@@ -78,7 +78,7 @@ public class CreateTaskCommandHandlerTests
         sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sprint
             {
-                Id = SprintId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId,
+                Id = SprintId, TenantId = TenantId, ProjectId = sprintProjectId ?? ProjectId, ObjectiveId = Guid.NewGuid(),
                 Name = "Sprint 1", Status = sprintStatus, CreatedAt = DateTimeOffset.UtcNow
             });
 
@@ -222,7 +222,7 @@ public class CreateTaskCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_AchievedSprint_ReturnsConflict()
+    public async Task Handle_AchievedSprint_ReturnsNotFound()
     {
         var (handler, tasks, _) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m, sprintStatus: SprintStatuses.Achieved);
         var command = new CreateTaskCommand(ObjectiveId, "Title", null, CategoryId, WorkTaskPriorities.Medium, null, null, null, SprintId);
@@ -230,7 +230,35 @@ public class CreateTaskCommandHandlerTests
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(409, result.StatusCode);
+        Assert.Equal(404, result.StatusCode);
+        tasks.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_SprintInSameProjectButOtherModule_Accepted()
+    {
+        // Sprints are project-level now: a Draft/Active sprint belonging to a different module in the
+        // same project is a valid target (only sprint.ObjectiveId used to gate this).
+        var (handler, tasks, _) = BuildHandler(Owned(allocatedHours: 100m), existingAllocationSum: 40m, sprintStatus: SprintStatuses.Draft);
+        var command = new CreateTaskCommand(ObjectiveId, "Title", null, CategoryId, WorkTaskPriorities.Medium, null, null, null, SprintId);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        tasks.Verify(x => x.AddAsync(It.Is<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>(t => t.SprintId == SprintId), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SprintInDifferentProject_ReturnsNotFound()
+    {
+        var (handler, tasks, _) = BuildHandler(
+            Owned(allocatedHours: 100m), existingAllocationSum: 40m, sprintProjectId: Guid.NewGuid());
+        var command = new CreateTaskCommand(ObjectiveId, "Title", null, CategoryId, WorkTaskPriorities.Medium, null, null, null, SprintId);
+
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
         tasks.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.Tasks.Entities.WorkTask>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 

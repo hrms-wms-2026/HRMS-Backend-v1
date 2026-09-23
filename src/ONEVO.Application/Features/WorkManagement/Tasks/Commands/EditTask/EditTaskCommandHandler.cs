@@ -8,6 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
@@ -25,6 +26,7 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
     private readonly ISprintRepository _sprints;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICallerIdentityResolver _identity;
+    private readonly ISprintActivityLogRepository _sprintLogs;
     private readonly ITaskEditLogRepository _editLogs;
     private readonly ITaskPercentageLogRepository _percentageLogs;
     private readonly ICalendarEventRepository _calendarEvents;
@@ -35,7 +37,7 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
     public EditTaskCommandHandler(
         ICurrentUser currentUser, IWorkTaskRepository tasks, IObjectiveRepository objectives,
         IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork, ISprintRepository sprints,
-        ICallerIdentityResolver identity, ITaskEditLogRepository editLogs, ITaskPercentageLogRepository percentageLogs,
+        ICallerIdentityResolver identity, ISprintActivityLogRepository sprintLogs, ITaskEditLogRepository editLogs, ITaskPercentageLogRepository percentageLogs,
         ICalendarEventRepository calendarEvents, IMilestoneMembershipCoordinator membership,
         ITaskAssignmentRepository assignments, ITaskAssetLinker assetLinker)
     {
@@ -46,6 +48,7 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         _unitOfWork = unitOfWork;
         _sprints = sprints;
         _identity = identity;
+        _sprintLogs = sprintLogs;
         _editLogs = editLogs;
         _percentageLogs = percentageLogs;
         _calendarEvents = calendarEvents;
@@ -89,13 +92,14 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
         // sprint" here would silently kick every edited task out of its sprint. Only an explicit value
         // moves the task; there is no way to unassign back to the backlog through this field yet.
         Sprint? targetSprint = null;
+        var previousSprintId = task.SprintId;
         if (request.SprintId.HasValue && request.SprintId.Value != task.SprintId)
         {
             targetSprint = await _sprints.GetByIdForTenantAsync(tenantId, request.SprintId.Value, ct);
-            if (targetSprint is null || targetSprint.ObjectiveId != task.ObjectiveId)
-                return Result<WorkTaskResponse>.Conflict("Target sprint must belong to the same module.");
-            if (targetSprint.Status == SprintStatuses.Achieved)
-                return Result<WorkTaskResponse>.Forbidden("Cannot move a task into an achieved sprint.");
+            if (targetSprint is null || targetSprint.ProjectId != objective.ProjectId)
+                return Result<WorkTaskResponse>.Conflict("Target sprint must belong to the same project.");
+            if (targetSprint.Status is not (SprintStatuses.Draft or SprintStatuses.Active))
+                return Result<WorkTaskResponse>.Forbidden("Tasks can only be moved into a Draft or Active sprint.");
         }
 
         // R3: a member of an active event cannot have its due date moved outside that event's window.
@@ -153,7 +157,14 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
             task.EstimatedHours = request.EstimatedHours;
             task.StoryPoints = request.StoryPoints;
             if (targetSprint is not null)
+            {
                 task.SprintId = targetSprint.Id;
+                await _sprintLogs.AddAsync(SprintActivityLogFactory.Create(tenantId, targetSprint.Id, callerEmployeeId.Value,
+                    SprintActivityActions.TasksAdded, details: new { taskIds = new[] { task.Id } }), innerCt);
+                if (previousSprintId is not null)
+                    await _sprintLogs.AddAsync(SprintActivityLogFactory.Create(tenantId, previousSprintId.Value, callerEmployeeId.Value,
+                        SprintActivityActions.TasksRemoved, details: new { taskIds = new[] { task.Id } }), innerCt);
+            }
 
             if (request.ProgressPercent.HasValue && request.ProgressPercent.Value != task.ProgressPercent)
             {

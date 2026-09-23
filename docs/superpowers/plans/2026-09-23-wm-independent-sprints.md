@@ -1562,16 +1562,16 @@ Changes:
             return Result<ObjectiveChangeOutcomeResponse>.Failure("Tasks of this milestone are still in an Active sprint - complete that sprint first.");
 ```
 
-- [ ] **Step 1: Update/add failing tests**
+- [x] **Step 1: Update/add failing tests**
   - EditTask: "target sprint in another project → 409"; "target sprint from another module, same project → success and `SprintId` updated"; "target sprint Complete → 403"; "move logs tasks_added on target and tasks_removed on source" (add `Mock<ISprintActivityLogRepository>` to the fixture's constructor call).
   - CreateTask: "sprint in same project but other module → accepted".
   - AchieveObjective: replace the old `GetByObjectiveIdAsync` setups with `AnyActiveContainingObjectiveTasksAsync` returning true → failure, false → proceeds.
 
-- [ ] **Step 2: Run — FAIL**, **Step 3: implement**, **Step 4: Run — PASS**
+- [x] **Step 2: Run — FAIL**, **Step 3: implement**, **Step 4: Run — PASS**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~WorkManagement"`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Commands src/ONEVO.Application/Features/WorkManagement/Objectives/Commands/AchieveObjective src/ONEVO.Application/Features/WorkManagement/Sprints/RepositoryInterfaces/ISprintRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfSprintRepository.cs tests/ONEVO.Tests.Unit
