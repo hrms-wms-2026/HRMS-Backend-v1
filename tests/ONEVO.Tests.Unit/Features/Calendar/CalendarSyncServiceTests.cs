@@ -3,7 +3,6 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
-using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Infrastructure.Services.Calendar;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,10 +18,9 @@ public sealed class CalendarSyncServiceTests
     private readonly Mock<IExternalCalendarConnectionRepository> _connections = new();
     private readonly Mock<IExternalCalendarEventLinkRepository> _links = new();
     private readonly Mock<ICalendarEventRepository> _events = new();
-    private readonly Mock<ICalendarOAuthTokenExchangeClient> _tokenClient = new();
+    private readonly Mock<ICalendarConnectionTokenProvider> _tokenProvider = new();
     private readonly Mock<IGoogleCalendarClient> _googleClient = new();
     private readonly Mock<IMicrosoftGraphCalendarClient> _msClient = new();
-    private readonly Mock<IPlatformOAuthAppResolver> _appResolver = new();
     private readonly Mock<IEncryptionService> _encryption = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
@@ -36,9 +34,15 @@ public sealed class CalendarSyncServiceTests
     {
         _encryption.Setup(x => x.DecryptBytes(It.IsAny<byte[]>())).Returns("decrypted-token");
         _encryption.Setup(x => x.EncryptBytes(It.IsAny<string>())).Returns<string>(s => System.Text.Encoding.UTF8.GetBytes(s));
+        // Token refresh mechanics (expiry, refresh, reauth-on-failure) are
+        // CalendarConnectionTokenProvider's own concern now - see
+        // CalendarConnectionTokenProviderTests.cs. This default just hands SyncConnectionAsync a
+        // usable token so every other test here can focus on pull/push behavior.
+        _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(It.IsAny<ExternalCalendarConnection>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("decrypted-token");
         return new CalendarSyncService(
-            _connections.Object, _links.Object, _events.Object, _tokenClient.Object,
-            _googleClient.Object, _msClient.Object, _appResolver.Object, _encryption.Object,
+            _connections.Object, _links.Object, _events.Object, _tokenProvider.Object,
+            _googleClient.Object, _msClient.Object, _encryption.Object,
             _unitOfWork.Object, NullLogger<CalendarSyncService>.Instance);
     }
 
@@ -115,21 +119,19 @@ public sealed class CalendarSyncServiceTests
     }
 
     [Fact]
-    public async Task SyncConnectionAsync_TokenRefreshFails_SetsReauthRequiredAndSkipsSync()
+    public async Task SyncConnectionAsync_TokenProviderReturnsNull_SkipsSyncWithoutThrowing()
     {
+        // CalendarConnectionTokenProvider already marks the connection ReauthRequired and saves
+        // before returning null on a refresh failure (see CalendarConnectionTokenProviderTests.cs)
+        // - SyncConnectionAsync's own job here is just to not attempt a sync with no usable token.
         var sut = BuildSut();
-        var connection = MakeConnection(CalendarSyncDirections.PullOnly, expiresAt: DateTimeOffset.UtcNow.AddMinutes(2));
+        var connection = MakeConnection(CalendarSyncDirections.PullOnly);
         _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
-        _appResolver.Setup(x => x.GetActiveCredentialForProviderAsync("google", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces.ResolvedPlatformOAuthAppCredential("google", "client", "secret", null, 1));
-        _appResolver.Setup(x => x.GetActiveAppForProviderAsync("google", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces.ResolvedPlatformOAuthApp("google", "client", "https://accounts.google.com/o/oauth2/v2/auth", "https://oauth2.googleapis.com/token", ["scope"]));
-        _tokenClient.Setup(x => x.RefreshTokenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("invalid_grant"));
+        _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "google", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
 
         await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
 
-        _connections.Verify(x => x.Update(It.Is<ExternalCalendarConnection>(c => c.Status == ExternalCalendarConnectionStatuses.ReauthRequired)), Times.Once);
         _googleClient.Verify(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
