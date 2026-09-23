@@ -1586,7 +1586,7 @@ git commit -m "Tasks may join any Draft/Active sprint in their project; module a
 - Modify: `src/ONEVO.Infrastructure/Services/WorkManagement/SprintLifecycleJob.cs` (~lines 50-60 resolve, 114-126 notify)
 - Test: `tests/ONEVO.Tests.Unit/Features/WorkManagement/Sprints/SprintLifecycleJobTests.cs` (only if it exercises the notify path; the pure `ShouldNotifyOverdue` tests need no change)
 
-- [ ] **Step 1:** In `RunOnceAsync` replace the `objectives` / `members` resolutions with:
+- [x] **Step 1:** In `RunOnceAsync` replace the `objectives` / `members` resolutions with:
 ```csharp
         var access = scope.ServiceProvider.GetRequiredService<ISprintAccessService>();
         var projects = scope.ServiceProvider.GetRequiredService<IProjectRepository>();
@@ -1608,9 +1608,9 @@ and replace the block from `var objective = await objectives.GetByIdForTenantAsy
 ```
 Fix `using`s (remove unused Objectives/ProjectMember ones, add `Sprints.Services` + `Projects.RepositoryInterfaces`).
 
-- [ ] **Step 2:** `dotnet build src/ONEVO.Api --configuration Release`; `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~SprintLifecycleJob"` → PASS.
+- [x] **Step 2:** `dotnet build src/ONEVO.Api --configuration Release`; `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~SprintLifecycleJob"` → PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/ONEVO.Infrastructure/Services/WorkManagement/SprintLifecycleJob.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Sprints/SprintLifecycleJobTests.cs
