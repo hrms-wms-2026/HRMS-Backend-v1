@@ -3,7 +3,9 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
+using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Application.Features.Calendar.Commands.DeleteCalendarEvent;
 
@@ -12,6 +14,10 @@ public sealed class DeleteCalendarEventCommandHandler(
     ICalendarEventRepository events,
     ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository employees,
     ICalendarNotificationSender notifications,
+    ICalendarEventMeetingRepository meetings,
+    IExternalCalendarConnectionRepository connections,
+    ICalendarConnectionTokenProvider tokenProvider,
+    ITeamsMeetingClient teamsClient,
     IUnitOfWork unitOfWork)
     : IRequestHandler<DeleteCalendarEventCommand, Result>
 {
@@ -27,6 +33,21 @@ public sealed class DeleteCalendarEventCommandHandler(
 
         if (existing.CreatedById != currentUser.UserId)
             return Result.Forbidden("Only the event creator can delete this event.");
+
+        // Cancel any auto-generated Teams meeting before the event itself is removed, so a
+        // failure here still lets the pending SaveChangesAsync below roll the whole delete back
+        // rather than leaving an orphaned remote meeting with no local event.
+        var meeting = await meetings.GetTrackedByCalendarEventAsync(tenantId, existing.Id, ct);
+        if (meeting is not null && meeting.Status == CalendarEventMeetingStatuses.Active)
+        {
+            var connection = await connections.GetByIdForTenantAsync(tenantId, meeting.ExternalCalendarConnectionId, ct);
+            if (connection is not null)
+            {
+                var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, "microsoft", ct);
+                if (accessToken is not null)
+                    await teamsClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, ct);
+            }
+        }
 
         var participantsByEvent = await events.GetParticipantsForEventsAsync(tenantId, [existing.Id], ct);
         var participantEmployeeIds = participantsByEvent.TryGetValue(existing.Id, out var p) ? p.Select(x => x.EmployeeId).ToList() : [];

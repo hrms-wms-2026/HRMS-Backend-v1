@@ -3,6 +3,7 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Commands.DeleteCalendarEvent;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -20,6 +21,10 @@ public sealed class DeleteCalendarEventCommandHandlerTests
     private readonly Mock<ICalendarEventRepository> _events = new();
     private readonly Mock<ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository> _employees = new();
     private readonly Mock<ICalendarNotificationSender> _notifications = new();
+    private readonly Mock<ICalendarEventMeetingRepository> _meetings = new();
+    private readonly Mock<IExternalCalendarConnectionRepository> _connections = new();
+    private readonly Mock<ICalendarConnectionTokenProvider> _tokenProvider = new();
+    private readonly Mock<ITeamsMeetingClient> _teamsClient = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
     private DeleteCalendarEventCommandHandler BuildSut()
@@ -31,7 +36,11 @@ public sealed class DeleteCalendarEventCommandHandlerTests
             .ReturnsAsync(new Employee { Id = Guid.NewGuid(), TenantId = TenantId, UserId = UserId, FirstName = "Ada", LastName = "Owner" });
         _events.Setup(x => x.GetParticipantsForEventsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<CalendarEventParticipant>>());
-        return new DeleteCalendarEventCommandHandler(_currentUser.Object, _events.Object, _employees.Object, _notifications.Object, _unitOfWork.Object);
+        _meetings.Setup(x => x.GetTrackedByCalendarEventAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CalendarEventMeeting?)null);
+        return new DeleteCalendarEventCommandHandler(
+            _currentUser.Object, _events.Object, _employees.Object, _notifications.Object,
+            _meetings.Object, _connections.Object, _tokenProvider.Object, _teamsClient.Object, _unitOfWork.Object);
     }
 
     [Fact]
@@ -73,6 +82,45 @@ public sealed class DeleteCalendarEventCommandHandlerTests
         Assert.True(result.IsSuccess);
         _events.Verify(x => x.Remove(existing), Times.Once);
         _unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_EventHasActiveMeeting_CancelsItRemotelyBeforeDeleting()
+    {
+        var sut = BuildSut();
+        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Event" };
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+        var connection = new ExternalCalendarConnection { Id = Guid.NewGuid() };
+        var meeting = new CalendarEventMeeting
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = EventId,
+            ExternalCalendarConnectionId = connection.Id, ExternalMeetingId = "graph-meeting-1",
+            Status = CalendarEventMeetingStatuses.Active
+        };
+        _meetings.Setup(x => x.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(meeting);
+        _connections.Setup(x => x.GetByIdForTenantAsync(TenantId, connection.Id, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _tokenProvider.Setup(x => x.GetFreshAccessTokenAsync(connection, "microsoft", It.IsAny<CancellationToken>())).ReturnsAsync("access-token");
+
+        var result = await sut.Handle(new DeleteCalendarEventCommand(EventId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _teamsClient.Verify(x => x.CancelMeetingAsync("access-token", "graph-meeting-1", It.IsAny<CancellationToken>()), Times.Once);
+        _events.Verify(x => x.Remove(existing), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_NoActiveMeeting_NeverCallsTeamsClient()
+    {
+        var sut = BuildSut();
+        var existing = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Event" };
+        _events.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+
+        var result = await sut.Handle(new DeleteCalendarEventCommand(EventId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _teamsClient.Verify(x => x.CancelMeetingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
