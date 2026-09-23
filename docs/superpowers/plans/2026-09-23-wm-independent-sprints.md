@@ -2515,10 +2515,10 @@ Changes:
 ```
 - Delete `expanded`, `moduleTasks`, `moduleCheckState`, `toggleTask`, `toggleExpand` and the `TaskApiService` injection from the modal (the picker owns them). Keep the spec's `TaskApiService` provider — the picker needs it.
 
-- [ ] **Step 1:** Run the existing spec first to confirm green baseline: `npx vitest run src/app/modules/work/ui/calendar-event-modal`
-- [ ] **Step 2:** Refactor as above.
-- [ ] **Step 3:** Re-run — still 4/4 green.
-- [ ] **Step 4: Commit**
+- [x] **Step 1:** Run the existing spec first to confirm green baseline: `npx vitest run src/app/modules/work/ui/calendar-event-modal`
+- [x] **Step 2:** Refactor as above.
+- [x] **Step 3:** Re-run — still 4/4 green.
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/app/modules/work/ui/calendar-event-modal
