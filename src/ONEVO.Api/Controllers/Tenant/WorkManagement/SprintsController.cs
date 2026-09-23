@@ -24,11 +24,11 @@ public class SprintsController : ControllerBase
 
     public SprintsController(IMediator mediator) => _mediator = mediator;
 
-    [HttpPost("objectives/{objectiveId:guid}/sprints")]
+    [HttpPost("projects/{projectId:guid}/sprints")]
     [RequirePermission("projects:access")]
-    public async Task<IActionResult> Create(Guid objectiveId, [FromBody] CreateSprintRequest request, CancellationToken ct)
+    public async Task<IActionResult> Create(Guid projectId, [FromBody] CreateSprintRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new CreateSprintCommand(objectiveId, request.Name, request.Goal), ct);
+        var result = await _mediator.Send(new CreateSprintCommand(projectId, request.Name, request.Goal, request.TaskIds ?? Array.Empty<Guid>()), ct);
 
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())

@@ -1,6 +1,6 @@
 namespace ONEVO.Api.Contracts.WorkManagement.Sprints;
 
-public sealed record CreateSprintRequest(string Name, string? Goal);
+public sealed record CreateSprintRequest(string Name, string? Goal, IReadOnlyList<Guid>? TaskIds);
 public sealed record EditSprintRequest(string Name, string? Goal, DateOnly? StartDate, DateOnly? EndDate);
 
 // Added ahead of the tasks that wire them up (StartSprintCommand / CompleteSprintCommand rework) -

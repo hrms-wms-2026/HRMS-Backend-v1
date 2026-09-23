@@ -1037,7 +1037,7 @@ git commit -m "Sprint response carries ProjectId + CanManage; project members se
 - Consumes: `ISprintTaskAssignmentService` (A3), `ISprintActivityLogRepository` (A1), `IProjectRepository.GetByIdForTenantAsync`, `IProjectMemberRepository.HasActiveMembershipAsync`, `IPermissionResolver.ResolveAsync`.
 - Produces: `CreateSprintCommand(Guid ProjectId, string Name, string? Goal, IReadOnlyList<Guid> TaskIds)`; `CreateSprintRequest(string Name, string? Goal, IReadOnlyList<Guid>? TaskIds)`; route `POST api/v1/work/projects/{projectId}/sprints`.
 
-- [ ] **Step 1: Write the failing tests** (replace the file's cases)
+- [x] **Step 1: Write the failing tests** (replace the file's cases)
 
 Required cases (use the StartSprint test file's fixture style):
 1. Active project member, no tasks → 201-equivalent success, sprint `ProjectId` set, `Status == Draft`, `CreatedById == UserId`, exactly one `created` log added (`_logs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l => l.Action == SprintActivityActions.Created), ...), Times.Once)`), assignment `PrepareAsync` called with empty lists.
@@ -1066,9 +1066,9 @@ Required cases (use the StartSprint test file's fixture style):
     }
 ```
 
-- [ ] **Step 2: Run — FAIL**
+- [x] **Step 2: Run — FAIL**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```csharp
 // CreateSprintCommand.cs
@@ -1174,11 +1174,11 @@ Controller — replace the `Create` action:
     }
 ```
 
-- [ ] **Step 4: Run — PASS**
+- [x] **Step 4: Run — PASS**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~CreateSprintCommandHandlerTests"` and then `dotnet build src/ONEVO.Api --configuration Release`. If any integration/controller test posts to `objectives/{id}/sprints`, update it to `projects/{projectId}/sprints` (`grep -rn "objectives/.*sprints" tests`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Sprints/Commands/CreateSprint src/ONEVO.Api/Contracts/WorkManagement/Sprints/SprintContracts.cs src/ONEVO.Api/Controllers/Tenant/WorkManagement/SprintsController.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Sprints/CreateSprintCommandHandlerTests.cs
