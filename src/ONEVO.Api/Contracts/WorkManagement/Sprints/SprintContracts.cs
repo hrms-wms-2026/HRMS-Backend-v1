@@ -8,6 +8,7 @@ public sealed record EditSprintRequest(string Name, string? Goal, DateOnly? Star
 // actions that consume these are built in later tasks of this plan.
 public sealed record StartSprintRequest(DateOnly StartDate, DateOnly EndDate, string? Goal);
 public sealed record CompleteSprintRequest(string Disposition, Guid? TargetSprintId);
+public sealed record SetSprintTasksRequest(IReadOnlyList<Guid>? AddTaskIds, IReadOnlyList<Guid>? RemoveTaskIds);
 
 public sealed record SprintViewModel(
     Guid Id, Guid ProjectId, string Name, string? Goal, DateOnly? StartDate, DateOnly? EndDate,

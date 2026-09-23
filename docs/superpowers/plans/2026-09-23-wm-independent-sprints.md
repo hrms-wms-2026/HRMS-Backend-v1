@@ -1199,7 +1199,7 @@ git commit -m "Create sprints at project level with optional owned tasks"
 
 Rule: no `CanManage` gate here — per D2 the per-task module-ownership check in `PrepareAsync` IS the gate (a module owner may put their tasks into anyone's sprint). The returned `CanManage` is computed with `ISprintAccessService.CanManageAsync` **after** the change.
 
-- [ ] **Step 1: Failing tests** — cases: (1) sprint not found → 404; (2) prepare forbidden → 403, no `SaveChangesAsync`; (3) adds + removes → `Apply` once, one `tasks_added` log and one `tasks_removed` log; (4) empty change set → success, no logs, no save.
+- [x] **Step 1: Failing tests** — cases: (1) sprint not found → 404; (2) prepare forbidden → 403, no `SaveChangesAsync`; (3) adds + removes → `Apply` once, one `tasks_added` log and one `tasks_removed` log; (4) empty change set → success, no logs, no save.
 
 ```csharp
     [Fact]
@@ -1220,9 +1220,9 @@ Rule: no `CanManage` gate here — per D2 the per-task module-ownership check in
     }
 ```
 
-- [ ] **Step 2: Run — FAIL**
+- [x] **Step 2: Run — FAIL**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```csharp
 // SetSprintTasksCommand.cs
@@ -1321,9 +1321,9 @@ Controller:
     }
 ```
 
-- [ ] **Step 4: Run — PASS**; `dotnet build src/ONEVO.Api --configuration Release`.
+- [x] **Step 4: Run — PASS**; `dotnet build src/ONEVO.Api --configuration Release`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Sprints/Commands/SetSprintTasks src/ONEVO.Api/Contracts/WorkManagement/Sprints/SprintContracts.cs src/ONEVO.Api/Controllers/Tenant/WorkManagement/SprintsController.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Sprints/SetSprintTasksCommandHandlerTests.cs

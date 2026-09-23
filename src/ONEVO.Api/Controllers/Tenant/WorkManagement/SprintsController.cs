@@ -8,6 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Sprints.Commands.AchieveSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.CompleteSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.CreateSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.EditSprint;
+using ONEVO.Application.Features.WorkManagement.Sprints.Commands.SetSprintTasks;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.StartSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetObjectiveSprints;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetProjectSprints;
@@ -73,6 +74,17 @@ public class SprintsController : ControllerBase
     public async Task<IActionResult> Achieve(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new AchieveSprintCommand(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPut("sprints/{id:guid}/tasks")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> SetTasks(Guid id, [FromBody] SetSprintTasksRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new SetSprintTasksCommand(id, request.AddTaskIds ?? Array.Empty<Guid>(), request.RemoveTaskIds ?? Array.Empty<Guid>()), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
