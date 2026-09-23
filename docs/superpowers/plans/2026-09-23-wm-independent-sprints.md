@@ -2408,9 +2408,9 @@ git commit -m "Backlog: any member creates sprints; move owned tasks to any Draf
 - Modify: `state/project-detail.store.ts` (`loadTasksForSprint`, ~line 326)
 - Test: `state/project-detail.store.spec.ts` (find the `loadTasksForSprint` describe)
 
-- [ ] **Step 1: Failing test** — sprint node under leaf `o1`; `getBySprintId` returns tasks for `o1` and `o2`; after `loadTasksForSprint`, the node's children contain only the `o1` task.
+- [x] **Step 1: Failing test** — sprint node under leaf `o1`; `getBySprintId` returns tasks for `o1` and `o2`; after `loadTasksForSprint`, the node's children contain only the `o1` task.
 
-- [ ] **Step 2: Implement** — in `loadTasksForSprint` replace `const children = tasks.map(` with:
+- [x] **Step 2: Implement** — in `loadTasksForSprint` replace `const children = tasks.map(` with:
 ```ts
         // Sprints are project-level (may hold tasks from several modules); under a module's tree
         // node only that module's tasks belong.
@@ -2419,9 +2419,9 @@ git commit -m "Backlog: any member creates sprints; move owned tasks to any Draf
           .map((task) =>
 ```
 
-- [ ] **Step 3: Run — PASS**: `npx vitest run src/app/modules/work/state/project-detail.store.spec.ts`
+- [x] **Step 3: Run — PASS**: `npx vitest run src/app/modules/work/state/project-detail.store.spec.ts`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/app/modules/work/state/project-detail.store.ts src/app/modules/work/state/project-detail.store.spec.ts
