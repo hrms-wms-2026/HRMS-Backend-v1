@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using ONEVO.Infrastructure.ExternalServices.Calendar;
 using Xunit;
 
@@ -30,7 +31,7 @@ public sealed class MicrosoftGraphMeetingClientTests
                 })
             };
         });
-        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler));
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
 
         var result = await client.CreateMeetingAsync(
             "access-token", "Sprint planning", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None);
@@ -49,7 +50,7 @@ public sealed class MicrosoftGraphMeetingClientTests
             Assert.Equal("https://graph.microsoft.com/v1.0/me/onlineMeetings/graph-meeting-1", request.RequestUri!.ToString());
             return new HttpResponseMessage(HttpStatusCode.NoContent);
         });
-        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler));
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
 
         await client.CancelMeetingAsync("access-token", "graph-meeting-1", CancellationToken.None);
     }
@@ -62,7 +63,7 @@ public sealed class MicrosoftGraphMeetingClientTests
             Assert.Equal("https://graph.microsoft.com/v1.0/me/onlineMeetings/graph-meeting-1/attendanceReports", request.RequestUri!.ToString());
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { value = Array.Empty<object>() }) };
         });
-        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler));
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
 
         var result = await client.GetAttendanceAsync("access-token", "graph-meeting-1", CancellationToken.None);
 
@@ -105,7 +106,7 @@ public sealed class MicrosoftGraphMeetingClientTests
                 })
             };
         });
-        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler));
+        var client = new MicrosoftGraphMeetingClient(new HttpClient(handler), NullLogger<MicrosoftGraphMeetingClient>.Instance);
 
         var result = await client.GetAttendanceAsync("access-token", "graph-meeting-1", CancellationToken.None);
 

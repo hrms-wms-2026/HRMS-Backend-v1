@@ -1,11 +1,12 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
 
 namespace ONEVO.Infrastructure.ExternalServices.Calendar;
 
-public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient) : ITeamsMeetingClient
+public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient, ILogger<MicrosoftGraphMeetingClient> logger) : ITeamsMeetingClient
 {
     public async Task<TeamsMeetingDto> CreateMeetingAsync(
         string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
@@ -19,7 +20,7 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient) : ITeamsM
             subject
         });
         using var response = await httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessOrLogAsync(response, "create online meeting", ct);
         using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
         var root = doc.RootElement;
@@ -43,7 +44,7 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient) : ITeamsM
             HttpMethod.Delete, $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         using var response = await httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessOrLogAsync(response, "cancel online meeting", ct);
     }
 
     public async Task<IReadOnlyList<TeamsAttendanceRecordDto>> GetAttendanceAsync(
@@ -56,7 +57,7 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient) : ITeamsM
             HttpMethod.Get, $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}/attendanceReports");
         reportsRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         using var reportsResponse = await httpClient.SendAsync(reportsRequest, ct);
-        reportsResponse.EnsureSuccessStatusCode();
+        await EnsureSuccessOrLogAsync(reportsResponse, "list attendance reports", ct);
         using var reportsStream = await reportsResponse.Content.ReadAsStreamAsync(ct);
         using var reportsDoc = await JsonDocument.ParseAsync(reportsStream, cancellationToken: ct);
         var reports = reportsDoc.RootElement.GetProperty("value").EnumerateArray().ToList();
@@ -69,7 +70,7 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient) : ITeamsM
             $"https://graph.microsoft.com/v1.0/me/onlineMeetings/{externalMeetingId}/attendanceReports/{reportId}/attendanceRecords");
         recordsRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         using var recordsResponse = await httpClient.SendAsync(recordsRequest, ct);
-        recordsResponse.EnsureSuccessStatusCode();
+        await EnsureSuccessOrLogAsync(recordsResponse, "list attendance records", ct);
         using var recordsStream = await recordsResponse.Content.ReadAsStreamAsync(ct);
         using var recordsDoc = await JsonDocument.ParseAsync(recordsStream, cancellationToken: ct);
 
@@ -89,5 +90,21 @@ public sealed class MicrosoftGraphMeetingClient(HttpClient httpClient) : ITeamsM
             }
         }
         return result;
+    }
+
+    /// <summary>EnsureSuccessStatusCode() alone throws with no detail beyond the status code -
+    /// Graph's actual error (invalid request field, missing permission, licensing issue) only
+    /// ever shows up in the response body, which is otherwise lost. Logs it before throwing, same
+    /// pattern as CalendarOAuthTokenExchangeClient.PostTokenRequestAsync.</summary>
+    private async Task EnsureSuccessOrLogAsync(HttpResponseMessage response, string operation, CancellationToken ct)
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(ct);
+            logger.LogWarning(
+                "Microsoft Graph {Operation} returned {StatusCode}: {ErrorBody}",
+                operation, (int)response.StatusCode, errorBody);
+        }
+        response.EnsureSuccessStatusCode();
     }
 }
