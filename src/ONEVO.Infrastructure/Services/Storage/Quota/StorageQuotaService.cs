@@ -238,6 +238,18 @@ public sealed class StorageQuotaService : IStorageQuotaService
         return Result.Success();
     }
 
+    public async Task<Result> ReleaseUsedStorageAsync(Guid tenantId, long bytes, CancellationToken ct = default)
+    {
+        if (tenantId == Guid.Empty)
+            return Result.Failure(StorageQuotaErrorCodes.TenantContextMissing);
+
+        if (bytes <= 0)
+            return Result.Success();
+
+        await _storageStats.ReleaseUsedBytesAsync(tenantId, bytes, ct);
+        return Result.Success();
+    }
+
     private static IReadOnlyList<string> ParseSelectedModuleKeys(string selectedModulesJson)
     {
         if (string.IsNullOrWhiteSpace(selectedModulesJson))

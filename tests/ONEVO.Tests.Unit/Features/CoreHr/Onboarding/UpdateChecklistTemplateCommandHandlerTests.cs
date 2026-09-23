@@ -3,7 +3,6 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.UpdateChecklistTemplate;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
-using ONEVO.Application.Features.CoreHr.Onboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using Xunit;
@@ -16,7 +15,6 @@ public class UpdateChecklistTemplateCommandHandlerTests
     private readonly Mock<IChecklistTemplateRepository> _templateRepository = new();
     private readonly Mock<IDepartmentRepository> _departmentRepository = new();
     private readonly Mock<IPositionRepository> _positionRepository = new();
-    private readonly Mock<IChecklistTemplateAssigneeResolver> _assigneeResolver = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Guid _tenantId = Guid.NewGuid();
 
@@ -25,7 +23,7 @@ public class UpdateChecklistTemplateCommandHandlerTests
         _currentUser.SetupGet(c => c.TenantId).Returns(_tenantId);
         return new UpdateChecklistTemplateCommandHandler(
             _templateRepository.Object, _departmentRepository.Object, _positionRepository.Object,
-            new ChecklistTemplateTaskInputResolver(_assigneeResolver.Object), _currentUser.Object);
+            new ChecklistTemplateTaskInputResolver(_positionRepository.Object), _currentUser.Object);
     }
 
     [Fact]

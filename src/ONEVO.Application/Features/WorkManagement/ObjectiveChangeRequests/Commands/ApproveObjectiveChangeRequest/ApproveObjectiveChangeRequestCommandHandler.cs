@@ -6,6 +6,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Helpers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
@@ -15,6 +16,10 @@ namespace ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Comm
 
 public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<ApproveObjectiveChangeRequestCommand, Result>
 {
+    // PayloadJson is written camelCase (EditObjectiveCommandHandler.PayloadJsonOptions) going
+    // forward; case-insensitive reads also tolerate any pre-existing PascalCase rows.
+    private static readonly JsonSerializerOptions PayloadJsonReadOptions = new() { PropertyNameCaseInsensitive = true };
+
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
@@ -79,13 +84,40 @@ public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<Appro
                     break;
 
                 case ObjectiveChangeRequestTypes.Edit:
-                    var editPayload = JsonSerializer.Deserialize<EditObjectiveRequestPayload>(changeRequest.PayloadJson!)!;
-                    objective.Title = editPayload.Title;
-                    objective.Description = editPayload.Description;
-                    objective.StartDate = editPayload.StartDate;
-                    objective.EndDate = editPayload.EndDate;
-                    objective.AllocatedHours = editPayload.AllocatedHours;
+                    var requestedEditPayload = JsonSerializer.Deserialize<EditObjectiveRequestPayload>(changeRequest.PayloadJson!, PayloadJsonReadOptions)!;
+                    // The approver may adjust the requested fields before approving - falls back
+                    // to what was originally requested when they approve as-is.
+                    var finalEditPayload = request.ApprovedEdit ?? requestedEditPayload;
+
+                    if (objective.ParentObjectiveId is null)
+                        return Result.Failure("Parent objective not found.", 422);
+
+                    var editParent = await _objectives.GetByIdForTenantAsync(tenantId, objective.ParentObjectiveId.Value, innerCt);
+                    if (editParent is null)
+                        return Result.Failure("Parent objective not found.", 422);
+
+                    if (ObjectiveParentConstraintChecker.Conflicts(editParent, finalEditPayload.StartDate, finalEditPayload.EndDate, finalEditPayload.AllocatedHours))
+                        return Result.Conflict("The edited date range or allocated hours would exceed the parent milestone's.");
+
+                    objective.Title = finalEditPayload.Title.Trim();
+                    objective.Description = finalEditPayload.Description?.Trim();
+                    objective.StartDate = finalEditPayload.StartDate;
+                    objective.EndDate = finalEditPayload.EndDate;
+                    objective.AllocatedHours = finalEditPayload.AllocatedHours;
                     objective.UpdatedAt = now;
+
+                    var editRequester = await _membership.GetActiveAssigneeAsync(tenantId, changeRequest.RequestedById, innerCt);
+                    if (editRequester is not null)
+                    {
+                        await _notifications.SendTemplatedAsync(
+                            tenantId, editRequester.UserId, "work_objective_edit_request_decided",
+                            new Dictionary<string, string>
+                            {
+                                ["decision"] = "approved",
+                                ["objectiveName"] = objective.Title
+                            },
+                            "objective_change_request", changeRequest.Id, innerCt);
+                    }
                     break;
 
                 case ObjectiveChangeRequestTypes.Transfer:
@@ -138,12 +170,18 @@ public class ApproveObjectiveChangeRequestCommandHandler : IRequestHandler<Appro
                     if (approverOwnObjective is null)
                         return Result.Failure("Approver's own milestone could not be resolved.", 422);
 
+                                        var approvedAdditionalHours = request.ApprovedAdditionalHours
+                        ?? extendPayload.RequestedAdditionalHours;
+                    if (approvedAdditionalHours <= 0m)
+                        return Result.Failure("Approved additional hours must be greater than zero.", 400);
+
                     var approverSlack = await _slack.CalculateAsync(tenantId, approverOwnObjective, ct: innerCt);
-                    if (extendPayload.RequestedAdditionalHours > approverSlack)
+                    if (approvedAdditionalHours > approverSlack)
+
                         return Result.Conflict(
                             "You don't have enough allocation yourself to approve this. Request more from your own reporting manager first, then return to approve this request.");
 
-                    objective.AllocatedHours += extendPayload.RequestedAdditionalHours;
+                    objective.AllocatedHours += approvedAdditionalHours;
                     objective.UpdatedAt = now;
 
                     var extendRequester = await _membership.GetActiveAssigneeAsync(tenantId, changeRequest.RequestedById, innerCt);

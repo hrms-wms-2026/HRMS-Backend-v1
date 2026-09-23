@@ -13,7 +13,6 @@ using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.IntegrationCatalog.Entities;
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
-using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.SharedPlatform.TenantIntegrations.Entities;
@@ -96,7 +95,11 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
     private const int SmokeDefaultEmploymentTypeId = 1;   // "full_time" - seeded by LookupDataSeeder
     private const int SmokeDefaultEmploymentStatusId = 1; // "active"    - seeded by LookupDataSeeder
-    private const int SmokeDefaultWorkModeId = 1;          // "on_site"   - seeded by LookupDataSeeder
+
+    // Per-legal-entity WorkMode is resolved by name at employee-seed time (not a fixed id - see
+    // ResolveDefaultWorkModeIdAsync), since WorkModeSeeder seeds independent rows per legal
+    // entity rather than one shared global row.
+    private const string SmokeDefaultWorkModeName = "Onsite";
 
     private static readonly DateOnly SmokeEmployeeHireDate = new(2025, 1, 1);
 
@@ -114,7 +117,8 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
     private static readonly IReadOnlyList<string> HrManagerPermissionCodes =
     [
-        "org:read", "org:manage", "employees:read", "employees:write", "roles:read"
+        "org:read", "org:manage", "employees:read", "employees:write", "roles:read",
+        "calendar:read", "leave:read", "leave:manage", "leave:approve"
     ];
 
     private static readonly IReadOnlyList<string> WorkManagerPermissionCodes =
@@ -153,6 +157,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
             var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
             var encryption = scope.ServiceProvider.GetRequiredService<IEncryptionService>();
+            var workModeSeeder = scope.ServiceProvider.GetRequiredService<IWorkModeSeeder>();
 
             tenantContext.SetAdminMode();
             await SeedAsync(
@@ -161,6 +166,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 passwordHasher,
                 encryption,
                 _configuration,
+                workModeSeeder,
                 cancellationToken);
             _logger.LogInformation(
                 "Development smoke-test tenants seeded: {Slugs}",
@@ -168,8 +174,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Development smoke-test tenant seeder failed. Startup will stop.");
-            throw;
+            _logger.LogError(ex, "Development smoke-test tenant seeder failed. Continuing startup.");
         }
     }
 
@@ -181,6 +186,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         IPasswordHasher passwordHasher,
         IEncryptionService encryption,
         IConfiguration configuration,
+        IWorkModeSeeder workModeSeeder,
         CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
@@ -189,6 +195,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         var tenantDefinitions = BuildTenantDefinitions();
         Tenant? acmeTenant = null;
         User? acmeOwnerUser = null;
+        var seededUserRefs = new List<(Guid TenantId, Guid UserId)>();
 
         foreach (var tenantDefinition in tenantDefinitions)
         {
@@ -197,7 +204,21 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             await db.SaveChangesAsync(ct);
 
             ResolveSmokeTenantContext(tenantContext, tenant);
-            await SeedTenantLegalEntitiesAsync(db, tenant.Id, tenantDefinition.LegalEntities, now, ct);
+            var newlyCreatedLegalEntityIds =
+                await SeedTenantLegalEntitiesAsync(db, tenant.Id, tenantDefinition.LegalEntities, now, ct);
+            await db.SaveChangesAsync(ct);
+
+            // Seed default Work Modes only for legal entities created this run (not on every
+            // restart's update pass) - WorkModeSeeder always inserts 3 unconditionally, so
+            // calling it again on an already-seeded legal entity would violate the 5-cap /
+            // name-uniqueness constraints. Runs right after the SaveChangesAsync above (so the
+            // legal entity rows are persisted before WorkModeSeeder's own SaveChangesAsync) and
+            // before any employee is seeded below, since SeedTenantEmployeeAsync needs to resolve
+            // a real WorkMode id for each employee's legal entity.
+            foreach (var legalEntityId in newlyCreatedLegalEntityIds)
+            {
+                await workModeSeeder.SeedDefaultsAsync(tenant.Id, legalEntityId, ct);
+            }
 
             await EnsureSmokeEmployeeReferenceDataAsync(db, ct);
 
@@ -206,6 +227,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             {
                 var user = await SeedTenantUserAsync(db, tenant.Id, userDefinition, passwordHasher, now, ct);
                 firstUser ??= user;
+                seededUserRefs.Add((tenant.Id, user.Id));
                 await SeedTenantRoleAsync(db, tenant.Id, user.Id, userDefinition, now, ct);
 
                 var employeeDefinition = tenantDefinition.Employees
@@ -218,7 +240,6 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
 
             await SeedTenantAuthPolicyAsync(db, tenant.Id, now, ct);
             await SeedTenantSubscriptionAsync(db, tenant.Id, firstUser!.Id, tenantDefinition.SubscriptionId, now, ct);
-            await SeedMonitoringFeatureTogglesAsync(db, tenant.Id, now, ct);
             await db.SaveChangesAsync(ct);
 
             tenantContext.SetAdminMode();
@@ -233,6 +254,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         }
 
         await SeedDevelopmentLegalVersionsAsync(db, now, ct);
+        await SeedSmokeUserLegalAcceptancesAsync(db, seededUserRefs, now, ct);
 
         var platformUser = await GetPlatformBootstrapUserAsync(db, ct);
         if (platformUser is null)
@@ -483,50 +505,6 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         policy.UpdatedAt = now;
     }
 
-    /// <summary>
-    /// Dev/test-only convenience: without this row, MonitoringToggleResolverService's
-    /// tenant-toggle fallback is null and every capability resolves to its safe default
-    /// (false) — smoke tests and manual verification can never exercise the ingest
-    /// endpoints. Real tenants must go through an actual admin settings flow once one
-    /// exists; this seeder has no write path for that by design.
-    /// </summary>
-    private static async Task SeedMonitoringFeatureTogglesAsync(
-        ApplicationDbContext db,
-        Guid tenantId,
-        DateTimeOffset now,
-        CancellationToken ct)
-    {
-        var toggles = await db.MonitoringFeatureToggles
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId, ct);
-        if (toggles is null)
-        {
-            db.MonitoringFeatureToggles.Add(new MonitoringFeatureToggles
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantId,
-                ActivityMonitoring = true,
-                ApplicationTracking = true,
-                ScreenshotCapture = true,
-                AutoScreenshotCapture = true,
-                DeviceTracking = true,
-                WorkLocationVerification = true,
-                IdentityVerification = true,
-                CreatedAt = now,
-                UpdatedAt = now
-            });
-            return;
-        }
-
-        toggles.ActivityMonitoring = true;
-        toggles.ApplicationTracking = true;
-        toggles.ScreenshotCapture = true;
-        toggles.AutoScreenshotCapture = true;
-        toggles.DeviceTracking = true;
-        toggles.WorkLocationVerification = true;
-        toggles.IdentityVerification = true;
-        toggles.UpdatedAt = now;
-    }
-
     private static async Task SeedTenantRoleAsync(
         ApplicationDbContext db,
         Guid tenantId,
@@ -638,20 +616,35 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
     {
         // LookupDataSeeder (DependencyInjection.cs) is registered and runs before
         // DevSmokeTestTenantSeeder in the hosted-service startup order, seeding fixed
-        // Id=1 rows for employment_types("full_time"), employment_statuses("active"), and
-        // work_modes("on_site"). This check turns a broken startup order into a clear failure
-        // instead of silently writing Employee rows with dangling lookup ids.
+        // Id=1 rows for employment_types("full_time") and employment_statuses("active"). This
+        // check turns a broken startup order into a clear failure instead of silently writing
+        // Employee rows with dangling lookup ids.
         var typeOk = await db.EmploymentTypes.AnyAsync(t => t.Id == SmokeDefaultEmploymentTypeId, ct);
         var statusOk = await db.EmploymentStatuses.AnyAsync(s => s.Id == SmokeDefaultEmploymentStatusId, ct);
-        var workModeOk = await db.WorkModes.AnyAsync(w => w.Id == SmokeDefaultWorkModeId, ct);
 
-        if (!typeOk || !statusOk || !workModeOk)
+        if (!typeOk || !statusOk)
         {
             throw new InvalidOperationException(
-                "Development smoke-test seeder requires employment_types/employment_statuses/work_modes " +
+                "Development smoke-test seeder requires employment_types/employment_statuses " +
                 $"to already contain Id={SmokeDefaultEmploymentTypeId} rows (LookupDataSeeder must run " +
                 "before DevSmokeTestTenantSeeder). Refusing to seed Employee rows with dangling lookup ids.");
         }
+    }
+
+    // WorkMode is per-legal-entity (WorkModeSeeder), not a single shared global row, so it is
+    // resolved by name scoped to the employee's legal entity rather than a fixed id. Returns null
+    // if that legal entity's defaults have not been seeded yet - callers must run work-mode
+    // seeding for a legal entity before seeding any employee assigned to it.
+    private static async Task<Guid?> ResolveDefaultWorkModeIdAsync(
+        ApplicationDbContext db, Guid tenantId, Guid legalEntityId, CancellationToken ct)
+    {
+        var workMode = await db.TimeAttendanceWorkModes.FirstOrDefaultAsync(
+            w => w.TenantId == tenantId
+                && w.LegalEntityId == legalEntityId
+                && w.Name == SmokeDefaultWorkModeName
+                && w.IsActive,
+            ct);
+        return workMode?.Id;
     }
 
     private static async Task SeedTenantEmployeeAsync(
@@ -676,6 +669,8 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 "and must be reconciled manually before re-seeding.");
         }
 
+        var workModeId = await ResolveDefaultWorkModeIdAsync(db, tenantId, definition.LegalEntityId, ct);
+
         var employee = await db.Employees.FirstOrDefaultAsync(e => e.UserId == user.Id, ct);
         if (employee is null)
         {
@@ -691,7 +686,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 LegalEntityId = definition.LegalEntityId,
                 EmploymentTypeId = SmokeDefaultEmploymentTypeId,
                 EmploymentStatusId = SmokeDefaultEmploymentStatusId,
-                WorkModeId = SmokeDefaultWorkModeId,
+                WorkModeId = workModeId,
                 HireDate = SmokeEmployeeHireDate,
                 CreatedAt = now,
                 CreatedById = user.Id
@@ -706,17 +701,24 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
         employee.LegalEntityId = definition.LegalEntityId;
         employee.EmploymentTypeId = SmokeDefaultEmploymentTypeId;
         employee.EmploymentStatusId = SmokeDefaultEmploymentStatusId;
-        employee.WorkModeId = SmokeDefaultWorkModeId;
+        // Only ever assign a resolved default - never downgrade an already-assigned WorkModeId to
+        // null just because ResolveDefaultWorkModeIdAsync's by-name lookup missed this run (e.g.
+        // the seeded "Onsite" row was renamed/deleted). That silent reset broke every downstream
+        // resolver keyed on WorkModeId (schedule display, clock-in policy) on every dev restart.
+        if (workModeId is not null)
+            employee.WorkModeId = workModeId;
         employee.UpdatedAt = now;
     }
 
-    private static async Task SeedTenantLegalEntitiesAsync(
+    private static async Task<IReadOnlyList<Guid>> SeedTenantLegalEntitiesAsync(
         ApplicationDbContext db,
         Guid tenantId,
         IReadOnlyList<SmokeLegalEntityDefinition> definitions,
         DateTimeOffset now,
         CancellationToken ct)
     {
+        var newlyCreatedIds = new List<Guid>();
+
         foreach (var definition in definitions)
         {
             var legalEntity = await db.LegalEntities.FirstOrDefaultAsync(l => l.Id == definition.Id, ct);
@@ -736,6 +738,7 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                     CreatedAt = now
                 };
                 db.LegalEntities.Add(legalEntity);
+                newlyCreatedIds.Add(legalEntity.Id);
                 continue;
             }
 
@@ -748,6 +751,8 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
             legalEntity.IsActive = true;
             legalEntity.UpdatedAt = now;
         }
+
+        return newlyCreatedIds;
     }
 
     private static async Task SeedTenantSubscriptionAsync(
@@ -1042,6 +1047,54 @@ public sealed class DevSmokeTestTenantSeeder : IHostedService
                 CreatedAt = now,
                 UpdatedAt = now
             });
+        }
+    }
+
+    /// <summary>
+    /// SeedDevelopmentLegalVersionsAsync seeds "terms"/1.0 and "privacy_notice"/1.0 as
+    /// IsRequired=true, BlockScope="dashboard" documents, which gates every login behind
+    /// LegalAcceptanceChecker (see LoginContinuationService) until the logging-in user has an
+    /// "accepted" LegalAcceptanceRecord for each. Without this, every smoke-seeded user's base-host
+    /// login is redirected to the legal-acceptance continuation instead of completing normally.
+    /// </summary>
+    private static async Task SeedSmokeUserLegalAcceptancesAsync(
+        ApplicationDbContext db,
+        IReadOnlyList<(Guid TenantId, Guid UserId)> userRefs,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var requiredDocuments = new (string DocumentType, string Version)[]
+        {
+            ("terms", "1.0"),
+            ("privacy_notice", "1.0")
+        };
+
+        foreach (var (tenantId, userId) in userRefs)
+        {
+            foreach (var (documentType, version) in requiredDocuments)
+            {
+                var alreadyAccepted = await db.LegalAcceptanceRecords.AnyAsync(
+                    a => a.TenantId == tenantId
+                        && a.UserId == userId
+                        && a.DocumentType == documentType
+                        && a.DocumentVersion == version,
+                    ct);
+                if (alreadyAccepted)
+                    continue;
+
+                db.LegalAcceptanceRecords.Add(new LegalAcceptanceRecord
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenantId,
+                    UserId = userId,
+                    DocumentType = documentType,
+                    DocumentVersion = version,
+                    Decision = "accepted",
+                    Required = true,
+                    DecidedAt = now,
+                    Source = "dev-smoke-seed"
+                });
+            }
         }
     }
 }

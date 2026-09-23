@@ -12,12 +12,15 @@ public sealed record CreateProjectCommand(
     string? Description,
     DateOnly StartDate,
     DateOnly TargetDate,
-    DateOnly ReleaseDate,
+    DateOnly? ReleaseDate,
     string? Color,
     decimal? ActualHours,
     decimal DefaultObjectiveAllocatedHours,
     IReadOnlyList<CreateProjectLabelInput> Labels,
     string? LogoFileName,
     string? LogoContentType,
-    Stream? LogoContent
+    Stream? LogoContent,
+    string? BannerFileName = null,
+    string? BannerContentType = null,
+    Stream? BannerContent = null
 ) : IRequest<Result<ProjectCreationResponse>>;

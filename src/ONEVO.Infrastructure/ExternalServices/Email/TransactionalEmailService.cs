@@ -43,6 +43,9 @@ public class TransactionalEmailService : IEmailService
     public Task SendAdminPasswordResetAsync(string to, string resetToken, CancellationToken ct = default)
         => SendTemplateAsync(to, "admin_password_reset", new { reset_token = resetToken }, ct);
 
+    public Task SendCalendarEventInviteAsync(string to, string recipientName, string eventTitle, DateTimeOffset startDateUtc, string? location, string organizerName, CancellationToken ct = default)
+        => SendTemplateAsync(to, "calendar_event_invite", new { recipientName, eventTitle, startDateUtc, location, organizerName }, ct);
+
     public Task SendAdminPasswordChangedAsync(string to, CancellationToken ct = default)
         => SendTemplateAsync(to, "admin_password_changed", new { }, ct);
 
@@ -54,6 +57,9 @@ public class TransactionalEmailService : IEmailService
 
     public Task SendInvoiceEmailAsync(string to, object templateData, CancellationToken ct = default)
         => SendTemplateAsync(to, "invoice_email", templateData, ct);
+
+    public Task SendPositionChangeApprovalRequestAsync(string to, string employeeName, string positionName, string? changeReason, CancellationToken ct = default, string? tenantSlug = null)
+        => SendTemplateAsync(to, "position_change_approval_request", new { employeeName, positionName, changeReason, tenant_slug = tenantSlug }, ct);
 
     private async Task SendInternalAsync(
         string to,

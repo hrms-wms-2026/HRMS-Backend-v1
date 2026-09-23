@@ -1,0 +1,124 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.Leave.Request.Entities;
+using ONEVO.Domain.Features.Leave.Type.Entities;
+using ONEVO.Domain.Features.Storage.File.Entities;
+
+namespace ONEVO.Infrastructure.Persistence.Configurations.Leave;
+
+public class LeaveRequestConfiguration : IEntityTypeConfiguration<LeaveRequest>
+{
+    public void Configure(EntityTypeBuilder<LeaveRequest> builder)
+    {
+        builder.ToTable("leave_requests");
+        builder.HasKey(r => r.Id);
+        builder.Property(r => r.Status).HasMaxLength(40).IsRequired();
+        builder.Property(r => r.TotalHours).HasColumnType("numeric(8,2)");
+        builder.Property(r => r.PaidHours).HasColumnType("numeric(8,2)");
+        builder.Property(r => r.UnpaidHours).HasColumnType("numeric(8,2)");
+        builder.Property(r => r.ConflictSnapshotJson).HasColumnType("jsonb");
+
+        builder.HasIndex(r => new { r.TenantId, r.EmployeeId }).HasDatabaseName("ix_leave_requests_tenant_employee");
+        builder.HasIndex(r => new { r.TenantId, r.Status }).HasDatabaseName("ix_leave_requests_tenant_status");
+        builder.HasIndex(r => new { r.TenantId, r.StartAt, r.EndAt })
+            .HasDatabaseName("ix_leave_requests_tenant_start_end");
+
+        builder.HasOne<LeaveType>().WithMany().HasForeignKey(r => r.LeaveTypeId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Employee>().WithMany().HasForeignKey(r => r.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+
+        builder.Property<uint?>("xmin")
+            .HasColumnName("xmin")
+            .HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
+    }
+}
+
+public class LeaveRequestApproverConfiguration : IEntityTypeConfiguration<LeaveRequestApprover>
+{
+    public void Configure(EntityTypeBuilder<LeaveRequestApprover> builder)
+    {
+        builder.ToTable("leave_request_approvers");
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.Status).HasMaxLength(40).IsRequired();
+        builder.Property(a => a.Comment).HasMaxLength(2000);
+
+        builder.HasIndex(a => new { a.TenantId, a.LeaveRequestId })
+            .HasDatabaseName("ix_leave_request_approvers_tenant_request");
+        builder.HasIndex(a => new { a.TenantId, a.ApproverEmployeeId, a.Status })
+            .HasDatabaseName("ix_leave_request_approvers_tenant_approver_status");
+
+        builder.HasOne<LeaveRequest>().WithMany().HasForeignKey(a => a.LeaveRequestId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Employee>().WithMany().HasForeignKey(a => a.ApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class LeaveRequestDocumentConfiguration : IEntityTypeConfiguration<LeaveRequestDocument>
+{
+    public void Configure(EntityTypeBuilder<LeaveRequestDocument> builder)
+    {
+        builder.ToTable("leave_request_documents");
+        builder.HasKey(d => d.Id);
+        builder.HasIndex(d => new { d.TenantId, d.LeaveRequestId })
+            .HasDatabaseName("ix_leave_request_documents_tenant_request");
+        builder.HasOne<LeaveRequest>().WithMany().HasForeignKey(d => d.LeaveRequestId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<FileRecord>().WithMany().HasForeignKey(d => d.FileRecordId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class LeaveApprovalDelegateConfiguration : IEntityTypeConfiguration<LeaveApprovalDelegate>
+{
+    public void Configure(EntityTypeBuilder<LeaveApprovalDelegate> builder)
+    {
+        builder.ToTable("leave_approval_delegates");
+        builder.HasKey(d => d.Id);
+        builder.HasIndex(d => new { d.TenantId, d.ApproverEmployeeId })
+            .HasDatabaseName("ix_leave_approval_delegates_tenant_approver");
+        builder.HasOne<Employee>().WithMany().HasForeignKey(d => d.ApproverEmployeeId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Employee>().WithMany().HasForeignKey(d => d.DelegateEmployeeId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class LeaveRequestInfoMessageConfiguration : IEntityTypeConfiguration<LeaveRequestInfoMessage>
+{
+    public void Configure(EntityTypeBuilder<LeaveRequestInfoMessage> builder)
+    {
+        builder.ToTable("leave_request_info_messages");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Message).HasMaxLength(2000).IsRequired();
+        builder.HasIndex(x => new { x.TenantId, x.LeaveRequestId, x.CreatedAt })
+            .HasDatabaseName("ix_leave_request_info_messages_tenant_request_created");
+
+        builder.HasOne<LeaveRequest>()
+            .WithMany()
+            .HasForeignKey(x => x.LeaveRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Employee>()
+            .WithMany()
+            .HasForeignKey(x => x.SenderEmployeeId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class LeaveRequestDayAllocationConfiguration : IEntityTypeConfiguration<LeaveRequestDayAllocation>
+{
+    public void Configure(EntityTypeBuilder<LeaveRequestDayAllocation> builder)
+    {
+        builder.ToTable("leave_request_day_allocations");
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.HoursUnit).HasColumnType("numeric(8,2)");
+        builder.Property(a => a.PaidHoursUnit).HasColumnType("numeric(8,2)");
+        builder.Property(a => a.UnpaidHoursUnit).HasColumnType("numeric(8,2)");
+        builder.Property(a => a.Status).HasMaxLength(20).IsRequired();
+        builder.HasIndex(a => new { a.TenantId, a.LeaveRequestId, a.LeaveDate })
+            .IsUnique()
+            .HasDatabaseName("ix_leave_request_day_allocations_tenant_request_date");
+        builder.HasIndex(a => new { a.TenantId, a.LeaveDate, a.Status })
+            .HasDatabaseName("ix_leave_request_day_allocations_tenant_date_status");
+        builder.HasOne<LeaveRequest>()
+            .WithMany()
+            .HasForeignKey(a => a.LeaveRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}

@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Moq;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.Queries.ListLegalEntities;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -11,6 +12,7 @@ namespace ONEVO.Tests.Unit.Features.OrgStructure.LegalEntity;
 public class ListLegalEntitiesQueryHandlerTests
 {
     private readonly Mock<ILegalEntityRepository> _legalEntities = new();
+    private readonly Mock<IEntityAssetRepository> _entityAssets = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -23,7 +25,11 @@ public class ListLegalEntitiesQueryHandlerTests
         _currentUser.SetupGet(c => c.UserId).Returns(UserId);
         _currentUser.Setup(c => c.HasPermission("legal_entity:update")).Returns(hasUpdate);
         _currentUser.Setup(c => c.HasPermission("legal_entity:delete")).Returns(hasDelete);
-        return new ListLegalEntitiesQueryHandler(_legalEntities.Object, _currentUser.Object);
+        _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
+        return new ListLegalEntitiesQueryHandler(_legalEntities.Object, _entityAssets.Object, _currentUser.Object);
     }
 
     private static LegalEntityEntity Entity(string name, bool isActive) => new()
@@ -65,7 +71,7 @@ public class ListLegalEntitiesQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_RegularUser_CallsAccessibleQuery_WithHasManagementAccessFalse()
+    public async Task Handle_WithoutOrgRead_CallsAccessibleQuery_WithHasManagementAccessFalse()
     {
         _legalEntities.Setup(r => r.ListAccessibleAsync(TenantId, UserId, false, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync([Entity("Own Co", true)]);
@@ -76,6 +82,7 @@ public class ListLegalEntitiesQueryHandlerTests
         result.Value!.Should().ContainSingle().Which.Name.Should().Be("Own Co");
         _legalEntities.Verify(
             r => r.ListAccessibleAsync(TenantId, UserId, false, false, It.IsAny<CancellationToken>()), Times.Once);
+        _currentUser.Verify(c => c.HasPermission("org:read"), Times.Never);
     }
 
     [Fact]
@@ -109,7 +116,7 @@ public class ListLegalEntitiesQueryHandlerTests
     public async Task Handle_NotAuthenticated_ReturnsForbidden()
     {
         _currentUser.SetupGet(c => c.IsAuthenticated).Returns(false);
-        var sut = new ListLegalEntitiesQueryHandler(_legalEntities.Object, _currentUser.Object);
+        var sut = new ListLegalEntitiesQueryHandler(_legalEntities.Object, _entityAssets.Object, _currentUser.Object);
 
         var result = await sut.Handle(new ListLegalEntitiesQuery(), CancellationToken.None);
 

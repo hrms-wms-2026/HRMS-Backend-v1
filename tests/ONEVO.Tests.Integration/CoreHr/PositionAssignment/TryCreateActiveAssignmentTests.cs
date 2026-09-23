@@ -10,18 +10,12 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.CoreHr.PositionAssignment;
 
 public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_try_create_active_position_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
@@ -30,12 +24,9 @@ public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         _tenantId = Guid.NewGuid();
         _positionId = Guid.NewGuid();
@@ -58,17 +49,17 @@ public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task TryCreateActive_WhenSeatAvailable_InsertsActiveRowAndReturnsId()
     {
         var employeeId = await SeedEmployeeAsync();
         await using var db = CreateContext(_tenantId, "try-create-active");
-        var repo = new EfPositionAssignmentRepository(db);
+        var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
 
         var createdId = await repo.TryCreateActiveAssignmentAsync(
-            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid());
+            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
 
         Assert.NotNull(createdId);
         var row = await db.PositionAssignments.FindAsync(createdId!.Value);
@@ -81,12 +72,12 @@ public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
         var employeeA = await SeedEmployeeAsync();
         var employeeB = await SeedEmployeeAsync();
         await using var db = CreateContext(_tenantId, "try-create-active");
-        var repo = new EfPositionAssignmentRepository(db);
+        var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
 
         await repo.TryCreateActiveAssignmentAsync(
-            _tenantId, employeeA, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid());
+            _tenantId, employeeA, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
         var second = await repo.TryCreateActiveAssignmentAsync(
-            _tenantId, employeeB, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid());
+            _tenantId, employeeB, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
 
         Assert.Null(second);
     }
@@ -96,9 +87,9 @@ public sealed class TryCreateActiveAssignmentTests : IAsyncLifetime
     {
         var employeeId = await SeedEmployeeAsync();
         await using var db = CreateContext(_tenantId, "try-create-active");
-        var repo = new EfPositionAssignmentRepository(db);
+        var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(db);
         var createdId = await repo.TryCreateActiveAssignmentAsync(
-            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid());
+            _tenantId, employeeId, _positionId, DateOnly.FromDateTime(DateTime.UtcNow), Guid.NewGuid(), reportsToEmployeeId: null);
 
         var effectiveTo = DateOnly.FromDateTime(DateTime.UtcNow);
         var ended = await repo.EndActiveAsync(_tenantId, createdId!.Value, effectiveTo);

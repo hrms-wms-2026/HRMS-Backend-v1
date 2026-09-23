@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
@@ -13,10 +14,10 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Services.WorkManagement;
 
 /// <summary>
-/// Advances Sprint.Status for the two date-driven transitions: Future->Active when the start date
-/// arrives, and Active->Incomplete when the end date passes with unfinished tasks. Completion is
-/// always a manual owner action (CompleteSprintCommand) - this job never sets Complete. Mirrors
-/// AgentCommandExpiryJob's shape (PeriodicTimer, per-tick DI scope, catch-and-log).
+/// Sends a one-time "sprint overdue" notification when an Active sprint's end date passes with
+/// unfinished tasks. Never mutates Sprint.Status - completion is always a manual owner action
+/// (CompleteSprintCommand), and there is no more Future/Incomplete auto-advance since Draft sprints
+/// have no dates to watch and overdue is a purely computed display state on the frontend.
 /// </summary>
 public sealed class SprintLifecycleJob : BackgroundService
 {
@@ -39,74 +40,7 @@ public sealed class SprintLifecycleJob : BackgroundService
         {
             try
             {
-                await using var scope = _services.CreateAsyncScope();
-                var sprints = scope.ServiceProvider.GetRequiredService<ISprintRepository>();
-                var tasks = scope.ServiceProvider.GetRequiredService<IWorkTaskRepository>();
-                var statuses = scope.ServiceProvider.GetRequiredService<ITaskStatusRepository>();
-
-                var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
-                var candidates = (await sprints.GetByStatusAsync(SprintStatuses.Future, stoppingToken))
-                    .Concat(await sprints.GetByStatusAsync(SprintStatuses.Active, stoppingToken));
-
-                var advancedCount = 0;
-                foreach (var sprint in candidates)
-                {
-                    var allTasksComplete = false;
-                    if (sprint.Status == SprintStatuses.Active)
-                    {
-                        var sprintTasks = await tasks.GetBySprintIdAsync(sprint.TenantId, sprint.Id, stoppingToken);
-                        allTasksComplete = sprintTasks.Count > 0;
-                        foreach (var task in sprintTasks)
-                        {
-                            var status = await statuses.GetByIdForTenantAsync(sprint.TenantId, task.StatusId, stoppingToken);
-                            if (status is null || !status.MarksTaskComplete)
-                            {
-                                allTasksComplete = false;
-                                break;
-                            }
-                        }
-                    }
-
-                    var next = DetermineNextStatus(sprint.Status, sprint.StartDate, sprint.EndDate, today, allTasksComplete);
-                    if (next is null)
-                        continue;
-
-                    sprint.Status = next;
-                    sprint.UpdatedAt = DateTimeOffset.UtcNow;
-                    sprints.Update(sprint);
-                    advancedCount++;
-
-                    if (next == SprintStatuses.Incomplete)
-                    {
-                        var members = scope.ServiceProvider.GetRequiredService<IProjectMemberRepository>();
-                        var membership = scope.ServiceProvider.GetRequiredService<IMilestoneMembershipCoordinator>();
-                        var notifications = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
-                        var objectives = scope.ServiceProvider.GetRequiredService<IObjectiveRepository>();
-
-                        var objective = await objectives.GetByIdForTenantAsync(sprint.TenantId, sprint.ObjectiveId, stoppingToken);
-                        if (objective is not null)
-                        {
-                            var activeMembers = await members.ListActiveForObjectiveAsync(sprint.TenantId, sprint.ObjectiveId, stoppingToken);
-                            foreach (var member in activeMembers)
-                            {
-                                var assignee = await membership.GetActiveAssigneeAsync(sprint.TenantId, member.EmployeeId, stoppingToken);
-                                if (assignee is null) continue;
-
-                                await notifications.SendTemplatedAsync(
-                                    sprint.TenantId, assignee.UserId, "work_sprint_incomplete",
-                                    new Dictionary<string, string> { ["sprintName"] = sprint.Name, ["objectiveName"] = objective.Title },
-                                    "sprint", sprint.Id, stoppingToken);
-                            }
-                        }
-                    }
-                }
-
-                if (advancedCount > 0)
-                {
-                    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-                    await db.SaveChangesAsync(stoppingToken);
-                    _logger.LogInformation("SprintLifecycleJob advanced {Count} sprints.", advancedCount);
-                }
+                await RunOnceAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -119,15 +53,91 @@ public sealed class SprintLifecycleJob : BackgroundService
         }
     }
 
-    /// <summary>Pure decision function, extracted for direct unit testing without the BackgroundService/DI machinery. Returns null if no transition applies.</summary>
-    public static string? DetermineNextStatus(string currentStatus, DateOnly startDate, DateOnly endDate, DateOnly today, bool allTasksComplete)
+    public async Task RunOnceAsync(CancellationToken ct)
     {
-        if (currentStatus == SprintStatuses.Future && today >= startDate)
-            return SprintStatuses.Active;
+        await using var scope = _services.CreateAsyncScope();
+        var sprints = scope.ServiceProvider.GetRequiredService<ISprintRepository>();
+        var tasks = scope.ServiceProvider.GetRequiredService<IWorkTaskRepository>();
+        var statuses = scope.ServiceProvider.GetRequiredService<ITaskStatusRepository>();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
+        var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
+        var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+        var objectives = scope.ServiceProvider.GetRequiredService<IObjectiveRepository>();
+        var members = scope.ServiceProvider.GetRequiredService<IProjectMemberRepository>();
+        var membership = scope.ServiceProvider.GetRequiredService<IMilestoneMembershipCoordinator>();
+        var notifications = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
 
-        if (currentStatus == SprintStatuses.Active && today > endDate && !allTasksComplete)
-            return SprintStatuses.Incomplete;
+        // sprints and their related tables are under FORCE row-level security. A background
+        // scope defaults to system mode, which the tenant_isolation policy admits for neither -
+        // so the cross-tenant sweep needs admin mode, and each tenant's rows need that tenant's
+        // context established first. Mirrors WellnessRuleEvaluatorJob/LocationRuleEvaluatorJob.
+        tenantContext.SetAdminMode();
 
-        return null;
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
+        var activeSprints = await sprints.GetByStatusAsync(SprintStatuses.Active, ct);
+
+        var notifiedCount = 0;
+
+        foreach (var tenantGroup in activeSprints.GroupBy(s => s.TenantId))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var tenantId = tenantGroup.Key;
+            var tenant = await tenants.GetByIdAsync(tenantId, ct);
+            if (tenant is null) continue;
+            await tenantSwitcher.SwitchToTenantAsync(
+                new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
+
+            var tenantNotified = 0;
+
+            foreach (var sprint in tenantGroup)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (sprint.EndDate is null) continue;
+
+                var sprintTasks = await tasks.GetBySprintIdAsync(sprint.TenantId, sprint.Id, ct);
+                var allTasksComplete = sprintTasks.Count > 0;
+                foreach (var task in sprintTasks)
+                {
+                    var status = await statuses.GetByIdForTenantAsync(sprint.TenantId, task.StatusId, ct);
+                    if (status is null || !status.MarksTaskComplete) { allTasksComplete = false; break; }
+                }
+
+                if (!ShouldNotifyOverdue(sprint.EndDate.Value, today, allTasksComplete, sprint.OverdueNotifiedAt is not null))
+                    continue;
+
+                sprint.OverdueNotifiedAt = DateTimeOffset.UtcNow;
+                sprints.Update(sprint);
+                tenantNotified++;
+
+                var objective = await objectives.GetByIdForTenantAsync(sprint.TenantId, sprint.ObjectiveId, ct);
+                if (objective is null) continue;
+
+                var objectiveMembers = await members.ListActiveForObjectiveAsync(tenantId, objective.Id, ct);
+                foreach (var member in objectiveMembers)
+                {
+                    var assignee = await membership.GetActiveAssigneeAsync(tenantId, member.EmployeeId, ct);
+                    if (assignee is null) continue;
+
+                    await notifications.SendTemplatedAsync(
+                        tenantId, assignee.UserId, "work_sprint_overdue",
+                        new Dictionary<string, string> { ["sprintName"] = sprint.Name, ["objectiveName"] = objective.Title },
+                        "sprint", sprint.Id, ct);
+                }
+            }
+
+            if (tenantNotified > 0)
+            {
+                await db.SaveChangesAsync(ct);
+                _logger.LogInformation("SprintLifecycleJob notified {Count} overdue sprints for tenant {TenantId}.", tenantNotified, tenantId);
+            }
+
+            notifiedCount += tenantNotified;
+        }
     }
+
+    /// <summary>Pure decision function, unit-tested directly without the BackgroundService/DI machinery.</summary>
+    public static bool ShouldNotifyOverdue(DateOnly endDate, DateOnly today, bool allTasksComplete, bool alreadyNotified)
+        => today > endDate && !allTasksComplete && !alreadyNotified;
 }

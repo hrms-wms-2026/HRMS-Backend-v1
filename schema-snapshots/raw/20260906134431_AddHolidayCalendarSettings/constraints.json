@@ -1,0 +1,1775 @@
+[
+  {
+    "table_name": "access_grant_requests",
+    "column_name": "target_department_id",
+    "col_ord": 1,
+    "constraint_name": "fk_access_grant_requests_departments_target_department_id",
+    "ref_table": "departments",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "access_grant_requests",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_access_grant_requests_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "access_grant_requests",
+    "column_name": "onboarding_draft_id",
+    "col_ord": 1,
+    "constraint_name": "fk_access_grant_requests_onboarding_drafts_onboarding_draft_id",
+    "ref_table": "onboarding_drafts",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "access_grant_requests",
+    "column_name": "position_access_template_id",
+    "col_ord": 1,
+    "constraint_name": "fk_access_grant_requests_position_access_templates_position_acc",
+    "ref_table": "position_access_templates",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "access_grant_requests",
+    "column_name": "target_position_id",
+    "col_ord": 1,
+    "constraint_name": "fk_access_grant_requests_positions_target_position_id",
+    "ref_table": "positions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "access_grant_requests",
+    "column_name": "requested_role_id",
+    "col_ord": 1,
+    "constraint_name": "fk_access_grant_requests_roles_requested_role_id",
+    "ref_table": "roles",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "access_grant_requests",
+    "column_name": "decided_by_user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_access_grant_requests_users_decided_by_user_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "access_grant_requests",
+    "column_name": "requested_by_user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_access_grant_requests_users_requested_by_user_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "access_grant_requests",
+    "column_name": "user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_access_grant_requests_users_user_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "agent_commands",
+    "column_name": "agent_device_id",
+    "col_ord": 1,
+    "constraint_name": "fk_agent_commands_tray_device_registrations_agent_device_id",
+    "ref_table": "tray_device_registrations",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "attendance_corrections",
+    "column_name": "attendance_record_id",
+    "col_ord": 1,
+    "constraint_name": "fk_attendance_corrections_attendance_records_attendance_record_",
+    "ref_table": "attendance_records",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "attendance_corrections",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_attendance_corrections_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "attendance_corrections",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_attendance_corrections_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "attendance_corrections",
+    "column_name": "presence_session_id",
+    "col_ord": 1,
+    "constraint_name": "fk_attendance_corrections_presence_sessions_presence_session_id",
+    "ref_table": "presence_sessions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "attendance_corrections",
+    "column_name": "requested_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_attendance_corrections_users_requested_by_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "attendance_corrections",
+    "column_name": "reviewed_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_attendance_corrections_users_reviewed_by_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "billing_audit_logs",
+    "column_name": "actor_admin_user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_billing_audit_logs_platform_users_actor_admin_user_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "billing_audit_logs",
+    "column_name": "invoice_id",
+    "col_ord": 1,
+    "constraint_name": "fk_billing_audit_logs_subscription_invoices_invoice_id",
+    "ref_table": "subscription_invoices",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "billing_audit_logs",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_billing_audit_logs_tenants_tenant_id",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "bulk_onboarding_batch_rows",
+    "column_name": "batch_id",
+    "col_ord": 1,
+    "constraint_name": "fk_bulk_onboarding_batch_rows_bulk_onboarding_batches_batch_id",
+    "ref_table": "bulk_onboarding_batches",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "bulk_onboarding_batch_rows",
+    "column_name": "onboarding_draft_id",
+    "col_ord": 1,
+    "constraint_name": "fk_bulk_onboarding_batch_rows_onboarding_drafts_onboarding_dra",
+    "ref_table": "onboarding_drafts",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "bulk_onboarding_batches",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_bulk_onboarding_batches_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "calendar_event_objectives",
+    "column_name": "calendar_event_id",
+    "col_ord": 1,
+    "constraint_name": "fk_calendar_event_objectives_calendar_events_calendar_event_id",
+    "ref_table": "calendar_events",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "calendar_event_objectives",
+    "column_name": "objective_id",
+    "col_ord": 1,
+    "constraint_name": "fk_calendar_event_objectives_objectives_objective_id",
+    "ref_table": "objectives",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "calendar_event_tasks",
+    "column_name": "calendar_event_id",
+    "col_ord": 1,
+    "constraint_name": "fk_calendar_event_tasks_calendar_events_calendar_event_id",
+    "ref_table": "calendar_events",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "calendar_event_tasks",
+    "column_name": "task_id",
+    "col_ord": 1,
+    "constraint_name": "fk_calendar_event_tasks_work_tasks_task_id",
+    "ref_table": "tasks",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "calendar_events",
+    "column_name": "project_id",
+    "col_ord": 1,
+    "constraint_name": "fk_calendar_events_projects_project_id",
+    "ref_table": "projects",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "checklist_templates",
+    "column_name": "department_id",
+    "col_ord": 1,
+    "constraint_name": "fk_checklist_templates_departments_department_id",
+    "ref_table": "departments",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "checklist_templates",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_checklist_templates_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "checklist_templates",
+    "column_name": "position_id",
+    "col_ord": 1,
+    "constraint_name": "fk_checklist_templates_positions_position_id",
+    "ref_table": "positions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "clock_in_late_deduction_rules",
+    "column_name": "clock_in_policy_id",
+    "col_ord": 1,
+    "constraint_name": "fk_clock_in_late_deduction_rules_clock_in_policies_clock_in_po",
+    "ref_table": "clock_in_policies",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "clock_in_policies",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_clock_in_policies_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "configuration_templates",
+    "column_name": "created_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_configuration_templates_platform_users_created_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "departments",
+    "column_name": "parent_department_id",
+    "col_ord": 1,
+    "constraint_name": "fk_departments_departments_parent_department_id",
+    "ref_table": "departments",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "departments",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_departments_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "departments",
+    "column_name": "head_position_id",
+    "col_ord": 1,
+    "constraint_name": "fk_departments_positions_head_position_id",
+    "ref_table": "positions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "employee_addresses",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_employee_addresses_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "employee_bank_details",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_employee_bank_details_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "employee_check_ins",
+    "column_name": "face_scan_id",
+    "col_ord": 1,
+    "constraint_name": "fk_employee_check_ins_monitoring_face_scans_face_scan_id",
+    "ref_table": "monitoring_face_scans",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "employee_checklist_tasks",
+    "column_name": "template_id",
+    "col_ord": 1,
+    "constraint_name": "fk_employee_checklist_tasks_checklist_templates_template_id",
+    "ref_table": "checklist_templates",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "employee_checklist_tasks",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_employee_checklist_tasks_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "employee_checklist_tasks",
+    "column_name": "offboarding_record_id",
+    "col_ord": 1,
+    "constraint_name": "fk_employee_checklist_tasks_offboarding_records_offboarding_re",
+    "ref_table": "offboarding_records",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "employee_checklist_tasks",
+    "column_name": "assigned_to_id",
+    "col_ord": 1,
+    "constraint_name": "fk_employee_checklist_tasks_users_assigned_to_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "employee_dependents",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_employee_dependents_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "employee_emergency_contacts",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_employee_emergency_contacts_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "entity_assets",
+    "column_name": "file_record_id",
+    "col_ord": 1,
+    "constraint_name": "fk_entity_assets_file_records_file_record_id",
+    "ref_table": "file_records",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "file_records",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_file_records_tenants_tenant_id",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "file_records",
+    "column_name": "uploaded_by_user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_file_records_users_uploaded_by_user_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "file_upload_reservations",
+    "column_name": "completed_file_record_id",
+    "col_ord": 1,
+    "constraint_name": "fk_file_upload_reservations_file_records_completed_file_record",
+    "ref_table": "file_records",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "file_upload_reservations",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_file_upload_reservations_tenants_tenant_id",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "file_upload_reservations",
+    "column_name": "reserved_by_user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_file_upload_reservations_users_reserved_by_user_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "global_email_directory",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_ged_tenant",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "inactivity_capture_attempts",
+    "column_name": "evidence_asset_id",
+    "col_ord": 1,
+    "constraint_name": "fk_inactivity_capture_attempts_monitoring_evidence_assets_evid",
+    "ref_table": "monitoring_evidence_assets",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "inactivity_capture_attempts",
+    "column_name": "agent_device_id",
+    "col_ord": 1,
+    "constraint_name": "fk_inactivity_capture_attempts_tray_device_registrations_agent",
+    "ref_table": "tray_device_registrations",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "integration_catalog",
+    "column_name": "onevo_app_provider",
+    "col_ord": 1,
+    "constraint_name": "fk_integration_catalog_platform_o_auth_apps_onevo_app_provider",
+    "ref_table": "platform_oauth_apps",
+    "ref_column": "provider",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "integration_catalog",
+    "column_name": "created_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_integration_catalog_platform_users_created_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "labels",
+    "column_name": "project_id",
+    "col_ord": 1,
+    "constraint_name": "fk_labels_projects_project_id",
+    "ref_table": "projects",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_approval_delegates",
+    "column_name": "approver_employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_approval_delegates_employees_approver_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_approval_delegates",
+    "column_name": "delegate_employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_approval_delegates_employees_delegate_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_balance_audits",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_balance_audits_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_balance_audits",
+    "column_name": "related_request_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_balance_audits_leave_requests_related_request_id",
+    "ref_table": "leave_requests",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_balance_audits",
+    "column_name": "leave_type_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_balance_audits_leave_types_leave_type_id",
+    "ref_table": "leave_types",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_entitlements",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_entitlements_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_entitlements",
+    "column_name": "leave_type_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_entitlements_leave_types_leave_type_id",
+    "ref_table": "leave_types",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_policy_blackout_periods",
+    "column_name": "leave_policy_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_policy_blackout_periods_leave_policies_leave_policy_id",
+    "ref_table": "leave_policies",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "leave_policy_leave_types",
+    "column_name": "leave_policy_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_policy_leave_types_leave_policies_leave_policy_id",
+    "ref_table": "leave_policies",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "leave_policy_leave_types",
+    "column_name": "leave_type_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_policy_leave_types_leave_types_leave_type_id",
+    "ref_table": "leave_types",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_policy_legal_entities",
+    "column_name": "leave_policy_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_policy_legal_entities_leave_policies_leave_policy_id",
+    "ref_table": "leave_policies",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "leave_policy_legal_entities",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_policy_legal_entities_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_request_approvers",
+    "column_name": "approver_employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_request_approvers_employees_approver_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_request_approvers",
+    "column_name": "leave_request_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_request_approvers_leave_requests_leave_request_id",
+    "ref_table": "leave_requests",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "leave_request_day_allocations",
+    "column_name": "leave_request_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_request_day_allocations_leave_requests_leave_request_",
+    "ref_table": "leave_requests",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "leave_request_documents",
+    "column_name": "file_record_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_request_documents_file_records_file_record_id",
+    "ref_table": "file_records",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_request_documents",
+    "column_name": "leave_request_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_request_documents_leave_requests_leave_request_id",
+    "ref_table": "leave_requests",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "leave_request_info_messages",
+    "column_name": "sender_employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_request_info_messages_employees_sender_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_request_info_messages",
+    "column_name": "leave_request_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_request_info_messages_leave_requests_leave_request_id",
+    "ref_table": "leave_requests",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "leave_requests",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_requests_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "leave_requests",
+    "column_name": "leave_type_id",
+    "col_ord": 1,
+    "constraint_name": "fk_leave_requests_leave_types_leave_type_id",
+    "ref_table": "leave_types",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "legal_document_versions",
+    "column_name": "published_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_legal_document_versions_platform_users_published_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "legal_entities",
+    "column_name": "logo_file_id",
+    "col_ord": 1,
+    "constraint_name": "fk_legal_entities_file_records_logo_file_id",
+    "ref_table": "file_records",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "legal_entities",
+    "column_name": "parent_legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_legal_entities_legal_entities_parent_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "legal_login_challenges",
+    "column_name": "superseded_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_legal_login_challenges_legal_login_challenges_superseded_by",
+    "ref_table": "legal_login_challenges",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "legal_login_challenges",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_legal_login_challenges_tenants_tenant_id",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "legal_login_challenges",
+    "column_name": "user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_legal_login_challenges_users_user_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "management_coverage_records",
+    "column_name": "covered_department_id",
+    "col_ord": 1,
+    "constraint_name": "fk_management_coverage_records_departments_covered_department_",
+    "ref_table": "departments",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "management_coverage_records",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_management_coverage_records_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "management_coverage_records",
+    "column_name": "covered_position_id",
+    "col_ord": 1,
+    "constraint_name": "fk_management_coverage_records_positions_covered_position_id",
+    "ref_table": "positions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "management_coverage_records",
+    "column_name": "owner_position_id",
+    "col_ord": 1,
+    "constraint_name": "fk_management_coverage_records_positions_owner_position_id",
+    "ref_table": "positions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "mfa_challenges",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_mfa_challenges_tenants_tenant_id",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "mfa_challenges",
+    "column_name": "user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_mfa_challenges_users_user_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "module_catalog_price_history",
+    "column_name": "module_key",
+    "col_ord": 1,
+    "constraint_name": "fk_module_catalog_price_history_module_catalog_module_key",
+    "ref_table": "module_catalog",
+    "ref_column": "module_key",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "module_features",
+    "column_name": "module_key",
+    "col_ord": 1,
+    "constraint_name": "fk_module_features_module_catalog_module_key",
+    "ref_table": "module_catalog",
+    "ref_column": "module_key",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "module_integration_links",
+    "column_name": "integration_key",
+    "col_ord": 1,
+    "constraint_name": "fk_module_integration_links_integration_catalog_integration_key",
+    "ref_table": "integration_catalog",
+    "ref_column": "integration_key",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "module_integration_links",
+    "column_name": "module_key",
+    "col_ord": 1,
+    "constraint_name": "fk_module_integration_links_module_catalog_module_key",
+    "ref_table": "module_catalog",
+    "ref_column": "module_key",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "module_integration_links",
+    "column_name": "linked_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_module_integration_links_platform_users_linked_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "module_permission_ownership",
+    "column_name": "module_key",
+    "col_ord": 1,
+    "constraint_name": "fk_module_permission_ownership_module_catalog_module_key",
+    "ref_table": "module_catalog",
+    "ref_column": "module_key",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "monitoring_evidence_assets",
+    "column_name": "activity_snapshot_id",
+    "col_ord": 1,
+    "constraint_name": "fk_monitoring_evidence_assets_activity_snapshots_activity_snap",
+    "ref_table": "activity_snapshots",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "monitoring_evidence_assets",
+    "column_name": "agent_command_id",
+    "col_ord": 1,
+    "constraint_name": "fk_monitoring_evidence_assets_agent_commands_agent_command_id",
+    "ref_table": "agent_commands",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "monitoring_evidence_assets",
+    "column_name": "file_record_id",
+    "col_ord": 1,
+    "constraint_name": "fk_monitoring_evidence_assets_file_records_file_record_id",
+    "ref_table": "file_records",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "monitoring_evidence_assets",
+    "column_name": "agent_device_id",
+    "col_ord": 1,
+    "constraint_name": "fk_monitoring_evidence_assets_tray_device_registrations_agent_",
+    "ref_table": "tray_device_registrations",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "monitoring_feature_toggles",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_monitoring_feature_toggles_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "objective_change_requests",
+    "column_name": "objective_id",
+    "col_ord": 1,
+    "constraint_name": "fk_objective_change_requests_objectives_objective_id",
+    "ref_table": "objectives",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "objectives",
+    "column_name": "parent_objective_id",
+    "col_ord": 1,
+    "constraint_name": "fk_objectives_objectives_parent_objective_id",
+    "ref_table": "objectives",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "objectives",
+    "column_name": "project_id",
+    "col_ord": 1,
+    "constraint_name": "fk_objectives_projects_project_id",
+    "ref_table": "projects",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "offboarding_records",
+    "column_name": "checklist_template_id",
+    "col_ord": 1,
+    "constraint_name": "fk_offboarding_records_checklist_templates_checklist_template_",
+    "ref_table": "checklist_templates",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "offboarding_records",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_offboarding_records_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "offboarding_task_bypass_requests",
+    "column_name": "employee_checklist_task_id",
+    "col_ord": 1,
+    "constraint_name": "fk_offboarding_task_bypass_requests_employee_checklist_tasks_e",
+    "ref_table": "employee_checklist_tasks",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "offboarding_task_bypass_requests",
+    "column_name": "offboarding_record_id",
+    "col_ord": 1,
+    "constraint_name": "fk_offboarding_task_bypass_requests_offboarding_records_offboa",
+    "ref_table": "offboarding_records",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "onboarding_drafts",
+    "column_name": "department_id",
+    "col_ord": 1,
+    "constraint_name": "fk_onboarding_drafts_departments_department_id",
+    "ref_table": "departments",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "onboarding_drafts",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_onboarding_drafts_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "onboarding_drafts",
+    "column_name": "position_id",
+    "col_ord": 1,
+    "constraint_name": "fk_onboarding_drafts_positions_position_id",
+    "ref_table": "positions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "onboarding_drafts",
+    "column_name": "work_mode_id",
+    "col_ord": 1,
+    "constraint_name": "fk_onboarding_drafts_work_modes_work_mode_id",
+    "ref_table": "work_modes",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "payment_gateway_configs",
+    "column_name": "provider",
+    "col_ord": 1,
+    "constraint_name": "fk_payment_gateway_configs_platform_providers_provider",
+    "ref_table": "platform_providers",
+    "ref_column": "provider_key",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "payment_gateway_country_routes",
+    "column_name": "gateway_config_id",
+    "col_ord": 1,
+    "constraint_name": "fk_payment_gateway_country_routes_payment_gateway_configs_gate",
+    "ref_table": "payment_gateway_configs",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "payment_gateway_credentials",
+    "column_name": "payment_gateway_config_id",
+    "col_ord": 1,
+    "constraint_name": "fk_payment_gateway_credentials_payment_gateway_configs_payment",
+    "ref_table": "payment_gateway_configs",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "personal_calendar_events",
+    "column_name": "recurrence_parent_id",
+    "col_ord": 1,
+    "constraint_name": "fk_personal_calendar_events_recurrence_parent_id",
+    "ref_table": "personal_calendar_events",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "platform_auth_events",
+    "column_name": "user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_auth_events_platform_users_user_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "platform_oauth_app_credentials",
+    "column_name": "platform_oauth_app_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_oauth_app_credentials_platform_oauth_apps_platform",
+    "ref_table": "platform_oauth_apps",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "platform_oauth_app_credentials",
+    "column_name": "deactivated_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_oauth_app_credentials_platform_users_deactivated_b",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "platform_oauth_app_credentials",
+    "column_name": "rotated_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_oauth_app_credentials_platform_users_rotated_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "platform_oauth_apps",
+    "column_name": "provider",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_oauth_apps_platform_providers_provider",
+    "ref_table": "platform_providers",
+    "ref_column": "provider_key",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "platform_oauth_apps",
+    "column_name": "updated_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_oauth_apps_platform_users_updated_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "platform_role_permissions",
+    "column_name": "permission_code",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_role_permissions_platform_permissions_permission_c",
+    "ref_table": "platform_permissions",
+    "ref_column": "code",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "platform_role_permissions",
+    "column_name": "role_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_role_permissions_platform_roles_role_id",
+    "ref_table": "platform_roles",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "platform_role_permissions",
+    "column_name": "granted_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_role_permissions_platform_users_granted_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "platform_roles",
+    "column_name": "created_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_roles_platform_users_created_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "platform_service_keys",
+    "column_name": "service_key",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_service_keys_platform_providers_service_key",
+    "ref_table": "platform_providers",
+    "ref_column": "provider_key",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "platform_service_keys",
+    "column_name": "updated_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_service_keys_platform_users_updated_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "platform_user_credentials",
+    "column_name": "platform_user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_user_credentials_platform_users_platform_user_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "platform_user_invites",
+    "column_name": "invited_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_user_invites_platform_users_invited_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "platform_user_invites",
+    "column_name": "platform_user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_user_invites_platform_users_platform_user_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "platform_user_roles",
+    "column_name": "role_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_user_roles_platform_roles_role_id",
+    "ref_table": "platform_roles",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "platform_user_roles",
+    "column_name": "assigned_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_user_roles_platform_users_assigned_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "platform_user_roles",
+    "column_name": "user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_user_roles_platform_users_user_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "platform_user_sessions",
+    "column_name": "account_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_user_sessions_platform_users_account_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "platform_users",
+    "column_name": "created_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_platform_users_platform_users_created_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "position_access_templates",
+    "column_name": "position_id",
+    "col_ord": 1,
+    "constraint_name": "fk_position_access_templates_positions_position_id",
+    "ref_table": "positions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "position_access_templates",
+    "column_name": "role_id",
+    "col_ord": 1,
+    "constraint_name": "fk_position_access_templates_roles_role_id",
+    "ref_table": "roles",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "position_assignments",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_position_assignments_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "position_assignments",
+    "column_name": "position_id",
+    "col_ord": 1,
+    "constraint_name": "fk_position_assignments_positions_position_id",
+    "ref_table": "positions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "position_reporting_history",
+    "column_name": "position_id",
+    "col_ord": 1,
+    "constraint_name": "fk_position_reporting_history_positions_position_id",
+    "ref_table": "positions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "position_reporting_history",
+    "column_name": "reports_to_position_id",
+    "col_ord": 1,
+    "constraint_name": "fk_position_reporting_history_positions_reports_to_position_id",
+    "ref_table": "positions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "positions",
+    "column_name": "department_id",
+    "col_ord": 1,
+    "constraint_name": "fk_positions_departments_department_id",
+    "ref_table": "departments",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "positions",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_positions_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "positions",
+    "column_name": "reports_to_position_id",
+    "col_ord": 1,
+    "constraint_name": "fk_positions_positions_reports_to_position_id",
+    "ref_table": "positions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "project_member_invitations",
+    "column_name": "objective_id",
+    "col_ord": 1,
+    "constraint_name": "fk_project_member_invitations_objectives_objective_id",
+    "ref_table": "objectives",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "project_member_invitations",
+    "column_name": "project_id",
+    "col_ord": 1,
+    "constraint_name": "fk_project_member_invitations_projects_project_id",
+    "ref_table": "projects",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "project_members",
+    "column_name": "objective_id",
+    "col_ord": 1,
+    "constraint_name": "fk_project_members_objectives_objective_id",
+    "ref_table": "objectives",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "project_members",
+    "column_name": "project_id",
+    "col_ord": 1,
+    "constraint_name": "fk_project_members_projects_project_id",
+    "ref_table": "projects",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "projects",
+    "column_name": "owning_legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_projects_legal_entities_owning_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "refresh_tokens",
+    "column_name": "replaced_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_refresh_tokens_refresh_tokens_replaced_by_id",
+    "ref_table": "refresh_tokens",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "release_calendar",
+    "column_name": "project_id",
+    "col_ord": 1,
+    "constraint_name": "fk_release_calendar_projects_project_id",
+    "ref_table": "projects",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "release_calendar",
+    "column_name": "version_id",
+    "col_ord": 1,
+    "constraint_name": "fk_release_calendar_versions_version_id",
+    "ref_table": "versions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "role_permissions",
+    "column_name": "permission_id",
+    "col_ord": 1,
+    "constraint_name": "fk_role_permissions_permissions_permission_id",
+    "ref_table": "permissions",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "role_permissions",
+    "column_name": "role_id",
+    "col_ord": 1,
+    "constraint_name": "fk_role_permissions_roles_role_id",
+    "ref_table": "roles",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "roles",
+    "column_name": "source_template_id",
+    "col_ord": 1,
+    "constraint_name": "fk_roles_role_templates_source_template_id",
+    "ref_table": "role_templates",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "subscription_invoices",
+    "column_name": "tenant_subscription_id",
+    "col_ord": 1,
+    "constraint_name": "fk_subscription_invoices_tenant_subscriptions_tenant_subscript",
+    "ref_table": "tenant_subscriptions",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "subscription_invoices",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_subscription_invoices_tenants_tenant_id",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "task_assignments",
+    "column_name": "task_id",
+    "col_ord": 1,
+    "constraint_name": "fk_task_assignments_work_tasks_task_id",
+    "ref_table": "tasks",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "task_clocking_sessions",
+    "column_name": "task_id",
+    "col_ord": 1,
+    "constraint_name": "fk_task_clocking_sessions_work_tasks_task_id",
+    "ref_table": "tasks",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "task_creation_requests",
+    "column_name": "objective_id",
+    "col_ord": 1,
+    "constraint_name": "fk_task_creation_requests_objectives_objective_id",
+    "ref_table": "objectives",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "task_creation_requests",
+    "column_name": "created_task_id",
+    "col_ord": 1,
+    "constraint_name": "fk_task_creation_requests_work_tasks_created_task_id",
+    "ref_table": "tasks",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "task_edit_logs",
+    "column_name": "edit_request_id",
+    "col_ord": 1,
+    "constraint_name": "fk_task_edit_logs_task_edit_requests_edit_request_id",
+    "ref_table": "task_edit_requests",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "task_edit_logs",
+    "column_name": "task_id",
+    "col_ord": 1,
+    "constraint_name": "fk_task_edit_logs_work_tasks_task_id",
+    "ref_table": "tasks",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "task_edit_requests",
+    "column_name": "task_id",
+    "col_ord": 1,
+    "constraint_name": "fk_task_edit_requests_work_tasks_task_id",
+    "ref_table": "tasks",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "task_percentage_logs",
+    "column_name": "clocking_session_id",
+    "col_ord": 1,
+    "constraint_name": "fk_task_percentage_logs_task_clocking_sessions_clocking_sessio",
+    "ref_table": "task_clocking_sessions",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "task_percentage_logs",
+    "column_name": "task_id",
+    "col_ord": 1,
+    "constraint_name": "fk_task_percentage_logs_work_tasks_task_id",
+    "ref_table": "tasks",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "task_status_change_logs",
+    "column_name": "from_status_id",
+    "col_ord": 1,
+    "constraint_name": "fk_task_status_change_logs_task_statuses_from_status_id",
+    "ref_table": "task_statuses",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "task_status_change_logs",
+    "column_name": "to_status_id",
+    "col_ord": 1,
+    "constraint_name": "fk_task_status_change_logs_task_statuses_to_status_id",
+    "ref_table": "task_statuses",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "task_status_change_logs",
+    "column_name": "task_id",
+    "col_ord": 1,
+    "constraint_name": "fk_task_status_change_logs_work_tasks_task_id",
+    "ref_table": "tasks",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tasks",
+    "column_name": "sprint_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tasks_sprints_sprint_id",
+    "ref_table": "sprints",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tasks",
+    "column_name": "category_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tasks_task_categories_category_id",
+    "ref_table": "task_categories",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tasks",
+    "column_name": "status_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tasks_task_statuses_status_id",
+    "ref_table": "task_statuses",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tenant_configuration_template_applications",
+    "column_name": "configuration_template_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tenant_configuration_template_applications_configuration_te",
+    "ref_table": "configuration_templates",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tenant_configuration_template_applications",
+    "column_name": "applied_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tenant_configuration_template_applications_platform_users_a",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tenant_configuration_template_applications",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tenant_configuration_template_applications_tenants_tenant_id",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tenant_integration_credentials",
+    "column_name": "integration_key",
+    "col_ord": 1,
+    "constraint_name": "fk_tenant_integration_credentials_integration_catalog_integrat",
+    "ref_table": "integration_catalog",
+    "ref_column": "integration_key",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tenant_integration_credentials",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tenant_integration_credentials_tenants_tenant_id",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tenant_integration_credentials",
+    "column_name": "connected_by_user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tenant_integration_credentials_users_connected_by_user_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tenant_session_exchange_challenges",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tenant_session_exchange_challenges_tenants_tenant_id",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tenant_session_exchange_challenges",
+    "column_name": "user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tenant_session_exchange_challenges_users_user_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tenant_status_histories",
+    "column_name": "changed_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tenant_status_histories_platform_users_changed_by_id",
+    "ref_table": "platform_users",
+    "ref_column": "id",
+    "delete_rule": "SET NULL"
+  },
+  {
+    "table_name": "tenant_status_histories",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tenant_status_histories_tenants_tenant_id",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tenant_storage_stats",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tenant_storage_stats_tenants_tenant_id",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tray_activation_codes",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tray_activation_codes_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tray_device_authorizations",
+    "column_name": "approved_legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tray_device_authorizations_legal_entities_approved_legal_en",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "tray_device_registrations",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_tray_device_registrations_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "user_integration_connections",
+    "column_name": "integration_key",
+    "col_ord": 1,
+    "constraint_name": "fk_user_integration_connections_integration_catalog_integratio",
+    "ref_table": "integration_catalog",
+    "ref_column": "integration_key",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "user_integration_connections",
+    "column_name": "tenant_id",
+    "col_ord": 1,
+    "constraint_name": "fk_user_integration_connections_tenants_tenant_id",
+    "ref_table": "tenants",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "user_integration_connections",
+    "column_name": "user_id",
+    "col_ord": 1,
+    "constraint_name": "fk_user_integration_connections_users_user_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "user_permission_overrides",
+    "column_name": "permission_id",
+    "col_ord": 1,
+    "constraint_name": "fk_user_permission_overrides_permissions_permission_id",
+    "ref_table": "permissions",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "user_roles",
+    "column_name": "role_id",
+    "col_ord": 1,
+    "constraint_name": "fk_user_roles_roles_role_id",
+    "ref_table": "roles",
+    "ref_column": "id",
+    "delete_rule": "CASCADE"
+  },
+  {
+    "table_name": "versions",
+    "column_name": "project_id",
+    "col_ord": 1,
+    "constraint_name": "fk_versions_projects_project_id",
+    "ref_table": "projects",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "versions",
+    "column_name": "status_id",
+    "col_ord": 1,
+    "constraint_name": "fk_versions_version_statuses_status_id",
+    "ref_table": "version_statuses",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "work_area_change_requests",
+    "column_name": "employee_id",
+    "col_ord": 1,
+    "constraint_name": "fk_work_area_change_requests_employees_employee_id",
+    "ref_table": "employees",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "work_area_change_requests",
+    "column_name": "legal_entity_id",
+    "col_ord": 1,
+    "constraint_name": "fk_work_area_change_requests_legal_entities_legal_entity_id",
+    "ref_table": "legal_entities",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  },
+  {
+    "table_name": "work_area_change_requests",
+    "column_name": "reviewed_by_id",
+    "col_ord": 1,
+    "constraint_name": "fk_work_area_change_requests_users_reviewed_by_id",
+    "ref_table": "users",
+    "ref_column": "id",
+    "delete_rule": "RESTRICT"
+  }
+]

@@ -58,7 +58,7 @@ If the approver's children instead sum to 90 (slack **10**), approve returns `40
 | Status | Cause |
 |---|---|
 | `400` | Validation failure, or this is a top-level milestone with no Reporting Manager |
-| `403` | Not the Objective owner, or no employee record |
+| `403` | Not an effective manager of the Objective (its owner, an active member, or the owner/an active member of any ancestor Objective), or no employee record |
 | `404` | Objective not found / inactive |
 | `409` | Another change request is already pending for this Objective |
 

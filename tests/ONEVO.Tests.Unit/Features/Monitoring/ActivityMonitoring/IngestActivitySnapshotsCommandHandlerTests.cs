@@ -24,11 +24,13 @@ public class IngestActivitySnapshotsCommandHandlerTests
     private readonly Mock<ITrayCurrentDevice> _device = new();
     private readonly Mock<ITenantRepository> _tenants = new();
     private readonly Mock<ITenantContextSwitcher> _switcher = new();
+    private readonly Mock<ITrayEmployeeIdentityResolver> _employeeIdentity = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly FakeUnitOfWork _uow = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _employeeId = Guid.NewGuid();
     private readonly Guid _deviceId = Guid.NewGuid();
 
     public IngestActivitySnapshotsCommandHandlerTests()
@@ -50,6 +52,18 @@ public class IngestActivitySnapshotsCommandHandlerTests
         _toggles.Setup(t => t.IsEnabledAsync(
                 _tenantId, _userId, MonitoringCapability.ActivityMonitoring, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+
+        // The resolved real Employee.Id is what gets persisted - distinct from the raw UserId so
+        // tests can tell whether the handler stored the resolved value or the JWT identity.
+        _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
+                _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_employeeId);
+
+        // Default: this device has never reported any of the batch's timestamps before.
+        // Duplicate-detection tests override this per-case.
+        _snapshots.Setup(s => s.GetExistingCapturedAtsAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<DateTimeOffset>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlySet<DateTimeOffset>)new HashSet<DateTimeOffset>());
     }
 
     private IngestActivitySnapshotsCommandHandler CreateSut() => new(
@@ -59,6 +73,7 @@ public class IngestActivitySnapshotsCommandHandlerTests
         _device.Object,
         _tenants.Object,
         _switcher.Object,
+        _employeeIdentity.Object,
         _clock,
         _uow,
         NullLogger<IngestActivitySnapshotsCommandHandler>.Instance);
@@ -102,8 +117,28 @@ public class IngestActivitySnapshotsCommandHandlerTests
         savedBuffer.AgentDeviceId.Should().Be(_deviceId);
         savedBuffer.PayloadJson.Should().NotBeNullOrWhiteSpace();
         savedSnapshots.Should().NotBeNull().And.HaveCount(1);
-        savedSnapshots!.First().EmployeeId.Should().Be(_userId);
+        savedSnapshots!.First().EmployeeId.Should().Be(_employeeId);
         savedSnapshots.First().KeyboardEventsCount.Should().Be(5);
+    }
+
+    [Fact]
+    public async Task No_employee_resolved_falls_back_to_UserId()
+    {
+        _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
+                _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_userId);
+
+        IEnumerable<ActivitySnapshot>? savedSnapshots = null;
+        _snapshots.Setup(s => s.AddRangeAsync(It.IsAny<IEnumerable<ActivitySnapshot>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<ActivitySnapshot>, CancellationToken>((list, _) => savedSnapshots = list.ToList())
+            .Returns(Task.CompletedTask);
+
+        var cmd = new IngestActivitySnapshotsCommand { Snapshots = [Item(_clock.UtcNow.AddMinutes(-1))] };
+
+        var result = await CreateSut().Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        savedSnapshots!.First().EmployeeId.Should().Be(_userId);
     }
 
     [Fact]
@@ -154,6 +189,53 @@ public class IngestActivitySnapshotsCommandHandlerTests
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(400);
         result.Error.Should().Be(MonitoringErrors.SnapshotTooOld);
+    }
+
+    [Fact]
+    public async Task Snapshot_already_captured_by_this_device_is_skipped_not_reinserted()
+    {
+        var alreadySent = _clock.UtcNow.AddMinutes(-5);
+        var genuinelyNew = _clock.UtcNow.AddMinutes(-1);
+
+        _snapshots.Setup(s => s.GetExistingCapturedAtsAsync(
+                _tenantId, _deviceId, It.IsAny<IReadOnlyCollection<DateTimeOffset>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlySet<DateTimeOffset>)new HashSet<DateTimeOffset> { alreadySent });
+
+        IEnumerable<ActivitySnapshot>? savedSnapshots = null;
+        _snapshots.Setup(s => s.AddRangeAsync(It.IsAny<IEnumerable<ActivitySnapshot>>(), It.IsAny<CancellationToken>()))
+            .Callback<IEnumerable<ActivitySnapshot>, CancellationToken>((list, _) => savedSnapshots = list.ToList())
+            .Returns(Task.CompletedTask);
+
+        var cmd = new IngestActivitySnapshotsCommand
+        {
+            Snapshots = [Item(alreadySent), Item(genuinelyNew)]
+        };
+
+        var result = await CreateSut().Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        savedSnapshots.Should().NotBeNull().And.HaveCount(1);
+        savedSnapshots!.First().CapturedAt.Should().Be(genuinelyNew);
+    }
+
+    [Fact]
+    public async Task Whole_batch_already_captured_saves_nothing_and_does_not_call_SaveChanges()
+    {
+        var alreadySent = _clock.UtcNow.AddMinutes(-1);
+
+        _snapshots.Setup(s => s.GetExistingCapturedAtsAsync(
+                _tenantId, _deviceId, It.IsAny<IReadOnlyCollection<DateTimeOffset>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlySet<DateTimeOffset>)new HashSet<DateTimeOffset> { alreadySent });
+
+        var cmd = new IngestActivitySnapshotsCommand { Snapshots = [Item(alreadySent)] };
+
+        var result = await CreateSut().Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        _snapshots.Verify(
+            s => s.AddRangeAsync(It.IsAny<IEnumerable<ActivitySnapshot>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _uow.SaveCallCount.Should().Be(0);
     }
 
     [Fact]

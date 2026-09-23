@@ -26,6 +26,16 @@ public class MonitoringPolicyOverride : ITenantOwnedEntity
     public bool? WorkLocationVerification { get; set; }
     public bool? IdentityVerification { get; set; }
     public bool? Biometric { get; set; }
+
+    /// <summary>Role/position/department override. Null = inherit from tenant.</summary>
+    public int? IdleThresholdMinutes { get; set; }
+
+    /// <summary>
+    /// Maximum radius in meters from the configured work location. Null = inherit.
+    /// Used by WorkLocationVerification to validate clock-in proximity.
+    /// </summary>
+    public int? AllowedRadiusMeters { get; set; }
+
     public string OverrideReason { get; set; } = string.Empty;
     public Guid SetById { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

@@ -3,6 +3,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
@@ -27,16 +28,19 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
     private readonly IWorkTaskRepository _tasks;
     private readonly ITaskStatusRepository _statuses;
     private readonly ISprintRepository _sprints;
+    private readonly ITaskCategoryRepository _categories;
     private readonly IObjectiveAllocationSlackCalculator _slack;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICalendarEventRepository _calendarEvents;
 
     public ApproveTaskCreationRequestCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, ITaskCreationRequestRepository requests,
         IObjectiveRepository objectives, IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
-        IObjectiveAllocationSlackCalculator slack, IMilestoneMembershipCoordinator membership,
-        INotificationDispatcher notifications, IUnitOfWork unitOfWork, ISprintRepository sprints)
+        ITaskCategoryRepository categories, IObjectiveAllocationSlackCalculator slack, IMilestoneMembershipCoordinator membership,
+        INotificationDispatcher notifications, IUnitOfWork unitOfWork, ISprintRepository sprints,
+        ICalendarEventRepository calendarEvents)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -46,10 +50,12 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
         _tasks = tasks;
         _statuses = statuses;
         _sprints = sprints;
+        _categories = categories;
         _slack = slack;
         _membership = membership;
         _notifications = notifications;
         _unitOfWork = unitOfWork;
+        _calendarEvents = calendarEvents;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(ApproveTaskCreationRequestCommand request, CancellationToken ct)
@@ -73,16 +79,37 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
         if (objective is null)
             return Result<WorkTaskResponse>.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<WorkTaskResponse>.Forbidden("Only this milestone's owner can decide this request.");
 
         var payload = JsonSerializer.Deserialize<TaskCreationRequestPayload>(pending.PayloadJson)!;
 
-        var sprint = await _sprints.GetByIdForTenantAsync(tenantId, payload.SprintId, ct);
-        if (sprint is null || sprint.ObjectiveId != objective.Id)
-            return Result<WorkTaskResponse>.NotFound("Sprint not found.");
-        if (sprint.Status == SprintStatuses.Achieved)
-            return Result<WorkTaskResponse>.Conflict("This sprint has been achieved and is frozen.");
+        var category = await _categories.GetByIdForTenantAsync(tenantId, payload.CategoryId, ct);
+        if (category is null || category.ProjectId != objective.ProjectId)
+            return Result<WorkTaskResponse>.NotFound("Category not found.");
+
+        // D-B: a task materialised into a module covered by a whole-module event must fall in-window.
+        var eventWindows = await _calendarEvents.ListActiveEventWindowsForObjectiveAsync(tenantId, objective.Id, ct);
+        if (eventWindows.Count > 0)
+        {
+            if (payload.DueDate is null)
+                return Result<WorkTaskResponse>.Conflict(
+                    $"This module is in active event(s) {string.Join(", ", eventWindows.Select(w => w.Name))}; a due date is required.");
+            var bad = eventWindows.Where(w => payload.DueDate < w.StartDate || payload.DueDate > w.EndDate).ToList();
+            if (bad.Count > 0)
+                return Result<WorkTaskResponse>.Conflict(
+                    $"Due date {payload.DueDate:yyyy-MM-dd} is outside event window(s): " +
+                    $"{string.Join(", ", bad.Select(w => $"{w.Name} {w.StartDate:yyyy-MM-dd}..{w.EndDate:yyyy-MM-dd}"))}. Widen the event first.");
+        }
+
+        if (payload.SprintId is not null)
+        {
+            var sprint = await _sprints.GetByIdForTenantAsync(tenantId, payload.SprintId.Value, ct);
+            if (sprint is null || sprint.ObjectiveId != objective.Id)
+                return Result<WorkTaskResponse>.NotFound("Sprint not found.");
+            if (sprint.Status == SprintStatuses.Achieved)
+                return Result<WorkTaskResponse>.Conflict("This sprint has been achieved and is frozen.");
+        }
 
         if (payload.EstimatedHours.HasValue)
         {
@@ -92,8 +119,9 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
                     InsufficientAllocationResponseJson.Serialize(new InsufficientAllocationResponse(slack)));
         }
 
-        var statuses = await _statuses.GetByObjectiveIdAsync(tenantId, objective.Id, ct);
-        var defaultStatus = statuses.Where(s => !s.MarksTaskComplete).OrderBy(s => s.DisplayOrder).FirstOrDefault();
+        var statuses = await _statuses.GetProjectTemplateAsync(tenantId, objective.ProjectId, ct);
+        var defaultStatus = statuses.Where(s => s.Category == TaskStatusCategories.NotStarted).OrderBy(s => s.DisplayOrder).FirstOrDefault()
+            ?? statuses.Where(s => s.Category == TaskStatusCategories.Active).OrderBy(s => s.DisplayOrder).FirstOrDefault();
         if (defaultStatus is null)
             return Result<WorkTaskResponse>.Failure("No task statuses configured for this milestone yet.", 422);
 
@@ -109,7 +137,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = objective.ProjectId, ObjectiveId = objective.Id,
                 ShortId = $"{project.Identifier}-{taskNumber}",
-                Title = payload.Title, Description = payload.Description, TaskType = payload.TaskType,
+                Title = payload.Title, Description = payload.Description, CategoryId = payload.CategoryId,
                 Priority = payload.Priority, DueDate = payload.DueDate, EstimatedHours = payload.EstimatedHours,
                 StoryPoints = payload.StoryPoints, StatusId = defaultStatus.Id, CompletedHours = 0m,
                 SprintId = payload.SprintId,
@@ -143,8 +171,9 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
 
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
-                task.TaskType, task.StatusId, task.Priority, task.StoryPoints,
+                task.CategoryId, task.StatusId, task.Priority, task.StoryPoints,
                 task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId));
         }, ct);
     }
 }
+

@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration;
@@ -16,27 +15,18 @@ namespace ONEVO.Tests.Integration;
 [Collection(WebApplicationFactoryCollection.Name)]
 public sealed class ApiBootTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_api_boot_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
-
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private ApiBootTestFactory _factory = null!;
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        var connectionString = _postgres.GetConnectionString();
-
-        // Migrate via a standalone ApplicationDbContext before the WebApplicationFactory is ever
-        // touched. Accessing _factory.Services/CreateClient() starts hosted services (such as
-        // DevSmokeTestTenantSeeder and PermissionSeeder) synchronously during host startup, which
-        // query database tables that must already exist - mirrors AdminTestFactory.MigrateDatabaseAsync.
+        // Cloned from the shared, already-migrated template (see SharedPostgresTemplate) before
+        // the WebApplicationFactory is ever touched. Accessing _factory.Services/CreateClient()
+        // starts hosted services (such as DevSmokeTestTenantSeeder and PermissionSeeder)
+        // synchronously during host startup, which query database tables that must already exist.
         // The environment scope must exist before that same CreateClient()/Services access too,
         // since that is what first triggers Program.cs's pre-Build() startup validators.
-        await IntegrationDatabaseBootstrap.InitializeAsync(connectionString);
+        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new ApiBootTestFactory(connectionString);
@@ -45,7 +35,6 @@ public sealed class ApiBootTests : IAsyncLifetime
     public async Task DisposeAsync()
     {
         await _factory.DisposeAsync();
-        await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 

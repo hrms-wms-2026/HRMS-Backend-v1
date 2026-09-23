@@ -19,6 +19,7 @@ public class IngestMeetingSignalsCommandHandler : IRequestHandler<IngestMeetingS
     private readonly ITrayCurrentDevice _device;
     private readonly ITenantRepository _tenants;
     private readonly ITenantContextSwitcher _tenantSwitcher;
+    private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<IngestMeetingSignalsCommandHandler> _logger;
@@ -29,6 +30,7 @@ public class IngestMeetingSignalsCommandHandler : IRequestHandler<IngestMeetingS
         ITrayCurrentDevice device,
         ITenantRepository tenants,
         ITenantContextSwitcher tenantSwitcher,
+        ITrayEmployeeIdentityResolver employeeIdentity,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
         ILogger<IngestMeetingSignalsCommandHandler> logger)
@@ -38,6 +40,7 @@ public class IngestMeetingSignalsCommandHandler : IRequestHandler<IngestMeetingS
         _device = device;
         _tenants = tenants;
         _tenantSwitcher = tenantSwitcher;
+        _employeeIdentity = employeeIdentity;
         _clock = clock;
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -61,20 +64,25 @@ public class IngestMeetingSignalsCommandHandler : IRequestHandler<IngestMeetingS
             new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
 
         var tenantId = _device.TenantId;
-        var employeeId = _device.UserId;
+        var userId = _device.UserId;
         var agentDeviceId = _device.DeviceRegistrationId;
         var now = _clock.UtcNow;
 
         var enabled = await _toggleResolver.IsEnabledAsync(
-            tenantId, employeeId, MonitoringCapability.MeetingDetection, ct);
+            tenantId, userId, MonitoringCapability.MeetingDetection, ct);
 
         if (!enabled)
         {
             _logger.LogInformation(
-                "Meeting-signal batch rejected: monitoring disabled. TenantId={TenantId} DeviceId={DeviceId} EmployeeId={EmployeeId} Count={Count}",
-                tenantId, agentDeviceId, employeeId, request.Signals.Count);
+                "Meeting-signal batch rejected: monitoring disabled. TenantId={TenantId} DeviceId={DeviceId} UserId={UserId} Count={Count}",
+                tenantId, agentDeviceId, userId, request.Signals.Count);
             return Result.Failure(MonitoringErrors.MeetingDetectionDisabled, 403);
         }
+
+        // Resolves the real CoreHR Employee.Id to store, falling back to the raw UserId when no
+        // Employee row exists yet - see ITrayEmployeeIdentityResolver's own doc comment.
+        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            tenantId, userId, _device.LegalEntityId, ct);
 
         foreach (var item in request.Signals)
         {

@@ -25,4 +25,16 @@ public class EfProjectCategoryRepository : IProjectCategoryRepository
 
         return await query.OrderBy(c => c.Name).ToListAsync(ct);
     }
+
+    public async Task<bool> ExistsByNameAsync(Guid tenantId, string name, CancellationToken ct = default)
+    {
+        return await _db.ProjectCategories
+            .AsNoTracking()
+            .AnyAsync(c => c.TenantId == tenantId && c.Name.ToLower() == name.ToLower(), ct);
+    }
+
+    public async Task AddAsync(ProjectCategory category, CancellationToken ct = default)
+    {
+        await _db.ProjectCategories.AddAsync(category, ct);
+    }
 }

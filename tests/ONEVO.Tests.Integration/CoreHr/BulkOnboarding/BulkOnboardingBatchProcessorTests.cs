@@ -1,0 +1,356 @@
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.BulkOnboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Lookups;
+using ONEVO.Infrastructure.ExternalServices.Messaging;
+using ONEVO.Infrastructure.Identity.CurrentUser;
+using ONEVO.Infrastructure.Identity.Tenancy;
+using ONEVO.Infrastructure.Identity.Time;
+using ONEVO.Infrastructure.Persistence;
+using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
+using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.BulkOnboarding;
+using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.Tenancy;
+using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
+using ONEVO.Infrastructure.Services.CoreHr.BulkOnboarding;
+using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Tests.Integration.Support;
+using Xunit;
+using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
+using WorkModeEntity = ONEVO.Domain.Features.TimeAttendance.Entities.WorkMode;
+
+namespace ONEVO.Tests.Integration.CoreHr.BulkOnboarding;
+
+public sealed class BulkOnboardingBatchProcessorTests : IAsyncLifetime
+{
+
+    private readonly SystemDateTimeProvider _clock = new();
+    private string _connectionString = string.Empty;
+    private Guid _tenantA;
+    private Guid _tenantB;
+    private Guid _legalEntityA;
+    private Guid _legalEntityB;
+    private Guid _userA;
+    private Guid _userB;
+    private Guid _workModeIdA;
+    private Guid _workModeIdB;
+
+    public async Task InitializeAsync()
+    {
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+
+        await using var db = CreateContext(new TenantContextAccessor());
+        db.EmploymentTypes.Add(new EmploymentType { Id = 1, Code = "full_time", Label = "Full-Time" });
+
+        var tenantA = new Tenant
+        {
+            Id = Guid.NewGuid(),
+            Name = "Processor Tenant A",
+            Slug = "bulk-processor-a",
+            CompanySizeRange = "51-200",
+            Status = TenantStatus.Active,
+        };
+        var tenantB = new Tenant
+        {
+            Id = Guid.NewGuid(),
+            Name = "Processor Tenant B",
+            Slug = "bulk-processor-b",
+            CompanySizeRange = "51-200",
+            Status = TenantStatus.Active,
+        };
+        _tenantA = tenantA.Id;
+        _tenantB = tenantB.Id;
+        db.Tenants.AddRange(tenantA, tenantB);
+
+        var legalA = new LegalEntity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = _tenantA,
+            Name = "Acme A",
+            CountryCode = "US",
+            CurrencyCode = "USD",
+        };
+        var legalB = new LegalEntity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = _tenantB,
+            Name = "Acme B",
+            CountryCode = "US",
+            CurrencyCode = "USD",
+        };
+        _legalEntityA = legalA.Id;
+        _legalEntityB = legalB.Id;
+        db.LegalEntities.AddRange(legalA, legalB);
+
+        var workModeA = new WorkModeEntity
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantA, LegalEntityId = _legalEntityA,
+            Name = "Onsite", WebEnabled = true, IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        var workModeB = new WorkModeEntity
+        {
+            Id = Guid.NewGuid(), TenantId = _tenantB, LegalEntityId = _legalEntityB,
+            Name = "Onsite", WebEnabled = true, IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        _workModeIdA = workModeA.Id;
+        _workModeIdB = workModeB.Id;
+        db.TimeAttendanceWorkModes.AddRange(workModeA, workModeB);
+
+        await db.SaveChangesAsync();
+        _userA = Guid.NewGuid();
+        _userB = Guid.NewGuid();
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task ProcessOnce_BatchWithValidRows_CreatesOnboardingDraftsAndMarksBatchDone()
+    {
+        var batch = await SeedValidatedBatchWithTwoValidRowsAsync(_tenantA, _legalEntityA, _userA);
+
+        var processor = CreateProcessor();
+        await processor.ProcessOnceAsync(CancellationToken.None);
+
+        await using var db = CreateContext(new TenantContextAccessor());
+        var reloaded = await db.Set<BulkOnboardingBatch>().AsNoTracking().SingleAsync(b => b.Id == batch.Id);
+        Assert.Equal(BulkOnboardingBatchStatus.DraftsCreated, reloaded.Status);
+        var rows = await db.Set<BulkOnboardingBatchRow>().AsNoTracking().Where(r => r.BatchId == batch.Id).ToListAsync();
+        Assert.All(rows, r => Assert.Equal(BulkOnboardingBatchRowStatus.DraftCreated, r.Status));
+        Assert.All(rows, r => Assert.NotNull(r.OnboardingDraftId));
+    }
+
+    [Fact]
+    public async Task ProcessOnce_TenantAIsolatedFromTenantBBatch_NeverTouchesWrongTenantRows()
+    {
+        await SeedValidatedBatchWithTwoValidRowsAsync(_tenantA, _legalEntityA, _userA, createdAt: DateTimeOffset.UtcNow.AddMinutes(-2));
+        await SeedValidatedBatchWithTwoValidRowsAsync(_tenantB, _legalEntityB, _userB, createdAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        var processor = CreateProcessor();
+        await processor.ProcessOnceAsync(CancellationToken.None);
+        await processor.ProcessOnceAsync(CancellationToken.None);
+
+        await using var db = CreateContext(new TenantContextAccessor());
+        var tenantADrafts = await db.Set<OnboardingDraftEntity>().IgnoreQueryFilters()
+            .Where(d => d.TenantId == _tenantA).CountAsync();
+        var tenantBDrafts = await db.Set<OnboardingDraftEntity>().IgnoreQueryFilters()
+            .Where(d => d.TenantId == _tenantB).CountAsync();
+        Assert.Equal(2, tenantADrafts);
+        Assert.Equal(2, tenantBDrafts);
+    }
+
+    [Fact]
+    public async Task ProcessOnce_FinalizePendingBatch_FinalizesEachSelectedDraftAndCompletesBatch()
+    {
+        var (batch, draftIds) = await SeedFinalizePendingBatchAsync();
+
+        var processor = CreateProcessor();
+        await processor.ProcessOnceAsync(CancellationToken.None);
+
+        await using var db = CreateContext(new TenantContextAccessor());
+        var reloaded = await db.Set<BulkOnboardingBatch>().AsNoTracking().SingleAsync(b => b.Id == batch.Id);
+        Assert.Equal(BulkOnboardingBatchStatus.FinalizeCompleted, reloaded.Status);
+        Assert.NotNull(reloaded.CompletedAt);
+        var rows = await db.Set<BulkOnboardingBatchRow>().AsNoTracking()
+            .Where(r => r.BatchId == batch.Id && draftIds.Contains(r.OnboardingDraftId!.Value)).ToListAsync();
+        var allowed = new[]
+        {
+            BulkOnboardingBatchRowStatus.Finalized,
+            BulkOnboardingBatchRowStatus.WaitingForSeat,
+            BulkOnboardingBatchRowStatus.WaitingForPositionApproval,
+            BulkOnboardingBatchRowStatus.FinalizeFailed,
+        };
+        Assert.All(rows, r => Assert.Contains(r.Status, allowed));
+    }
+
+    [Fact]
+    public async Task ProcessOnce_FinalizeWithNoSeatsAvailable_MarksRowWaitingForSeat()
+    {
+        var blockedSeats = new BlockedSeatService();
+        var (batch, draftIds) = await SeedFinalizePendingBatchAsync(
+            includeEmployeeNumbers: true, seats: blockedSeats);
+
+        var processor = CreateProcessor(blockedSeats);
+        await processor.ProcessOnceAsync(CancellationToken.None);
+
+        await using var db = CreateContext(new TenantContextAccessor());
+        var rows = await db.Set<BulkOnboardingBatchRow>().AsNoTracking()
+            .Where(r => r.BatchId == batch.Id && draftIds.Contains(r.OnboardingDraftId!.Value)).ToListAsync();
+        Assert.All(rows, r => Assert.Equal(BulkOnboardingBatchRowStatus.WaitingForSeat, r.Status));
+    }
+
+    private async Task<(BulkOnboardingBatch Batch, List<Guid> DraftIds)> SeedFinalizePendingBatchAsync(
+        bool includeEmployeeNumbers = false, ISeatEntitlementService? seats = null)
+    {
+        var batch = await SeedValidatedBatchWithTwoValidRowsAsync(
+            _tenantA, _legalEntityA, _userA, includeEmployeeNumbers: includeEmployeeNumbers);
+        var processor = CreateProcessor(seats);
+        await processor.ProcessOnceAsync(CancellationToken.None);
+
+        await using var db = CreateContext(new TenantContextAccessor());
+        var tracked = await db.Set<BulkOnboardingBatch>().SingleAsync(b => b.Id == batch.Id);
+        var rows = await db.Set<BulkOnboardingBatchRow>().Where(r => r.BatchId == batch.Id).ToListAsync();
+        var draftIds = rows.Select(r => r.OnboardingDraftId!.Value).ToList();
+        tracked.Status = BulkOnboardingBatchStatus.FinalizePending;
+        tracked.SelectedDraftIdsJson = JsonSerializer.Serialize(draftIds);
+        await db.SaveChangesAsync();
+        return (tracked, draftIds);
+    }
+
+    private async Task<BulkOnboardingBatch> SeedValidatedBatchWithTwoValidRowsAsync(
+        Guid tenantId, Guid legalEntityId, Guid createdByUserId, DateTimeOffset? createdAt = null,
+        bool includeEmployeeNumbers = false)
+    {
+        await using var db = CreateContext(new TenantContextAccessor());
+        var mapping = new Dictionary<string, string?>
+        {
+            ["firstName"] = "First Name",
+            ["lastName"] = "Last Name",
+            ["workEmail"] = "Email",
+            ["startDate"] = "Start",
+            ["employmentType"] = "Type",
+        };
+        if (includeEmployeeNumbers)
+            mapping["employeeNumber"] = "EmpNo";
+        var batch = new BulkOnboardingBatch
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            LegalEntityId = legalEntityId,
+            DefaultWorkModeId = legalEntityId == _legalEntityA ? _workModeIdA : _workModeIdB,
+            DefaultEmploymentType = "full_time",
+            ColumnMappingJson = JsonSerializer.Serialize(mapping),
+            OriginalFileName = "employees.csv",
+            Status = BulkOnboardingBatchStatus.DraftCreationPending,
+            TotalRows = 2,
+            ValidRows = 2,
+            InvalidRows = 0,
+            CreatedByUserId = createdByUserId,
+            CreatedAt = createdAt ?? DateTimeOffset.UtcNow,
+        };
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var rows = new[]
+        {
+            NewValidRow(batch, tenantId, 1, "Jane", "Doe", $"jane-{suffix}@acme.com", includeEmployeeNumbers ? $"EMP-{suffix}-1" : null),
+            NewValidRow(batch, tenantId, 2, "John", "Smith", $"john-{suffix}@acme.com", includeEmployeeNumbers ? $"EMP-{suffix}-2" : null),
+        };
+        db.Set<BulkOnboardingBatch>().Add(batch);
+        db.Set<BulkOnboardingBatchRow>().AddRange(rows);
+        await db.SaveChangesAsync();
+        return batch;
+    }
+
+    private static BulkOnboardingBatchRow NewValidRow(
+        BulkOnboardingBatch batch, Guid tenantId, int rowNumber, string first, string last, string email,
+        string? employeeNumber = null)
+    {
+        var raw = new Dictionary<string, string>
+        {
+            ["First Name"] = first,
+            ["Last Name"] = last,
+            ["Email"] = email,
+            ["Start"] = "2026-09-01",
+            ["Type"] = "full_time",
+        };
+        if (employeeNumber is not null)
+            raw["EmpNo"] = employeeNumber;
+        return new BulkOnboardingBatchRow
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            BatchId = batch.Id,
+            RowNumber = rowNumber,
+            RawDataJson = JsonSerializer.Serialize(raw),
+            Status = BulkOnboardingBatchRowStatus.Valid,
+        };
+    }
+
+    private BulkOnboardingBatchProcessor CreateProcessor(ISeatEntitlementService? seats = null)
+    {
+        var services = new ServiceCollection();
+        services.AddScoped(_ => new TenantContextAccessor());
+        services.AddScoped<IWritableTenantContext>(sp => sp.GetRequiredService<TenantContextAccessor>());
+        services.AddScoped(sp => CreateContext(sp.GetRequiredService<TenantContextAccessor>()));
+        services.AddScoped<IBulkOnboardingBatchRepository, EfBulkOnboardingBatchRepository>();
+        services.AddScoped<ITenantRepository, EfTenantRepository>();
+        services.AddScoped<ITenantContextSwitcher, TenantContextSwitcher>();
+        services.AddScoped<IOnboardingDraftRepository, EfOnboardingDraftRepository>();
+        services.AddScoped<IEmployeeRepository, EfEmployeeRepository>();
+        services.AddScoped<IPositionRepository, EfPositionRepository>();
+        services.AddScoped<ILegalEntityRepository, EfLegalEntityRepository>();
+        services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
+        services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();
+        services.AddScoped<IEmploymentTypeRepository, EfEmploymentTypeRepository>();
+        if (seats is null)
+            services.AddScoped<ISeatEntitlementService, SeatEntitlementService>();
+        else
+            services.AddSingleton(seats);
+        services.AddScoped<ICurrentUser>(_ => new StubCurrentUser());
+        services.AddScoped<IDateTimeProvider>(_ => _clock);
+        services.AddScoped<IUnitOfWork>(sp => new UnitOfWork(sp.GetRequiredService<ApplicationDbContext>()));
+        services.AddScoped<IOnboardingDraftWriteService>(sp => new OnboardingDraftWriteService(
+            sp.GetRequiredService<IOnboardingDraftRepository>(),
+            sp.GetRequiredService<IEmployeeRepository>(),
+            null!, null!,
+            sp.GetRequiredService<IPositionRepository>(), null!,
+            sp.GetRequiredService<ILegalEntityRepository>(),
+            sp.GetRequiredService<IDepartmentRepository>(),
+            sp.GetRequiredService<IEmploymentTypeRepository>(),
+            sp.GetRequiredService<IWorkModeRepository>(),
+            sp.GetRequiredService<ISeatEntitlementService>(),
+            null!, null!, null!, null!, null!, null!, null!, null!,
+            sp.GetRequiredService<ICurrentUser>(),
+            sp.GetRequiredService<IDateTimeProvider>(),
+            sp.GetRequiredService<IUnitOfWork>()));
+
+        var provider = services.BuildServiceProvider();
+        return new BulkOnboardingBatchProcessor(provider, NullLogger<BulkOnboardingBatchProcessor>.Instance);
+    }
+
+    private ApplicationDbContext CreateContext(TenantContextAccessor tenantContext)
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(_connectionString)
+            .UseSnakeCaseNamingConvention()
+            .AddInterceptors(new TenantRlsInterceptor(tenantContext))
+            .Options;
+
+        return new ApplicationDbContext(
+            options,
+            new AuditableEntityInterceptor(new AnonymousCurrentUser(), _clock),
+            new SoftDeleteInterceptor(_clock),
+            new DomainEventDispatchInterceptor(new NoOpPublisher()),
+            tenantContext);
+    }
+
+    private sealed class StubCurrentUser : ICurrentUser
+    {
+        public Guid UserId => Guid.Empty;
+        public Guid TenantId => Guid.Empty;
+        public string Email => "worker@bulk-onboarding.onevo.dev";
+        public IReadOnlyList<string> Permissions => [];
+        public bool HasPermission(string permission) => false;
+        public bool IsAuthenticated => false;
+    }
+
+    private sealed class BlockedSeatService : ISeatEntitlementService
+    {
+        public Task<SeatDecision> EvaluateAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult(new SeatDecision(SeatDecisionStatus.Blocked, 0, 0, 0, 0, false, true, "no seats"));
+    }
+}

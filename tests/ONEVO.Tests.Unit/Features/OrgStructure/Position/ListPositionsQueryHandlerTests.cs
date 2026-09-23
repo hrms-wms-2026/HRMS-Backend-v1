@@ -30,6 +30,10 @@ public sealed class ListPositionsQueryHandlerTests
             .Setup(p => p.GetOccupancyPreviewsAsync(
                 It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, PositionOccupancyPreview>());
+        _positionsMock
+            .Setup(p => p.GetRequiresApprovalByPositionIdsAsync(
+                It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, bool>());
     }
 
     private ListPositionsQueryHandler CreateHandler()
@@ -161,5 +165,37 @@ public sealed class ListPositionsQueryHandlerTests
         Assert.Equal(0, item.AssignedCount);
         Assert.Equal(0, item.RemainingAssignedCount);
         Assert.Empty(item.OccupantPreview);
+    }
+
+    [Fact]
+    public async Task Handle_ExposesRequiresApproval_FromBatchedPositionAccessTemplates()
+    {
+        var sensitivePositionId = Guid.NewGuid();
+        var regularPositionId = Guid.NewGuid();
+        var items = new List<ONEVO.Domain.Features.OrgStructure.Entities.Position>
+        {
+            new() { Id = sensitivePositionId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "CFO", Code = "CFO", IsActive = true },
+            new() { Id = regularPositionId, TenantId = _tenantId, LegalEntityId = _legalEntityId, Name = "Engineer", Code = "ENG", IsActive = true }
+        };
+        _positionsMock
+            .Setup(p => p.ListPageAsync(
+                _tenantId, _legalEntityId, null, null, false, "name", "asc", 1, 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionPage(items, 2, 1, 20, 1));
+
+        _positionsMock
+            .Setup(p => p.GetRequiresApprovalByPositionIdsAsync(
+                _tenantId,
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 2 && ids.Contains(sensitivePositionId) && ids.Contains(regularPositionId)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, bool> { [sensitivePositionId] = true });
+
+        var result = await CreateHandler().Handle(DefaultQuery(_legalEntityId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Items.Count);
+        var sensitive = Assert.Single(result.Value.Items, i => i.Id == sensitivePositionId);
+        var regular = Assert.Single(result.Value.Items, i => i.Id == regularPositionId);
+        Assert.True(sensitive.RequiresApproval);
+        Assert.False(regular.RequiresApproval);
     }
 }

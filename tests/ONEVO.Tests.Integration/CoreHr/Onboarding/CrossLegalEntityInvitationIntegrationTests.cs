@@ -1,12 +1,12 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
-using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
@@ -15,9 +15,9 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
@@ -30,11 +30,6 @@ namespace ONEVO.Tests.Integration.CoreHr.Onboarding;
 /// </summary>
 public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_cross_le_invitation_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
@@ -46,12 +41,9 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         _tenantId = Guid.NewGuid();
         _legalEntityAId = Guid.NewGuid();
@@ -79,7 +71,6 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
             LastName = "Person",
             IsActive = true,
         });
-        db.WorkModes.Add(new WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true });
         db.Employees.Add(new EmployeeEntity
         {
             Id = Guid.NewGuid(),
@@ -95,7 +86,7 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task SaveDraft_AllowsSameEmailInSecondLegalEntity()
@@ -105,8 +96,8 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
 
         var result = await handler.Handle(new SaveOnboardingDraftCommand(
             null, "Shared", "Person", SharedEmail, _legalEntityBId, null, null,
-            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "EMP-B-001", 1, null, null,
-            "employee_details", IfMatchVersion: null), CancellationToken.None);
+            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "EMP-B-001", null, null, null,
+            "employee_details", IfMatchVersion: null, ReportsToEmployeeId: null), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
     }
@@ -119,8 +110,8 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
 
         var result = await handler.Handle(new SaveOnboardingDraftCommand(
             null, "Shared", "Person", SharedEmail, _legalEntityAId, null, null,
-            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "EMP-A-002", 1, null, null,
-            "employee_details", IfMatchVersion: null), CancellationToken.None);
+            "full_time", DateOnly.FromDateTime(DateTime.UtcNow), "EMP-A-002", null, null, null,
+            "employee_details", IfMatchVersion: null, ReportsToEmployeeId: null), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(409);
@@ -129,16 +120,22 @@ public sealed class CrossLegalEntityInvitationIntegrationTests : IAsyncLifetime
     private SaveOnboardingDraftCommandHandler BuildSaveHandler(ApplicationDbContext db)
     {
         var currentUser = new StubCurrentUser(_tenantId, _userId);
-        return new SaveOnboardingDraftCommandHandler(
+        var writeService = new OnboardingDraftWriteService(
             new EfOnboardingDraftRepository(db),
             new EfEmployeeRepository(db),
+            null!, null!,
             new EfPositionRepository(db),
+            null!,
             new EfLegalEntityRepository(db),
             new EfDepartmentRepository(db),
-            new SeatEntitlementService(db),
+            null!,
             new EfWorkModeRepository(db),
+            new SeatEntitlementService(db),
+            null!, null!, null!, null!, null!, null!, null!, null!,
             currentUser,
-            _clock);
+            _clock,
+            null!);
+        return new SaveOnboardingDraftCommandHandler(writeService, currentUser);
     }
 
     private ApplicationDbContext CreateContext(Guid? tenantId = null, string? slug = null)

@@ -3,9 +3,9 @@ using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
-using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
 using ONEVO.Domain.Errors;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
 
@@ -15,8 +15,10 @@ public class CompleteAgentCommandHandler : IRequestHandler<CompleteAgentCommandC
 {
     private readonly IAgentCommandRepository _commands;
     private readonly IEvidenceAssetRepository _assets;
-    private readonly ITrayActivationRepository _trayRepo;
     private readonly ITrayCurrentDevice _device;
+    private readonly ITenantRepository _tenants;
+    private readonly ITenantContextSwitcher _tenantSwitcher;
+    private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<CompleteAgentCommandHandler> _logger;
@@ -24,16 +26,20 @@ public class CompleteAgentCommandHandler : IRequestHandler<CompleteAgentCommandC
     public CompleteAgentCommandHandler(
         IAgentCommandRepository commands,
         IEvidenceAssetRepository assets,
-        ITrayActivationRepository trayRepo,
         ITrayCurrentDevice device,
+        ITenantRepository tenants,
+        ITenantContextSwitcher tenantSwitcher,
+        ITrayEmployeeIdentityResolver employeeIdentity,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
         ILogger<CompleteAgentCommandHandler> logger)
     {
         _commands = commands;
         _assets = assets;
-        _trayRepo = trayRepo;
         _device = device;
+        _tenants = tenants;
+        _tenantSwitcher = tenantSwitcher;
+        _employeeIdentity = employeeIdentity;
         _clock = clock;
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -41,6 +47,23 @@ public class CompleteAgentCommandHandler : IRequestHandler<CompleteAgentCommandC
 
     public async Task<Result> Handle(CompleteAgentCommandCommand request, CancellationToken cancellationToken)
     {
+        if (!_device.IsAuthenticated
+            || _device.TenantId == Guid.Empty
+            || _device.UserId == Guid.Empty
+            || _device.DeviceRegistrationId == Guid.Empty)
+        {
+            return Result.Failure("A valid tray device token is required.", 401);
+        }
+
+        var tenant = await _tenants.GetByIdAsync(_device.TenantId, cancellationToken);
+        if (tenant is null)
+            return Result.Failure("Tenant not found.", 401);
+
+        // Tray requests hit the base host (system mode) — see IngestActivitySnapshotsCommandHandler.
+        await _tenantSwitcher.SwitchToTenantAsync(
+            new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null),
+            cancellationToken);
+
         var tenantId = _device.TenantId;
         var deviceId = _device.DeviceRegistrationId;
 
@@ -71,9 +94,10 @@ public class CompleteAgentCommandHandler : IRequestHandler<CompleteAgentCommandC
 
         if (request.Success && request.FileRecordId.HasValue)
         {
-            // Phase 1: UserId on TrayDeviceRegistration serves as employeeId
-            var registeredDevice = await _trayRepo.FindActiveDeviceAsync(deviceId, tenantId, cancellationToken);
-            var employeeId = registeredDevice?.UserId ?? _device.UserId;
+            // Resolves the real CoreHR Employee.Id to store, falling back to the raw UserId when
+            // no Employee row exists yet - see ITrayEmployeeIdentityResolver's own doc comment.
+            var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+                tenantId, _device.UserId, _device.LegalEntityId, cancellationToken);
 
             var asset = new MonitoringEvidenceAsset
             {

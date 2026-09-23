@@ -18,7 +18,7 @@ public sealed class EfPositionAssignmentRepositoryTests
     public async Task GetActivePrimaryAsync_ReturnsNull_WhenNoActivePrimaryAssignmentExists()
     {
         await using var db = BuildInMemoryDb();
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
 
         var result = await repository.GetActivePrimaryAsync(Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None);
 
@@ -38,7 +38,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var result = await repository.GetActivePrimaryAsync(tenantId, employeeId, CancellationToken.None);
 
         Assert.Null(result);
@@ -56,7 +56,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var result = await repository.GetActivePrimaryAsync(tenantId, employeeId, CancellationToken.None);
 
         Assert.NotNull(result);
@@ -77,7 +77,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var count = await repository.CountActiveAsync(tenantId, positionId, CancellationToken.None);
 
         Assert.Equal(1, count);
@@ -98,7 +98,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var count = await repository.CountActiveAsync(tenantId, positionId, CancellationToken.None);
 
         Assert.Equal(0, count);
@@ -124,7 +124,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var capacityCount = await repository.CountActiveAsync(tenantId, positionId, CancellationToken.None);
         var previews = await repository.GetOccupancyPreviewsAsync(tenantId, [positionId], 4, CancellationToken.None);
 
@@ -154,7 +154,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var result = await repository.HasActivePrimaryInLegalEntityAsync(tenantId, employeeId, legalEntityId, CancellationToken.None);
 
         Assert.False(result);
@@ -181,7 +181,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var result = await repository.HasActivePrimaryInLegalEntityAsync(tenantId, employeeId, legalEntityId, CancellationToken.None);
 
         Assert.True(result);
@@ -196,7 +196,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var result = await repository.GetTrackedAsync(Guid.NewGuid(), assignment.Id, CancellationToken.None);
 
         Assert.Null(result);
@@ -206,7 +206,7 @@ public sealed class EfPositionAssignmentRepositoryTests
     public async Task GetOccupancyPreviewsAsync_ReturnsEmptyDictionary_WhenNoPositionIdsRequested()
     {
         await using var db = BuildInMemoryDb();
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
 
         var result = await repository.GetOccupancyPreviewsAsync(
             Guid.NewGuid(), Array.Empty<Guid>(), 4, CancellationToken.None);
@@ -221,7 +221,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         var tenantId = Guid.NewGuid();
         var positionId = Guid.NewGuid();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var result = await repository.GetOccupancyPreviewsAsync(tenantId, [positionId], 4, CancellationToken.None);
 
         Assert.False(result.ContainsKey(positionId));
@@ -236,12 +236,18 @@ public sealed class EfPositionAssignmentRepositoryTests
         var avatarFileId = Guid.NewGuid();
         var employee = CreateEmployee(tenantId, "Jane", "Smith", avatarFileId);
         db.Employees.Add(employee);
+        db.EntityAssets.Add(new ONEVO.Domain.Features.Storage.EntityAssets.Entities.EntityAsset
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, OwnerType = "employee", OwnerId = employee.Id,
+            AssetPurpose = "employee_avatar", FileRecordId = avatarFileId, IsPrimary = true,
+            CreatedByType = "system", CreatedById = employee.Id
+        });
         db.PositionAssignments.Add(CreateAssignment(
             tenantId, employee.Id, positionId, PositionAssignmentKind.PrimaryEmployment, PositionAssignmentStatus.Active));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var result = await repository.GetOccupancyPreviewsAsync(tenantId, [positionId], 4, CancellationToken.None);
 
         var preview = result[positionId];
@@ -271,7 +277,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var result = await repository.GetOccupancyPreviewsAsync(tenantId, [positionId], 4, CancellationToken.None);
 
         var preview = result[positionId];
@@ -293,7 +299,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var result = await repository.GetOccupancyPreviewsAsync(tenantId, [positionId], 4, CancellationToken.None);
 
         var preview = result[positionId];
@@ -317,7 +323,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var result = await repository.GetOccupancyPreviewsAsync(
             tenantId, [positionOneId, positionTwoId], 4, CancellationToken.None);
 
@@ -340,7 +346,7 @@ public sealed class EfPositionAssignmentRepositoryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var repository = new EfPositionAssignmentRepository(db);
+        var repository = CreateRepository(db);
         var result = await repository.GetOccupancyPreviewsAsync(tenantId, [positionId], 4, CancellationToken.None);
 
         Assert.False(result.ContainsKey(positionId));
@@ -354,7 +360,6 @@ public sealed class EfPositionAssignmentRepositoryTests
             TenantId = tenantId,
             FirstName = firstName,
             LastName = lastName,
-            AvatarFileId = avatarFileId,
         };
     }
 
@@ -371,6 +376,13 @@ public sealed class EfPositionAssignmentRepositoryTests
             AssignmentStatus = status,
             EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow),
         };
+    }
+
+    private static EfPositionAssignmentRepository CreateRepository(ApplicationDbContext db)
+    {
+        var clock = Mock.Of<IDateTimeProvider>(p => p.UtcNow == DateTimeOffset.UtcNow);
+        var closureRepo = new EfEmployeeHierarchyClosureRepository(db, clock);
+        return new EfPositionAssignmentRepository(db, closureRepo);
     }
 
     private static ApplicationDbContext BuildInMemoryDb()

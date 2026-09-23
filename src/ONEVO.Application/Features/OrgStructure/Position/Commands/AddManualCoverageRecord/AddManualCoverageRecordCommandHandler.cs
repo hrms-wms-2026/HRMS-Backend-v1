@@ -2,6 +2,7 @@ using MediatR;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 using ONEVO.Application.Features.OrgStructure.Mappers;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -15,6 +16,7 @@ public class AddManualCoverageRecordCommandHandler
     private readonly IPositionRepository _positions;
     private readonly IDepartmentRepository _departments;
     private readonly ILegalEntityRepository _legalEntities;
+    private readonly IPositionAssignmentRepository _positionAssignments;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTimeProvider;
 
@@ -22,12 +24,14 @@ public class AddManualCoverageRecordCommandHandler
         IPositionRepository positions,
         IDepartmentRepository departments,
         ILegalEntityRepository legalEntities,
+        IPositionAssignmentRepository positionAssignments,
         ICurrentUser currentUser,
         IDateTimeProvider dateTimeProvider)
     {
         _positions = positions;
         _departments = departments;
         _legalEntities = legalEntities;
+        _positionAssignments = positionAssignments;
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;
     }
@@ -79,6 +83,27 @@ public class AddManualCoverageRecordCommandHandler
             coveredDepartmentName = coveredDepartment.Name;
         }
 
+        var activeHolders = await _positionAssignments.GetActiveHoldersAsync(tenantId, owner.Id, ct);
+        string? responsibleEmployeeName = null;
+
+        if (activeHolders.Count > 1)
+        {
+            if (request.ResponsibleEmployeeId is not { } chosenId)
+                return Result<ManagementCoverageRecordResponse>.UnprocessableEntity(
+                    "This position has multiple current holders — select who is responsible for this coverage.");
+
+            var matched = activeHolders.FirstOrDefault(h => h.EmployeeId == chosenId);
+            if (matched is null)
+                return Result<ManagementCoverageRecordResponse>.UnprocessableEntity(
+                    "The selected responsible person is not a current holder of this position.");
+
+            responsibleEmployeeName = $"{matched.FirstName} {matched.LastName}";
+        }
+        else if (activeHolders.Count == 1)
+        {
+            responsibleEmployeeName = $"{activeHolders[0].FirstName} {activeHolders[0].LastName}";
+        }
+
         var hasConflict = await _positions.HasActiveCoverageConflictAsync(
             tenantId,
             request.LegalEntityId,
@@ -107,6 +132,7 @@ public class AddManualCoverageRecordCommandHandler
             Source = CoverageRecordEntity.SourceManual,
             IsLocked = false,
             Status = CoverageRecordEntity.StatusActive,
+            ResponsibleEmployeeId = activeHolders.Count > 1 ? request.ResponsibleEmployeeId : null,
             CreatedAt = _dateTimeProvider.UtcNow
         };
 
@@ -128,6 +154,6 @@ public class AddManualCoverageRecordCommandHandler
         }
 
         return Result<ManagementCoverageRecordResponse>.Success(
-            ManagementCoverageRecordMapper.ToResponse(record, owner.Name, coveredPositionName, coveredDepartmentName));
+            ManagementCoverageRecordMapper.ToResponse(record, owner.Name, coveredPositionName, coveredDepartmentName, responsibleEmployeeName));
     }
 }

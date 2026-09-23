@@ -5,8 +5,12 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObjective;
+using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
+using ONEVO.Domain.Lookups;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement;
@@ -25,13 +29,6 @@ public class EditObjectiveCommandHandlerTests
     private static EditObjectiveCommand ValidCommand(DateOnly? endDate = null, decimal allocatedHours = 15m) => new(
         ObjectiveId, "Updated Title", "updated desc", new DateOnly(2026, 2, 1), endDate ?? new DateOnly(2026, 4, 1), allocatedHours);
 
-    private static Objective ParentObjective() => new()
-    {
-        Id = ParentId, TenantId = TenantId, ProjectId = ProjectId, IsDefault = true, Title = "Parent",
-        OwnerId = HeadEmployeeId, IsActive = true, StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 6, 1),
-        AllocatedHours = 40m, CreatedAt = DateTimeOffset.UtcNow
-    };
-
     private static Objective SubObjective(Guid createdById, bool isDefault = false, bool isActive = true) => new()
     {
         Id = ObjectiveId, TenantId = TenantId, ProjectId = ProjectId, ParentObjectiveId = ParentId, IsDefault = isDefault,
@@ -40,8 +37,8 @@ public class EditObjectiveCommandHandlerTests
         CreatedAt = DateTimeOffset.UtcNow
     };
 
-    private (EditObjectiveCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IObjectiveChangeRequestRepository> Requests) BuildHandler(
-        Objective? objective, Objective? parent, bool hasPending = false, Guid? callerId = null)
+    private (EditObjectiveCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IObjectiveChangeRequestRepository> Requests, Mock<IMilestoneMembershipCoordinator> Membership) BuildHandler(
+        Objective? objective, bool hasPending = false, Guid? callerId = null, bool? callerIsEffectiveManager = null)
     {
         var resolvedCallerUserId = callerId ?? HeadUserId;
         var resolvedCallerEmployeeId = resolvedCallerUserId == OtherUserId ? OtherEmployeeId : HeadEmployeeId;
@@ -54,53 +51,70 @@ public class EditObjectiveCommandHandlerTests
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, resolvedCallerUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(resolvedCallerEmployeeId);
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [resolvedCallerEmployeeId] = "Requester" });
 
         var objectives = new Mock<IObjectiveRepository>();
         objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
-        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ParentId, It.IsAny<CancellationToken>())).ReturnsAsync(parent);
 
         var requests = new Mock<IObjectiveChangeRequestRepository>();
         requests.Setup(x => x.HasPendingForObjectiveAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(hasPending);
 
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant (caller isn't objective.OwnerId but IsEffectiveManagerAsync
+        // is still true because they own/are a member of an ancestor - already unit-tested at
+        // the coordinator level in MilestoneMembershipCoordinatorTests).
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (objective is not null && objective.OwnerId == resolvedCallerEmployeeId));
+        membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Employee { Id = Guid.NewGuid(), TenantId = TenantId, EmploymentStatusId = EmploymentStatusIds.Active });
+
         var unitOfWork = new Mock<IUnitOfWork>();
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<ObjectiveEditOutcomeResponse>>>>(), It.IsAny<CancellationToken>()))
+            .Returns<Func<CancellationToken, Task<Result<ObjectiveEditOutcomeResponse>>>, CancellationToken>((operation, innerCt) => operation(innerCt));
 
-        var handler = new EditObjectiveCommandHandler(currentUser.Object, identity.Object, objectives.Object, requests.Object, unitOfWork.Object);
-        return (handler, objectives, requests);
+        var handler = new EditObjectiveCommandHandler(
+            currentUser.Object, identity.Object, objectives.Object, requests.Object, unitOfWork.Object, membership.Object,
+            new Mock<INotificationDispatcher>().Object);
+        return (handler, objectives, requests, membership);
     }
 
     [Fact]
-    public async Task Handle_NonConflictingEditByHead_AppliesImmediately()
+    public async Task Handle_NonConflictingEditByHead_AlwaysCreatesPendingRequestForApproval()
     {
-        var (handler, objectives, requests) = BuildHandler(SubObjective(createdById: OtherUserId), ParentObjective());
+        var (handler, objectives, requests, _) = BuildHandler(SubObjective(createdById: OtherUserId));
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.True(result.Value!.Applied);
-        Assert.Equal("Updated Title", result.Value.Objective!.Title);
-        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Once);
-        requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.False(result.Value!.Applied);
+        Assert.NotNull(result.Value.PendingRequest);
+        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
+        requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Handle_ConflictingEditByCreator_AppliesImmediately()
+    public async Task Handle_EditByCreator_StillCreatesPendingRequest_CreatorNoLongerBypassesApproval()
     {
-        var (handler, objectives, requests) = BuildHandler(SubObjective(createdById: HeadUserId), ParentObjective());
+        var (handler, objectives, requests, _) = BuildHandler(SubObjective(createdById: HeadUserId));
         var command = ValidCommand(endDate: new DateOnly(2026, 7, 1));
 
         var result = await handler.Handle(command, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        Assert.True(result.Value!.Applied);
-        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Once);
-        requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.False(result.Value!.Applied);
+        Assert.NotNull(result.Value.PendingRequest);
+        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
+        requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Handle_ConflictingEditByNonCreatorHead_CreatesPendingRequestInsteadOfApplying()
+    public async Task Handle_ConflictingEditByNonCreatorHead_CreatesPendingRequestRoutedToReportingManager()
     {
-        var (handler, objectives, requests) = BuildHandler(SubObjective(createdById: OtherUserId), ParentObjective());
+        var (handler, objectives, requests, _) = BuildHandler(SubObjective(createdById: OtherUserId));
         var command = ValidCommand(endDate: new DateOnly(2026, 7, 1));
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -114,12 +128,11 @@ public class EditObjectiveCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ConflictingEditWithAlreadyPendingRequest_ReturnsConflict()
+    public async Task Handle_AlreadyPendingRequest_ReturnsConflict()
     {
-        var (handler, _, _) = BuildHandler(SubObjective(createdById: OtherUserId), ParentObjective(), hasPending: true);
-        var command = ValidCommand(endDate: new DateOnly(2026, 7, 1));
+        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: OtherUserId), hasPending: true);
 
-        var result = await handler.Handle(command, CancellationToken.None);
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
@@ -128,7 +141,7 @@ public class EditObjectiveCommandHandlerTests
     [Fact]
     public async Task Handle_CallerNotHead_ReturnsForbidden()
     {
-        var (handler, _, _) = BuildHandler(SubObjective(createdById: OtherUserId), ParentObjective(), callerId: OtherUserId);
+        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: OtherUserId), callerId: OtherUserId);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -137,9 +150,27 @@ public class EditObjectiveCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_CallerIsActiveMemberOfAncestorObjective_CreatesPendingRequest()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately in MilestoneMembershipCoordinatorTests, so
+        // this only proves the handler defers to its answer instead of the direct OwnerId check.
+        var (handler, objectives, requests, _) = BuildHandler(
+            SubObjective(createdById: OtherUserId), callerId: OtherUserId, callerIsEffectiveManager: true);
+
+        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.Applied);
+        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
+        requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_DefaultObjective_ReturnsBadRequest()
     {
-        var (handler, _, _) = BuildHandler(SubObjective(createdById: HeadUserId, isDefault: true), ParentObjective());
+        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: HeadUserId, isDefault: true));
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -150,7 +181,7 @@ public class EditObjectiveCommandHandlerTests
     [Fact]
     public async Task Handle_ObjectiveNotFound_ReturnsNotFound()
     {
-        var (handler, _, _) = BuildHandler(null, ParentObjective());
+        var (handler, _, _, _) = BuildHandler(null);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -161,7 +192,7 @@ public class EditObjectiveCommandHandlerTests
     [Fact]
     public async Task Handle_ObjectiveInactive_ReturnsNotFound()
     {
-        var (handler, _, _) = BuildHandler(SubObjective(createdById: OtherUserId, isActive: false), ParentObjective());
+        var (handler, _, _, _) = BuildHandler(SubObjective(createdById: OtherUserId, isActive: false));
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 
@@ -170,24 +201,11 @@ public class EditObjectiveCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_NonConflictingEditWithAlreadyPendingRequest_ReturnsConflict()
-    {
-        var (handler, objectives, requests) = BuildHandler(SubObjective(createdById: OtherUserId), ParentObjective(), hasPending: true);
-
-        var result = await handler.Handle(ValidCommand(), CancellationToken.None);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(409, result.StatusCode);
-        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
-        requests.Verify(x => x.AddAsync(It.IsAny<Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities.ObjectiveChangeRequest>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
     public async Task Handle_ObjectiveAchieved_ReturnsBadRequest()
     {
         var achieved = SubObjective(createdById: OtherUserId);
         achieved.IsAchieved = true;
-        var (handler, _, _) = BuildHandler(achieved, ParentObjective());
+        var (handler, _, _, _) = BuildHandler(achieved);
 
         var result = await handler.Handle(ValidCommand(), CancellationToken.None);
 

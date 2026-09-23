@@ -7,6 +7,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 
 namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
@@ -20,6 +21,8 @@ namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 /// </summary>
 public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQuery, Result<EmployeeDetailResponse>>
 {
+    private const string AttendanceReadPermission = "attendance:read";
+
     private readonly IEmployeeRepository _employeeRepository;
     private readonly IEmployeeVisibilityScopeResolver _visibilityScopeResolver;
     private readonly IEmployeeProfileRepository _profile;
@@ -27,6 +30,7 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
     private readonly IEncryptionService _encryption;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
+    private readonly IEmploymentTypeRepository _employmentTypes;
 
     public GetEmployeeDetailQueryHandler(
         IEmployeeRepository employeeRepository,
@@ -35,7 +39,8 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         IInvitationTokenRepository invitationTokenRepository,
         IEncryptionService encryption,
         ICurrentUser currentUser,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IEmploymentTypeRepository employmentTypes)
     {
         _employeeRepository = employeeRepository;
         _visibilityScopeResolver = visibilityScopeResolver;
@@ -44,6 +49,7 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
         _encryption = encryption;
         _currentUser = currentUser;
         _clock = clock;
+        _employmentTypes = employmentTypes;
     }
 
     public async Task<Result<EmployeeDetailResponse>> Handle(GetEmployeeDetailQuery request, CancellationToken ct)
@@ -77,10 +83,31 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
 
         var invitation = await _invitationTokenRepository.GetLatestByEmployeeIdAsync(tenantId, request.EmployeeId, ct);
 
+        EmployeeListAttendanceSummaryResponse? attendanceSummary = null;
+        if (_currentUser.HasPermission(AttendanceReadPermission))
+        {
+            // Deliberately NOT EmployeeVisibilityScope.Unrestricted(): ListVisibleAsync's
+            // RestrictToEmployeeIds branch is what actually applies here (visibility for this
+            // employee was already verified above via GetVisibleByIdAsync), so this scope value
+            // is never read - but if a future refactor ever drops the RestrictToEmployeeIds
+            // branch or passes a null id set by mistake, this must fail closed (nothing visible)
+            // rather than fail open (Unrestricted() would fall through to "every tenant employee").
+            var noFallbackScope = new EmployeeVisibilityScope(
+                false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>());
+            var filter = new EmployeeListFilter(null, null, null, new[] { request.EmployeeId });
+            var (items, _) = await _employeeRepository.ListVisibleAsync(
+                tenantId, noFallbackScope, filter, page: 1, pageSize: 1, ct,
+                new EmployeeListAttendanceOptions(_clock.UtcNow));
+            attendanceSummary = items.FirstOrDefault()?.AttendanceSummary;
+        }
+
+        var employmentTypeCode = await _employmentTypes.GetCodeByIdAsync(existing.EmploymentTypeId, ct) ?? string.Empty;
+
         var jobInformation = new EmployeeDetailJobInformation(
             visible.EmployeeNumber, existing.LegalEntityId, visible.LegalEntityName, visible.DepartmentName, visible.PositionName,
             visible.PositionId, visible.ReportingManagerName, visible.EmploymentTypeLabel, visible.Status,
-            existing.HireDate, existing.ProbationEndDate);
+            existing.HireDate, existing.ProbationEndDate, visible.WorkModeLabel,
+            employmentTypeCode, existing.WorkModeId);
 
         var personalInformation = new EmployeeDetailPersonalInformation(
             existing.FirstName, existing.LastName, existing.Email, existing.Phone, existing.DateOfBirth,
@@ -91,7 +118,8 @@ public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQu
             request.EmployeeId, jobInformation, personalInformation,
             emergencyContacts.Select(c => new EmployeeDetailEmergencyContact(c.Id, c.Name, c.Relationship, c.Phone, c.Email, c.IsPrimary)).ToList(),
             payroll,
-            InvitationStatusOf(invitation, _clock.UtcNow), invitation?.ExpiresAt));
+            InvitationStatusOf(invitation, _clock.UtcNow), invitation?.ExpiresAt,
+            attendanceSummary));
     }
 
     private static string? InvitationStatusOf(InvitationToken? invitation, DateTimeOffset now)

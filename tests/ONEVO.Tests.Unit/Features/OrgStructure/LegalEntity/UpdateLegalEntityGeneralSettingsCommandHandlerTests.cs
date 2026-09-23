@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Moq;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -11,6 +12,7 @@ namespace ONEVO.Tests.Unit.Features.OrgStructure.LegalEntity;
 public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
 {
     private readonly Mock<ILegalEntityRepository> _legalEntities = new();
+    private readonly Mock<IEntityAssetRepository> _entityAssets = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _dateTimeProvider = new();
 
@@ -26,8 +28,12 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         _currentUser.Setup(c => c.HasPermission("legal_entity:update")).Returns(hasManagementAccess);
         _currentUser.Setup(c => c.HasPermission("legal_entity:delete")).Returns(false);
         _dateTimeProvider.SetupGet(d => d.UtcNow).Returns(FixedNow);
+        _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
         return new UpdateLegalEntityGeneralSettingsCommandHandler(
-            _legalEntities.Object, _currentUser.Object, _dateTimeProvider.Object);
+            _legalEntities.Object, _entityAssets.Object, _currentUser.Object, _dateTimeProvider.Object);
     }
 
     private static LegalEntityEntity ExistingEntity(Guid id) => new()
@@ -41,13 +47,19 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         CurrencyCode = "LKR",
         IsActive = true,
         IsPrimary = true,
-        LogoFileId = Guid.NewGuid(),
         ParentLegalEntityId = Guid.NewGuid(),
         CreatedAt = DateTimeOffset.UtcNow.AddDays(-10)
     };
 
     private static UpdateLegalEntityGeneralSettingsCommand ValidCommand(
-        Guid id, string status = "active", TimeOnly? workStartTime = null, TimeOnly? workEndTime = null) => new(
+        Guid id,
+        string status = "active",
+        TimeOnly? workStartTime = null,
+        TimeOnly? workEndTime = null,
+        int? breakDurationMinutes = null,
+        string? officeAddress = null,
+        double? officeLatitude = null,
+        double? officeLongitude = null) => new(
         id,
         "New Name",
         "NEW",
@@ -64,7 +76,11 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         "12h",
         status,
         workStartTime,
-        workEndTime);
+        workEndTime,
+        breakDurationMinutes,
+        officeAddress,
+        officeLatitude,
+        officeLongitude);
 
     private void SetupNoDuplicates(Guid excludeId)
     {
@@ -116,7 +132,6 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
     public async Task Handle_ValidRequest_PreservesFieldsNotExposedInRequest()
     {
         var entity = ExistingEntity(Guid.NewGuid());
-        var originalLogoFileId = entity.LogoFileId;
         var originalParentId = entity.ParentLegalEntityId;
         var originalCreatedAt = entity.CreatedAt;
         var originalIsPrimary = entity.IsPrimary;
@@ -127,7 +142,6 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
 
         await sut.Handle(ValidCommand(entity.Id), CancellationToken.None);
 
-        entity.LogoFileId.Should().Be(originalLogoFileId);
         entity.ParentLegalEntityId.Should().Be(originalParentId);
         entity.CreatedAt.Should().Be(originalCreatedAt);
         entity.IsPrimary.Should().Be(originalIsPrimary);
@@ -170,6 +184,103 @@ public class UpdateLegalEntityGeneralSettingsCommandHandlerTests
         result.IsSuccess.Should().BeTrue();
         entity.WorkStartTime.Should().BeNull();
         entity.WorkEndTime.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_PersistsBreakDurationMinutes()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            ValidCommand(entity.Id, breakDurationMinutes: 60),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        entity.BreakDurationMinutes.Should().Be(60);
+        result.Value!.BreakDurationMinutes.Should().Be(60);
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_NullBreakDurationMinutes_PersistsNull()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        entity.BreakDurationMinutes = 45;
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(ValidCommand(entity.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        entity.BreakDurationMinutes.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_BreakDurationMinutes_IndependentOfWorkTimes()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            ValidCommand(entity.Id, workStartTime: null, workEndTime: null, breakDurationMinutes: 30),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        entity.WorkStartTime.Should().BeNull();
+        entity.WorkEndTime.Should().BeNull();
+        entity.BreakDurationMinutes.Should().Be(30);
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_PersistsOfficeLocation()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            ValidCommand(
+                entity.Id,
+                officeAddress: "1 Galle Face, Colombo",
+                officeLatitude: 6.9271,
+                officeLongitude: 79.8612),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        entity.OfficeAddress.Should().Be("1 Galle Face, Colombo");
+        entity.OfficeLatitude.Should().Be(6.9271);
+        entity.OfficeLongitude.Should().Be(79.8612);
+        result.Value!.OfficeAddress.Should().Be("1 Galle Face, Colombo");
+    }
+
+    [Fact]
+    public async Task Handle_ValidRequest_NullOfficeLocation_PersistsNull()
+    {
+        var entity = ExistingEntity(Guid.NewGuid());
+        entity.OfficeAddress = "Old address";
+        entity.OfficeLatitude = 1;
+        entity.OfficeLongitude = 1;
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        SetupNoDuplicates(entity.Id);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(ValidCommand(entity.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        entity.OfficeAddress.Should().BeNull();
+        entity.OfficeLatitude.Should().BeNull();
+        entity.OfficeLongitude.Should().BeNull();
     }
 
     [Fact]

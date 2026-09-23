@@ -10,7 +10,7 @@ public class CreateProjectFormRequest
     public string? Description { get; set; }
     public DateOnly StartDate { get; set; }
     public DateOnly TargetDate { get; set; }
-    public DateOnly ReleaseDate { get; set; }
+    public DateOnly? ReleaseDate { get; set; }
     public string? Color { get; set; }
     public decimal? ActualHours { get; set; }
     public decimal DefaultObjectiveAllocatedHours { get; set; }
@@ -19,4 +19,5 @@ public class CreateProjectFormRequest
     public string? LabelsJson { get; set; }
 
     public IFormFile? Logo { get; set; }
+    public IFormFile? Banner { get; set; }
 }

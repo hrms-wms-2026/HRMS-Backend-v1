@@ -68,4 +68,13 @@ public class CurrentUserService : ICurrentUser
             return Guid.TryParse(value, out var id) ? id : null;
         }
     }
+
+    public Guid? LegalEntityId
+    {
+        get
+        {
+            var value = _httpContextAccessor.HttpContext?.User?.FindFirstValue("legal_entity_id");
+            return Guid.TryParse(value, out var id) ? id : null;
+        }
+    }
 }

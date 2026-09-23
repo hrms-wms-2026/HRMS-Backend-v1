@@ -5,7 +5,9 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 
 namespace ONEVO.Application.Features.CoreHr.Onboarding.Commands.RejectAccessGrantRequest;
 
@@ -30,31 +32,38 @@ namespace ONEVO.Application.Features.CoreHr.Onboarding.Commands.RejectAccessGran
 /// since moved on (e.g. already Finalized via a different request, or Cancelled), resetting it to
 /// Draft would silently undo that outcome - so in that case only draft.UpdatedAt changes.
 ///
-/// Concurrency: still saves through IOnboardingDraftRepository.SaveChangesAsync (touching
-/// draft.UpdatedAt even when Status/DraftReason are left alone) rather than the
-/// access-grant-request repository's own SaveChangesAsync, specifically so this handler contends
-/// on the draft's xmin token with ApproveAccessGrantRequestCommandHandler. AccessGrantRequest
-/// itself carries no concurrency token, so without this the loser of a simultaneous approve/reject
-/// race would silently overwrite the winner's decision instead of getting a clean 409.
+/// Concurrency: onboarding approve/reject still save through IOnboardingDraftRepository.SaveChangesAsync
+/// (touching draft.UpdatedAt even when Status/DraftReason are left alone) so they contend on the
+/// draft's xmin token. PositionChange has no draft: AccessGrantRequest maps PostgreSQL xmin as a
+/// concurrency token, and this handler saves the request (with CancelPlanned) through
+/// IAccessGrantRequestRepository.SaveChangesAsync inside IUnitOfWork.ExecuteInTransactionAsync.
+/// A simultaneous approve/reject on the same PositionChange request therefore gets a clean 409
+/// instead of silently overwriting the winner's decision.
 /// </summary>
 public class RejectAccessGrantRequestCommandHandler
     : IRequestHandler<RejectAccessGrantRequestCommand, Result<RejectAccessGrantRequestResponse>>
 {
     private readonly IAccessGrantRequestRepository _accessGrantRequestRepository;
     private readonly IOnboardingDraftRepository _draftRepository;
+    private readonly IPositionAssignmentRepository _positionAssignmentRepository;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
+    private readonly IUnitOfWork _unitOfWork;
 
     public RejectAccessGrantRequestCommandHandler(
         IAccessGrantRequestRepository accessGrantRequestRepository,
         IOnboardingDraftRepository draftRepository,
+        IPositionAssignmentRepository positionAssignmentRepository,
         ICurrentUser currentUser,
-        IDateTimeProvider clock)
+        IDateTimeProvider clock,
+        IUnitOfWork unitOfWork)
     {
         _accessGrantRequestRepository = accessGrantRequestRepository;
         _draftRepository = draftRepository;
+        _positionAssignmentRepository = positionAssignmentRepository;
         _currentUser = currentUser;
         _clock = clock;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<Result<RejectAccessGrantRequestResponse>> Handle(
@@ -69,8 +78,51 @@ public class RejectAccessGrantRequestCommandHandler
         if (grantRequest.ApprovalStatus != "Pending")
             return Result<RejectAccessGrantRequestResponse>.Conflict("This access grant request has already been decided.");
 
+        if (grantRequest.RequestedByUserId == _currentUser.UserId)
+            return Result<RejectAccessGrantRequestResponse>.Forbidden(
+                "You cannot approve or reject a request you submitted yourself.");
+
         if (request.DecisionNote is { Length: > 500 })
             return Result<RejectAccessGrantRequestResponse>.UnprocessableEntity("Decision note must be 500 characters or fewer.");
+
+        if (grantRequest.ActionType == AccessGrantActionType.PositionChange)
+        {
+            var positionChangeNote = request.DecisionNote?.Trim();
+            try
+            {
+                await _unitOfWork.ExecuteInTransactionAsync(async txnCt =>
+                {
+                    await _positionAssignmentRepository.CancelPlannedAsync(
+                        tenantId, grantRequest.ReservedPositionAssignmentId!.Value, txnCt);
+
+                    grantRequest.ApprovalStatus = "Rejected";
+                    grantRequest.DecidedByUserId = _currentUser.UserId;
+                    grantRequest.DecidedAt = _clock.UtcNow;
+                    grantRequest.DecisionNote = string.IsNullOrEmpty(positionChangeNote) ? null : positionChangeNote;
+
+                    await _accessGrantRequestRepository.SaveChangesAsync(txnCt);
+                    return true;
+                }, ct);
+            }
+            catch (ConcurrencyConflictException)
+            {
+                return Result<RejectAccessGrantRequestResponse>.Conflict(
+                    "This request was just updated by someone else. Please refresh and try again.");
+            }
+            catch (UniqueConstraintConflictException)
+            {
+                return Result<RejectAccessGrantRequestResponse>.Conflict(
+                    "This request conflicts with an existing record. Please refresh and try again.");
+            }
+
+            return Result<RejectAccessGrantRequestResponse>.Success(new RejectAccessGrantRequestResponse(
+                grantRequest.Id,
+                grantRequest.OnboardingDraftId ?? Guid.Empty,
+                "Rejected",
+                DraftStatus: string.Empty,
+                DraftReason: null,
+                MessageKey: "onboarding.access_grant.position_change_rejected"));
+        }
 
         if (grantRequest.OnboardingDraftId is null)
             return Result<RejectAccessGrantRequestResponse>.UnprocessableEntity(

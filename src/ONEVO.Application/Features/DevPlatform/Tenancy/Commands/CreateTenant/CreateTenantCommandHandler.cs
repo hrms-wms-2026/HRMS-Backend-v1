@@ -37,6 +37,8 @@ public class CreateTenantCommandHandler
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDateTimeProvider _clock;
     private readonly ITenantOwnerInvitationService _invitationService;
+    private readonly IWritableTenantContext _tenantContext;
+    private readonly IWorkModeSeeder _workModeSeeder;
 
     public CreateTenantCommandHandler(
         ITenantRepository tenants,
@@ -48,7 +50,9 @@ public class CreateTenantCommandHandler
         ICurrentUser currentUser,
         IUnitOfWork unitOfWork,
         IDateTimeProvider clock,
-        ITenantOwnerInvitationService invitationService)
+        ITenantOwnerInvitationService invitationService,
+        IWritableTenantContext tenantContext,
+        IWorkModeSeeder workModeSeeder)
     {
         _tenants = tenants;
         _legalEntities = legalEntities;
@@ -60,6 +64,8 @@ public class CreateTenantCommandHandler
         _unitOfWork = unitOfWork;
         _clock = clock;
         _invitationService = invitationService;
+        _tenantContext = tenantContext;
+        _workModeSeeder = workModeSeeder;
     }
 
     public async Task<Result<CreateTenantDraftResponseDto>> Handle(
@@ -69,6 +75,14 @@ public class CreateTenantCommandHandler
         // 1. Auth check
         if (!_currentUser.IsAuthenticated)
             return Result<CreateTenantDraftResponseDto>.Forbidden("Authentication required.");
+
+        // This is a Dev Platform admin operation provisioning a brand-new tenant, so it
+        // writes tenant-scoped, RLS-protected rows (legal_entities, tenant_auth_policies,
+        // tenant_subscriptions, users, user_roles, invitation_tokens) before that tenant is
+        // resolvable through the normal host-based tenant context. Admin mode must be set
+        // explicitly here rather than relying on ambient host-subdomain resolution, matching
+        // the pattern used by the other cross-tenant seeders (e.g. WorkManagementSampleDataSeeder).
+        _tenantContext.SetAdminMode();
 
         // 2. Slug validation
         var slug = request.Slug.Trim().ToLowerInvariant();
@@ -109,7 +123,7 @@ public class CreateTenantCommandHandler
         await _tenants.AddAsync(tenant, ct);
 
         // 5. Legal entity
-        await _legalEntities.AddAsync(new LegalEntity
+        var primaryLegalEntity = new LegalEntity
         {
             Id = Guid.NewGuid(),
             TenantId = tenant.Id,
@@ -119,7 +133,8 @@ public class CreateTenantCommandHandler
             CurrencyCode = request.Currency.Trim().ToUpperInvariant(),
             IsPrimary = true,
             CreatedAt = now
-        }, ct);
+        };
+        await _legalEntities.AddAsync(primaryLegalEntity, ct);
 
         // 6. Tenant auth policy
         await _authPolicies.AddAsync(
@@ -203,6 +218,11 @@ public class CreateTenantCommandHandler
         //     + owner role + invite records + email outbox message.
         //     The outbox worker delivers the email after this commit.
         await _unitOfWork.SaveChangesAsync(ct);
+
+        // 12. Seed default Work Modes for the primary legal entity. Deliberately AFTER the
+        // commit above, not interleaved with it - WorkModeSeeder issues its own SaveChangesAsync
+        // internally, and running it earlier would split step 11's single atomic commit into two.
+        await _workModeSeeder.SeedDefaultsAsync(tenant.Id, primaryLegalEntity.Id, ct);
 
         OwnerInviteResultDto? ownerInvite = null;
         if (pendingInvite is not null)

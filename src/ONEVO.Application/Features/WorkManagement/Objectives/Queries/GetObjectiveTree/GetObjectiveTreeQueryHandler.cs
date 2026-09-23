@@ -52,15 +52,7 @@ public class GetObjectiveTreeQueryHandler : IRequestHandler<GetObjectiveTreeQuer
             return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Forbidden("You do not have access to this project's milestone tree.");
 
         var allObjectives = await _objectives.GetTreeByProjectIdAsync(tenantId, project.Id, ct);
-
-        var defaultObjective = allObjectives.FirstOrDefault(o => o.IsDefault);
-        var hasDirectMembership = defaultObjective is not null
-            && await _members.HasActiveMembershipForAnyObjectiveAsync(tenantId, project.Id, callerEmployeeId.Value, new[] { defaultObjective.Id }, ct);
-
-        if (hasDirectMembership)
-            return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Success(allObjectives.Select(ObjectiveMapper.ToTreeItem).ToList());
-
-        var ownedObjectiveIds = await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct);
+        var ownedObjectiveIds = (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct)).ToHashSet();
 
         var byId = allObjectives.ToDictionary(o => o.Id);
         var childrenByParent = allObjectives
@@ -68,38 +60,37 @@ public class GetObjectiveTreeQueryHandler : IRequestHandler<GetObjectiveTreeQuer
             .GroupBy(o => o.ParentObjectiveId!.Value)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        var reachable = new HashSet<Guid>();
+        var ownerReachable = new HashSet<Guid>();
         foreach (var ownedId in ownedObjectiveIds)
         {
-            if (!byId.TryGetValue(ownedId, out var owned))
+            if (!byId.ContainsKey(ownedId))
                 continue;
 
-            reachable.Add(owned.Id);
-
-            var cursor = owned;
-            while (cursor.ParentObjectiveId is not null && byId.TryGetValue(cursor.ParentObjectiveId.Value, out var parent))
-            {
-                reachable.Add(parent.Id);
-                cursor = parent;
-            }
-
             var queue = new Queue<Guid>();
-            queue.Enqueue(owned.Id);
+            queue.Enqueue(ownedId);
             while (queue.Count > 0)
             {
                 var current = queue.Dequeue();
-                if (!childrenByParent.TryGetValue(current, out var children))
-                    continue;
-
-                foreach (var child in children)
+                if (ownerReachable.Add(current) && childrenByParent.TryGetValue(current, out var children))
                 {
-                    if (reachable.Add(child.Id))
+                    foreach (var child in children)
                         queue.Enqueue(child.Id);
                 }
             }
         }
 
-        var scoped = allObjectives.Where(o => reachable.Contains(o.Id)).Select(ObjectiveMapper.ToTreeItem).ToList();
-        return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Success(scoped);
+        // Every active project member sees the FULL objective tree - visibility is not scoped by
+        // where in the tree the caller holds membership. The per-node IsOwner flag (direct
+        // membership on the node, or the cascading-ownership walk from an owned ancestor) is what
+        // gates the editing tools in the UI; non-owned nodes render read-only.
+        var namesByEmployeeId = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
+            tenantId, allObjectives.Select(o => o.OwnerId).Distinct().ToList(), ct);
+        return Result<IReadOnlyList<ObjectiveTreeItemResponse>>.Success(
+            allObjectives
+                .Select(o => ObjectiveMapper.ToTreeItem(
+                    o,
+                    ownedObjectiveIds.Contains(o.Id) || ownerReachable.Contains(o.Id),
+                    namesByEmployeeId.GetValueOrDefault(o.OwnerId)))
+                .ToList());
     }
 }

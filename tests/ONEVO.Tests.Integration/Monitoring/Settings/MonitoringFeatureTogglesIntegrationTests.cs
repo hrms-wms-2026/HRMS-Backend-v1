@@ -6,37 +6,37 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.E2E;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
-namespace ONEVO.Tests.Integration.Monitoring.Settings;
-
-[Collection(WebApplicationFactoryCollection.Name)]
-public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
+/// <summary>
+/// Shared, one-time-per-class setup for MonitoringFeatureTogglesIntegrationTests: clones the
+/// database and boots the WebApplicationFactory once. xUnit's IClassFixture constructs this ONCE
+/// and disposes it once after every fact in the class has run, instead of IAsyncLifetime's default
+/// of once PER fact - previously this class's own InitializeAsync ran 6 times, once per [Fact].
+/// Every fact seeds its own fresh Guid.NewGuid() tenant with a unique slug, so there is no
+/// cross-fact state-sharing risk from converting this class.
+/// </summary>
+public sealed class MonitoringFeatureTogglesIntegrationTestsFixture : IAsyncLifetime
 {
     private static readonly Guid SeededPlanId = new("a1b2c3d4-0001-0001-0001-000000000001");
-
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_monitoring_settings_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
     private HttpClient _client = null!;
 
+    public E2ETestFactory Factory => _factory;
+    public HttpClient Client => _client;
+
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        var connectionString = _postgres.GetConnectionString();
-
-        await IntegrationDatabaseBootstrap.InitializeAsync(connectionString);
+        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new E2ETestFactory(connectionString, new CapturingEmailService());
@@ -51,83 +51,10 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         await _factory.DisposeAsync();
-        await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 
-    [Fact]
-    public async Task Get_Unauthenticated_Returns401()
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/v1/monitoring/settings");
-        req.Headers.Host = "localhost";
-
-        var resp = await _client.SendAsync(req);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
-    public async Task Get_NoRowYet_ReturnsAllFalseDefaults()
-    {
-        var session = await SeedAdminUserAndLoginAsync("mft-get");
-
-        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/v1/monitoring/settings");
-        req.Headers.Host = session.TenantHost;
-        req.Headers.Add("Cookie", session.CookieHeader);
-
-        var resp = await _client.SendAsync(req);
-        resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
-
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        body.GetProperty("activityMonitoring").GetBoolean().Should().BeFalse();
-        body.GetProperty("updatedAt").ValueKind.Should().Be(JsonValueKind.Null);
-    }
-
-    [Fact]
-    public async Task Put_MissingConfigurePermission_Returns403()
-    {
-        var session = await SeedUserWithPermissionsAsync("mft-noperm", ["monitoring:read"]);
-
-        using var req = new HttpRequestMessage(HttpMethod.Put, "/api/v1/monitoring/settings");
-        req.Headers.Host = session.TenantHost;
-        req.Headers.Add("Cookie", session.CookieHeader);
-        req.Headers.Add("X-CSRF-Token", session.CsrfHeader);
-        req.Content = JsonContent.Create(ToggleBody(activityMonitoring: true));
-
-        var resp = await _client.SendAsync(req);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    /// <summary>
-    /// The actual product claim this feature exists to satisfy: after PUT, the
-    /// resolver that every ingest endpoint calls (MonitoringToggleResolverService)
-    /// sees the new value - not just that the row changed in the database.
-    /// </summary>
-    [Fact]
-    public async Task Put_ActivityMonitoringTrue_ResolverReflectsChange()
-    {
-        var session = await SeedAdminUserAndLoginAsync("mft-resolver");
-        var employeeId = Guid.NewGuid(); // resolver falls back to tenant toggle when no employee override exists
-
-        using var putReq = new HttpRequestMessage(HttpMethod.Put, "/api/v1/monitoring/settings");
-        putReq.Headers.Host = session.TenantHost;
-        putReq.Headers.Add("Cookie", session.CookieHeader);
-        putReq.Headers.Add("X-CSRF-Token", session.CsrfHeader);
-        putReq.Content = JsonContent.Create(ToggleBody(activityMonitoring: true));
-
-        var putResp = await _client.SendAsync(putReq);
-        putResp.StatusCode.Should().Be(HttpStatusCode.OK, await putResp.Content.ReadAsStringAsync());
-
-        using var scope = _factory.Services.CreateScope();
-        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
-        var enabled = await resolver.IsEnabledAsync(
-            session.TenantId, employeeId, MonitoringCapability.ActivityMonitoring);
-
-        enabled.Should().BeTrue();
-    }
-
-    private static object ToggleBody(bool activityMonitoring) => new
+    public static object ToggleBody(bool activityMonitoring, int idleThresholdMinutes = 5) => new
     {
         activityMonitoring,
         applicationTracking = false,
@@ -139,13 +66,14 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
         deviceTracking = false,
         workLocationVerification = false,
         identityVerification = false,
-        biometric = false
+        biometric = false,
+        idleThresholdMinutes
     };
 
-    private Task<SessionInfo> SeedAdminUserAndLoginAsync(string slug) =>
+    public Task<SessionInfo> SeedAdminUserAndLoginAsync(string slug) =>
         SeedUserWithPermissionsAsync(slug, ["monitoring:read", "monitoring:configure"]);
 
-    private async Task<SessionInfo> SeedUserWithPermissionsAsync(string slug, IReadOnlyList<string> permissionCodes)
+    public async Task<SessionInfo> SeedUserWithPermissionsAsync(string slug, IReadOnlyList<string> permissionCodes)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -183,7 +111,7 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
             CommercialModel = "subscription",
             BillingCurrency = "USD",
             CompanySizeRange = "1-10",
-            SelectedModulesJson = """["monitoring"]""",
+            SelectedModulesJson = """["activity_monitoring"]""",
             CurrentPeriodStart = DateOnly.FromDateTime(now.UtcDateTime),
             CurrentPeriodEnd = DateOnly.FromDateTime(now.UtcDateTime.AddMonths(1)),
             ContractStartDate = DateOnly.FromDateTime(now.UtcDateTime),
@@ -212,10 +140,39 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
             AssignedAt = now, AssignedBy = userId
         });
 
+        var legalEntity = new LegalEntity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            Name = $"{slug} Company",
+            CountryCode = "US",
+            CurrencyCode = "USD",
+            IsActive = true,
+            IsPrimary = true
+        };
+        db.LegalEntities.Add(legalEntity);
+        db.Employees.Add(new Employee
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            UserId = userId,
+            LegalEntityId = legalEntity.Id,
+            EmployeeNumber = Guid.NewGuid().ToString("N")[..8],
+            FirstName = "Test",
+            LastName = "Admin",
+            Email = $"{slug}@test.dev",
+            EmploymentTypeId = 1,
+            EmploymentStatusId = 1,
+            WorkModeId = null,
+            HireDate = new DateOnly(2025, 1, 1),
+            CreatedAt = now,
+            CreatedById = userId
+        });
+
         await db.SaveChangesAsync();
 
         var sessionInfo = await LoginAndGetSessionAsync(userId, $"{slug}@test.dev", "TestPass1!", slug);
-        return sessionInfo with { TenantId = tenant.Id };
+        return sessionInfo with { TenantId = tenant.Id, UserId = userId };
     }
 
     private async Task<SessionInfo> LoginAndGetSessionAsync(Guid userId, string email, string password, string tenantSlug)
@@ -240,6 +197,7 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
             $"onevo_session={sessionValue}; onevo_csrf={csrfCookieValue}",
             csrfHeader,
             $"{tenantSlug}.localhost",
+            Guid.Empty,
             Guid.Empty);
     }
 
@@ -294,5 +252,131 @@ public sealed class MonitoringFeatureTogglesIntegrationTests : IAsyncLifetime
         throw new InvalidOperationException($"Cookie '{cookieName}' not found in response.");
     }
 
-    private sealed record SessionInfo(string CookieHeader, string CsrfHeader, string TenantHost, Guid TenantId);
+    public sealed record SessionInfo(
+        string CookieHeader, string CsrfHeader, string TenantHost, Guid TenantId, Guid UserId);
+
+}
+
+[Collection(WebApplicationFactoryCollection.Name)]
+public sealed class MonitoringFeatureTogglesIntegrationTests : IClassFixture<MonitoringFeatureTogglesIntegrationTestsFixture>
+{
+    private readonly MonitoringFeatureTogglesIntegrationTestsFixture _fixture;
+
+    public MonitoringFeatureTogglesIntegrationTests(MonitoringFeatureTogglesIntegrationTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task Get_Unauthenticated_Returns401()
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/v1/monitoring/settings");
+        req.Headers.Host = "localhost";
+
+        var resp = await _fixture.Client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Get_NoRowYet_ReturnsAllFalseDefaults()
+    {
+        var session = await _fixture.SeedAdminUserAndLoginAsync("mft-get");
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/v1/monitoring/settings");
+        req.Headers.Host = session.TenantHost;
+        req.Headers.Add("Cookie", session.CookieHeader);
+
+        var resp = await _fixture.Client.SendAsync(req);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("activityMonitoring").GetBoolean().Should().BeFalse();
+        body.GetProperty("updatedAt").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Put_MissingConfigurePermission_Returns403()
+    {
+        var session = await _fixture.SeedUserWithPermissionsAsync("mft-noperm", ["monitoring:read"]);
+
+        using var req = new HttpRequestMessage(HttpMethod.Put, "/api/v1/monitoring/settings");
+        req.Headers.Host = session.TenantHost;
+        req.Headers.Add("Cookie", session.CookieHeader);
+        req.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        req.Content = JsonContent.Create(MonitoringFeatureTogglesIntegrationTestsFixture.ToggleBody(activityMonitoring: true));
+
+        var resp = await _fixture.Client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    /// <summary>
+    /// The actual product claim this feature exists to satisfy: after PUT, the
+    /// resolver that every ingest endpoint calls (MonitoringToggleResolverService)
+    /// sees the new value - not just that the row changed in the database.
+    /// </summary>
+    [Fact]
+    public async Task Put_ActivityMonitoringTrue_ResolverReflectsChange()
+    {
+        var session = await _fixture.SeedAdminUserAndLoginAsync("mft-resolver");
+        // Resolves via the admin's own Employee row: no employee-level override exists, so this
+        // falls through to the legal-entity default the PUT below just wrote.
+        var employeeId = session.UserId;
+
+        using var putReq = new HttpRequestMessage(HttpMethod.Put, "/api/v1/monitoring/settings");
+        putReq.Headers.Host = session.TenantHost;
+        putReq.Headers.Add("Cookie", session.CookieHeader);
+        putReq.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        putReq.Content = JsonContent.Create(MonitoringFeatureTogglesIntegrationTestsFixture.ToggleBody(activityMonitoring: true));
+
+        var putResp = await _fixture.Client.SendAsync(putReq);
+        putResp.StatusCode.Should().Be(HttpStatusCode.OK, await putResp.Content.ReadAsStringAsync());
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
+        var enabled = await resolver.IsEnabledAsync(
+            session.TenantId, employeeId, MonitoringCapability.ActivityMonitoring);
+
+        enabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Put_IdleThresholdMinutes_ResolverReflectsChange()
+    {
+        var session = await _fixture.SeedAdminUserAndLoginAsync("mft-idle-threshold");
+        var employeeId = session.UserId;
+
+        using var putReq = new HttpRequestMessage(HttpMethod.Put, "/api/v1/monitoring/settings");
+        putReq.Headers.Host = session.TenantHost;
+        putReq.Headers.Add("Cookie", session.CookieHeader);
+        putReq.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        putReq.Content = JsonContent.Create(MonitoringFeatureTogglesIntegrationTestsFixture.ToggleBody(activityMonitoring: true, idleThresholdMinutes: 20));
+
+        var putResp = await _fixture.Client.SendAsync(putReq);
+        putResp.StatusCode.Should().Be(HttpStatusCode.OK, await putResp.Content.ReadAsStringAsync());
+
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var resolver = scope.ServiceProvider.GetRequiredService<IMonitoringToggleResolver>();
+        var minutes = await resolver.GetIdleThresholdMinutesAsync(session.TenantId, employeeId);
+
+        minutes.Should().Be(20);
+    }
+
+    [Fact]
+    public async Task Put_IdleThresholdMinutesOutOfRange_Returns400()
+    {
+        var session = await _fixture.SeedAdminUserAndLoginAsync("mft-idle-threshold-invalid");
+
+        using var putReq = new HttpRequestMessage(HttpMethod.Put, "/api/v1/monitoring/settings");
+        putReq.Headers.Host = session.TenantHost;
+        putReq.Headers.Add("Cookie", session.CookieHeader);
+        putReq.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        putReq.Content = JsonContent.Create(MonitoringFeatureTogglesIntegrationTestsFixture.ToggleBody(activityMonitoring: true, idleThresholdMinutes: 120));
+
+        var putResp = await _fixture.Client.SendAsync(putReq);
+
+        putResp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
 }

@@ -42,8 +42,14 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
             return Result<MonitoringFeatureTogglesResponse>.Forbidden(
                 "You do not have permission to configure monitoring settings.");
 
+        if (_currentUser.LegalEntityId is not Guid legalEntityId
+            || !await _toggles.LegalEntityExistsAsync(tenantId, legalEntityId, ct))
+            return Result<MonitoringFeatureTogglesResponse>.UnprocessableEntity(
+                "Select an active company before configuring monitoring settings.");
+
         var now = _clock.UtcNow;
-        var existing = await _toggles.GetByTenantIdAsync(tenantId, ct);
+        var existing = await _toggles.GetByLegalEntityIdAsync(
+            tenantId, legalEntityId, includeTenantFallback: false, ct);
 
         if (existing is not null)
         {
@@ -58,6 +64,8 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
             existing.WorkLocationVerification = request.WorkLocationVerification;
             existing.IdentityVerification = request.IdentityVerification;
             existing.Biometric = request.Biometric;
+            existing.IdleThresholdMinutes = request.IdleThresholdMinutes;
+            existing.AllowedRadiusMeters = request.AllowedRadiusMeters;
             existing.UpdatedAt = now;
             _toggles.Update(existing);
         }
@@ -67,6 +75,7 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
             {
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
+                LegalEntityId = legalEntityId,
                 ActivityMonitoring = request.ActivityMonitoring,
                 ApplicationTracking = request.ApplicationTracking,
                 DocumentTracking = request.DocumentTracking,
@@ -78,6 +87,8 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
                 WorkLocationVerification = request.WorkLocationVerification,
                 IdentityVerification = request.IdentityVerification,
                 Biometric = request.Biometric,
+                IdleThresholdMinutes = request.IdleThresholdMinutes,
+                AllowedRadiusMeters = request.AllowedRadiusMeters,
                 CreatedAt = now,
                 UpdatedAt = now
             };

@@ -4,43 +4,77 @@ using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 namespace ONEVO.Api.Contracts.WorkManagement.Tasks;
 
 public sealed record CreateTaskRequest(
-    string Title, string? Description, string TaskType, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid SprintId);
+    string Title, string? Description, Guid CategoryId, string Priority,
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, Guid? SprintId,
+    IReadOnlyList<Guid>? AttachmentFileIds = null);
 
 public sealed record EditTaskRequest(
     string Title, string? Description, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints);
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason,
+    IReadOnlyList<Guid>? AttachmentFileIds = null, Guid? SprintId = null);
 
 public sealed record CreateTaskEditRequestRequest(
     string Title, string? Description, string Priority,
-    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints);
+    DateOnly? DueDate, decimal? EstimatedHours, int? StoryPoints, int? ProgressPercent, string? Reason);
 
 public sealed record RejectTaskEditRequestRequest(string Comment);
 
 public sealed record MoveTaskStatusRequest(Guid NewStatusId);
 
+public sealed record PushTaskRequest(int Percent, string? Reason);
+
+public sealed record AddReasonRequest(string Reason);
+
 public sealed record AssignTaskRequest(Guid EmployeeId);
 
+public sealed record CreateSubtaskRequest(string Title, string? Priority, DateOnly? DueDate, Guid? AssigneeEmployeeId);
+
 public sealed record EditTaskStatusRequest(
-    string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, string Visibility);
+    string Name, int DisplayOrder, bool RequiresApproval, Guid? ApproverId, string Visibility,
+    string Category, string Color);
 
 public sealed record CreateTaskStatusRequest(
-    string Name, int DisplayOrder, string Visibility, bool MarksTaskComplete, bool RequiresApproval, Guid? ApproverId);
+    string Name, int DisplayOrder, string Visibility, string Category, string Color,
+    bool RequiresApproval, Guid? ApproverId);
 
 public sealed record TaskStatusOrderUpdateRequest(
-    Guid StatusId, int DisplayOrder, string Visibility, bool MarksTaskComplete);
+    Guid StatusId, int DisplayOrder, string Visibility, string Category, string Color);
 
 public sealed record ReorderTaskStatusesRequest(List<TaskStatusOrderUpdateRequest> Updates);
 
+public sealed record EditTaskCategoryRequest(string Name, int DisplayOrder);
+
+public sealed record CreateTaskCategoryRequest(string Name, int DisplayOrder);
+
+public sealed record TaskCategoryOrderUpdateRequest(Guid CategoryId, int DisplayOrder);
+
+public sealed record ReorderTaskCategoriesRequest(List<TaskCategoryOrderUpdateRequest> Updates);
+
+public sealed record TaskCategoryViewModel(Guid Id, string Name, int DisplayOrder);
+
+public sealed record TaskAttachmentViewModel(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
+
+public sealed record TaskAssigneeIdentityViewModel(Guid EmployeeId, string Name, string? AvatarUrl);
+
 public sealed record WorkTaskViewModel(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
-    string TaskType, Guid StatusId, string Priority, int? StoryPoints,
+    Guid CategoryId, Guid StatusId, string Priority, int? StoryPoints,
     DateOnly? DueDate, decimal? EstimatedHours, decimal CompletedHours, int ProgressPercent,
-    Guid? SprintId);
+    Guid? SprintId, IReadOnlyList<Guid> AssigneeEmployeeIds, Guid? OpenClockSessionEmployeeId,
+    DateTimeOffset? OpenClockSessionClockInAt, int TotalLoggedMinutes,
+    IReadOnlyList<TaskAttachmentViewModel> Attachments,
+    IReadOnlyList<TaskAssigneeIdentityViewModel> Assignees,
+    Guid? ParentTaskId, int SubtaskTotalCount, int SubtaskCompletedCount,
+    IReadOnlyList<Guid> SubtaskAssigneeEmployeeIds);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,
-    Guid? ApproverId, bool MarksTaskComplete, string Visibility);
+    Guid? ApproverId, bool MarksTaskComplete, string Visibility,
+    string Category, string Color);
+
+public sealed record TaskStatusMoveInfoViewModel(Guid Id, string Name, string Color);
+
+public sealed record ClockInTaskViewModel(TaskStatusMoveInfoViewModel? MovedToStatus);
 
 public sealed record TaskEditRequestViewModel(
     Guid Id, Guid TaskId, string Status, TaskEditRequestPayload Payload,
@@ -62,3 +96,44 @@ public sealed record MyDeadlinesViewModel(
 
 public sealed record WorkNotificationNavigationViewModel(
     Guid ProjectId, Guid ObjectiveId, Guid? TaskId, string TargetTab);
+
+public sealed record MyTaskItemViewModel(
+    Guid TaskId, string ShortId, string Title, DateOnly DueDate, bool IsOverdue,
+    Guid ProjectId, string ProjectName, Guid ObjectiveId, string Priority);
+
+public sealed record MyTasksViewModel(IReadOnlyList<MyTaskItemViewModel> Tasks);
+
+public static class MyTasksViewModelMapper
+{
+    public static MyTasksViewModel ToViewModel(this MyTasksResponse dto) =>
+        new(dto.Tasks.Select(t => new MyTaskItemViewModel(
+            t.TaskId, t.ShortId, t.Title, t.DueDate, t.IsOverdue,
+            t.ProjectId, t.ProjectName, t.ObjectiveId, t.Priority)).ToList());
+}
+
+public sealed record TaskProgressViewModel(
+    int Completed, int InProgress, int NotStarted, int Overdue, int Total);
+
+public static class TaskProgressViewModelMapper
+{
+    public static TaskProgressViewModel ToViewModel(this TaskProgressResponse dto) =>
+        new(dto.Completed, dto.InProgress, dto.NotStarted, dto.Overdue, dto.Total);
+}
+
+public sealed record CurrentEmployeeViewModel(Guid EmployeeId);
+
+public sealed record TaskHistoryEntryViewModel(
+    string Type, DateTimeOffset OccurredAt, Guid EmployeeId, string EmployeeName,
+    TaskEditEntryDetails? Edit, TaskStatusChangeEntryDetails? StatusChange,
+    TaskClockSessionEntryDetails? ClockSession, TaskPercentageChangeEntryDetails? PercentageChange,
+    TaskCommentLogEntryDetails? Comment);
+
+public static class TaskHistoryViewModelMapper
+{
+    public static IReadOnlyList<TaskHistoryEntryViewModel> ToViewModel(this TaskHistoryResponse response) =>
+        response.Entries.Select(entry => new TaskHistoryEntryViewModel(
+            entry.Type, entry.OccurredAt, entry.EmployeeId, entry.EmployeeName,
+            entry.Edit, entry.StatusChange, entry.ClockSession, entry.PercentageChange, entry.Comment)).ToList();
+}
+
+public sealed record TaskPendingUploadViewModel(Guid FileId, string OriginalFileName, long FileSizeBytes, string ContentType);

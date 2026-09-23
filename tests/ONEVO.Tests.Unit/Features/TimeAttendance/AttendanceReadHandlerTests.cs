@@ -1,0 +1,827 @@
+using FluentAssertions;
+using Moq;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.Models;
+using ONEVO.Application.Features.CoreHr.EmployeeAuthority.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
+using ONEVO.Application.Features.TimeAttendance.Queries;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Services;
+using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
+using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
+using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
+
+namespace ONEVO.Tests.Unit.Features.TimeAttendance;
+
+public sealed class AttendanceReadHandlerTests
+{
+    private static readonly Guid TenantId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    private static readonly Guid UserId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    private static readonly Guid EmployeeId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+    private static readonly Guid LegalEntityId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+
+    [Fact]
+    public async Task Today_AfterStartWithoutRecord_SetsShouldHaveClockedIn()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:00:00+00:00");
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ShouldHaveClockedIn.Should().BeTrue();
+        result.Value.AttendanceStatus.Should().Be("not_clocked_in");
+    }
+
+    [Fact]
+    public async Task Today_AfterStartWithRecordWithoutClockIn_SetsShouldHaveClockedIn()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:00:00+00:00");
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new DateOnly(2026, 8, 21), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21), ExpectedWorkingDay = true });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.ShouldHaveClockedIn.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Today_BeforeStartOrOffDay_DoesNotSetShouldHaveClockedIn()
+    {
+        var beforeStart = CreateFixture(localTimeUtc: "2026-08-21T03:00:00+00:00");
+        (await beforeStart.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None)).Value!.ShouldHaveClockedIn.Should().BeFalse();
+
+        var sunday = CreateFixture(localTimeUtc: "2026-08-23T10:00:00+00:00");
+        (await sunday.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None)).Value!.IsWorkingDay.Should().BeFalse();
+        (await sunday.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None)).Value!.ShouldHaveClockedIn.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Today_UsesLegalEntityLocalDayWindowForBreaks()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:00:00+00:00");
+        await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        var expectedStart = new DateTimeOffset(2026, 8, 20, 18, 30, 0, TimeSpan.Zero);
+        var expectedEnd = new DateTimeOffset(2026, 8, 21, 18, 30, 0, TimeSpan.Zero);
+        fixture.Attendance.Verify(x => x.ListBreaksAsync(TenantId, EmployeeId, expectedStart, expectedEnd, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Today_MapsOnsitePolicyFieldsAndDoesNotUseEmploymentType()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:00:00+00:00", workModeCode: "onsite", employmentTypeId: 99);
+        fixture.WorkModes.Setup(x => x.GetByIdAsync(TenantId, fixture.WorkModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode
+            {
+                Id = fixture.WorkModeId, TenantId = TenantId, LegalEntityId = LegalEntityId,
+                Name = "onsite", IsActive = true, WebEnabled = true
+            });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.AllowedClockInMethods.Web.Should().BeTrue();
+        result.Value.AllowedClockInMethods.DesktopTray.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Today_MissingPolicyDisablesClockInWithStableMessage()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:00:00+00:00");
+        fixture.Policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.CanClockIn.Should().BeFalse();
+        result.Value.Messages.Should().Contain("clock_in_policy_not_configured");
+    }
+
+    [Fact]
+    public async Task CoveredHistory_WithEmployeeFilterQueriesOnlyThatVisibleEmployeeAndPreservesIdentity()
+    {
+        var fixture = CreateFixture();
+        var selectedId = Guid.NewGuid();
+        var otherId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, selectedId, otherId]));
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = selectedId, Date = new(2026, 8, 21), Status = "late" };
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { selectedId })), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync((new List<AttendanceRecord> { record }, 1));
+        fixture.Attendance.Setup(x => x.ListEmployeeIdentitiesAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, AttendanceHistoryEmployee> { [selectedId] = new(selectedId, "Jane Doe", "EMP-001", "Engineer", "Product", Guid.NewGuid()) });
+
+        var result = await fixture.Handler.Handle(new GetCoveredAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), selectedId, new PagedRequest()), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Items.Should().ContainSingle();
+        result.Value.Items[0].Employee!.DisplayName.Should().Be("Jane Doe");
+        result.Value.Items[0].Employee!.EmployeeNumber.Should().Be("EMP-001");
+        result.Value.TotalCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task CoveredHistory_OutsideVisibilityReturnsForbidden()
+    {
+        var fixture = CreateFixture();
+        var hiddenId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
+
+        var result = await fixture.Handler.Handle(new GetCoveredAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), hiddenId, new PagedRequest()), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        fixture.Attendance.Verify(x => x.ListRecordsAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Today_ActiveAttendanceWithAllowance_AllowsStartBreak()
+    {
+        var fixture = CreateFixture();
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, ActualStart = DateTimeOffset.Parse("2026-08-21T04:00:00+00:00") });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.CanStartBreak.Should().BeTrue();
+        result.Value.BreakRemainingMinutes.Should().Be(60);
+    }
+
+    [Fact]
+    public async Task Today_ExhaustedAllowance_DisablesStartBreak()
+    {
+        var fixture = CreateFixture();
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, ActualStart = DateTimeOffset.Parse("2026-08-21T04:00:00+00:00") });
+        fixture.Attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BreakRecord { TenantId = TenantId, EmployeeId = EmployeeId, BreakStart = DateTimeOffset.Parse("2026-08-21T04:00:00+00:00"), BreakEnd = DateTimeOffset.Parse("2026-08-21T05:00:00+00:00") }]);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.BreakRemainingMinutes.Should().Be(0);
+        result.Value.CanStartBreak.Should().BeFalse();
+        result.Value.Messages.Should().Contain("break_allowance_used");
+    }
+
+    [Fact]
+    public async Task Today_OpenBreak_AllowsEndOnly()
+    {
+        var fixture = CreateFixture();
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, ActualStart = DateTimeOffset.Parse("2026-08-21T04:00:00+00:00") });
+        fixture.Attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BreakRecord { TenantId = TenantId, EmployeeId = EmployeeId, BreakStart = DateTimeOffset.Parse("2026-08-21T09:00:00+00:00") }]);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.CanEndBreak.Should().BeTrue();
+        result.Value.CanStartBreak.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Today_WhileClockedIn_ComputesLiveWorkedMinutesInsteadOfStoredZero()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T12:00:00+00:00");
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, ActualStart = DateTimeOffset.Parse("2026-08-21T10:00:00+00:00"), WorkedMinutes = 0 });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.TotalWorkedMinutes.Should().Be(120);
+    }
+
+    [Fact]
+    public async Task Today_WhileOnOpenBreak_StatusIsOnBreakNotWorking()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T12:00:00+00:00");
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, ActualStart = DateTimeOffset.Parse("2026-08-21T10:00:00+00:00") });
+        fixture.Attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BreakRecord { TenantId = TenantId, EmployeeId = EmployeeId, BreakStart = DateTimeOffset.Parse("2026-08-21T11:55:00+00:00") }]);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.AttendanceStatus.Should().Be("on_break");
+        result.Value.AttendanceStatusLabel.Should().Be("On break");
+    }
+
+    [Fact]
+    public async Task MyHistory_TodayRowWithOpenBreak_DoesNotInflateOverageToEndOfDay()
+    {
+        var fixture = CreateFixture(localTimeUtc: "2026-08-21T10:05:00+00:00");
+        var record = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            EmployeeId = EmployeeId,
+            Date = new(2026, 8, 21),
+            ActualStart = DateTimeOffset.Parse("2026-08-21T04:00:00+00:00")
+        };
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { EmployeeId })), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<AttendanceRecord> { record }, 1));
+        fixture.Attendance.Setup(x => x.ListBreaksForEmployeesAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BreakRecord { TenantId = TenantId, EmployeeId = EmployeeId, BreakStart = DateTimeOffset.Parse("2026-08-21T10:00:00+00:00") }]);
+
+        var result = await fixture.Handler.Handle(
+            new GetMyAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), new PagedRequest()), CancellationToken.None);
+
+        result.Value!.Items[0].IsOverBreakAllowance.Should().BeFalse();
+        result.Value.Items[0].TotalWorkedMinutes.Should().Be(360);
+    }
+
+    [Fact]
+    public async Task Today_NoBreakAllowance_ReturnsNullRemainingAndDisablesStart()
+    {
+        var fixture = CreateFixture();
+        fixture.LegalEntity.BreakDurationMinutes = null;
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.BreakAllowanceMinutes.Should().BeNull();
+        result.Value.BreakRemainingMinutes.Should().BeNull();
+        result.Value.CanStartBreak.Should().BeFalse();
+        result.Value.Messages.Should().Contain("break_allowance_not_configured");
+    }
+
+    [Theory]
+    [InlineData("onsite")]
+    [InlineData("remote")]
+    [InlineData("hybrid")]
+    [InlineData("field")]
+    public async Task Today_MapsAllowedMethodsFromWorkMode(string mode)
+    {
+        var fixture = CreateFixture(workModeCode: mode);
+        fixture.WorkModes.Setup(x => x.GetByIdAsync(TenantId, fixture.WorkModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode
+            {
+                Id = fixture.WorkModeId, TenantId = TenantId, LegalEntityId = LegalEntityId,
+                Name = mode, IsActive = true, WebEnabled = true
+            });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.AllowedClockInMethods.Web.Should().BeTrue();
+        result.Value.ExpectedWorkMode.Should().Be(mode);
+    }
+
+    [Fact]
+    public async Task Today_MultipleActivePolicies_DisablesClockInWithConflictMessage()
+    {
+        var fixture = CreateFixture();
+        var policies = Enumerable.Range(1, 2).Select(_ => new ClockInPolicy { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1) }).ToList();
+        fixture.Policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync(policies);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceTodayQuery(), CancellationToken.None);
+
+        result.Value!.CanClockIn.Should().BeFalse();
+        result.Value.Messages.Should().Contain("multiple_active_company_policies");
+    }
+
+    [Fact]
+    public async Task CoveredHistory_WithoutEmployeeFilter_QueriesCoveredEmployeesExcludingSelf()
+    {
+        var fixture = CreateFixture();
+        var secondId = Guid.NewGuid();
+        // Resolver still hands back the actor (e.g. via company-wide coverage) — the Team view
+        // must strip them so only people the actor covers appear.
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, secondId]));
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 1 && ids.Contains(secondId)), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync((new List<AttendanceRecord>(), 0));
+
+        var result = await fixture.Handler.Handle(new GetCoveredAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), null, new PagedRequest()), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        fixture.Attendance.Verify(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 1 && ids.Contains(secondId) && !ids.Contains(EmployeeId)), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CoveredHistory_ExplicitSelfEmployeeId_ReturnsForbidden()
+    {
+        var fixture = CreateFixture();
+        var secondId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, secondId]));
+
+        var result = await fixture.Handler.Handle(new GetCoveredAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), EmployeeId, new PagedRequest()), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        fixture.Attendance.Verify(x => x.ListRecordsAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MyHistory_AppliesPagingAndReturnsPagedResult()
+    {
+        var fixture = CreateFixture();
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { EmployeeId })), new(2026, 8, 1), new(2026, 8, 21), 20, 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<AttendanceRecord> { record }, 45));
+
+        var result = await fixture.Handler.Handle(
+            new GetMyAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), new PagedRequest { PageNumber = 2, PageSize = 20 }),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Items.Should().ContainSingle();
+        result.Value.PageNumber.Should().Be(2);
+        result.Value.PageSize.Should().Be(20);
+        result.Value.TotalCount.Should().Be(45);
+        result.Value.TotalPages.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task MyHistory_ExposesScheduledStartEndAndRequiredMinutes()
+    {
+        var fixture = CreateFixture();
+        var record = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            EmployeeId = EmployeeId,
+            Date = new(2026, 8, 21),
+            ScheduledStart = new TimeOnly(9, 0),
+            ScheduledEnd = new TimeOnly(17, 30),
+            RequiredWorkMinutes = 480
+        };
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { EmployeeId })), new(2026, 8, 1), new(2026, 8, 21), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<AttendanceRecord> { record }, 1));
+
+        var result = await fixture.Handler.Handle(
+            new GetMyAttendanceHistoryQuery(new(2026, 8, 1), new(2026, 8, 21), new PagedRequest()), CancellationToken.None);
+
+        result.Value!.Items[0].ScheduledStartTime.Should().Be("09:00");
+        result.Value.Items[0].ScheduledEndTime.Should().Be("17:30");
+        result.Value.Items[0].RequiredWorkMinutes.Should().Be(480);
+    }
+
+    [Fact]
+    public async Task MonthlySummary_CountsPresentLateEarlyAndMissingClockOut()
+    {
+        var fixture = CreateFixture();
+        var records = new List<AttendanceRecord>
+        {
+            // On time, full day worked.
+            new() {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 3),
+                ExpectedWorkingDay = true, ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30),
+                ActualStart = DateTimeOffset.Parse("2026-08-03T03:30:00+00:00"), ActualEnd = DateTimeOffset.Parse("2026-08-03T12:00:00+00:00")
+            },
+            // Late arrival (clocked in 04:00 local = after 09:00 scheduled start, Colombo is UTC+5:30 so 03:30Z == 09:00 local).
+            new() {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 4),
+                ExpectedWorkingDay = true, ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30),
+                ActualStart = DateTimeOffset.Parse("2026-08-04T04:15:00+00:00"), ActualEnd = DateTimeOffset.Parse("2026-08-04T12:00:00+00:00")
+            },
+            // Early departure (clocked out 11:00 local, before 17:30 scheduled end).
+            new() {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 5),
+                ExpectedWorkingDay = true, ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30),
+                ActualStart = DateTimeOffset.Parse("2026-08-05T03:30:00+00:00"), ActualEnd = DateTimeOffset.Parse("2026-08-05T05:30:00+00:00")
+            },
+            // Missing clock-out (still open after the 16h threshold).
+            new() {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 6),
+                ExpectedWorkingDay = true, ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30),
+                ActualStart = DateTimeOffset.Parse("2026-08-06T03:30:00+00:00"), ActualEnd = null
+            },
+            // Never clocked in — counts toward WorkingDays but not DaysPresent.
+            new() {
+                Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 7),
+                ExpectedWorkingDay = true, ScheduledStart = new TimeOnly(9, 0), ScheduledEnd = new TimeOnly(17, 30)
+            }
+        };
+        fixture.Attendance.Setup(x => x.ListRecordsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { EmployeeId })), new(2026, 8, 1), new(2026, 8, 7), 0, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((records, records.Count));
+
+        var result = await fixture.Handler.Handle(
+            new GetMyAttendanceMonthlySummaryQuery(new(2026, 8, 1), new(2026, 8, 7)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.WorkingDays.Should().Be(5);
+        result.Value.DaysPresent.Should().Be(4);
+        result.Value.LateArrivals.Should().Be(1);
+        result.Value.EarlyDepartures.Should().Be(1);
+        result.Value.MissingClockOuts.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task MonthlySummary_RangeOverAMonthIsRejected()
+    {
+        var fixture = CreateFixture();
+
+        var result = await fixture.Handler.Handle(
+            new GetMyAttendanceMonthlySummaryQuery(new(2026, 8, 1), new(2026, 10, 1)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DayDetail_Self_ReturnsSummaryTimelineAndActivityRegardlessOfPermissions()
+    {
+        var fixture = CreateFixture();
+        var record = new AttendanceRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            EmployeeId = EmployeeId,
+            Date = new(2026, 8, 21),
+            ActualStart = DateTimeOffset.Parse("2026-08-21T04:00:00+00:00"),
+            ActualEnd = DateTimeOffset.Parse("2026-08-21T12:30:00+00:00"),
+            AttendanceSource = "web"
+        };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(record);
+        fixture.Attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BreakRecord { TenantId = TenantId, EmployeeId = EmployeeId, BreakStart = DateTimeOffset.Parse("2026-08-21T08:00:00+00:00"), BreakEnd = DateTimeOffset.Parse("2026-08-21T08:15:00+00:00") }]);
+        fixture.ActivitySummaries.Setup(x => x.GetAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityDailySummary { TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21), TotalActiveMinutes = 200, TotalIdleMinutes = 40 });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Summary.AttendanceRecordId.Should().Be(record.Id);
+        result.Value.TimelineEvents.Should().HaveCount(4);
+        result.Value.TimelineEvents[0].EventType.Should().Be("ClockIn");
+        result.Value.TimelineEvents[1].EventType.Should().Be("BreakStart");
+        result.Value.TimelineEvents[2].EventType.Should().Be("BreakEnd");
+        result.Value.TimelineEvents[3].EventType.Should().Be("ClockOut");
+        result.Value.DailyActivity.Should().NotBeNull();
+        result.Value.DailyActivity!.TotalActiveMinutes.Should().Be(200);
+    }
+
+    [Fact]
+    public async Task DayDetail_Self_UsesLiveActivityWhenSummaryRowIsMissing()
+    {
+        var live = new Mock<IActivityLiveDaySummary>();
+        live.Setup(x => x.ComposeAsync(TenantId, EmployeeId, new DateOnly(2026, 8, 21), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityDailySummaryDto
+            {
+                EmployeeId = EmployeeId,
+                Date = new DateOnly(2026, 8, 21),
+                TotalActiveMinutes = 92,
+                TotalIdleMinutes = 37,
+                TopApps = [new AppUsageSummary { AppName = "chrome.exe", TotalSeconds = 1680, Category = "Productive" }]
+            });
+        var fixture = CreateFixture(liveActivity: live.Object);
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.DailyActivity.Should().NotBeNull();
+        result.Value.DailyActivity!.TotalActiveMinutes.Should().Be(92);
+        result.Value.DailyActivity.TotalIdleMinutes.Should().Be(37);
+        result.Value.DailyActivity.TopApps.Should().ContainSingle(app => app.AppName == "chrome.exe");
+    }
+
+    [Fact]
+    public async Task DayDetail_Self_ReturnsAllowSkipAndNoResponseChecks()
+    {
+        var checks = new Mock<IInactivityCaptureAttemptRepository>();
+        var assetId = Guid.NewGuid();
+        checks.Setup(x => x.ListForEmployeeInRangeAsync(
+                TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new InactivityCaptureAttempt { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, PromptedAt = DateTimeOffset.Parse("2026-08-21T04:10:00Z"), Outcome = InactivityCaptureOutcomes.Captured, EvidenceAssetId = assetId },
+                new InactivityCaptureAttempt { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, PromptedAt = DateTimeOffset.Parse("2026-08-21T05:10:00Z"), Outcome = InactivityCaptureOutcomes.Declined },
+                new InactivityCaptureAttempt { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, PromptedAt = DateTimeOffset.Parse("2026-08-21T06:10:00Z"), Outcome = InactivityCaptureOutcomes.TimedOut }
+            ]);
+
+        var fixture = CreateFixture(activityCheckRepo: checks.Object);
+        fixture.Evidence.Setup(x => x.ListForOwnersInRangeAsync(
+                TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new MonitoringEvidenceAsset { Id = assetId, TenantId = TenantId, EmployeeId = EmployeeId, FileRecordId = Guid.NewGuid(), CapturedAt = DateTimeOffset.Parse("2026-08-21T04:11:00Z"), EvidenceType = "screenshot", TriggerType = "inactivity_approved" }]);
+        fixture.Files.Setup(x => x.GetSignedUrlAsync(TenantId, It.IsAny<Guid>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<string>.Success("https://r2.example/allow.jpg"));
+
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ActivityChecks.Should().HaveCount(3);
+        result.Value.ActivityChecks![0].Outcome.Should().Be("captured");
+        result.Value.ActivityChecks[0].Url.Should().Be("https://r2.example/allow.jpg");
+        result.Value.ActivityChecks[1].Outcome.Should().Be("declined");
+        result.Value.ActivityChecks[1].Url.Should().BeNull();
+        result.Value.ActivityChecks[2].Outcome.Should().Be("timed_out");
+    }
+
+    [Fact]
+    public async Task DayDetail_Self_PrefersStoredSummaryOverLiveSnapshots()
+    {
+        var live = new Mock<IActivityLiveDaySummary>();
+        var fixture = CreateFixture(liveActivity: live.Object);
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        fixture.ActivitySummaries.Setup(x => x.GetAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityDailySummary { TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21), TotalActiveMinutes = 200 });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.DailyActivity!.TotalActiveMinutes.Should().Be(200);
+        live.Verify(x => x.ComposeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DayDetail_OtherEmployee_WithoutMonitoringRead_DoesNotComposeLiveActivity()
+    {
+        var live = new Mock<IActivityLiveDaySummary>();
+        var fixture = CreateFixture(liveActivity: live.Object);
+        var otherId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, otherId]));
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = otherId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, otherId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        fixture.Attendance.Setup(x => x.ListEmployeeIdentitiesAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, AttendanceHistoryEmployee> { [otherId] = new(otherId, "Jane Doe", "EMP-001", "Engineer", "Product", null) });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(otherId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.DailyActivity.Should().BeNull();
+        live.Verify(x => x.ComposeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DayDetail_OtherEmployee_WithAttendanceReadAndMonitoringRead_ReturnsActivity()
+    {
+        var fixture = CreateFixture(hasMonitoringRead: true);
+        var otherId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, otherId]));
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = otherId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, otherId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        fixture.Attendance.Setup(x => x.ListEmployeeIdentitiesAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, AttendanceHistoryEmployee> { [otherId] = new(otherId, "Jane Doe", "EMP-001", "Engineer", "Product", null) });
+        fixture.ActivitySummaries.Setup(x => x.GetAsync(TenantId, otherId, new(2026, 8, 21), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityDailySummary { TenantId = TenantId, EmployeeId = otherId, Date = new(2026, 8, 21), TotalActiveMinutes = 150 });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(otherId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Summary.Employee!.DisplayName.Should().Be("Jane Doe");
+        result.Value.DailyActivity.Should().NotBeNull();
+        result.Value.DailyActivity!.TotalActiveMinutes.Should().Be(150);
+    }
+
+    [Fact]
+    public async Task DayDetail_OtherEmployee_WithAttendanceReadOnly_NullsActivityWithoutForbidden()
+    {
+        var fixture = CreateFixture();
+        var otherId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, otherId]));
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = otherId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, otherId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        fixture.Attendance.Setup(x => x.ListEmployeeIdentitiesAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, AttendanceHistoryEmployee> { [otherId] = new(otherId, "Jane Doe", "EMP-001", "Engineer", "Product", null) });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(otherId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.DailyActivity.Should().BeNull();
+        fixture.ActivitySummaries.Verify(x => x.GetAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DayDetail_OutsideVisibility_ReturnsForbidden()
+    {
+        var fixture = CreateFixture();
+        var hiddenId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(hiddenId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(403);
+        fixture.Attendance.Verify(x => x.GetRecordAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DayDetail_NoAttendanceRecordForDate_ReturnsNotFound()
+    {
+        var fixture = CreateFixture();
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AttendanceRecord?)null);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.StatusCode.Should().Be(404);
+    }
+
+    [Fact]
+    public async Task DayDetail_NoActivitySummaryRow_ReturnsNullActivityNotError()
+    {
+        var fixture = CreateFixture();
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.DailyActivity.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DayDetail_Self_IncludesCheckInsWithinDayWindow()
+    {
+        var fixture = CreateFixture();
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        var checkIn = new EmployeeCheckIn
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            UserId = UserId,
+            CheckedInAt = DateTimeOffset.Parse("2026-08-21T04:05:00+00:00"),
+            Latitude = 6.9271,
+            Longitude = 79.8612,
+            LocationAccuracy = 12.5,
+            LocationAddress = "Colombo Office"
+        };
+        fixture.CheckIns.Setup(x => x.ListForUserInRangeAsync(TenantId, UserId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([checkIn]);
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.CheckIns.Should().ContainSingle();
+        result.Value.CheckIns[0].Latitude.Should().Be(6.9271);
+        result.Value.CheckIns[0].LocationAddress.Should().Be("Colombo Office");
+    }
+
+    [Fact]
+    public async Task DayDetail_OtherEmployee_WithAttendanceReadOnly_DoesNotFetchCheckIns()
+    {
+        var fixture = CreateFixture();
+        var otherId = Guid.NewGuid();
+        fixture.Authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId, otherId]));
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = otherId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, otherId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        fixture.Attendance.Setup(x => x.ListEmployeeIdentitiesAsync(TenantId, LegalEntityId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, AttendanceHistoryEmployee> { [otherId] = new(otherId, "Jane Doe", "EMP-001", "Engineer", "Product", null) });
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(otherId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.CheckIns.Should().BeEmpty();
+        result.Value.Screenshots.Should().BeEmpty();
+        fixture.CheckIns.Verify(
+            x => x.ListForUserInRangeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        fixture.Evidence.Verify(
+            x => x.ListForOwnersInRangeAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task DayDetail_Self_ReturnsSignedScreenshotWithoutMonitoringRead()
+    {
+        var fixture = CreateFixture();
+        var record = new AttendanceRecord { Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = new(2026, 8, 21) };
+        fixture.Attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, new(2026, 8, 21), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        var fileId = Guid.NewGuid();
+        var asset = new MonitoringEvidenceAsset
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            EmployeeId = UserId,
+            FileRecordId = fileId,
+            EvidenceType = "screenshot",
+            TriggerType = "periodic",
+            CapturedAt = DateTimeOffset.Parse("2026-08-21T04:15:00+00:00")
+        };
+        fixture.Evidence.Setup(x => x.ListForOwnersInRangeAsync(
+                TenantId,
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(EmployeeId) && ids.Contains(UserId)),
+                It.IsAny<DateTimeOffset>(),
+                It.IsAny<DateTimeOffset>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([asset]);
+        fixture.Files.Setup(x => x.GetSignedUrlAsync(TenantId, fileId, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<string>.Success("https://r2.example/shot.jpg"));
+
+        var result = await fixture.Handler.Handle(new GetAttendanceDayDetailQuery(EmployeeId, new(2026, 8, 21)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        var shot = result.Value!.Screenshots.Should().ContainSingle().Subject;
+        shot.Id.Should().Be(asset.Id);
+        shot.TriggerType.Should().Be("periodic");
+        shot.Url.Should().Be("https://r2.example/shot.jpg");
+    }
+
+    private static Fixture CreateFixture(string localTimeUtc = "2026-08-21T10:00:00+00:00", string workModeCode = "remote", int employmentTypeId = 1, bool hasMonitoringRead = false, IActivityLiveDaySummary? liveActivity = null, IInactivityCaptureAttemptRepository? activityCheckRepo = null)
+    {
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
+        currentUser.SetupGet(x => x.UserId).Returns(UserId);
+        currentUser.Setup(x => x.HasPermission("attendance:read")).Returns(true);
+        currentUser.Setup(x => x.HasPermission("monitoring:read")).Returns(hasMonitoringRead);
+
+        var employee = new Employee { Id = EmployeeId, UserId = UserId, TenantId = TenantId, LegalEntityId = LegalEntityId, WorkModeId = Guid.NewGuid(), EmploymentTypeId = employmentTypeId };
+        var legalEntity = new LegalEntity { Id = LegalEntityId, TenantId = TenantId, Timezone = "Asia/Colombo", StandardWorkingDays = "[1,2,3,4,5]", WorkStartTime = new(9, 0), WorkEndTime = new(17, 30), BreakDurationMinutes = 60 };
+        var employees = new Mock<IEmployeeRepository>(); employees.Setup(x => x.GetDefaultForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>())).ReturnsAsync(employee);
+        employees.Setup(x => x.GetByIdAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(employee);
+        var checkIns = new Mock<ICheckInRepository>();
+        checkIns.Setup(x => x.ListForUserInRangeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<EmployeeCheckIn>());
+        var legalEntities = new Mock<ILegalEntityRepository>(); legalEntities.Setup(x => x.GetByIdForTenantAsync(TenantId, LegalEntityId, It.IsAny<CancellationToken>())).ReturnsAsync(legalEntity);
+        var policies = new Mock<IClockInPolicyRepository>(); policies.Setup(x => x.ListByLegalEntityAsync(TenantId, LegalEntityId, false, It.IsAny<CancellationToken>())).ReturnsAsync([new ClockInPolicy { Id = Guid.NewGuid(), TenantId = TenantId, LegalEntityId = LegalEntityId, ScopeType = ClockInPolicy.ScopeFullCompany, EffectiveFrom = new(2026, 1, 1) }]);
+        var attendance = new Mock<IAttendanceReadRepository>(); attendance.Setup(x => x.GetRecordAsync(TenantId, EmployeeId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>())).ReturnsAsync((AttendanceRecord?)null); attendance.Setup(x => x.ListBreaksAsync(TenantId, EmployeeId, It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var authority = new Mock<IEmployeeAuthorityResolver>(); authority.Setup(x => x.ResolveVisibilityAsync(It.IsAny<EmployeeAuthorityVisibilityRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new EmployeeAuthorityVisibilityScope(UserId, LegalEntityId, true, [EmployeeId]));
+        var expectedWorkAreas = new Mock<IExpectedWorkAreaResolver>();
+        var activitySummaries = new Mock<IActivityDailySummaryRepository>();
+        activitySummaries.Setup(x => x.GetAsync(TenantId, It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ActivityDailySummary?)null);
+        var evidence = new Mock<IEvidenceAssetRepository>();
+        evidence.Setup(x => x.ListForOwnersInRangeAsync(
+                TenantId,
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<DateTimeOffset>(),
+                It.IsAny<DateTimeOffset>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var files = new Mock<IFileStorageService>();
+        var workModeId = Guid.NewGuid();
+        expectedWorkAreas.Setup(x => x.ResolveAsync(It.IsAny<Employee>(), It.IsAny<LegalEntity>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<ExpectedWorkAreaResolution>.Success(
+                new ExpectedWorkAreaResolution(workModeId, workModeCode, legalEntity.Timezone!, "active_employee_work_mode", false, false)));
+        var dateTime = new Mock<IDateTimeProvider>(); dateTime.SetupGet(x => x.UtcNow).Returns(DateTimeOffset.Parse(localTimeUtc));
+        var workModes = new Mock<IWorkModeRepository>();
+        workModes.Setup(x => x.GetByIdAsync(TenantId, workModeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode
+            {
+                Id = workModeId, TenantId = TenantId, LegalEntityId = LegalEntityId,
+                Name = workModeCode, IsActive = true
+            });
+        var toggles = new Mock<IMonitoringToggleResolver>();
+        var todayState = new ONEVO.Application.Features.TimeAttendance.Services.AttendanceTodayStateService(
+            currentUser.Object,
+            dateTime.Object,
+            employees.Object,
+            legalEntities.Object,
+            policies.Object,
+            attendance.Object,
+            authority.Object,
+            expectedWorkAreas.Object,
+            workModes.Object,
+            toggles.Object);
+        return new Fixture(
+            new AttendanceReadHandler(
+                currentUser.Object,
+                employees.Object,
+                attendance.Object,
+                authority.Object,
+                todayState,
+                legalEntities: legalEntities.Object,
+                dateTimeProvider: dateTime.Object,
+                activitySummaries: activitySummaries.Object,
+                checkIns: checkIns.Object,
+                evidenceAssets: evidence.Object,
+                fileStorage: files.Object,
+                liveActivity: liveActivity,
+                activityChecks: activityCheckRepo),
+            attendance,
+            policies,
+            authority,
+            legalEntity,
+            activitySummaries,
+            checkIns,
+            workModes,
+            workModeId,
+            evidence,
+            files);
+    }
+
+    private sealed record Fixture(
+        AttendanceReadHandler Handler,
+        Mock<IAttendanceReadRepository> Attendance,
+        Mock<IClockInPolicyRepository> Policies,
+        Mock<IEmployeeAuthorityResolver> Authority,
+        LegalEntity LegalEntity,
+        Mock<IActivityDailySummaryRepository> ActivitySummaries,
+        Mock<ICheckInRepository> CheckIns,
+        Mock<IWorkModeRepository> WorkModes,
+        Guid WorkModeId,
+        Mock<IEvidenceAssetRepository> Evidence,
+        Mock<IFileStorageService> Files);
+}

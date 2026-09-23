@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.ApproveObjectiveChangeRequest;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Commands.EditObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
@@ -35,6 +36,26 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
         Id = ObjectiveId, TenantId = TenantId, Title = "Sub", OwnerId = Guid.NewGuid(),
         ReportingManagerId = ManagerEmployeeId, IsActive = true,
         StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), CreatedAt = DateTimeOffset.UtcNow
+    };
+
+    private static Objective TargetObjectiveWithParent() => new()
+    {
+        Id = ObjectiveId, TenantId = TenantId, ParentObjectiveId = ParentObjectiveId, Title = "Sub", OwnerId = Guid.NewGuid(),
+        ReportingManagerId = ManagerEmployeeId, IsActive = true,
+        StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 3, 1), CreatedAt = DateTimeOffset.UtcNow
+    };
+
+    private static Objective EditParentObjective() => new()
+    {
+        Id = ParentObjectiveId, TenantId = TenantId, Title = "Parent", OwnerId = Guid.NewGuid(), IsActive = true,
+        StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 6, 1), AllocatedHours = 40m, CreatedAt = DateTimeOffset.UtcNow
+    };
+
+    private static ObjectiveChangeRequest EditRequest(EditObjectiveRequestPayload payload) => new()
+    {
+        Id = RequestId, TenantId = TenantId, ObjectiveId = ObjectiveId, RequestType = ObjectiveChangeRequestTypes.Edit,
+        ReportingManagerId = ManagerEmployeeId, Status = ObjectiveChangeRequestStatuses.Pending,
+        PayloadJson = JsonSerializer.Serialize(payload, EditObjectiveCommandHandler.PayloadJsonOptions), CreatedAt = DateTimeOffset.UtcNow
     };
 
     private static ObjectiveChangeRequest DeleteRequest(string status = ObjectiveChangeRequestStatuses.Pending) => new()
@@ -68,7 +89,7 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
     }
 
     private (ApproveObjectiveChangeRequestCommandHandler Handler, Mock<IObjectiveRepository> Objectives, Mock<IObjectiveChangeRequestRepository> Requests, Mock<IMilestoneMembershipCoordinator> Membership) BuildHandlerWithMembership(
-        ObjectiveChangeRequest? request, Objective? objective, List<Objective>? directChildren = null, Guid? callerId = null)
+        ObjectiveChangeRequest? request, Objective? objective, List<Objective>? directChildren = null, Guid? callerId = null, Objective? parent = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -84,6 +105,7 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
         objectives.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(objective);
         objectives.Setup(x => x.GetTrackedActiveDirectChildrenAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(directChildren ?? new List<Objective>());
+        objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, ParentObjectiveId, It.IsAny<CancellationToken>())).ReturnsAsync(parent);
 
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -289,8 +311,62 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
         objectives.Verify(x => x.Update(It.Is<Objective>(o => o.Id == approverObjective.Id)), Times.Never);
     }
 
+        [Fact]
+    public async Task Handle_ExtendAllocation_UsesApproverEditedAmountWhenProvided()
+    {
+        var childObjective = ChildObjective(allocatedHours: 60m);
+        var approverObjective = ApproverObjective(allocatedHours: 100m);
+        var (handler, objectives) = BuildWithSlack(
+            changeRequest: ExtendAllocationRequest(childObjective.Id, requestedAdditionalHours: 20m),
+            childObjective, approverObjective, approverSlack: 40m);
+
+        var result = await handler.Handle(
+            new ApproveObjectiveChangeRequestCommand(RequestId, ApprovedAdditionalHours: 12m),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        objectives.Verify(x => x.Update(It.Is<Objective>(o => o.Id == childObjective.Id && o.AllocatedHours == 72m)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ExtendAllocation_ApprovedAmountExceedingSlackReturnsConflict()
+    {
+        var childObjective = ChildObjective(allocatedHours: 60m);
+        var approverObjective = ApproverObjective(allocatedHours: 100m);
+        var (handler, objectives) = BuildWithSlack(
+            changeRequest: ExtendAllocationRequest(childObjective.Id, requestedAdditionalHours: 10m),
+            childObjective, approverObjective, approverSlack: 20m);
+
+        var result = await handler.Handle(
+            new ApproveObjectiveChangeRequestCommand(RequestId, ApprovedAdditionalHours: 21m),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_ExtendAllocation_NonPositiveApprovedAmountReturnsFailure()
+    {
+        var childObjective = ChildObjective(allocatedHours: 60m);
+        var approverObjective = ApproverObjective(allocatedHours: 100m);
+        var (handler, objectives) = BuildWithSlack(
+            changeRequest: ExtendAllocationRequest(childObjective.Id, requestedAdditionalHours: 10m),
+            childObjective, approverObjective, approverSlack: 20m);
+
+        var result = await handler.Handle(
+            new ApproveObjectiveChangeRequestCommand(RequestId, ApprovedAdditionalHours: 0m),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
+    }
+
     [Fact]
     public async Task Handle_ExtendAllocation_ApproverInsufficientSlack_ReturnsConflictAndLeavesRequestPending()
+
     {
         var childObjective = ChildObjective(allocatedHours: 60m);
         var approverObjective = ApproverObjective(allocatedHours: 100m);
@@ -299,6 +375,56 @@ public class ApproveObjectiveChangeRequestCommandHandlerTests
             childObjective, approverObjective, approverSlack: 10m);
 
         var result = await handler.Handle(new ApproveObjectiveChangeRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        objectives.Verify(x => x.Update(It.IsAny<Objective>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_ApproveEdit_AppliesOriginallyRequestedPayloadWhenApproverDoesNotOverride()
+    {
+        var requestedPayload = new EditObjectiveRequestPayload("New Title", "New desc", new DateOnly(2026, 1, 10), new DateOnly(2026, 2, 10), 15m);
+        var (handler, objectives, _, _) = BuildHandlerWithMembership(
+            EditRequest(requestedPayload), TargetObjectiveWithParent(), parent: EditParentObjective());
+
+        var result = await handler.Handle(new ApproveObjectiveChangeRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        objectives.Verify(x => x.Update(It.Is<Objective>(o =>
+            o.Title == "New Title" && o.Description == "New desc"
+            && o.StartDate == new DateOnly(2026, 1, 10) && o.EndDate == new DateOnly(2026, 2, 10)
+            && o.AllocatedHours == 15m)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ApproveEdit_UsesApproverEditedFieldsWhenProvided()
+    {
+        var requestedPayload = new EditObjectiveRequestPayload("New Title", "New desc", new DateOnly(2026, 1, 10), new DateOnly(2026, 2, 10), 15m);
+        var approvedPayload = new EditObjectiveRequestPayload("Approver's Title", "Approver's desc", new DateOnly(2026, 1, 12), new DateOnly(2026, 2, 5), 10m);
+        var (handler, objectives, _, _) = BuildHandlerWithMembership(
+            EditRequest(requestedPayload), TargetObjectiveWithParent(), parent: EditParentObjective());
+
+        var result = await handler.Handle(
+            new ApproveObjectiveChangeRequestCommand(RequestId, ApprovedEdit: approvedPayload), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        objectives.Verify(x => x.Update(It.Is<Objective>(o =>
+            o.Title == "Approver's Title" && o.Description == "Approver's desc"
+            && o.StartDate == new DateOnly(2026, 1, 12) && o.EndDate == new DateOnly(2026, 2, 5)
+            && o.AllocatedHours == 10m)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ApproveEdit_FieldsExceedingParentConstraintsReturnConflict()
+    {
+        var requestedPayload = new EditObjectiveRequestPayload("New Title", null, new DateOnly(2026, 1, 10), new DateOnly(2026, 2, 10), 15m);
+        var outOfRangePayload = new EditObjectiveRequestPayload("New Title", null, new DateOnly(2026, 1, 10), new DateOnly(2026, 7, 10), 15m);
+        var (handler, objectives, _, _) = BuildHandlerWithMembership(
+            EditRequest(requestedPayload), TargetObjectiveWithParent(), parent: EditParentObjective());
+
+        var result = await handler.Handle(
+            new ApproveObjectiveChangeRequestCommand(RequestId, ApprovedEdit: outOfRangePayload), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);

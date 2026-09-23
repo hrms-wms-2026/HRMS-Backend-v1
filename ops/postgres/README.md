@@ -116,7 +116,8 @@ roles.
 
 The helper reads `.env`, creates the database when missing, provisions both
 roles, grants current and future privileges, and prints only the database name
-and usernames. It never prints passwords. With `-RunMigrations`, it runs:
+and usernames. It never prints passwords. With `-RunMigrations`, it restores
+the API project (so EF can read `project.assets.json`) and then runs:
 
 ```powershell
 dotnet ef database update --project src\ONEVO.Infrastructure\ONEVO.Infrastructure.csproj --startup-project src\ONEVO.Api\ONEVO.Api.csproj

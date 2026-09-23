@@ -62,13 +62,53 @@ public class ChecklistTaskJsonContractTests
     [InlineData("hr")]
     [InlineData("it")]
     [InlineData("custom_user")]
-    public void Parse_NonEmployeeOwnerType_RequiresAssignedToId(string ownerType)
+    public void Parse_OffsetMode_NonEmployeeOwnerType_AllowsPositionWithoutAssignedToId(string ownerType)
+    {
+        var positionId = Guid.NewGuid();
+        var json = $"[{{\"title\":\"x\",\"ownerType\":\"{ownerType}\",\"assigneePositionId\":\"{positionId}\",\"dueOffsetDays\":1,\"isRequired\":true}}]";
+
+        var result = ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.OffsetDays);
+
+        result[0].AssignedToId.Should().BeNull();
+        result[0].AssigneePositionId.Should().Be(positionId);
+    }
+
+    [Theory]
+    [InlineData("manager")]
+    [InlineData("hr")]
+    [InlineData("it")]
+    [InlineData("custom_user")]
+    public void Parse_OffsetMode_NonEmployeeOwnerType_RequiresAssignedToIdOrPosition(string ownerType)
     {
         var json = $"[{{\"title\":\"x\",\"ownerType\":\"{ownerType}\",\"dueOffsetDays\":1,\"isRequired\":true}}]";
 
         var act = () => ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.OffsetDays);
 
         act.Should().Throw<ArgumentException>();
+    }
+
+    [Theory]
+    [InlineData("manager")]
+    [InlineData("hr")]
+    [InlineData("it")]
+    [InlineData("custom_user")]
+    public void Parse_AbsoluteDateMode_NonEmployeeOwnerType_RequiresAssignedToId(string ownerType)
+    {
+        var json = $"[{{\"title\":\"x\",\"ownerType\":\"{ownerType}\",\"assigneePositionId\":\"{Guid.NewGuid()}\",\"dueDate\":\"2026-09-01\",\"isRequired\":true}}]";
+
+        var act = () => ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.AbsoluteDate);
+
+        act.Should().Throw<ArgumentException>().WithMessage("*specific person*");
+    }
+
+    [Fact]
+    public void Parse_AbsoluteDateMode_EmployeeOwnerType_AllowsNullAssignedToId()
+    {
+        var json = "[{\"title\":\"Complete profile\",\"ownerType\":\"employee\",\"dueDate\":\"2026-09-01\",\"isRequired\":true}]";
+
+        var result = ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.AbsoluteDate);
+
+        result[0].AssignedToId.Should().BeNull();
     }
 
     [Fact]
@@ -150,5 +190,46 @@ public class ChecklistTaskJsonContractTests
 
         tasks[0].AssignedToId.Should().Be(assignedTo);
         tasks[0].DueDate.Should().Be(new DateOnly(2026, 11, 1));
+    }
+
+    [Fact]
+    public void Parse_OffboardingFields_DefaultToFalseAndNull_WhenAbsent()
+    {
+        var json = "[{\"title\":\"Return laptop\",\"ownerType\":\"employee\",\"dueOffsetDays\":1,\"isRequired\":true}]";
+
+        var result = ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.OffsetDays);
+
+        result[0].IsBypassable.Should().BeFalse();
+        result[0].BypassPenaltyDescription.Should().BeNull();
+        result[0].Category.Should().BeNull();
+    }
+
+    [Fact]
+    public void Parse_OffboardingFields_ParsesWhenPresent()
+    {
+        var json = "[{\"title\":\"Return laptop\",\"ownerType\":\"employee\",\"dueOffsetDays\":1,\"isRequired\":true," +
+                    "\"isBypassable\":true,\"bypassPenaltyDescription\":\"Deduct from final settlement\",\"category\":\"asset_return\"}]";
+
+        var result = ChecklistTaskJsonContract.Parse(json, ChecklistTaskDueRuleMode.OffsetDays);
+
+        result[0].IsBypassable.Should().BeTrue();
+        result[0].BypassPenaltyDescription.Should().Be("Deduct from final settlement");
+        result[0].Category.Should().Be("asset_return");
+    }
+
+    [Fact]
+    public void ToEmployeeChecklistTasks_CopiesOffboardingFieldsOntoTheInstantiatedTask()
+    {
+        var defs = new List<ChecklistTaskDefinition>
+        {
+            new("Return laptop", ChecklistTaskOwnerTypes.Employee, null, 1, null, 1, true, true, "None", "asset_return"),
+        };
+
+        var tasks = ChecklistTaskJsonContract.ToEmployeeChecklistTasks(
+            defs, Guid.NewGuid(), Guid.NewGuid(), null, "offboarding", Guid.NewGuid(), new DateOnly(2026, 1, 1), ChecklistTaskDueRuleMode.OffsetDays);
+
+        tasks[0].IsBypassable.Should().BeTrue();
+        tasks[0].BypassPenaltyDescription.Should().Be("None");
+        tasks[0].Category.Should().Be("asset_return");
     }
 }

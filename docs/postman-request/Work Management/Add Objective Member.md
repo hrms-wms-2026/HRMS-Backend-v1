@@ -47,7 +47,7 @@ The value is an `employees.id`.
 | Status | Cause |
 |---|---|
 | `400` | Milestone is achieved (frozen), or the employee isn't an active employee in this tenant |
-| `403` | Caller lacks `projects:access`, has no Employee record, or is not this milestone's Head |
+| `403` | Caller lacks `projects:access`, has no Employee record, or is not an effective manager of this milestone (its Head, an active member, or the Head/an active member of any ancestor milestone) |
 | `404` | Milestone doesn't exist in tenant, or is inactive |
 | `409` | A pending invitation already exists for this employee on this milestone |
 

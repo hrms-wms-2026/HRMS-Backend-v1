@@ -8,10 +8,13 @@
 # Build folders
 bin/
 obj/
+artifacts/
 
 # Test results and temp files
 TestResults/
-[Log]
+*.log
+[Ll]ogs/
+[Ll]og/
 
 # Local environment / secret files (use .env.example as the committed template)
 .env

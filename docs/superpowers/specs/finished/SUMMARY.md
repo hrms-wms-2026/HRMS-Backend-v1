@@ -2,9 +2,15 @@
 
 **Purpose:** Approved designs whose corresponding plan in `plans/finished/` is done. Split into one `YYYY-MM-DD/` subfolder per date, mirroring `plans/finished/` (see `docs/superpowers/rules/FILE_CREATION_RULES.md`). Dates here match the design's own filename date, except `2026-08-08/` (below) which uses the *completion* date, matching `plans/finished/`'s convention — the design itself is dated 2026-08-06.
 
-**Last updated:** 2026-08-16
+**Last updated:** 2026-09-21
 
 ## Files by date
+
+**`2026-09-21/`** (1)
+- `2026-09-21-task-subtasks-design.md` — backend plan `plans/finished/2026-09-21/2026-09-21-task-subtasks-backend.md` finished all 6 tasks on 2026-09-21; frontend companion remains tracked in the frontend repository.
+
+**`2026-08-21/`** (1)
+- `2026-08-20-work-management-project-page-redesign-design.md` — matching plan `plans/finished/2026-08-21/2026-08-20-work-management-project-page-redesign/`.
 
 **`2026-08-03/`** (2)
 - `2026-08-03-doc-audit-and-process-setup-design.md`

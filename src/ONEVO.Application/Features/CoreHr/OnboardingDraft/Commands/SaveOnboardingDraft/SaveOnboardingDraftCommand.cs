@@ -15,8 +15,9 @@ public record SaveOnboardingDraftCommand(
     string EmploymentType,
     DateOnly StartDate,
     string? EmployeeNumber,
-    int WorkModeId,
+    Guid? WorkModeId,
     Guid? SelectedTemplateId,
     string? EditedTasksJson,
     string LastSavedStep,
-    string? IfMatchVersion) : IRequest<Result<OnboardingDraftResponse>>;
+    string? IfMatchVersion,
+    Guid? ReportsToEmployeeId) : IRequest<Result<OnboardingDraftResponse>>;

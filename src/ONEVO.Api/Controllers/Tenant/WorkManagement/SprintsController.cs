@@ -2,12 +2,16 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.WorkManagement.Sprints;
+using ONEVO.Api.Contracts.WorkManagement.Tasks;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.AchieveSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.CompleteSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.CreateSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Commands.EditSprint;
+using ONEVO.Application.Features.WorkManagement.Sprints.Commands.StartSprint;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetObjectiveSprints;
+using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetProjectSprints;
+using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetSprintTasks;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 
@@ -24,7 +28,7 @@ public class SprintsController : ControllerBase
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Create(Guid objectiveId, [FromBody] CreateSprintRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new CreateSprintCommand(objectiveId, request.Name, request.StartDate, request.EndDate), ct);
+        var result = await _mediator.Send(new CreateSprintCommand(objectiveId, request.Name, request.Goal), ct);
 
         return result.IsSuccess
             ? StatusCode(201, result.Value!.ToViewModel())
@@ -35,7 +39,18 @@ public class SprintsController : ControllerBase
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditSprintRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new EditSprintCommand(id, request.Name, request.StartDate, request.EndDate), ct);
+        var result = await _mediator.Send(new EditSprintCommand(id, request.Name, request.Goal, request.StartDate, request.EndDate), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("sprints/{id:guid}/start")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> Start(Guid id, [FromBody] StartSprintRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new StartSprintCommand(id, request.StartDate, request.EndDate, request.Goal), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
@@ -44,9 +59,9 @@ public class SprintsController : ControllerBase
 
     [HttpPost("sprints/{id:guid}/complete")]
     [RequirePermission("projects:access")]
-    public async Task<IActionResult> Complete(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Complete(Guid id, [FromBody] CompleteSprintRequest request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new CompleteSprintCommand(id), ct);
+        var result = await _mediator.Send(new CompleteSprintCommand(id, request.Disposition, request.TargetSprintId), ct);
 
         return result.IsSuccess
             ? Ok(result.Value!.ToViewModel())
@@ -64,7 +79,29 @@ public class SprintsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    [HttpGet("sprints/{id:guid}/tasks")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> GetTasks(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetSprintTasksQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(t => t.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpGet("projects/{projectId:guid}/sprints")]
+    public async Task<IActionResult> GetByProject(Guid projectId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetProjectSprintsQuery(projectId), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.Select(s => s.ToViewModel()).ToList())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     [HttpGet("objectives/{objectiveId:guid}/sprints")]
+    [RequirePermission("projects:access")]
     public async Task<IActionResult> GetByObjective(Guid objectiveId, [FromQuery] bool activeOnly, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetObjectiveSprintsQuery(objectiveId, activeOnly), ct);

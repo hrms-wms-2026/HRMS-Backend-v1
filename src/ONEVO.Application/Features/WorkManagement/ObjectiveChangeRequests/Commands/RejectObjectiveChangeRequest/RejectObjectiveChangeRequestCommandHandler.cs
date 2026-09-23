@@ -63,14 +63,17 @@ public class RejectObjectiveChangeRequestCommandHandler : IRequestHandler<Reject
         changeRequest.DecidedById = userId;
         _changeRequests.Update(changeRequest);
 
-        if (changeRequest.RequestType == ObjectiveChangeRequestTypes.ExtendAllocation)
+        if (changeRequest.RequestType is ObjectiveChangeRequestTypes.ExtendAllocation or ObjectiveChangeRequestTypes.Edit)
         {
+            var templateCode = changeRequest.RequestType == ObjectiveChangeRequestTypes.Edit
+                ? "work_objective_edit_request_decided"
+                : "work_allocation_extend_request_decided";
             var objective = await _objectives.GetByIdForTenantAsync(tenantId, changeRequest.ObjectiveId, ct);
             var requester = await _membership.GetActiveAssigneeAsync(tenantId, changeRequest.RequestedById, ct);
             if (objective is not null && requester is not null)
             {
                 await _notifications.SendTemplatedAsync(
-                    tenantId, requester.UserId, "work_allocation_extend_request_decided",
+                    tenantId, requester.UserId, templateCode,
                     new Dictionary<string, string>
                     {
                         ["decision"] = "rejected",

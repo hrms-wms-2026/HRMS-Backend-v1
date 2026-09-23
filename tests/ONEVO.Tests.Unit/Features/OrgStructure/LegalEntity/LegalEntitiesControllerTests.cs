@@ -7,7 +7,6 @@ using ONEVO.Api.Controllers.Tenant.OrgStructure;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.OrgStructure.Commands.CreateLegalEntity;
 using ONEVO.Application.Features.OrgStructure.Commands.DeleteLegalEntity;
-using ONEVO.Application.Features.OrgStructure.Commands.RemoveLegalEntityLogo;
 using ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 using ONEVO.Application.Features.OrgStructure.Queries.GetLegalEntityGeneralSettings;
@@ -29,7 +28,7 @@ public sealed class LegalEntitiesControllerTests
     private static LegalEntityGeneralSettingsResponse SampleGeneralSettings(Guid id) => new(
         id, "Acme Lanka", "ACME", null, "REG-001", null, null, null, null, null,
         "LKA", "LKR", "UTC", 1, 1, [1, 2, 3, 4, 5], "en-US", "DD MMM YYYY", "12h", "active",
-        new TimeOnly(9, 0), new TimeOnly(17, 30));
+        new TimeOnly(9, 0), new TimeOnly(17, 30), 60, null, null, null);
 
     [Fact]
     public async Task List_SendsQuery_WithIncludeInactiveValue()
@@ -130,7 +129,7 @@ public sealed class LegalEntitiesControllerTests
         var request = new UpdateLegalEntityGeneralSettingsRequest(
             "Acme Lanka", "ACME", "REG-001", null, null, null, null, null,
             "LKA", "LKR", "UTC", 1, 1, [1, 2, 3, 4, 5], "en-US", "DD MMM YYYY", "12h", "active",
-            new TimeOnly(9, 0), new TimeOnly(17, 30));
+            new TimeOnly(9, 0), new TimeOnly(17, 30), 60, null, null, null);
 
         var result = await _sut.UpdateGeneralSettings(routeId, request, CancellationToken.None);
 
@@ -138,7 +137,8 @@ public sealed class LegalEntitiesControllerTests
             It.Is<UpdateLegalEntityGeneralSettingsCommand>(c =>
                 c.LegalEntityId == routeId &&
                 c.WorkStartTime == new TimeOnly(9, 0) &&
-                c.WorkEndTime == new TimeOnly(17, 30)),
+                c.WorkEndTime == new TimeOnly(17, 30) &&
+                c.BreakDurationMinutes == 60),
             It.IsAny<CancellationToken>()), Times.Once);
         result.Should().BeOfType<OkObjectResult>();
     }
@@ -170,18 +170,4 @@ public sealed class LegalEntitiesControllerTests
         problem.StatusCode.Should().Be(400);
     }
 
-    [Fact]
-    public async Task RemoveLogo_SendsCommand_AndReturnsNoContent()
-    {
-        var id = Guid.NewGuid();
-        _mediator.Setup(m => m.Send(It.IsAny<RemoveLegalEntityLogoCommand>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success());
-
-        var result = await _sut.RemoveLogo(id, CancellationToken.None);
-
-        _mediator.Verify(m => m.Send(
-            It.Is<RemoveLegalEntityLogoCommand>(c => c.LegalEntityId == id),
-            It.IsAny<CancellationToken>()), Times.Once);
-        result.Should().BeOfType<NoContentResult>();
-    }
 }

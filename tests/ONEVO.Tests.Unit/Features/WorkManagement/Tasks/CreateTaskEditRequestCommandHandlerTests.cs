@@ -71,7 +71,7 @@ public class CreateTaskEditRequestCommandHandlerTests
     public async Task Handle_ActiveMember_CreatesRequestWithResolvedName()
     {
         var (handler, requests) = Build(MemberEmployeeId, callerIsMember: true);
-        var command = new CreateTaskEditRequestCommand(TaskId, "New title", null, "high", null, null, null);
+        var command = new CreateTaskEditRequestCommand(TaskId, "New title", null, "high", null, null, null, null, null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -84,7 +84,7 @@ public class CreateTaskEditRequestCommandHandlerTests
     public async Task Handle_Owner_ReturnsFailure_NoRequestNeeded()
     {
         var (handler, requests) = Build(OwnerEmployeeId, callerIsMember: true);
-        var command = new CreateTaskEditRequestCommand(TaskId, "New title", null, "high", null, null, null);
+        var command = new CreateTaskEditRequestCommand(TaskId, "New title", null, "high", null, null, null, null, null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -96,7 +96,7 @@ public class CreateTaskEditRequestCommandHandlerTests
     public async Task Handle_NotAMember_ReturnsForbidden()
     {
         var (handler, requests) = Build(OutsiderEmployeeId, callerIsMember: false);
-        var command = new CreateTaskEditRequestCommand(TaskId, "New title", null, "high", null, null, null);
+        var command = new CreateTaskEditRequestCommand(TaskId, "New title", null, "high", null, null, null, null, null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 
@@ -108,7 +108,7 @@ public class CreateTaskEditRequestCommandHandlerTests
     public async Task Handle_SprintAchieved_ReturnsForbidden()
     {
         var (handler, requests) = Build(MemberEmployeeId, callerIsMember: true, sprintStatus: SprintStatuses.Achieved);
-        var command = new CreateTaskEditRequestCommand(TaskId, "New title", null, "high", null, null, null);
+        var command = new CreateTaskEditRequestCommand(TaskId, "New title", null, "high", null, null, null, null, null);
 
         var result = await handler.Handle(command, CancellationToken.None);
 

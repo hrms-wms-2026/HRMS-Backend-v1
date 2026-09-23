@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.File.DTOs.Responses;
@@ -67,6 +68,15 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
             // Stub R2 / quota-backed file storage so face-scan tests stay offline.
             services.RemoveAll<IFileStorageService>();
             services.AddSingleton<IFileStorageService, NoOpFileStorageService>();
+
+            // Stub AWS Rekognition-backed face matching/quality so check-in tests stay
+            // offline. Runtime clients now resolve credentials from platform_service_keys
+            // via AwsRekognitionClientFactory; these fakes keep DI resolvable without
+            // an aws_rekognition row or network calls.
+            services.RemoveAll<IFaceMatchService>();
+            services.AddSingleton<IFaceMatchService, NoOpFaceMatchService>();
+            services.RemoveAll<IFaceQualityService>();
+            services.AddSingleton<IFaceQualityService, NoOpFaceQualityService>();
         });
     }
 
@@ -110,6 +120,18 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
         }
     }
 
+    private sealed class NoOpFaceMatchService : IFaceMatchService
+    {
+        public Task<FaceMatchOutcome> CompareAsync(Stream referenceImage, Stream capturedImage, CancellationToken ct)
+            => Task.FromResult(new FaceMatchOutcome(false, 0f));
+    }
+
+    private sealed class NoOpFaceQualityService : IFaceQualityService
+    {
+        public Task<FaceQualityOutcome> AnalyzeAsync(Stream image, CancellationToken ct)
+            => Task.FromResult(new FaceQualityOutcome(false, false, false, null, null));
+    }
+
     private sealed class NoOpFileStorageService : IFileStorageService
     {
         public Task<Result<FileUploadReservationDto>> BeginReservationAsync(
@@ -151,7 +173,9 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
                     0,
                     checksumSha256,
                     "available",
-                    DateTimeOffset.UtcNow)));
+                    DateTimeOffset.UtcNow,
+                    Guid.NewGuid(),
+                    null)));
         }
 
         public Task<Result> CancelReservationAsync(
@@ -182,7 +206,9 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
                     size,
                     "test-checksum",
                     "available",
-                    DateTimeOffset.UtcNow)));
+                    DateTimeOffset.UtcNow,
+                    userId,
+                    null)));
         }
 
         public Task<Result<string>> GetSignedUrlAsync(
@@ -196,5 +222,14 @@ public sealed class CheckInTestFactory : WebApplicationFactory<Program>
             Guid fileId,
             CancellationToken ct = default)
             => Task.FromResult(Result<FileStreamDto>.NotFound("File not found."));
+
+        public Task<Result<FileRecordDto>> GetRecordAsync(
+            Guid tenantId,
+            Guid fileRecordId,
+            CancellationToken ct = default)
+            => Task.FromResult(Result<FileRecordDto>.NotFound("File not found."));
+
+        public Task<Result> DeleteAsync(Guid tenantId, Guid userId, Guid fileRecordId, CancellationToken ct = default)
+            => Task.FromResult(Result.Success());
     }
 }

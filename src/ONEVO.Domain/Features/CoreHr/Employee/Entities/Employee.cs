@@ -17,10 +17,10 @@ public class Employee : BaseEntity
     public Guid? LegalEntityId { get; set; }
     public int EmploymentTypeId { get; set; } = 1;
     public int EmploymentStatusId { get; set; } = 1;
-    public int WorkModeId { get; set; } = 1;
+
+    public Guid? WorkModeId { get; set; }
     public DateOnly HireDate { get; set; }
     public DateOnly? ProbationEndDate { get; set; }
     public DateOnly? TerminationDate { get; set; }
-    public Guid? AvatarFileId { get; set; }
     public string? DisplayTimezone { get; set; }
 }

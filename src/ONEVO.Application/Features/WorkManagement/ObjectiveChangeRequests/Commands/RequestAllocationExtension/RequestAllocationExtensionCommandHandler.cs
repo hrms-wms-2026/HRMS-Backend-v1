@@ -53,7 +53,7 @@ public class RequestAllocationExtensionCommandHandler : IRequestHandler<RequestA
         if (objective is null || !objective.IsActive)
             return Result<ObjectiveChangeRequestResponse>.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<ObjectiveChangeRequestResponse>.Forbidden("Only this milestone's owner can request an allocation extension.");
 
         if (objective.ReportingManagerId is null)

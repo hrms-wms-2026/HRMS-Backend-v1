@@ -34,6 +34,9 @@ public class GetProjectByIdQueryHandlerTests
         entityAssets.Setup(x => x.GetPrimaryFileIdsByOwnerAsync(
                 TenantId, "project", It.IsAny<IReadOnlyCollection<Guid>>(), "project_cover", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, Guid>());
+        entityAssets.Setup(x => x.GetPrimaryFileIdsByOwnerAsync(
+                TenantId, "employee", It.IsAny<IReadOnlyCollection<Guid>>(), "employee_avatar", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
         return entityAssets;
     }
 

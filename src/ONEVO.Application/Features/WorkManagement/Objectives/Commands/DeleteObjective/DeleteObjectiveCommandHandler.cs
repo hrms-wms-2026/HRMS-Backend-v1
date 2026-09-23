@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Reposito
 using ONEVO.Application.Features.WorkManagement.Objectives.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Domain.Features.WorkManagement.ObjectiveChangeRequests.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Objectives.Commands.DeleteObjective;
@@ -18,16 +19,18 @@ public class DeleteObjectiveCommandHandler : IRequestHandler<DeleteObjectiveComm
     private readonly IObjectiveRepository _objectives;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMilestoneMembershipCoordinator _membership;
 
     public DeleteObjectiveCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
-        IObjectiveChangeRequestRepository changeRequests, IUnitOfWork unitOfWork)
+        IObjectiveChangeRequestRepository changeRequests, IUnitOfWork unitOfWork, IMilestoneMembershipCoordinator membership)
     {
         _currentUser = currentUser;
         _identity = identity;
         _objectives = objectives;
         _changeRequests = changeRequests;
         _unitOfWork = unitOfWork;
+        _membership = membership;
     }
 
     public async Task<Result<ObjectiveChangeOutcomeResponse>> Handle(DeleteObjectiveCommand request, CancellationToken ct)
@@ -51,7 +54,7 @@ public class DeleteObjectiveCommandHandler : IRequestHandler<DeleteObjectiveComm
         if (objective.IsDefault)
             return Result<ObjectiveChangeOutcomeResponse>.Failure("Use the Project delete endpoint for the Default Objective.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<ObjectiveChangeOutcomeResponse>.Forbidden("Only this milestone's head can delete it.");
 
         if (!objective.IsActive)

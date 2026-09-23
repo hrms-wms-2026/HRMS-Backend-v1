@@ -9,7 +9,8 @@ public static class ManagementCoverageRecordMapper
         ManagementCoverageRecord entity,
         string? ownerPositionName,
         string? coveredPositionName,
-        string? coveredDepartmentName)
+        string? coveredDepartmentName,
+        string? responsibleEmployeeName = null)
     {
         return new ManagementCoverageRecordResponse(
             entity.Id,
@@ -23,7 +24,9 @@ public static class ManagementCoverageRecordMapper
             entity.OwnerOrder,
             entity.Source,
             entity.IsLocked,
-            entity.Status);
+            entity.Status,
+            entity.ResponsibleEmployeeId,
+            responsibleEmployeeName);
     }
 
     // Mirrors the frontend's formatResponsibilityLabel: order 1 is Primary Manager, every order

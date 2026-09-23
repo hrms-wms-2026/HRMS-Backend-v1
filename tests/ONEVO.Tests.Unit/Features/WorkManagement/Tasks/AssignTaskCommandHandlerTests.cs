@@ -25,7 +25,7 @@ public class AssignTaskCommandHandlerTests
     private static readonly Guid AssigneeUserId = Guid.NewGuid();
 
     private (AssignTaskCommandHandler Handler, Mock<ITaskAssignmentRepository> Assignments) Build(
-        WorkTask? task, Employee? assignee, Guid callerEmployeeId)
+        WorkTask? task, Employee? assignee, Guid callerEmployeeId, bool? callerIsEffectiveManager = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -55,6 +55,11 @@ public class AssignTaskCommandHandlerTests
         var membership = new Mock<IMilestoneMembershipCoordinator>();
         membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, EmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(assignee);
+        // Mirrors direct-owner-only behavior by default so pre-existing tests keep passing
+        // unmodified; callerIsEffectiveManager lets a test override this to simulate an
+        // ancestor-cascade grant.
+        membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, callerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(callerIsEffectiveManager ?? (objective.OwnerId == callerEmployeeId));
 
         var assignments = new Mock<ITaskAssignmentRepository>();
         assignments.Setup(x => x.GetByTaskAndEmployeeAsync(TaskId, EmployeeId, It.IsAny<CancellationToken>()))
@@ -121,5 +126,22 @@ public class AssignTaskCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
         assignments.Verify(x => x.AddAsync(It.IsAny<TaskAssignment>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_CallerIsEffectiveManagerNotOwner_AddsAssignment()
+    {
+        // Caller is not this objective's own OwnerId, but IsEffectiveManagerAsync reports them as
+        // an effective manager via an ancestor (grandparent) membership - the coordinator's own
+        // ancestor-walk logic is unit-tested separately, so this only proves the handler defers to
+        // its answer instead of the direct OwnerId check.
+        var task = new WorkTask { Id = TaskId, TenantId = TenantId, ObjectiveId = ObjectiveId, Title = "A", ShortId = "T-1", CreatedAt = DateTimeOffset.UtcNow };
+        var assignee = new Employee { Id = EmployeeId, TenantId = TenantId, UserId = AssigneeUserId, EmployeeNumber = "E1", HireDate = new DateOnly(2020, 1, 1) };
+        var (handler, assignments) = Build(task, assignee, callerEmployeeId: Guid.NewGuid(), callerIsEffectiveManager: true);
+
+        var result = await handler.Handle(new AssignTaskCommand(TaskId, EmployeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        assignments.Verify(x => x.AddAsync(It.Is<TaskAssignment>(a => a.EmployeeId == EmployeeId && a.UserId == AssigneeUserId), It.IsAny<CancellationToken>()), Times.Once);
     }
 }

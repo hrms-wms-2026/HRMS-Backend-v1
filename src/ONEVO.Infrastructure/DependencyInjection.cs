@@ -1,3 +1,4 @@
+using Amazon.Extensions.NETCore.Setup;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -5,17 +6,35 @@ using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
+using ONEVO.Application.Features.Calendar.ServiceInterfaces;
+using ONEVO.Application.Features.Calendar.Services;
+using ONEVO.Infrastructure.Persistence.Repositories.Calendar;
+using ONEVO.Infrastructure.Services.Calendar;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.BulkOnboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.BulkOnboarding.Services;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Offboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
+using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.BulkOnboarding;
+using ONEVO.Infrastructure.Persistence.Repositories.CoreHr.Offboarding;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Services;
+
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
@@ -55,6 +74,7 @@ using ONEVO.Infrastructure.Identity.Passwords;
 using ONEVO.Infrastructure.Identity.Tenancy;
 using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Identity.Tokens;
+using ONEVO.Infrastructure.ExternalServices.Calendar;
 using ONEVO.Infrastructure.ExternalServices.Email;
 using ONEVO.Infrastructure.ExternalServices.GitHub;
 using ONEVO.Infrastructure.Configuration;
@@ -86,6 +106,7 @@ using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.Serv
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformProviders.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformServiceKeys.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.TrayReleases.RepositoryInterfaces;
 using ONEVO.Infrastructure.Persistence.Repositories.DevPlatform.SystemConfig;
 using ONEVO.Infrastructure.Persistence.Repositories.SharedPlatform;
 using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
@@ -97,6 +118,7 @@ using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfa
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.AppUsage.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.DeviceState.RepositoryInterfaces;
+using ONEVO.Infrastructure.Persistence.Repositories.Monitoring;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.TrayActivation;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.CheckIn;
 using ONEVO.Infrastructure.Persistence.Repositories.Monitoring.WorkSessions;
@@ -139,20 +161,19 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
-        services.AddScoped<EfAuthRepository>();
-        services.AddScoped<IRoleTemplateRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IUserRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IRefreshTokenRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<ISessionRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IPasswordResetTokenRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IUserMfaRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IRoleRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IRolePermissionRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IPermissionRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IUserPermissionOverrideRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IUserRoleRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IFeatureAccessGrantRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
-        services.AddScoped<IAuditLogRepository>(sp => sp.GetRequiredService<EfAuthRepository>());
+        services.AddScoped<IRoleTemplateRepository, EfRoleTemplateRepository>();
+        services.AddScoped<IUserRepository, EfUserRepository>();
+        services.AddScoped<IRefreshTokenRepository, EfRefreshTokenRepository>();
+        services.AddScoped<ISessionRepository, EfSessionRepository>();
+        services.AddScoped<IPasswordResetTokenRepository, EfPasswordResetTokenRepository>();
+        services.AddScoped<IUserMfaRepository, EfUserMfaRepository>();
+        services.AddScoped<IRoleRepository, EfRoleRepository>();
+        services.AddScoped<IRolePermissionRepository, EfRolePermissionRepository>();
+        services.AddScoped<IPermissionRepository, EfPermissionRepository>();
+        services.AddScoped<IUserPermissionOverrideRepository, EfUserPermissionOverrideRepository>();
+        services.AddScoped<IUserRoleRepository, EfUserRoleRepository>();
+        services.AddScoped<IFeatureAccessGrantRepository, EfFeatureAccessGrantRepository>();
+        services.AddScoped<IAuditLogRepository, EfAuditLogRepository>();
 
         // Developer Platform repositories
         services.AddScoped<ITenantRepository, EfTenantRepository>();
@@ -160,6 +181,112 @@ public static class DependencyInjection
         services.AddScoped<EfLegalEntityRepository>();
         services.AddScoped<ILegalEntityRepository>(sp => sp.GetRequiredService<EfLegalEntityRepository>());
         services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
+        services.AddScoped<IClockInPolicyRepository, EfClockInPolicyRepository>();
+        services.AddScoped<IAttendanceReadRepository, EfAttendanceReadRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Type.RepositoryInterfaces.ILeaveTypeRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Type.EfLeaveTypeRepository>();
+
+                services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IAttendanceCorrectionRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfAttendanceCorrectionRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IWorkAreaChangeRequestRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfWorkAreaChangeRequestRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IEmployeeWorkLocationRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfEmployeeWorkLocationRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.ILocationChangeRequestRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfLocationChangeRequestRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces.IDailyWorkLocationConfirmationRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance.EfDailyWorkLocationConfirmationRepository>();
+
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestReadRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Request.EfLeaveRequestReadRepository>();
+
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Policy.RepositoryInterfaces.ILeavePolicyRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Policy.EfLeavePolicyRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Entitlement.RepositoryInterfaces.ILeaveEntitlementRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Entitlement.EfLeaveEntitlementRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.BalanceAudit.RepositoryInterfaces.ILeaveBalanceAuditRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.BalanceAudit.EfLeaveBalanceAuditRepository>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.ILeaveWorkingDayCounter,
+            ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveWorkingDayCounter>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveEntitlementCalculator>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Entitlement.Helpers.LeaveEntitlementPlanner>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Leave.LeaveYearEndEntitlementJob>();
+        services.AddOptions<ONEVO.Application.Features.Leave.Entitlement.Options.LeaveEntitlementYearOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Entitlement.Options.LeaveEntitlementYearOptions.SectionName))
+            .Validate(options => options.MinimumYear > 0, "Leave entitlement minimum year must be configured.")
+            .Validate(options => options.MaximumYear >= options.MinimumYear, "Leave entitlement maximum year must be after the minimum year.")
+            .ValidateOnStart();
+        services.AddOptions<ONEVO.Application.Features.Leave.Request.Options.LeaveRequestOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Request.Options.LeaveRequestOptions.SectionName))
+            .Validate(options => options.MaximumRequestRangeDays > 0, "Leave request maximum range days must be configured.")
+            .ValidateOnStart();
+        services.AddOptions<ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions.SectionName))
+            .Validate(options =>
+                ONEVO.Application.Features.Leave.Calendar.Options.LeaveCalendarOptions.AreColorsValid(options.TypeCategoryColors),
+                "Leave:Calendar:TypeCategoryColors must contain #RRGGBB hex colors.")
+            .ValidateOnStart();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Request.RepositoryInterfaces.ILeaveRequestRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Request.EfLeaveRequestRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Calendar.RepositoryInterfaces.ILeaveCalendarRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Calendar.EfLeaveCalendarRepository>();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestDayCalculator>();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Request.Helpers.LeaveRequestHourCalculator>();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Calendar.Helpers.LeaveCalendarRequestProjector>();
+        services.AddHttpClient<ONEVO.Application.Features.Calendar.ServiceInterfaces.INagerHolidaysClient,
+            ONEVO.Infrastructure.Services.Calendar.NagerHolidaysClient>(client =>
+        {
+            client.BaseAddress = new Uri("https://date.nager.at/api/v3/");
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.IHolidayCalendarSettingsRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfHolidayCalendarSettingsRepository>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Calendar.Services.ILeaveCalendarHolidayProvider,
+            ONEVO.Infrastructure.Services.Calendar.NagerHolidaysProvider>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveRequestConflictProvider,
+            ONEVO.Application.Features.Leave.Request.Services.NoOpLeaveRequestConflictProvider>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveApproverResolver,
+            ONEVO.Application.Features.Leave.Request.Services.LeaveApproverResolver>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.ILeaveTeamAbsenceWarningService,
+            ONEVO.Application.Features.Leave.Request.Services.LeaveTeamAbsenceWarningService>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Request.Services.LeaveRequestSubmissionEvaluator>();
+        services.AddOptions<ONEVO.Application.Features.Leave.Approval.Options.LeaveApprovalOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Approval.Options.LeaveApprovalOptions.SectionName))
+            .ValidateOnStart();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Approval.RepositoryInterfaces.ILeaveApprovalRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Approval.EfLeaveApprovalRepository>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Approval.Commands.LeaveApprovalDecisionService>();
+        services.AddOptions<ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions.SectionName))
+            .Validate(
+                options => ONEVO.Application.Features.Leave.Cancellation.Options.LeaveCancellationOptions.IsValidTimezone(options.FallbackTimezone),
+                "Leave:Cancellation:FallbackTimezone must be a valid timezone id.")
+            .ValidateOnStart();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Cancellation.Helpers.LeaveCancellationClassifier>();
+        services.AddSingleton<ONEVO.Application.Features.Leave.Cancellation.Helpers.LeaveRequestDayAllocationBuilder>();
+        services.AddScoped<ONEVO.Application.Features.Leave.Cancellation.Helpers.LeaveBusinessDateResolver>();
+        services.AddScoped<
+            ONEVO.Application.Features.Leave.Cancellation.RepositoryInterfaces.ILeaveCancellationRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Leave.Cancellation.EfLeaveCancellationRepository>();
+
+        services.AddScoped<IExpectedWorkAreaResolver, ExpectedWorkAreaResolver>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.IMonitoringPolicyConfigurationService,
+            ONEVO.Infrastructure.Services.Monitoring.Settings.MonitoringPolicyConfigurationService>();
+
         services.AddScoped<IPositionAssignmentRepository, EfPositionAssignmentRepository>();
         services.AddScoped<IEmployeeHierarchyClosureRepository, EfEmployeeHierarchyClosureRepository>();
         services.AddScoped<
@@ -171,12 +298,22 @@ public static class DependencyInjection
         services.AddScoped<IEmployeeVisibilityScopeResolver, EmployeeVisibilityScopeResolver>();
         services.AddScoped<ISeatEntitlementService, SeatEntitlementService>();
         services.AddScoped<IOnboardingDraftRepository, EfOnboardingDraftRepository>();
+        services.AddScoped<IOnboardingDraftWriteService, OnboardingDraftWriteService>();
+        services.AddScoped<IBulkOnboardingBatchRepository, EfBulkOnboardingBatchRepository>();
+        services.AddScoped<IBulkOnboardingRowValidator, BulkOnboardingRowValidator>();
+        services.AddScoped<ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch.IBulkOnboardingValidationRunner,
+            ONEVO.Application.Features.CoreHr.BulkOnboarding.Commands.ValidateBulkOnboardingBatch.BulkOnboardingValidationRunner>();
         services.AddScoped<IAccessGrantRequestRepository, EfAccessGrantRequestRepository>();
         services.AddScoped<IChecklistTemplateRepository, EfChecklistTemplateRepository>();
         services.AddScoped<IEmployeeChecklistTaskRepository, EfEmployeeChecklistTaskRepository>();
+        services.AddScoped<IOffboardingRecordRepository, EfOffboardingRecordRepository>();
+        services.AddScoped<IOffboardingTaskBypassRequestRepository, EfOffboardingTaskBypassRequestRepository>();
+        services.AddScoped<IEmployeeOffboardingLockGuard, ONEVO.Infrastructure.Services.CoreHr.Offboarding.EmployeeOffboardingLockGuard>();
+        services.AddScoped<IEmployeeOffboardingCoverageGuard, ONEVO.Infrastructure.Services.CoreHr.Offboarding.EmployeeOffboardingCoverageGuard>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.ServiceInterfaces.IChecklistTemplateAssigneeResolver, ONEVO.Infrastructure.Services.CoreHr.Onboarding.ChecklistTemplateAssigneeResolver>();
         services.AddScoped<ONEVO.Application.Features.CoreHr.Onboarding.Services.ChecklistTemplateTaskInputResolver>();
         services.AddScoped<IWorkModeRepository, EfWorkModeRepository>();
+        services.AddScoped<IWorkModeSeeder, ONEVO.Infrastructure.Services.TimeAttendance.WorkModeSeeder>();
         services.AddScoped<IEmploymentTypeRepository, EfEmploymentTypeRepository>();
         services.AddScoped<EfSubscriptionRepository>();
         services.AddScoped<ISubscriptionPlanRepository>(sp => sp.GetRequiredService<EfSubscriptionRepository>());
@@ -196,20 +333,49 @@ public static class DependencyInjection
         services.AddScoped<IProjectCategoryRepository>(sp => sp.GetRequiredService<EfProjectCategoryRepository>());
         services.AddScoped<EfProjectRepository>();
         services.AddScoped<IProjectRepository>(sp => sp.GetRequiredService<EfProjectRepository>());
-        services.AddScoped<EfObjectiveRepository>();
+                services.AddScoped<EfObjectiveRepository>();
         services.AddScoped<IObjectiveRepository>(sp => sp.GetRequiredService<EfObjectiveRepository>());
+        services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.EfCalendarEventRepository>();
+        services.AddScoped<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.WorkManagement.EfCalendarEventRepository>());
+
         services.AddScoped<EfTaskStatusRepository>();
         services.AddScoped<ITaskStatusRepository>(sp => sp.GetRequiredService<EfTaskStatusRepository>());
+        services.AddScoped<EfTaskCategoryRepository>();
+        services.AddScoped<ITaskCategoryRepository>(sp => sp.GetRequiredService<EfTaskCategoryRepository>());
         services.AddScoped<EfWorkTaskRepository>();
         services.AddScoped<IWorkTaskRepository>(sp => sp.GetRequiredService<EfWorkTaskRepository>());
+        services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>();
+        services.AddScoped<ONEVO.Application.Features.Calendar.RepositoryInterfaces.ICalendarEventRepository>(
+            sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.Calendar.EfCalendarEventRepository>());
+        services.AddScoped<IExternalCalendarConnectionRepository, EfExternalCalendarConnectionRepository>();
+        services.AddScoped<IExternalCalendarEventLinkRepository, EfExternalCalendarEventLinkRepository>();
+        services.AddScoped<ICalendarRecurrenceExpander, IcalNetRecurrenceExpander>();
+        services.AddScoped<ICalendarNotificationSender, CalendarNotificationSender>();
+        services.AddScoped<ICalendarTimezoneResolver, CalendarTimezoneResolver>();
         services.AddScoped<EfSprintRepository>();
         services.AddScoped<ISprintRepository>(sp => sp.GetRequiredService<EfSprintRepository>());
         services.AddScoped<EfTaskAssignmentRepository>();
         services.AddScoped<ITaskAssignmentRepository>(sp => sp.GetRequiredService<EfTaskAssignmentRepository>());
         services.AddScoped<EfTaskCreationRequestRepository>();
         services.AddScoped<ITaskCreationRequestRepository>(sp => sp.GetRequiredService<EfTaskCreationRequestRepository>());
-        services.AddScoped<EfTaskEditRequestRepository>();
+                services.AddScoped<EfTaskEditRequestRepository>();
         services.AddScoped<ITaskEditRequestRepository>(sp => sp.GetRequiredService<EfTaskEditRequestRepository>());
+        services.AddScoped<EfTaskEditLogRepository>();
+        services.AddScoped<ITaskEditLogRepository>(sp => sp.GetRequiredService<EfTaskEditLogRepository>());
+        services.AddScoped<EfTaskStatusChangeLogRepository>();
+        services.AddScoped<ITaskStatusChangeLogRepository>(sp => sp.GetRequiredService<EfTaskStatusChangeLogRepository>());
+        services.AddScoped<EfTaskClockingSessionRepository>();
+        services.AddScoped<ITaskClockingSessionRepository>(sp => sp.GetRequiredService<EfTaskClockingSessionRepository>());
+        services.AddScoped<EfTaskPercentageLogRepository>();
+        services.AddScoped<ITaskPercentageLogRepository>(sp => sp.GetRequiredService<EfTaskPercentageLogRepository>());
+        services.AddScoped<EfTaskCommentRepository>();
+        services.AddScoped<ITaskCommentRepository>(sp => sp.GetRequiredService<EfTaskCommentRepository>());
+        services.AddScoped<EfTaskCommentLogRepository>();
+        services.AddScoped<ITaskCommentLogRepository>(sp => sp.GetRequiredService<EfTaskCommentLogRepository>());
+        services.AddScoped<EfTaskCommentReactionRepository>();
+        services.AddScoped<ITaskCommentReactionRepository>(sp => sp.GetRequiredService<EfTaskCommentReactionRepository>());
+
         services.AddScoped<EfNotificationRepository>();
         services.AddScoped<INotificationRepository>(sp => sp.GetRequiredService<EfNotificationRepository>());
         services.AddScoped<EfObjectiveChangeRequestRepository>();
@@ -229,12 +395,30 @@ public static class DependencyInjection
         services.AddScoped<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>();
         services.AddScoped<ONEVO.Application.Common.RepositoryInterfaces.IEmployeeRepository>(
             sp => sp.GetRequiredService<ONEVO.Infrastructure.Persistence.Repositories.EfEmployeeRepository>());
+        services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeEntityAssetAccessPolicy>();
+        services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>();
+        services.AddScoped<
+            ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IPrimaryEntityAssetLinker,
+            ONEVO.Application.Features.Storage.EntityAssets.Services.PrimaryEntityAssetLinker>();
+        services.AddScoped<ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IEntityAssetAccessPolicyResolver>(sp =>
+            new ONEVO.Application.Features.Storage.EntityAssets.Services.EntityAssetAccessPolicyResolver(
+                new Dictionary<string, ONEVO.Application.Features.Storage.EntityAssets.ServiceInterfaces.IEntityAssetAccessPolicy>
+                {
+                    [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.Employee] =
+                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.EmployeeEntityAssetAccessPolicy>(),
+                    [ONEVO.Application.Common.Constants.EntityAssetOwnerTypes.LegalEntity] =
+                        sp.GetRequiredService<ONEVO.Application.Features.Storage.EntityAssets.Services.LegalEntityEntityAssetAccessPolicy>()
+                    // Part 2 plan (Project/Objective/Task endpoint consolidation) adds the remaining
+                    // three owner types here when their controllers migrate to the generic resolve endpoint.
+                }));
 
         // Work Management - Milestone & Achievement services
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();
         services.AddScoped<IPermissionAutoGrantService, PermissionAutoGrantService>();
         services.AddScoped<ICallerIdentityResolver, CallerIdentityResolver>();
         services.AddScoped<IObjectiveAllocationSlackCalculator, ObjectiveAllocationSlackCalculator>();
+        services.AddScoped<ITaskAssetLinker, TaskAssetLinker>();
+        services.AddScoped<ITaskAccessResolver, TaskAccessResolver>();
 
         // Auth: global email directory
         services.AddScoped<IGlobalEmailDirectoryRepository, EfGlobalEmailDirectoryRepository>();
@@ -273,7 +457,14 @@ public static class DependencyInjection
 
         // System Config - Platform Service Keys (Phase 1 canonical table)
         services.AddScoped<IPlatformServiceKeyRepository, EfPlatformServiceKeyRepository>();
+        services.AddScoped<ITrayAppReleaseRepository, EfTrayAppReleaseRepository>();
         services.AddScoped<IPlatformServiceKeyVerificationService, PlatformServiceKeyVerificationService>();
+        services.AddScoped<
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.IAwsRekognitionConnectionProbe,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.AwsRekognitionConnectionProbe>();
+        services.AddScoped<
+            ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.ICloudflareR2ConnectionProbe,
+            ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.CloudflareR2ConnectionProbe>();
         services.AddScoped<IPlatformServiceKeyResolver, PlatformServiceKeyResolver>();
 
         // System Config - metadata-only provider catalog
@@ -296,10 +487,18 @@ public static class DependencyInjection
         services.AddScoped<IUserIntegrationConnectionRepository, EfUserIntegrationConnectionRepository>();
         services.AddDataProtection();
         services.AddSingleton<IOAuthStateProtector, OAuthStateProtector>();
+        services.AddScoped<ICalendarOAuthStateProtector, CalendarOAuthStateProtector>();
         services.AddHttpClient<IGitHubOAuthClient, GitHubOAuthTokenClient>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(15);
         });
+        services.AddHttpClient<ICalendarOAuthTokenExchangeClient, ONEVO.Infrastructure.ExternalServices.Calendar.CalendarOAuthTokenExchangeClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddHttpClient<IGoogleCalendarClient, GoogleCalendarClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        services.AddHttpClient<IMicrosoftGraphCalendarClient, MicrosoftGraphCalendarClient>(client => { client.Timeout = TimeSpan.FromSeconds(30); });
+        services.AddScoped<ICalendarSyncService, CalendarSyncService>();
 
         // Tenant cache invalidation
         services.AddScoped<ITenantCacheInvalidator, TenantCacheInvalidator>();
@@ -309,6 +508,7 @@ public static class DependencyInjection
         services.AddScoped<INotificationDispatcher, Services.SharedPlatform.Notifications.NotificationDispatcher>();
         services.AddScoped<IIdempotencyStore, Persistence.Repositories.SharedPlatform.Idempotency.EfIdempotencyStore>();
         services.AddHostedService<Services.SharedPlatform.Outbox.OutboxProcessor>();
+        services.AddHostedService<Services.CoreHr.BulkOnboarding.BulkOnboardingBatchProcessor>();
         services.AddHostedService<Services.Auth.Login.LoginWorkspaceSelectionChallengeCleanupService>();
 
         // Provisioning services
@@ -337,11 +537,13 @@ public static class DependencyInjection
 
         // Monitoring - Tray App Activation
         services.AddScoped<ITrayActivationRepository, EfTrayActivationRepository>();
+        services.AddScoped<IDeviceChangeRequestRepository, EfDeviceChangeRequestRepository>();
         services.AddSingleton<ITrayTokenService, TrayTokenService>();
 
         // Monitoring - Check-In
         services.AddScoped<ICheckInRepository, EfCheckInRepository>();
         services.AddScoped<ITrayCurrentDevice, TrayCurrentDeviceService>();
+        services.AddScoped<ITrayEmployeeIdentityResolver, TrayEmployeeIdentityResolver>();
 
         // Monitoring - Work Sessions (clock-in/break/clock-out)
         services.AddScoped<IWorkSessionRepository, EfWorkSessionRepository>();
@@ -352,16 +554,49 @@ public static class DependencyInjection
         services.AddScoped<IAppUsageSnapshotRepository, EfAppUsageSnapshotRepository>();
         services.AddScoped<IDeviceStateSnapshotRepository, EfDeviceStateSnapshotRepository>();
         services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces.INotificationRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Notifications.EfNotificationRepository>();
+        services.AddScoped<
             ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces.IMeetingSignalRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Meetings.EfMeetingSignalRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces.IBiometricEnrollmentAttemptRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Biometrics.EfBiometricEnrollmentAttemptRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces.IBiometricProfileRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Biometrics.EfBiometricProfileRepository>();
+        services.AddScoped<
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.IAwsRekognitionClientFactory,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.AwsRekognitionClientFactory>();
+        services.AddScoped<
+            ONEVO.Application.Common.ServiceInterfaces.IFaceLivenessService,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceLivenessService>();
+        services.AddScoped<
+            ONEVO.Application.Common.ServiceInterfaces.IFaceMatchService,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceMatchService>();
+        services.AddScoped<
+            ONEVO.Application.Common.ServiceInterfaces.IFaceQualityService,
+            ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceQualityService>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
+        services.AddScoped<IActivityLiveDaySummary, ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring.ActivityLiveDaySummary>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces.IProductivityReportRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Reports.EfProductivityReportRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Exceptions.RepositoryInterfaces.IExceptionRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Exceptions.EfExceptionRepository>();
         services.AddScoped<IMonitoringToggleResolver, MonitoringToggleResolverService>();
         services.AddHostedService<ActivityDailySummaryJob>();
+        services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Exceptions.ExceptionDetectionJob>();
 
         // Monitoring - Settings (tenant-level feature toggles admin CRUD)
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Settings.RepositoryInterfaces.IMonitoringFeatureTogglesRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Settings.EfMonitoringFeatureTogglesRepository>();
+        services.AddHostedService<
+            ONEVO.Infrastructure.Services.Monitoring.Notifications.WellnessRuleEvaluatorJob>();
+        services.AddHostedService<
+            ONEVO.Infrastructure.Services.Monitoring.Notifications.LocationRuleEvaluatorJob>();
 
         // Monitoring - Screenshots
         services.AddScoped<
@@ -370,8 +605,12 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IAgentCommandRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfAgentCommandRepository>();
+        services.AddScoped<
+            ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces.IInactivityCaptureAttemptRepository,
+            ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Screenshots.EfInactivityCaptureAttemptRepository>();
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
         services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
+        services.AddHostedService<Services.Calendar.CalendarSyncJob>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
@@ -405,14 +644,13 @@ public static class DependencyInjection
         services.AddScoped<ILegalLoginChallengeRepository, EfLegalLoginChallengeRepository>();
 
         // Developer Platform access (canonical platform_* tables)
-        services.AddScoped<EfPlatformAccessRepository>();
-        services.AddScoped<IPlatformUserRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
+        services.AddScoped<IPlatformUserRepository, EfPlatformUserRepository>();
         services.AddScoped<IPlatformUserCredentialRepository, EfPlatformUserCredentialRepository>();
-        services.AddScoped<IPlatformRoleRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
-        services.AddScoped<IPlatformUserSessionRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
-        services.AddScoped<IPlatformAccessReadRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
-        services.AddScoped<IPlatformAuthEventRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
-        services.AddScoped<IPlatformUserInviteRepository>(sp => sp.GetRequiredService<EfPlatformAccessRepository>());
+        services.AddScoped<IPlatformRoleRepository, EfPlatformRoleRepository>();
+        services.AddScoped<IPlatformUserSessionRepository, EfPlatformUserSessionRepository>();
+        services.AddScoped<IPlatformAccessReadRepository, EfPlatformAccessReadRepository>();
+        services.AddScoped<IPlatformAuthEventRepository, EfPlatformAuthEventRepository>();
+        services.AddScoped<IPlatformUserInviteRepository, EfPlatformUserInviteRepository>();
         services.AddScoped<IPlatformPermissionResolver, PlatformPermissionResolver>();
         services.AddScoped<IPlatformAccessManagementService, PlatformAccessManagementService>();
         services.AddScoped<IUserExternalIdentityRepository, EfUserExternalIdentityRepository>();
@@ -426,6 +664,12 @@ public static class DependencyInjection
             configuration.GetSection(ONEVO.Infrastructure.Configuration.StorageQuotaOptions.SectionName));
         services.Configure<ONEVO.Infrastructure.Configuration.FileStorageOptions>(
             configuration.GetSection(ONEVO.Infrastructure.Configuration.FileStorageOptions.SectionName));
+        services.AddOptions<AwsRekognitionOptions>()
+            .Bind(configuration.GetSection(AwsRekognitionOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddOptions<ONEVO.Application.Common.Configuration.BiometricEnrollmentOptions>()
+            .Bind(configuration.GetSection(ONEVO.Application.Common.Configuration.BiometricEnrollmentOptions.SectionName));
 
         // -- Email: transactional sending via ONEVO-owned platform service keys --
         // Both the active transactional email provider and its API key are resolved
@@ -451,6 +695,8 @@ public static class DependencyInjection
         services.AddHostedService<ModuleCatalogSeeder>();
         services.AddHostedService<DevSmokeTestTenantSeeder>();
         services.AddHostedService<WorkManagementDapiDemoSeeder>();
+        services.AddHostedService<DapiOrgStructureSeeder>();
+        services.AddHostedService<DapiLeaveSampleSeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
         services.AddHostedService<ProjectsAccessBootstrapSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();

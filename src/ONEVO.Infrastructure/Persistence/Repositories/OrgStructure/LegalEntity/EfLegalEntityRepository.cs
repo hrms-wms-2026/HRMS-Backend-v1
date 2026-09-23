@@ -31,20 +31,23 @@ public class EfLegalEntityRepository : ILegalEntityRepository
             return await query.OrderBy(entity => entity.Name).ToListAsync(ct);
         }
 
-        // Regular user: at most the one legal entity their own active employee row
-        // points at. includeInactive is deliberately ignored here - a non-admin user
-        // must never discover an archived company by flipping a query flag, and their
-        // own company is only surfaced while it is active.
-        var employeeLegalEntityId = await ResolveOwnActiveLegalEntityIdAsync(tenantId, userId, ct);
-        if (employeeLegalEntityId is null)
-            return [];
+        // Regular users see every active company connected through one of their active
+        // Employee rows. includeInactive is deliberately ignored on this branch.
+        var accessible = (
+            from entity in _db.LegalEntities.AsNoTracking()
+            join employee in _db.Employees.AsNoTracking()
+                on new { entity.TenantId, LegalEntityId = (Guid?)entity.Id }
+                equals new { employee.TenantId, employee.LegalEntityId }
+            join status in _db.EmploymentStatuses.AsNoTracking()
+                on employee.EmploymentStatusId equals status.Id
+            where entity.TenantId == tenantId
+                && entity.IsActive
+                && employee.UserId == userId
+                && status.Code == "active"
+            select entity)
+            .Distinct();
 
-        var own = await _db.LegalEntities
-            .AsNoTracking()
-            .Where(entity => entity.TenantId == tenantId && entity.Id == employeeLegalEntityId.Value && entity.IsActive)
-            .FirstOrDefaultAsync(ct);
-
-        return own is null ? [] : [own];
+        return await accessible.OrderBy(entity => entity.Name).ToListAsync(ct);
     }
 
     public async Task<LegalEntity?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -71,8 +74,7 @@ public class EfLegalEntityRepository : ILegalEntityRepository
         // Regular user: only ever their own active employee's legal entity, and only
         // while that entity is itself active - the same rule ListAccessibleAsync's
         // non-management branch applies, kept in sync via the shared helper below.
-        var employeeLegalEntityId = await ResolveOwnActiveLegalEntityIdAsync(tenantId, userId, ct);
-        if (employeeLegalEntityId != id)
+        if (!await HasOwnActiveEmployeeAsync(tenantId, userId, id, ct))
             return null;
 
         return await _db.LegalEntities
@@ -81,15 +83,19 @@ public class EfLegalEntityRepository : ILegalEntityRepository
             .FirstOrDefaultAsync(ct);
     }
 
-    private async Task<Guid?> ResolveOwnActiveLegalEntityIdAsync(Guid tenantId, Guid userId, CancellationToken ct)
+    private async Task<bool> HasOwnActiveEmployeeAsync(
+        Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct)
     {
         return await (
             from employee in _db.Employees.AsNoTracking()
             join status in _db.EmploymentStatuses.AsNoTracking()
                 on employee.EmploymentStatusId equals status.Id
-            where employee.TenantId == tenantId && employee.UserId == userId && status.Code == "active"
-            select (Guid?)employee.LegalEntityId)
-            .FirstOrDefaultAsync(ct);
+            where employee.TenantId == tenantId
+                && employee.UserId == userId
+                && employee.LegalEntityId == legalEntityId
+                && status.Code == "active"
+            select employee.Id)
+            .AnyAsync(ct);
     }
 
     public async Task<LegalEntity?> GetPrimaryByTenantIdAsync(Guid tenantId, CancellationToken ct = default)

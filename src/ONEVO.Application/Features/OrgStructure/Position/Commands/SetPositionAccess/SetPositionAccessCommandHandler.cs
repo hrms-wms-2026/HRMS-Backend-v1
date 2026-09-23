@@ -39,7 +39,7 @@ public class SetPositionAccessCommandHandler : IRequestHandler<SetPositionAccess
             return Result<PositionAccessTemplateResponse>.Failure("Selected System Access Role does not exist.", 422);
 
         var now = _clock.UtcNow;
-        var template = await _repository.GetAccessTemplateByPositionAsync(tenantId, request.PositionId, ct);
+        var template = await _repository.GetAccessTemplateByPositionIncludingInactiveAsync(tenantId, request.PositionId, ct);
 
         if (template is null)
         {

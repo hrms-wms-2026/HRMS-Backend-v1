@@ -247,6 +247,7 @@ public class ModuleCatalogSeeder : IHostedService
             // core_hr
             new { Module = "core_hr", Perm = "employees:read" },
             new { Module = "core_hr", Perm = "employees:write" },
+            new { Module = "core_hr", Perm = "employees:offboard" },
             new { Module = "core_hr", Perm = "employees:delete" },
 
             // time_off
@@ -284,6 +285,7 @@ public class ModuleCatalogSeeder : IHostedService
             new { Module = "work_management", Perm = "projects:read" },
             new { Module = "work_management", Perm = "projects:access" },
             new { Module = "work_management", Perm = "tasks:read" },
+            new { Module = "work_management", Perm = "tasks:read-own" },
             new { Module = "work_management", Perm = "tasks:write" },
             new { Module = "work_management", Perm = "tasks:approve" },
             new { Module = "work_management", Perm = "tasks:delete" },

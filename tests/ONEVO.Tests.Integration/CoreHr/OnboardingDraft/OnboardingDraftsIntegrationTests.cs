@@ -3,12 +3,12 @@ using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.SaveOnboardingDraft;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
-using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
@@ -17,9 +17,9 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using ONEVO.Infrastructure.Services.CoreHr.SeatEntitlement;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.CoreHr.OnboardingDraft;
@@ -36,11 +36,6 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
     private const string RestrictedRoleName = "onboarding_drafts_rls_test_role";
     private const string RestrictedRolePassword = "onboarding-drafts-rls-test-role-password";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_onboarding_drafts_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -52,12 +47,9 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         var tenant = new Tenant { Id = Guid.NewGuid(), Name = "Onboarding Draft RLS Tenant", Slug = "onboarding-drafts-rls", CompanySizeRange = "51-200", Status = TenantStatus.Active };
         _tenantId = tenant.Id;
@@ -70,14 +62,13 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
         var user = new User { Id = Guid.NewGuid(), TenantId = _tenantId, Email = "hr@onboarding-drafts-rls.onevo.dev", PasswordHash = "not-a-real-hash", FirstName = "HR", LastName = "Starter", IsActive = true };
         _userId = user.Id;
         db.Users.Add(user);
-        db.WorkModes.Add(new WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true });
 
         await db.SaveChangesAsync();
 
         await CreateRestrictedRoleAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task Handle_NeverCreatesAUserRow_WhenSavingADraft()
@@ -159,15 +150,25 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
         var seatEntitlementService = new SeatEntitlementService(db);
         var workModeRepository = new EfWorkModeRepository(db);
         var currentUser = new StubCurrentUser(_tenantId, _userId);
+        var writeService = new OnboardingDraftWriteService(
+            draftRepository, employeeRepository,
+            null!, null!,
+            positionRepository, null!,
+            legalEntityRepository, departmentRepository,
+            null!, workModeRepository,
+            seatEntitlementService, null!,
+            null!, null!,
+            null!, null!,
+            null!, null!,
+            null!, currentUser, _clock, null!);
 
-        return new SaveOnboardingDraftCommandHandler(
-            draftRepository, employeeRepository, positionRepository, legalEntityRepository, departmentRepository, seatEntitlementService, workModeRepository, currentUser, _clock);
+        return new SaveOnboardingDraftCommandHandler(writeService, currentUser);
     }
 
     private SaveOnboardingDraftCommand NewCommand(
         Guid? draftId = null, string lastSavedStep = "employee_details", string? ifMatch = null) => new(
         draftId, "Ada", "Lovelace", $"{Guid.NewGuid():N}@onboarding-drafts-rls-test.onevo.dev", _legalEntityId, null, null,
-        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, 1, null, null, lastSavedStep, ifMatch);
+        "full_time", DateOnly.FromDateTime(DateTime.UtcNow), null, null, null, null, lastSavedStep, ifMatch, null);
 
     private async Task CreateRestrictedRoleAsync()
     {
@@ -201,7 +202,7 @@ public sealed class OnboardingDraftsIntegrationTests : IAsyncLifetime
                 GRANT SELECT, INSERT, UPDATE, DELETE ON onboarding_drafts TO {RestrictedRoleName};
                 GRANT SELECT ON tenants, legal_entities, departments, positions, employees,
                     users, employment_types, employment_statuses, position_access_templates,
-                    tenant_subscriptions, work_modes TO {RestrictedRoleName};
+                    tenant_subscriptions, tenant_work_modes TO {RestrictedRoleName};
             ";
             await grantTables.ExecuteNonQueryAsync();
         }

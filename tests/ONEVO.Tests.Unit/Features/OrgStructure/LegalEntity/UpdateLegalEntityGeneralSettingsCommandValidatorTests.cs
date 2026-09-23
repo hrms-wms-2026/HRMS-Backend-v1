@@ -25,6 +25,10 @@ public class UpdateLegalEntityGeneralSettingsCommandValidatorTests
         "12h",
         "active",
         null,
+        null,
+        null,
+        null,
+        null,
         null);
 
     [Fact]
@@ -165,24 +169,140 @@ public class UpdateLegalEntityGeneralSettingsCommandValidatorTests
     }
 
     [Fact]
-    public void WorkStartTime_EqualToEndTime_HasError()
+    public void WorkStartTime_AfterEndTime_Overnight_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            WorkStartTime = new TimeOnly(22, 0),
+            WorkEndTime = new TimeOnly(6, 0),
+            BreakDurationMinutes = 0
+        });
+        result.ShouldNotHaveValidationErrorFor(x => x.WorkStartTime);
+        result.ShouldNotHaveValidationErrorFor(x => x.WorkEndTime);
+    }
+
+    [Fact]
+    public void WorkWindow_BreakCoversWholeShift_HasError()
     {
         var result = _validator.TestValidate(ValidCommand() with
         {
             WorkStartTime = new TimeOnly(9, 0),
-            WorkEndTime = new TimeOnly(9, 0)
+            WorkEndTime = new TimeOnly(10, 0),
+            BreakDurationMinutes = 120
         });
-        result.ShouldHaveValidationErrorFor(x => x.WorkStartTime);
+        result.ShouldHaveValidationErrorFor(x => x.BreakDurationMinutes);
     }
 
     [Fact]
-    public void WorkStartTime_AfterEndTime_HasError()
+    public void NullBreakDurationMinutes_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { BreakDurationMinutes = null });
+        result.ShouldNotHaveValidationErrorFor(x => x.BreakDurationMinutes);
+    }
+
+    [Fact]
+    public void ZeroBreakDurationMinutes_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { BreakDurationMinutes = 0 });
+        result.ShouldNotHaveValidationErrorFor(x => x.BreakDurationMinutes);
+    }
+
+    [Fact]
+    public void PositiveBreakDurationMinutes_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { BreakDurationMinutes = 60 });
+        result.ShouldNotHaveValidationErrorFor(x => x.BreakDurationMinutes);
+    }
+
+    [Fact]
+    public void NegativeBreakDurationMinutes_HasError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { BreakDurationMinutes = -1 });
+        result.ShouldHaveValidationErrorFor(x => x.BreakDurationMinutes);
+    }
+
+    [Fact]
+    public void BreakDurationMinutes_IsIndependentOfWorkTimes()
     {
         var result = _validator.TestValidate(ValidCommand() with
         {
-            WorkStartTime = new TimeOnly(18, 0),
-            WorkEndTime = new TimeOnly(9, 0)
+            WorkStartTime = null,
+            WorkEndTime = null,
+            BreakDurationMinutes = 30
         });
-        result.ShouldHaveValidationErrorFor(x => x.WorkStartTime);
+        result.ShouldNotHaveValidationErrorFor(x => x.BreakDurationMinutes);
+        result.ShouldNotHaveValidationErrorFor(x => x.WorkStartTime);
+        result.ShouldNotHaveValidationErrorFor(x => x.WorkEndTime);
+    }
+
+    [Fact]
+    public void AllOfficeLocationFieldsNull_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            OfficeLatitude = null,
+            OfficeLongitude = null
+        });
+        result.ShouldNotHaveValidationErrorFor(x => x.OfficeLatitude);
+        result.ShouldNotHaveValidationErrorFor(x => x.OfficeLongitude);
+    }
+
+    [Fact]
+    public void AllOfficeLocationFieldsSet_ValidValues_HasNoError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            OfficeAddress = "1 Galle Face, Colombo",
+            OfficeLatitude = 6.9271,
+            OfficeLongitude = 79.8612
+        });
+        result.ShouldNotHaveAnyValidationErrors();
+    }
+
+    [Fact]
+    public void OnlyOfficeLatitudeProvided_HasErrorForMissingLongitude()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { OfficeLatitude = 6.9271 });
+        result.ShouldHaveValidationErrorFor(x => x.OfficeLongitude);
+    }
+
+    [Fact]
+    public void OnlyOfficeLongitudeProvided_HasErrorForMissingLatitude()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { OfficeLongitude = 79.8612 });
+        result.ShouldHaveValidationErrorFor(x => x.OfficeLatitude);
+    }
+
+    [Theory]
+    [InlineData(-91)]
+    [InlineData(91)]
+    public void OfficeLatitude_OutOfRange_HasError(double latitude)
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            OfficeLatitude = latitude,
+            OfficeLongitude = 79.8612
+        });
+        result.ShouldHaveValidationErrorFor(x => x.OfficeLatitude);
+    }
+
+    [Theory]
+    [InlineData(-181)]
+    [InlineData(181)]
+    public void OfficeLongitude_OutOfRange_HasError(double longitude)
+    {
+        var result = _validator.TestValidate(ValidCommand() with
+        {
+            OfficeLatitude = 6.9271,
+            OfficeLongitude = longitude
+        });
+        result.ShouldHaveValidationErrorFor(x => x.OfficeLongitude);
+    }
+
+    [Fact]
+    public void OfficeAddressTooLong_HasError()
+    {
+        var result = _validator.TestValidate(ValidCommand() with { OfficeAddress = new string('a', 501) });
+        result.ShouldHaveValidationErrorFor(x => x.OfficeAddress);
     }
 }

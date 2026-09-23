@@ -24,7 +24,7 @@ public class PositionCoverageUpdateArchitectureTests
         var properties = typeof(UpdateCoverageRecordRequest).GetProperties(BindingFlags.Public | BindingFlags.Instance);
 
         var names = properties.Select(p => p.Name).ToList();
-        Assert.Equal(["OwnerOrder"], names);
+        Assert.Equal(["OwnerOrder", "ResponsibleEmployeeId"], names);
     }
 
     [Fact]

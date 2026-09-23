@@ -86,6 +86,7 @@ public class PermissionSeeder : IHostedService
         Perm("employees:read", "View all employees in scope.", "core_hr"),
         Perm("employees:read-team", "View direct reports only.", "core_hr"),
         Perm("employees:write", "Create, update employees.", "core_hr"),
+        Perm("employees:offboard", "Start, cancel, or complete an employee's offboarding.", "core_hr"),
         Perm("employees:read:sensitive", "View sensitive employee data (bank details) on the employee detail screen.", "core_hr"),
         Perm("invitations:manage", "Resend or revoke employee onboarding invitations.", "core_hr"),
         Perm("employees:delete", "Delete employee records.", "core_hr"),
@@ -114,7 +115,8 @@ public class PermissionSeeder : IHostedService
         Perm("calendar:read", "View company and team calendars.", "calendar"),
 
         // Monitoring
-        Perm("monitoring:read", "View monitoring data.", "monitoring"),
+        Perm("monitoring:read", "View monitoring data.", "activity_monitoring"),
+        Perm("activity:read:self", "View your own activity timeline.", "activity_monitoring"),
 
         // Attendance
         Perm("attendance:read", "View attendance records for all employees in scope.", "core_hr"),
@@ -188,7 +190,7 @@ public class PermissionSeeder : IHostedService
         Perm("analytics:write", "Create and save custom analytics views.", "analytics"),
 
         // Monitoring
-        Perm("monitoring:configure", "Enable/disable monitoring features, set employee overrides.", "monitoring"),
+        Perm("monitoring:configure", "Enable/disable monitoring features, set employee overrides.", "activity_monitoring"),
 
         // Exceptions
         Perm("exceptions:view", "View exception alerts.", "exceptions"),
@@ -205,10 +207,10 @@ public class PermissionSeeder : IHostedService
         Perm("workforce:manage", "Manage workforce intelligence settings.", "workforce"),
 
         // Agent Gateway
-        Perm("agent:command", "Send commands to agents.", "monitoring"),
-        Perm("agent:manage", "Manage agent configurations.", "monitoring"),
-        Perm("agent:register", "Register new agents.", "monitoring"),
-        Perm("agent:view-health", "View agent health and status.", "monitoring"),
+        Perm("agent:command", "Send commands to agents.", "desktop_agent_gateway"),
+        Perm("agent:manage", "Manage agent configurations.", "desktop_agent_gateway"),
+        Perm("agent:register", "Register new agents.", "desktop_agent_gateway"),
+        Perm("agent:view-health", "View agent health and status.", "desktop_agent_gateway"),
 
         // Documents
         Perm("documents:read", "View documents.", "documents"),
@@ -233,6 +235,7 @@ public class PermissionSeeder : IHostedService
 
         // Tasks
         Perm("tasks:read", "View tasks.", "work_management"),
+        Perm("tasks:read-own", "View your own assigned tasks.", "work_management"),
         Perm("tasks:write", "Create and edit tasks.", "work_management"),
         Perm("tasks:approve", "Approve task completions.", "work_management"),
         Perm("tasks:delete", "Delete tasks.", "work_management"),

@@ -7,6 +7,7 @@ public interface ISessionRepository
     Task<Session?> GetLatestActiveByUserIdAsync(Guid userId, CancellationToken ct = default);
     Task<Session?> GetByIdAsync(Guid sessionId, CancellationToken ct = default);
     Task<Session?> GetByKeyHashAsync(string keyHash, CancellationToken ct = default);
+    Task<IReadOnlyList<Session>> ListActiveByTenantIdAsync(Guid tenantId, DateTimeOffset now, CancellationToken ct = default);
 
     /// <summary>
     /// The only lookup permitted to find a session before its tenant is known: satisfies the
@@ -19,4 +20,8 @@ public interface ISessionRepository
     Task AddAsync(Session session, CancellationToken ct = default);
     Task RevokeByIdAsync(Guid sessionId, CancellationToken ct = default);
     Task RevokeByKeyHashAsync(string keyHash, CancellationToken ct = default);
+
+    /// <summary>Revokes every non-revoked session for a user in one bulk update. Returns the
+    /// number of sessions revoked. Used by offboarding completion - see design spec §5.5.</summary>
+    Task<int> RevokeAllActiveByUserIdAsync(Guid userId, CancellationToken ct = default);
 }

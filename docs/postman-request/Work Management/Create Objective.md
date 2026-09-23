@@ -51,7 +51,7 @@ Also syncs project membership for the creator and auto-grants `projects:access` 
 | Status | Cause |
 |---|---|
 | `400` | Validation failure, date range/hours would exceed the parent's, creator isn't an active employee, or a proposed head/member isn't an active employee |
-| `403` | Caller is not the parent Objective's current Head, or has no Employee record |
+| `403` | Caller is not an effective manager of the parent Objective (its Head, an active member, or the Head/an active member of any ancestor Objective), or has no Employee record |
 | `404` | Parent Objective doesn't exist in tenant, or is inactive |
 
 ## Source

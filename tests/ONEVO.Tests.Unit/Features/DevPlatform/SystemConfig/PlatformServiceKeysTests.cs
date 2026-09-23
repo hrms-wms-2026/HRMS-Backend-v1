@@ -30,6 +30,7 @@ using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformServiceKeys.Entitie
 using ONEVO.Domain.Features.DevPlatform.SystemConfig.PlatformProviders.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Infrastructure.Services.Monitoring.Biometrics;
 using ONEVO.Infrastructure.Services.SystemConfig;
 using Xunit;
 
@@ -558,6 +559,8 @@ public class PlatformServiceKeysTests
     {
         var service = new PlatformServiceKeyVerificationService(
             Mock.Of<IHttpClientFactory>(),
+            Mock.Of<IAwsRekognitionConnectionProbe>(),
+            Mock.Of<ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.ICloudflareR2ConnectionProbe>(),
             NullLogger<PlatformServiceKeyVerificationService>.Instance);
 
         var empty = await service.VerifyAsync("sendgrid", "", CancellationToken.None);

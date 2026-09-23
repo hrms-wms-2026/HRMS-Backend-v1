@@ -6,6 +6,6 @@ public sealed class SwitchActiveCompanyCommandValidator : AbstractValidator<Swit
 {
     public SwitchActiveCompanyCommandValidator()
     {
-        RuleFor(x => x.EmployeeId).NotEmpty();
+        RuleFor(x => x.LegalEntityId).NotEmpty();
     }
 }

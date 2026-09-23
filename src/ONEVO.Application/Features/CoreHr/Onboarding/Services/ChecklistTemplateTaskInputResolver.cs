@@ -1,24 +1,22 @@
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.CoreHr.Onboarding.Models;
-using ONEVO.Application.Features.CoreHr.Onboarding.ServiceInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.CoreHr.Onboarding.Services;
 
-/// <summary>Structured checklist-task input carried by Create/Update commands - the "strict
-/// task definition contract" the caller submits, before it becomes a stored
-/// ChecklistTaskDefinition. AssignedToId and AssigneePositionId are mutually exclusive; exactly
-/// one must be set unless OwnerType is "employee" (then neither may be set).</summary>
+/// <summary>Structured checklist-task input carried by Create/Update commands. For a reusable
+/// template, OwnerType "employee" stores no assignee. Any other owner type stores a position
+/// (AssigneePositionId) and must not require a concrete person. AssignedToId is still accepted
+/// for backward compatibility but is mutually exclusive with AssigneePositionId.</summary>
 public sealed record ChecklistTemplateTaskInput(
     string Title, string OwnerType, Guid? AssignedToId, Guid? AssigneePositionId, int DueOffsetDays, int? Sequence, bool IsRequired);
 
-/// <summary>Turns request-shaped task inputs into concrete ChecklistTaskDefinitions, resolving
-/// any AssigneePositionId to a single concrete user via IChecklistTemplateAssigneeResolver.
-/// Shared by CreateChecklistTemplateCommandHandler and UpdateChecklistTemplateCommandHandler so
-/// the assignee/owner-type rule is defined exactly once.</summary>
-public sealed class ChecklistTemplateTaskInputResolver(IChecklistTemplateAssigneeResolver assigneeResolver)
+/// <summary>Turns request-shaped task inputs into stored ChecklistTaskDefinitions without
+/// resolving a position to a specific occupant. Shared by create/update template handlers.</summary>
+public sealed class ChecklistTemplateTaskInputResolver(IPositionRepository positionRepository)
 {
     public async Task<Result<IReadOnlyList<ChecklistTaskDefinition>>> ResolveAsync(
-        Guid tenantId, IReadOnlyList<ChecklistTemplateTaskInput> inputs, CancellationToken ct)
+        Guid tenantId, Guid legalEntityId, IReadOnlyList<ChecklistTemplateTaskInput> inputs, CancellationToken ct)
     {
         var definitions = new List<ChecklistTaskDefinition>();
         foreach (var input in inputs)
@@ -27,7 +25,7 @@ public sealed class ChecklistTemplateTaskInputResolver(IChecklistTemplateAssigne
                 return Result<IReadOnlyList<ChecklistTaskDefinition>>.UnprocessableEntity("Every checklist task requires a title.");
 
             if (!ChecklistTaskOwnerTypes.All.Contains(input.OwnerType))
-                return Result<IReadOnlyList<ChecklistTaskDefinition>>.UnprocessableEntity($"Unknown checklist task ownerType '{input.OwnerType}'.");
+                return Result<IReadOnlyList<ChecklistTaskDefinition>>.UnprocessableEntity("Unknown checklist task assignee.");
 
             if (input.DueOffsetDays < 0)
                 return Result<IReadOnlyList<ChecklistTaskDefinition>>.UnprocessableEntity("dueOffsetDays must not be negative.");
@@ -36,7 +34,7 @@ public sealed class ChecklistTemplateTaskInputResolver(IChecklistTemplateAssigne
             {
                 if (input.AssignedToId is not null || input.AssigneePositionId is not null)
                     return Result<IReadOnlyList<ChecklistTaskDefinition>>.UnprocessableEntity(
-                        "assignedToId/assigneePositionId must not be set when ownerType is 'employee' - it resolves to the new hire automatically at finalization.");
+                        "A task assigned to the new employee cannot also name another person or position.");
 
                 definitions.Add(new ChecklistTaskDefinition(input.Title, input.OwnerType, null, input.DueOffsetDays, null, input.Sequence, input.IsRequired));
                 continue;
@@ -44,27 +42,29 @@ public sealed class ChecklistTemplateTaskInputResolver(IChecklistTemplateAssigne
 
             if (input.AssignedToId is not null && input.AssigneePositionId is not null)
                 return Result<IReadOnlyList<ChecklistTaskDefinition>>.UnprocessableEntity(
-                    "Provide either assignedToId or assigneePositionId for a checklist task, not both.");
+                    "Provide a position or a specific person for a checklist task, not both.");
 
-            Guid resolvedAssignedToId;
+            if (input.AssigneePositionId is not null)
+            {
+                var position = await positionRepository.GetByIdForLegalEntityAsync(tenantId, legalEntityId, input.AssigneePositionId.Value, ct);
+                if (position is null || !position.IsActive)
+                    return Result<IReadOnlyList<ChecklistTaskDefinition>>.UnprocessableEntity(
+                        "The selected assignee position does not exist, is inactive, or does not belong to this company.");
+
+                definitions.Add(new ChecklistTaskDefinition(
+                    input.Title, input.OwnerType, null, input.DueOffsetDays, null, input.Sequence, input.IsRequired,
+                    AssigneePositionId: input.AssigneePositionId));
+                continue;
+            }
+
             if (input.AssignedToId is not null)
             {
-                resolvedAssignedToId = input.AssignedToId.Value;
-            }
-            else if (input.AssigneePositionId is not null)
-            {
-                var resolved = await assigneeResolver.ResolveAsync(tenantId, input.AssigneePositionId.Value, ct);
-                if (!resolved.IsSuccess)
-                    return Result<IReadOnlyList<ChecklistTaskDefinition>>.Failure(resolved.Error!, resolved.StatusCode ?? 422);
-                resolvedAssignedToId = resolved.Value;
-            }
-            else
-            {
-                return Result<IReadOnlyList<ChecklistTaskDefinition>>.UnprocessableEntity(
-                    $"assignedToId or assigneePositionId is required when ownerType is '{input.OwnerType}'.");
+                definitions.Add(new ChecklistTaskDefinition(input.Title, input.OwnerType, input.AssignedToId, input.DueOffsetDays, null, input.Sequence, input.IsRequired));
+                continue;
             }
 
-            definitions.Add(new ChecklistTaskDefinition(input.Title, input.OwnerType, resolvedAssignedToId, input.DueOffsetDays, null, input.Sequence, input.IsRequired));
+            return Result<IReadOnlyList<ChecklistTaskDefinition>>.UnprocessableEntity(
+                "A task assigned to another person needs a position.");
         }
         return Result<IReadOnlyList<ChecklistTaskDefinition>>.Success(definitions);
     }

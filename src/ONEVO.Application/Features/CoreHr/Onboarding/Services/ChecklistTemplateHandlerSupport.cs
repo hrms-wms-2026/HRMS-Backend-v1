@@ -42,7 +42,7 @@ public static class ChecklistTemplateResponseMapper
     public static ChecklistTemplateResponse ToResponse(ChecklistTemplate template, IReadOnlyList<ChecklistTaskDefinition> tasks)
         => new(
             template.Id, template.Name, template.TemplateType, template.LegalEntityId!.Value, template.DepartmentId, template.PositionId, template.IsActive,
-            tasks.Select(t => new ChecklistTemplateTaskResponse(t.Title, t.OwnerType, t.AssignedToId, t.DueOffsetDays!.Value, t.Sequence, t.IsRequired)).ToList());
+            tasks.Select(t => new ChecklistTemplateTaskResponse(t.Title, t.OwnerType, t.AssignedToId, t.DueOffsetDays!.Value, t.Sequence, t.IsRequired, t.AssigneePositionId)).ToList());
 
     public static ChecklistTemplateListItemResponse ToListItemResponse(ChecklistTemplate template)
     {

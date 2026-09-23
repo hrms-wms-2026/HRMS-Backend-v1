@@ -1,6 +1,7 @@
 using Moq;
 using ONEVO.Application.Common.Exceptions;
 using ONEVO.Application.Common.ServiceInterfaces;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
@@ -13,12 +14,15 @@ using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
+using PositionAssignmentEntity = ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.Onboarding;
 
@@ -44,6 +48,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
     private readonly Mock<ISecureTokenGenerator> _tokenGenerator = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly TrackingUnitOfWork _unitOfWork = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -73,7 +78,8 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
             .Setup(r => r.GetAccessTemplateByPositionAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PositionAccessTemplate { Id = _templateId, TenantId = _tenantId, PositionId = _positionId, RoleId = _roleId, RequiresApproval = true, IsActive = true });
 
-        _workModeRepository.Setup(r => r.ExistsActiveAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _workModeRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid tenantId, Guid id, CancellationToken _) => new WorkMode { Id = id, TenantId = tenantId, IsActive = true });
         _employmentTypeRepository.Setup(r => r.GetIdByCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         _employeeRepository
@@ -86,8 +92,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
 
         _positionAssignmentRepository
             .Setup(r => r.TryReservePositionAssignmentAsync(
-                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Guid.NewGuid());
 
         _seatEntitlementService
@@ -117,7 +122,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         _legalEntityRepository.Object, _departmentRepository.Object, _employmentTypeRepository.Object,
         _workModeRepository.Object, _seatEntitlementService.Object, _checklistTemplateRepository.Object,
         _checklistTaskRepository.Object, _invitationTokenRepository.Object, _tenantRepository.Object, _outboxWriter.Object,
-        _tokenGenerator.Object, _currentUser.Object, _clock.Object);
+        _tokenGenerator.Object, _currentUser.Object, _clock.Object, _unitOfWork);
 
     private OnboardingDraftEntity ValidDraft(Guid draftId, string status = OnboardingDraftStatus.WaitingForPositionApproval) => new()
     {
@@ -132,7 +137,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         EmploymentType = "full_time",
         StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
         EmployeeNumber = "EMP-001",
-        WorkModeId = 1,
+        WorkModeId = Guid.NewGuid(),
         Status = status,
         StartedById = _userId,
     };
@@ -370,7 +375,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         Assert.NotNull(addedEmployee);
         Assert.Equal(addedUser.Id, addedEmployee!.UserId);
         _positionAssignmentRepository.Verify(r => r.TryReservePositionAssignmentAsync(
-            _tenantId, It.IsAny<Guid>(), _positionId, It.IsAny<DateOnly>(), _userId, It.IsAny<CancellationToken>()), Times.Once);
+            _tenantId, It.IsAny<Guid>(), _positionId, It.IsAny<DateOnly>(), _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Once);
         Assert.NotNull(addedRole);
         Assert.Equal(_roleId, addedRole!.RoleId);
         Assert.Equal(_positionId, addedRole.SourcePositionId);
@@ -392,8 +397,7 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
         SetupHappyPath(out var requestId, out _);
         _positionAssignmentRepository
             .Setup(r => r.TryReservePositionAssignmentAsync(
-                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid?)null);
 
         var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
@@ -508,11 +512,174 @@ public sealed class ApproveAccessGrantRequestCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_CallerIsTheRequester_ReturnsForbidden()
+    {
+        var requestId = Guid.NewGuid();
+        var draftId = Guid.NewGuid();
+        var grantRequest = ValidGrantRequest(requestId, draftId);
+        grantRequest.RequestedByUserId = _userId;
+        _accessGrantRequestRepository
+            .Setup(r => r.GetTrackedByIdAsync(_tenantId, requestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(grantRequest);
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(requestId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal("You cannot approve or reject a request you submitted yourself.", result.Error);
+    }
+
+    [Fact]
+    public async Task Handle_PositionChangeActionType_ActivatesReservationAndEndsPreviousAssignment()
+    {
+        var reservedAssignmentId = Guid.NewGuid();
+        var previousAssignmentId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var grantRequest = ValidGrantRequest(Guid.NewGuid(), Guid.NewGuid());
+        grantRequest.OnboardingDraftId = null;
+        grantRequest.EmployeeId = employeeId;
+        grantRequest.ActionType = AccessGrantActionType.PositionChange;
+        grantRequest.ReservedPositionAssignmentId = reservedAssignmentId;
+        grantRequest.ChangeReason = "Promotion";
+        grantRequest.RequestedByUserId = Guid.NewGuid();
+        _accessGrantRequestRepository
+            .Setup(r => r.GetTrackedByIdAsync(_tenantId, grantRequest.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(grantRequest);
+        _accessGrantRequestRepository
+            .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        _positionAssignmentRepository
+            .Setup(a => a.GetActivePrimaryAsync(_tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionAssignmentEntity
+            {
+                Id = previousAssignmentId,
+                EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-1)),
+            });
+        var reservedAssignment = new PositionAssignmentEntity { Id = reservedAssignmentId };
+        _positionAssignmentRepository
+            .Setup(a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _positionAssignmentRepository
+            .Setup(a => a.GetTrackedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(reservedAssignment);
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(grantRequest.Id), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Promotion", reservedAssignment.ChangeReason);
+        _positionAssignmentRepository.Verify(
+            a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()), Times.Once);
+        _positionAssignmentRepository.Verify(
+            a => a.EndActiveAsync(_tenantId, previousAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.True(_unitOfWork.TransactionCommitted);
+    }
+
+    [Fact]
+    public async Task Handle_PositionChange_WhenActivateFails_ReturnsConflict_AndDoesNotCommitEndedAssignment()
+    {
+        var reservedAssignmentId = Guid.NewGuid();
+        var previousAssignmentId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var grantRequest = ValidGrantRequest(Guid.NewGuid(), Guid.NewGuid());
+        grantRequest.OnboardingDraftId = null;
+        grantRequest.EmployeeId = employeeId;
+        grantRequest.ActionType = AccessGrantActionType.PositionChange;
+        grantRequest.ReservedPositionAssignmentId = reservedAssignmentId;
+        grantRequest.RequestedByUserId = Guid.NewGuid();
+        _accessGrantRequestRepository
+            .Setup(r => r.GetTrackedByIdAsync(_tenantId, grantRequest.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(grantRequest);
+        _positionAssignmentRepository
+            .Setup(a => a.GetActivePrimaryAsync(_tenantId, employeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PositionAssignmentEntity
+            {
+                Id = previousAssignmentId,
+                EffectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-1)),
+            });
+        _positionAssignmentRepository
+            .Setup(a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(grantRequest.Id), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal("The reserved seat for this request is no longer available.", result.Error);
+        Assert.Equal("Pending", grantRequest.ApprovalStatus);
+        Assert.False(_unitOfWork.TransactionCommitted);
+        _accessGrantRequestRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        _positionAssignmentRepository.Verify(
+            a => a.EndActiveAsync(_tenantId, previousAssignmentId, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Once);
+        _positionAssignmentRepository.Verify(
+            a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_PositionChange_WhenSaveRacesOnConcurrency_ReturnsConflict()
+    {
+        var reservedAssignmentId = Guid.NewGuid();
+        var grantRequest = ValidGrantRequest(Guid.NewGuid(), Guid.NewGuid());
+        grantRequest.OnboardingDraftId = null;
+        grantRequest.EmployeeId = Guid.NewGuid();
+        grantRequest.ActionType = AccessGrantActionType.PositionChange;
+        grantRequest.ReservedPositionAssignmentId = reservedAssignmentId;
+        grantRequest.RequestedByUserId = Guid.NewGuid();
+        _accessGrantRequestRepository
+            .Setup(r => r.GetTrackedByIdAsync(_tenantId, grantRequest.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(grantRequest);
+        _positionAssignmentRepository
+            .Setup(a => a.GetActivePrimaryAsync(_tenantId, grantRequest.EmployeeId!.Value, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PositionAssignmentEntity?)null);
+        _positionAssignmentRepository
+            .Setup(a => a.ActivatePlannedAsync(_tenantId, reservedAssignmentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _accessGrantRequestRepository
+            .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ConcurrencyConflictException(new Exception("stale")));
+
+        var result = await CreateHandler().Handle(new ApproveAccessGrantRequestCommand(grantRequest.Id), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.False(_unitOfWork.TransactionCommitted);
+    }
+
+    [Fact]
     public void ConstructorDoesNotTakeATenantOwnerDependency()
     {
         var ctorParams = typeof(ApproveAccessGrantRequestCommandHandler)
             .GetConstructors().Single().GetParameters();
 
         Assert.DoesNotContain(ctorParams, p => p.ParameterType.Name.Contains("TenantOwner", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Mirrors <see cref="ONEVO.Infrastructure.Persistence.UnitOfWork.ExecuteInTransactionAsync{TResult}"/>:
+    /// commit only if the operation returns; a throw leaves the transaction uncommitted so
+    /// raw-SQL EndActive is rolled back.
+    /// </summary>
+    private sealed class TrackingUnitOfWork : IUnitOfWork
+    {
+        public bool TransactionCommitted { get; private set; }
+
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(1);
+
+        public async Task<TResult> ExecuteInTransactionAsync<TResult>(
+            Func<CancellationToken, Task<TResult>> operation,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var result = await operation(cancellationToken);
+                TransactionCommitted = true;
+                return result;
+            }
+            catch
+            {
+                TransactionCommitted = false;
+                throw;
+            }
+        }
     }
 }

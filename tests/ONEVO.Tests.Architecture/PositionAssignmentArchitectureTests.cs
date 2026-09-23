@@ -38,6 +38,7 @@ public sealed class PositionAssignmentArchitectureTests
         Assert.NotNull(type.GetProperty("EffectiveFrom"));
         Assert.NotNull(type.GetProperty("EffectiveTo"));
         Assert.NotNull(type.GetProperty("AssignmentStatus"));
+        Assert.NotNull(type.GetProperty("ReportsToEmployeeId"));
     }
 
     [Fact]

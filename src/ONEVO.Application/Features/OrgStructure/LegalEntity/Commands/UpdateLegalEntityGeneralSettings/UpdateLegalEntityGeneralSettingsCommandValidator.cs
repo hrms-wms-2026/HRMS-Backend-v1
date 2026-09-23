@@ -1,4 +1,5 @@
 using FluentValidation;
+using ONEVO.Application.Common.Helpers;
 
 namespace ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
 
@@ -88,9 +89,6 @@ public class UpdateLegalEntityGeneralSettingsCommandValidator
             .WithMessage("Website URL is invalid.")
             .When(x => !string.IsNullOrWhiteSpace(x.Website));
 
-        // Same-day schedule only: both start and end must be provided together,
-        // and start must be strictly before end. Overnight shifts are not
-        // supported in this task.
         RuleFor(x => x.WorkEndTime)
             .NotNull().WithMessage("Work end time is required when work start time is provided.")
             .When(x => x.WorkStartTime is not null);
@@ -99,9 +97,39 @@ public class UpdateLegalEntityGeneralSettingsCommandValidator
             .NotNull().WithMessage("Work start time is required when work end time is provided.")
             .When(x => x.WorkEndTime is not null);
 
-        RuleFor(x => x.WorkStartTime)
-            .Must((command, start) => start < command.WorkEndTime)
-            .WithMessage("Work start time must be before work end time.")
+        RuleFor(x => x.BreakDurationMinutes)
+            .Must((command, brk) =>
+            {
+                var hours = WorkDayHoursCalculator.TryCompute(command.WorkStartTime, command.WorkEndTime, brk);
+                return hours is null || hours > 0m;
+            })
+            .WithMessage("Break duration must be shorter than the work window.")
             .When(x => x.WorkStartTime is not null && x.WorkEndTime is not null);
+
+        // Independent of work start/end time - may be set on its own. No
+        // upper bound: no existing backend validation pattern establishes
+        // one for a break-duration-style field, so none is invented here.
+        RuleFor(x => x.BreakDurationMinutes)
+            .GreaterThanOrEqualTo(0).WithMessage("Break duration must not be negative.")
+            .When(x => x.BreakDurationMinutes is not null);
+
+        RuleFor(x => x.OfficeAddress)
+            .MaximumLength(500).WithMessage("Office address must be 500 characters or fewer.")
+            .When(x => x.OfficeAddress is not null);
+
+        // Office location is all-or-nothing: partially configuring it would leave a
+        // legal entity with a point but no way to know it's really the office - the
+        // on-site location warning simply never fires until both are set. The radius
+        // for that check comes from MonitoringFeatureToggles.AllowedRadiusMeters, not from here
+        // (moved off ClockInPolicy in Task 14).
+        RuleFor(x => x.OfficeLatitude)
+            .NotNull().WithMessage("Office latitude and longitude must be set together.")
+            .InclusiveBetween(-90, 90).WithMessage("Office latitude must be between -90 and 90.")
+            .When(x => x.OfficeLongitude is not null);
+
+        RuleFor(x => x.OfficeLongitude)
+            .NotNull().WithMessage("Office latitude and longitude must be set together.")
+            .InclusiveBetween(-180, 180).WithMessage("Office longitude must be between -180 and 180.")
+            .When(x => x.OfficeLatitude is not null);
     }
 }

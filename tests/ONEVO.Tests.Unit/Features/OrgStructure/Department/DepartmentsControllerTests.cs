@@ -34,7 +34,7 @@ public sealed class DepartmentsControllerTests
         id, legalEntityId, name, "DEP-01", null, null, true, DateTimeOffset.UtcNow, null);
 
     private static DepartmentListItemResponse SampleListItemResponse(Guid legalEntityId, Guid id, string name) => new(
-        id, legalEntityId, name, "DEP-01", null, null, true, DateTimeOffset.UtcNow, null);
+        id, legalEntityId, name, "DEP-01", null, null, true, DateTimeOffset.UtcNow, null, 0, 0, null);
 
     [Fact]
     public async Task List_UsesDefaultQueryValues_WhenNoneProvided()
@@ -105,7 +105,7 @@ public sealed class DepartmentsControllerTests
     {
         var treeResponse = new DepartmentTreeResponse(
         [
-            new DepartmentTreeNodeResponse(_departmentId, _legalEntityId, "Engineering", "ENG", null, null, true, [])
+            new DepartmentTreeNodeResponse(_departmentId, _legalEntityId, "Engineering", "ENG", null, null, true, [], 0, 0, null)
         ]);
         _mediatorMock
             .Setup(m => m.Send(It.IsAny<ListDepartmentsQuery>(), It.IsAny<CancellationToken>()))

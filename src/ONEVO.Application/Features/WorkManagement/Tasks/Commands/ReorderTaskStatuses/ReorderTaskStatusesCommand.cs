@@ -4,6 +4,6 @@ using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.ReorderTaskStatuses;
 
-public sealed record TaskStatusOrderUpdate(Guid StatusId, int DisplayOrder, string Visibility, bool MarksTaskComplete);
+public sealed record TaskStatusOrderUpdate(Guid StatusId, int DisplayOrder, string Visibility, string Category, string Color);
 
-public sealed record ReorderTaskStatusesCommand(Guid ObjectiveId, List<TaskStatusOrderUpdate> Updates) : IRequest<Result<IReadOnlyList<TaskStatusResponse>>>;
+public sealed record ReorderTaskStatusesCommand(Guid ProjectId, List<TaskStatusOrderUpdate> Updates) : IRequest<Result<IReadOnlyList<TaskStatusResponse>>>;

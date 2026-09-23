@@ -16,7 +16,6 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.CoreHr.ChecklistTemplate;
@@ -33,11 +32,6 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
     private const string RestrictedRoleName = "checklist_templates_rls_test_role";
     private const string RestrictedRolePassword = "checklist-templates-rls-test-role-password";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_checklist_templates_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -51,12 +45,9 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         var tenant = new Tenant { Id = Guid.NewGuid(), Name = "Checklist Template RLS Tenant", Slug = "checklist-templates-rls", CompanySizeRange = "51-200", Status = TenantStatus.Active };
         _tenantId = tenant.Id;
@@ -83,7 +74,7 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
         await CreateRestrictedRoleAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task Create_List_Get_Update_Archive_RoundTrip_ThroughRestrictedRole()
@@ -161,14 +152,12 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
         seedDb.Users.Add(user);
         var employmentStatus = new EmploymentStatus { Id = 1, Code = "onboarding", Label = "Onboarding" };
         var employmentType = new EmploymentType { Id = 1, Code = "full_time", Label = "Full-Time" };
-        var workMode = new WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true };
         if (!await seedDb.EmploymentStatuses.AnyAsync(x => x.Id == 1)) seedDb.EmploymentStatuses.Add(employmentStatus);
         if (!await seedDb.EmploymentTypes.AnyAsync(x => x.Id == 1)) seedDb.EmploymentTypes.Add(employmentType);
-        if (!await seedDb.WorkModes.AnyAsync(x => x.Id == 1)) seedDb.WorkModes.Add(workMode);
         var employee = new Domain.Features.CoreHr.Entities.Employee
         {
             Id = Guid.NewGuid(), TenantId = _tenantId, UserId = user.Id, EmployeeNumber = "EMP-INT-001", FirstName = "New", LastName = "Hire",
-            Email = user.Email, LegalEntityId = _legalEntityId, DepartmentId = _departmentId, EmploymentStatusId = 1, EmploymentTypeId = 1, WorkModeId = 1,
+            Email = user.Email, LegalEntityId = _legalEntityId, DepartmentId = _departmentId, EmploymentStatusId = 1, EmploymentTypeId = 1, WorkModeId = null,
             HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
         };
         seedDb.Employees.Add(employee);
@@ -240,7 +229,7 @@ public sealed class ChecklistTemplatesIntegrationTests : IAsyncLifetime
             grantTables.CommandText = $@"
                 GRANT SELECT, INSERT, UPDATE, DELETE ON checklist_templates, employee_checklist_tasks TO {RestrictedRoleName};
                 GRANT SELECT ON tenants, legal_entities, departments, positions, employees, users,
-                    employment_statuses, employment_types, work_modes TO {RestrictedRoleName};
+                    employment_statuses, employment_types, tenant_work_modes TO {RestrictedRoleName};
             ";
             await grantTables.ExecuteNonQueryAsync();
         }

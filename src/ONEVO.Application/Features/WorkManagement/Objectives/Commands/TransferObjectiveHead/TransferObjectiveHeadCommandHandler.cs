@@ -3,6 +3,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
@@ -27,11 +28,12 @@ public class TransferObjectiveHeadCommandHandler : IRequestHandler<TransferObjec
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IPermissionAutoGrantService _autoGrant;
+    private readonly IOutboxWriter _outboxWriter;
 
     public TransferObjectiveHeadCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
         IObjectiveChangeRequestRepository changeRequests, IProjectMemberInvitationRepository invitations, IUnitOfWork unitOfWork,
-        IMilestoneMembershipCoordinator membership, IPermissionAutoGrantService autoGrant)
+        IMilestoneMembershipCoordinator membership, IPermissionAutoGrantService autoGrant, IOutboxWriter outboxWriter)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -41,6 +43,7 @@ public class TransferObjectiveHeadCommandHandler : IRequestHandler<TransferObjec
         _unitOfWork = unitOfWork;
         _membership = membership;
         _autoGrant = autoGrant;
+        _outboxWriter = outboxWriter;
     }
 
     public async Task<Result<TransferOutcomeResponse>> Handle(TransferObjectiveHeadCommand request, CancellationToken ct)
@@ -67,7 +70,7 @@ public class TransferObjectiveHeadCommandHandler : IRequestHandler<TransferObjec
         if (objective.IsAchieved)
             return Result<TransferOutcomeResponse>.Failure("An achieved milestone's head cannot be transferred.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<TransferOutcomeResponse>.Forbidden("Only this milestone's head can transfer it.");
 
         var newHeadAssignee = await _membership.GetActiveAssigneeAsync(tenantId, request.NewHeadEmployeeId, ct);
@@ -124,6 +127,26 @@ public class TransferObjectiveHeadCommandHandler : IRequestHandler<TransferObjec
             };
 
             await _invitations.AddAsync(invitation, ct);
+
+            var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, [callerEmployeeId.Value], ct);
+            var inviterDisplayName = names.GetValueOrDefault(callerEmployeeId.Value) ?? "A teammate";
+            await _outboxWriter.EnqueueAsync(
+                OutboxMessageTypes.WorkNotification,
+                new WorkNotificationPayload(
+                    tenantId,
+                    newHeadAssignee.UserId,
+                    "work_objective_invitation_created",
+                    new Dictionary<string, string>
+                    {
+                        ["inviterName"] = inviterDisplayName,
+                        ["objectiveName"] = objective.Title,
+                        ["inviteType"] = ProjectInvitationTypes.Leader
+                    },
+                    "project_member_invitation",
+                    invitation.Id),
+                tenantId,
+                ct);
+
             await _unitOfWork.SaveChangesAsync(ct);
 
             return Result<TransferOutcomeResponse>.Success(

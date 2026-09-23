@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Biometrics.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
@@ -20,6 +21,9 @@ public class UploadFaceScanCommandHandler
     private readonly ITenantRepository _tenants;
     private readonly ITenantContextSwitcher _tenantSwitcher;
     private readonly IFileStorageService _fileStorage;
+    private readonly IBiometricProfileRepository _profiles;
+    private readonly IFaceMatchService _faceMatch;
+    private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
 
@@ -29,6 +33,9 @@ public class UploadFaceScanCommandHandler
         ITenantRepository tenants,
         ITenantContextSwitcher tenantSwitcher,
         IFileStorageService fileStorage,
+        IBiometricProfileRepository profiles,
+        IFaceMatchService faceMatch,
+        ITrayEmployeeIdentityResolver employeeIdentity,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork)
     {
@@ -37,6 +44,9 @@ public class UploadFaceScanCommandHandler
         _tenants = tenants;
         _tenantSwitcher = tenantSwitcher;
         _fileStorage = fileStorage;
+        _profiles = profiles;
+        _faceMatch = faceMatch;
+        _employeeIdentity = employeeIdentity;
         _clock = clock;
         _unitOfWork = unitOfWork;
     }
@@ -95,18 +105,21 @@ public class UploadFaceScanCommandHandler
 
         var fileRecord = uploadResult.Value!;
 
+        var (matchStatus, similarity) = await VerifyAgainstReferencePhotoAsync(fileRecord.Id, cancellationToken);
+
         var now = _clock.UtcNow;
         var faceScan = new MonitoringFaceScan
         {
-            Id            = Guid.NewGuid(),
-            TenantId      = _device.TenantId,
-            CheckInId     = request.CheckInId,
-            StorageKey    = fileRecord.StorageKey,
-            FileSizeBytes = request.FileSizeBytes,
-            ContentType   = request.ContentType,
-            Status        = MonitoringFaceScanStatus.Available,
-            CreatedAt     = now,
-            UpdatedAt     = null
+            Id              = Guid.NewGuid(),
+            TenantId        = _device.TenantId,
+            CheckInId       = request.CheckInId,
+            StorageKey      = fileRecord.StorageKey,
+            FileSizeBytes   = request.FileSizeBytes,
+            ContentType     = request.ContentType,
+            Status          = matchStatus,
+            SimilarityScore = similarity,
+            CreatedAt       = now,
+            UpdatedAt       = null
         };
 
         await _repository.AddFaceScanAsync(faceScan, cancellationToken);
@@ -117,6 +130,41 @@ public class UploadFaceScanCommandHandler
         return Result<FaceScanUploadResponseDto>.Success(new FaceScanUploadResponseDto(
             faceScan.Id,
             faceScan.Status,
-            faceScan.FileSizeBytes));
+            faceScan.FileSizeBytes,
+            faceScan.SimilarityScore));
+    }
+
+    private async Task<(string Status, float? Similarity)> VerifyAgainstReferencePhotoAsync(
+        Guid capturedFileId, CancellationToken ct)
+    {
+        // Must match whatever CompleteEnrollmentAttemptCommandHandler resolved when it stored the
+        // BiometricProfile - see ITrayEmployeeIdentityResolver's own doc comment.
+        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            _device.TenantId, _device.UserId, _device.LegalEntityId, ct);
+        var profile = await _profiles.GetByEmployeeIdAsync(_device.TenantId, employeeId, ct);
+        if (profile?.ReferencePhotoFileId is null)
+            return (MonitoringFaceScanStatus.NoReferencePhoto, null);
+
+        try
+        {
+            var referenceRead = await _fileStorage.OpenReadAsync(_device.TenantId, profile.ReferencePhotoFileId.Value, ct);
+            var capturedRead = await _fileStorage.OpenReadAsync(_device.TenantId, capturedFileId, ct);
+
+            if (!referenceRead.IsSuccess || !capturedRead.IsSuccess)
+                return (MonitoringFaceScanStatus.Failed, null);
+
+            await using var referenceStream = referenceRead.Value!.Content;
+            await using var capturedStream = capturedRead.Value!.Content;
+
+            var outcome = await _faceMatch.CompareAsync(referenceStream, capturedStream, ct);
+
+            return outcome.IsMatch
+                ? (MonitoringFaceScanStatus.Verified, outcome.Similarity)
+                : (MonitoringFaceScanStatus.NotMatched, outcome.Similarity);
+        }
+        catch (Exception)
+        {
+            return (MonitoringFaceScanStatus.Failed, null);
+        }
     }
 }

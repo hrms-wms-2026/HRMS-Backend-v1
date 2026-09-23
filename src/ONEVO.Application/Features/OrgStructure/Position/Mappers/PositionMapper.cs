@@ -43,10 +43,13 @@ public static class PositionMapper
     }
 
     public static PositionListItemResponse ToListItemResponse(
-        Position entity, IReadOnlyDictionary<Guid, PositionOccupancyPreview> occupancyByPositionId)
+        Position entity,
+        IReadOnlyDictionary<Guid, PositionOccupancyPreview> occupancyByPositionId,
+        IReadOnlyDictionary<Guid, bool> requiresApprovalByPositionId)
     {
         var preview = occupancyByPositionId.TryGetValue(entity.Id, out var found) ? found : EmptyOccupancyPreview;
         var occupantPreview = preview.OccupantPreview.Select(ToOccupantPreviewResponse).ToList();
+        var requiresApproval = requiresApprovalByPositionId.TryGetValue(entity.Id, out var flag) && flag;
 
         return new PositionListItemResponse(
             entity.Id,
@@ -64,7 +67,8 @@ public static class PositionMapper
             CurrentOccupancyCheckSupported,
             preview.AssignedCount,
             occupantPreview,
-            preview.AssignedCount - occupantPreview.Count);
+            preview.AssignedCount - occupantPreview.Count,
+            requiresApproval);
     }
 
     public static PositionOccupantPreviewResponse ToOccupantPreviewResponse(PositionOccupantPreviewItem item)

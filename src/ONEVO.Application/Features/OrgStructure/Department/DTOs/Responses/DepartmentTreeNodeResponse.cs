@@ -8,4 +8,7 @@ public record DepartmentTreeNodeResponse(
     Guid? ParentDepartmentId,
     Guid? HeadPositionId,
     bool IsActive,
-    IReadOnlyList<DepartmentTreeNodeResponse> Children);
+    IReadOnlyList<DepartmentTreeNodeResponse> Children,
+    int PositionCount,
+    int EmployeeCount,
+    string? HeadPositionTitle);

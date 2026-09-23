@@ -2,10 +2,12 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.Common.OutboxHandlers;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectInvitations.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.ProjectInvitations.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.ProjectInvitations.Commands.AcceptObjectiveInvitation;
@@ -19,11 +21,13 @@ public class AcceptObjectiveInvitationCommandHandler : IRequestHandler<AcceptObj
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly IPermissionAutoGrantService _autoGrant;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IProjectRepository _projects;
+    private readonly IOutboxWriter _outboxWriter;
 
     public AcceptObjectiveInvitationCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IProjectMemberInvitationRepository invitations,
         IObjectiveRepository objectives, IMilestoneMembershipCoordinator membership, IPermissionAutoGrantService autoGrant,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork, IProjectRepository projects, IOutboxWriter outboxWriter)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -32,6 +36,8 @@ public class AcceptObjectiveInvitationCommandHandler : IRequestHandler<AcceptObj
         _membership = membership;
         _autoGrant = autoGrant;
         _unitOfWork = unitOfWork;
+        _projects = projects;
+        _outboxWriter = outboxWriter;
     }
 
     public async Task<Result> Handle(AcceptObjectiveInvitationCommand request, CancellationToken ct)
@@ -100,6 +106,36 @@ public class AcceptObjectiveInvitationCommandHandler : IRequestHandler<AcceptObj
             invitation.Status = ProjectInvitationStatuses.Accepted;
             invitation.DecidedAt = now;
             _invitations.Update(invitation);
+
+            if (objective.IsDefault)
+            {
+                var inviter = await _membership.GetActiveAssigneeAsync(tenantId, invitation.InvitedById, innerCt);
+                if (inviter is not null)
+                {
+                    var project = await _projects.GetByIdForTenantAsync(tenantId, invitation.ProjectId, innerCt);
+                    if (project is not null)
+                    {
+                        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
+                            tenantId, [invitation.InvitedEmployeeId], innerCt);
+                        var accepterDisplayName = names.GetValueOrDefault(invitation.InvitedEmployeeId) ?? "A teammate";
+                        await _outboxWriter.EnqueueAsync(
+                            OutboxMessageTypes.WorkNotification,
+                            new WorkNotificationPayload(
+                                tenantId,
+                                inviter.UserId,
+                                "work_project_member_accepted",
+                                new Dictionary<string, string>
+                                {
+                                    ["accepterName"] = accepterDisplayName,
+                                    ["projectName"] = project.Name
+                                },
+                                "project_member_invitation",
+                                invitation.Id),
+                            tenantId,
+                            innerCt);
+                    }
+                }
+            }
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 

@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 
 namespace ONEVO.Application.Features.Auth.ActiveCompany.Commands.SwitchActiveCompany;
@@ -17,14 +18,20 @@ public sealed class SwitchActiveCompanyCommandHandler : IRequestHandler<SwitchAc
 {
     private readonly ISessionRepository _sessions;
     private readonly IEmployeeRepository _employees;
+    private readonly ILegalEntityRepository _legalEntities;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
 
     public SwitchActiveCompanyCommandHandler(
-        ISessionRepository sessions, IEmployeeRepository employees, IUnitOfWork unitOfWork, ICurrentUser currentUser)
+        ISessionRepository sessions,
+        IEmployeeRepository employees,
+        ILegalEntityRepository legalEntities,
+        IUnitOfWork unitOfWork,
+        ICurrentUser currentUser)
     {
         _sessions = sessions;
         _employees = employees;
+        _legalEntities = legalEntities;
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
     }
@@ -40,12 +47,16 @@ public sealed class SwitchActiveCompanyCommandHandler : IRequestHandler<SwitchAc
         if (session is null)
             return Result<Unit>.Failure("No active session.", 401);
 
-        var targetEmployee = await _employees.GetByIdAsync(tenantId, request.EmployeeId, ct)
-            ?? await _employees.GetByUserAndLegalEntityAsync(tenantId, _currentUser.UserId, request.EmployeeId, ct);
-        if (targetEmployee is null)
+        var legalEntity = await _legalEntities.GetByIdForTenantAsync(tenantId, request.LegalEntityId, ct);
+        if (legalEntity is null)
             return Result<Unit>.NotFound("The selected company could not be found.");
 
-        if (targetEmployee.UserId != _currentUser.UserId)
+        if (!legalEntity.IsActive)
+            return Result<Unit>.Conflict("The selected company is inactive.");
+
+        var targetEmployee = await _employees.GetByUserAndLegalEntityAsync(
+            tenantId, _currentUser.UserId, request.LegalEntityId, ct);
+        if (targetEmployee is null)
             return Result<Unit>.Failure("You do not have access to this company.", 403);
 
         session.ActiveEmployeeId = targetEmployee.Id;

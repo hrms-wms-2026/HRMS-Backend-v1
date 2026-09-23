@@ -6,6 +6,8 @@ public sealed class FakeUnitOfWork : IUnitOfWork
 {
     public bool ShouldFailSave { get; set; }
     public int SaveCallCount { get; private set; }
+    public int TransactionCallCount { get; private set; }
+    public bool IsInTransaction { get; private set; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -18,8 +20,19 @@ public sealed class FakeUnitOfWork : IUnitOfWork
         return Task.FromResult(1);
     }
 
-    public Task<TResult> ExecuteInTransactionAsync<TResult>(
+    public async Task<TResult> ExecuteInTransactionAsync<TResult>(
         Func<CancellationToken, Task<TResult>> operation,
         CancellationToken cancellationToken = default)
-        => operation(cancellationToken);
+    {
+        TransactionCallCount++;
+        IsInTransaction = true;
+        try
+        {
+            return await operation(cancellationToken);
+        }
+        finally
+        {
+            IsInTransaction = false;
+        }
+    }
 }

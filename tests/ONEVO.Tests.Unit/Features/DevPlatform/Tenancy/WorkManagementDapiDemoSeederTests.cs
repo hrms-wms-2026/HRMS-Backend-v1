@@ -10,13 +10,16 @@ using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
+using ONEVO.Infrastructure.Persistence.Repositories.TimeAttendance;
 using ONEVO.Infrastructure.Persistence.Seeders;
+using ONEVO.Infrastructure.Services.TimeAttendance;
 using ONEVO.Tests.Unit.Features.Auth;
 
 namespace ONEVO.Tests.Unit.Features.DevPlatform.Tenancy;
@@ -105,17 +108,13 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         {
             db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         }
-        if (!await db.WorkModes.AnyAsync())
-        {
-            db.WorkModes.Add(new WorkMode { Id = 1, Code = "on_site", Label = "On-Site" });
-        }
         await db.SaveChangesAsync();
     }
 
     private static readonly string[] CanonicalPhase1Modules =
     [
         "org_structure", "core_hr", "leave", "calendar", "time_attendance",
-        "activity_monitoring", "discrepancy_engine", "identity_verification",
+        "monitoring", "discrepancy_engine", "identity_verification",
         "exception_engine", "productivity_analytics", "desktop_agent_gateway",
         "worksync_foundation", "projects", "objectives_milestones", "tasks",
         "boards", "planning_sprints"
@@ -152,7 +151,15 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
             CreatePasswordHasher().Object,
             new Mock<IEncryptionService>().Object,
             new ConfigurationBuilder().Build(),
+            CreateWorkModeSeeder(db),
             CancellationToken.None);
+    }
+
+    private static WorkModeSeeder CreateWorkModeSeeder(ApplicationDbContext db)
+    {
+        var clock = new Mock<IDateTimeProvider>();
+        clock.SetupGet(c => c.UtcNow).Returns(DateTimeOffset.UtcNow);
+        return new WorkModeSeeder(new EfWorkModeRepository(db), clock.Object);
     }
 
     private static async Task RunDemoSeederAsync(ApplicationDbContext db)
@@ -196,7 +203,7 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
             .ToListAsync();
 
         role.Name.Should().Be("Work Management Team Member");
-        grantedCodes.Should().HaveCount(22); // every Permission row tagged Module == "work_management"
+        grantedCodes.Should().HaveCount(23); // every Permission row tagged Module == "work_management"
         grantedCodes.Should().NotContain(code => code.Contains("employees:"));
         grantedCodes.Should().NotContain(code => code.Contains("payroll"));
     }
@@ -439,7 +446,7 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
     }
 
     [Fact]
-    public async Task SeedAsync_CreatesProjectAndLeafTaskStatusesForEveryLeafWithTasks()
+    public async Task SeedAsync_PointsLeafTasksAtProjectTemplateStatuses_NotPerObjectiveCopies()
     {
         using var db = CreateContext();
         await RunDevSmokeSeederAsync(db);
@@ -449,6 +456,7 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         var projects = await verify.Projects.Where(p => p.TenantId == DapiTenantId).ToListAsync();
         projects.Should().HaveCount(5);
 
+        var templateIdsByProjectId = new Dictionary<Guid, List<Guid>>();
         foreach (var project in projects)
         {
             var templates = await verify.TaskStatuses
@@ -457,15 +465,24 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
             templates.Should().HaveCount(4);
             templates.Select(s => s.Name).Should().BeEquivalentTo(["To Do", "In Process", "Review", "Done"]);
             templates.Single(s => s.Name == "Done").MarksTaskComplete.Should().BeTrue();
+            templateIdsByProjectId[project.Id] = templates.Select(s => s.Id).ToList();
         }
 
         var leafIds = await GetLeafObjectiveIdsAsync(verify);
         foreach (var leafId in leafIds)
         {
-            var statuses = await verify.TaskStatuses
+            // Per-Objective status seeding no longer happens at all — every leaf Objective must
+            // have zero task_statuses rows of its own; tasks point at the Project-template rows.
+            var perObjectiveStatuses = await verify.TaskStatuses
                 .Where(s => s.ObjectiveId == leafId)
                 .ToListAsync();
-            statuses.Should().HaveCount(4);
+            perObjectiveStatuses.Should().BeEmpty();
+
+            var tasks = await verify.WorkTasks.Where(t => t.ObjectiveId == leafId).ToListAsync();
+            foreach (var task in tasks)
+            {
+                templateIdsByProjectId[task.ProjectId].Should().Contain(task.StatusId);
+            }
         }
     }
 
@@ -567,6 +584,57 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
         (await verify.ObjectiveChangeRequests
             .CountAsync(r => r.TenantId == DapiTenantId && r.RequestType == "extend_allocation"))
             .Should().Be(extendCount);
+    }
+
+    /// <summary>
+    /// Mirrors the live self-heal trap: Task 1's migration already inserted TaskCategory rows for
+    /// the dapi demo projects using gen_random_uuid() (not this seeder's deterministic ids). The
+    /// seeder must key its existence check on (ProjectId, Name) and reuse the pre-existing row's
+    /// real id rather than attempting a second, duplicate insert.
+    /// </summary>
+    [Fact]
+    public async Task SeedAsync_WhenTaskCategoryNameAlreadyExistsWithDifferentId_ReusesExistingRowEverywhere()
+    {
+        using var db = CreateContext();
+        await RunDevSmokeSeederAsync(db);
+
+        var eposProjectId = WorkManagementDapiDemoSeeder.DeterministicGuid("dapi-demo:project:epos");
+        var preexistingId = Guid.NewGuid();
+        db.TaskCategories.Add(new TaskCategory
+        {
+            Id = preexistingId,
+            TenantId = DapiTenantId,
+            ProjectId = eposProjectId,
+            Name = "task",
+            DisplayOrder = 0,
+            CreatedById = DapiOwnerUserId,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var act = async () => await RunDemoSeederAsync(db);
+        await act.Should().NotThrowAsync();
+
+        using var verify = CreateContext();
+        var eposTaskCategories = await verify.TaskCategories
+            .Where(c => c.ProjectId == eposProjectId && c.Name == "task")
+            .ToListAsync();
+        eposTaskCategories.Should().HaveCount(1);
+        eposTaskCategories[0].Id.Should().Be(preexistingId);
+
+        // The remaining 3 canonical categories should have been newly seeded for the same project.
+        var allEposCategories = await verify.TaskCategories
+            .Where(c => c.ProjectId == eposProjectId)
+            .ToListAsync();
+        allEposCategories.Should().HaveCount(4);
+        allEposCategories.Select(c => c.Name).Should().BeEquivalentTo(["task", "bug", "story", "feature"]);
+
+        // Every seeded WorkTask/TaskCreationRequest under EPOS that uses the "task" category must
+        // resolve to the pre-existing (reused) id, not a freshly-minted duplicate.
+        var eposWorkTasksWithTaskCategory = await verify.WorkTasks
+            .Where(t => t.ProjectId == eposProjectId && t.CategoryId == preexistingId)
+            .ToListAsync();
+        eposWorkTasksWithTaskCategory.Should().NotBeEmpty();
     }
 
     private static async Task<List<Guid>> GetLeafObjectiveIdsAsync(ApplicationDbContext db)

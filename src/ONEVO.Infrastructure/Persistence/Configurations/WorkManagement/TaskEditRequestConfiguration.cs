@@ -13,6 +13,7 @@ public class TaskEditRequestConfiguration : IEntityTypeConfiguration<TaskEditReq
         builder.Property(r => r.Status).HasMaxLength(20).IsRequired();
         builder.Property(r => r.PayloadJson).HasColumnType("jsonb");
         builder.Property(r => r.DecisionComment).HasColumnType("text");
+        builder.Property(r => r.Reason).HasColumnType("text");
 
         builder.HasIndex(r => new { r.TenantId, r.TaskId, r.Status })
             .HasDatabaseName("ix_task_edit_requests_tenant_id_task_id_status");

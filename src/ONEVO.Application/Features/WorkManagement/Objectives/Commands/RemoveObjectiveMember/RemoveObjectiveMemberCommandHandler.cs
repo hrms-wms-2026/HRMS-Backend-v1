@@ -52,7 +52,7 @@ public class RemoveObjectiveMemberCommandHandler : IRequestHandler<RemoveObjecti
         if (objective.IsAchieved)
             return Result.Failure("Cannot remove members from an achieved milestone.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result.Forbidden("Only this milestone's head can remove members.");
 
         if (request.EmployeeId == objective.OwnerId)

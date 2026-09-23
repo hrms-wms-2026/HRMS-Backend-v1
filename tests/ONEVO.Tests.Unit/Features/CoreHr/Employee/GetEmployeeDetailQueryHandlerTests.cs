@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 
@@ -20,8 +21,10 @@ public sealed class GetEmployeeDetailQueryHandlerTests
     private readonly Mock<IEncryptionService> _encryption = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<IEmploymentTypeRepository> _employmentTypes = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _employeeId = Guid.NewGuid();
+    private readonly Guid _workModeId = Guid.NewGuid();
     private readonly DateTimeOffset _now = DateTimeOffset.Parse("2026-08-15T12:00:00Z");
 
     public GetEmployeeDetailQueryHandlerTests()
@@ -48,13 +51,15 @@ public sealed class GetEmployeeDetailQueryHandlerTests
             _invitationTokenRepository.Object,
             _encryption.Object,
             _currentUser.Object,
-            _clock.Object);
+            _clock.Object,
+            _employmentTypes.Object);
 
     private void ArrangeVisibleEmployee()
     {
         var visible = new EmployeeListItemResponse(
             _employeeId, "E-001", "Ada Lovelace", "ada@test.dev",
-            null, null, null, null, null, null, "full_time", "active", null, null);
+            null, null, null, null, null, null, "full_time", "active", null, null,
+            WorkModeLabel: "Remote");
         _employeeRepository
             .Setup(r => r.GetByIdAsync(_tenantId, _employeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ONEVO.Domain.Features.CoreHr.Entities.Employee
@@ -65,8 +70,13 @@ public sealed class GetEmployeeDetailQueryHandlerTests
                 LastName = "Lovelace",
                 Email = "ada@test.dev",
                 EmployeeNumber = "E-001",
-                HireDate = new DateOnly(2024, 1, 15)
+                HireDate = new DateOnly(2024, 1, 15),
+                EmploymentTypeId = 1,
+                WorkModeId = _workModeId
             });
+        _employmentTypes
+            .Setup(r => r.GetCodeByIdAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("full_time");
         _currentUser.Setup(u => u.HasPermission("org:manage")).Returns(true);
         _employeeRepository
             .Setup(r => r.GetVisibleByIdAsync(
@@ -93,6 +103,31 @@ public sealed class GetEmployeeDetailQueryHandlerTests
     }
 
     [Fact]
+    public async Task Handle_IncludesWorkModeLabelFromVisibleEmployeeProjection()
+    {
+        ArrangeVisibleEmployee();
+        _currentUser.Setup(c => c.HasPermission("employees:read:sensitive")).Returns(false);
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Remote", result.Value!.JobInformation.WorkModeLabel);
+    }
+
+    [Fact]
+    public async Task Handle_IncludesEmploymentTypeCodeAndWorkModeIdForEditForm()
+    {
+        ArrangeVisibleEmployee();
+        _currentUser.Setup(c => c.HasPermission("employees:read:sensitive")).Returns(false);
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("full_time", result.Value!.JobInformation.EmploymentTypeCode);
+        Assert.Equal(_workModeId, result.Value!.JobInformation.WorkModeId);
+    }
+
+    [Fact]
     public async Task Handle_CallerHasSensitivePermission_IncludesMaskedPayroll()
     {
         ArrangeVisibleEmployee();
@@ -114,6 +149,71 @@ public sealed class GetEmployeeDetailQueryHandlerTests
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value!.Payroll);
         Assert.True(result.Value!.Payroll!.HasBankDetailsOnFile);
+    }
+
+    [Fact]
+    public async Task Handle_CallerLacksAttendanceReadPermission_OmitsAttendanceSummary()
+    {
+        ArrangeVisibleEmployee();
+        _currentUser.Setup(c => c.HasPermission("employees:read:sensitive")).Returns(false);
+        _currentUser.Setup(c => c.HasPermission("attendance:read")).Returns(false);
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.AttendanceSummary);
+        _employeeRepository.Verify(
+            r => r.ListVisibleAsync(
+                It.IsAny<Guid>(), It.IsAny<EmployeeVisibilityScope>(), It.IsAny<EmployeeListFilter>(),
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>(), It.IsAny<EmployeeListAttendanceOptions>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_CallerHasAttendanceReadPermission_IncludesAttendanceSummaryScopedToThisEmployee()
+    {
+        ArrangeVisibleEmployee();
+        _currentUser.Setup(c => c.HasPermission("employees:read:sensitive")).Returns(false);
+        _currentUser.Setup(c => c.HasPermission("attendance:read")).Returns(true);
+
+        var summary = new EmployeeListAttendanceSummaryResponse(
+            ShowNotClockedInWarning: true,
+            ShouldHaveClockedIn: true,
+            HasClockedInToday: false,
+            WorkDate: DateOnly.FromDateTime(_now.UtcDateTime),
+            Timezone: "UTC",
+            ScheduledStartTime: "09:00",
+            WarningLabel: "Still has not clocked in",
+            AttendanceStatus: "not_clocked_in",
+            AttendanceStatusLabel: "Not clocked in",
+            AttentionType: "not_clocked_in",
+            AttentionSeverity: "critical",
+            AttentionLabel: "Still has not clocked in");
+
+        var attendanceItem = new EmployeeListItemResponse(
+            _employeeId, "E-001", "Ada Lovelace", "ada@test.dev",
+            null, null, null, null, null, null, "full_time", "active", null, null,
+            AttendanceSummary: summary);
+
+        _employeeRepository
+            .Setup(r => r.ListVisibleAsync(
+                _tenantId,
+                It.Is<EmployeeVisibilityScope>(s => !s.CanViewAllTenantEmployees),
+                It.Is<EmployeeListFilter>(f =>
+                    f.RestrictToEmployeeIds != null
+                    && f.RestrictToEmployeeIds.Count == 1
+                    && f.RestrictToEmployeeIds.Contains(_employeeId)),
+                1, 1,
+                It.IsAny<CancellationToken>(),
+                It.Is<EmployeeListAttendanceOptions>(o => o.UtcNow == _now)))
+            .ReturnsAsync((new[] { attendanceItem }, 1));
+
+        var result = await CreateHandler().Handle(new GetEmployeeDetailQuery(_employeeId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Value!.AttendanceSummary);
+        Assert.Equal("not_clocked_in", result.Value!.AttendanceSummary!.AttentionType);
+        Assert.True(result.Value!.AttendanceSummary!.ShowNotClockedInWarning);
     }
 
     [Fact]

@@ -74,6 +74,18 @@ public class NotificationTemplateSeeder : IHostedService
             },
             new()
             {
+                Id = Guid.NewGuid(), Code = "work_objective_edit_request_created",
+                InAppTitleTemplate = "Milestone edit requested",
+                InAppBodyTemplate = "{{requesterName}} requested edits to {{objectiveName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_objective_edit_request_decided",
+                InAppTitleTemplate = "Milestone edit {{decision}}",
+                InAppBodyTemplate = "Your edit request for {{objectiveName}} was {{decision}}."
+            },
+            new()
+            {
                 Id = Guid.NewGuid(), Code = "work_sprint_completed",
                 InAppTitleTemplate = "Sprint completed",
                 InAppBodyTemplate = "\"{{sprintName}}\" on {{objectiveName}} was marked Complete."
@@ -84,12 +96,140 @@ public class NotificationTemplateSeeder : IHostedService
                 InAppTitleTemplate = "Sprint ended incomplete",
                 InAppBodyTemplate = "\"{{sprintName}}\" on {{objectiveName}} ended with unfinished tasks and is now Incomplete."
             },
-            new()
+                        new()
             {
                 Id = Guid.NewGuid(), Code = "work_sprint_achieved",
                 InAppTitleTemplate = "Sprint achieved",
                 InAppBodyTemplate = "\"{{sprintName}}\" on {{objectiveName}} was achieved and its tasks are now frozen."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_approved",
+                InAppTitleTemplate = "Leave approved",
+                InAppBodyTemplate = "{{leaveTypeName}} from {{startDate}} to {{endDate}} was approved."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_rejected",
+                InAppTitleTemplate = "Leave rejected",
+                InAppBodyTemplate = "{{leaveTypeName}} from {{startDate}} to {{endDate}} was rejected. {{reason}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_information_requested",
+                InAppTitleTemplate = "More information requested",
+                InAppBodyTemplate = "{{approverName}} requested more information for {{leaveTypeName}} from {{startDate}} to {{endDate}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_next_approval_required",
+                InAppTitleTemplate = "Leave approval required",
+                InAppBodyTemplate = "{{employeeName}} requested {{leaveTypeName}} from {{startDate}} to {{endDate}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_cancelled_by_employee",
+                InAppTitleTemplate = "Leave cancelled",
+                InAppBodyTemplate = "{{employeeName}} cancelled {{leaveTypeName}} from {{startDate}} to {{endDate}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_cancelled_by_hr",
+                InAppTitleTemplate = "Leave cancelled by HR",
+                InAppBodyTemplate = "{{cancelledByName}} cancelled your {{leaveTypeName}} from {{startDate}} to {{endDate}}. {{reason}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "leave_request_partially_cancelled",
+                InAppTitleTemplate = "Leave partially cancelled",
+                InAppBodyTemplate = "{{leaveTypeName}} from {{effectiveDate}} to {{endDate}} was cancelled. {{restoredDays}} days restored."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "attendance_correction_request_created",
+                InAppTitleTemplate = "Attendance correction request",
+                InAppBodyTemplate = "Attendance correction request from {{employeeName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "attendance_correction_request_decided",
+                InAppTitleTemplate = "Attendance correction {{decision}}",
+                InAppBodyTemplate = "Your attendance correction request was {{decision}}."
+            },
+                        new()
+            {
+                Id = Guid.NewGuid(), Code = "attendance_correction_request_cancelled",
+                InAppTitleTemplate = "Attendance correction cancelled",
+                InAppBodyTemplate = "Your attendance correction request was cancelled."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_area_change_request_created",
+                InAppTitleTemplate = "Work-area change requested",
+                InAppBodyTemplate = "{{employeeName}} requested {{requestedWorkArea}} work for {{date}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_area_change_request_decided",
+                InAppTitleTemplate = "Work-area change {{decision}}",
+                InAppBodyTemplate = "Your work-area change request for {{date}} was {{decision}}. {{reviewComment}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_area_change_request_cancelled",
+                InAppTitleTemplate = "Work-area change cancelled",
+                InAppBodyTemplate = "{{employeeName}} cancelled the work-area change request for {{date}}."
+            },
+
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_project_member_invited",
+                InAppTitleTemplate = "You've been added to a project",
+                InAppBodyTemplate = "{{inviterName}} invited you to join {{projectName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_objective_invitation_created",
+                InAppTitleTemplate = "You've been invited to a milestone",
+                InAppBodyTemplate = "{{inviterName}} invited you to join {{objectiveName}} as {{inviteType}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "work_project_member_accepted",
+                InAppTitleTemplate = "Invitation accepted",
+                InAppBodyTemplate = "{{accepterName}} accepted your invitation to join {{projectName}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_participant_added",
+                InAppTitleTemplate = "Added to an event",
+                InAppBodyTemplate = "{{organizerName}} added you to \"{{eventTitle}}\" on {{eventDate}}."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_updated",
+                InAppTitleTemplate = "Event updated",
+                InAppBodyTemplate = "{{organizerName}} updated \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_cancelled",
+                InAppTitleTemplate = "Event cancelled",
+                InAppBodyTemplate = "{{organizerName}} cancelled \"{{eventTitle}}\"."
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_resolution_requested",
+                InAppTitleTemplate = "Conflict resolution requested",
+                InAppBodyTemplate = "{{responderName}} requested help resolving a conflict for \"{{eventTitle}}\": {{reason}}"
+            },
+            new()
+            {
+                Id = Guid.NewGuid(), Code = "calendar_event_replacement_nominated",
+                InAppTitleTemplate = "Replacement nominated",
+                InAppBodyTemplate = "{{responderName}} nominated {{nomineeName}} as a replacement for \"{{eventTitle}}\"."
             }
+
         };
 
         var addedCount = 0;

@@ -3,7 +3,6 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Commands.CreateChecklistTemplate;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
-using ONEVO.Application.Features.CoreHr.Onboarding.ServiceInterfaces;
 using ONEVO.Application.Features.CoreHr.Onboarding.Services;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Domain.Features.OrgStructure.Entities;
@@ -17,7 +16,6 @@ public class CreateChecklistTemplateCommandHandlerTests
     private readonly Mock<ILegalEntityRepository> _legalEntityRepository = new();
     private readonly Mock<IDepartmentRepository> _departmentRepository = new();
     private readonly Mock<IPositionRepository> _positionRepository = new();
-    private readonly Mock<IChecklistTemplateAssigneeResolver> _assigneeResolver = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _legalEntityId = Guid.NewGuid();
@@ -27,7 +25,7 @@ public class CreateChecklistTemplateCommandHandlerTests
         _currentUser.SetupGet(c => c.TenantId).Returns(_tenantId);
         return new CreateChecklistTemplateCommandHandler(
             _templateRepository.Object, _legalEntityRepository.Object, _departmentRepository.Object, _positionRepository.Object,
-            new ChecklistTemplateTaskInputResolver(_assigneeResolver.Object), _currentUser.Object);
+            new ChecklistTemplateTaskInputResolver(_positionRepository.Object), _currentUser.Object);
     }
 
     private void SetupActiveLegalEntity()
@@ -94,5 +92,24 @@ public class CreateChecklistTemplateCommandHandlerTests
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(422);
+    }
+
+    [Fact]
+    public async Task Handle_CustomUserTaskWithPositionOnly_PersistsWithoutAssignedToId()
+    {
+        SetupActiveLegalEntity();
+        var positionId = Guid.NewGuid();
+        _positionRepository.Setup(r => r.GetByIdForLegalEntityAsync(_tenantId, _legalEntityId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Position { Id = positionId, LegalEntityId = _legalEntityId, IsActive = true, TenantId = _tenantId });
+        var command = new CreateChecklistTemplateCommand(
+            "X", "onboarding", _legalEntityId, null, null,
+            new List<CreateChecklistTemplateTaskInput> { new("IT setup", "custom_user", null, positionId, 1, 1, true) });
+
+        var result = await CreateSut().Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Tasks.Should().ContainSingle();
+        result.Value.Tasks[0].AssignedToId.Should().BeNull();
+        result.Value.Tasks[0].AssigneePositionId.Should().Be(positionId);
     }
 }

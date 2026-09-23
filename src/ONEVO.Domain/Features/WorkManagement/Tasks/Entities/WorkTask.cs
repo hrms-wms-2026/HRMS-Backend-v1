@@ -2,14 +2,6 @@ using ONEVO.Domain.Common;
 
 namespace ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
-public static class WorkTaskTypes
-{
-    public const string Task = "task";
-    public const string Bug = "bug";
-    public const string Story = "story";
-    public const string Feature = "feature";
-}
-
 public static class WorkTaskPriorities
 {
     public const string Low = "low";
@@ -31,7 +23,7 @@ public class WorkTask : BaseEntity
     public string ShortId { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
-    public string TaskType { get; set; } = WorkTaskTypes.Task;
+    public Guid CategoryId { get; set; }
     public Guid StatusId { get; set; }
     public string Priority { get; set; } = WorkTaskPriorities.Medium;
     public int? StoryPoints { get; set; }

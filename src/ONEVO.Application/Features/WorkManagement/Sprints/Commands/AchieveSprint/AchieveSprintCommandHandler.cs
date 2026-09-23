@@ -56,7 +56,7 @@ public class AchieveSprintCommandHandler : IRequestHandler<AchieveSprintCommand,
         if (objective is null)
             return Result<SprintResponse>.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<SprintResponse>.Forbidden("Only this milestone's owner can achieve sprints.");
 
         if (sprint.Status == SprintStatuses.Achieved)
@@ -83,7 +83,7 @@ public class AchieveSprintCommandHandler : IRequestHandler<AchieveSprintCommand,
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             return Result<SprintResponse>.Success(new SprintResponse(
-                sprint.Id, sprint.ObjectiveId, sprint.Name, sprint.StartDate, sprint.EndDate, sprint.Status,
+                sprint.Id, sprint.ObjectiveId, sprint.Name, sprint.Goal, sprint.StartDate, sprint.EndDate, sprint.Status,
                 sprint.CompletedAt, sprint.AchievedAt));
         }, ct);
     }

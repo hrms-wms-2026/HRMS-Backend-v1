@@ -22,7 +22,7 @@ The caller's approval queue: every `pending` task-creation request whose Objecti
     "payload": {
       "title": "Build the login page",
       "description": "optional",
-      "taskType": "task",
+      "categoryId": "guid",
       "priority": "medium",
       "dueDate": "2026-09-01",
       "estimatedHours": 8,

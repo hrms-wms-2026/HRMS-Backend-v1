@@ -1,20 +1,28 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Exceptions;
+using ONEVO.Application.Features.Storage.File.Helpers;
+using ONEVO.Application.Features.CoreHr.EmployeeHierarchyClosure.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.Models;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Lookups;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 
 public class EfPositionAssignmentRepository : IPositionAssignmentRepository
 {
     private readonly ApplicationDbContext _db;
+    private readonly IEmployeeHierarchyClosureRepository _closureRepository;
 
-    public EfPositionAssignmentRepository(ApplicationDbContext db)
+    public EfPositionAssignmentRepository(
+        ApplicationDbContext db,
+        IEmployeeHierarchyClosureRepository closureRepository)
     {
         _db = db;
+        _closureRepository = closureRepository;
     }
 
     public async Task<ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment?> GetActivePrimaryAsync(
@@ -50,9 +58,12 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
         if (positionIds.Count == 0)
             return new Dictionary<Guid, PositionOccupancyPreview>();
 
+        var avatarAssets = EmployeeAvatarAssets(tenantId);
         var rows = await (
             from pa in _db.PositionAssignments.AsNoTracking()
             join e in _db.Employees.AsNoTracking() on pa.EmployeeId equals e.Id
+            join asset in avatarAssets on e.Id equals asset.OwnerId into assetJoin
+            from asset in assetJoin.DefaultIfEmpty()
             where pa.TenantId == tenantId
                 && e.TenantId == tenantId
                 && positionIds.Contains(pa.PositionId)
@@ -65,7 +76,7 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
                 EmployeeId = e.Id,
                 e.FirstName,
                 e.LastName,
-                e.AvatarFileId
+                AvatarFileId = asset == null ? (Guid?)null : asset.FileRecordId
             }).ToListAsync(ct);
 
         return rows
@@ -78,6 +89,107 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
                         .Select(row => new PositionOccupantPreviewItem(row.EmployeeId, row.FirstName, row.LastName, row.AvatarFileId))
                         .ToList()));
     }
+
+    public async Task<IReadOnlyList<PositionActiveHolder>> GetActiveHoldersAsync(
+        Guid tenantId, Guid positionId, CancellationToken ct = default)
+    {
+        var avatarAssets = EmployeeAvatarAssets(tenantId);
+        return await (
+            from pa in _db.PositionAssignments.AsNoTracking()
+            join e in _db.Employees.AsNoTracking() on pa.EmployeeId equals e.Id
+            join asset in avatarAssets on e.Id equals asset.OwnerId into assetJoin
+            from asset in assetJoin.DefaultIfEmpty()
+            where pa.TenantId == tenantId
+                && pa.PositionId == positionId
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active
+            select new PositionActiveHolder(
+                e.Id, e.FirstName, e.LastName, e.Email,
+                asset == null ? null : asset.FileRecordId))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment>> GetActivePrimaryByEmployeeIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return new Dictionary<Guid, ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment>();
+
+        var rows = await _db.PositionAssignments.AsNoTracking()
+            .Where(pa => pa.TenantId == tenantId
+                && employeeIds.Contains(pa.EmployeeId)
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active)
+            .ToListAsync(ct);
+        return rows.ToDictionary(pa => pa.EmployeeId);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<PositionActiveHolder>>> GetActiveHoldersByPositionIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> positionIds, CancellationToken ct = default)
+    {
+        if (positionIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<PositionActiveHolder>>();
+
+        var avatarAssets = EmployeeAvatarAssets(tenantId);
+        var rows = await (
+            from pa in _db.PositionAssignments.AsNoTracking()
+            join e in _db.Employees.AsNoTracking() on pa.EmployeeId equals e.Id
+            join asset in avatarAssets on e.Id equals asset.OwnerId into assetJoin
+            from asset in assetJoin.DefaultIfEmpty()
+            where pa.TenantId == tenantId
+                && positionIds.Contains(pa.PositionId)
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active
+            select new
+            {
+                pa.PositionId,
+                EmployeeId = e.Id,
+                e.FirstName,
+                e.LastName,
+                e.Email,
+                AvatarFileId = asset == null ? (Guid?)null : asset.FileRecordId
+            })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(row => row.PositionId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<PositionActiveHolder>)g
+                    .Select(row => new PositionActiveHolder(row.EmployeeId, row.FirstName, row.LastName, row.Email, row.AvatarFileId))
+                    .ToList());
+    }
+
+    public async Task<IReadOnlyList<ChecklistAssignee>> GetChecklistAssigneesAsync(
+        Guid tenantId, Guid positionId, CancellationToken ct = default)
+    {
+        var avatarAssets = EmployeeAvatarAssets(tenantId);
+        return await (
+            from pa in _db.PositionAssignments.AsNoTracking()
+            join e in _db.Employees.AsNoTracking() on pa.EmployeeId equals e.Id
+            join asset in avatarAssets on e.Id equals asset.OwnerId into assetJoin
+            from asset in assetJoin.DefaultIfEmpty()
+            where pa.TenantId == tenantId
+                && pa.PositionId == positionId
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active
+                && e.EmploymentStatusId == EmploymentStatusIds.Active
+                && e.UserId != Guid.Empty
+            select new ChecklistAssignee(
+                e.Id,
+                e.UserId,
+                ((e.FirstName + " " + e.LastName).Trim()),
+                e.Email,
+                asset == null ? null : asset.FileRecordId))
+            .ToListAsync(ct);
+    }
+
+    private IQueryable<ONEVO.Domain.Features.Storage.EntityAssets.Entities.EntityAsset> EmployeeAvatarAssets(Guid tenantId)
+        => _db.EntityAssets.AsNoTracking().Where(a =>
+            a.TenantId == tenantId &&
+            a.OwnerType == EntityAssetOwnerTypes.Employee &&
+            a.AssetPurpose == UploadPurposeCatalog.EmployeeAvatar &&
+            a.IsPrimary);
 
     public async Task<bool> HasActivePrimaryInLegalEntityAsync(
         Guid tenantId, Guid employeeId, Guid legalEntityId, CancellationToken ct = default)
@@ -95,7 +207,7 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
 
     public async Task<Guid?> TryReservePositionAssignmentAsync(
         Guid tenantId, Guid employeeId, Guid positionId, DateOnly effectiveFrom, Guid createdById,
-        CancellationToken ct = default)
+        Guid? reportsToEmployeeId, CancellationToken ct = default)
     {
         var newId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
@@ -103,9 +215,9 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
         var rowsAffected = await _db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO position_assignments
                 (id, tenant_id, employee_id, position_id, assignment_kind, effective_from,
-                 assignment_status, created_by_id, created_at, is_deleted)
+                 assignment_status, created_by_id, created_at, is_deleted, reports_to_employee_id)
             SELECT {newId}, {tenantId}, {employeeId}, {positionId}, {PositionAssignmentKind.PrimaryEmployment},
-                   {effectiveFrom}, {PositionAssignmentStatus.Planned}, {createdById}, {now}, false
+                   {effectiveFrom}, {PositionAssignmentStatus.Planned}, {createdById}, {now}, false, {reportsToEmployeeId}
             WHERE (
                 SELECT COUNT(*) FROM position_assignments
                 WHERE tenant_id = {tenantId} AND position_id = {positionId}
@@ -116,7 +228,13 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
             )
         ", ct);
 
-        return rowsAffected > 0 ? newId : null;
+        if (rowsAffected > 0)
+        {
+            await _closureRepository.RebuildAsync(tenantId, ct);
+            return newId;
+        }
+
+        return null;
     }
 
     public async Task<bool> ActivatePlannedAsync(Guid tenantId, Guid positionAssignmentId, CancellationToken ct = default)
@@ -128,6 +246,10 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
             WHERE id = {positionAssignmentId} AND tenant_id = {tenantId}
               AND assignment_status = {PositionAssignmentStatus.Planned}
         ", ct);
+
+        if (rowsAffected > 0)
+            await _closureRepository.RebuildAsync(tenantId, ct);
+
         return rowsAffected > 0;
     }
 
@@ -140,12 +262,16 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
             WHERE id = {positionAssignmentId} AND tenant_id = {tenantId}
               AND assignment_status = {PositionAssignmentStatus.Planned}
         ", ct);
+
+        if (rowsAffected > 0)
+            await _closureRepository.RebuildAsync(tenantId, ct);
+
         return rowsAffected > 0;
     }
 
     public async Task<Guid?> TryCreateActiveAssignmentAsync(
         Guid tenantId, Guid employeeId, Guid positionId, DateOnly effectiveFrom, Guid createdById,
-        CancellationToken ct = default)
+        Guid? reportsToEmployeeId, CancellationToken ct = default)
     {
         var newId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
@@ -158,9 +284,9 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
             var rowsAffected = await _db.Database.ExecuteSqlInterpolatedAsync($@"
                 INSERT INTO position_assignments
                     (id, tenant_id, employee_id, position_id, assignment_kind, effective_from,
-                     assignment_status, created_by_id, created_at, is_deleted)
+                     assignment_status, created_by_id, created_at, is_deleted, reports_to_employee_id)
                 SELECT {newId}, {tenantId}, {employeeId}, {positionId}, {PositionAssignmentKind.PrimaryEmployment},
-                       {effectiveFrom}, {PositionAssignmentStatus.Active}, {createdById}, {now}, false
+                       {effectiveFrom}, {PositionAssignmentStatus.Active}, {createdById}, {now}, false, {reportsToEmployeeId}
                 WHERE (
                     SELECT COUNT(*) FROM position_assignments
                     WHERE tenant_id = {tenantId} AND position_id = {positionId}
@@ -171,7 +297,13 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
                 )
             ", ct);
 
-            return rowsAffected > 0 ? newId : null;
+            if (rowsAffected > 0)
+            {
+                await _closureRepository.RebuildAsync(tenantId, ct);
+                return newId;
+            }
+
+            return null;
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
@@ -194,6 +326,10 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
             WHERE id = {positionAssignmentId} AND tenant_id = {tenantId}
               AND assignment_status = {PositionAssignmentStatus.Active}
         ", ct);
+
+        if (rowsAffected > 0)
+            await _closureRepository.RebuildAsync(tenantId, ct);
+
         return rowsAffected > 0;
     }
 
@@ -207,6 +343,21 @@ public class EfPositionAssignmentRepository : IPositionAssignmentRepository
     {
         return await _db.PositionAssignments
             .FirstOrDefaultAsync(pa => pa.TenantId == tenantId && pa.Id == id, ct);
+    }
+
+    public async Task<IReadOnlyList<ONEVO.Domain.Features.CoreHr.Entities.PositionAssignment>> ListHistoryForEmployeeAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default)
+    {
+        return await _db.PositionAssignments
+            .AsNoTracking()
+            .Where(pa =>
+                pa.TenantId == tenantId
+                && pa.EmployeeId == employeeId
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && (pa.AssignmentStatus == PositionAssignmentStatus.Active
+                    || pa.AssignmentStatus == PositionAssignmentStatus.Ended))
+            .OrderBy(pa => pa.EffectiveFrom)
+            .ToListAsync(ct);
     }
 
     public async Task<int> SaveChangesAsync(CancellationToken ct = default)

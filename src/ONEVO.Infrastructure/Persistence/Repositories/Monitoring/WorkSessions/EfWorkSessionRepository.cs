@@ -16,4 +16,20 @@ public class EfWorkSessionRepository : IWorkSessionRepository
 
     public async Task AddAsync(EmployeeWorkSession session, CancellationToken ct)
         => await _db.EmployeeWorkSessions.AddAsync(session, ct);
+
+    public async Task<IReadOnlyList<EmployeeWorkSession>> GetForUserAndDateAsync(
+        Guid tenantId, Guid userId, DateOnly date, CancellationToken ct)
+    {
+        var start = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var end = start.AddDays(1);
+
+        return await _db.EmployeeWorkSessions
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId
+                        && s.UserId == userId
+                        && s.ClockInAt >= start
+                        && s.ClockInAt < end)
+            .OrderBy(s => s.ClockInAt)
+            .ToListAsync(ct);
+    }
 }

@@ -7,6 +7,7 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.ApproveObjectiveChangeRequest;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RejectObjectiveChangeRequest;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Commands.RequestAllocationExtension;
+using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Queries.ListMyObjectiveChangeRequests;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AchieveObjective;
 using ONEVO.Application.Features.WorkManagement.Objectives.Commands.AddObjectiveMember;
@@ -80,7 +81,7 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Edits a milestone. Non-conflicting edits apply immediately; edits that would conflict with the parent's date/hours constraints become a pending approval request unless the caller is the milestone's own creator. Frozen (400) once the milestone is Achieved.</summary>
+    /// <summary>Edits a milestone. Always creates a pending approval request routed to the milestone's Reporting Manager - the head can no longer apply their own edits directly. Frozen (400) once the milestone is Achieved.</summary>
     [HttpPut("{id:guid}")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditObjectiveRequest request, CancellationToken ct)
@@ -241,9 +242,18 @@ public class ObjectivesController : ControllerBase
     /// <summary>Approves a pending change request. Caller must be the request's Reporting Manager.</summary>
     [HttpPost("change-requests/{requestId:guid}/approve")]
     [RequirePermission("projects:access")]
-    public async Task<IActionResult> ApproveChangeRequest(Guid requestId, CancellationToken ct)
+    public async Task<IActionResult> ApproveChangeRequest(
+        Guid requestId,
+        [FromBody] ApproveObjectiveChangeRequestRequest? request,
+        CancellationToken ct)
     {
-        var result = await _mediator.Send(new ApproveObjectiveChangeRequestCommand(requestId), ct);
+        EditObjectiveRequestPayload? approvedEdit = request?.Title is not null
+            && request.StartDate is not null && request.EndDate is not null && request.AllocatedHours is not null
+            ? new EditObjectiveRequestPayload(request.Title, request.Description, request.StartDate.Value, request.EndDate.Value, request.AllocatedHours.Value)
+            : null;
+
+        var result = await _mediator.Send(
+            new ApproveObjectiveChangeRequestCommand(requestId, request?.ApprovedAdditionalHours, approvedEdit), ct);
 
         return result.IsSuccess
             ? NoContent()
@@ -297,7 +307,7 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Every milestone in this project the caller has ever had a project_members row for, any status - the frontend filters by objectiveIsActive/isAchieved/membershipIsActive as needed. Owner and Reporting Manager names are resolved server-side. No [RequirePermission] beyond the module base gate: this endpoint can only ever return the caller's own rows, so an unrelated projectId just yields an empty array, never 403/404.</summary>
+    /// <summary>Every milestone in this project the caller can act on: one they have a direct project_members row for (any status - the frontend filters by objectiveIsActive/isAchieved/membershipIsActive as needed), or one reachable via the cascading-ownership walk from an ancestor's owner/active member (IsEffectiveManagerAsync). Owner and Reporting Manager names are resolved server-side. No [RequirePermission] beyond the module base gate: this endpoint can only ever return the caller's own rows, so an unrelated projectId just yields an empty array, never 403/404.</summary>
     [HttpGet("~/api/v1/work/projects/{projectId:guid}/objectives/mine")]
     [RequirePermission("projects:access")]
     public async Task<IActionResult> GetMine(Guid projectId, CancellationToken ct)

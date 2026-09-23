@@ -62,6 +62,7 @@ public class EnableMfaCommandHandler : IRequestHandler<EnableMfaCommand, Result<
         await _userMfas.AddAsync(new UserMfa
         {
             Id = Guid.NewGuid(),
+            TenantId = _currentUser.TenantId,
             UserId = user.Id,
             MethodType = "totp",
             Secret = encryptedSecret,

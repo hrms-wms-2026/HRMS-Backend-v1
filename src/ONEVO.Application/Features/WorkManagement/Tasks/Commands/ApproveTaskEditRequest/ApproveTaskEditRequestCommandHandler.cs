@@ -3,6 +3,7 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
@@ -29,6 +30,10 @@ public class ApproveTaskEditRequestCommandHandler
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ITaskEditLogRepository _editLogs;
+    private readonly ITaskPercentageLogRepository _percentageLogs;
+    private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ITaskAssignmentRepository _assignments;
 
     public ApproveTaskEditRequestCommandHandler(
         ICurrentUser currentUser,
@@ -38,9 +43,14 @@ public class ApproveTaskEditRequestCommandHandler
         IObjectiveRepository objectives,
         ISprintRepository sprints,
         IObjectiveAllocationSlackCalculator slack,
-        IMilestoneMembershipCoordinator membership,
+                IMilestoneMembershipCoordinator membership,
         INotificationDispatcher notifications,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        ITaskEditLogRepository editLogs,
+        ITaskPercentageLogRepository percentageLogs,
+        ICalendarEventRepository calendarEvents,
+        ITaskAssignmentRepository assignments)
+
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -50,8 +60,13 @@ public class ApproveTaskEditRequestCommandHandler
         _sprints = sprints;
         _slack = slack;
         _membership = membership;
-        _notifications = notifications;
+                _notifications = notifications;
         _unitOfWork = unitOfWork;
+        _editLogs = editLogs;
+        _percentageLogs = percentageLogs;
+        _calendarEvents = calendarEvents;
+        _assignments = assignments;
+
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(
@@ -82,7 +97,7 @@ public class ApproveTaskEditRequestCommandHandler
         if (objective is null)
             return Result<WorkTaskResponse>.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveOwnerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result<WorkTaskResponse>.Forbidden(
                 "Only this milestone's owner can decide this request.");
 
@@ -94,9 +109,45 @@ public class ApproveTaskEditRequestCommandHandler
                     "This task's sprint has been achieved and is now frozen.");
         }
 
-        var payload = JsonSerializer.Deserialize<TaskEditRequestPayload>(pending.PayloadJson)!;
+                var payload = JsonSerializer.Deserialize<TaskEditRequestPayload>(pending.PayloadJson)!;
+
+        var oldValues = new Dictionary<string, object?>();
+        var newValues = new Dictionary<string, object?>();
+        void TrackChange(string field, object? oldValue, object? newValue)
+        {
+            if (Equals(oldValue, newValue)) return;
+            oldValues[field] = oldValue;
+            newValues[field] = newValue;
+        }
+
+        TrackChange("title", task.Title, payload.Title);
+        TrackChange("description", task.Description, payload.Description);
+        TrackChange("priority", task.Priority, payload.Priority);
+        TrackChange("dueDate", task.DueDate, payload.DueDate);
+        TrackChange("estimatedHours", task.EstimatedHours, payload.EstimatedHours);
+        TrackChange("storyPoints", task.StoryPoints, payload.StoryPoints);
+        if (payload.ProgressPercent.HasValue)
+            TrackChange("progressPercent", task.ProgressPercent, payload.ProgressPercent.Value);
+
+        // R3: an approved due-date change must not push a member task outside its active event window.
+        if (payload.DueDate != task.DueDate)
+        {
+            var windows = await _calendarEvents.ListActiveEventWindowsForTaskAsync(tenantId, task.Id, task.ObjectiveId, ct);
+            if (windows.Count > 0)
+            {
+                if (payload.DueDate is null)
+                    return Result<WorkTaskResponse>.Conflict(
+                        $"This task is in active event(s) {string.Join(", ", windows.Select(w => w.Name))}; a due date is required.");
+                var bad = windows.Where(w => payload.DueDate < w.StartDate || payload.DueDate > w.EndDate).ToList();
+                if (bad.Count > 0)
+                    return Result<WorkTaskResponse>.Conflict(
+                        $"Due date {payload.DueDate:yyyy-MM-dd} is outside event window(s): " +
+                        $"{string.Join(", ", bad.Select(w => $"{w.Name} {w.StartDate:yyyy-MM-dd}..{w.EndDate:yyyy-MM-dd}"))}. Widen the event first.");
+            }
+        }
 
         if (payload.EstimatedHours.HasValue && payload.EstimatedHours.Value != task.EstimatedHours)
+
         {
             var availableSlack = await _slack.CalculateAsync(
                 tenantId, objective, excludingTaskId: task.Id, ct: ct);
@@ -108,16 +159,44 @@ public class ApproveTaskEditRequestCommandHandler
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            var now = DateTimeOffset.UtcNow;
+                        var now = DateTimeOffset.UtcNow;
             task.Title = payload.Title;
+
             task.Description = payload.Description;
             task.Priority = payload.Priority;
             task.DueDate = payload.DueDate;
-            task.EstimatedHours = payload.EstimatedHours;
+                        task.EstimatedHours = payload.EstimatedHours;
             task.StoryPoints = payload.StoryPoints;
+
+            if (payload.ProgressPercent.HasValue && payload.ProgressPercent.Value != task.ProgressPercent)
+            {
+                var previousPercent = task.ProgressPercent;
+                task.ProgressPercent = payload.ProgressPercent.Value;
+                await _percentageLogs.AddAsync(new TaskPercentageLog
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
+                    EmployeeId = pending.RequestedByEmployeeId, PreviousPercent = previousPercent,
+                    NewPercent = task.ProgressPercent, Source = TaskPercentageLogSources.ManualEdit,
+                    ClockingSessionId = null, Reason = pending.Reason, ChangedAt = now
+                }, innerCt);
+            }
+
+            if (newValues.Count > 0)
+            {
+                await _editLogs.AddAsync(new TaskEditLog
+                {
+                    Id = Guid.NewGuid(), TenantId = tenantId, TaskId = task.Id,
+                    EmployeeId = pending.RequestedByEmployeeId, Source = TaskEditLogSources.ApprovedRequest,
+                    EditRequestId = pending.Id, OldValuesJson = JsonSerializer.Serialize(oldValues),
+                    NewValuesJson = JsonSerializer.Serialize(newValues), Reason = pending.Reason,
+                    ChangedAt = now
+                }, innerCt);
+            }
+
             task.UpdatedAt = now;
 
             pending.Status = TaskEditRequestStatuses.Approved;
+
             pending.DecidedByEmployeeId = callerEmployeeId.Value;
             pending.DecidedAt = now;
             pending.UpdatedAt = now;
@@ -144,13 +223,16 @@ public class ApproveTaskEditRequestCommandHandler
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
+            var assignments = await _assignments.GetByTaskIdAsync(task.Id, innerCt);
+            var assigneeIds = assignments.Select(a => a.EmployeeId).ToList();
+
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id,
                 task.ObjectiveId,
                 task.ShortId,
                 task.Title,
                 task.Description,
-                task.TaskType,
+                task.CategoryId,
                 task.StatusId,
                 task.Priority,
                 task.StoryPoints,
@@ -158,7 +240,8 @@ public class ApproveTaskEditRequestCommandHandler
                 task.EstimatedHours,
                 task.CompletedHours,
                 task.ProgressPercent,
-                task.SprintId));
+                task.SprintId,
+                assigneeIds));
         }, ct);
     }
 }

@@ -6,19 +6,24 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.OutboxHandlers;
 using ONEVO.Application.Features.CoreHr.Onboarding.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.OnboardingDraft.OutboxHandlers;
+using ONEVO.Application.Features.CoreHr.OnboardingDraft.Services;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.Commands.FinalizeOnboardingDraft;
 using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
 using ONEVO.Application.Features.CoreHr.PositionAssignment.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 using OnboardingDraftEntity = ONEVO.Domain.Features.CoreHr.Entities.OnboardingDraft;
+using IUnitOfWork = ONEVO.Application.Common.RepositoryInterfaces.IUnitOfWork;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.OnboardingDrafts;
 
@@ -36,6 +41,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
     private readonly Mock<IWorkModeRepository> _workModeRepository = new();
     private readonly Mock<ISeatEntitlementService> _seatEntitlementService = new();
     private readonly Mock<IAccessGrantRequestRepository> _accessGrantRequestRepository = new();
+    private readonly Mock<IPermissionRepository> _permissionRepository = new();
     private readonly Mock<IChecklistTemplateRepository> _checklistTemplateRepository = new();
     private readonly Mock<IEmployeeChecklistTaskRepository> _checklistTaskRepository = new();
     private readonly Mock<IInvitationTokenRepository> _invitationTokenRepository = new();
@@ -44,10 +50,12 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
     private readonly Mock<ISecureTokenGenerator> _tokenGenerator = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
     private readonly Mock<IDateTimeProvider> _clock = new();
+    private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _legalEntityId = Guid.NewGuid();
+    private readonly Guid _workModeId = Guid.NewGuid();
 
     public FinalizeOnboardingDraftCommandHandlerTests()
     {
@@ -60,7 +68,8 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
             .Setup(r => r.GetByIdForTenantAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegalEntity { IsActive = true });
 
-        _workModeRepository.Setup(r => r.ExistsActiveAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _workModeRepository.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid tenantId, Guid id, CancellationToken _) => new WorkMode { Id = id, TenantId = tenantId, IsActive = true });
         _employmentTypeRepository.Setup(r => r.GetIdByCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         _employeeRepository
@@ -73,8 +82,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
 
         _positionAssignmentRepository
             .Setup(r => r.TryReservePositionAssignmentAsync(
-                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Guid.NewGuid());
 
         _seatEntitlementService
@@ -84,6 +92,11 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         _accessGrantRequestRepository
             .Setup(r => r.GetPendingByDraftAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((AccessGrantRequest?)null);
+
+        _permissionRepository
+            .Setup(r => r.ListUserIdsWithPermissionCodeAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Guid>());
 
         _userRepository
             .Setup(r => r.GetByTenantAndEmailAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -96,15 +109,23 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
             .ReturnsAsync(new Tenant { Id = _tenantId, Slug = "acme" });
 
         _draftRepository.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+
+        // Passes through to the operation directly (no real DB transaction in a unit test) so
+        // FinalizeImmediatelyAsync's transactional block still executes and can be asserted on.
+        _unitOfWork
+            .Setup(u => u.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<bool>>>(), It.IsAny<CancellationToken>()))
+            .Returns<Func<CancellationToken, Task<bool>>, CancellationToken>((operation, ct) => operation(ct));
     }
 
-    private FinalizeOnboardingDraftCommandHandler CreateHandler() => new(
+    private FinalizeOnboardingDraftCommandHandler CreateHandler() => new(CreateWriteService(), _currentUser.Object);
+
+    private OnboardingDraftWriteService CreateWriteService() => new(
         _draftRepository.Object, _employeeRepository.Object, _userRepository.Object, _userRoleRepository.Object,
         _positionRepository.Object, _positionAssignmentRepository.Object, _legalEntityRepository.Object,
         _departmentRepository.Object, _employmentTypeRepository.Object, _workModeRepository.Object,
-        _seatEntitlementService.Object, _accessGrantRequestRepository.Object, _checklistTemplateRepository.Object,
+        _seatEntitlementService.Object, _accessGrantRequestRepository.Object, _permissionRepository.Object, _checklistTemplateRepository.Object,
         _checklistTaskRepository.Object, _invitationTokenRepository.Object, _tenantRepository.Object, _outboxWriter.Object,
-        _tokenGenerator.Object, _currentUser.Object, _clock.Object);
+        _tokenGenerator.Object, _currentUser.Object, _clock.Object, _unitOfWork.Object);
 
     private OnboardingDraftEntity ValidDraft(
         Guid? id = null, string status = OnboardingDraftStatus.Draft, Guid? positionId = null,
@@ -121,7 +142,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         EmploymentType = "full_time",
         StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
         EmployeeNumber = "EMP-001",
-        WorkModeId = 1,
+        WorkModeId = _workModeId,
         SelectedTemplateId = selectedTemplateId,
         EditedTasksJson = editedTasksJson,
         Status = status,
@@ -298,7 +319,8 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
     {
         var draft = ValidDraft();
         SetupDraft(draft);
-        _workModeRepository.Setup(r => r.ExistsActiveAsync(draft.WorkModeId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _workModeRepository.Setup(r => r.GetByIdAsync(_tenantId, draft.WorkModeId!.Value, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkMode { Id = draft.WorkModeId.Value, TenantId = _tenantId, IsActive = false });
 
         var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
 
@@ -540,6 +562,56 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_AccessTemplateRequiringApproval_ActorHasRolesManage_FinalizesImmediatelyWithApprovedAuditRow()
+    {
+        var positionId = Guid.NewGuid();
+        var draft = ValidDraft(positionId: positionId);
+        SetupDraft(draft);
+        SetupPosition(positionId, departmentId: Guid.NewGuid());
+        var roleId = Guid.NewGuid();
+        var template = new PositionAccessTemplate { Id = Guid.NewGuid(), TenantId = _tenantId, PositionId = positionId, RoleId = roleId, RequiresApproval = true, IsActive = true };
+        _positionRepository
+            .Setup(r => r.GetAccessTemplateByPositionAsync(_tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(template);
+        _permissionRepository
+            .Setup(r => r.UserHasPermissionCodeAsync(_userId, "roles:manage", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        UserRole? addedRole = null;
+        _userRoleRepository.Setup(r => r.AddAsync(It.IsAny<UserRole>(), It.IsAny<CancellationToken>()))
+            .Callback<UserRole, CancellationToken>((r, _) => addedRole = r).Returns(Task.CompletedTask);
+        AccessGrantRequest? addedRequest = null;
+        _accessGrantRequestRepository.Setup(r => r.AddAsync(It.IsAny<AccessGrantRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AccessGrantRequest, CancellationToken>((r, _) => addedRequest = r).Returns(Task.CompletedTask);
+
+        var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.PositionApprovalPending);
+        Assert.True(result.Value.InvitationQueued);
+        Assert.Equal(OnboardingDraftStatus.Finalized, draft.Status);
+
+        Assert.NotNull(addedRole);
+        Assert.Equal(roleId, addedRole!.RoleId);
+        Assert.Equal(positionId, addedRole.SourcePositionId);
+
+        Assert.NotNull(addedRequest);
+        Assert.Equal(AccessGrantActionType.EmployeeOnboarding, addedRequest!.ActionType);
+        Assert.Equal("Approved", addedRequest.ApprovalStatus);
+        Assert.Equal(_userId, addedRequest.RequestedByUserId);
+        Assert.Equal(_userId, addedRequest.DecidedByUserId);
+        Assert.NotNull(addedRequest.DecidedAt);
+        Assert.Equal("Self-authorized: requester holds roles:manage.", addedRequest.DecisionNote);
+        Assert.Equal(draft.Id, addedRequest.OnboardingDraftId);
+
+        _outboxWriter.Verify(w => w.EnqueueAsync(
+            OutboxMessageTypes.PositionChangeApprovalRequestEmail,
+            It.IsAny<PositionChangeApprovalRequestEmailPayload>(),
+            It.IsAny<Guid?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Handle_RepeatedFinalizeWhilePendingApproval_DoesNotDuplicateAccessGrantRequest()
     {
         var positionId = Guid.NewGuid();
@@ -735,8 +807,7 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
             .ReturnsAsync(template);
         _positionAssignmentRepository
             .Setup(r => r.TryReservePositionAssignmentAsync(
-                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid?)null);
 
         var result = await CreateHandler().Handle(new FinalizeOnboardingDraftCommand(draft.Id), CancellationToken.None);
@@ -744,7 +815,12 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
         Assert.Equal("This position has reached its capacity.", result.Error);
-        _draftRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        // The user+employee are flushed once (inside the transaction) before the raw-SQL
+        // capacity check runs - the FK from position_assignments to employees requires that
+        // row to exist in the database first. A real Postgres transaction rolls this back when
+        // the capacity check fails; a mocked repository has no such rollback, so from its
+        // perspective SaveChangesAsync was called exactly once, not zero times.
+        _draftRepository.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -754,6 +830,27 @@ public sealed class FinalizeOnboardingDraftCommandHandlerTests
             .GetConstructors().Single().GetParameters();
 
         Assert.DoesNotContain(ctorParams, p => p.ParameterType.Name.Contains("TenantOwner", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_Passes_Draft_ReportsToEmployeeId_Into_Assignment_Reservation()
+    {
+        var chosenManagerId = Guid.NewGuid();
+        var positionId = Guid.NewGuid();
+        var draft = ValidDraft(positionId: positionId);
+        draft.ReportsToEmployeeId = chosenManagerId;
+        SetupDraft(draft);
+        SetupPosition(positionId, departmentId: Guid.NewGuid());
+        var template = new PositionAccessTemplate { Id = Guid.NewGuid(), TenantId = _tenantId, PositionId = positionId, RoleId = Guid.NewGuid(), RequiresApproval = false, IsActive = true };
+        _positionRepository
+            .Setup(r => r.GetAccessTemplateByPositionAsync(_tenantId, positionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(template);
+
+        await CreateWriteService().FinalizeAsync(_tenantId, _userId, draft.Id, CancellationToken.None);
+
+        _positionAssignmentRepository.Verify(a => a.TryReservePositionAssignmentAsync(
+            _tenantId, It.IsAny<Guid>(), positionId, draft.StartDate, _userId, chosenManagerId, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     private void SetupPosition(Guid positionId, Guid departmentId)

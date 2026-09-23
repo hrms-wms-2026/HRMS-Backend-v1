@@ -74,8 +74,49 @@ public sealed class ApproveObjectiveChangeRequestCommandHandlerIntegrationTests 
             new TenantContextAccessor());
     }
 
+        [Fact]
+    public async Task Handle_ExtendAllocation_WithEditedAmountPersistsEditedAllocation()
+    {
+        await using var db = CreateContext();
+        await SeedExtendAllocationScenarioAsync(db);
+
+        var objectives = new EfObjectiveRepository(db);
+        var changeRequests = new EfObjectiveChangeRequestRepository(db);
+        var tasks = new Mock<IWorkTaskRepository>();
+        tasks.Setup(x => x.GetActiveAllocationSumByObjectiveIdAsync(
+                TenantId, ParentObjectiveId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0m);
+
+        var currentUser = new Mock<ICurrentUser>();
+        currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
+        currentUser.SetupGet(x => x.UserId).Returns(ApproverUserId);
+
+        var identity = new Mock<ICallerIdentityResolver>();
+        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, ApproverUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ApproverEmployeeId);
+
+        var membership = new Mock<IMilestoneMembershipCoordinator>();
+        membership.Setup(x => x.GetActiveAssigneeAsync(TenantId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ONEVO.Domain.Features.CoreHr.Entities.Employee?)null);
+
+        var handler = new ApproveObjectiveChangeRequestCommandHandler(
+            currentUser.Object, identity.Object, changeRequests, objectives, membership.Object,
+            new ObjectiveAllocationSlackCalculator(objectives, tasks.Object),
+            new Mock<INotificationDispatcher>().Object, new UnitOfWork(db));
+
+        var result = await handler.Handle(
+            new ApproveObjectiveChangeRequestCommand(RequestId, ApprovedAdditionalHours: 12m),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var updatedChild = await db.Objectives.AsNoTracking().SingleAsync(o => o.Id == ChildObjectiveId);
+        Assert.Equal(ChildAllocatedHours + 12m, updatedChild.AllocatedHours);
+    }
+
     [Fact]
     public async Task Handle_ExtendAllocation_DoesNotThrowDuplicateTrackingException()
+
     {
         await using var db = CreateContext();
         await SeedExtendAllocationScenarioAsync(db);

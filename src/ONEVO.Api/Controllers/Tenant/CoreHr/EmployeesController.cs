@@ -3,21 +3,24 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ONEVO.Api.Contracts.CoreHr.Employees;
+using ONEVO.Api.Contracts.Storage;
 using ONEVO.Api.Filters;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ChangeEmployeePosition;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.AddEmergencyContact;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.DeleteEmergencyContact;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.LinkMyAvatar;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.ResendEmployeeInvitation;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.RevokeEmployeeInvitation;
-using ONEVO.Application.Features.CoreHr.Employee.Commands.SetMyAvatar;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateBankDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateDependent;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmergencyContact;
+using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmployeeJobDetails;
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
@@ -83,6 +86,17 @@ public class EmployeesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Job Journey: primary-employment position history for one employee, oldest first.
+    /// Planned assignments are excluded. ApprovedByName is set only when an approved access-grant
+    /// request exists for that assignment.</summary>
+    [HttpGet("{id:guid}/position-history")]
+    [RequirePermission("employees:read")]
+    public async Task<IActionResult> GetPositionHistory(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeePositionHistoryQuery(id), ct);
+        return result.IsSuccess ? Ok(result.Value) : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Reassign an employee's primary position. Minimal capacity-checked reassignment -
     /// not an approval-routed workflow. See ChangeEmployeePositionCommandHandler.</summary>
     [HttpPost("{id:guid}/change-position")]
@@ -91,7 +105,23 @@ public class EmployeesController : ControllerBase
         Guid id, [FromBody] ChangePositionRequest request, CancellationToken ct = default)
     {
         var result = await _mediator.Send(
-            new ChangeEmployeePositionCommand(id, request.PositionId, request.EffectiveFrom), ct);
+            new ChangeEmployeePositionCommand(id, request.PositionId, request.EffectiveFrom, request.ChangeReason, request.ReportsToEmployeeId), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Update an existing employee's Employee Number, Employment Type, and Work Mode -
+    /// the three Job & Organizational Details fields with no other dedicated update flow.
+    /// Position/reporting-manager changes stay on change-position.</summary>
+    [HttpPut("{id:guid}/job-details")]
+    [RequirePermission("employees:write")]
+    public async Task<IActionResult> UpdateJobDetails(
+        Guid id, [FromBody] UpdateEmployeeJobDetailsRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new UpdateEmployeeJobDetailsCommand(id, request.EmployeeNumber, request.EmploymentTypeCode, request.WorkModeId), ct);
 
         return result.IsSuccess
             ? NoContent()
@@ -137,6 +167,16 @@ public class EmployeesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
+    /// <summary>Links a pending employee_avatar upload as the caller's current avatar.</summary>
+    [HttpPut("me/avatar")]
+    public async Task<IActionResult> LinkMyAvatar([FromBody] LinkFileRequest request, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new LinkMyAvatarCommand(request.FileId), ct);
+        return result.IsSuccess
+            ? Ok(new { avatarFileId = result.Value })
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
     /// <summary>Update the caller's own Personal Information. Optimistic concurrency: Version must
     /// match the xmin token returned by GetMyProfile, or this returns 409.</summary>
     [HttpPut("me/personal-information")]
@@ -153,19 +193,6 @@ public class EmployeesController : ControllerBase
 
         return result.IsSuccess
             ? NoContent()
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
-    }
-
-    /// <summary>Upload/replace the caller's own avatar photo.</summary>
-    [HttpPut("me/avatar")]
-    public async Task<IActionResult> SetMyAvatar(IFormFile file, CancellationToken ct = default)
-    {
-        await using var stream = file.OpenReadStream();
-        var result = await _mediator.Send(
-            new SetMyAvatarCommand(file.FileName, file.ContentType, stream), ct);
-
-        return result.IsSuccess
-            ? Ok(new { avatarFileId = result.Value })
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

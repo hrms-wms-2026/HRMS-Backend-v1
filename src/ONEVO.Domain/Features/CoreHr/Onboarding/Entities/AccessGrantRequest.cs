@@ -26,6 +26,8 @@ public class AccessGrantRequest : ITenantOwnedEntity
     public DateTimeOffset? DecidedAt { get; set; }
     public DateTimeOffset EffectiveFrom { get; set; }
     public DateTimeOffset? EffectiveTo { get; set; }
+    public Guid? ReservedPositionAssignmentId { get; set; }
+    public string? ChangeReason { get; set; }
     public string? DecisionNote { get; set; }
 }
 
@@ -33,4 +35,6 @@ public static class AccessGrantActionType
 {
     // ActionType is character varying(30); this is 26 characters.
     public const string EmployeeOnboarding = "onboarding_position_access";
+    // 22 characters.
+    public const string PositionChange = "position_change_access";
 }

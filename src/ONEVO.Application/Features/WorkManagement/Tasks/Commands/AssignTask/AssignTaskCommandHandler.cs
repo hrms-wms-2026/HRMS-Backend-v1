@@ -54,7 +54,7 @@ public class AssignTaskCommandHandler : IRequestHandler<AssignTaskCommand, Resul
         if (objective is null || !objective.IsActive)
             return Result.NotFound("Objective not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, objective.Id, callerEmployeeId.Value, ct))
             return Result.Forbidden("Only this milestone's owner can assign tasks.");
 
         var assignee = await _membership.GetActiveAssigneeAsync(tenantId, request.EmployeeId, ct);

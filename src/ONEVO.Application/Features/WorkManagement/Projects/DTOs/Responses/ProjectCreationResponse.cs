@@ -27,4 +27,5 @@ public sealed record ProjectCreationResponse(
     ReleaseReminderSummaryDto ReleaseReminder,
     IReadOnlyList<LabelSummaryDto> Labels,
     ProjectMembershipSummaryDto CreatorMembership,
-    ProjectLogoSummaryDto? Logo);
+    ProjectLogoSummaryDto? Logo,
+    ProjectLogoSummaryDto? Banner);

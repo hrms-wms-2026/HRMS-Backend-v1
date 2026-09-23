@@ -25,6 +25,7 @@ public class ManagementCoverageRecord : ITenantOwnedEntity
     public string Source { get; set; } = SourceReportingStructure;
     public bool IsLocked { get; set; } = true;
     public string Status { get; set; } = StatusActive;
+    public Guid? ResponsibleEmployeeId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
 }

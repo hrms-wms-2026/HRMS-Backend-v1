@@ -20,6 +20,7 @@ public class IngestAppUsageSnapshotsCommandHandler
     private readonly ITrayCurrentDevice _device;
     private readonly ITenantRepository _tenants;
     private readonly ITenantContextSwitcher _tenantSwitcher;
+    private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
     private readonly IDateTimeProvider _clock;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<IngestAppUsageSnapshotsCommandHandler> _logger;
@@ -30,6 +31,7 @@ public class IngestAppUsageSnapshotsCommandHandler
         ITrayCurrentDevice device,
         ITenantRepository tenants,
         ITenantContextSwitcher tenantSwitcher,
+        ITrayEmployeeIdentityResolver employeeIdentity,
         IDateTimeProvider clock,
         IUnitOfWork unitOfWork,
         ILogger<IngestAppUsageSnapshotsCommandHandler> logger)
@@ -39,6 +41,7 @@ public class IngestAppUsageSnapshotsCommandHandler
         _device = device;
         _tenants = tenants;
         _tenantSwitcher = tenantSwitcher;
+        _employeeIdentity = employeeIdentity;
         _clock = clock;
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -67,22 +70,25 @@ public class IngestAppUsageSnapshotsCommandHandler
             cancellationToken);
 
         var tenantId = _device.TenantId;
-        // Phase 1: tray JWT binds to UserId; EmployeeId column stores that identity
-        // until CoreHR employee master is always present for activated devices.
-        var employeeId = _device.UserId;
+        var userId = _device.UserId;
         var agentDeviceId = _device.DeviceRegistrationId;
         var now = _clock.UtcNow;
 
         var enabled = await _toggleResolver.IsEnabledAsync(
-            tenantId, employeeId, MonitoringCapability.ApplicationTracking, cancellationToken);
+            tenantId, userId, MonitoringCapability.ApplicationTracking, cancellationToken);
 
         if (!enabled)
         {
             _logger.LogInformation(
-                "App-usage snapshot batch rejected: monitoring disabled. TenantId={TenantId} DeviceId={DeviceId} EmployeeId={EmployeeId} Count={Count}",
-                tenantId, agentDeviceId, employeeId, request.Snapshots.Count);
+                "App-usage snapshot batch rejected: monitoring disabled. TenantId={TenantId} DeviceId={DeviceId} UserId={UserId} Count={Count}",
+                tenantId, agentDeviceId, userId, request.Snapshots.Count);
             return Result.Failure(MonitoringErrors.AppTrackingDisabled, 403);
         }
+
+        // Resolves the real CoreHR Employee.Id to store, falling back to the raw UserId when no
+        // Employee row exists yet - see ITrayEmployeeIdentityResolver's own doc comment.
+        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            tenantId, userId, _device.LegalEntityId, cancellationToken);
 
         foreach (var item in request.Snapshots)
         {

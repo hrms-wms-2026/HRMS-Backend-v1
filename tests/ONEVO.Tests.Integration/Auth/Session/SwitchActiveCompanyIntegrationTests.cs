@@ -6,6 +6,7 @@ using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.OrgStructure.Entities;
+using ONEVO.Domain.Lookups;
 using ONEVO.Infrastructure.ExternalServices.Messaging;
 using ONEVO.Infrastructure.Identity.CurrentUser;
 using ONEVO.Infrastructure.Identity.Tenancy;
@@ -14,8 +15,8 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.Auth.Login;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
+using ONEVO.Infrastructure.Persistence.Repositories.OrgStructure;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
@@ -28,11 +29,6 @@ namespace ONEVO.Tests.Integration.Auth.ActiveCompany;
 /// </summary>
 public sealed class SwitchActiveCompanyIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_switch_active_company_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
     private string _connectionString = string.Empty;
@@ -46,12 +42,9 @@ public sealed class SwitchActiveCompanyIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         _tenantId = Guid.NewGuid();
         _userId = Guid.NewGuid();
@@ -87,7 +80,7 @@ public sealed class SwitchActiveCompanyIntegrationTests : IAsyncLifetime
             LastName = "User",
             IsActive = true,
         });
-        db.WorkModes.Add(new ONEVO.Domain.Lookups.WorkMode { Id = 1, Code = "on_site", Label = "On-Site", IsActive = true });
+        db.EmploymentStatuses.Add(new EmploymentStatus { Id = 1, Code = "active", Label = "Active" });
         db.Employees.AddRange(
             new EmployeeEntity
             {
@@ -166,25 +159,27 @@ public sealed class SwitchActiveCompanyIntegrationTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task SwitchActiveCompany_ChangesEffectivePermissionsOnNextRequest()
     {
         await using var db = CreateContext(_tenantId, "switch-company");
-        var permissions = new EfAuthRepository(db);
+        var permissions = new EfPermissionRepository(db);
+        var sessions = new EfSessionRepository(db);
         var now = DateTimeOffset.UtcNow;
 
         var before = await permissions.ListRolePermissionCodesWithModulesAsync(_userId, now, _legalEntityAId);
         before.Select(p => p.Code).Should().Equal("p3-switch-a:read");
 
         var handler = new SwitchActiveCompanyCommandHandler(
-            permissions,
+            sessions,
             new EfEmployeeRepository(db),
+            new EfLegalEntityRepository(db),
             new UnitOfWork(db),
             new StubCurrentUser(_tenantId, _userId, _sessionId));
 
-        var result = await handler.Handle(new SwitchActiveCompanyCommand(_employeeBId), CancellationToken.None);
+        var result = await handler.Handle(new SwitchActiveCompanyCommand(_legalEntityBId), CancellationToken.None);
         result.IsSuccess.Should().BeTrue();
 
         var session = await db.Sessions.AsNoTracking().SingleAsync(s => s.Id == _sessionId);

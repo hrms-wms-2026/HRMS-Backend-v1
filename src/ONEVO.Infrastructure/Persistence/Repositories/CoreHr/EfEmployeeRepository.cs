@@ -1,8 +1,18 @@
 using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Common.Helpers;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Models;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.Leave.Request.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+
+using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
+using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
+using ONEVO.Domain.Features.TimeAttendance.Entities;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
 
 namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
@@ -10,11 +20,47 @@ namespace ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 public class EfEmployeeRepository : IEmployeeRepository
 {
     private readonly ApplicationDbContext _db;
+    private readonly IAttendanceReadRepository? _attendance;
+    private readonly ILeaveRequestReadRepository? _leaveRequests;
+    private readonly IMonitoringToggleResolver? _toggles;
+    private readonly INotificationRepository? _notifications;
+    private readonly ICheckInRepository? _checkIns;
+    private readonly IExpectedWorkAreaResolver? _expectedWorkAreas;
+    private readonly IEmployeeWorkLocationRepository? _workLocations;
 
-    public EfEmployeeRepository(ApplicationDbContext db)
+    public EfEmployeeRepository(
+        ApplicationDbContext db,
+        IAttendanceReadRepository? attendance = null,
+        ILeaveRequestReadRepository? leaveRequests = null,
+        IMonitoringToggleResolver? toggles = null,
+        INotificationRepository? notifications = null,
+        ICheckInRepository? checkIns = null,
+        IExpectedWorkAreaResolver? expectedWorkAreas = null,
+        IEmployeeWorkLocationRepository? workLocations = null)
     {
         _db = db;
+        _attendance = attendance;
+        _leaveRequests = leaveRequests;
+        _toggles = toggles;
+        _notifications = notifications;
+        _checkIns = checkIns;
+        _expectedWorkAreas = expectedWorkAreas;
+        _workLocations = workLocations;
     }
+
+    /// <summary>A LongIdleAlert notification is only treated as "still relevant" within this
+    /// window - mirrors WellnessRuleEvaluatorJob's own 1-hour long-idle cooldown, so an alert from
+    /// earlier in the day doesn't keep badging the employee hours after they resumed activity.</summary>
+    private static readonly TimeSpan IdleAlertLookback = TimeSpan.FromHours(1);
+
+    /// <summary>Mirrors LocationRuleEvaluatorJob's own 6-hour alert cooldown, so a stale alert from
+    /// much earlier doesn't keep badging the employee after they returned to range.</summary>
+    private static readonly TimeSpan OutsideWorkLocationAlertLookback = TimeSpan.FromHours(6);
+
+    /// <summary>Check-in lookups use this window when deciding whether to show a camera-skip or
+    /// outside-work-location warning - a generous superset of any single work day's local-timezone
+    /// boundary, not a "recency" signal like IdleAlertLookback above.</summary>
+    private static readonly TimeSpan CheckInLookback = TimeSpan.FromHours(24);
 
     /// <summary>
     /// Proven by EmployeesListIntegrationTests against real PostgreSQL (the EF InMemory
@@ -34,9 +80,10 @@ public class EfEmployeeRepository : IEmployeeRepository
         Guid tenantId,
         EmployeeVisibilityScope scope,
         EmployeeListFilter filter,
-        int page,
+                int page,
         int pageSize,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        EmployeeListAttendanceOptions? attendanceOptions = null)
     {
         var activePrimaryAssignments = _db.PositionAssignments.AsNoTracking()
             .Where(pa => pa.TenantId == tenantId
@@ -67,7 +114,15 @@ public class EfEmployeeRepository : IEmployeeRepository
             from manager in managerJoin.DefaultIfEmpty()
             select new { e, dept, legalEntity, empType, empStatus, position, manager };
 
-        if (!scope.CanViewAllTenantEmployees)
+        if (filter.RestrictToEmployeeIds is not null)
+        {
+            // Authoritative visible-id set from IEmployeeAuthorityResolver.ResolveVisibilityAsync -
+            // takes precedence over the legacy scope filter below (an empty set is a valid,
+            // deliberate "nothing visible" result, not "unrestricted").
+            var restrictToEmployeeIds = filter.RestrictToEmployeeIds;
+            joined = joined.Where(row => restrictToEmployeeIds.Contains(row.e.Id));
+        }
+        else if (!scope.CanViewAllTenantEmployees)
         {
             var ownEmployeeId = scope.OwnEmployeeId;
             var coveredPositionIds = scope.CoveredPositionIds;
@@ -103,6 +158,187 @@ public class EfEmployeeRepository : IEmployeeRepository
 
         var totalCount = await joined.CountAsync(ct);
 
+        if (attendanceOptions is not null)
+        {
+            // Attendance-sensitive ordering must happen over the complete filtered result before
+            // Skip/Take. All attendance, break, and approved-leave reads are batched; there is
+            // intentionally no per-employee Today-state call.
+            var rows = await joined.ToListAsync(ct);
+            var scheduleByEmployeeId = rows
+                .GroupBy(row => row.e.Id)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First().legalEntity is { } entity
+                        ? AttendanceScheduleResolver.Resolve(entity, attendanceOptions.UtcNow)
+                        : null);
+
+            var resolutions = scheduleByEmployeeId.Values
+                .Where(resolution => resolution is not null)
+                .Select(resolution => resolution!)
+                .ToList();
+            var employeeIds = scheduleByEmployeeId.Keys.ToArray();
+            var attendanceRecords = new List<AttendanceRecord>();
+            var approvedLeaveRequests = new List<ONEVO.Domain.Features.Leave.Request.Entities.LeaveRequest>();
+            var breakRecords = new List<BreakRecord>();
+            if (resolutions.Count != 0)
+            {
+                var minWorkDate = resolutions.Min(resolution => resolution.WorkDate);
+                var maxWorkDate = resolutions.Max(resolution => resolution.WorkDate);
+                var leaveFromStart = new DateTimeOffset(minWorkDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+                var leaveToExclusive = new DateTimeOffset(maxWorkDate.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+                attendanceRecords = await _db.AttendanceRecords.AsNoTracking()
+                    .Where(record => record.TenantId == tenantId
+                        && employeeIds.Contains(record.EmployeeId)
+                        && record.Date >= minWorkDate
+                        && record.Date <= maxWorkDate)
+                    .ToListAsync(ct);
+                approvedLeaveRequests = _leaveRequests is not null
+                    ? (await _leaveRequests.ListApprovedCoveringAsync(
+                        tenantId, employeeIds, minWorkDate, maxWorkDate, ct)).ToList()
+                    : await _db.LeaveRequests.AsNoTracking()
+                        .Where(request => request.TenantId == tenantId
+                            && employeeIds.Contains(request.EmployeeId)
+                            && request.Status == ONEVO.Domain.Features.Leave.Common.LeaveRequestStatuses.Approved
+                            && request.StartAt < leaveToExclusive
+                            && request.EndAt > leaveFromStart)
+                        .ToListAsync(ct);
+
+                var localWindows = resolutions
+                    .Select(resolution => AttendanceTodayStateService.GetLocalDayWindow(
+                        resolution.WorkDate, resolution.TimeZone))
+                    .ToList();
+                var minWindowStart = localWindows.Min(window => window.Start);
+                var maxWindowEnd = localWindows.Max(window => window.End);
+                breakRecords = _attendance is not null
+                    ? (await _attendance.ListBreaksForEmployeesAsync(
+                        tenantId, employeeIds, minWindowStart, maxWindowEnd, ct)).ToList()
+                    : await _db.BreakRecords.AsNoTracking()
+                        .Where(record => record.TenantId == tenantId
+                            && employeeIds.Contains(record.EmployeeId)
+                            && record.BreakStart < maxWindowEnd
+                            && (record.BreakEnd == null || record.BreakEnd > minWindowStart))
+                        .ToListAsync(ct);
+            }
+            var attendanceByEmployeeAndDate = attendanceRecords
+                .GroupBy(record => (record.EmployeeId, record.Date))
+                .ToDictionary(group => group.Key, group => group.First());
+            var leavesByEmployee = approvedLeaveRequests
+                .GroupBy(request => request.EmployeeId)
+                .ToDictionary(group => group.Key, group => group.ToArray());
+            var breaksByEmployee = breakRecords
+                .GroupBy(record => record.EmployeeId)
+                .ToDictionary(group => group.Key, group => (IReadOnlyList<BreakRecord>)group.ToArray());
+
+            var pagedRows = rows
+                .Select(row =>
+                {
+                    scheduleByEmployeeId.TryGetValue(row.e.Id, out var resolution);
+                    var record = resolution is not null
+                        && attendanceByEmployeeAndDate.TryGetValue((row.e.Id, resolution.WorkDate), out var matchingRecord)
+                            ? matchingRecord
+                            : null;
+                    var hasClockedInToday = record?.ActualStart is not null;
+                    var isActive = string.Equals(
+                        row.empStatus?.Code, "active", StringComparison.OrdinalIgnoreCase);
+                    var schedule = resolution?.Schedule ?? new AttendanceSchedule("not_configured", false, null, null, null);
+                    var hasApprovedLeave = resolution is not null
+                        && leavesByEmployee.TryGetValue(row.e.Id, out var employeeLeaves)
+                        && employeeLeaves.Any(request => DateOnly.FromDateTime(request.StartAt.UtcDateTime) <= resolution.WorkDate
+                            && DateOnly.FromDateTime(request.EndAt.UtcDateTime) >= resolution.WorkDate);
+                    breaksByEmployee.TryGetValue(row.e.Id, out var employeeBreaks);
+                    var breakUsedMinutes = resolution is not null && employeeBreaks is not null
+                        ? AttendanceTodayStateService.CalculateBreakUsage(
+                            employeeBreaks,
+                            AttendanceTodayStateService.GetLocalDayWindow(
+                                resolution.WorkDate, resolution.TimeZone),
+                            resolution.LocalNow)
+                        : 0;
+                    var hasOpenBreak = employeeBreaks?.Any(breakRecord => breakRecord.BreakEnd is null) ?? false;
+                    var status = resolution is null
+                        ? null
+                        : AttendanceDayStatusResolver.Resolve(
+                            schedule,
+                            "configured",
+                            record,
+                            hasApprovedLeave,
+                            hasOpenBreak,
+                            row.legalEntity?.BreakDurationMinutes,
+                            breakUsedMinutes,
+                            resolution.LocalNow,
+                            resolution.LocalNow);
+                    var attendanceSummary = resolution is null || !isActive
+                        ? null
+                        : new EmployeeListAttendanceSummaryResponse(
+                            status!.AttentionType == "not_clocked_in",
+                            status.ShouldHaveClockedIn,
+                            hasClockedInToday,
+                            resolution.WorkDate,
+                            resolution.Timezone,
+                            status.ShouldHaveClockedIn ? resolution.Schedule.Start?.ToString("HH:mm") : null,
+                            status.AttentionType == "not_clocked_in" ? status.AttentionLabel : null,
+                            status.Status,
+                            status.StatusLabel,
+                            status.AttentionType,
+                            status.AttentionSeverity,
+                            status.AttentionLabel,
+                            breakUsedMinutes,
+                            row.legalEntity?.BreakDurationMinutes,
+                            status.BreakOverageMinutes,
+                            status.IsOverBreakAllowance);
+
+                    return new
+                    {
+                        Row = row,
+                        AttendanceSummary = attendanceSummary,
+                        HasClockedInToday = hasClockedInToday,
+                    };
+                })
+                .OrderByDescending(row => GetAttentionPriority(row.AttendanceSummary?.AttentionType))
+                .ThenBy(row => row.Row.e.LastName)
+                .ThenBy(row => row.Row.e.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+            // Phase A monitoring warnings (idle-too-long, camera-verification-skipped): deliberately
+            // scoped to just this page rather than the full filtered set above, to avoid an
+            // O(tenant-size) toggle-resolution fan-out on every list request. That means a row with
+            // one of these warnings does not get bumped into the higher attention-priority sort tier
+            // it would otherwise earn - an accepted Phase A trade-off, not a bug.
+            var monitoringWarnings = await ResolveMonitoringWarningOverridesAsync(
+                tenantId,
+                pagedRows
+                    .Where(row => row.AttendanceSummary is not null)
+                    .Select(row => new PagedEmployeeMonitoringRow(
+                        row.Row.e, row.Row.legalEntity, row.HasClockedInToday, row.AttendanceSummary!))
+                    .ToList(),
+                attendanceOptions.UtcNow,
+                ct);
+
+            var orderedRows = pagedRows
+                .Select(row => new EmployeeListItemResponse(
+                    row.Row.e.Id,
+                    row.Row.e.EmployeeNumber,
+                    row.Row.e.FirstName + " " + row.Row.e.LastName,
+                    row.Row.e.Email,
+                    row.Row.dept != null ? row.Row.dept.Id : (Guid?)null,
+                    row.Row.dept != null ? row.Row.dept.Name : null,
+                    row.Row.position != null ? row.Row.position.Id : (Guid?)null,
+                    row.Row.position != null ? row.Row.position.Name : null,
+                    row.Row.legalEntity != null ? row.Row.legalEntity.Id : (Guid?)null,
+                    row.Row.legalEntity != null ? row.Row.legalEntity.Name : null,
+                    row.Row.empType != null ? row.Row.empType.Label : row.Row.e.EmploymentTypeId.ToString(),
+                    row.Row.empStatus != null ? row.Row.empStatus.Code : "active",
+                    row.Row.manager != null ? row.Row.manager.Id : (Guid?)null,
+                    row.Row.manager != null ? row.Row.manager.FirstName + " " + row.Row.manager.LastName : null,
+                    null,
+                    null,
+                    monitoringWarnings.TryGetValue(row.Row.e.Id, out var overridden) ? overridden : row.AttendanceSummary))
+                .ToList();
+
+            return (orderedRows, totalCount);
+        }
+
         var items = await joined
             .OrderBy(row => row.e.LastName).ThenBy(row => row.e.Id)
             .Skip((page - 1) * pageSize)
@@ -121,10 +357,252 @@ public class EfEmployeeRepository : IEmployeeRepository
                 row.empType != null ? row.empType.Label : row.e.EmploymentTypeId.ToString(),
                 row.empStatus != null ? row.empStatus.Code : "active",
                 row.manager != null ? row.manager.Id : (Guid?)null,
-                row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null))
+                row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null,
+                null,
+                null,
+                null,
+                null))
             .ToListAsync(ct);
 
-        return (items, totalCount);
+                return (items, totalCount);
+    }
+
+    private static int GetAttentionPriority(string? attentionType)
+        => attentionType switch
+        {
+            "not_clocked_in" => 7,
+            "over_break" => 6,
+            "worked_during_time_off" => 5,
+            "worked_on_non_working_day" => 4,
+            "outside_work_location" => 3,
+            "camera_verification_skipped" => 2,
+            "idle_too_long" => 1,
+            _ => 0
+        };
+
+    private readonly record struct PagedEmployeeMonitoringRow(
+        EmployeeEntity Employee,
+        ONEVO.Domain.Features.OrgStructure.Entities.LegalEntity? LegalEntity,
+        bool HasClockedInToday,
+        EmployeeListAttendanceSummaryResponse AttendanceSummary)
+    {
+        public Guid EmployeeId => Employee.Id;
+        public Guid UserId => Employee.UserId;
+    }
+
+    /// <summary>
+    /// Layers the outside-work-location, idle-too-long and camera-verification-skipped monitoring
+    /// warnings onto rows that have no higher-priority attendance warning already (AttentionType is
+    /// null), in that priority order (matches GetAttentionPriority). Monitoring-only: this never
+    /// blocks or locks anything, it only ever adds a warning badge, matching the same
+    /// attentionType/attentionLabel/attentionSeverity fields already used for over-break/not-clocked-in.
+    /// </summary>
+    private async Task<Dictionary<Guid, EmployeeListAttendanceSummaryResponse>> ResolveMonitoringWarningOverridesAsync(
+        Guid tenantId, IReadOnlyList<PagedEmployeeMonitoringRow> pagedRows, DateTimeOffset now, CancellationToken ct)
+    {
+        var overrides = new Dictionary<Guid, EmployeeListAttendanceSummaryResponse>();
+        if (_notifications is null || _toggles is null || _checkIns is null)
+            return overrides;
+
+        var candidates = pagedRows.Where(row => row.AttendanceSummary.AttentionType is null).ToList();
+        if (candidates.Count == 0)
+            return overrides;
+
+        var candidateUserIds = candidates.Select(row => row.UserId).Distinct().ToArray();
+
+        var idleAlertUserIds = await _notifications.GetEmployeeIdsWithRecentAlertAsync(
+            tenantId, candidateUserIds, NotificationType.LongIdleAlert, now - IdleAlertLookback, ct);
+
+        var outsideLocationAlertUserIds = await _notifications.GetEmployeeIdsWithRecentAlertAsync(
+            tenantId, candidateUserIds, NotificationType.OutsideWorkLocationAlert, now - OutsideWorkLocationAlertLookback, ct);
+
+        var clockedInCandidates = candidates.Where(row => row.HasClockedInToday).ToList();
+        var checkInsByUserId = new Dictionary<Guid, List<Domain.Features.Monitoring.CheckIn.Entities.EmployeeCheckIn>>();
+        if (clockedInCandidates.Count > 0)
+        {
+            var checkIns = await _checkIns.ListForUsersInRangeAsync(
+                tenantId, clockedInCandidates.Select(row => row.UserId).Distinct().ToArray(), now - CheckInLookback, now, ct);
+            checkInsByUserId = checkIns
+                .GroupBy(checkIn => checkIn.UserId)
+                .ToDictionary(group => group.Key, group => group.ToList());
+        }
+
+        var workLocationsByEmployeeId = _workLocations is not null
+            ? await _workLocations.ListByEmployeeIdsAsync(
+                tenantId, clockedInCandidates.Select(row => row.EmployeeId).Distinct().ToArray(), ct)
+            : new Dictionary<Guid, Domain.Features.TimeAttendance.Entities.EmployeeWorkLocation>();
+
+        foreach (var row in candidates)
+        {
+            if (idleAlertUserIds.Contains(row.UserId))
+            {
+                overrides[row.EmployeeId] = row.AttendanceSummary with
+                {
+                    AttentionType = "idle_too_long",
+                    AttentionSeverity = "warning",
+                    AttentionLabel = "Idle without activity for an extended period during the shift",
+                };
+                continue;
+            }
+
+            if (outsideLocationAlertUserIds.Contains(row.UserId))
+            {
+                overrides[row.EmployeeId] = row.AttendanceSummary with
+                {
+                    AttentionType = "outside_work_location",
+                    AttentionSeverity = "warning",
+                    AttentionLabel = "Moved outside the approved work location while clocked in",
+                };
+                continue;
+            }
+
+            checkInsByUserId.TryGetValue(row.UserId, out var userCheckIns);
+
+            // The on-site and remote location checks share one "how far is allowed" number: the
+            // resolved Monitoring config's AllowedRadiusMeters (same employee -> work mode -> role
+            // -> position -> department -> legal entity precedence chain as every other monitoring
+            // capability) - there is exactly one radius concept in the product, not a separate one
+            // per work mode. Moved off ClockInPolicy.AllowedRadiusMeters in Task 14.
+            if (_expectedWorkAreas is not null && row.HasClockedInToday && row.LegalEntity is not null
+                && await _toggles.GetAllowedRadiusMetersAsync(tenantId, row.UserId, row.LegalEntity.Id, ct) is int radiusMeters
+                && await _toggles.IsEnabledAsync(tenantId, row.UserId, MonitoringCapability.WorkLocationVerification, ct))
+            {
+                var workArea = await ResolveWorkAreaAsync(row, ct);
+                (double Latitude, double Longitude)? referencePoint = workArea switch
+                {
+                    "onsite" when row.LegalEntity is { OfficeLatitude: double officeLat, OfficeLongitude: double officeLon }
+                        => (officeLat, officeLon),
+                    "remote" when workLocationsByEmployeeId.TryGetValue(row.EmployeeId, out var workLocation)
+                        => (workLocation.Latitude, workLocation.Longitude),
+                    _ => null
+                };
+
+                if (referencePoint is not null)
+                {
+                    var located = userCheckIns?.LastOrDefault(c => c.Latitude is not null && c.Longitude is not null);
+                    if (located is null)
+                    {
+                        overrides[row.EmployeeId] = row.AttendanceSummary with
+                        {
+                            AttentionType = "outside_work_location",
+                            AttentionSeverity = "warning",
+                            AttentionLabel = workArea == "onsite"
+                                ? "Clocked in on-site without a captured location"
+                                : "Clocked in without a captured location",
+                        };
+                        continue;
+                    }
+
+                    var distance = GeoDistanceCalculator.DistanceMeters(
+                        located.Latitude!.Value, located.Longitude!.Value,
+                        referencePoint.Value.Latitude, referencePoint.Value.Longitude);
+                    if (distance > radiusMeters)
+                    {
+                        overrides[row.EmployeeId] = row.AttendanceSummary with
+                        {
+                            AttentionType = "outside_work_location",
+                            AttentionSeverity = "warning",
+                            AttentionLabel = workArea == "onsite"
+                                ? "Checked in outside the expected office location"
+                                : "Checked in outside the registered work location",
+                        };
+                        continue;
+                    }
+                }
+            }
+
+            var hasFaceScan = userCheckIns?.Any(c => c.FaceScanId is not null) ?? false;
+            if (row.HasClockedInToday && !hasFaceScan
+                && await _toggles.IsEnabledAsync(tenantId, row.UserId, MonitoringCapability.IdentityVerification, ct))
+            {
+                overrides[row.EmployeeId] = row.AttendanceSummary with
+                {
+                    AttentionType = "camera_verification_skipped",
+                    AttentionSeverity = "warning",
+                    AttentionLabel = "Clocked in without completing the required camera verification",
+                };
+            }
+        }
+
+        return overrides;
+    }
+
+    /// <summary>Resolves this employee's work area for the day via IExpectedWorkAreaResolver -
+    /// "onsite"/"remote"/"either"/"field", or null on any resolution failure (unconfigured work
+    /// mode, conflicting change requests). Only "onsite" and "remote" are ever acted on by the
+    /// location-warning check; hybrid/field employees, like resolution failures, are left alone
+    /// rather than guessed at.</summary>
+    private async Task<string?> ResolveWorkAreaAsync(PagedEmployeeMonitoringRow row, CancellationToken ct)
+    {
+        var result = await _expectedWorkAreas!.ResolveAsync(
+            row.Employee, row.LegalEntity!, row.AttendanceSummary.WorkDate, ct);
+        return result.IsSuccess ? ClassifyWorkArea(result.Value!.WorkModeName) : null;
+    }
+
+    // TODO(Task 10): ExpectedWorkAreaResolver (Task 5) now returns the WorkMode's actual
+    // Id/Name instead of a fixed onsite/remote/either/field classification - see the plan's
+    // Global Constraints ("no category/taxonomy field is ever re-derived"). This minimal
+    // compile-fix re-derives the old classification so pre-Task-5 behavior is unchanged.
+    private static string? ClassifyWorkArea(string? workModeName)
+        => workModeName?.Trim().ToLowerInvariant() switch
+        {
+            "onsite" or "on_site" => "onsite",
+            "remote" => "remote",
+            "hybrid" => "either",
+            "field" => "field",
+            _ => null
+        };
+
+    public async Task<IReadOnlyList<EmployeeListItemResponse>> ListInvitedPendingByInviterAsync(
+
+        Guid tenantId, Guid inviterUserId, CancellationToken ct = default)
+    {
+        var activePrimaryAssignments = _db.PositionAssignments.AsNoTracking()
+            .Where(pa => pa.TenantId == tenantId
+                && pa.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                && pa.AssignmentStatus == PositionAssignmentStatus.Active);
+
+        var joined =
+            from token in _db.InvitationTokens.AsNoTracking()
+            where token.TenantId == tenantId && token.CreatedById == inviterUserId
+                && token.EmployeeId != null && token.UsedAt == null && token.RevokedAt == null
+            join e in _db.Employees.AsNoTracking() on token.EmployeeId equals e.Id
+            join dept in _db.Departments.AsNoTracking() on e.DepartmentId equals dept.Id into deptJoin
+            from dept in deptJoin.DefaultIfEmpty()
+            join legalEntity in _db.LegalEntities.AsNoTracking() on e.LegalEntityId equals legalEntity.Id into leJoin
+            from legalEntity in leJoin.DefaultIfEmpty()
+            join empType in _db.EmploymentTypes.AsNoTracking() on e.EmploymentTypeId equals empType.Id into typeJoin
+            from empType in typeJoin.DefaultIfEmpty()
+            join empStatus in _db.EmploymentStatuses.AsNoTracking() on e.EmploymentStatusId equals empStatus.Id into statusJoin
+            from empStatus in statusJoin.DefaultIfEmpty()
+            join primaryAssignment in activePrimaryAssignments on e.Id equals primaryAssignment.EmployeeId into paJoin
+            from primaryAssignment in paJoin.DefaultIfEmpty()
+            join position in _db.Positions.AsNoTracking() on primaryAssignment!.PositionId equals position.Id into posJoin
+            from position in posJoin.DefaultIfEmpty()
+            select new { e, dept, legalEntity, empType, empStatus, position, token.Status, token.ExpiresAt };
+
+        return await joined
+            .OrderBy(row => row.e.LastName).ThenBy(row => row.e.Id)
+            .Select(row => new EmployeeListItemResponse(
+                row.e.Id,
+                row.e.EmployeeNumber,
+                row.e.FirstName + " " + row.e.LastName,
+                row.e.Email,
+                row.dept != null ? row.dept.Id : (Guid?)null,
+                row.dept != null ? row.dept.Name : null,
+                row.position != null ? row.position.Id : (Guid?)null,
+                row.position != null ? row.position.Name : null,
+                row.legalEntity != null ? row.legalEntity.Id : (Guid?)null,
+                row.legalEntity != null ? row.legalEntity.Name : null,
+                row.empType != null ? row.empType.Label : row.e.EmploymentTypeId.ToString(),
+                row.empStatus != null ? row.empStatus.Code : "active",
+                null,
+                null,
+                row.Status,
+                row.ExpiresAt,
+                null,
+                null))
+            .ToListAsync(ct);
     }
 
     public async Task<EmployeeListItemResponse?> GetVisibleByIdAsync(
@@ -149,6 +627,8 @@ public class EfEmployeeRepository : IEmployeeRepository
             from empType in typeJoin.DefaultIfEmpty()
             join empStatus in _db.EmploymentStatuses.AsNoTracking() on e.EmploymentStatusId equals empStatus.Id into statusJoin
             from empStatus in statusJoin.DefaultIfEmpty()
+            join workMode in _db.TimeAttendanceWorkModes.AsNoTracking() on e.WorkModeId equals (Guid?)workMode.Id into workModeJoin
+            from workMode in workModeJoin.DefaultIfEmpty()
             join primaryAssignment in activePrimaryAssignments on e.Id equals primaryAssignment.EmployeeId into paJoin
             from primaryAssignment in paJoin.DefaultIfEmpty()
             join position in _db.Positions.AsNoTracking() on primaryAssignment!.PositionId equals position.Id into posJoin
@@ -157,7 +637,7 @@ public class EfEmployeeRepository : IEmployeeRepository
             from closure in closureJoin.DefaultIfEmpty()
             join manager in _db.Employees.AsNoTracking() on closure!.AncestorEmployeeId equals manager.Id into managerJoin
             from manager in managerJoin.DefaultIfEmpty()
-            select new { e, dept, legalEntity, empType, empStatus, position, manager };
+            select new { e, dept, legalEntity, empType, empStatus, workMode, position, manager };
 
         if (!scope.CanViewAllTenantEmployees)
         {
@@ -188,7 +668,11 @@ public class EfEmployeeRepository : IEmployeeRepository
                 row.empType != null ? row.empType.Label : row.e.EmploymentTypeId.ToString(),
                 row.empStatus != null ? row.empStatus.Code : "active",
                 row.manager != null ? row.manager.Id : (Guid?)null,
-                row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null))
+                row.manager != null ? row.manager.FirstName + " " + row.manager.LastName : null,
+                null,
+                null,
+                null,
+                row.workMode != null ? row.workMode.Name : null))
             .FirstOrDefaultAsync(ct);
     }
 
@@ -223,10 +707,16 @@ public class EfEmployeeRepository : IEmployeeRepository
 
     public async Task<EmployeeEntity?> GetByUserAndLegalEntityAsync(
         Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default)
-        => await _db.Employees.AsNoTracking()
-            .FirstOrDefaultAsync(
-                e => e.TenantId == tenantId && e.UserId == userId && e.LegalEntityId == legalEntityId,
-                ct);
+        => await (
+            from employee in _db.Employees.AsNoTracking()
+            join status in _db.EmploymentStatuses.AsNoTracking()
+                on employee.EmploymentStatusId equals status.Id
+            where employee.TenantId == tenantId
+                && employee.UserId == userId
+                && employee.LegalEntityId == legalEntityId
+                && status.Code == "active"
+            select employee)
+            .FirstOrDefaultAsync(ct);
 
     public async Task<EmployeeEntity?> GetTrackedByIdAsync(Guid tenantId, Guid employeeId, CancellationToken ct = default)
         => await _db.Employees.FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == employeeId, ct);
@@ -280,7 +770,9 @@ public class EfEmployeeRepository : IEmployeeRepository
 
     public async Task<bool> EmployeeNumberExistsAsync(Guid tenantId, string employeeNumber, Guid? excludeId, CancellationToken ct = default)
     {
-        var query = _db.Employees.AsNoTracking()
+        // Ignore soft-delete filter: the unique index is tenant+employee_number with no
+        // IsDeleted filter, so archived rows still occupy the number.
+        var query = _db.Employees.IgnoreQueryFilters().AsNoTracking()
             .Where(e => e.TenantId == tenantId && e.EmployeeNumber == employeeNumber);
 
         if (excludeId is not null)
@@ -291,8 +783,76 @@ public class EfEmployeeRepository : IEmployeeRepository
         return await query.AnyAsync(ct);
     }
 
+    public async Task<int> GetNextEmployeeNumberSequenceAsync(Guid tenantId, string prefix, CancellationToken ct = default)
+    {
+        var expectedPrefix = prefix + "-";
+        var numbers = await _db.Employees.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.EmployeeNumber.StartsWith(expectedPrefix))
+            .Select(e => e.EmployeeNumber)
+            .ToListAsync(ct);
+
+        var maxSequence = 0;
+        foreach (var number in numbers)
+        {
+            var suffix = number.AsSpan(expectedPrefix.Length);
+            if (suffix.Length > 0 && int.TryParse(suffix, out var sequence) && sequence > maxSequence)
+                maxSequence = sequence;
+        }
+
+        return maxSequence + 1;
+    }
+
     public async Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default)
         => await _db.Employees.AsNoTracking().CountAsync(e => e.TenantId == tenantId, ct);
+
+    public async Task<IReadOnlyList<Guid>> ListActiveEmployeeIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid>? departmentIds, CancellationToken ct = default)
+    {
+        if (departmentIds is not null && departmentIds.Count == 0)
+            return Array.Empty<Guid>();
+
+        var query =
+            from e in _db.Employees.AsNoTracking()
+            join status in _db.EmploymentStatuses.AsNoTracking() on e.EmploymentStatusId equals status.Id
+            where e.TenantId == tenantId && e.LegalEntityId == legalEntityId && status.Code == "active"
+            select e;
+
+        if (departmentIds is not null)
+        {
+            query = query.Where(e => e.DepartmentId != null && departmentIds.Contains(e.DepartmentId.Value));
+        }
+
+        return await query.Select(e => e.Id).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListActiveEmployeeIdsByIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return Array.Empty<Guid>();
+
+        return await (
+            from e in _db.Employees.AsNoTracking()
+            join status in _db.EmploymentStatuses.AsNoTracking() on e.EmploymentStatusId equals status.Id
+            where e.TenantId == tenantId
+                && e.LegalEntityId == legalEntityId
+                && status.Code == "active"
+                && employeeIds.Contains(e.Id)
+            select e.Id)
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, EmployeeEntity>> ListByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0)
+            return new Dictionary<Guid, EmployeeEntity>();
+
+        var rows = await _db.Employees.AsNoTracking()
+            .Where(e => e.TenantId == tenantId && employeeIds.Contains(e.Id))
+            .ToListAsync(ct);
+        return rows.ToDictionary(e => e.Id);
+    }
 
     public async Task AddAsync(EmployeeEntity employee, CancellationToken ct = default)
         => await _db.Employees.AddAsync(employee, ct);

@@ -10,9 +10,9 @@ public interface ILegalEntityRepository
     /// <summary>
     /// Returns the legal entities the given user may see: every (optionally including
     /// inactive) tenant legal entity when <paramref name="hasManagementAccess"/> is true,
-    /// otherwise at most the single legal entity linked to the user's own active
-    /// employees row. includeInactive is only honored on the management-access branch -
-    /// a regular user's own company is only ever returned when it is active.
+    /// otherwise every legal entity linked to one of the user's own active employee
+    /// rows. includeInactive is only honored on the management-access branch - a
+    /// regular user's companies are only ever returned while active.
     /// </summary>
     Task<IReadOnlyList<LegalEntity>> ListAccessibleAsync(
         Guid tenantId, Guid userId, bool hasManagementAccess, bool includeInactive, CancellationToken ct = default);

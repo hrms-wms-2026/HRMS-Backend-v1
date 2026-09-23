@@ -61,7 +61,7 @@ public sealed class EfAuthRepositorySupportCoreTests : IDisposable
     public async Task ListForTenantAsync_ReturnsOnlyGrantsForRequestedTenant()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfFeatureAccessGrantRepository(db);
         var tenantId = Guid.NewGuid();
         var grant = NewFeatureAccessGrant(tenantId, "attendance");
         await SeedAsync(grant);
@@ -75,7 +75,7 @@ public sealed class EfAuthRepositorySupportCoreTests : IDisposable
     public async Task ListForTenantAsync_ExcludesGrantsForAnotherTenant()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfFeatureAccessGrantRepository(db);
         var tenantId = Guid.NewGuid();
         var otherTenantId = Guid.NewGuid();
         var grant = NewFeatureAccessGrant(tenantId, "attendance");
@@ -93,7 +93,7 @@ public sealed class EfAuthRepositorySupportCoreTests : IDisposable
     public async Task AddAsync_AuditLog_AddsButDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfAuditLogRepository(db);
         var auditLog = NewAuditLog();
 
         await repo.AddAsync(auditLog);
@@ -110,7 +110,7 @@ public sealed class EfAuthRepositorySupportCoreTests : IDisposable
     public async Task GetByIdAsync_ReturnsMatchingTemplateById()
     {
         using var db = CreateContext();
-        IRoleTemplateRepository repo = new EfAuthRepository(db);
+        var repo = new EfRoleTemplateRepository(db);
         var template = NewRoleTemplate("HR Manager");
         await SeedAsync(template);
 
@@ -128,7 +128,7 @@ public sealed class EfAuthRepositorySupportCoreTests : IDisposable
     public async Task GetByNameAsync_TrimsInputBeforeLookup()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleTemplateRepository(db);
         var template = NewRoleTemplate("HR Manager");
         await SeedAsync(template);
 
@@ -142,7 +142,7 @@ public sealed class EfAuthRepositorySupportCoreTests : IDisposable
     public async Task GetByNameAsync_IsCaseInsensitiveViaToLowerComparison()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleTemplateRepository(db);
         var template = NewRoleTemplate("HR Manager");
         await SeedAsync(template);
 
@@ -156,7 +156,7 @@ public sealed class EfAuthRepositorySupportCoreTests : IDisposable
     public async Task GetByNameAsync_ReturnsNullForUnknownName()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleTemplateRepository(db);
         var template = NewRoleTemplate("HR Manager");
         await SeedAsync(template);
 
@@ -171,7 +171,7 @@ public sealed class EfAuthRepositorySupportCoreTests : IDisposable
     public async Task ListAsync_OrdersTemplatesByNameAscending()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleTemplateRepository(db);
         var templateC = NewRoleTemplate("C Template");
         var templateA = NewRoleTemplate("A Template");
         var templateB = NewRoleTemplate("B Template");
@@ -188,7 +188,7 @@ public sealed class EfAuthRepositorySupportCoreTests : IDisposable
     public async Task AddAsync_RoleTemplate_AddsButDoesNotSaveAutomatically()
     {
         using var db = CreateContext();
-        var repo = new EfAuthRepository(db);
+        var repo = new EfRoleTemplateRepository(db);
         var template = NewRoleTemplate("Draft Template");
 
         await repo.AddAsync(template);

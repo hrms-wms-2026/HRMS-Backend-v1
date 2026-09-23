@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.SharedPlatform.Entities;
 using ONEVO.Infrastructure.Persistence;
 
@@ -75,6 +76,9 @@ public sealed class OutboxProcessor : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var encryption = scope.ServiceProvider.GetRequiredService<IEncryptionService>();
         var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
+        var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+        var writableTenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
+        var tenantRepository = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
         var handlers = scope.ServiceProvider.GetServices<IOutboxMessageHandler>()
             .ToDictionary(h => h.Type, StringComparer.Ordinal);
 
@@ -90,6 +94,22 @@ public sealed class OutboxProcessor : BackgroundService
 
         foreach (var message in due)
         {
+            // This scope's DbContext/connection starts in system mode (no RLS tenant set), which
+            // is correct for reading the platform-scoped outbox table above but wrong for any
+            // tenant-scoped row a handler writes (e.g. Notification) - RLS rejects it outright.
+            // Switch to the message's own tenant before invoking its handler, same mechanism
+            // request-time middleware and LeaveYearEndEntitlementJob use.
+            if (message.TenantId is { } tenantId)
+            {
+                var tenant = await tenantRepository.GetByIdAsync(tenantId, ct);
+                if (tenant is not null)
+                    await tenantSwitcher.SwitchToTenantAsync(new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
+            }
+            else
+            {
+                writableTenantContext.SetSystemMode();
+            }
+
             try
             {
                 if (!handlers.TryGetValue(message.Type, out var handler))
@@ -129,9 +149,12 @@ public sealed class OutboxProcessor : BackgroundService
                         message.Id, message.Type, message.AttemptCount, message.NextAttemptAt);
                 }
             }
-        }
 
-        await db.SaveChangesAsync(ct);
+            // Saved per-message, immediately after its own tenant context is active on the
+            // connection - a single batched SaveChangesAsync at the end would flush every
+            // message's changes under whichever tenant was switched to last.
+            await db.SaveChangesAsync(ct);
+        }
     }
 
     private async Task PurgeIdempotencyRecordsIfDueAsync(CancellationToken ct)

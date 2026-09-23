@@ -13,7 +13,8 @@ public static class ProjectViewModelMapper
         response.ReleaseReminder.ToViewModel(),
         response.Labels.Select(ToViewModel).ToList(),
         response.CreatorMembership.ToViewModel(),
-        response.Logo?.ToViewModel()
+        response.Logo?.ToViewModel(),
+        response.Banner?.ToViewModel()
     );
 
     public static ProjectViewModel ToViewModel(this ProjectSummaryDto dto) => new(
@@ -34,7 +35,7 @@ public static class ProjectViewModelMapper
 
     public static LabelViewModel ToViewModel(this LabelSummaryDto dto) => new(dto.Id, dto.Name, dto.Color);
 
-    public static ProjectMemberAvatarViewModel ToViewModel(this ProjectMemberAvatarDto dto) => new(dto.UserId, dto.DisplayName);
+    public static ProjectMemberAvatarViewModel ToViewModel(this ProjectMemberAvatarDto dto) => new(dto.UserId, dto.DisplayName, dto.AvatarFileId);
 
     public static ProjectMembershipViewModel ToViewModel(this ProjectMembershipSummaryDto dto) => new(
         dto.Id, dto.ObjectiveId, dto.UserId, dto.MembershipSource);

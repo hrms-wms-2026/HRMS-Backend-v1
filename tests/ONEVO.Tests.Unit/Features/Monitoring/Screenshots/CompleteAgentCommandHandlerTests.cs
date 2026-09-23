@@ -3,12 +3,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Screenshots.Commands.CompleteAgentCommand;
 using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
-using ONEVO.Application.Features.Monitoring.TrayActivation.RepositoryInterfaces;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
-using ONEVO.Domain.Features.Monitoring.TrayActivation.Entities;
 using ONEVO.Tests.Unit.Fakes;
 
 namespace ONEVO.Tests.Unit.Features.Monitoring.Screenshots;
@@ -17,31 +17,47 @@ public class CompleteAgentCommandHandlerTests
 {
     private readonly Mock<IAgentCommandRepository> _commandsRepo = new();
     private readonly Mock<IEvidenceAssetRepository> _assetsRepo = new();
-    private readonly Mock<ITrayActivationRepository> _trayRepo = new();
     private readonly Mock<ITrayCurrentDevice> _device = new();
+    private readonly Mock<ITenantRepository> _tenants = new();
+    private readonly Mock<ITenantContextSwitcher> _tenantSwitcher = new();
+    private readonly Mock<ITrayEmployeeIdentityResolver> _employeeIdentity = new();
     private readonly FakeDateTimeProvider _clock = new();
     private readonly FakeUnitOfWork _uow = new();
 
     private readonly Guid _tenantId = Guid.NewGuid();
     private readonly Guid _deviceId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
+    private readonly Guid _employeeId = Guid.NewGuid();
     private readonly Guid _commandId = Guid.NewGuid();
 
     public CompleteAgentCommandHandlerTests()
     {
+        _device.Setup(d => d.IsAuthenticated).Returns(true);
         _device.Setup(d => d.TenantId).Returns(_tenantId);
         _device.Setup(d => d.DeviceRegistrationId).Returns(_deviceId);
         _device.Setup(d => d.UserId).Returns(_userId);
 
-        _trayRepo.Setup(r => r.FindActiveDeviceAsync(_deviceId, _tenantId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TrayDeviceRegistration { Id = _deviceId, TenantId = _tenantId, UserId = _userId, IsActive = true, ActivatedAt = DateTimeOffset.UtcNow, CreatedAt = DateTimeOffset.UtcNow });
+        // The resolved real Employee.Id is what gets persisted - distinct from the raw UserId so
+        // tests can tell whether the handler stored the resolved value or the JWT identity.
+        _employeeIdentity.Setup(r => r.ResolveEmployeeIdAsync(
+                _tenantId, _userId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_employeeId);
+
+        _tenants.Setup(t => t.GetByIdAsync(_tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Tenant
+            {
+                Id = _tenantId, Name = "Test Tenant", Slug = "test-tenant",
+                CompanySizeRange = "1-10", Status = TenantStatus.Active
+            });
     }
 
     private CompleteAgentCommandHandler CreateHandler() => new(
         _commandsRepo.Object,
         _assetsRepo.Object,
-        _trayRepo.Object,
         _device.Object,
+        _tenants.Object,
+        _tenantSwitcher.Object,
+        _employeeIdentity.Object,
         _clock,
         _uow,
         NullLogger<CompleteAgentCommandHandler>.Instance);
@@ -154,6 +170,7 @@ public class CompleteAgentCommandHandlerTests
         savedAsset!.FileRecordId.Should().Be(fileRecordId);
         savedAsset.EvidenceType.Should().Be("screenshot");
         savedAsset.TriggerType.Should().Be("on_demand");
+        savedAsset.EmployeeId.Should().Be(_employeeId);
         cmd.Status.Should().Be("completed");
         _uow.SaveCallCount.Should().Be(1);
     }

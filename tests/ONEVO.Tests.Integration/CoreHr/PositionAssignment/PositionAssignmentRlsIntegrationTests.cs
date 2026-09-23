@@ -13,7 +13,7 @@ using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
+using ONEVO.Tests.Integration.Support;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.CoreHr.PositionAssignment;
@@ -29,11 +29,6 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
     private const string RestrictedRoleName = "position_assignment_rls_test_role";
     private const string RestrictedRolePassword = "position-assignment-rls-test-role-password";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_position_assignment_rls_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private readonly SystemDateTimeProvider _clock = new();
 
@@ -47,12 +42,9 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _connectionString = _postgres.GetConnectionString();
-        await PrivilegedRoleTestBootstrap.EnsureRolesExistAsync(_connectionString);
+        _connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         await using var db = CreateContext();
-        await db.Database.MigrateAsync();
 
         var tenantA = NewTenant("Position Assignment RLS Tenant A", "posn-assign-rls-a");
         var tenantB = NewTenant("Position Assignment RLS Tenant B", "posn-assign-rls-b");
@@ -75,7 +67,7 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
         await CreateRestrictedRoleAsync();
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task RestrictedRole_IsNotSuperuserAndDoesNotBypassRls()
@@ -97,7 +89,7 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
     {
         await using (var seedDb = CreateContext(_tenantAId, "posn-assign-rls-a", useRestrictedRole: true))
         {
-            var repo = new EfPositionAssignmentRepository(seedDb);
+            var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(seedDb);
             await repo.AddAsync(NewAssignment(_tenantAId, _tenantAEmployeeId, _tenantAPositionId));
             await repo.SaveChangesAsync();
         }
@@ -140,13 +132,13 @@ public sealed class PositionAssignmentRlsIntegrationTests : IAsyncLifetime
     {
         await using (var firstDb = CreateContext(_tenantAId, "posn-assign-rls-a", useRestrictedRole: true))
         {
-            var repo = new EfPositionAssignmentRepository(firstDb);
+            var repo = PositionAssignmentRepositoryTestSupport.CreateRepository(firstDb);
             await repo.AddAsync(NewAssignment(_tenantAId, _tenantAEmployeeId, _tenantAPositionId));
             await repo.SaveChangesAsync();
         }
 
         await using var secondDb = CreateContext(_tenantAId, "posn-assign-rls-a", useRestrictedRole: true);
-        var secondRepo = new EfPositionAssignmentRepository(secondDb);
+        var secondRepo = PositionAssignmentRepositoryTestSupport.CreateRepository(secondDb);
         await secondRepo.AddAsync(NewAssignment(_tenantAId, _tenantAEmployeeId, _tenantASecondPositionId));
 
         var act = async () => await secondRepo.SaveChangesAsync();

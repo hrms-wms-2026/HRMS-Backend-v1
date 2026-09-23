@@ -30,4 +30,51 @@ public class EfEntityAssetRepository : IEntityAssetRepository
                 ownerIds.Contains(a.OwnerId))
             .ToDictionaryAsync(a => a.OwnerId, a => a.FileRecordId, ct);
     }
+
+    public async Task<IReadOnlyList<EntityAssetWithFile>> ListByOwnerAsync(
+        Guid tenantId, string ownerType, Guid ownerId, CancellationToken ct = default)
+    {
+        // EF Core cannot translate an OrderBy keyed off a property of a positional record built by
+        // the preceding Join's result selector (it tries to reconstruct the whole record inside the
+        // ORDER BY expression and fails at query-compile time - proven by a real integration test
+        // against PostgreSQL, not just Moq). Order client-side instead; the result set here is
+        // always small (an owner's attachments/assets), never large.
+        var results = await _db.EntityAssets.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.OwnerType == ownerType && a.OwnerId == ownerId)
+            .Join(_db.FileRecords.AsNoTracking(), a => a.FileRecordId, f => f.Id,
+                (a, f) => new EntityAssetWithFile(a.Id, f.Id, f.OriginalFileName, f.FileSizeBytes, f.ContentType, a.CreatedAt, a.AssetPurpose))
+            .ToListAsync(ct);
+
+        return results.OrderBy(x => x.CreatedAt).ToList();
+    }
+
+    public async Task<IReadOnlyList<EntityAssetWithFileAndOwner>> ListByOwnersAsync(
+        Guid tenantId, string ownerType, IReadOnlyList<Guid> ownerIds, CancellationToken ct = default)
+    {
+        // Same EF Core translation limitation as ListByOwnerAsync above - order client-side.
+        var results = await _db.EntityAssets.AsNoTracking()
+            .Where(a => a.TenantId == tenantId && a.OwnerType == ownerType && ownerIds.Contains(a.OwnerId))
+            .Join(_db.FileRecords.AsNoTracking(), a => a.FileRecordId, f => f.Id,
+                (a, f) => new EntityAssetWithFileAndOwner(a.OwnerId, a.Id, f.Id, f.OriginalFileName, f.FileSizeBytes, f.ContentType, a.CreatedAt, a.AssetPurpose))
+            .ToListAsync(ct);
+
+        return results.OrderBy(x => x.CreatedAt).ToList();
+    }
+
+    public async Task<EntityAsset?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        return await _db.EntityAssets.FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Id == id, ct);
+    }
+
+    public Task DeleteAsync(EntityAsset asset, CancellationToken ct = default)
+    {
+        _db.EntityAssets.Remove(asset);
+        return Task.CompletedTask;
+    }
+
+    public async Task<EntityAsset?> GetByFileRecordIdAsync(Guid tenantId, Guid fileRecordId, CancellationToken ct = default)
+    {
+        return await _db.EntityAssets
+            .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.FileRecordId == fileRecordId, ct);
+    }
 }

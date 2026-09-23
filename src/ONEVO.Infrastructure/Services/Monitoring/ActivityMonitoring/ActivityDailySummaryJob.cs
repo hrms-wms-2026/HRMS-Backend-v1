@@ -3,7 +3,12 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
+using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
+using ONEVO.Application.Features.Monitoring.AppUsage.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Meetings.RepositoryInterfaces;
 
 namespace ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
 
@@ -73,9 +78,24 @@ public sealed class ActivityDailySummaryJob : BackgroundService
     {
         await using var scope = _services.CreateAsyncScope();
         var snapshots = scope.ServiceProvider.GetRequiredService<IActivitySnapshotRepository>();
+        var appUsage = scope.ServiceProvider.GetRequiredService<IAppUsageSnapshotRepository>();
+        var meetings = scope.ServiceProvider.GetRequiredService<IMeetingSignalRepository>();
         var summaries = scope.ServiceProvider.GetRequiredService<IActivityDailySummaryRepository>();
+        var notifications = scope.ServiceProvider
+            .GetRequiredService<ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces.INotificationRepository>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var clock = scope.ServiceProvider.GetRequiredService<IDateTimeProvider>();
+        var tenantContext = scope.ServiceProvider.GetRequiredService<IWritableTenantContext>();
+        var tenants = scope.ServiceProvider.GetRequiredService<ITenantRepository>();
+        var tenantSwitcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+
+        // Every table this job reads/writes (activity_snapshots, app_usage_snapshots,
+        // meeting_signals, activity_daily_summary, monitoring_notifications) is under FORCE
+        // row-level security. A background scope defaults to system mode, which the
+        // tenant_isolation policy admits for none of them - so the cross-tenant key sweep
+        // needs admin mode, and each tenant's rows need that tenant's context established
+        // before reading/writing them. Mirrors LocationRuleEvaluatorJob.
+        tenantContext.SetAdminMode();
 
         var keys = await snapshots.GetEmployeeKeysForDateAsync(date, ct);
         _logger.LogInformation(
@@ -86,25 +106,82 @@ public sealed class ActivityDailySummaryJob : BackgroundService
         var now = clock.UtcNow;
         var processed = 0;
 
-        foreach (var (tenantId, employeeId) in keys)
+        // Grouped tenant-major (not left in original/unordered discovery order) so every
+        // employee for a tenant is processed - and saved - while that tenant's context is
+        // active on the connection, before switching to the next tenant.
+        foreach (var tenantGroup in keys.GroupBy(k => k.TenantId))
         {
             ct.ThrowIfCancellationRequested();
 
-            var daySnapshots = await snapshots.GetAllByEmployeeDateAsync(
-                tenantId, employeeId, date, ct);
+            var tenant = await tenants.GetByIdAsync(tenantGroup.Key, ct);
+            if (tenant is null) continue;
+            await tenantSwitcher.SwitchToTenantAsync(
+                new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
 
-            if (daySnapshots.Count == 0)
-                continue;
+            var tenantProcessed = 0;
 
-            var summary = ActivityDailySummaryAggregator.Aggregate(
-                tenantId, employeeId, date, daySnapshots, now);
+            foreach (var (tenantId, employeeId) in tenantGroup)
+            {
+                ct.ThrowIfCancellationRequested();
 
-            await summaries.UpsertAsync(summary, ct);
-            processed++;
+                var daySnapshots = await snapshots.GetAllByEmployeeDateAsync(
+                    tenantId, employeeId, date, ct);
+
+                if (daySnapshots.Count == 0)
+                    continue;
+
+                var dayAppUsage = await appUsage.GetAllByEmployeeDateAsync(tenantId, employeeId, date, ct);
+                var dayMeetings = await meetings.GetAllByEmployeeDateAsync(tenantId, employeeId, date, ct);
+
+                var summary = ActivityDailySummaryAggregator.Aggregate(
+                    tenantId, employeeId, date, daySnapshots, now,
+                    appUsageSnapshots: dayAppUsage,
+                    meetingSignals: dayMeetings);
+
+                await summaries.UpsertAsync(summary, ct);
+
+                const decimal LowActivityThreshold = 40m;
+                const int FocusNudgeMinutesThreshold = 120;
+                const int FocusNudgeSessionsThreshold = 2;
+
+                if (summary.ActivityScore < LowActivityThreshold)
+                {
+                    await notifications.AddAsync(new Notification
+                    {
+                        Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId,
+                        Type = NotificationType.LowActivityAlert,
+                        Title = "Lower activity today",
+                        Message = $"Your activity score for {date:yyyy-MM-dd} was {summary.ActivityScore}.",
+                        MetadataJson = $$"""{"activityScore":{{summary.ActivityScore}},"date":"{{date:yyyy-MM-dd}}"}""",
+                        CreatedAt = now
+                    }, ct);
+                }
+
+                if (summary.FocusMinutes >= FocusNudgeMinutesThreshold || summary.DeepFocusSessionsCount >= FocusNudgeSessionsThreshold)
+                {
+                    await notifications.AddAsync(new Notification
+                    {
+                        Id = Guid.NewGuid(), TenantId = tenantId, EmployeeId = employeeId,
+                        Type = NotificationType.FocusNudge,
+                        Title = "Great focus today",
+                        Message = $"You had {summary.FocusMinutes} minutes of deep focus across {summary.DeepFocusSessionsCount} sessions.",
+                        MetadataJson = $$"""{"focusMinutes":{{summary.FocusMinutes}},"sessions":{{summary.DeepFocusSessionsCount}}}""",
+                        CreatedAt = now
+                    }, ct);
+                }
+
+                tenantProcessed++;
+            }
+
+            // Flushed per tenant, immediately after that tenant's context is active on the
+            // connection - a single batched SaveChangesAsync after the outer loop would flush
+            // every tenant's changes under whichever tenant was switched to last, and every
+            // earlier tenant's rows would fail the RLS WITH CHECK constraint.
+            if (tenantProcessed > 0)
+                await unitOfWork.SaveChangesAsync(ct);
+
+            processed += tenantProcessed;
         }
-
-        if (processed > 0)
-            await unitOfWork.SaveChangesAsync(ct);
 
         _logger.LogInformation(
             "Activity daily summary job finished. Date={Date} Processed={Processed}",

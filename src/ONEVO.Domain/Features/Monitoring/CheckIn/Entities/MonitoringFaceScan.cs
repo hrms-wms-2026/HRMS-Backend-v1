@@ -13,6 +13,9 @@ public class MonitoringFaceScan : ITenantOwnedEntity
     public long FileSizeBytes { get; set; }
     public string ContentType { get; set; } = string.Empty;
 
+    /// <summary>CompareFaces similarity 0-100 against the employee's enrolled reference photo. Null when there was no reference photo to compare against.</summary>
+    public float? SimilarityScore { get; set; }
+
     public string Status { get; set; } = MonitoringFaceScanStatus.PendingScan;
 
     public DateTimeOffset CreatedAt { get; set; }

@@ -10,11 +10,12 @@ public class OnboardingDraft : BaseEntity
     public Guid LegalEntityId { get; set; }
     public Guid? DepartmentId { get; set; }
     public Guid? PositionId { get; set; }
+    public Guid? ReportsToEmployeeId { get; set; }
     public string EmploymentType { get; set; } = string.Empty;
     public DateOnly StartDate { get; set; }
     public string? EmployeeNumber { get; set; }
 
-    public int WorkModeId { get; set; }
+    public Guid? WorkModeId { get; set; }
 
     // No enforced FK: checklist_templates does not exist in this codebase yet. Same limitation.
     public Guid? SelectedTemplateId { get; set; }

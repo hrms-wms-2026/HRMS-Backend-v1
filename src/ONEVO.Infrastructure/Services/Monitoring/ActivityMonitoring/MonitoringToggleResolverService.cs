@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Domain.Features.CoreHr.Entities;
+
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.ServiceInterfaces;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 using ONEVO.Infrastructure.Persistence;
@@ -8,7 +10,7 @@ namespace ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
 
 /// <summary>
 /// Resolves monitoring capability enablement:
-/// employee override → role/position/dept policy → tenant toggle → false (safe default).
+/// employee override → work mode → role/position/dept policy → tenant toggle → false (safe default).
 /// Cached 2 minutes per tenant/employee/capability.
 /// </summary>
 public class MonitoringToggleResolverService : IMonitoringToggleResolver
@@ -24,48 +26,368 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         _cache = cache;
     }
 
+    /// <summary>
+    /// Resolves "the employee" for a capability/threshold lookup. Every parameter named `userId`
+    /// (or `employeeId` at call sites that still use that misleading name - see
+    /// AttendanceTodayStateService/LocationRuleEvaluatorJob's own comments for two that
+    /// originally got this wrong) must be a real User.Id, not an Employee.Id - a user may own
+    /// more than one Employee row for a multi-company user, so this defers to the same
+    /// deterministic "default employee for this user" resolution TenantDatabaseTicketStore uses
+    /// to seed a session's active company (most-recent active PrimaryEmployment assignment),
+    /// instead of picking an arbitrary row. Deliberately does NOT also try matching by
+    /// Employee.Id: doing so would risk resolving the wrong person if a User.Id ever collided
+    /// with an unrelated Employee.Id (both are Guids in the same tenant's id space). A caller
+    /// holding a real Employee.Id and a legal entity must resolve the employee's own UserId
+    /// first and pass the three-arg (tenantId, userId, legalEntityId) overload - the two-arg
+    /// overload's null-legal-entity fallback only resolves an unambiguous single active employee
+    /// for that user, which fails for any multi-company user.
+    /// </summary>
+    private async Task<Employee?> ResolveEmployeeAsync(
+        Guid tenantId, Guid userId, Guid? legalEntityId, CancellationToken ct)
+    {
+        var query =
+            from employee in _db.Employees.AsNoTracking()
+            join status in _db.EmploymentStatuses.AsNoTracking()
+                on employee.EmploymentStatusId equals status.Id
+            where employee.TenantId == tenantId
+                && employee.UserId == userId
+                && status.Code == "active"
+            select employee;
+
+        if (legalEntityId.HasValue)
+            return await query.SingleOrDefaultAsync(
+                employee => employee.LegalEntityId == legalEntityId.Value, ct);
+
+        // Legacy tray tokens have no company claim. Resolve only an unambiguous active employee.
+        var candidates = await query.OrderBy(employee => employee.Id).Take(2).ToListAsync(ct);
+        return candidates.Count == 1 ? candidates[0] : null;
+    }
+
     public async Task<bool> IsEnabledAsync(
         Guid tenantId,
         Guid employeeId,
         MonitoringCapability capability,
         CancellationToken ct = default)
     {
-        var cacheKey = $"tenant:{tenantId}:monitoring-toggle:employee:{employeeId}:{capability}";
+        return await IsEnabledCoreAsync(tenantId, employeeId, null, capability, ct);
+    }
+
+    public Task<bool> IsEnabledAsync(
+        Guid tenantId, Guid userId, Guid legalEntityId, MonitoringCapability capability,
+        CancellationToken ct = default) =>
+        IsEnabledCoreAsync(tenantId, userId, legalEntityId, capability, ct);
+
+    private async Task<bool> IsEnabledCoreAsync(
+        Guid tenantId, Guid userId, Guid? legalEntityId, MonitoringCapability capability,
+        CancellationToken ct)
+    {
+        var cacheKey = $"tenant:{tenantId}:monitoring-toggle:user:{userId}:legal-entity:{legalEntityId}:{capability}";
         var cached = await _cache.GetAsync<bool?>(cacheKey, ct);
         if (cached.HasValue)
             return cached.Value;
 
-        var resolved = await ResolveAsync(tenantId, employeeId, capability, ct);
+        var resolved = await ResolveAsync(tenantId, userId, legalEntityId, capability, ct);
         await _cache.SetAsync(cacheKey, resolved, CacheTtl, ct);
         return resolved;
     }
 
-    private async Task<bool> ResolveAsync(
+    public async Task<int> GetIdleThresholdMinutesAsync(
         Guid tenantId,
         Guid employeeId,
-        MonitoringCapability capability,
-        CancellationToken ct)
+        CancellationToken ct = default)
     {
+        return await GetIdleThresholdMinutesCoreAsync(tenantId, employeeId, null, ct);
+    }
+
+    public Task<int> GetIdleThresholdMinutesAsync(
+        Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default) =>
+        GetIdleThresholdMinutesCoreAsync(tenantId, userId, legalEntityId, ct);
+
+    private async Task<int> GetIdleThresholdMinutesCoreAsync(
+        Guid tenantId, Guid userId, Guid? legalEntityId, CancellationToken ct)
+    {
+        var cacheKey = $"tenant:{tenantId}:monitoring-toggle:user:{userId}:legal-entity:{legalEntityId}:idle-threshold-minutes";
+        var cached = await _cache.GetAsync<int?>(cacheKey, ct);
+        if (cached.HasValue)
+            return cached.Value;
+
+        var resolved = await ResolveMinutesAsync(tenantId, userId, legalEntityId, ct);
+        await _cache.SetAsync(cacheKey, resolved, CacheTtl, ct);
+        return resolved;
+    }
+
+    public async Task<int?> GetAllowedRadiusMetersAsync(
+        Guid tenantId,
+        Guid employeeId,
+        CancellationToken ct = default)
+    {
+        return await GetAllowedRadiusMetersCoreAsync(tenantId, employeeId, null, ct);
+    }
+
+    public Task<int?> GetAllowedRadiusMetersAsync(
+        Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default) =>
+        GetAllowedRadiusMetersCoreAsync(tenantId, userId, legalEntityId, ct);
+
+    /// <summary>
+    /// Wraps the resolved radius so a genuinely-null result ("no tier configures a radius") is
+    /// itself a real, cacheable value - unlike <see cref="GetIdleThresholdMinutesCoreAsync"/>'s
+    /// bare <c>int?</c> cache entry, a bare <c>int?</c> here can't distinguish "resolved to null"
+    /// from "nothing cached yet", so a null result would never be served from cache and would
+    /// re-run the full resolution chain (employee resolve, policy/role/position lookups, feature
+    /// toggles) on every call - the common case today, since AllowedRadiusMeters has no seed/
+    /// default value.
+    /// </summary>
+    private sealed record CachedRadiusMeters(int? Value);
+
+    private async Task<int?> GetAllowedRadiusMetersCoreAsync(
+        Guid tenantId, Guid userId, Guid? legalEntityId, CancellationToken ct)
+    {
+        var cacheKey = $"tenant:{tenantId}:monitoring-toggle:user:{userId}:legal-entity:{legalEntityId}:allowed-radius-meters";
+        var cached = await _cache.GetAsync<CachedRadiusMeters>(cacheKey, ct);
+        if (cached is not null)
+            return cached.Value;
+
+        var resolved = await ResolveRadiusMetersAsync(tenantId, userId, legalEntityId, ct);
+        await _cache.SetAsync(cacheKey, new CachedRadiusMeters(resolved), CacheTtl, ct);
+        return resolved;
+    }
+
+    private async Task<int> ResolveMinutesAsync(
+        Guid tenantId, Guid userId, Guid? legalEntityId, CancellationToken ct)
+    {
+        var employee = await ResolveEmployeeAsync(tenantId, userId, legalEntityId, ct);
+        if (employee is null)
+            return MonitoringToggleResolution.DefaultIdleThresholdMinutes;
+
         // 1. Employee-level override
         var employeeOverride = await _db.EmployeeMonitoringOverrides
             .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.EmployeeId == employeeId, ct);
+            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.EmployeeId == employee.Id, ct);
+        var employeeMinutes = employeeOverride?.IdleThresholdMinutes;
+
+        // 2. Work Mode tier - resolved directly from the employee row, not a collected scope
+        // list, since there's exactly one WorkMode per employee (unlike roles, which can be plural).
+        MonitoringPolicyOverride? workModeOverride = employee.WorkModeId is Guid workModeId
+            ? await _db.MonitoringPolicyOverrides
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.ScopeType == "work_mode" && p.ScopeId == workModeId, ct)
+            : null;
+        var workModeMinutes = workModeOverride?.IdleThresholdMinutes;
+
+        // 3. Policy overrides: role > position > department
+        Guid? departmentId = employee?.DepartmentId;
+        Guid? positionId = employee is null
+            ? null
+            : await _db.PositionAssignments
+                .AsNoTracking()
+                .Where(a => a.EmployeeId == employee.Id
+                    && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                    && a.AssignmentStatus == PositionAssignmentStatus.Active
+                    && a.EffectiveFrom <= DateOnly.FromDateTime(DateTime.UtcNow)
+                    && (a.EffectiveTo == null || a.EffectiveTo >= DateOnly.FromDateTime(DateTime.UtcNow)))
+                .OrderByDescending(a => a.EffectiveFrom)
+                .Select(a => (Guid?)a.PositionId)
+                .FirstOrDefaultAsync(ct);
+        Guid userIdForRoles = employee!.UserId;
+
+        var roleIds = await _db.UserRoles
+            .AsNoTracking()
+            .Where(ur => ur.TenantId == tenantId && ur.UserId == userIdForRoles)
+            .Select(ur => ur.RoleId)
+            .ToListAsync(ct);
+
+        var scopeIds = new List<Guid>();
+        scopeIds.AddRange(roleIds);
+        if (positionId.HasValue) scopeIds.Add(positionId.Value);
+        if (departmentId.HasValue) scopeIds.Add(departmentId.Value);
+
+        int? roleMinutes = null;
+        int? positionMinutes = null;
+        int? departmentMinutes = null;
+
+        if (scopeIds.Count > 0)
+        {
+            var policies = await _db.MonitoringPolicyOverrides
+                .AsNoTracking()
+                .Where(p => p.TenantId == tenantId && scopeIds.Contains(p.ScopeId))
+                .ToListAsync(ct);
+
+            roleMinutes = policies
+                .Where(p => p.ScopeType == "role" && roleIds.Contains(p.ScopeId))
+                .Select(p => p.IdleThresholdMinutes)
+                .FirstOrDefault(v => v.HasValue);
+
+            if (positionId.HasValue)
+            {
+                positionMinutes = policies
+                    .Where(p => p.ScopeType == "position" && p.ScopeId == positionId.Value)
+                    .Select(p => p.IdleThresholdMinutes)
+                    .FirstOrDefault(v => v.HasValue);
+            }
+
+            if (departmentId.HasValue)
+            {
+                departmentMinutes = policies
+                    .Where(p => p.ScopeType == "department" && p.ScopeId == departmentId.Value)
+                    .Select(p => p.IdleThresholdMinutes)
+                    .FirstOrDefault(v => v.HasValue);
+            }
+        }
+
+        // 4. Legal-entity default, then retained tenant fallback.
+        var toggles = await _db.MonitoringFeatureToggles
+            .AsNoTracking()
+            .Where(t => t.TenantId == tenantId
+                && (t.LegalEntityId == employee.LegalEntityId || t.LegalEntityId == null))
+            .OrderByDescending(t => t.LegalEntityId == employee.LegalEntityId)
+            .FirstOrDefaultAsync(ct);
+        var tenantMinutes = toggles?.IdleThresholdMinutes;
+
+        return MonitoringToggleResolution.ResolveMinutes(
+            employeeMinutes, workModeMinutes, roleMinutes, positionMinutes, departmentMinutes, tenantMinutes);
+    }
+
+    private async Task<int?> ResolveRadiusMetersAsync(
+        Guid tenantId, Guid userId, Guid? legalEntityId, CancellationToken ct)
+    {
+        var employee = await ResolveEmployeeAsync(tenantId, userId, legalEntityId, ct);
+        if (employee is null)
+            return null;
+
+        // 1. Employee-level override
+        var employeeOverride = await _db.EmployeeMonitoringOverrides
+            .AsNoTracking()
+            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.EmployeeId == employee.Id, ct);
+        var employeeRadius = employeeOverride?.AllowedRadiusMeters;
+
+        // 2. Work Mode tier - resolved directly from the employee row, not a collected scope
+        // list, since there's exactly one WorkMode per employee (unlike roles, which can be plural).
+        MonitoringPolicyOverride? workModeOverride = employee.WorkModeId is Guid workModeId
+            ? await _db.MonitoringPolicyOverrides
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.ScopeType == "work_mode" && p.ScopeId == workModeId, ct)
+            : null;
+        var workModeRadius = workModeOverride?.AllowedRadiusMeters;
+
+        // 3. Policy overrides: role > position > department
+        Guid? departmentId = employee?.DepartmentId;
+        Guid? positionId = employee is null
+            ? null
+            : await _db.PositionAssignments
+                .AsNoTracking()
+                .Where(a => a.EmployeeId == employee.Id
+                    && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                    && a.AssignmentStatus == PositionAssignmentStatus.Active
+                    && a.EffectiveFrom <= DateOnly.FromDateTime(DateTime.UtcNow)
+                    && (a.EffectiveTo == null || a.EffectiveTo >= DateOnly.FromDateTime(DateTime.UtcNow)))
+                .OrderByDescending(a => a.EffectiveFrom)
+                .Select(a => (Guid?)a.PositionId)
+                .FirstOrDefaultAsync(ct);
+        Guid userIdForRoles = employee!.UserId;
+
+        var roleIds = await _db.UserRoles
+            .AsNoTracking()
+            .Where(ur => ur.TenantId == tenantId && ur.UserId == userIdForRoles)
+            .Select(ur => ur.RoleId)
+            .ToListAsync(ct);
+
+        var scopeIds = new List<Guid>();
+        scopeIds.AddRange(roleIds);
+        if (positionId.HasValue) scopeIds.Add(positionId.Value);
+        if (departmentId.HasValue) scopeIds.Add(departmentId.Value);
+
+        int? roleRadius = null;
+        int? positionRadius = null;
+        int? departmentRadius = null;
+
+        if (scopeIds.Count > 0)
+        {
+            var policies = await _db.MonitoringPolicyOverrides
+                .AsNoTracking()
+                .Where(p => p.TenantId == tenantId && scopeIds.Contains(p.ScopeId))
+                .ToListAsync(ct);
+
+            roleRadius = policies
+                .Where(p => p.ScopeType == "role" && roleIds.Contains(p.ScopeId))
+                .Select(p => p.AllowedRadiusMeters)
+                .FirstOrDefault(v => v.HasValue);
+
+            if (positionId.HasValue)
+            {
+                positionRadius = policies
+                    .Where(p => p.ScopeType == "position" && p.ScopeId == positionId.Value)
+                    .Select(p => p.AllowedRadiusMeters)
+                    .FirstOrDefault(v => v.HasValue);
+            }
+
+            if (departmentId.HasValue)
+            {
+                departmentRadius = policies
+                    .Where(p => p.ScopeType == "department" && p.ScopeId == departmentId.Value)
+                    .Select(p => p.AllowedRadiusMeters)
+                    .FirstOrDefault(v => v.HasValue);
+            }
+        }
+
+        // 4. Legal-entity default, then retained tenant fallback.
+        var toggles = await _db.MonitoringFeatureToggles
+            .AsNoTracking()
+            .Where(t => t.TenantId == tenantId
+                && (t.LegalEntityId == employee.LegalEntityId || t.LegalEntityId == null))
+            .OrderByDescending(t => t.LegalEntityId == employee.LegalEntityId)
+            .FirstOrDefaultAsync(ct);
+        var tenantRadius = toggles?.AllowedRadiusMeters;
+
+        return MonitoringToggleResolution.ResolveRadiusMeters(
+            employeeRadius, workModeRadius, roleRadius, positionRadius, departmentRadius, tenantRadius);
+    }
+
+    private async Task<bool> ResolveAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid? legalEntityId,
+        MonitoringCapability capability,
+        CancellationToken ct)
+    {
+        var employee = await ResolveEmployeeAsync(tenantId, userId, legalEntityId, ct);
+        if (employee is null)
+            return false;
+
+        // 1. Employee-level override
+        var employeeOverride = await _db.EmployeeMonitoringOverrides
+            .AsNoTracking()
+            .FirstOrDefaultAsync(o => o.TenantId == tenantId && o.EmployeeId == employee.Id, ct);
         bool? employeeValue = employeeOverride is null
             ? null
             : GetCapability(employeeOverride, capability);
 
-        // 2. Policy overrides: role > position > department
-        // EmployeeId in Phase 1 may be UserId (tray identity). Prefer Employee.UserId match,
-        // then fall back to Employee.Id match for true CoreHR employee ids.
-        var employee = await _db.Employees
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                e => e.TenantId == tenantId && (e.UserId == employeeId || e.Id == employeeId),
-                ct);
+        // 2. Work Mode tier - resolved directly from the employee row, not a collected scope
+        // list, since there's exactly one WorkMode per employee (unlike roles, which can be plural).
+        MonitoringPolicyOverride? workModeOverride = employee.WorkModeId is Guid workModeId
+            ? await _db.MonitoringPolicyOverrides
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.ScopeType == "work_mode" && p.ScopeId == workModeId, ct)
+            : null;
+        bool? workModeValue = workModeOverride is null
+            ? null
+            : GetCapability(workModeOverride, capability);
 
+        // 3. Policy overrides: role > position > department
+        // EmployeeId in Phase 1 may be UserId (tray identity) or a real Employee.Id.
         Guid? departmentId = employee?.DepartmentId;
-        Guid? positionId = null; // TODO: resolve via position_assignments once it exists
-        Guid userIdForRoles = employee?.UserId ?? employeeId;
+        Guid? positionId = employee is null
+            ? null
+            : await _db.PositionAssignments
+                .AsNoTracking()
+                .Where(a => a.EmployeeId == employee.Id
+                    && a.AssignmentKind == PositionAssignmentKind.PrimaryEmployment
+                    && a.AssignmentStatus == PositionAssignmentStatus.Active
+                    && a.EffectiveFrom <= DateOnly.FromDateTime(DateTime.UtcNow)
+                    && (a.EffectiveTo == null || a.EffectiveTo >= DateOnly.FromDateTime(DateTime.UtcNow)))
+                .OrderByDescending(a => a.EffectiveFrom)
+                .Select(a => (Guid?)a.PositionId)
+                .FirstOrDefaultAsync(ct);
+        Guid userIdForRoles = employee!.UserId;
 
         var roleIds = await _db.UserRoles
             .AsNoTracking()
@@ -111,14 +433,17 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
             }
         }
 
-        // 3. Tenant-level toggles (null row → false safe default)
+        // 4. Legal-entity default, then retained tenant fallback.
         var toggles = await _db.MonitoringFeatureToggles
             .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId, ct);
+            .Where(t => t.TenantId == tenantId
+                && (t.LegalEntityId == employee.LegalEntityId || t.LegalEntityId == null))
+            .OrderByDescending(t => t.LegalEntityId == employee.LegalEntityId)
+            .FirstOrDefaultAsync(ct);
         bool? tenantValue = toggles is null ? null : GetCapability(toggles, capability);
 
         return MonitoringToggleResolution.Resolve(
-            employeeValue, roleValue, positionValue, departmentValue, tenantValue);
+            employeeValue, workModeValue, roleValue, positionValue, departmentValue, tenantValue);
     }
 
     private static bool? GetCapability(EmployeeMonitoringOverride o, MonitoringCapability c) => c switch
@@ -152,6 +477,37 @@ public class MonitoringToggleResolverService : IMonitoringToggleResolver
         MonitoringCapability.Biometric => o.Biometric,
         _ => null
     };
+
+    public async Task<bool> IsPhotoRequiredAsync(
+        Guid tenantId, Guid employeeId, CancellationToken ct = default) =>
+        await IsPhotoRequiredCoreAsync(tenantId, employeeId, null, ct);
+
+    public Task<bool> IsPhotoRequiredAsync(
+        Guid tenantId, Guid userId, Guid legalEntityId, CancellationToken ct = default) =>
+        IsPhotoRequiredCoreAsync(tenantId, userId, legalEntityId, ct);
+
+    private async Task<bool> IsPhotoRequiredCoreAsync(
+        Guid tenantId, Guid userId, Guid? legalEntityId, CancellationToken ct)
+    {
+        var cacheKey = $"tenant:{tenantId}:monitoring-toggle:user:{userId}:legal-entity:{legalEntityId}:photo-required";
+        var cached = await _cache.GetAsync<bool?>(cacheKey, ct);
+        if (cached.HasValue)
+            return cached.Value;
+
+        var employee = await ResolveEmployeeAsync(tenantId, userId, legalEntityId, ct);
+        var resolved = false;
+        if (employee?.WorkModeId is Guid workModeId)
+        {
+            resolved = await _db.TimeAttendanceWorkModes
+                .AsNoTracking()
+                .Where(w => w.Id == workModeId && w.TenantId == tenantId)
+                .Select(w => w.PhotoRequired)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        await _cache.SetAsync(cacheKey, resolved, CacheTtl, ct);
+        return resolved;
+    }
 
     private static bool GetCapability(MonitoringFeatureToggles t, MonitoringCapability c) => c switch
     {

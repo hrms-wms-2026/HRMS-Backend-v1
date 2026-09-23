@@ -180,9 +180,14 @@ public sealed class WorkManagementSampleDataSeeder : IHostedService
             return;
         }
 
+        // Keyed on TenantId+Identifier only (not LeadId): the unique constraint this seeder must
+        // stay idempotent against is ix_projects_tenant_id_identifier, and Identifier is derived
+        // from user.Id, not employee.Id. If an Employee row is ever deleted and recreated for the
+        // same user (its Id changes), a LeadId-based check would stop recognizing already-seeded
+        // rows and try to re-insert the same identifiers, violating the unique index.
         var shortUserId = user.Id.ToString("N")[..8].ToUpperInvariant();
         var existingSampleProjects = await db.Projects
-            .Where(p => p.TenantId == tenantId && p.LeadId == employee.Id && p.Identifier.StartsWith(SampleIdentifierPrefix + shortUserId))
+            .Where(p => p.TenantId == tenantId && p.Identifier.StartsWith(SampleIdentifierPrefix + shortUserId))
             .ToListAsync(ct);
 
         var now = DateTimeOffset.UtcNow;

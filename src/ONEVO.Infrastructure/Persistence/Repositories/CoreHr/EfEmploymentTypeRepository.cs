@@ -15,4 +15,11 @@ public sealed class EfEmploymentTypeRepository : IEmploymentTypeRepository
             .FirstOrDefaultAsync(t => t.Code == code, ct);
         return match?.Id;
     }
+
+    public async Task<string?> GetCodeByIdAsync(int id, CancellationToken ct = default)
+    {
+        var match = await _db.EmploymentTypes.AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
+        return match?.Code;
+    }
 }

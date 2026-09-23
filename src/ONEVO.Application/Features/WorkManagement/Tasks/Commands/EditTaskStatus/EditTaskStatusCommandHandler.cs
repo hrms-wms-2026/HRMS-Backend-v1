@@ -4,7 +4,10 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Objectives.Services;
+using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
 
@@ -14,17 +17,22 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
     private readonly ICallerIdentityResolver _identity;
     private readonly ITaskStatusRepository _statuses;
     private readonly IObjectiveRepository _objectives;
+    private readonly IProjectRepository _projects;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMilestoneMembershipCoordinator _membership;
 
     public EditTaskStatusCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, ITaskStatusRepository statuses,
-        IObjectiveRepository objectives, IUnitOfWork unitOfWork)
+        IObjectiveRepository objectives, IProjectRepository projects, IUnitOfWork unitOfWork,
+        IMilestoneMembershipCoordinator membership)
     {
         _currentUser = currentUser;
         _identity = identity;
         _statuses = statuses;
         _objectives = objectives;
+        _projects = projects;
         _unitOfWork = unitOfWork;
+        _membership = membership;
     }
 
     public async Task<Result> Handle(EditTaskStatusCommand request, CancellationToken ct)
@@ -40,15 +48,32 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
             return Result.Forbidden("No employee record for the current user.");
 
         var status = await _statuses.GetByIdForTenantAsync(tenantId, request.StatusId, ct);
-        if (status is null || status.ObjectiveId is null)
+        if (status is null || status.ObjectiveId is not null)
             return Result.NotFound("Task status not found.");
 
-        var objective = await _objectives.GetByIdForTenantAsync(tenantId, status.ObjectiveId.Value, ct);
-        if (objective is null || !objective.IsActive)
-            return Result.NotFound("Objective not found.");
+        var project = await _projects.GetByIdForTenantAsync(tenantId, status.ProjectId, ct);
+        if (project is null || !project.IsActive)
+            return Result.NotFound("Project not found.");
 
-        if (objective.OwnerId != callerEmployeeId.Value)
-            return Result.Forbidden("Only this milestone's owner can change task status configuration.");
+        var defaultObjective = await _objectives.GetDefaultByProjectIdAsync(tenantId, project.Id, ct);
+        if (defaultObjective is null)
+            return Result.NotFound("Project has no default milestone.");
+
+        if (!await _membership.IsEffectiveManagerAsync(tenantId, defaultObjective.Id, callerEmployeeId.Value, ct))
+            return Result.Forbidden("Only an owner or member of this project can change task status configuration.");
+
+        var siblings = await _statuses.GetProjectTemplateAsync(tenantId, project.Id, ct);
+
+        if (request.Category == TaskStatusCategories.Done && status.Category != TaskStatusCategories.Done
+            && siblings.Any(s => s.Id != status.Id && s.Category == TaskStatusCategories.Done))
+            return Result.Conflict("This project already has a Done status; edit or delete it first.");
+
+        if (status.Category == TaskStatusCategories.Done && request.Category != TaskStatusCategories.Done)
+            return Result.Conflict("A project must always have exactly one Done status.");
+
+        if (status.Category == TaskStatusCategories.Active && request.Category != TaskStatusCategories.Active
+            && siblings.Count(s => s.Category == TaskStatusCategories.Active) <= 1)
+            return Result.Conflict("A project must always have at least one Active status.");
 
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
@@ -57,6 +82,9 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
             status.RequiresApproval = request.RequiresApproval;
             status.ApproverId = request.ApproverId;
             status.Visibility = request.Visibility;
+            status.Category = request.Category;
+            status.Color = request.Color;
+            status.MarksTaskComplete = request.Category == TaskStatusCategories.Done;
             status.UpdatedAt = DateTimeOffset.UtcNow;
             _statuses.Update(status);
             await _unitOfWork.SaveChangesAsync(innerCt);

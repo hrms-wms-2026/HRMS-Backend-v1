@@ -43,6 +43,18 @@ public class EfAppUsageSnapshotRepository : IAppUsageSnapshotRepository
                              && s.CapturedAt < end, ct);
     }
 
+    public async Task<IReadOnlyList<AppUsageSnapshot>> GetAllByEmployeeDateAsync(
+        Guid tenantId, Guid employeeId, DateOnly date, CancellationToken ct)
+    {
+        var (start, end) = UtcDayBounds(date);
+
+        return await _db.AppUsageSnapshots
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.EmployeeId == employeeId
+                        && s.CapturedAt >= start && s.CapturedAt < end)
+            .ToListAsync(ct);
+    }
+
     private static (DateTimeOffset Start, DateTimeOffset End) UtcDayBounds(DateOnly date)
     {
         var start = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);

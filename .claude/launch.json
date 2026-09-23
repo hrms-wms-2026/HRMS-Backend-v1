@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend-api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/ONEVO.Api/ONEVO.Api.csproj", "--launch-profile", "https"],
+      "port": 7229,
+      "url": "https://localhost:7229"
+    }
+  ]
+}

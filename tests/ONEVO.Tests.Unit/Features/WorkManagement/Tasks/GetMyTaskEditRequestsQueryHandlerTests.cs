@@ -17,6 +17,7 @@ public class GetMyTaskEditRequestsQueryHandlerTests
     private static readonly Guid OwnerEmployeeId = Guid.NewGuid();
     private static readonly Guid FirstRequesterEmployeeId = Guid.NewGuid();
     private static readonly Guid SecondRequesterEmployeeId = Guid.NewGuid();
+    private static readonly Guid ObjectiveId = Guid.NewGuid();
 
     [Fact]
     public async Task Handle_ReturnsPendingRequestsForOwnerWithBatchedRequesterNames()
@@ -44,9 +45,11 @@ public class GetMyTaskEditRequestsQueryHandlerTests
             });
 
         var firstPayload = new TaskEditRequestPayload(
-            "First update", null, WorkTaskPriorities.High, null, null, null);
+                        "First update", null, WorkTaskPriorities.High, null, null, null, null);
+
         var secondPayload = new TaskEditRequestPayload(
-            "Second update", null, WorkTaskPriorities.Low, null, null, null);
+                        "Second update", null, WorkTaskPriorities.Low, null, null, null, null);
+
         var pending = new List<TaskEditRequest>
         {
             new()
@@ -78,8 +81,13 @@ public class GetMyTaskEditRequestsQueryHandlerTests
                 TenantId, OwnerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(pending);
 
+        var tasks = new Mock<IWorkTaskRepository>();
+        tasks.Setup(x => x.GetObjectiveIdsByTaskIdsAsync(
+                TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(pending.ToDictionary(r => r.TaskId, _ => ObjectiveId));
+
         var handler = new GetMyTaskEditRequestsQueryHandler(
-            currentUser.Object, identity.Object, requests.Object);
+            currentUser.Object, identity.Object, requests.Object, tasks.Object);
 
         var result = await handler.Handle(
             new GetMyTaskEditRequestsQuery(),
@@ -92,11 +100,13 @@ public class GetMyTaskEditRequestsQueryHandlerTests
             {
                 Assert.Equal("First update", item.Payload.Title);
                 Assert.Equal("Alex Morgan", item.RequestedByName);
+                Assert.Equal(ObjectiveId, item.ObjectiveId);
             },
             item =>
             {
                 Assert.Equal("Second update", item.Payload.Title);
                 Assert.Equal("Sam Patel", item.RequestedByName);
+                Assert.Equal(ObjectiveId, item.ObjectiveId);
             });
         identity.Verify(x => x.ResolveDisplayNamesByEmployeeIdAsync(
             TenantId,

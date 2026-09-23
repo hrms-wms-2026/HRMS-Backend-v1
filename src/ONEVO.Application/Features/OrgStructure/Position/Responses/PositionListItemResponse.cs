@@ -28,4 +28,5 @@ public record PositionListItemResponse(
     bool CurrentOccupancyCheckSupported,
     int AssignedCount,
     IReadOnlyList<PositionOccupantPreviewResponse> OccupantPreview,
-    int RemainingAssignedCount);
+    int RemainingAssignedCount,
+    bool RequiresApproval);

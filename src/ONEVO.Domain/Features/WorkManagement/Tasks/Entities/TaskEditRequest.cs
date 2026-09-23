@@ -22,6 +22,8 @@ public class TaskEditRequest : BaseEntity
     public string PayloadJson { get; set; } = "{}";
     public string Status { get; set; } = TaskEditRequestStatuses.Pending;
     public Guid? DecidedByEmployeeId { get; set; }
-    public string? DecisionComment { get; set; }
+        public string? DecisionComment { get; set; }
+    public string? Reason { get; set; }
+
     public DateTimeOffset? DecidedAt { get; set; }
 }

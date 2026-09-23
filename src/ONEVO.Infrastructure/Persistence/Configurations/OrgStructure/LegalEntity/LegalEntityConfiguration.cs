@@ -26,7 +26,15 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
             table.HasCheckConstraint(
                 "ck_legal_entities_work_time_pair",
                 "(work_start_time IS NULL AND work_end_time IS NULL) " +
-                "OR (work_start_time IS NOT NULL AND work_end_time IS NOT NULL AND work_start_time < work_end_time)");
+                "OR (work_start_time IS NOT NULL AND work_end_time IS NOT NULL)");
+            table.HasCheckConstraint(
+                "ck_legal_entities_break_duration_minutes",
+                "break_duration_minutes IS NULL OR break_duration_minutes >= 0");
+            table.HasCheckConstraint(
+                "ck_legal_entities_office_location",
+                "(office_latitude IS NULL AND office_longitude IS NULL) " +
+                "OR (office_latitude IS NOT NULL AND office_longitude IS NOT NULL " +
+                "AND office_latitude BETWEEN -90 AND 90 AND office_longitude BETWEEN -180 AND 180)");
         });
         builder.HasKey(l => l.Id);
         builder.Property(l => l.Name).HasMaxLength(200).IsRequired();
@@ -67,10 +75,25 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
         builder.Property(l => l.TimeFormat).HasMaxLength(10).IsRequired().HasDefaultValue("12h");
 
         // Default company working hours. Postgres "time without time zone",
-        // nullable; pairing/ordering enforced by ck_legal_entities_work_time_pair
-        // above (defense in depth alongside the command validator).
+        // nullable; both-or-neither pairing enforced by ck_legal_entities_work_time_pair
+        // above (defense in depth alongside the command validator). Overnight
+        // windows (end <= start) mean the end is on the next calendar day.
         builder.Property(l => l.WorkStartTime).HasColumnType("time");
         builder.Property(l => l.WorkEndTime).HasColumnType("time");
+
+        // Default company break duration in minutes. Nullable = not
+        // configured; independent of WorkStartTime/WorkEndTime pairing.
+        // Non-negative enforced by ck_legal_entities_break_duration_minutes
+        // above (defense in depth alongside the command validator).
+        builder.Property(l => l.BreakDurationMinutes).HasColumnName("break_duration_minutes");
+
+        // Office location for the Phase B on-site location warning (monitoring-only, never
+        // blocks anything). Nullable = not configured; pairing/range enforced by
+        // ck_legal_entities_office_location above (defense in depth alongside the command
+        // validator).
+        builder.Property(l => l.OfficeAddress).HasColumnName("office_address").HasMaxLength(500);
+        builder.Property(l => l.OfficeLatitude).HasColumnName("office_latitude");
+        builder.Property(l => l.OfficeLongitude).HasColumnName("office_longitude");
 
         // Existing index, preserved as-is.
         builder.HasIndex(l => l.TenantId);
@@ -100,15 +123,7 @@ public class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEntity>
             .HasForeignKey(l => l.ParentLegalEntityId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Logo reference. Deliberate hardening beyond the fields the task
-        // literally mandated an FK for (only parent_legal_entity_id was
-        // required to be an FK): legal_entities had zero FKs before this
-        // migration, and file_records already models soft-deletion, so
-        // SetNull lets a file record be cleaned up independently without
-        // blocking or cascading into legal_entities.
-        builder.HasOne<FileRecord>()
-            .WithMany()
-            .HasForeignKey(l => l.LogoFileId)
-            .OnDelete(DeleteBehavior.SetNull);
+        // Logo reference migrated to entity_assets (owner_type "legal_entity") - see
+        // 2026-09-22-centralized-file-upload-phase1-backend.md Task 2. No FK here anymore.
     }
 }

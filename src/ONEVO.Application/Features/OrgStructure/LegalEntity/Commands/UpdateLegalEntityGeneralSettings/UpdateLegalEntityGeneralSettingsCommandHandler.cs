@@ -1,10 +1,13 @@
 using MediatR;
+using ONEVO.Application.Common.Constants;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.DTOs.Responses;
 using ONEVO.Application.Features.OrgStructure.Mappers;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 using ONEVO.Application.Features.OrgStructure;
+using ONEVO.Application.Features.Storage.File.Helpers;
 
 namespace ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
 
@@ -12,13 +15,15 @@ public class UpdateLegalEntityGeneralSettingsCommandHandler
     : IRequestHandler<UpdateLegalEntityGeneralSettingsCommand, Result<LegalEntityGeneralSettingsResponse>>
 {
     private readonly ILegalEntityRepository _legalEntities;
+    private readonly IEntityAssetRepository _entityAssets;
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _dateTimeProvider;
 
     public UpdateLegalEntityGeneralSettingsCommandHandler(
-        ILegalEntityRepository legalEntities, ICurrentUser currentUser, IDateTimeProvider dateTimeProvider)
+        ILegalEntityRepository legalEntities, IEntityAssetRepository entityAssets, ICurrentUser currentUser, IDateTimeProvider dateTimeProvider)
     {
         _legalEntities = legalEntities;
+        _entityAssets = entityAssets;
         _currentUser = currentUser;
         _dateTimeProvider = dateTimeProvider;
     }
@@ -85,6 +90,10 @@ public class UpdateLegalEntityGeneralSettingsCommandHandler
         entity.TimeFormat = request.TimeFormat.Trim();
         entity.WorkStartTime = request.WorkStartTime;
         entity.WorkEndTime = request.WorkEndTime;
+        entity.BreakDurationMinutes = request.BreakDurationMinutes;
+        entity.OfficeAddress = request.OfficeAddress?.Trim();
+        entity.OfficeLatitude = request.OfficeLatitude;
+        entity.OfficeLongitude = request.OfficeLongitude;
         entity.IsActive = newIsActive;
         entity.UpdatedAt = _dateTimeProvider.UtcNow;
 
@@ -94,6 +103,10 @@ public class UpdateLegalEntityGeneralSettingsCommandHandler
         _legalEntities.Update(entity);
         await _legalEntities.SaveChangesAsync(ct);
 
-        return Result<LegalEntityGeneralSettingsResponse>.Success(LegalEntityMapper.ToGeneralSettingsResponse(entity));
+        var logoFileIds = await _entityAssets.GetPrimaryFileIdsByOwnerAsync(
+            tenantId, EntityAssetOwnerTypes.LegalEntity, new[] { entity.Id }, UploadPurposeCatalog.CompanyLogo, ct);
+        var logoFileId = logoFileIds.TryGetValue(entity.Id, out var fid) ? (Guid?)fid : null;
+
+        return Result<LegalEntityGeneralSettingsResponse>.Success(LegalEntityMapper.ToGeneralSettingsResponse(entity, logoFileId));
     }
 }

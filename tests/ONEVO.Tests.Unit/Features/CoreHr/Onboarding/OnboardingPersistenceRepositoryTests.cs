@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.Onboarding.Queries.ListPendingAccessGrantRequestsForMe;
 using ONEVO.Domain.Features.Auth.Entities;
 using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
@@ -41,6 +42,18 @@ public sealed class OnboardingPersistenceRepositoryTests
     }
 
     [Fact]
+    public void AccessGrantRequest_XminIsConcurrencyToken()
+    {
+        using var db = BuildDb();
+        var xmin = db.Model.FindEntityType(typeof(AccessGrantRequest))!.FindProperty("xmin");
+
+        xmin.Should().NotBeNull();
+        xmin!.IsConcurrencyToken.Should().BeTrue();
+        xmin.ValueGenerated.Should().Be(Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.OnAddOrUpdate);
+        xmin.ClrType.Should().Be(typeof(uint?));
+    }
+
+    [Fact]
     public async Task AccessGrantRequest_AnyPendingByDraft_OnlyMatchesPendingAndIsTenantScoped()
     {
         await using var db = BuildDb();
@@ -58,6 +71,133 @@ public sealed class OnboardingPersistenceRepositoryTests
 
         (await repository.AnyPendingByDraftAsync(tenant, draftId)).Should().BeTrue();
         (await repository.AnyPendingByDraftAsync(Guid.NewGuid(), draftId)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AccessGrantRequest_AnyPendingByEmployee_OnlyMatchesPendingPositionChange()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var rejected = new AccessGrantRequest
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, EmployeeId = employeeId, UserId = null,
+            TargetPositionId = Guid.NewGuid(), TargetDepartmentId = Guid.NewGuid(),
+            PositionAccessTemplateId = Guid.NewGuid(), RequestedRoleId = Guid.NewGuid(),
+            RequestedByUserId = Guid.NewGuid(), ActionType = AccessGrantActionType.PositionChange,
+            ApprovalStatus = "Rejected", RequestedAt = DateTimeOffset.UtcNow, EffectiveFrom = DateTimeOffset.UtcNow,
+        };
+        var repository = new EfAccessGrantRequestRepository(db);
+        await repository.AddAsync(rejected); await repository.SaveChangesAsync(); db.ChangeTracker.Clear();
+
+        (await repository.AnyPendingByEmployeeAsync(tenant, employeeId)).Should().BeFalse();
+
+        var pending = new AccessGrantRequest
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, EmployeeId = employeeId, UserId = null,
+            TargetPositionId = Guid.NewGuid(), TargetDepartmentId = Guid.NewGuid(),
+            PositionAccessTemplateId = Guid.NewGuid(), RequestedRoleId = Guid.NewGuid(),
+            RequestedByUserId = Guid.NewGuid(), ActionType = AccessGrantActionType.PositionChange,
+            RequestedAt = DateTimeOffset.UtcNow, EffectiveFrom = DateTimeOffset.UtcNow,
+        };
+        await repository.AddAsync(pending); await repository.SaveChangesAsync(); db.ChangeTracker.Clear();
+
+        (await repository.AnyPendingByEmployeeAsync(tenant, employeeId)).Should().BeTrue();
+        (await repository.AnyPendingByEmployeeAsync(Guid.NewGuid(), employeeId)).Should().BeFalse();
+        (await repository.AnyPendingByEmployeeAsync(tenant, Guid.NewGuid())).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ListPending_ReturnsOnlyPendingRows_WithResolvedNames()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var otherTenant = Guid.NewGuid();
+
+        var onboarding = await SeedFullRequestAsync(
+            db, tenant, approvalStatus: "Pending", actionType: AccessGrantActionType.EmployeeOnboarding,
+            positionName: "Software Engineer", requesterFirstName: "Riya", requesterLastName: "Starter");
+        await SeedFullRequestAsync(db, tenant, approvalStatus: "Approved", actionType: AccessGrantActionType.EmployeeOnboarding);
+        await SeedFullRequestAsync(db, tenant, approvalStatus: "Rejected", actionType: AccessGrantActionType.EmployeeOnboarding);
+        await SeedFullRequestAsync(db, otherTenant, approvalStatus: "Pending", actionType: AccessGrantActionType.EmployeeOnboarding);
+
+        var changePosition = new Position
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, Name = "Engineering Manager",
+        };
+        var employee = new ONEVO.Domain.Features.CoreHr.Entities.Employee
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, UserId = Guid.NewGuid(), EmployeeNumber = "E-1",
+            FirstName = "Jane", LastName = "Doe", Email = "jane.doe@example.com",
+            HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
+        };
+        var changeRequester = new User
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, FirstName = "Riya", LastName = "Starter",
+            Email = $"requester-{Guid.NewGuid()}@example.com",
+        };
+        var positionChange = new AccessGrantRequest
+        {
+            Id = Guid.NewGuid(), TenantId = tenant, EmployeeId = employee.Id, UserId = employee.UserId,
+            ActionType = AccessGrantActionType.PositionChange, TargetPositionId = changePosition.Id,
+            TargetDepartmentId = Guid.NewGuid(), PositionAccessTemplateId = Guid.NewGuid(),
+            RequestedRoleId = Guid.NewGuid(), ApprovalStatus = "Pending", ChangeReason = "Promotion",
+            RequestedByUserId = changeRequester.Id, RequestedAt = DateTimeOffset.UtcNow.AddMinutes(1),
+            EffectiveFrom = DateTimeOffset.UtcNow,
+        };
+        db.Positions.Add(changePosition);
+        db.Employees.Add(employee);
+        db.Users.Add(changeRequester);
+        db.AccessGrantRequests.Add(positionChange);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var repository = new EfAccessGrantRequestRepository(db);
+        var items = await repository.ListPendingAsync(tenant, excludeRequestedByUserId: Guid.Empty);
+
+        items.Should().HaveCount(2);
+        items.Should().OnlyContain(x => x.Id == onboarding.RequestId || x.Id == positionChange.Id);
+
+        var onboardingItem = items.Should().ContainSingle(x => x.Id == onboarding.RequestId).Subject;
+        onboardingItem.ActionType.Should().Be(AccessGrantActionType.EmployeeOnboarding);
+        onboardingItem.EmployeeName.Should().BeNull();
+        onboardingItem.InvitedFullName.Should().Be("Firstname Lastname");
+        onboardingItem.TargetPositionName.Should().Be("Software Engineer");
+        onboardingItem.RequestedByName.Should().Be("Riya Starter");
+        onboardingItem.ChangeReason.Should().BeNull();
+
+        var changeItem = items.Should().ContainSingle(x => x.Id == positionChange.Id).Subject;
+        changeItem.ActionType.Should().Be(AccessGrantActionType.PositionChange);
+        changeItem.EmployeeName.Should().Be("Jane Doe");
+        changeItem.InvitedFullName.Should().BeNull();
+        changeItem.TargetPositionName.Should().Be("Engineering Manager");
+        changeItem.ChangeReason.Should().Be("Promotion");
+        changeItem.RequestedByName.Should().Be("Riya Starter");
+    }
+
+    [Fact]
+    public async Task ListPending_ExcludesRowsSubmittedByCaller()
+    {
+        await using var db = BuildDb();
+        var tenant = Guid.NewGuid();
+        var callerId = Guid.NewGuid();
+
+        var own = await SeedFullRequestAsync(
+            db, tenant, approvalStatus: "Pending", actionType: AccessGrantActionType.EmployeeOnboarding,
+            requesterFirstName: "Self", requesterLastName: "Submitter");
+        db.AccessGrantRequests.First(x => x.Id == own.RequestId).RequestedByUserId = callerId;
+        await db.SaveChangesAsync();
+
+        var other = await SeedFullRequestAsync(
+            db, tenant, approvalStatus: "Pending", actionType: AccessGrantActionType.EmployeeOnboarding,
+            requesterFirstName: "Other", requesterLastName: "Person");
+        db.ChangeTracker.Clear();
+
+        var repository = new EfAccessGrantRequestRepository(db);
+        var items = await repository.ListPendingAsync(tenant, excludeRequestedByUserId: callerId);
+
+        items.Should().ContainSingle(x => x.Id == other.RequestId);
+        items.Should().NotContain(x => x.Id == own.RequestId);
     }
 
     [Fact]
@@ -364,6 +504,64 @@ public sealed class OnboardingPersistenceRepositoryTests
         await repository.InstantiateAsync(template, Guid.NewGuid(), Guid.NewGuid(), editedTasksJson: "[{\"title\":\"Different task for this hire\",\"ownerType\":\"custom_user\",\"assignedToId\":\"" + Guid.NewGuid() + "\",\"dueDate\":\"2026-02-01\",\"isRequired\":false}]", new DateOnly(2026, 1, 1));
 
         template.TasksJson.Should().Be(originalTasksJson);
+    }
+
+    [Fact]
+    public async Task InstantiateAsync_OffboardingTemplate_Succeeds()
+    {
+        await using var db = BuildDb();
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var template = new ChecklistTemplate
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, Name = "Standard Offboarding",
+            TemplateType = "offboarding", IsActive = true,
+            TasksJson = "[{\"title\":\"Return laptop\",\"ownerType\":\"employee\",\"dueOffsetDays\":0,\"isRequired\":true,\"isBypassable\":true,\"bypassPenaltyDescription\":\"None\",\"category\":\"asset_return\"}]",
+        };
+
+        var repo = new EfEmployeeChecklistTaskRepository(db);
+        var tasks = await repo.InstantiateAsync(template, employeeId, userId, editedTasksJson: null, anchorDate: new DateOnly(2026, 9, 1));
+
+        tasks.Should().ContainSingle();
+        tasks[0].LifecycleType.Should().Be("offboarding");
+        tasks[0].IsBypassable.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task InstantiateAsync_InactiveOffboardingTemplate_StillThrows()
+    {
+        await using var db = BuildDb();
+        var template = new ChecklistTemplate
+        {
+            Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), Name = "Inactive",
+            TemplateType = "offboarding", IsActive = false, TasksJson = "[]",
+        };
+
+        var repo = new EfEmployeeChecklistTaskRepository(db);
+        var act = async () => await repo.InstantiateAsync(template, Guid.NewGuid(), Guid.NewGuid(), null, new DateOnly(2026, 1, 1));
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task InstantiateAsync_OnboardingTemplate_StillSucceeds_RegressionCheck()
+    {
+        await using var db = BuildDb();
+        var tenantId = Guid.NewGuid();
+        var template = new ChecklistTemplate
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, Name = "Standard Onboarding",
+            TemplateType = "onboarding", IsActive = true,
+            TasksJson = "[{\"title\":\"Sign NDA\",\"ownerType\":\"employee\",\"dueOffsetDays\":0,\"isRequired\":true}]",
+        };
+
+        var repo = new EfEmployeeChecklistTaskRepository(db);
+        var tasks = await repo.InstantiateAsync(template, Guid.NewGuid(), Guid.NewGuid(), null, new DateOnly(2026, 1, 1));
+
+        tasks.Should().ContainSingle();
+        tasks[0].LifecycleType.Should().Be("onboarding");
+        tasks[0].IsBypassable.Should().BeFalse();
     }
 
     private static ApplicationDbContext BuildDb()

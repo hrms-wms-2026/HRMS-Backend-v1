@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Moq;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.OrgStructure.Queries.GetLegalEntityGeneralSettings;
 using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
@@ -11,6 +12,7 @@ namespace ONEVO.Tests.Unit.Features.OrgStructure.LegalEntity;
 public class GetLegalEntityGeneralSettingsQueryHandlerTests
 {
     private readonly Mock<ILegalEntityRepository> _legalEntities = new();
+    private readonly Mock<IEntityAssetRepository> _entityAssets = new();
     private readonly Mock<ICurrentUser> _currentUser = new();
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -23,7 +25,11 @@ public class GetLegalEntityGeneralSettingsQueryHandlerTests
         _currentUser.SetupGet(c => c.UserId).Returns(UserId);
         _currentUser.Setup(c => c.HasPermission("legal_entity:update")).Returns(hasManagementAccess);
         _currentUser.Setup(c => c.HasPermission("legal_entity:delete")).Returns(false);
-        return new GetLegalEntityGeneralSettingsQueryHandler(_legalEntities.Object, _currentUser.Object);
+        _entityAssets.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
+        return new GetLegalEntityGeneralSettingsQueryHandler(_legalEntities.Object, _entityAssets.Object, _currentUser.Object);
     }
 
     [Fact]
@@ -38,7 +44,8 @@ public class GetLegalEntityGeneralSettingsQueryHandlerTests
             CurrencyCode = "LKR",
             IsActive = true,
             WorkStartTime = new TimeOnly(9, 0),
-            WorkEndTime = new TimeOnly(17, 30)
+            WorkEndTime = new TimeOnly(17, 30),
+            BreakDurationMinutes = 60
         };
         _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(entity);
@@ -51,6 +58,30 @@ public class GetLegalEntityGeneralSettingsQueryHandlerTests
         result.Value.Status.Should().Be("active");
         result.Value.WorkStartTime.Should().Be(new TimeOnly(9, 0));
         result.Value.WorkEndTime.Should().Be(new TimeOnly(17, 30));
+        result.Value.BreakDurationMinutes.Should().Be(60);
+    }
+
+    [Fact]
+    public async Task Handle_EntityWithNullBreakDurationMinutes_ReturnsNull()
+    {
+        var entity = new LegalEntityEntity
+        {
+            Id = Guid.NewGuid(),
+            TenantId = TenantId,
+            Name = "Acme Lanka",
+            CountryCode = "LKA",
+            CurrencyCode = "LKR",
+            IsActive = true,
+            BreakDurationMinutes = null
+        };
+        _legalEntities.Setup(r => r.GetAccessibleByIdAsync(TenantId, entity.Id, UserId, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entity);
+        var sut = BuildSut();
+
+        var result = await sut.Handle(new GetLegalEntityGeneralSettingsQuery(entity.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.BreakDurationMinutes.Should().BeNull();
     }
 
     [Fact]

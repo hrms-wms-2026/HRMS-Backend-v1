@@ -21,6 +21,9 @@ public static class DeviceStateSnapshotMapper
             CapturedAt = item.CapturedAt,
             IdleSeconds = item.IdleSeconds,
             IsIdle = item.IsIdle, // Trusted verbatim from the agent for Phase 1 — server does not recompute from IdleSeconds
+            Latitude = item.Latitude,
+            Longitude = item.Longitude,
+            AccuracyMeters = item.AccuracyMeters,
             CreatedAt = createdAt
         };
     }

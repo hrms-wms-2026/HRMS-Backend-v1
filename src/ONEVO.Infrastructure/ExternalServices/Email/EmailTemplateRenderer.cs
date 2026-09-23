@@ -33,7 +33,9 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             "admin_password_changed" => RenderAdminPasswordChanged(),
             "platform_manager_invite" => RenderPlatformManagerInvite(fields),
             "employee_onboarding_invite" => RenderEmployeeOnboardingInvite(fields),
+            "position_change_approval_request" => RenderPositionChangeApprovalRequest(fields),
             "invoice_email" => RenderInvoiceEmail(fields),
+            "calendar_event_invite" => RenderCalendarEventInvite(fields),
             _ => throw new InvalidOperationException(
                 $"Unknown email template '{templateId}'. Add a case in EmailTemplateRenderer.")
         };
@@ -208,6 +210,29 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         return new RenderedEmail(subject, html, text);
     }
 
+    private RenderedEmail RenderPositionChangeApprovalRequest(IReadOnlyDictionary<string, object?> f)
+    {
+        var employeeName = Get(f, "employeeName");
+        var positionName = Get(f, "positionName");
+        var changeReason = Get(f, "changeReason", fallback: "position change");
+        var tenantSlug = Get(f, "tenant_slug");
+        var appBaseUrl = string.IsNullOrWhiteSpace(_options.AppBaseUrl) ? string.Empty : _options.AppBaseUrl;
+        appBaseUrl = ApplyTenantSlug(appBaseUrl, tenantSlug);
+        var approvalsUrl = string.IsNullOrWhiteSpace(appBaseUrl)
+            ? "[approvals_url placeholder - set Email:AppBaseUrl]"
+            : $"{appBaseUrl.TrimEnd('/')}/people/approvals";
+
+        var subject = $"Approval needed: {Escape(employeeName)}'s {Escape(changeReason)} to {Escape(positionName)}";
+        var html = $"""
+            <!doctype html><html><body>
+              <p>{Escape(employeeName)} has been proposed for a {Escape(changeReason)} into <strong>{Escape(positionName)}</strong>, a sensitive position that requires your approval.</p>
+              <p><a href="{Escape(approvalsUrl)}">Review this request</a></p>
+            </body></html>
+            """;
+        var text = $"{employeeName} has been proposed for a {changeReason} into {positionName}, which requires your approval.\nReview: {approvalsUrl}";
+        return new RenderedEmail(subject, html, text);
+    }
+
     private RenderedEmail RenderInvoiceEmail(IReadOnlyDictionary<string, object?> f)
     {
         var tenantName = Get(f, "tenant_name");
@@ -295,6 +320,27 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
 
         var builder = new UriBuilder(parsed) { Host = $"{tenantSlug}.{parsed.Host}" };
         return builder.Uri.ToString();
+    }
+
+    private RenderedEmail RenderCalendarEventInvite(IReadOnlyDictionary<string, object?> f)
+    {
+        var recipientName = Get(f, "recipientName");
+        var eventTitle = Get(f, "eventTitle");
+        var startDateUtc = Get(f, "startDateUtc");
+        var location = Get(f, "location");
+        var organizerName = Get(f, "organizerName");
+
+        var subject = $"You're invited: {eventTitle}";
+        var locationLine = string.IsNullOrWhiteSpace(location) ? "" : $"<p>Location: {Escape(location)}</p>";
+        var html = $"""
+            <!doctype html><html><body>
+              <p>Hi {Escape(recipientName)},</p>
+              <p>{Escape(organizerName)} added you to <strong>{Escape(eventTitle)}</strong>, starting {Escape(startDateUtc)}.</p>
+              {locationLine}
+            </body></html>
+            """;
+        var text = $"Hi {recipientName},\n{organizerName} added you to \"{eventTitle}\", starting {startDateUtc}.{(string.IsNullOrWhiteSpace(location) ? "" : $"\nLocation: {location}")}";
+        return new RenderedEmail(subject, html, text);
     }
 
     private static string Get(

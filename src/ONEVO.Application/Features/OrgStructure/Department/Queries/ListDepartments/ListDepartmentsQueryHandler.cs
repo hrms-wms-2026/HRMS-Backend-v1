@@ -11,15 +11,18 @@ public class ListDepartmentsQueryHandler
     : IRequestHandler<ListDepartmentsQuery, Result<DepartmentListResult>>
 {
     private readonly IDepartmentRepository _departments;
+    private readonly IPositionRepository _positions;
     private readonly ILegalEntityRepository _legalEntities;
     private readonly ICurrentUser _currentUser;
 
     public ListDepartmentsQueryHandler(
         IDepartmentRepository departments,
+        IPositionRepository positions,
         ILegalEntityRepository legalEntities,
         ICurrentUser currentUser)
     {
         _departments = departments;
+        _positions = positions;
         _legalEntities = legalEntities;
         _currentUser = currentUser;
     }
@@ -45,7 +48,11 @@ public class ListDepartmentsQueryHandler
         {
             var treeDepartments = await _departments.ListForTreeByLegalEntityAsync(
                 tenantId, request.LegalEntityId, normalizedSearch, request.IncludeInactive, ct);
-            var treeItems = DepartmentTreeMapper.BuildTree(treeDepartments);
+
+            var (positionCounts, employeeCounts, positionNames) =
+                await LoadEnrichmentAsync(tenantId, request.LegalEntityId, treeDepartments, ct);
+
+            var treeItems = DepartmentTreeMapper.BuildTree(treeDepartments, positionCounts, employeeCounts, positionNames);
 
             return Result<DepartmentListResult>.Success(
                 new DepartmentListResult(Flat: null, Tree: new DepartmentTreeResponse(treeItems)));
@@ -66,10 +73,39 @@ public class ListDepartmentsQueryHandler
             request.PageSize,
             ct);
 
-        var items = page.Items.Select(DepartmentMapper.ToListItemResponse).ToList();
+        var (flatPositionCounts, flatEmployeeCounts, flatPositionNames) =
+            await LoadEnrichmentAsync(tenantId, request.LegalEntityId, page.Items, ct);
+
+        var items = page.Items
+            .Select(department => DepartmentMapper.ToListItemResponse(department, flatPositionCounts, flatEmployeeCounts, flatPositionNames))
+            .ToList();
         var flat = new DepartmentListPageResponse(items, page.Page, page.PageSize, page.TotalCount, page.TotalPages);
 
         return Result<DepartmentListResult>.Success(new DepartmentListResult(Flat: flat, Tree: null));
+    }
+
+    // Single batched round trip per count type (no per-row queries): position counts and
+    // employee counts grouped by department id, plus a batched name lookup for whichever
+    // positions are set as a department's HeadPositionId.
+    private async Task<(
+        IReadOnlyDictionary<Guid, int> PositionCounts,
+        IReadOnlyDictionary<Guid, int> EmployeeCounts,
+        IReadOnlyDictionary<Guid, string> PositionNames)> LoadEnrichmentAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyList<ONEVO.Domain.Features.OrgStructure.Entities.Department> departments, CancellationToken ct)
+    {
+        var departmentIds = departments.Select(department => department.Id).ToList();
+        var headPositionIds = departments
+            .Where(department => department.HeadPositionId is not null)
+            .Select(department => department.HeadPositionId!.Value)
+            .Distinct()
+            .ToList();
+
+        var positionCounts = await _positions.CountActiveByDepartmentIdsAsync(tenantId, legalEntityId, departmentIds, ct);
+        var employeeCounts = await _departments.CountActiveEmployeesByDepartmentIdsAsync(tenantId, legalEntityId, departmentIds, ct);
+        var headPositions = await _positions.GetByIdsAsync(tenantId, headPositionIds, ct);
+        var positionNames = headPositions.ToDictionary(position => position.Id, position => position.Name);
+
+        return (positionCounts, employeeCounts, positionNames);
     }
 
     private static DepartmentSortBy ParseSortBy(string value)
