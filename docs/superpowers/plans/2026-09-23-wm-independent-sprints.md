@@ -1705,7 +1705,7 @@ achieve(sprintId: string, projectId: string): Promise<boolean>
 loadForProject(projectId: string): Promise<void>   // unchanged; the objective-scoped load() is REMOVED
 ```
 
-- [ ] **Step 1: Update the store spec first** (`state/sprint-list.store.spec.ts`): every call to the new signatures; add
+- [x] **Step 1: Update the store spec first** (`state/sprint-list.store.spec.ts`): every call to the new signatures; add
 
 ```ts
   it('setTasks calls the API then reloads the project sprints', async () => {
@@ -1719,9 +1719,9 @@ loadForProject(projectId: string): Promise<void>   // unchanged; the objective-s
 ```
 (Match the spec file's existing `api` mock shape; add `setTasks: vi.fn()` to it and `projectId: 'p-1', canManage: true` to its `sprintDto` fixture.)
 
-- [ ] **Step 2: Run — FAIL**: `npx vitest run src/app/modules/work/state/sprint-list.store.spec.ts`
+- [x] **Step 2: Run — FAIL**: `npx vitest run src/app/modules/work/state/sprint-list.store.spec.ts`
 
-- [ ] **Step 3: Implement** DTO/model/mapper (`projectId: dto.projectId, canManage: dto.canManage`), API methods above, store:
+- [x] **Step 3: Implement** DTO/model/mapper (`projectId: dto.projectId, canManage: dto.canManage`), API methods above, store:
 
 ```ts
     async create(projectId: string, request: CreateSprintRequestDto): Promise<boolean> {
@@ -1750,7 +1750,7 @@ loadForProject(projectId: string): Promise<void>   // unchanged; the objective-s
 ```
 and rewrite `start/edit/complete/achieve` to `(sprintId, [request,] projectId)` each ending with `await this.loadForProject(projectId);`. Delete `load(objectiveId, activeOnly)`.
 
-- [ ] **Step 4: Fix every compile/type error** (`npx ng build` lists them). Minimal, behavior-neutral fixes in this task only:
+- [x] **Step 4: Fix every compile/type error** (`npx ng build` lists them). Minimal, behavior-neutral fixes in this task only:
   - start/complete dialogs: call store with `this.projectId()`; remove `objectiveId`/`activeOnly` inputs; in `task-backlog.component.ts` template pass `[projectId]="projectId()"` and delete `[objectiveId]="sprint.objectiveId"` on `app-sprint-start-dialog` / `app-sprint-complete-dialog` / edit `app-sprint-form`.
   - `task-backlog.component.ts` `[isObjectiveOwner]="objectiveOwners()[sprint.objectiveId] ?? false"` → `[isObjectiveOwner]="sprint.canManage"` (renamed properly in B4).
   - `otherSprintsForCompleting`: drop the `s.objectiveId === target.objectiveId &&` clause.
@@ -1760,9 +1760,9 @@ and rewrite `start/edit/complete/achieve` to `(sprintId, [request,] projectId)` 
   - All spec fixtures: `objectiveId: 'x'` on a `Sprint`/`SprintDto` → `projectId: 'p-1', canManage: true`.
   - `sprint-form.component.ts`: temporarily call `this.store.create(this.projectId(), {...})` with a new `projectId = input<string>('')` and `this.store.edit(current.id, {...}, this.projectId())` — fully rewritten in B3.
 
-- [ ] **Step 5: Run** `npx vitest run src/app/modules/work` → green (adjust the sprint-form spec's `create` expectation to `('p-1', {...})` by setting input `projectId`). `npx ng build` → success.
+- [x] **Step 5: Run** `npx vitest run src/app/modules/work` → green (adjust the sprint-form spec's `create` expectation to `('p-1', {...})` by setting input `projectId`). `npx ng build` → success.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/modules/work/models src/app/modules/work/utils/sprint.mapper.ts src/app/modules/work/data-access/sprint-api.service.ts src/app/modules/work/state/sprint-list.store.ts src/app/modules/work/state/sprint-list.store.spec.ts src/app/modules/work/ui/sprint-start-dialog src/app/modules/work/ui/sprint-complete-dialog src/app/modules/work/ui/sprint-form src/app/modules/work/ui/task-form-modal src/app/modules/work/feature/task-backlog
