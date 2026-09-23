@@ -7,11 +7,7 @@ public interface ISprintRepository
     Task AddAsync(Sprint sprint, CancellationToken ct = default);
     Task<Sprint?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<Sprint?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
-    Task<IReadOnlyList<Sprint>> GetByObjectiveIdAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
     Task<IReadOnlyList<Sprint>> GetByProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
-
-    /// <summary>Active sprints for one Objective - what non-owner members see in Backlog (spec permissions table).</summary>
-    Task<IReadOnlyList<Sprint>> GetActiveByObjectiveIdAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
 
     /// <summary>Sprints holding at least one task of this Module (spec §3.3 - the Tree tab's leaf expansion).</summary>
     Task<IReadOnlyList<Sprint>> GetContainingObjectiveTasksAsync(Guid tenantId, Guid objectiveId, bool activeOnly, CancellationToken ct = default);

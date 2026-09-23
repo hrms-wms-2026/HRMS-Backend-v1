@@ -153,7 +153,7 @@ public class EditTaskCommandHandlerTests
     {
         var achieved = new Sprint
         {
-            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, Name = "S1",
+            Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "S1",
             Status = SprintStatuses.Achieved, CreatedAt = DateTimeOffset.UtcNow
         };
         var (handler, _, _, _, _, _, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, sprint: achieved);
@@ -392,7 +392,7 @@ public class EditTaskCommandHandlerTests
     [Fact]
     public async Task Handle_SprintIdOmitted_LeavesTaskSprintUnchanged()
     {
-        var currentSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, Name = "S1", Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow };
+        var currentSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "S1", Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow };
         var (handler, _, _, _, task, _, _) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, sprint: currentSprint);
         // Mirrors every existing caller of this endpoint (e.g. the task edit form), which never sends SprintId at all.
         var command = new EditTaskCommand(task.Id, task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours, task.StoryPoints, null, null);
@@ -408,8 +408,8 @@ public class EditTaskCommandHandlerTests
     {
         // Sprints are project-level now: a Draft/Active sprint belonging to a different module in the
         // same project is a valid move target.
-        var currentSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, Name = "S1", Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow };
-        var targetSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = Guid.NewGuid(), Name = "S2", Status = SprintStatuses.Draft, CreatedAt = DateTimeOffset.UtcNow };
+        var currentSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "S1", Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow };
+        var targetSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "S2", Status = SprintStatuses.Draft, CreatedAt = DateTimeOffset.UtcNow };
         var (handler, _, editLogs, callerEmployeeId, task, _, sprintLogs) = Build(
             allocatedHours: 100m, existingSumExcludingThisTask: 40m, sprint: currentSprint, otherSprints: new[] { targetSprint });
         var command = new EditTaskCommand(task.Id, task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours, task.StoryPoints, null, null, SprintId: targetSprint.Id);
@@ -437,7 +437,7 @@ public class EditTaskCommandHandlerTests
     {
         // No previous sprint (task was in the backlog) -> only a tasks_added log on the target, no
         // tasks_removed log since there is no source sprint to log it against.
-        var targetSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, Name = "S2", Status = SprintStatuses.Draft, CreatedAt = DateTimeOffset.UtcNow };
+        var targetSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "S2", Status = SprintStatuses.Draft, CreatedAt = DateTimeOffset.UtcNow };
         var (handler, _, editLogs, _, task, _, sprintLogs) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, otherSprints: new[] { targetSprint });
         var command = new EditTaskCommand(task.Id, task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours, task.StoryPoints, null, null, SprintId: targetSprint.Id);
 
@@ -456,7 +456,7 @@ public class EditTaskCommandHandlerTests
     [Fact]
     public async Task Handle_SprintIdInDifferentProject_ReturnsConflict()
     {
-        var targetSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = Guid.NewGuid(), ObjectiveId = Guid.NewGuid(), Name = "Other project's sprint", Status = SprintStatuses.Draft, CreatedAt = DateTimeOffset.UtcNow };
+        var targetSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = Guid.NewGuid(), Name = "Other project's sprint", Status = SprintStatuses.Draft, CreatedAt = DateTimeOffset.UtcNow };
         var (handler, _, _, _, task, _, sprintLogs) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, otherSprints: new[] { targetSprint });
         var command = new EditTaskCommand(task.Id, task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours, task.StoryPoints, null, null, SprintId: targetSprint.Id);
 
@@ -471,7 +471,7 @@ public class EditTaskCommandHandlerTests
     [Fact]
     public async Task Handle_SprintIdTargetsAchievedSprint_ReturnsForbidden()
     {
-        var achievedTarget = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, Name = "Frozen", Status = SprintStatuses.Achieved, CreatedAt = DateTimeOffset.UtcNow };
+        var achievedTarget = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "Frozen", Status = SprintStatuses.Achieved, CreatedAt = DateTimeOffset.UtcNow };
         var (handler, _, _, _, task, _, sprintLogs) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, otherSprints: new[] { achievedTarget });
         var command = new EditTaskCommand(task.Id, task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours, task.StoryPoints, null, null, SprintId: achievedTarget.Id);
 
@@ -486,7 +486,7 @@ public class EditTaskCommandHandlerTests
     [Fact]
     public async Task Handle_SprintIdTargetsCompleteSprint_ReturnsForbidden()
     {
-        var completeTarget = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, Name = "Wrapped up", Status = SprintStatuses.Complete, CreatedAt = DateTimeOffset.UtcNow };
+        var completeTarget = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "Wrapped up", Status = SprintStatuses.Complete, CreatedAt = DateTimeOffset.UtcNow };
         var (handler, _, _, _, task, _, sprintLogs) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, otherSprints: new[] { completeTarget });
         var command = new EditTaskCommand(task.Id, task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours, task.StoryPoints, null, null, SprintId: completeTarget.Id);
 
@@ -501,7 +501,7 @@ public class EditTaskCommandHandlerTests
     [Fact]
     public async Task Handle_SprintIdEqualsCurrentSprint_WritesNoSprintChangeLog()
     {
-        var currentSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId, Name = "S1", Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow };
+        var currentSprint = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "S1", Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow };
         var (handler, _, editLogs, _, task, _, sprintLogs) = Build(allocatedHours: 100m, existingSumExcludingThisTask: 40m, sprint: currentSprint);
         var command = new EditTaskCommand(task.Id, task.Title, task.Description, task.Priority, task.DueDate, task.EstimatedHours, task.StoryPoints, null, null, SprintId: currentSprint.Id);
 

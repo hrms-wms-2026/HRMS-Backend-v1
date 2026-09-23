@@ -47,7 +47,7 @@ public sealed class EfSprintRepositoryTests
 
     private static Sprint MakeSprint(Guid objectiveId, Guid projectId) => new()
     {
-        Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = projectId, ObjectiveId = objectiveId,
+        Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = projectId,
         Name = "Sprint", StartDate = new DateOnly(2026, 8, 1), EndDate = new DateOnly(2026, 8, 31),
         Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
     };

@@ -113,7 +113,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
         sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sprint
             {
-                Id = SprintId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = ObjectiveId,
+                Id = SprintId, TenantId = TenantId, ProjectId = ProjectId,
                 Name = "Sprint 1", Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
             });
 

@@ -1632,9 +1632,9 @@ git commit -m "Overdue sprint notice goes to members of every task module in the
 - Modify: every remaining compile error (`dotnet build` will list them) — expected: test fixtures that set `ObjectiveId = ...` on `Sprint` (`SprintConfigurationTests`, etc.), demo seeders (`grep -rn "new Sprint" src tests`)
 - Create (generated): `<ts>_DropSprintObjectiveId.cs`
 
-- [ ] **Step 1:** Make the code edits above; `dotnet build src/ONEVO.Api --configuration Release` and fix every error until green. For any seeder creating sprints, just delete the `ObjectiveId = ...` initializer (sprint keeps `ProjectId`).
+- [x] **Step 1:** Make the code edits above; `dotnet build src/ONEVO.Api --configuration Release` and fix every error until green. For any seeder creating sprints, just delete the `ObjectiveId = ...` initializer (sprint keeps `ProjectId`).
 
-- [ ] **Step 2: Generate migration**
+- [x] **Step 2: Generate migration**
 
 Run: `dotnet ef migrations add DropSprintObjectiveId --project src/ONEVO.Infrastructure --startup-project src/ONEVO.Api --configuration Release`
 
@@ -1651,13 +1651,13 @@ Open it. Expected `Up`: `DropIndex("ix_sprints_tenant_id_objective_id_status")`,
 ```
 Verify `Down` re-adds `objective_id` (nullable is acceptable for Down — if codegen made it non-nullable with default `Guid.Empty`, leave it; Down is best-effort). Verify the snapshot diff touches only `Sprint`.
 
-- [ ] **Step 3: Full backend verification**
+- [x] **Step 3: Full backend verification**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit` → all green.
 Run: `dotnet test tests/ONEVO.Tests.Architecture` → all green.
 Run: `grep -rn "ObjectiveId" src/ONEVO.Application/Features/WorkManagement/Sprints src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfSprintRepository.cs` → only `GetObjectiveSprints`/`GetContainingObjectiveTasksAsync` parameter names remain (no `sprint.ObjectiveId`).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/ONEVO.Domain/Features/WorkManagement/Sprints/Entities/Sprint.cs src/ONEVO.Infrastructure/Persistence/Configurations/WorkManagement/SprintConfiguration.cs src/ONEVO.Application/Features/WorkManagement/Sprints/RepositoryInterfaces/ISprintRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfSprintRepository.cs src/ONEVO.Infrastructure/Migrations/ tests/

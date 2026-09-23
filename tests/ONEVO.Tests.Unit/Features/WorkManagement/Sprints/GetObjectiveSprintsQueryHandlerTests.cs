@@ -40,7 +40,6 @@ public class GetObjectiveSprintsQueryHandlerTests
         Id = SprintId,
         TenantId = TenantId,
         ProjectId = ProjectId,
-        ObjectiveId = ObjectiveId,
         Name = "Sprint 1",
         StartDate = new DateOnly(2026, 8, 1),
         EndDate = new DateOnly(2026, 8, 14),
