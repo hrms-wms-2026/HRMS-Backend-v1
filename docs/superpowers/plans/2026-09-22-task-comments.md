@@ -39,7 +39,7 @@
 
 This is a thin entity-defaults test (this codebase has no precedent of testing bare entity classes elsewhere, so keep it to defaulting behavior only — it exists to give this task its own red/green cycle per the task-sizing rule, not because entity defaults are risky).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```csharp
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
@@ -69,12 +69,12 @@ public class TaskCommentEntityTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~TaskCommentEntityTests"`
 Expected: FAIL — compile error, `TaskComment`/`TaskCommentLog`/`TaskCommentLogActions` don't exist.
 
-- [ ] **Step 3: Create the entities**
+- [x] **Step 3: Create the entities**
 
 ```csharp
 // src/ONEVO.Domain/Features/WorkManagement/Tasks/Entities/TaskComment.cs
@@ -144,12 +144,12 @@ public class TaskCommentReaction : BaseEntity
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~TaskCommentEntityTests"`
 Expected: PASS.
 
-- [ ] **Step 5: Add the EF configurations**
+- [x] **Step 5: Add the EF configurations**
 
 ```csharp
 // src/ONEVO.Infrastructure/Persistence/Configurations/WorkManagement/TaskCommentConfiguration.cs
@@ -228,12 +228,12 @@ public class TaskCommentReactionConfiguration : IEntityTypeConfiguration<TaskCom
 }
 ```
 
-- [ ] **Step 6: Build to confirm configurations compile**
+- [x] **Step 6: Build to confirm configurations compile**
 
 Run: `dotnet build src/ONEVO.Infrastructure`
 Expected: builds clean.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ONEVO.Domain/Features/WorkManagement/Tasks/Entities/TaskComment.cs src/ONEVO.Domain/Features/WorkManagement/Tasks/Entities/TaskCommentLog.cs src/ONEVO.Domain/Features/WorkManagement/Tasks/Entities/TaskCommentReaction.cs src/ONEVO.Infrastructure/Persistence/Configurations/WorkManagement/TaskCommentConfiguration.cs src/ONEVO.Infrastructure/Persistence/Configurations/WorkManagement/TaskCommentLogConfiguration.cs src/ONEVO.Infrastructure/Persistence/Configurations/WorkManagement/TaskCommentReactionConfiguration.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/TaskCommentEntityTests.cs
@@ -283,7 +283,7 @@ git commit -m "feat: add TaskComment/TaskCommentLog/TaskCommentReaction entities
 
 This task has no test of its own — it's pure plumbing (interfaces + EF implementations + registration) that Task 6 onward exercises through handler tests with `Moq`. Steps are build-verification only, not TDD.
 
-- [ ] **Step 1: Create the repository interfaces**
+- [x] **Step 1: Create the repository interfaces**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/RepositoryInterfaces/ITaskCommentRepository.cs
@@ -333,7 +333,7 @@ public interface ITaskCommentReactionRepository
 }
 ```
 
-- [ ] **Step 2: Implement the EF repositories**
+- [x] **Step 2: Implement the EF repositories**
 
 ```csharp
 // src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfTaskCommentRepository.cs
@@ -422,7 +422,7 @@ public class EfTaskCommentReactionRepository : ITaskCommentReactionRepository
 }
 ```
 
-- [ ] **Step 3: Register the DbSets**
+- [x] **Step 3: Register the DbSets**
 
 In `ApplicationDbContext.cs`, add next to the existing `TaskEditLogs`/`TaskStatusChangeLogs` DbSets:
 
@@ -432,7 +432,7 @@ In `ApplicationDbContext.cs`, add next to the existing `TaskEditLogs`/`TaskStatu
     public DbSet<TaskCommentReaction> TaskCommentReactions => Set<TaskCommentReaction>();
 ```
 
-- [ ] **Step 4: Register in DI**
+- [x] **Step 4: Register in DI**
 
 In `DependencyInjection.cs`, add next to the existing `EfTaskEditLogRepository`/`EfTaskStatusChangeLogRepository` registrations:
 
@@ -445,12 +445,12 @@ In `DependencyInjection.cs`, add next to the existing `EfTaskEditLogRepository`/
         services.AddScoped<ITaskCommentReactionRepository>(sp => sp.GetRequiredService<EfTaskCommentReactionRepository>());
 ```
 
-- [ ] **Step 5: Build to confirm everything wires up**
+- [x] **Step 5: Build to confirm everything wires up**
 
 Run: `dotnet build src/ONEVO.Infrastructure`
 Expected: builds clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/RepositoryInterfaces/ITaskCommentRepository.cs src/ONEVO.Application/Features/WorkManagement/Tasks/RepositoryInterfaces/ITaskCommentLogRepository.cs src/ONEVO.Application/Features/WorkManagement/Tasks/RepositoryInterfaces/ITaskCommentReactionRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfTaskCommentRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfTaskCommentLogRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/WorkManagement/EfTaskCommentReactionRepository.cs src/ONEVO.Infrastructure/Persistence/ApplicationDbContext.cs src/ONEVO.Infrastructure/DependencyInjection.cs
@@ -471,16 +471,16 @@ git commit -m "feat: add task comment repositories and DI wiring"
 
 No TDD cycle here — this is a generated migration, hand-patched for RLS exactly like every prior tenant-owned table in this codebase. Verification is `dotnet build` plus a review diff against Task 1/2's entity/configuration shapes, not a unit test.
 
-- [ ] **Step 1: Generate the migration**
+- [x] **Step 1: Generate the migration**
 
 Run: `dotnet ef migrations add AddTaskComments --project src/ONEVO.Infrastructure --startup-project src/ONEVO.Api`
 Expected: creates two new files under `src/ONEVO.Infrastructure/Migrations/` and updates `ApplicationDbContextModelSnapshot.cs`.
 
-- [ ] **Step 2: Review the generated `Up()`/`Down()` for the three `CreateTable` calls**
+- [x] **Step 2: Review the generated `Up()`/`Down()` for the three `CreateTable` calls**
 
 Confirm each of `task_comments`, `task_comment_logs`, `task_comment_reactions` has the standard `BaseEntity` columns (`id, tenant_id, created_at, updated_at, created_by_id, is_deleted, deleted_at`) plus the domain columns from Task 1's configurations, and that the FK constraints match: `task_comments.task_id → tasks.id` (Restrict), `task_comments.parent_comment_id → task_comments.id` (Restrict), `task_comment_logs.task_id → tasks.id` (Restrict), `task_comment_logs.comment_id → task_comments.id` (Restrict), `task_comment_reactions.comment_id → task_comments.id` (Restrict). If EF ordered the three `CreateTable` calls in a way that references a not-yet-created table (e.g. `task_comment_logs` before `task_comments`), reorder them manually — `task_comments` must be created first.
 
-- [ ] **Step 3: Hand-add the RLS block**
+- [x] **Step 3: Hand-add the RLS block**
 
 At the top of the generated migration class, add a `TenantTables` array and wire it into `Up()`/`Down()`, copying the exact block from `20260826053637_AddTaskTimeTrackingAndEditHistory.cs`:
 
@@ -533,17 +533,17 @@ At the top of `Down()` (before the `DropTable` calls), add:
 
 Order the `DropTable` calls in `Down()` as `task_comment_reactions`, `task_comment_logs`, `task_comments` (children before parent, mirroring `Up()`'s reverse).
 
-- [ ] **Step 4: Build**
+- [x] **Step 4: Build**
 
 Run: `dotnet build`
 Expected: solution builds clean.
 
-- [ ] **Step 5: Apply the migration to the local dev database**
+- [x] **Step 5: Apply the migration to the local dev database**
 
 Run: `dotnet ef database update --project src/ONEVO.Infrastructure --startup-project src/ONEVO.Api`
 Expected: succeeds, no errors. (This is also what Task 14's integration tests will run against, so catching a schema problem now is cheaper than in Task 14.)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Infrastructure/Migrations/
@@ -575,7 +575,7 @@ git commit -m "feat: add task_comments/task_comment_logs/task_comment_reactions 
 
 `TaskAssetLinker`'s private `SyncAsync` already takes `purpose` as a parameter but hardcodes `EntityAssetOwnerTypes.Task` as the owner type internally (see the 2026-09-14 plan's Task 4). This task generalizes it to take `ownerType` as a parameter too, so the exact same add/remove-diff logic serves both tasks and comments — no duplicated linking logic.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `UploadPurposeCatalogTests.cs`, add:
 
@@ -640,12 +640,12 @@ public async Task SyncCommentDescriptionImagesAsync_ExtractsFileIdFromHtml_Links
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~UploadPurposeCatalogTests|FullyQualifiedName~TaskAssetLinkerTests"`
 Expected: FAIL — compile errors, `CommentAttachment`/`CommentDescriptionImage`/`EntityAssetOwnerTypes.Comment`/`SyncCommentAttachmentsAsync`/`SyncCommentDescriptionImagesAsync` don't exist.
 
-- [ ] **Step 3: Add the two upload purposes**
+- [x] **Step 3: Add the two upload purposes**
 
 In `UploadPurposeCatalog.cs`, add next to `TaskAttachment`/`TaskDescriptionImage`:
 
@@ -661,7 +661,7 @@ and register both rules in the `Rules` dictionary, reusing the existing `TaskAtt
         [CommentDescriptionImage] = new UploadPurposeRule(5 * 1024 * 1024, ImageContentTypes, ImageExtensions),
 ```
 
-- [ ] **Step 4: Add the owner type constant**
+- [x] **Step 4: Add the owner type constant**
 
 In `EntityAssetOwnerTypes.cs`, add:
 
@@ -669,12 +669,12 @@ In `EntityAssetOwnerTypes.cs`, add:
     public const string Comment = "comment";
 ```
 
-- [ ] **Step 5: Run the `UploadPurposeCatalogTests` to verify they pass**
+- [x] **Step 5: Run the `UploadPurposeCatalogTests` to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~UploadPurposeCatalogTests"`
 Expected: PASS.
 
-- [ ] **Step 6: Generalize `TaskAssetLinker`'s private sync method to take an owner type**
+- [x] **Step 6: Generalize `TaskAssetLinker`'s private sync method to take an owner type**
 
 In `ITaskAssetLinker.cs`, add the two new methods to the interface:
 
@@ -780,17 +780,17 @@ Add the two new public methods, and factor the regex-extraction that both `SyncD
 
 Remove the now-duplicated inline extraction logic from the body of `SyncDescriptionImagesAsync` (replaced by the `ExtractFileIds` call above).
 
-- [ ] **Step 7: Run all `TaskAssetLinkerTests` to verify they pass**
+- [x] **Step 7: Run all `TaskAssetLinkerTests` to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~TaskAssetLinkerTests"`
 Expected: PASS (all task-owner tests continue passing unchanged, plus the two new comment-owner tests).
 
-- [ ] **Step 8: Full build check**
+- [x] **Step 8: Full build check**
 
 Run: `dotnet build`
 Expected: builds clean.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/Storage/File/Helpers/UploadPurposeCatalog.cs src/ONEVO.Application/Common/Constants/EntityAssetOwnerTypes.cs src/ONEVO.Application/Features/WorkManagement/Tasks/Services/ITaskAssetLinker.cs src/ONEVO.Application/Features/WorkManagement/Tasks/Services/TaskAssetLinker.cs tests/ONEVO.Tests.Unit/Features/Storage/File/UploadPurposeCatalogTests.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/TaskAssetLinkerTests.cs
@@ -820,7 +820,7 @@ git commit -m "feat: add comment_attachment/comment_description_image purposes; 
   ```
   Consumed by every handler from Task 6 onward. This extracts the exact visibility check `GetTaskByIdQueryHandler` already performs (auth → tenant → caller employee id → task exists → project active → `projects:read` permission or objective membership) into one reusable service, since six new comment handlers all need it identically. `GetTaskByIdQueryHandler` itself is left untouched — it already works, and refactoring stable code is out of scope for this feature.
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 ```csharp
 using Moq;
@@ -929,12 +929,12 @@ public class TaskAccessResolverTests
 
 (Check the exact `Project`/`WorkTask` entity namespaces and the `IProjectMemberRepository`/`IPermissionResolver` method signatures against `GetTaskByIdQueryHandler.cs` — copy them verbatim if any differ from what's shown above; that handler is the ground truth this test mirrors.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~TaskAccessResolverTests"`
 Expected: FAIL — compile error, `TaskAccessResolver`/`TaskAccessContext`/`ITaskAccessResolver` don't exist.
 
-- [ ] **Step 3: Create the interface**
+- [x] **Step 3: Create the interface**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/Services/ITaskAccessResolver.cs
@@ -959,7 +959,7 @@ public interface ITaskAccessResolver
 }
 ```
 
-- [ ] **Step 4: Implement it**
+- [x] **Step 4: Implement it**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/Services/TaskAccessResolver.cs
@@ -1025,7 +1025,7 @@ public sealed class TaskAccessResolver : ITaskAccessResolver
 }
 ```
 
-- [ ] **Step 5: Register in DI**
+- [x] **Step 5: Register in DI**
 
 In `DependencyInjection.cs`, next to the `ITaskAssetLinker` registration:
 
@@ -1034,12 +1034,12 @@ In `DependencyInjection.cs`, next to the `ITaskAssetLinker` registration:
             ONEVO.Application.Features.WorkManagement.Tasks.Services.TaskAccessResolver>();
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~TaskAccessResolverTests"`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Services/ITaskAccessResolver.cs src/ONEVO.Application/Features/WorkManagement/Tasks/Services/TaskAccessResolver.cs src/ONEVO.Infrastructure/DependencyInjection.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/TaskAccessResolverTests.cs
@@ -1076,7 +1076,7 @@ git commit -m "feat: add ITaskAccessResolver shared task-visibility check"
 
 **Two routes, one command:** `POST tasks/{taskId}/comments` sends `CreateTaskCommentCommand(taskId, null, ...)`; `POST comments/{id}/replies` sends `CreateTaskCommentCommand(null, id, ...)`. The handler resolves the real `TaskId` from the parent comment when `ParentCommentId` is set (so the reply endpoint never needs the task id in its URL), and 400s if that parent is itself a reply.
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 ```csharp
 using Moq;
@@ -1200,12 +1200,12 @@ public class CreateTaskCommentCommandHandlerTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~CreateTaskCommentCommandHandlerTests"`
 Expected: FAIL — compile error, none of the new types exist yet.
 
-- [ ] **Step 3: Create the response DTOs**
+- [x] **Step 3: Create the response DTOs**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/DTOs/Responses/TaskCommentResponses.cs
@@ -1222,7 +1222,7 @@ public sealed record TaskCommentResponse(
 
 Check `TaskAttachmentDto`'s exact declared location (it's defined alongside `WorkTaskResponse` — likely in `WorkTaskResponse.cs` in this same `DTOs/Responses` folder) and confirm this new file's namespace matches so it's visible without an extra `using`.
 
-- [ ] **Step 4: Create the command**
+- [x] **Step 4: Create the command**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/CreateTaskComment/CreateTaskCommentCommand.cs
@@ -1243,7 +1243,7 @@ public sealed record CreateTaskCommentCommand(
 ) : IRequest<Result<TaskCommentResponse>>;
 ```
 
-- [ ] **Step 5: Implement the handler**
+- [x] **Step 5: Implement the handler**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/CreateTaskComment/CreateTaskCommentCommandHandler.cs
@@ -1337,12 +1337,12 @@ public sealed class CreateTaskCommentCommandHandler : IRequestHandler<CreateTask
 }
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~CreateTaskCommentCommandHandlerTests"`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/DTOs/Responses/TaskCommentResponses.cs src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/CreateTaskComment/ tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/CreateTaskCommentCommandHandlerTests.cs
@@ -1362,7 +1362,7 @@ git commit -m "feat: add CreateTaskCommentCommand for posting comments and repli
 - Consumes: `ITaskAccessResolver` (Task 5), `ITaskCommentRepository.GetByIdForTenantAsync` (Task 2, tracked), `ITaskCommentLogRepository.AddAsync` (Task 2), `ITaskAssetLinker` (Task 4).
 - Produces: `EditTaskCommentCommand(Guid CommentId, string Content, IReadOnlyList<Guid> AttachmentFileIds) : IRequest<Result<TaskCommentResponse>>`. Consumed by Task 11 (controller).
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 ```csharp
 using Moq;
@@ -1473,12 +1473,12 @@ public class EditTaskCommentCommandHandlerTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~EditTaskCommentCommandHandlerTests"`
 Expected: FAIL — compile error, `EditTaskCommentCommand`/`EditTaskCommentCommandHandler` don't exist.
 
-- [ ] **Step 3: Create the command**
+- [x] **Step 3: Create the command**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/EditTaskComment/EditTaskCommentCommand.cs
@@ -1493,7 +1493,7 @@ public sealed record EditTaskCommentCommand(
 ) : IRequest<Result<TaskCommentResponse>>;
 ```
 
-- [ ] **Step 4: Implement the handler**
+- [x] **Step 4: Implement the handler**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/EditTaskComment/EditTaskCommentCommandHandler.cs
@@ -1576,12 +1576,12 @@ public sealed class EditTaskCommentCommandHandler : IRequestHandler<EditTaskComm
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~EditTaskCommentCommandHandlerTests"`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/EditTaskComment/ tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/EditTaskCommentCommandHandlerTests.cs
@@ -1603,7 +1603,7 @@ git commit -m "feat: add EditTaskCommentCommand, author-only, writes audit log"
 
 Attachments/inline images linked to a deleted comment are **not** unlinked or removed — the spec leaves them in place (out of scope; matches the deferred-cleanup decision already made for the description-image feature).
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 ```csharp
 using Moq;
@@ -1699,12 +1699,12 @@ public class DeleteTaskCommentCommandHandlerTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~DeleteTaskCommentCommandHandlerTests"`
 Expected: FAIL — compile error.
 
-- [ ] **Step 3: Create the command**
+- [x] **Step 3: Create the command**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/DeleteTaskComment/DeleteTaskCommentCommand.cs
@@ -1716,7 +1716,7 @@ namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskCom
 public sealed record DeleteTaskCommentCommand(Guid CommentId) : IRequest<Result>;
 ```
 
-- [ ] **Step 4: Implement the handler**
+- [x] **Step 4: Implement the handler**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/DeleteTaskComment/DeleteTaskCommentCommandHandler.cs
@@ -1786,12 +1786,12 @@ public sealed class DeleteTaskCommentCommandHandler : IRequestHandler<DeleteTask
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~DeleteTaskCommentCommandHandlerTests"`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/DeleteTaskComment/ tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/DeleteTaskCommentCommandHandlerTests.cs
@@ -1813,7 +1813,7 @@ git commit -m "feat: add DeleteTaskCommentCommand, author-only, soft delete, wri
 - Consumes: `ITaskAccessResolver` (Task 5), `ITaskCommentRepository.GetByIdForTenantAsync` (Task 2), `ITaskCommentReactionRepository` (Task 2).
 - Produces: `AddTaskCommentReactionCommand(Guid CommentId, string Emoji) : IRequest<Result>`, `RemoveTaskCommentReactionCommand(Guid CommentId, string Emoji) : IRequest<Result>`. Consumed by Task 11. Both are **idempotent**: adding a reaction that already exists, or removing one that doesn't, is a success no-op — reactions are viewer-only (any user who can view the task may react, no author-only restriction).
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 ```csharp
 using Moq;
@@ -1913,12 +1913,12 @@ public class TaskCommentReactionCommandHandlerTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~TaskCommentReactionCommandHandlerTests"`
 Expected: FAIL — compile error.
 
-- [ ] **Step 3: Create the commands**
+- [x] **Step 3: Create the commands**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/AddTaskCommentReaction/AddTaskCommentReactionCommand.cs
@@ -1940,7 +1940,7 @@ namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.RemoveTaskCom
 public sealed record RemoveTaskCommentReactionCommand(Guid CommentId, string Emoji) : IRequest<Result>;
 ```
 
-- [ ] **Step 4: Implement the handlers**
+- [x] **Step 4: Implement the handlers**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/AddTaskCommentReaction/AddTaskCommentReactionCommandHandler.cs
@@ -2064,12 +2064,12 @@ public sealed class RemoveTaskCommentReactionCommandHandler : IRequestHandler<Re
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~TaskCommentReactionCommandHandlerTests"`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/AddTaskCommentReaction/ src/ONEVO.Application/Features/WorkManagement/Tasks/Commands/RemoveTaskCommentReaction/ tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/TaskCommentReactionCommandHandlerTests.cs
@@ -2100,7 +2100,7 @@ git commit -m "feat: add add/remove reaction commands, idempotent, viewer-level 
 
 **Tombstone algorithm:** replies never have their own replies, so a deleted reply is always dropped (never shown, never a tombstone — nothing depends on a reply staying present for a grandchild's sake). A deleted top-level comment is dropped if it has zero *surviving* replies (i.e., counted after already dropping deleted replies), otherwise kept as a tombstone (`Content = ""`, `IsDeleted = true`) with its surviving replies attached. Top-level comments are ordered newest-first (`CreatedAt` descending); replies within a thread are ordered oldest-first (chronological reading order).
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 ```csharp
 using Moq;
@@ -2236,12 +2236,12 @@ public class GetCommentsForTaskQueryHandlerTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~GetCommentsForTaskQueryHandlerTests"`
 Expected: FAIL — compile error.
 
-- [ ] **Step 3: Add the batch entity-asset lookup**
+- [x] **Step 3: Add the batch entity-asset lookup**
 
 In `IEntityAssetRepository.cs`, add next to `ListByOwnerAsync`:
 
@@ -2276,7 +2276,7 @@ In `EfEntityAssetRepository.cs`, add:
     }
 ```
 
-- [ ] **Step 4: Create the query**
+- [x] **Step 4: Create the query**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/Queries/GetCommentsForTask/GetCommentsForTaskQuery.cs
@@ -2289,7 +2289,7 @@ namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetCommentsFor
 public sealed record GetCommentsForTaskQuery(Guid TaskId) : IRequest<Result<IReadOnlyList<TaskCommentResponse>>>;
 ```
 
-- [ ] **Step 5: Implement the handler**
+- [x] **Step 5: Implement the handler**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Tasks/Queries/GetCommentsForTask/GetCommentsForTaskQueryHandler.cs
@@ -2388,17 +2388,17 @@ public sealed class GetCommentsForTaskQueryHandler : IRequestHandler<GetComments
 }
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~GetCommentsForTaskQueryHandlerTests"`
 Expected: PASS.
 
-- [ ] **Step 7: Full build check**
+- [x] **Step 7: Full build check**
 
 Run: `dotnet build`
 Expected: builds clean (confirms `IEntityAssetRepository`'s new method doesn't break any other hand-written implementer — the earlier repo-wide search found none besides `EfEntityAssetRepository` and Moq usages in tests).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Application/Common/RepositoryInterfaces/IEntityAssetRepository.cs src/ONEVO.Infrastructure/Persistence/Repositories/EfEntityAssetRepository.cs src/ONEVO.Application/Features/WorkManagement/Tasks/Queries/GetCommentsForTask/ tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/GetCommentsForTaskQueryHandlerTests.cs
@@ -2431,7 +2431,7 @@ git commit -m "feat: add GetCommentsForTaskQuery with nesting, reactions, attach
 
 This task's own test is a thin controller-reachability check via one integration test (the full behavioral matrix — nesting, reactions, tombstones, access control — is Task 14's job, since it needs the real handlers wired through DI against a real database, which the integration test project already provides via its existing fixture).
 
-- [ ] **Step 1: Write the failing integration test**
+- [x] **Step 1: Write the failing integration test**
 
 Check `tests/ONEVO.Tests.Integration/WorkManagement/TaskAttachmentsIntegrationTests.cs` for this project's fixture setup (base class, authenticated `HttpClient`, how a task/project/objective get seeded) and copy that scaffolding exactly. Then add:
 
@@ -2463,12 +2463,12 @@ public class TaskCommentsIntegrationTests : /* same base class as TaskAttachment
 
 (Adjust the request/response shapes to match whatever conventions `TaskAttachmentsIntegrationTests.cs` already uses for auth headers, tenant setup, and JSON casing — copy its pattern rather than guessing.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Integration --filter "FullyQualifiedName~TaskCommentsIntegrationTests"`
 Expected: FAIL — 404, no such route yet.
 
-- [ ] **Step 3: Add the API contracts**
+- [x] **Step 3: Add the API contracts**
 
 ```csharp
 // src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskCommentContracts.cs
@@ -2487,7 +2487,7 @@ public sealed record TaskCommentViewModel(
     IReadOnlyList<TaskCommentViewModel> Replies);
 ```
 
-- [ ] **Step 4: Add the mapper**
+- [x] **Step 4: Add the mapper**
 
 ```csharp
 // src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskCommentViewModelMapper.cs
@@ -2506,7 +2506,7 @@ public static class TaskCommentViewModelMapper
 }
 ```
 
-- [ ] **Step 5: Create the controller**
+- [x] **Step 5: Create the controller**
 
 ```csharp
 // src/ONEVO.Api/Controllers/Tenant/WorkManagement/CommentsController.cs
@@ -2608,17 +2608,17 @@ public class CommentsController : ControllerBase
 
 Check `TasksController.cs`'s exact `using`s for `[ApiController]`/`[Route]`/`[RequirePermission]`/the real `IMediator` type (the `Mediator = MediatR.IMediator` alias above is illustrative — copy the exact import `TasksController.cs` uses instead) and match them precisely, along with its constructor-injection style, so `CommentsController` is stylistically identical to its sibling.
 
-- [ ] **Step 6: Build**
+- [x] **Step 6: Build**
 
 Run: `dotnet build src/ONEVO.Api`
 Expected: builds clean.
 
-- [ ] **Step 7: Run the integration test to verify it passes**
+- [x] **Step 7: Run the integration test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Integration --filter "FullyQualifiedName~TaskCommentsIntegrationTests"`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskCommentContracts.cs src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskCommentViewModelMapper.cs src/ONEVO.Api/Controllers/Tenant/WorkManagement/CommentsController.cs tests/ONEVO.Tests.Integration/WorkManagement/TaskCommentsIntegrationTests.cs
@@ -2639,7 +2639,7 @@ git commit -m "feat: add CommentsController wiring all comment endpoints"
 
 The handler currently duplicates the exact task-visibility check inline (lines 70-94 of the existing file) instead of using `ITaskAccessResolver` — because that resolver didn't exist yet when this handler was written. Since this handler is being touched anyway to add the comment branch, replace its inline duplicate with a call to `ITaskAccessResolver` (introduced in Task 5) rather than writing a second duplicate for the comment branch. This is in-scope because it's the same edit this task already needs to make, not a speculative unrelated refactor.
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 Check for an existing `GetTaskFileQueryHandlerTests.cs`; if present, add to it, matching its existing `Build()`-style helper. Add:
 
@@ -2688,12 +2688,12 @@ public async Task Handle_FileLinkedToCommentOnNonViewableTask_ReturnsNotFound()
 
 (Match `Build()`'s exact mock construction to whatever `GetTaskFileQueryHandlerTests.cs` already has for `TenantId`/`UserId`/the other existing task-branch tests — those must keep passing unchanged after Step 3's refactor.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~GetTaskFileQueryHandlerTests"`
 Expected: FAIL — compile error (constructor shape changes in Step 3) or the two new tests fail with 404 (comment branch not yet handled).
 
-- [ ] **Step 3: Replace the inline check with `ITaskAccessResolver`, and add the comment branch**
+- [x] **Step 3: Replace the inline check with `ITaskAccessResolver`, and add the comment branch**
 
 Replace the handler's constructor and `Handle` body:
 
@@ -2766,17 +2766,17 @@ public sealed class GetTaskFileQueryHandler : IRequestHandler<GetTaskFileQuery, 
 
 Update its class doc-comment to mention comment-linked files too, and update the imports: drop `ICallerIdentityResolver`, `IWorkTaskRepository`, `IProjectRepository`, `IProjectMemberRepository`, `IPermissionResolver`, `Auth.Permission.ServiceInterfaces`, `ProjectMembers.RepositoryInterfaces`, `Projects.RepositoryInterfaces` (no longer used directly); add `ITaskAccessResolver` and `ITaskCommentRepository`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~GetTaskFileQueryHandlerTests"`
 Expected: PASS — both new tests and every pre-existing task-branch test (now routed through `ITaskAccessResolver` instead of the inline check, same outcomes).
 
-- [ ] **Step 5: Full build and test run**
+- [x] **Step 5: Full build and test run**
 
 Run: `dotnet build && dotnet test tests/ONEVO.Tests.Unit`
 Expected: builds clean, full unit suite green (confirms no other test file constructs `GetTaskFileQueryHandler` with the old constructor shape).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/Queries/GetTaskFile/GetTaskFileQueryHandler.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/GetTaskFileQueryHandlerTests.cs
@@ -2798,7 +2798,7 @@ git commit -m "feat: serve comment-linked files from GetTaskFile; dedupe visibil
 
 No new endpoint — `GET tasks/{id}/history` (unchanged route) now includes comment edit/delete entries merged into the same sorted feed as edit/status-change/clock-session/percentage-change entries.
 
-- [ ] **Step 1: Write the failing unit test**
+- [x] **Step 1: Write the failing unit test**
 
 Open `GetTaskHistoryQueryHandlerTests.cs`, find its existing `Build()`-style fixture (it already mocks `ITaskEditLogRepository`/`ITaskStatusChangeLogRepository`/`ITaskClockingSessionRepository`/`ITaskPercentageLogRepository`), and add a `Mock<ITaskCommentLogRepository>` alongside them (constructor now takes one more dependency — every existing test in this file needs that mock added to its `Build()` call, defaulting to an empty list so pre-existing tests are unaffected). Add:
 
@@ -2830,12 +2830,12 @@ public async Task Handle_CommentLogsPresent_IncludedInMergedFeed()
 
 (Match this file's exact existing `Build()` signature/return tuple and "no entries" helper name — copy its established pattern for the other four log sources rather than guessing; the new mock/assertion follows the same shape as the existing `Edit`/`StatusChange` tests already in this file.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~GetTaskHistoryQueryHandlerTests"`
 Expected: FAIL — compile error, `TaskHistoryEntryTypes.Comment`/`entry.Comment`/the new constructor parameter don't exist.
 
-- [ ] **Step 3: Extend the response DTOs**
+- [x] **Step 3: Extend the response DTOs**
 
 In `TaskHistoryResponses.cs`:
 
@@ -2860,7 +2860,7 @@ public sealed record TaskCommentLogEntryDetails(Guid CommentId, string Action);
 
 (`Comment` defaults to `null` so the four existing call sites in `GetTaskHistoryQueryHandler.cs` that construct `TaskHistoryEntryResponse` positionally — for `Edit`/`StatusChange`/`ClockSession`/`PercentageChange` entries — keep compiling unchanged.)
 
-- [ ] **Step 4: Fold comment logs into the handler**
+- [x] **Step 4: Fold comment logs into the handler**
 
 In `GetTaskHistoryQueryHandler.cs`, add the constructor dependency:
 
@@ -2885,12 +2885,12 @@ and after the existing `foreach (var log in standalonePercentageLogs) { ... }` b
         }
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~GetTaskHistoryQueryHandlerTests"`
 Expected: PASS — the new test plus every pre-existing test in this file (their `Build()` calls now also construct the handler with the comment-logs mock, defaulted empty).
 
-- [ ] **Step 6: Expose the new field through the API view model**
+- [x] **Step 6: Expose the new field through the API view model**
 
 `TaskHistoryEntryViewModel`/`TaskHistoryViewModelMapper` in `src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskContracts.cs` (lines ~124-135) reuse the Application-layer detail records (`TaskEditEntryDetails` etc.) directly rather than redefining API-layer duplicates — follow that same convention for `Comment`:
 
@@ -2910,11 +2910,11 @@ public static class TaskHistoryViewModelMapper
 }
 ```
 
-- [ ] **Step 7: Register in DI if not already covered**
+- [x] **Step 7: Register in DI if not already covered**
 
 `ITaskCommentLogRepository` was already registered in Task 2's DI step — no change needed here. Run: `dotnet build` to confirm `GetTaskHistoryQueryHandler`'s new constructor parameter resolves cleanly wherever it's constructed via DI (the controller action, not a test).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Tasks/DTOs/Responses/TaskHistoryResponses.cs src/ONEVO.Application/Features/WorkManagement/Tasks/Queries/GetTaskHistory/GetTaskHistoryQueryHandler.cs src/ONEVO.Api/Contracts/WorkManagement/Tasks/TaskContracts.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Tasks/GetTaskHistoryQueryHandlerTests.cs
@@ -2933,7 +2933,7 @@ git commit -m "feat: fold comment edit/delete audit log into the unified Task Hi
 
 This is the plan's end-to-end confidence check: real HTTP calls through the real controller, real handlers, real EF Core, real migration from Task 3 — not mocks. It's the closing task precisely because it needs everything from Tasks 1-13 in place.
 
-- [ ] **Step 1: Write the additional integration tests**
+- [x] **Step 1: Write the additional integration tests**
 
 Add to `TaskCommentsIntegrationTests.cs` (reusing whatever `SeedTaskAsync`/second-user/auth-switching helpers `TaskAttachmentsIntegrationTests.cs` already established for its own cross-user access-control tests):
 
@@ -3021,21 +3021,21 @@ public async Task GetComments_WithoutTaskVisibility_ReturnsNotFound()
 
 (Every helper referenced in parentheses — `PostCommentAsync`, `PostReplyAsync`, `CreateClientForSecondUser`, `UploadPendingFileAsync`, `CreateClientForUserWithNoProjectAccess` — should already exist in some form in `TaskAttachmentsIntegrationTests.cs` or this project's shared integration test base class; add small local wrapper methods in `TaskCommentsIntegrationTests.cs` around whatever the real helper names turn out to be rather than reinventing the seeding/auth plumbing.)
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ONEVO.Tests.Integration --filter "FullyQualifiedName~TaskCommentsIntegrationTests"`
 Expected: FAIL on the newly-added tests only (Task 11's original `PostComment_ThenGetComments_ReturnsIt` already passes).
 
-- [ ] **Step 3: Fix anything the tests surface**
+- [x] **Step 3: Fix anything the tests surface**
 
 If a test fails for a reason other than "not implemented yet" (e.g. a JSON casing mismatch, a route typo), fix it in the relevant Task 6-13 file rather than adjusting the test to match a bug.
 
-- [ ] **Step 4: Run the full backend suite**
+- [x] **Step 4: Run the full backend suite**
 
 Run: `dotnet test`
 Expected: unit + integration + architecture tests all green.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/ONEVO.Tests.Integration/WorkManagement/TaskCommentsIntegrationTests.cs
@@ -3064,7 +3064,7 @@ git commit -m "test: add end-to-end and access-control coverage for task comment
 
 Root: `Hrms--Web-application---front-end---v1`. No TDD cycle — these are plain type declarations with no runtime behavior; verified by the TypeScript compiler in Task 16's first build, not a standalone test.
 
-- [ ] **Step 1: Create the comment DTOs**
+- [x] **Step 1: Create the comment DTOs**
 
 ```typescript
 // src/app/modules/work/models/dto/task-comment.dto.ts
@@ -3101,7 +3101,7 @@ export interface EditTaskCommentRequestDto {
 }
 ```
 
-- [ ] **Step 2: Extend the history DTO**
+- [x] **Step 2: Extend the history DTO**
 
 In `task-history.dto.ts`, add:
 
@@ -3128,12 +3128,12 @@ export interface TaskHistoryEntryDto {
 }
 ```
 
-- [ ] **Step 3: Build check**
+- [x] **Step 3: Build check**
 
 Run: `npx tsc --noEmit` (or the project's usual `npm run build` if `tsc --noEmit` isn't wired as a standalone script — check `package.json` first)
 Expected: fails at `task-history-feed.component.ts`'s `summaryFor` switch (now non-exhaustive over the widened `type` union) — this is expected and is exactly what Task 21 fixes. Confirm no *other* file fails to compile; if one does, it means something already destructured `TaskHistoryEntryDto` assuming a closed set of fields in a way this addition broke, which needs investigating before continuing.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/app/modules/work/models/dto/task-comment.dto.ts src/app/modules/work/models/dto/task-history.dto.ts
@@ -3165,7 +3165,7 @@ git commit -m "feat: add task comment DTOs; extend history DTO with comment entr
 
 Root: `Hrms--Web-application---front-end---v1`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // src/app/modules/work/data-access/task-comment-api.service.spec.ts
@@ -3242,12 +3242,12 @@ describe('TaskCommentApiService', () => {
 
 (Confirm the exact `provideHttpClient`/`provideHttpClientTesting` setup style against a sibling `*.service.spec.ts` in `data-access/` — copy it if it differs from what's shown.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/modules/work/data-access/task-comment-api.service.spec.ts`
 Expected: FAIL — `TaskCommentApiService` doesn't exist.
 
-- [ ] **Step 3: Implement the service**
+- [x] **Step 3: Implement the service**
 
 ```typescript
 // src/app/modules/work/data-access/task-comment-api.service.ts
@@ -3292,12 +3292,12 @@ export class TaskCommentApiService {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/app/modules/work/data-access/task-comment-api.service.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/app/modules/work/data-access/task-comment-api.service.ts src/app/modules/work/data-access/task-comment-api.service.spec.ts
@@ -3320,7 +3320,7 @@ This task ships the core CRUD/nesting/author-gating behavior with a **plain `<te
 
 Root: `Hrms--Web-application---front-end---v1`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```typescript
 // src/app/modules/work/ui/task-comments/task-comments.component.spec.ts
@@ -3419,12 +3419,12 @@ describe('TaskCommentsComponent', () => {
 
 (Check `task-form-modal.component.spec.ts` for this project's exact `TestBed`/`vi.fn()` conventions — e.g. whether it uses `{ provide: X, useValue }` or a lighter mocking helper — and match it if different from what's shown.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run src/app/modules/work/ui/task-comments/task-comments.component.spec.ts`
 Expected: FAIL — `TaskCommentsComponent` doesn't exist.
 
-- [ ] **Step 3: Implement the component**
+- [x] **Step 3: Implement the component**
 
 ```typescript
 // src/app/modules/work/ui/task-comments/task-comments.component.ts
@@ -3608,12 +3608,12 @@ export class TaskCommentsComponent implements OnInit {
 
 Check `EmployeeAvatarComponent`'s exact import path (`../employee-avatar/employee-avatar.component` above is inferred from its selector — confirm the real relative path from `ui/task-comments/` before using it) and whether this project's Angular version needs `NgTemplateOutlet`/`DatePipe` explicitly listed in `imports` (add `CommonModule` or the specific standalone directives/pipes if the build reports them missing).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/app/modules/work/ui/task-comments/task-comments.component.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/app/modules/work/ui/task-comments/task-comments.component.ts src/app/modules/work/ui/task-comments/task-comments.component.spec.ts
@@ -3651,7 +3651,7 @@ Task 17's composer was intentionally plain-text so its CRUD/nesting logic could 
 
 Root: `Hrms--Web-application---front-end---v1`.
 
-- [ ] **Step 1: Widen `TaskApiService`'s upload purpose type**
+- [x] **Step 1: Widen `TaskApiService`'s upload purpose type**
 
 Open `task-api.service.ts` and find `uploadPendingFile`'s parameter type. If it's currently typed narrowly as `'task_attachment' | 'task_description_image'`, widen it to a shared type:
 
@@ -3661,7 +3661,7 @@ export type PendingUploadPurpose = 'task_attachment' | 'task_description_image' 
 
 placed near the top of `task-api.service.ts` (or wherever `PendingUploadDto` is already imported from, if that's a more natural home — check that file first), and update `uploadPendingFile(file: File, purpose: PendingUploadPurpose)`'s signature to use it. `deletePendingFile`/`getFileUrl` are purpose-agnostic already and need no change.
 
-- [ ] **Step 2: Write the failing composer test**
+- [x] **Step 2: Write the failing composer test**
 
 ```typescript
 // src/app/modules/work/ui/comment-composer/comment-composer.component.spec.ts
@@ -3736,12 +3736,12 @@ describe('CommentComposerComponent', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `npx vitest run src/app/modules/work/ui/comment-composer/comment-composer.component.spec.ts`
 Expected: FAIL — `CommentComposerComponent` doesn't exist.
 
-- [ ] **Step 4: Implement the composer**
+- [x] **Step 4: Implement the composer**
 
 ```typescript
 // src/app/modules/work/ui/comment-composer/comment-composer.component.ts
@@ -3934,12 +3934,12 @@ export class CommentComposerComponent {
 
 Check whether this Angular version's `viewChild.required` signal-query API matches what's already used elsewhere in this codebase (`task-form-modal.component.ts` likely has an equivalent element-ref pattern for its own editor) — match whatever convention is already established rather than introducing a second style.
 
-- [ ] **Step 5: Run composer tests to verify they pass**
+- [x] **Step 5: Run composer tests to verify they pass**
 
 Run: `npx vitest run src/app/modules/work/ui/comment-composer/comment-composer.component.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 6: Rewrite `TaskCommentsComponent` to use the composer**
+- [x] **Step 6: Rewrite `TaskCommentsComponent` to use the composer**
 
 Replace every `<textarea class="tc-textarea" ...>` block in `task-comments.component.ts`'s template (the top-level composer, the reply composer, and the edit-mode composer) with `<app-comment-composer>`, and update the corresponding handler methods:
 
@@ -3979,7 +3979,7 @@ Add `CommentComposerComponent` to `TaskCommentsComponent`'s `imports` array, and
 
 Remove the now-unused `composerContent`/`editContent`/`replyContent` signals and the plain-`<textarea>` template blocks they backed.
 
-- [ ] **Step 7: Update `TaskCommentsComponent`'s existing spec for the new composer contract**
+- [x] **Step 7: Update `TaskCommentsComponent`'s existing spec for the new composer contract**
 
 In `task-comments.component.spec.ts`, replace the tests that set `component.composerContent()`/`component.editContent()`/`component.replyContent()` and call `submitComment()`/`saveEdit()`/`submitReply()` with no arguments — they now take the emitted `{ content, attachmentFileIds }` payload directly:
 
@@ -3994,12 +3994,12 @@ it('posts a new top-level comment and reloads the list', async () => {
 
 apply the same shape change to the edit and reply tests.
 
-- [ ] **Step 8: Run both spec files to verify everything passes**
+- [x] **Step 8: Run both spec files to verify everything passes**
 
 Run: `npx vitest run src/app/modules/work/ui/comment-composer/comment-composer.component.spec.ts src/app/modules/work/ui/task-comments/task-comments.component.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/app/modules/work/data-access/task-api.service.ts src/app/modules/work/ui/comment-composer/ src/app/modules/work/ui/task-comments/task-comments.component.ts src/app/modules/work/ui/task-comments/task-comments.component.spec.ts
@@ -4030,7 +4030,7 @@ No emoji-picker library exists in this codebase today (confirmed by search), and
 
 Root: `Hrms--Web-application---front-end---v1`.
 
-- [ ] **Step 1: Write the failing emoji-picker test**
+- [x] **Step 1: Write the failing emoji-picker test**
 
 ```typescript
 // src/app/modules/work/ui/emoji-picker/emoji-picker.component.spec.ts
@@ -4055,12 +4055,12 @@ describe('EmojiPickerComponent', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/modules/work/ui/emoji-picker/emoji-picker.component.spec.ts`
 Expected: FAIL — `EmojiPickerComponent` doesn't exist.
 
-- [ ] **Step 3: Implement the picker**
+- [x] **Step 3: Implement the picker**
 
 ```typescript
 // src/app/modules/work/ui/emoji-picker/emoji-picker.component.ts
@@ -4100,12 +4100,12 @@ export class EmojiPickerComponent {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/app/modules/work/ui/emoji-picker/emoji-picker.component.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Add the reaction bar to `TaskCommentsComponent`**
+- [x] **Step 5: Add the reaction bar to `TaskCommentsComponent`**
 
 In the `#commentRow` template (from Task 17/18), after the content/edit block, add:
 
@@ -4190,7 +4190,7 @@ Add matching styles:
 .tc-reaction-add-btn { border: 1px dashed var(--color-border); border-radius: 999px; background: none; width: 22px; height: 22px; cursor: pointer; color: var(--color-text-secondary); }
 ```
 
-- [ ] **Step 6: Write and run the `TaskCommentsComponent` reaction tests**
+- [x] **Step 6: Write and run the `TaskCommentsComponent` reaction tests**
 
 Add to `task-comments.component.spec.ts` (extending the mocked `commentApi` fixture already in the file from Task 17/18):
 
@@ -4222,7 +4222,7 @@ it('hasReacted reflects whether the current employee is in the reaction', () => 
 Run: `npx vitest run src/app/modules/work/ui/task-comments/task-comments.component.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/app/modules/work/ui/emoji-picker/ src/app/modules/work/ui/task-comments/task-comments.component.ts src/app/modules/work/ui/task-comments/task-comments.component.spec.ts
@@ -4243,7 +4243,7 @@ git commit -m "feat: add emoji reactions — default set plus curated picker, to
 
 Root: `Hrms--Web-application---front-end---v1`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `task-form-modal.component.spec.ts` (matching whatever pattern its existing Activity Log/Attachments section tests already use for opening the modal in edit mode with a seeded `taskId`):
 
@@ -4257,12 +4257,12 @@ it('mounts app-task-comments with the current task id in edit mode', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/modules/work/ui/task-form-modal/task-form-modal.component.spec.ts -t "mounts app-task-comments"`
 Expected: FAIL — no `app-task-comments` element in the template yet.
 
-- [ ] **Step 3: Add the import**
+- [x] **Step 3: Add the import**
 
 Near the top of `task-form-modal.component.ts`, add:
 
@@ -4272,7 +4272,7 @@ import { TaskCommentsComponent } from '../task-comments/task-comments.component'
 
 and add `TaskCommentsComponent` to the `@Component`'s `imports` array (alongside `TaskHistoryFeedComponent`/`TaskAttachmentListComponent`/etc., found around line 58).
 
-- [ ] **Step 4: Add the template section**
+- [x] **Step 4: Add the template section**
 
 After the existing "Activity Log Section" block (ends around line 1391, right before `@if (errorMessage()) { ... }`), add:
 
@@ -4308,7 +4308,7 @@ After the existing "Activity Log Section" block (ends around line 1391, right be
 
 (Check `taskId()`'s exact signal name/type against this file's other edit-mode-only sections — the Attachments/Activity Log sections already gate on it or an equivalent "is this an existing task" signal; match whichever one they use rather than assuming `taskId()`.)
 
-- [ ] **Step 5: Add the `showComments` signal**
+- [x] **Step 5: Add the `showComments` signal**
 
 Near the existing `history = signal<TaskHistoryEntryDto[]>([])`/`showActivityLog` signal declarations, add:
 
@@ -4316,17 +4316,17 @@ Near the existing `history = signal<TaskHistoryEntryDto[]>([])`/`showActivityLog
   showComments = signal(false);
 ```
 
-- [ ] **Step 6: Run the test to verify it passes**
+- [x] **Step 6: Run the test to verify it passes**
 
 Run: `npx vitest run src/app/modules/work/ui/task-form-modal/task-form-modal.component.spec.ts -t "mounts app-task-comments"`
 Expected: PASS.
 
-- [ ] **Step 7: Run the full `task-form-modal` spec suite**
+- [x] **Step 7: Run the full `task-form-modal` spec suite**
 
 Run: `npx vitest run src/app/modules/work/ui/task-form-modal/task-form-modal.component.spec.ts`
 Expected: PASS (confirms the new import/template addition didn't break any pre-existing test in this large file).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/app/modules/work/ui/task-form-modal/task-form-modal.component.ts src/app/modules/work/ui/task-form-modal/task-form-modal.component.spec.ts
@@ -4349,7 +4349,7 @@ Task 15 widened `TaskHistoryEntryDto['type']` to include `'comment'`, which make
 
 Root: `Hrms--Web-application---front-end---v1`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Check whether `task-history-feed.component.spec.ts` already exists; if so add to it, otherwise create it matching the conventions of a sibling `*.component.spec.ts` in `ui/`:
 
@@ -4387,12 +4387,12 @@ describe('TaskHistoryFeedComponent', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/modules/work/ui/task-history-feed/task-history-feed.component.spec.ts`
 Expected: FAIL (either a TypeScript compile error from the non-exhaustive switch, or the test itself failing since `'comment'` isn't handled).
 
-- [ ] **Step 3: Extend `summaryFor`**
+- [x] **Step 3: Extend `summaryFor`**
 
 In `task-history-feed.component.ts`, add a case to the existing `switch` in `summaryFor()`:
 
@@ -4403,17 +4403,17 @@ In `task-history-feed.component.ts`, add a case to the existing `switch` in `sum
       }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/app/modules/work/ui/task-history-feed/task-history-feed.component.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Full frontend build and test suite**
+- [x] **Step 5: Full frontend build and test suite**
 
 Run: `npx tsc --noEmit && npx vitest run`
 Expected: builds clean, full Vitest suite green (confirms Task 15's compile error from the widened DTO is now fully resolved and nothing else broke).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/modules/work/ui/task-history-feed/task-history-feed.component.ts src/app/modules/work/ui/task-history-feed/task-history-feed.component.spec.ts
