@@ -1,6 +1,6 @@
 namespace ONEVO.Application.Features.WorkManagement.Projects.DTOs.Responses;
 
-public sealed record ProjectMemberAvatarDto(Guid UserId, string DisplayName);
+public sealed record ProjectMemberAvatarDto(Guid UserId, string DisplayName, Guid? AvatarFileId);
 
 public sealed record ProjectListItemResponse(
     Guid Id, string Name, string Identifier, Guid CategoryId, string? Description, Guid LeadId,

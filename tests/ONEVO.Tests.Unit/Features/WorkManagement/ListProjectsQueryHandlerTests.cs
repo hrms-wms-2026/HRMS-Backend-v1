@@ -48,6 +48,9 @@ public class ListProjectsQueryHandlerTests
         entityAssets.Setup(x => x.GetPrimaryFileIdsByOwnerAsync(
                 TenantId, "project", It.IsAny<IReadOnlyCollection<Guid>>(), "project_cover", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, Guid>());
+        entityAssets.Setup(x => x.GetPrimaryFileIdsByOwnerAsync(
+                TenantId, "employee", It.IsAny<IReadOnlyCollection<Guid>>(), "employee_avatar", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
 
         var labels = new Mock<ILabelRepository>();
         labels.Setup(x => x.GetByProjectIdsAsync(TenantId, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))

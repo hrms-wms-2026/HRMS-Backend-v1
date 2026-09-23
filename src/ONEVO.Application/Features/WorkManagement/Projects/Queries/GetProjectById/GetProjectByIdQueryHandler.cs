@@ -84,7 +84,8 @@ public class GetProjectByIdQueryHandler : IRequestHandler<GetProjectByIdQuery, R
         var memberEmployeeIdsByProject = await _members.ListDistinctActiveMemberEmployeeIdsAsync(tenantId, [project.Id], MaxMembers, ct);
         var memberCounts = await _members.CountDistinctActiveMembersAsync(tenantId, [project.Id], ct);
         var displayNames = await ProjectMemberAvatarResolver.ResolveDisplayNamesAsync(_identity, tenantId, memberEmployeeIdsByProject, ct);
-        var members = ProjectMemberAvatarResolver.BuildAvatars(project.Id, memberEmployeeIdsByProject, displayNames);
+        var avatarFileIds = await ProjectMemberAvatarResolver.ResolveAvatarFileIdsAsync(_entityAssets, tenantId, memberEmployeeIdsByProject, ct);
+        var members = ProjectMemberAvatarResolver.BuildAvatars(project.Id, memberEmployeeIdsByProject, displayNames, avatarFileIds);
         var memberCount = memberCounts.TryGetValue(project.Id, out var count) ? count : 0;
 
         var isLead = project.LeadId == callerEmployeeId.Value;
