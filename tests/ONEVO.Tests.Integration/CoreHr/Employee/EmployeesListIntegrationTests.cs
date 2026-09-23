@@ -26,6 +26,7 @@ using ONEVO.Infrastructure.Persistence.Repositories.CoreHr;
 using ONEVO.Tests.Integration.Support;
 using Xunit;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
+using EfEntityAssetRepository = ONEVO.Infrastructure.Persistence.Repositories.EfEntityAssetRepository;
 
 namespace ONEVO.Tests.Integration.CoreHr.Employee;
 
@@ -134,7 +135,8 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
         var currentUser = BuildCurrentUser(tenantId, orgManage, callerOwnEmployeeId);
         var authorityResolver = BuildAuthorityResolver(db, currentUser);
 
-        return new ListEmployeesQueryHandler(employeeRepository, authorityResolver, currentUser, _clock);
+        return new ListEmployeesQueryHandler(
+            employeeRepository, authorityResolver, new EfEntityAssetRepository(db), currentUser, _clock);
     }
 
     /// <summary>Builds a real EmployeeAuthorityResolver over the same restricted-role db context
@@ -166,6 +168,7 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
             employeeRepository,
             scopeResolver,
             new EfInvitationTokenRepository(db),
+            new EfEntityAssetRepository(db),
             currentUser,
             _clock);
     }
@@ -226,7 +229,7 @@ public sealed class EmployeesListIntegrationTestsFixture : IAsyncLifetime
                 GRANT SELECT ON employees, position_assignments, employee_hierarchy_closure,
                     departments, legal_entities, positions, employment_types, employment_statuses,
                     tenant_work_modes, management_coverage_records, tenants, invitation_tokens,
-                    roles, role_permissions, user_roles, permissions
+                    roles, role_permissions, user_roles, permissions, entity_assets
                     TO {RestrictedRoleName};
             ";
             await grantTables.ExecuteNonQueryAsync();

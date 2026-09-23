@@ -6,6 +6,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 using ONEVO.Tests.Unit.Features.CoreHr.EmployeeAuthority;
 using EmployeeEntity = ONEVO.Domain.Features.CoreHr.Entities.Employee;
+using EntityAssetRepository = ONEVO.Application.Common.RepositoryInterfaces.IEntityAssetRepository;
 
 namespace ONEVO.Tests.Unit.Features.CoreHr.Employee;
 
@@ -55,7 +56,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), EmptyEntityAssets(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -90,7 +91,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), EmptyEntityAssets(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -111,7 +112,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), EmptyEntityAssets(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -134,7 +135,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actorUserId] = null;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actorUserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), EmptyEntityAssets(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -165,7 +166,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), EmptyEntityAssets(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -197,7 +198,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), EmptyEntityAssets(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery(null, null, null), CancellationToken.None);
 
@@ -228,7 +229,7 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
         repo.DefaultEmployeeByUser[actor.UserId] = actor;
 
         var currentUser = FakeCurrentUser(graph.TenantId, actor.UserId);
-        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), currentUser, graph.Clock);
+        var handler = new ListEmployeesQueryHandler(repo, graph.BuildResolver(), EmptyEntityAssets(), currentUser, graph.Clock);
 
         var result = await handler.Handle(new ListEmployeesQuery("ada", null, null), CancellationToken.None);
 
@@ -241,6 +242,16 @@ public sealed class ListEmployeesQueryHandlerAuthorityResolverIntegrationTests
     private static EmployeeListItemResponse ListItem(EmployeeEntity employee, Guid legalEntityId, string? name = null) => new(
         employee.Id, employee.EmployeeNumber, name ?? $"{employee.FirstName} {employee.LastName}", employee.Email,
         employee.DepartmentId, null, null, null, legalEntityId, null, "Full-Time", "active", null, null);
+
+    private static EntityAssetRepository EmptyEntityAssets()
+    {
+        var mock = new Mock<EntityAssetRepository>();
+        mock.Setup(r => r.GetPrimaryFileIdsByOwnerAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, Guid>());
+        return mock.Object;
+    }
 
     private static ICurrentUser FakeCurrentUser(Guid tenantId, Guid userId)
     {

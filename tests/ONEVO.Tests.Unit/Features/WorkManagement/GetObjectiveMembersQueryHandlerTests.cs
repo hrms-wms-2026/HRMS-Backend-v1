@@ -32,7 +32,8 @@ public class GetObjectiveMembersQueryHandlerTests
     };
 
     private GetObjectiveMembersQueryHandler BuildHandler(
-        Objective? objective, Guid? callerId = null, List<string>? permissions = null, bool hasMembership = true)
+        Objective? objective, Guid? callerId = null, List<string>? permissions = null, bool hasMembership = true,
+        Guid? memberAvatarFileId = null)
     {
         var resolvedCallerId = callerId ?? HeadUserId;
         var currentUser = new Mock<ICurrentUser>();
@@ -45,12 +46,12 @@ public class GetObjectiveMembersQueryHandlerTests
             .ReturnsAsync(HeadEmployeeId);
         identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, OtherUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(OtherEmployeeId);
-        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<Guid, string>
+        identity.Setup(x => x.ResolveIdentitiesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, EmployeeIdentityDto>
             {
-                [HeadEmployeeId] = "Head Employee",
-                [MemberEmployeeId] = "Member Employee",
-                [InvitedEmployeeId] = "Invited Employee"
+                [HeadEmployeeId] = new("Head Employee", null),
+                [MemberEmployeeId] = new("Member Employee", memberAvatarFileId),
+                [InvitedEmployeeId] = new("Invited Employee", null)
             });
 
         var objectives = new Mock<IObjectiveRepository>();
@@ -96,7 +97,7 @@ public class GetObjectiveMembersQueryHandlerTests
     [Fact]
     public async Task Handle_ResolvesDisplayNamesForEveryMemberAndInvitee()
     {
-        // Regression test: member Name must be resolved via ResolveDisplayNamesByEmployeeIdAsync
+        // Regression test: member Name must be resolved via ResolveIdentitiesByEmployeeIdAsync
         // (bypasses the management-coverage-scoped employee lookup, same as Objective.OwnerName),
         // not left for the client to resolve via GET /employees/{id} - that 403s for most
         // assignees since coverage is a People-module reporting-chain concept, unrelated to WM
@@ -109,6 +110,20 @@ public class GetObjectiveMembersQueryHandlerTests
         Assert.Contains(result.Value!.Items, i => i.EmployeeId == HeadEmployeeId && i.Name == "Head Employee");
         Assert.Contains(result.Value.Items, i => i.EmployeeId == MemberEmployeeId && i.Name == "Member Employee");
         Assert.Contains(result.Value.Items, i => i.EmployeeId == InvitedEmployeeId && i.Name == "Invited Employee");
+    }
+
+    [Fact]
+    public async Task Handle_ReturnsAvatarFileIdForMembersWithAnAvatar_AndNullForThoseWithout()
+    {
+        var avatarFileId = Guid.NewGuid();
+        var handler = BuildHandler(SubObjective(), memberAvatarFileId: avatarFileId);
+
+        var result = await handler.Handle(new GetObjectiveMembersQuery(ObjectiveId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(result.Value!.Items, i => i.EmployeeId == MemberEmployeeId && i.AvatarFileId == avatarFileId);
+        Assert.Contains(result.Value.Items, i => i.EmployeeId == HeadEmployeeId && i.AvatarFileId == null);
+        Assert.Contains(result.Value.Items, i => i.EmployeeId == InvitedEmployeeId && i.AvatarFileId == null);
     }
 
     [Fact]

@@ -95,6 +95,22 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             .GroupBy(a => a.TaskId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(a => a.EmployeeId).ToList());
 
+        // A subtask can be assigned to someone other than the parent's assignee. Fold those
+        // employee ids into a per-parent set so a person can find the parent task on the
+        // Board/Backlog under an assignee filter even when they're only assigned to a subtask
+        // of it (subtasks themselves never appear as independent top-level cards).
+        var subtaskIds = subtasksByParentId.Values.SelectMany(list => list.Select(s => s.Id)).ToList();
+        var subtaskAssignments = await _assignments.GetByTaskIdsAsync(subtaskIds, ct);
+        var subtaskAssigneesBySubtaskId = subtaskAssignments
+            .GroupBy(a => a.TaskId)
+            .ToDictionary(g => g.Key, g => g.Select(a => a.EmployeeId).ToList());
+        var subtaskAssigneesByParentId = subtasksByParentId.ToDictionary(
+            group => group.Key,
+            group => (IReadOnlyList<Guid>)group.Value
+                .SelectMany(subtask => subtaskAssigneesBySubtaskId.GetValueOrDefault(subtask.Id, new List<Guid>()))
+                .Distinct()
+                .ToList());
+
         // Coverage-free identity resolution (same reasoning as GetObjectiveMembersQueryHandler:
         // management coverage is a People-module reporting-chain concept unrelated to WM task
         // assignment, so GET /employees/{id} 403ing for most assignees must not block the board
@@ -121,11 +137,16 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
         }
 
         // People filter (spec §6.2): keep only tasks assigned to one of the requested employees.
+        // A task also matches if one of its subtasks is assigned to a requested employee, so the
+        // parent still surfaces under an assignee filter even when only a subtask carries the
+        // assignment.
         if (request.AssigneeEmployeeIds is { Count: > 0 } wantedAssignees)
         {
             var wantedSet = wantedAssignees.ToHashSet();
             items = items
-                .Where(t => assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()).Any(wantedSet.Contains))
+                .Where(t =>
+                    assigneesByTaskId.GetValueOrDefault(t.Id, Array.Empty<Guid>()).Any(wantedSet.Contains) ||
+                    subtaskAssigneesByParentId.GetValueOrDefault(t.Id, Array.Empty<Guid>()).Any(wantedSet.Contains))
                 .ToList();
         }
 
@@ -153,7 +174,8 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
                 .Select(employeeId => assigneeIdentityByEmployeeId[employeeId]).ToList(),
             ParentTaskId: t.ParentTaskId,
             SubtaskTotalCount: subtasksByParentId.GetValueOrDefault(t.Id)?.Count ?? 0,
-            SubtaskCompletedCount: subtasksByParentId.GetValueOrDefault(t.Id)?.Count(subtask => completingStatusIds.Contains(subtask.StatusId)) ?? 0)).ToList();
+            SubtaskCompletedCount: subtasksByParentId.GetValueOrDefault(t.Id)?.Count(subtask => completingStatusIds.Contains(subtask.StatusId)) ?? 0,
+            SubtaskAssigneeEmployeeIds: subtaskAssigneesByParentId.GetValueOrDefault(t.Id, Array.Empty<Guid>()))).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

@@ -64,7 +64,8 @@ public sealed record WorkTaskViewModel(
     DateTimeOffset? OpenClockSessionClockInAt, int TotalLoggedMinutes,
     IReadOnlyList<TaskAttachmentViewModel> Attachments,
     IReadOnlyList<TaskAssigneeIdentityViewModel> Assignees,
-    Guid? ParentTaskId, int SubtaskTotalCount, int SubtaskCompletedCount);
+    Guid? ParentTaskId, int SubtaskTotalCount, int SubtaskCompletedCount,
+    IReadOnlyList<Guid> SubtaskAssigneeEmployeeIds);
 
 public sealed record TaskStatusViewModel(
     Guid Id, string Name, int DisplayOrder, bool RequiresApproval,

@@ -7,4 +7,6 @@ public static class EntityAssetOwnerTypes
     public const string Objective = "objective";
     public const string Task = "task";
     public const string Comment = "comment";
+    public const string Employee = "employee";
+    public const string LegalEntity = "legal_entity";
 }
