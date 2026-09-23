@@ -2566,7 +2566,7 @@ Event modal:
 - Body: `@if (view() === 'tree') { <app-module-task-picker ... /> } @else { <app-sprint-task-picker [projectId]="projectId()" [selectedTaskIds]="selectedTaskIds()" [lockedObjectiveIds]="selectedObjectiveIds()" (selectedTaskIdsChange)="selectedTaskIds.set($event)" /> }` — one shared `selectedTaskIds`, so switching views keeps the selection.
 - Payload unchanged (`objectiveIds`, `taskIds`).
 
-- [ ] **Step 1: Failing specs**
+- [x] **Step 1: Failing specs**
 
 ```ts
 // sprint-task-picker.component.spec.ts
@@ -2620,13 +2620,13 @@ Add to `calendar-event-modal.component.spec.ts` (provide `SprintApiService` stub
   });
 ```
 
-- [ ] **Step 2: Run — FAIL**, **Step 3: implement** (component follows B2's picker structure; `ensureTasks(sprintId)` mapping `WorkTaskDto` → `PickerTask`; `effect` on `projectId` loads sprints once per id).
+- [x] **Step 2: Run — FAIL**, **Step 3: implement** (component follows B2's picker structure; `ensureTasks(sprintId)` mapping `WorkTaskDto` → `PickerTask`; `effect` on `projectId` loads sprints once per id).
 
-- [ ] **Step 4:** In `project-calendar.component.ts` add `[projectId]="projectId() ?? ''"` to `<app-calendar-event-modal>`.
+- [x] **Step 4:** In `project-calendar.component.ts` add `[projectId]="projectId() ?? ''"` to `<app-calendar-event-modal>`.
 
-- [ ] **Step 5: Run — PASS**: `npx vitest run src/app/modules/work/ui/sprint-task-picker src/app/modules/work/ui/calendar-event-modal src/app/modules/work/feature/project-calendar`
+- [x] **Step 5: Run — PASS**: `npx vitest run src/app/modules/work/ui/sprint-task-picker src/app/modules/work/ui/calendar-event-modal src/app/modules/work/feature/project-calendar`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/modules/work/ui/sprint-task-picker src/app/modules/work/ui/calendar-event-modal src/app/modules/work/feature/project-calendar/project-calendar.component.ts
