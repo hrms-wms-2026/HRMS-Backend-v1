@@ -45,6 +45,7 @@ using ONEVO.Application.Features.WorkManagement.Versions.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ReleaseCalendar.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Labels.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Infrastructure.Persistence.Repositories.WorkManagement;
 using ONEVO.Infrastructure.Persistence.Repositories;
 using ONEVO.Application.Features.Auth.Login.ServiceInterfaces;
@@ -416,6 +417,7 @@ public static class DependencyInjection
 
         // Work Management - Milestone & Achievement services
         services.AddScoped<IMilestoneMembershipCoordinator, MilestoneMembershipCoordinator>();
+        services.AddScoped<ISprintAccessService, SprintAccessService>();
         services.AddScoped<IPermissionAutoGrantService, PermissionAutoGrantService>();
         services.AddScoped<ICallerIdentityResolver, CallerIdentityResolver>();
         services.AddScoped<IObjectiveAllocationSlackCalculator, ObjectiveAllocationSlackCalculator>();

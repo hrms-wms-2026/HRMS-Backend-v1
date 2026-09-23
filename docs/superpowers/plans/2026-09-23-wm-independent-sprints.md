@@ -304,7 +304,7 @@ public interface ISprintAccessService
 }
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // tests/ONEVO.Tests.Unit/Features/WorkManagement/Sprints/SprintAccessServiceTests.cs
@@ -437,11 +437,11 @@ public class SprintAccessServiceTests
 
 > Before typing: confirm the exact namespaces of `IProjectMemberRepository` and `ProjectMember` (`grep -rn "interface IProjectMemberRepository\|class ProjectMember\b" src`) and of `IMilestoneMembershipCoordinator` (`Objectives/Services`) and adjust the `using`s. Remove any unused `using`.
 
-- [ ] **Step 2: Run — FAIL** (`SprintAccessService` not found)
+- [x] **Step 2: Run — FAIL** (`SprintAccessService` not found)
 
 Run: `dotnet test tests/ONEVO.Tests.Unit --filter "FullyQualifiedName~SprintAccessServiceTests"`
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```csharp
 // src/ONEVO.Application/Features/WorkManagement/Sprints/Services/ISprintAccessService.cs
@@ -544,9 +544,9 @@ DI (`DependencyInjection.cs`, below `services.AddScoped<IMilestoneMembershipCoor
 ```
 (add `using ONEVO.Application.Features.WorkManagement.Sprints.Services;` at the top if missing.)
 
-- [ ] **Step 4: Run — PASS** (6 tests)
+- [x] **Step 4: Run — PASS** (6 tests)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ONEVO.Application/Features/WorkManagement/Sprints/Services/ISprintAccessService.cs src/ONEVO.Application/Features/WorkManagement/Sprints/Services/SprintAccessService.cs src/ONEVO.Infrastructure/DependencyInjection.cs tests/ONEVO.Tests.Unit/Features/WorkManagement/Sprints/SprintAccessServiceTests.cs
