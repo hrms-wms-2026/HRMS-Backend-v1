@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ONEVO.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using ONEVO.Infrastructure.Persistence;
 namespace ONEVO.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922064830_AddActivitySnapshotDedupIndex")]
+    partial class AddActivitySnapshotDedupIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -11759,196 +11762,6 @@ namespace ONEVO.Infrastructure.Migrations
                     b.ToTable("task_clocking_sessions", (string)null);
                 });
 
-            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskComment", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("content");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by_id");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("deleted_at");
-
-                    b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("employee_id");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_deleted");
-
-                    b.Property<bool>("IsEdited")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_edited");
-
-                    b.Property<Guid?>("ParentCommentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("parent_comment_id");
-
-                    b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("task_id");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_task_comments");
-
-                    b.HasIndex("ParentCommentId")
-                        .HasDatabaseName("ix_task_comments_parent_comment_id");
-
-                    b.HasIndex("TaskId")
-                        .HasDatabaseName("ix_task_comments_task_id");
-
-                    b.HasIndex("TenantId", "TaskId", "CreatedAt")
-                        .HasDatabaseName("ix_task_comments_tenant_id_task_id_created_at");
-
-                    b.ToTable("task_comments", (string)null);
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCommentLog", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("action");
-
-                    b.Property<Guid>("CommentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("comment_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by_id");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("deleted_at");
-
-                    b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("employee_id");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_deleted");
-
-                    b.Property<DateTimeOffset>("OccurredAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("occurred_at");
-
-                    b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("task_id");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_task_comment_logs");
-
-                    b.HasIndex("CommentId")
-                        .HasDatabaseName("ix_task_comment_logs_comment_id");
-
-                    b.HasIndex("TaskId")
-                        .HasDatabaseName("ix_task_comment_logs_task_id");
-
-                    b.HasIndex("TenantId", "TaskId", "OccurredAt")
-                        .HasDatabaseName("ix_task_comment_logs_tenant_id_task_id_occurred_at");
-
-                    b.ToTable("task_comment_logs", (string)null);
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCommentReaction", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("CommentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("comment_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("CreatedById")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by_id");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("deleted_at");
-
-                    b.Property<string>("Emoji")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("emoji");
-
-                    b.Property<Guid>("EmployeeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("employee_id");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_deleted");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_task_comment_reactions");
-
-                    b.HasIndex("CommentId", "EmployeeId", "Emoji")
-                        .IsUnique()
-                        .HasDatabaseName("ix_task_comment_reactions_comment_id_employee_id_emoji");
-
-                    b.ToTable("task_comment_reactions", (string)null);
-                });
-
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCreationRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -14382,49 +14195,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_task_clocking_sessions_work_tasks_task_id");
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskComment", b =>
-                {
-                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskComment", null)
-                        .WithMany()
-                        .HasForeignKey("ParentCommentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_task_comments_task_comments_parent_comment_id");
-
-                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.WorkTask", null)
-                        .WithMany()
-                        .HasForeignKey("TaskId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_task_comments_work_tasks_task_id");
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCommentLog", b =>
-                {
-                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskComment", null)
-                        .WithMany()
-                        .HasForeignKey("CommentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_task_comment_logs_task_comments_comment_id");
-
-                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.WorkTask", null)
-                        .WithMany()
-                        .HasForeignKey("TaskId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_task_comment_logs_work_tasks_task_id");
-                });
-
-            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCommentReaction", b =>
-                {
-                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskComment", null)
-                        .WithMany()
-                        .HasForeignKey("CommentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_task_comment_reactions_task_comments_comment_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskCreationRequest", b =>

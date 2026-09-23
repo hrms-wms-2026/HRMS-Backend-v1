@@ -446,6 +446,9 @@ public static class DependencyInjection
         services.AddScoped<
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.IAwsRekognitionConnectionProbe,
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.AwsRekognitionConnectionProbe>();
+        services.AddScoped<
+            ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.ICloudflareR2ConnectionProbe,
+            ONEVO.Infrastructure.ExternalServices.Storage.CloudflareR2.CloudflareR2ConnectionProbe>();
         services.AddScoped<IPlatformServiceKeyResolver, PlatformServiceKeyResolver>();
 
         // System Config - metadata-only provider catalog
@@ -559,6 +562,7 @@ public static class DependencyInjection
             ONEVO.Application.Common.ServiceInterfaces.IFaceQualityService,
             ONEVO.Infrastructure.Services.Monitoring.Biometrics.RekognitionFaceQualityService>();
         services.AddScoped<IActivityDailySummaryRepository, EfActivityDailySummaryRepository>();
+        services.AddScoped<IActivityLiveDaySummary, ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring.ActivityLiveDaySummary>();
         services.AddScoped<
             ONEVO.Application.Features.Monitoring.Reports.RepositoryInterfaces.IProductivityReportRepository,
             ONEVO.Infrastructure.Persistence.Repositories.Monitoring.Reports.EfProductivityReportRepository>();

@@ -13,6 +13,26 @@ public class EfActivitySnapshotRepository : IActivitySnapshotRepository
     public async Task AddRangeAsync(IEnumerable<ActivitySnapshot> snapshots, CancellationToken ct)
         => await _db.ActivitySnapshots.AddRangeAsync(snapshots, ct);
 
+    public async Task<IReadOnlySet<DateTimeOffset>> GetExistingCapturedAtsAsync(
+        Guid tenantId,
+        Guid agentDeviceId,
+        IReadOnlyCollection<DateTimeOffset> capturedAts,
+        CancellationToken ct)
+    {
+        if (capturedAts.Count == 0)
+            return new HashSet<DateTimeOffset>();
+
+        var existing = await _db.ActivitySnapshots
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId
+                        && s.AgentDeviceId == agentDeviceId
+                        && capturedAts.Contains(s.CapturedAt))
+            .Select(s => s.CapturedAt)
+            .ToListAsync(ct);
+
+        return existing.ToHashSet();
+    }
+
     public async Task<IReadOnlyList<ActivitySnapshot>> GetByEmployeeDateAsync(
         Guid tenantId,
         Guid employeeId,

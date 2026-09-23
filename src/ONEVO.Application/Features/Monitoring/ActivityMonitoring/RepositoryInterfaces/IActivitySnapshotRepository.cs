@@ -6,6 +6,16 @@ public interface IActivitySnapshotRepository
 {
     Task AddRangeAsync(IEnumerable<ActivitySnapshot> snapshots, CancellationToken ct);
 
+    /// <summary>
+    /// Of the given capture instants, returns the ones this device already has a snapshot row for.
+    /// Used to make ingest idempotent against a tray retry/resend of the same batch.
+    /// </summary>
+    Task<IReadOnlySet<DateTimeOffset>> GetExistingCapturedAtsAsync(
+        Guid tenantId,
+        Guid agentDeviceId,
+        IReadOnlyCollection<DateTimeOffset> capturedAts,
+        CancellationToken ct);
+
     Task<IReadOnlyList<ActivitySnapshot>> GetByEmployeeDateAsync(
         Guid tenantId,
         Guid employeeId,

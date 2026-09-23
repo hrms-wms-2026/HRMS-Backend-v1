@@ -47,7 +47,7 @@ public class GetActivityDailySummaryQueryHandler
             entity is null ? null : Map(entity));
     }
 
-    internal static ActivityDailySummaryDto Map(ActivityDailySummary entity)
+    public static ActivityDailySummaryDto Map(ActivityDailySummary entity)
     {
         List<AppUsageSummary> topApps = [];
         if (!string.IsNullOrWhiteSpace(entity.TopAppsJson) && entity.TopAppsJson != "[]")
