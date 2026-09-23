@@ -615,6 +615,7 @@ public static class DependencyInjection
         services.AddHostedService<ONEVO.Infrastructure.Services.Monitoring.Screenshots.AgentCommandExpiryJob>();
         services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
         services.AddHostedService<Services.Calendar.CalendarSyncJob>();
+        services.AddHostedService<Services.Calendar.TeamsAttendanceSyncJob>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
