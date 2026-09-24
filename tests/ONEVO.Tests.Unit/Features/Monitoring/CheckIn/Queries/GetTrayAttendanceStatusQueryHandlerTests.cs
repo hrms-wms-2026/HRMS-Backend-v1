@@ -4,7 +4,9 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Application.Features.Monitoring.CheckIn.Queries.GetTrayAttendanceStatus;
 using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.DTOs.Responses;
+using ONEVO.Domain.Features.Monitoring.Notifications.Entities;
 using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
 using ONEVO.Application.Features.TimeAttendance.Services;
 using ONEVO.Domain.Features.CoreHr.Entities;
@@ -87,6 +89,63 @@ public class GetTrayAttendanceStatusQueryHandlerTests
         Assert.True(result.IsSuccess);
         Assert.False(result.Value!.IsClockedIn);
         Assert.Null(result.Value!.ClockedInAtUtc);
+    }
+
+    [Fact]
+    public async Task Handle_BreakPastAllowance_LocksStartBreakAndNotifiesOnce()
+    {
+        var device = new Mock<ITrayCurrentDevice>();
+        device.Setup(d => d.IsAuthenticated).Returns(true);
+        device.Setup(d => d.TenantId).Returns(TenantId);
+        device.Setup(d => d.UserId).Returns(UserId);
+
+        var context = BuildContext();
+        context = context with
+        {
+            LegalEntity = new LegalEntity
+            {
+                Id = LegalEntityId,
+                TenantId = TenantId,
+                Timezone = "Asia/Colombo",
+                BreakDurationMinutes = 60
+            }
+        };
+        var todayState = new Mock<IAttendanceTodayStateService>();
+        todayState.Setup(t => t.ResolveContextAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<AttendanceTodayContext>.Success(context));
+
+        var started = context.LocalNow.AddMinutes(-70);
+        var attendance = new Mock<IAttendanceReadRepository>();
+        attendance.Setup(a => a.GetRecordAsync(TenantId, EmployeeId, WorkDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttendanceRecord { ActualStart = started, ActualEnd = null });
+        attendance.Setup(a => a.ListBreaksAsync(
+                TenantId, EmployeeId, context.LocalDayWindow.Start, context.LocalDayWindow.End, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<BreakRecord>
+            {
+                new()
+                {
+                    BreakStart = started,
+                    BreakEnd = null
+                }
+            });
+
+        var notifications = new Mock<INotificationRepository>();
+        notifications.Setup(n => n.ExistsRecentAsync(
+                TenantId, EmployeeId, NotificationType.BreakAllowanceExceeded, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var (tenants, switcher) = CreateTenantMocks();
+        var sut = new GetTrayAttendanceStatusQueryHandler(
+            device.Object, todayState.Object, attendance.Object, tenants.Object, switcher.Object, notifications.Object);
+
+        var result = await sut.Handle(new GetTrayAttendanceStatusQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.CanStartBreak);
+        Assert.Equal(60, result.Value.BreakAllowanceMinutes);
+        notifications.Verify(n => n.AddAsync(
+            It.Is<Notification>(note => note.Type == NotificationType.BreakAllowanceExceeded),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

@@ -133,7 +133,7 @@ public class ActivityDailySummaryAggregatorTests
     }
 
     [Fact]
-    public void Top_apps_caps_at_10_and_is_empty_json_array_when_no_active_process()
+    public void Top_apps_keeps_every_process_and_is_empty_json_array_when_no_active_process()
     {
         var baseTime = new DateTimeOffset(2026, 8, 5, 9, 0, 0, TimeSpan.Zero);
         var snapshots = Enumerable.Range(0, 12)
@@ -144,7 +144,7 @@ public class ActivityDailySummaryAggregatorTests
             Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 5), snapshots, baseTime);
 
         var topApps = System.Text.Json.JsonSerializer.Deserialize<List<AppUsageSummary>>(summary.TopAppsJson)!;
-        topApps.Should().HaveCount(10);
+        topApps.Should().HaveCount(12);
 
         var idleOnly = new List<ActivitySnapshot> { Snap(0, 300, 0, 0, 0, "explorer.exe", baseTime) };
         var idleSummary = ActivityDailySummaryAggregator.Aggregate(
@@ -186,6 +186,21 @@ public class ActivityDailySummaryAggregatorTests
 
         var topApps = System.Text.Json.JsonSerializer.Deserialize<List<AppUsageSummary>>(summary.TopAppsJson)!;
         topApps.Should().Contain(a => a.AppName == "code.exe" && a.TotalSeconds == 120);
+    }
+
+    [Fact]
+    public void Aggregates_EveryDistinctApp_NotOnlyTheFirstFive()
+    {
+        var baseTime = new DateTimeOffset(2026, 9, 23, 4, 0, 0, TimeSpan.Zero);
+        var names = new[] { "one.exe", "two.exe", "three.exe", "four.exe", "five.exe", "six.exe" };
+        var appUsage = names.Select((name, index) => AppUsage(name, baseTime.AddMinutes(index))).ToList();
+
+        var summary = ActivityDailySummaryAggregator.Aggregate(
+            Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 9, 23), [], baseTime,
+            appUsageSnapshots: appUsage);
+
+        var topApps = System.Text.Json.JsonSerializer.Deserialize<List<AppUsageSummary>>(summary.TopAppsJson)!;
+        topApps.Select(app => app.AppName).Should().BeEquivalentTo(names);
     }
 
     [Fact]

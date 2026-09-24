@@ -4,6 +4,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Monitoring.Settings.DTOs.Responses;
 using ONEVO.Application.Features.Monitoring.Settings.Mappers;
 using ONEVO.Application.Features.Monitoring.Settings.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces;
 using ONEVO.Domain.Features.Monitoring.Settings.Entities;
 
 namespace ONEVO.Application.Features.Monitoring.Settings.Commands.UpdateMonitoringFeatureToggles;
@@ -15,17 +16,20 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
     private readonly ICurrentUser _currentUser;
     private readonly IDateTimeProvider _clock;
     private readonly ICacheService _cache;
+    private readonly ITrayPolicyRefreshNotifier? _policyRefresh;
 
     public UpdateMonitoringFeatureTogglesCommandHandler(
         IMonitoringFeatureTogglesRepository toggles,
         ICurrentUser currentUser,
         IDateTimeProvider clock,
-        ICacheService cache)
+        ICacheService cache,
+        ITrayPolicyRefreshNotifier? policyRefresh = null)
     {
         _toggles = toggles;
         _currentUser = currentUser;
         _clock = clock;
         _cache = cache;
+        _policyRefresh = policyRefresh;
     }
 
     public async Task<Result<MonitoringFeatureTogglesResponse>> Handle(
@@ -97,10 +101,9 @@ public class UpdateMonitoringFeatureTogglesCommandHandler
 
         await _toggles.SaveChangesAsync(ct);
 
-        // Resolver caches per (tenant, employee, capability) under this prefix (2 min TTL,
-        // see MonitoringToggleResolverService). This clears the local in-memory cache only -
-        // acceptable convergence bound is "up to 2 minutes", not instant.
         await _cache.RemoveByPrefixAsync($"tenant:{tenantId}:monitoring-toggle:", ct);
+        if (_policyRefresh is not null)
+            await _policyRefresh.NotifyTenantAsync(tenantId, ct);
 
         return Result<MonitoringFeatureTogglesResponse>.Success(MonitoringFeatureTogglesMapper.ToResponse(existing));
     }
