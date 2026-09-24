@@ -19,7 +19,7 @@ public class GetCommentsForTaskQueryHandlerTests
     private static readonly Guid EmployeeId = Guid.NewGuid();
     private static readonly Guid TaskId = Guid.NewGuid();
 
-    private (GetCommentsForTaskQueryHandler Handler, Mock<ITaskCommentRepository> Comments) Build(IReadOnlyList<TaskComment> comments)
+    private (GetCommentsForTaskQueryHandler Handler, Mock<ITaskCommentRepository> Comments) Build(IReadOnlyList<TaskComment> comments, IReadOnlyList<TaskCommentReaction>? reactionRows = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -35,7 +35,7 @@ public class GetCommentsForTaskQueryHandlerTests
 
         var reactions = new Mock<ITaskCommentReactionRepository>();
         reactions.Setup(x => x.GetForCommentIdsAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TaskCommentReaction>());
+            .ReturnsAsync(reactionRows ?? new List<TaskCommentReaction>());
 
         var assets = new Mock<IEntityAssetRepository>();
         assets.Setup(x => x.ListByOwnersAsync(TenantId, EntityAssetOwnerTypes.Comment, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
@@ -44,6 +44,13 @@ public class GetCommentsForTaskQueryHandlerTests
         var identity = new Mock<ICallerIdentityResolver>();
         identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(comments.Select(c => c.EmployeeId).Distinct().ToDictionary(id => id, _ => "Priya"));
+        if (reactionRows is not null)
+        {
+            var names = comments.Select(c => c.EmployeeId).Concat(reactionRows.Select(r => r.EmployeeId)).Distinct()
+                .ToDictionary(id => id, id => id == EmployeeId ? "Priya" : "Arun");
+            identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(names);
+        }
 
         var handler = new GetCommentsForTaskQueryHandler(currentUser.Object, access.Object, commentRepo.Object, reactions.Object, assets.Object, identity.Object);
         return (handler, commentRepo);
@@ -66,6 +73,31 @@ public class GetCommentsForTaskQueryHandlerTests
         Assert.Single(result.Value!);
         Assert.Single(result.Value![0].Replies);
         Assert.Equal("reply", result.Value[0].Replies[0].Content);
+    }
+
+    [Fact]
+    public async Task Handle_Reactions_GroupedByEmojiWithReactorNames()
+    {
+        var commentId = Guid.NewGuid();
+        var otherEmployeeId = Guid.NewGuid();
+        var comments = new List<TaskComment>
+        {
+            new() { Id = commentId, TenantId = TenantId, TaskId = TaskId, EmployeeId = EmployeeId, Content = "root", CreatedAt = DateTimeOffset.UtcNow }
+        };
+        var reactionRows = new List<TaskCommentReaction>
+        {
+            new() { Id = Guid.NewGuid(), TenantId = TenantId, CommentId = commentId, EmployeeId = EmployeeId, Emoji = "👍", CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-2) },
+            new() { Id = Guid.NewGuid(), TenantId = TenantId, CommentId = commentId, EmployeeId = otherEmployeeId, Emoji = "👍", CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-1) }
+        };
+        var (handler, _) = Build(comments, reactionRows);
+
+        var result = await handler.Handle(new GetCommentsForTaskQuery(TaskId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var reaction = Assert.Single(result.Value![0].Reactions);
+        Assert.Equal("👍", reaction.Emoji);
+        Assert.Equal(new[] { EmployeeId, otherEmployeeId }, reaction.EmployeeIds);
+        Assert.Equal(new[] { "Priya", "Arun" }, reaction.Reactors.Select(r => r.Name));
     }
 
     [Fact]

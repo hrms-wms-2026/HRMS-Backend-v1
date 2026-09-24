@@ -2,9 +2,9 @@ using ONEVO.Domain.Common;
 
 namespace ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
-/// <summary>One emoji reaction from one employee on one comment. A user may
-/// stack several distinct emoji on the same comment (unique per (CommentId,
-/// EmployeeId, Emoji)), but not the same emoji twice.</summary>
+/// <summary>One emoji reaction from one employee on one comment. Each employee
+/// holds at most one reaction per comment (unique per (CommentId, EmployeeId));
+/// reacting again with a different emoji replaces it.</summary>
 public class TaskCommentReaction : BaseEntity
 {
     public Guid CommentId { get; set; }

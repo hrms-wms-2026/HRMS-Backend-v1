@@ -43,7 +43,7 @@ public class TaskCommentReactionCommandHandlerTests
     public async Task AddReaction_NewEmoji_AddsIt()
     {
         var (currentUser, access, comments, reactions) = BuildDeps();
-        reactions.Setup(x => x.GetAsync(TenantId, CommentId, EmployeeId, "👍", It.IsAny<CancellationToken>())).ReturnsAsync((TaskCommentReaction?)null);
+        reactions.Setup(x => x.GetForEmployeeAsync(TenantId, CommentId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync((TaskCommentReaction?)null);
         var handler = new AddTaskCommentReactionCommandHandler(currentUser.Object, access.Object, comments.Object, reactions.Object, Mock.Of<IUnitOfWork>());
 
         var result = await handler.Handle(new AddTaskCommentReactionCommand(CommentId, "👍"), CancellationToken.None);
@@ -53,17 +53,39 @@ public class TaskCommentReactionCommandHandlerTests
     }
 
     [Fact]
-    public async Task AddReaction_AlreadyExists_IsIdempotentNoOp()
+    public async Task AddReaction_SameEmojiAlreadyExists_IsIdempotentNoOp()
     {
         var (currentUser, access, comments, reactions) = BuildDeps();
-        reactions.Setup(x => x.GetAsync(TenantId, CommentId, EmployeeId, "👍", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TaskCommentReaction { CommentId = CommentId, EmployeeId = EmployeeId, Emoji = "👍" });
-        var handler = new AddTaskCommentReactionCommandHandler(currentUser.Object, access.Object, comments.Object, reactions.Object, Mock.Of<IUnitOfWork>());
+        var existing = new TaskCommentReaction { CommentId = CommentId, EmployeeId = EmployeeId, Emoji = "👍" };
+        reactions.Setup(x => x.GetForEmployeeAsync(TenantId, CommentId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+        var unitOfWork = new Mock<IUnitOfWork>();
+        var handler = new AddTaskCommentReactionCommandHandler(currentUser.Object, access.Object, comments.Object, reactions.Object, unitOfWork.Object);
 
         var result = await handler.Handle(new AddTaskCommentReactionCommand(CommentId, "👍"), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
+        Assert.Equal("👍", existing.Emoji);
         reactions.Verify(x => x.AddAsync(It.IsAny<TaskCommentReaction>(), It.IsAny<CancellationToken>()), Times.Never);
+        unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AddReaction_DifferentEmojiAlreadyExists_ReplacesItInPlace()
+    {
+        var (currentUser, access, comments, reactions) = BuildDeps();
+        var existing = new TaskCommentReaction { CommentId = CommentId, EmployeeId = EmployeeId, Emoji = "👍" };
+        reactions.Setup(x => x.GetForEmployeeAsync(TenantId, CommentId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+        var unitOfWork = new Mock<IUnitOfWork>();
+        var handler = new AddTaskCommentReactionCommandHandler(currentUser.Object, access.Object, comments.Object, reactions.Object, unitOfWork.Object);
+
+        var result = await handler.Handle(new AddTaskCommentReactionCommand(CommentId, "🎉"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("🎉", existing.Emoji);
+        Assert.NotNull(existing.UpdatedAt);
+        reactions.Verify(x => x.AddAsync(It.IsAny<TaskCommentReaction>(), It.IsAny<CancellationToken>()), Times.Never);
+        reactions.Verify(x => x.RemoveAsync(It.IsAny<TaskCommentReaction>(), It.IsAny<CancellationToken>()), Times.Never);
+        unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

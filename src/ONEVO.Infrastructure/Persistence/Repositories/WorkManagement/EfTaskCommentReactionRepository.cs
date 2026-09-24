@@ -19,6 +19,10 @@ public class EfTaskCommentReactionRepository : ITaskCommentReactionRepository
         return Task.CompletedTask;
     }
 
+    public async Task<TaskCommentReaction?> GetForEmployeeAsync(Guid tenantId, Guid commentId, Guid employeeId, CancellationToken ct = default)
+        => await _db.TaskCommentReactions.FirstOrDefaultAsync(
+            r => r.TenantId == tenantId && r.CommentId == commentId && r.EmployeeId == employeeId, ct);
+
     public async Task<TaskCommentReaction?> GetAsync(Guid tenantId, Guid commentId, Guid employeeId, string emoji, CancellationToken ct = default)
         => await _db.TaskCommentReactions.FirstOrDefaultAsync(
             r => r.TenantId == tenantId && r.CommentId == commentId && r.EmployeeId == employeeId && r.Emoji == emoji, ct);

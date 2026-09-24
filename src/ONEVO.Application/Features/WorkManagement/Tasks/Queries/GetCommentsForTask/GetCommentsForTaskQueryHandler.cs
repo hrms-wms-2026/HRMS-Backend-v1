@@ -47,11 +47,6 @@ public sealed class GetCommentsForTaskQueryHandler : IRequestHandler<GetComments
         var commentIds = allComments.Select(c => c.Id).ToList();
 
         var allReactions = await _reactions.GetForCommentIdsAsync(tenantId, commentIds, ct);
-        var reactionsByComment = allReactions.GroupBy(r => r.CommentId).ToDictionary(
-            g => g.Key,
-            g => (IReadOnlyList<TaskCommentReactionDto>)g.GroupBy(r => r.Emoji)
-                .Select(eg => new TaskCommentReactionDto(eg.Key, eg.Select(r => r.EmployeeId).ToList()))
-                .ToList());
 
         var allAssets = await _entityAssets.ListByOwnersAsync(tenantId, EntityAssetOwnerTypes.Comment, commentIds, ct);
         var attachmentsByComment = allAssets
@@ -61,7 +56,21 @@ public sealed class GetCommentsForTaskQueryHandler : IRequestHandler<GetComments
                 g => g.Key,
                 g => (IReadOnlyList<TaskAttachmentDto>)g.Select(a => new TaskAttachmentDto(a.FileRecordId, a.OriginalFileName, a.FileSizeBytes, a.ContentType)).ToList());
 
-        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(tenantId, allComments.Select(c => c.EmployeeId).Distinct().ToList(), ct);
+        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
+            tenantId, allComments.Select(c => c.EmployeeId).Concat(allReactions.Select(r => r.EmployeeId)).Distinct().ToList(), ct);
+
+        var reactionsByComment = allReactions.GroupBy(r => r.CommentId).ToDictionary(
+            g => g.Key,
+            g => (IReadOnlyList<TaskCommentReactionDto>)g.GroupBy(r => r.Emoji)
+                .Select(eg =>
+                {
+                    var ordered = eg.OrderBy(r => r.UpdatedAt ?? r.CreatedAt).ToList();
+                    return new TaskCommentReactionDto(
+                        eg.Key,
+                        ordered.Select(r => r.EmployeeId).ToList(),
+                        ordered.Select(r => new TaskCommentReactorDto(r.EmployeeId, names.GetValueOrDefault(r.EmployeeId) ?? "A teammate")).ToList());
+                })
+                .ToList());
 
         TaskCommentResponse ToResponse(TaskComment c, IReadOnlyList<TaskCommentResponse> replies) => new(
             c.Id, c.TaskId, c.ParentCommentId, c.EmployeeId, names.GetValueOrDefault(c.EmployeeId) ?? "A teammate",
