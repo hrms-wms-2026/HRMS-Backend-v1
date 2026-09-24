@@ -103,13 +103,13 @@ public class DuplicateTaskCommandHandler : IRequestHandler<DuplicateTaskCommand,
                     $"{string.Join(", ", bad.Select(w => $"{w.Name} {w.StartDate:yyyy-MM-dd}..{w.EndDate:yyyy-MM-dd}"))}. Widen the event first.");
         }
 
-        // A sprint only makes sense within the objective it belongs to - carry it over only when
-        // duplicating in place; a cross-module copy always starts unsprinted.
+        // Carry the sprint over only when duplicating in place; a cross-module copy always starts
+        // unsprinted. Sprints are project-scoped, so validate against the destination's project.
         var sprintId = destinationObjective.Id == source.ObjectiveId ? source.SprintId : null;
         if (sprintId is not null)
         {
             var sprint = await _sprints.GetByIdForTenantAsync(tenantId, sprintId.Value, ct);
-            if (sprint is null || sprint.ObjectiveId != destinationObjective.Id)
+            if (sprint is null || sprint.ProjectId != project.Id)
                 sprintId = null;
             else if (sprint.Status == SprintStatuses.Achieved)
                 return Result<WorkTaskResponse>.Conflict("This sprint has been achieved and is frozen.");

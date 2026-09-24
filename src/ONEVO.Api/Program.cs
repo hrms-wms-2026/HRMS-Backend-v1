@@ -63,6 +63,10 @@ builder.Services.AddControllers()
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddApiAuthentication(builder.Environment, builder.Configuration);
 builder.Services.AddApiAuthorization();
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<
+    ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.ITrayPolicyRefreshNotifier,
+    ONEVO.Api.Hubs.SignalRTrayPolicyRefreshNotifier>();
 builder.Services.AddApiSwagger();
 builder.Services.AddApiCors(builder.Configuration);
 builder.Services.AddHealthChecks()
@@ -120,6 +124,7 @@ app.UseMiddleware<PermissionVersionMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<ONEVO.Api.Hubs.AgentCommandsHub>("/hubs/agent-commands");
 // Liveness: process-only checks. Must NOT include dependency checks — a brief
 // DB outage should fail readiness, not liveness.
 app.MapHealthChecks("/health", new HealthCheckOptions

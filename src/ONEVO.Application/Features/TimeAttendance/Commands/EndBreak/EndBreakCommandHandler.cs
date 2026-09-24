@@ -11,7 +11,8 @@ namespace ONEVO.Application.Features.TimeAttendance.Commands.EndBreak;
 public sealed class EndBreakCommandHandler(
     IAttendanceTodayStateService todayState,
     IAttendanceReadRepository attendance,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces.INotificationRepository? notifications = null)
     : IRequestHandler<EndBreakCommand, Result<AttendanceTodayResponse>>
 {
     public async Task<Result<AttendanceTodayResponse>> Handle(
@@ -51,6 +52,7 @@ public sealed class EndBreakCommandHandler(
             return Result<AttendanceTodayResponse>.Conflict("break_already_ended");
         }
 
+        await new BreakAllowanceMonitor(attendance, notifications).ObserveAsync(context, ct);
         return await todayState.GetTodayAsync(context.Employee.TenantId, context.Employee.UserId, ct);
     }
 

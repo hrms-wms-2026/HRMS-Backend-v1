@@ -100,7 +100,7 @@ public class DuplicateTaskCommandHandlerTests
         sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Sprint
             {
-                Id = SprintId, TenantId = TenantId, ProjectId = ProjectId, ObjectiveId = SourceObjectiveId,
+                Id = SprintId, TenantId = TenantId, ProjectId = ProjectId,
                 Name = "Sprint 1", Status = sprintStatus, CreatedAt = DateTimeOffset.UtcNow
             });
 

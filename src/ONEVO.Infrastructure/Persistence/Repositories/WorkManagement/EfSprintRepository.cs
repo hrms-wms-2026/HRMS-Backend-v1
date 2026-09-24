@@ -19,25 +19,26 @@ public class EfSprintRepository : ISprintRepository
     public async Task<Sprint?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default)
         => await _db.Sprints.FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == id, ct);
 
-    public async Task<IReadOnlyList<Sprint>> GetByObjectiveIdAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default)
-        => await _db.Sprints.AsNoTracking().Where(s => s.TenantId == tenantId && s.ObjectiveId == objectiveId).ToListAsync(ct);
-
     public async Task<IReadOnlyList<Sprint>> GetByProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
         => await _db.Sprints.AsNoTracking()
-            .Join(_db.Objectives,
-                sprint => sprint.ObjectiveId,
-                objective => objective.Id,
-                (sprint, objective) => new { sprint, objective })
-            .Where(x => x.sprint.TenantId == tenantId
-                        && x.objective.TenantId == tenantId
-                        && x.objective.ProjectId == projectId)
-            .Select(x => x.sprint)
+            .Where(s => s.TenantId == tenantId && s.ProjectId == projectId)
+            .OrderBy(s => s.CreatedAt)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<Sprint>> GetActiveByObjectiveIdAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default)
-        => await _db.Sprints.AsNoTracking()
-            .Where(s => s.TenantId == tenantId && s.ObjectiveId == objectiveId && s.Status == SprintStatuses.Active)
+    public async Task<IReadOnlyList<Sprint>> GetContainingObjectiveTasksAsync(Guid tenantId, Guid objectiveId, bool activeOnly, CancellationToken ct = default)
+    {
+        var sprintIds = _db.WorkTasks
+            .Where(t => t.TenantId == tenantId && t.ObjectiveId == objectiveId && t.SprintId != null)
+            .Select(t => t.SprintId!.Value);
+        return await _db.Sprints.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && sprintIds.Contains(s.Id)
+                        && (!activeOnly || s.Status == SprintStatuses.Active))
             .ToListAsync(ct);
+    }
+
+    public async Task<bool> AnyActiveContainingObjectiveTasksAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default)
+        => await _db.WorkTasks.AnyAsync(t => t.TenantId == tenantId && t.ObjectiveId == objectiveId && t.SprintId != null
+               && _db.Sprints.Any(s => s.Id == t.SprintId && s.Status == SprintStatuses.Active), ct);
 
     public async Task<IReadOnlyList<Sprint>> GetByStatusAsync(string status, CancellationToken ct = default)
         => await _db.Sprints.Where(s => s.Status == status).ToListAsync(ct);

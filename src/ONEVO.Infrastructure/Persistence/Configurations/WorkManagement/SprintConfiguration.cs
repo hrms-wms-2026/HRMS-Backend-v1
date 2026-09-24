@@ -13,7 +13,7 @@ public class SprintConfiguration : IEntityTypeConfiguration<Sprint>
         builder.Property(s => s.Name).HasMaxLength(100).IsRequired();
         builder.Property(s => s.Status).HasMaxLength(20).IsRequired();
 
-        builder.HasIndex(s => new { s.TenantId, s.ObjectiveId, s.Status })
-            .HasDatabaseName("ix_sprints_tenant_id_objective_id_status");
+        builder.HasIndex(s => new { s.TenantId, s.ProjectId, s.Status })
+            .HasDatabaseName("ix_sprints_tenant_id_project_id_status");
     }
 }

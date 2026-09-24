@@ -764,7 +764,6 @@ public class MoveTaskStatusCommandHandlerTests
         {
             Id = Guid.NewGuid(),
             TenantId = TenantId,
-            ObjectiveId = ObjectiveId,
             Name = "S1",
             Status = SprintStatuses.Achieved,
             CreatedAt = DateTimeOffset.UtcNow

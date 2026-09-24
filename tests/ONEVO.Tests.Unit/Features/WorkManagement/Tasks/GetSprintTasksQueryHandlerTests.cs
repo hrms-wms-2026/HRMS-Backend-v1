@@ -2,12 +2,10 @@ using Moq;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetSprintTasks;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
-using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using Xunit;
@@ -21,28 +19,14 @@ public class GetSprintTasksQueryHandlerTests
     private static readonly Guid CallerEmployeeId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
     private static readonly Guid ObjectiveId = Guid.NewGuid();
-    private static readonly Guid ParentId = Guid.NewGuid();
     private static readonly Guid SprintId = Guid.NewGuid();
     private static readonly Guid OtherSprintId = Guid.NewGuid();
 
-    private static Objective Objective(Guid id, Guid? parentId) => new()
-    {
-        Id = id,
-        TenantId = TenantId,
-        ProjectId = ProjectId,
-        ParentObjectiveId = parentId,
-        Title = "Obj",
-        OwnerId = Guid.NewGuid(),
-        IsActive = true,
-        CreatedAt = DateTimeOffset.UtcNow
-    };
-
-    private static Sprint SprintOn(Guid objectiveId) => new()
+    private static Sprint SprintOf(Guid projectId) => new()
     {
         Id = SprintId,
         TenantId = TenantId,
-        ProjectId = ProjectId,
-        ObjectiveId = objectiveId,
+        ProjectId = projectId,
         Name = "Sprint 1",
         StartDate = new DateOnly(2026, 8, 1),
         EndDate = new DateOnly(2026, 8, 14),
@@ -62,12 +46,10 @@ public class GetSprintTasksQueryHandlerTests
         CreatedAt = DateTimeOffset.UtcNow
     };
 
-    private (GetSprintTasksQueryHandler Handler, Mock<IWorkTaskRepository> Tasks) BuildHandler(
+    private (GetSprintTasksQueryHandler Handler, Mock<IWorkTaskRepository> Tasks, Mock<IProjectMemberRepository> Members) BuildHandler(
         Sprint? sprint,
-        Objective? objective,
-        Objective? parent = null,
         bool hasReadPermission = false,
-        Func<IReadOnlyList<Guid>, bool>? membershipForIds = null,
+        bool hasActiveMembership = false,
         IReadOnlyList<WorkTask>? sprintTasks = null,
         IReadOnlyList<TaskAssignment>? assignments = null)
     {
@@ -84,50 +66,37 @@ public class GetSprintTasksQueryHandlerTests
         sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(sprint);
 
-        var objectives = new Mock<IObjectiveRepository>();
-        if (objective is not null)
-            objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, objective.Id, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(objective);
-        if (parent is not null)
-            objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, parent.Id, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(parent);
-
         var members = new Mock<IProjectMemberRepository>();
-        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(
-                TenantId, ProjectId, CallerEmployeeId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid _, Guid _, Guid _, IReadOnlyList<Guid> ids, CancellationToken _) =>
-                membershipForIds?.Invoke(ids) ?? false);
+        if (sprint is not null)
+            members.Setup(x => x.HasActiveMembershipAsync(TenantId, sprint.ProjectId, CallerEmployeeId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(hasActiveMembership);
 
         var permissionResolver = new Mock<IPermissionResolver>();
         permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
 
         var thisSprintTask = TaskOn(SprintId, Guid.NewGuid(), "This sprint");
-        var otherSprintTask = TaskOn(OtherSprintId, Guid.NewGuid(), "Other sprint");
         var tasks = new Mock<IWorkTaskRepository>();
         tasks.Setup(x => x.GetBySprintIdAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(sprintTasks ?? new List<WorkTask> { thisSprintTask });
-        tasks.Setup(x => x.GetByObjectiveIdAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<WorkTask> { thisSprintTask, otherSprintTask });
 
         var assignmentRepo = new Mock<ITaskAssignmentRepository>();
         assignmentRepo.Setup(x => x.GetByTaskIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(assignments ?? new List<TaskAssignment>());
 
         var handler = new GetSprintTasksQueryHandler(
-            currentUser.Object, identity.Object, sprints.Object, objectives.Object, members.Object,
+            currentUser.Object, identity.Object, sprints.Object, members.Object,
             permissionResolver.Object, tasks.Object, assignmentRepo.Object);
 
-        return (handler, tasks);
+        return (handler, tasks, members);
     }
 
     [Fact]
-    public async Task Handle_MemberOfSprintObjective_ReturnsOnlyThatSprintsTasks()
+    public async Task Handle_ProjectMember_ReturnsOnlyThatSprintsTasks()
     {
-        var (handler, tasks) = BuildHandler(
-            SprintOn(ObjectiveId),
-            Objective(ObjectiveId, parentId: null),
-            membershipForIds: ids => ids.Contains(ObjectiveId));
+        var (handler, tasks, _) = BuildHandler(
+            SprintOf(ProjectId),
+            hasActiveMembership: true);
 
         var result = await handler.Handle(new GetSprintTasksQuery(SprintId), CancellationToken.None);
 
@@ -135,40 +104,29 @@ public class GetSprintTasksQueryHandlerTests
         var returned = Assert.Single(result.Value!);
         Assert.Equal(SprintId, returned.SprintId);
         tasks.Verify(x => x.GetBySprintIdAsync(TenantId, SprintId, It.IsAny<CancellationToken>()), Times.Once);
-        tasks.Verify(x => x.GetByObjectiveIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Handle_ActiveMembershipOnlyOnAncestor_ReturnsTasks()
+    public async Task Handle_ReadPermissionNonMember_ReturnsTasks()
     {
-        var parent = Objective(ParentId, parentId: null);
-        IReadOnlyList<Guid>? walkedIds = null;
-        var (handler, _) = BuildHandler(
-            SprintOn(ObjectiveId),
-            Objective(ObjectiveId, parentId: ParentId),
-            parent,
-            membershipForIds: ids =>
-            {
-                walkedIds = ids;
-                return ids.Contains(ParentId);
-            });
+        var (handler, _, members) = BuildHandler(
+            SprintOf(ProjectId),
+            hasReadPermission: true,
+            hasActiveMembership: false);
 
         var result = await handler.Handle(new GetSprintTasksQuery(SprintId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Single(result.Value!);
-        Assert.NotNull(walkedIds);
-        Assert.Contains(ObjectiveId, walkedIds);
-        Assert.Contains(ParentId, walkedIds);
+        members.Verify(x => x.HasActiveMembershipAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task Handle_NoMembershipAndNoPermission_ReturnsForbidden()
     {
-        var (handler, tasks) = BuildHandler(
-            SprintOn(ObjectiveId),
-            Objective(ObjectiveId, parentId: null),
-            membershipForIds: _ => false);
+        var (handler, tasks, _) = BuildHandler(
+            SprintOf(ProjectId),
+            hasActiveMembership: false);
 
         var result = await handler.Handle(new GetSprintTasksQuery(SprintId), CancellationToken.None);
 
@@ -180,7 +138,7 @@ public class GetSprintTasksQueryHandlerTests
     [Fact]
     public async Task Handle_UnknownSprint_ReturnsNotFound()
     {
-        var (handler, _) = BuildHandler(sprint: null, objective: null);
+        var (handler, _, _) = BuildHandler(sprint: null);
 
         var result = await handler.Handle(new GetSprintTasksQuery(SprintId), CancellationToken.None);
 
@@ -195,10 +153,9 @@ public class GetSprintTasksQueryHandlerTests
         var taskWithoutAssignee = Guid.NewGuid();
         var assigneeEmployeeId = Guid.NewGuid();
 
-        var (handler, _) = BuildHandler(
-            SprintOn(ObjectiveId),
-            Objective(ObjectiveId, parentId: null),
-            membershipForIds: ids => ids.Contains(ObjectiveId),
+        var (handler, _, _) = BuildHandler(
+            SprintOf(ProjectId),
+            hasActiveMembership: true,
             sprintTasks: new List<WorkTask>
             {
                 TaskOn(SprintId, taskWithAssignee, "A"),

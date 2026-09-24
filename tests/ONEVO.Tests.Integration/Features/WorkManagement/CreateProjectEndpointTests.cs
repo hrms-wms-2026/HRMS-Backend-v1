@@ -849,8 +849,10 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
 
         editResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, await editResponse.Content.ReadAsStringAsync());
         var pending = await ReadJsonAsync(editResponse);
+        pending.GetProperty("objectiveId").GetGuid().Should().Be(subId);
         pending.GetProperty("status").GetString().Should().Be("pending");
         pending.GetProperty("requestType").GetString().Should().Be("edit");
+        pending.GetProperty("payloadJson").GetString().Should().Contain("Editable Phase Renamed");
 
         var unchanged = await ReadJsonAsync(await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, $"/api/v1/work/objectives/{subId}")));
         unchanged.GetProperty("title").GetString().Should().Be("Editable Phase");
@@ -877,7 +879,11 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
         var editResponse = await _fixture.SendEditObjectiveAsync(_fixture.TenantA, subId, "Creator Conflict Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 999m);
 
         editResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, await editResponse.Content.ReadAsStringAsync());
-        var requestId = (await ReadJsonAsync(editResponse)).GetProperty("id").GetGuid();
+        var pending = await ReadJsonAsync(editResponse);
+        pending.GetProperty("objectiveId").GetGuid().Should().Be(subId);
+        pending.GetProperty("status").GetString().Should().Be("pending");
+        pending.GetProperty("payloadJson").GetString().Should().Contain("999");
+        var requestId = pending.GetProperty("id").GetGuid();
 
         var approveResponse = await _fixture.SendApproveObjectiveChangeRequestAsync(_fixture.TenantA, requestId);
         approveResponse.StatusCode.Should().Be(HttpStatusCode.Conflict, await approveResponse.Content.ReadAsStringAsync());

@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetObjectiveSprints;
 
@@ -18,6 +19,7 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
     private readonly IProjectMemberRepository _members;
     private readonly IPermissionResolver _permissionResolver;
     private readonly ISprintRepository _sprints;
+    private readonly ISprintAccessService _access;
 
     public GetObjectiveSprintsQueryHandler(
         ICurrentUser currentUser,
@@ -25,7 +27,8 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
         IObjectiveRepository objectives,
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
-        ISprintRepository sprints)
+        ISprintRepository sprints,
+        ISprintAccessService access)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -33,6 +36,7 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
         _members = members;
         _permissionResolver = permissionResolver;
         _sprints = sprints;
+        _access = access;
     }
 
     public async Task<Result<IReadOnlyList<SprintResponse>>> Handle(GetObjectiveSprintsQuery request, CancellationToken ct)
@@ -75,11 +79,9 @@ public class GetObjectiveSprintsQueryHandler : IRequestHandler<GetObjectiveSprin
                 return Result<IReadOnlyList<SprintResponse>>.Forbidden("You do not have access to this milestone.");
         }
 
-        var sprints = request.ActiveOnly
-            ? await _sprints.GetActiveByObjectiveIdAsync(tenantId, request.ObjectiveId, ct)
-            : await _sprints.GetByObjectiveIdAsync(tenantId, request.ObjectiveId, ct);
-
+        var sprints = await _sprints.GetContainingObjectiveTasksAsync(tenantId, request.ObjectiveId, request.ActiveOnly, ct);
+        var manageable = await _access.GetManageableSprintIdsAsync(tenantId, objective.ProjectId, sprints, userId, callerEmployeeId.Value, ct);
         return Result<IReadOnlyList<SprintResponse>>.Success(
-            sprints.Select(s => new SprintResponse(s.Id, s.ObjectiveId, s.Name, s.Goal, s.StartDate, s.EndDate, s.Status, s.CompletedAt, s.AchievedAt)).ToList());
+            sprints.Select(s => SprintResponse.From(s, manageable.Contains(s.Id))).ToList());
     }
 }
