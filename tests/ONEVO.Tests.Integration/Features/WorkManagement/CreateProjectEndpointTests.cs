@@ -185,6 +185,14 @@ public sealed class CreateProjectEndpointTestsFixture : IAsyncLifetime
     }
 
 
+    public async Task<HttpResponseMessage> SendApproveObjectiveChangeRequestAsync(TenantSession session, Guid requestId)
+    {
+        var body = new { approvedAdditionalHours = (decimal?)null };
+        return await SendJsonAsync(HttpMethod.Post, session.Host, $"/api/v1/work/objectives/change-requests/{requestId}/approve", body,
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+    }
+
+
     public async Task<HttpResponseMessage> SendDeleteObjectiveAsync(TenantSession session, Guid objectiveId)
     {
         using var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/work/objectives/{objectiveId}");
@@ -829,21 +837,34 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
     }
 
     [Fact]
-    public async Task EditObjective_ByCreatorHead_AppliesImmediately()
+    public async Task EditObjective_ByCreatorHead_CreatesPendingRequest_AppliedOnApproval()
     {
         var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Edit Milestone Target", "EMT1");
         var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
         var sub = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Editable Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 15m);
         var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
 
+        // Every edit routes through the Reporting Manager for approval, even the creator's own.
         var editResponse = await _fixture.SendEditObjectiveAsync(_fixture.TenantA, subId, "Editable Phase Renamed", new DateOnly(2026, 1, 10), new DateOnly(2026, 3, 15), 18m);
 
-        editResponse.StatusCode.Should().Be(HttpStatusCode.OK, await editResponse.Content.ReadAsStringAsync());
-        (await ReadJsonAsync(editResponse)).GetProperty("title").GetString().Should().Be("Editable Phase Renamed");
+        editResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, await editResponse.Content.ReadAsStringAsync());
+        var pending = await ReadJsonAsync(editResponse);
+        pending.GetProperty("status").GetString().Should().Be("pending");
+        pending.GetProperty("requestType").GetString().Should().Be("edit");
+
+        var unchanged = await ReadJsonAsync(await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, $"/api/v1/work/objectives/{subId}")));
+        unchanged.GetProperty("title").GetString().Should().Be("Editable Phase");
+
+        // The test owner is also the sub-milestone's Reporting Manager (head of the Default Objective).
+        var approveResponse = await _fixture.SendApproveObjectiveChangeRequestAsync(_fixture.TenantA, pending.GetProperty("id").GetGuid());
+        approveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, await approveResponse.Content.ReadAsStringAsync());
+
+        var applied = await ReadJsonAsync(await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, $"/api/v1/work/objectives/{subId}")));
+        applied.GetProperty("title").GetString().Should().Be("Editable Phase Renamed");
     }
 
     [Fact]
-    public async Task EditObjective_ConflictingButByCreator_StillAppliesImmediately()
+    public async Task EditObjective_ConflictingWithParent_CreatesPendingRequest_RejectedOnApproval()
     {
         var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Creator Conflict Target", "CCT1");
         var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
@@ -851,11 +872,15 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
         var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
 
         // Exceeds the Default Objective's own allocated hours (mirrors the Project's
-        // defaultObjectiveAllocatedHours=40 from SendCreateProjectAsync) - a real conflict, but
-        // the caller is this sub-objective's own creator, so it must still apply immediately.
+        // defaultObjectiveAllocatedHours=40 from SendCreateProjectAsync). Submission still just
+        // creates a pending request - parent-constraint conflicts are validated at approval time.
         var editResponse = await _fixture.SendEditObjectiveAsync(_fixture.TenantA, subId, "Creator Conflict Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 999m);
 
-        editResponse.StatusCode.Should().Be(HttpStatusCode.OK, await editResponse.Content.ReadAsStringAsync());
+        editResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, await editResponse.Content.ReadAsStringAsync());
+        var requestId = (await ReadJsonAsync(editResponse)).GetProperty("id").GetGuid();
+
+        var approveResponse = await _fixture.SendApproveObjectiveChangeRequestAsync(_fixture.TenantA, requestId);
+        approveResponse.StatusCode.Should().Be(HttpStatusCode.Conflict, await approveResponse.Content.ReadAsStringAsync());
     }
 
     [Fact]
