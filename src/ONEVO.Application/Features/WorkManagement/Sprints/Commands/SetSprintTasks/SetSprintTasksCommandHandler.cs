@@ -62,6 +62,13 @@ public class SetSprintTasksCommandHandler : IRequestHandler<SetSprintTasksComman
             return Result<SprintResponse>.Success(SprintResponse.From(sprint, canManageNoChange));
         }
 
+        // Capture each ToAdd task's pre-move sprint (Apply overwrites SprintId in place below), so
+        // cross-sprint moves can log a tasks_removed entry on the sprint(s) they moved out of.
+        var previousSprintGroups = changes.ToAdd
+            .Where(t => t.SprintId is not null)
+            .GroupBy(t => t.SprintId!.Value)
+            .ToList();
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             _assignment.Apply(changes, sprint.Id);
@@ -74,6 +81,10 @@ public class SetSprintTasksCommandHandler : IRequestHandler<SetSprintTasksComman
                 await _logs.AddAsync(SprintActivityLogFactory.Create(
                     tenantId, sprint.Id, callerEmployeeId.Value, SprintActivityActions.TasksRemoved,
                     details: new { taskIds = changes.ToRemove.Select(t => t.Id) }), innerCt);
+            foreach (var group in previousSprintGroups)
+                await _logs.AddAsync(SprintActivityLogFactory.Create(
+                    tenantId, group.Key, callerEmployeeId.Value, SprintActivityActions.TasksRemoved,
+                    details: new { taskIds = group.Select(t => t.Id) }), innerCt);
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 

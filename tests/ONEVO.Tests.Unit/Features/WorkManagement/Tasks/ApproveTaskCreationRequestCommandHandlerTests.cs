@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ApproveTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CancelTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.RejectTaskCreationRequest;
@@ -47,7 +48,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
         CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow
     };
 
-    private (ApproveTaskCreationRequestCommandHandler Handler, Mock<IWorkTaskRepository> Tasks, Mock<ITaskCreationRequestRepository> Requests) BuildApprove(
+    private (ApproveTaskCreationRequestCommandHandler Handler, Mock<IWorkTaskRepository> Tasks, Mock<ITaskCreationRequestRepository> Requests, Mock<ISprintActivityLogRepository> SprintLogs) BuildApprove(
         decimal allocatedHours, decimal existingTaskSum, decimal requestedHours, Guid? callerEmployeeId = null, bool sprintLess = false,
         bool? callerIsEffectiveManager = null, bool categoryExists = true, Guid? categoryProjectId = null,
         Mock<ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces.ICalendarEventRepository>? calendarEvents = null,
@@ -121,18 +122,20 @@ public class ApproveTaskCreationRequestCommandHandlerTests
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<Result<WorkTaskResponse>>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<Result<WorkTaskResponse>>> op, CancellationToken ct) => op(ct));
 
+        var sprintLogs = new Mock<ISprintActivityLogRepository>();
+
         var handler = new ApproveTaskCreationRequestCommandHandler(
             currentUser.Object, identity.Object, requests.Object, objectives.Object, projects.Object,
             tasks.Object, statuses.Object, categories.Object, slack, membership.Object, notifications.Object, unitOfWork.Object, sprints.Object,
-            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object);
-        return (handler, tasks, requests);
+            (calendarEvents ?? CalendarEventRepositoryMocks.Empty()).Object, sprintLogs.Object);
+        return (handler, tasks, requests, sprintLogs);
     }
 
     [Fact]
     public async Task Handle_NotStartedAfterActive_PrefersNotStarted()
     {
         var expected = Guid.NewGuid();
-        var (handler, _, _) = BuildApprove(100, 0, 10, template: new List<TaskStatusEntity>
+        var (handler, _, _, _) = BuildApprove(100, 0, 10, template: new List<TaskStatusEntity>
         {
             new() { Id = Guid.NewGuid(), Category = TaskStatusCategories.Active, DisplayOrder = 0 },
             new() { Id = expected, Category = TaskStatusCategories.NotStarted, DisplayOrder = 2 }
@@ -146,7 +149,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
     public async Task Handle_NoNotStarted_UsesLowestActive()
     {
         var expected = Guid.NewGuid();
-        var (handler, _, _) = BuildApprove(100, 0, 10, template: new List<TaskStatusEntity>
+        var (handler, _, _, _) = BuildApprove(100, 0, 10, template: new List<TaskStatusEntity>
         {
             new() { Id = Guid.NewGuid(), Category = TaskStatusCategories.Done, DisplayOrder = 0, MarksTaskComplete = true },
             new() { Id = Guid.NewGuid(), Category = TaskStatusCategories.Active, DisplayOrder = 5 },
@@ -159,7 +162,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
     [Fact]
     public async Task Handle_OwnerWithinSlack_ApprovesAndCreatesTask()
     {
-        var (handler, tasks, requests) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m);
+        var (handler, tasks, requests, _) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m);
         var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -171,7 +174,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
     [Fact]
     public async Task Handle_SlackChangedSinceRequestCreated_ReturnsConflict()
     {
-        var (handler, tasks, _) = BuildApprove(allocatedHours: 100m, existingTaskSum: 90m, requestedHours: 30m);
+        var (handler, tasks, _, _) = BuildApprove(allocatedHours: 100m, existingTaskSum: 90m, requestedHours: 30m);
         var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -184,7 +187,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
     [Fact]
     public async Task Handle_NonOwner_ReturnsForbidden()
     {
-        var (handler, tasks, requests) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, callerEmployeeId: OtherEmployeeId);
+        var (handler, tasks, requests, _) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, callerEmployeeId: OtherEmployeeId);
         var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -200,7 +203,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
         // an effective manager via an ancestor (grandparent) membership - the coordinator's own
         // ancestor-walk logic is unit-tested separately, so this only proves the handler defers to
         // its answer instead of the direct OwnerId check.
-        var (handler, tasks, requests) = BuildApprove(
+        var (handler, tasks, requests, _) = BuildApprove(
             allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m,
             callerEmployeeId: OtherEmployeeId, callerIsEffectiveManager: true);
         var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
@@ -213,18 +216,32 @@ public class ApproveTaskCreationRequestCommandHandlerTests
     [Fact]
     public async Task Handle_NullSprintInPayload_CreatesTaskWithoutSprint()
     {
-        var (handler, tasks, _) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, sprintLess: true);
+        var (handler, tasks, _, sprintLogs) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, sprintLess: true);
         var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value!.SprintId);
         tasks.Verify(x => x.AddAsync(It.Is<WorkTask>(t => t.SprintId == null), It.IsAny<CancellationToken>()), Times.Once);
+        sprintLogs.Verify(x => x.AddAsync(It.IsAny<SprintActivityLog>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_SprintInPayload_WritesTasksAddedActivityLog()
+    {
+        var (handler, _, _, sprintLogs) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m);
+        var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        sprintLogs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l =>
+                l.SprintId == SprintId && l.Action == SprintActivityActions.TasksAdded &&
+                l.DetailsJson!.Contains(result.Value!.Id.ToString())),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task Handle_CategoryNotFound_ReturnsNotFound()
     {
-        var (handler, tasks, requests) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, categoryExists: false);
+        var (handler, tasks, requests, _) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, categoryExists: false);
         var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -236,7 +253,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
     [Fact]
     public async Task Handle_CategoryBelongsToDifferentProject_ReturnsNotFound()
     {
-        var (handler, tasks, requests) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, categoryProjectId: Guid.NewGuid());
+        var (handler, tasks, requests, _) = BuildApprove(allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, categoryProjectId: Guid.NewGuid());
         var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -257,7 +274,7 @@ public class ApproveTaskCreationRequestCommandHandlerTests
                     Guid.NewGuid(), "Release", new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31))
             });
 
-        var (handler, tasks, requests) = BuildApprove(
+        var (handler, tasks, requests, _) = BuildApprove(
             allocatedHours: 100m, existingTaskSum: 40m, requestedHours: 30m, calendarEvents: calendarEvents);
         var result = await handler.Handle(new ApproveTaskCreationRequestCommand(RequestId), CancellationToken.None);
 

@@ -120,6 +120,25 @@ public class CreateSprintCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_TaskMovedFromAnotherSprint_LogsTasksRemovedOnSourceSprint()
+    {
+        var handler = Build();
+        var sourceSprintId = Guid.NewGuid();
+        var moved = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, SprintId = sourceSprintId };
+        var changes = new SprintTaskChangeSet(new[] { moved }, Array.Empty<WorkTask>());
+        _assignment.Setup(x => x.PrepareAsync(TenantId, It.IsAny<Sprint>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<IReadOnlyCollection<Guid>>(), EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<SprintTaskChangeSet>.Success(changes));
+
+        var result = await handler.Handle(new CreateSprintCommand(ProjectId, "Sprint 1", null, new List<Guid> { moved.Id }), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _logs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l =>
+                l.SprintId == sourceSprintId && l.Action == SprintActivityActions.TasksRemoved &&
+                l.DetailsJson!.Contains(moved.Id.ToString())),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_PrepareAsyncForbidden_ReturnsForbiddenAndDoesNotCreate()
     {
         var handler = Build();

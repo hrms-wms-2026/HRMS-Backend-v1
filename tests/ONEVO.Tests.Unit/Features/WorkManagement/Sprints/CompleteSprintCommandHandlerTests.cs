@@ -36,7 +36,7 @@ public class CompleteSprintCommandHandlerTests
 
     private (CompleteSprintCommandHandler Handler, Sprint Sprint, Sprint TargetSprint, List<WorkTask> Tasks, Mock<IWorkTaskRepository> TaskRepo, Mock<INotificationDispatcher> Notifications, Mock<ISprintActivityLogRepository> Logs) Build(
         IReadOnlyList<WorkTask> tasks, Guid? callerEmployeeId = null, bool? callerCanManage = null, bool includeAudienceMember = false,
-        string targetSprintStatus = SprintStatuses.Draft, Guid? targetSprintProjectId = null)
+        string targetSprintStatus = SprintStatuses.Draft, Guid? targetSprintProjectId = null, string sprintStatus = SprintStatuses.Active)
     {
         var resolvedCallerEmployeeId = callerEmployeeId ?? OwnerEmployeeId;
 
@@ -53,7 +53,7 @@ public class CompleteSprintCommandHandlerTests
         {
             Id = SprintId, TenantId = TenantId, ProjectId = ProjectId, Name = "S1",
             StartDate = new DateOnly(2026, 9, 1), EndDate = new DateOnly(2026, 9, 14),
-            Status = SprintStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
+            Status = sprintStatus, CreatedAt = DateTimeOffset.UtcNow
         };
         var targetSprint = new Sprint
         {
@@ -244,5 +244,50 @@ public class CompleteSprintCommandHandlerTests
             l.Action == SprintActivityActions.Completed && l.FromStatus == SprintStatuses.Active && l.ToStatus == SprintStatuses.Complete
             && l.DetailsJson != null && l.DetailsJson.Contains(incomplete.Id.ToString())),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_SprintDispositionWithMovedTasks_WritesTasksAddedLogOnTargetSprint()
+    {
+        var incomplete = MakeTask(TodoStatusId);
+        var (handler, _, _, _, _, _, logs) = Build(new List<WorkTask> { incomplete });
+
+        await handler.Handle(new CompleteSprintCommand(SprintId, "sprint", TargetSprintId), CancellationToken.None);
+
+        logs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l =>
+            l.SprintId == TargetSprintId && l.Action == SprintActivityActions.TasksAdded
+            && l.DetailsJson != null && l.DetailsJson.Contains(incomplete.Id.ToString())),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_BacklogDispositionWithMovedTasks_DoesNotWriteTasksAddedLog()
+    {
+        var incomplete = MakeTask(TodoStatusId);
+        var (handler, _, _, _, _, _, logs) = Build(new List<WorkTask> { incomplete });
+
+        await handler.Handle(new CompleteSprintCommand(SprintId, "backlog", null), CancellationToken.None);
+
+        logs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l => l.Action == SprintActivityActions.TasksAdded), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(SprintStatuses.Achieved)]
+    [InlineData(SprintStatuses.Draft)]
+    [InlineData(SprintStatuses.Complete)]
+    public async Task Handle_SprintNotActive_ReturnsConflictAndDoesNothing(string sprintStatus)
+    {
+        var (handler, sprint, _, _, taskRepo, notifications, logs) = Build(new List<WorkTask> { MakeTask(TodoStatusId) }, sprintStatus: sprintStatus);
+
+        var result = await handler.Handle(new CompleteSprintCommand(SprintId, "backlog", null), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal(sprintStatus, sprint.Status);
+        taskRepo.Verify(x => x.Update(It.IsAny<WorkTask>()), Times.Never);
+        logs.Verify(x => x.AddAsync(It.IsAny<SprintActivityLog>(), It.IsAny<CancellationToken>()), Times.Never);
+        notifications.Verify(x => x.SendTemplatedAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, string>>(),
+            It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

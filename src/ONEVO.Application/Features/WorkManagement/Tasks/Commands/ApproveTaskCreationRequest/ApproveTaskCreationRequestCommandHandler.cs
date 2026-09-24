@@ -9,6 +9,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
@@ -34,13 +35,14 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
     private readonly INotificationDispatcher _notifications;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly ISprintActivityLogRepository _sprintLogs;
 
     public ApproveTaskCreationRequestCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, ITaskCreationRequestRepository requests,
         IObjectiveRepository objectives, IProjectRepository projects, IWorkTaskRepository tasks, ITaskStatusRepository statuses,
         ITaskCategoryRepository categories, IObjectiveAllocationSlackCalculator slack, IMilestoneMembershipCoordinator membership,
         INotificationDispatcher notifications, IUnitOfWork unitOfWork, ISprintRepository sprints,
-        ICalendarEventRepository calendarEvents)
+        ICalendarEventRepository calendarEvents, ISprintActivityLogRepository sprintLogs)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -56,6 +58,7 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
         _notifications = notifications;
         _unitOfWork = unitOfWork;
         _calendarEvents = calendarEvents;
+        _sprintLogs = sprintLogs;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(ApproveTaskCreationRequestCommand request, CancellationToken ct)
@@ -143,6 +146,11 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
             };
 
             await _tasks.AddAsync(task, innerCt);
+
+            if (task.SprintId is not null)
+                await _sprintLogs.AddAsync(SprintActivityLogFactory.Create(
+                    tenantId, task.SprintId.Value, callerEmployeeId.Value, SprintActivityActions.TasksAdded,
+                    details: new { taskIds = new[] { task.Id } }), innerCt);
 
             pending.Status = TaskCreationRequestStatuses.Approved;
             pending.DecidedByEmployeeId = callerEmployeeId.Value;

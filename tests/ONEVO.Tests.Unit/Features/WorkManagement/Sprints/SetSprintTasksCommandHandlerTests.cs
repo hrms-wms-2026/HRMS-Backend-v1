@@ -112,6 +112,28 @@ public class SetSprintTasksCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_CrossSprintMove_LogsTasksRemovedOnSourceSprint()
+    {
+        var handler = Build();
+        var sourceSprintId = Guid.NewGuid();
+        var moved = new WorkTask { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, SprintId = sourceSprintId };
+        var changes = new SprintTaskChangeSet(new[] { moved }, Array.Empty<WorkTask>());
+        _assignment.Setup(x => x.PrepareAsync(TenantId, _sprint, It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<IReadOnlyCollection<Guid>>(), EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<SprintTaskChangeSet>.Success(changes));
+
+        var result = await handler.Handle(new SetSprintTasksCommand(SprintId, new[] { moved.Id }, Array.Empty<Guid>()), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        _logs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l =>
+                l.SprintId == SprintId && l.Action == SprintActivityActions.TasksAdded),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _logs.Verify(x => x.AddAsync(It.Is<SprintActivityLog>(l =>
+                l.SprintId == sourceSprintId && l.Action == SprintActivityActions.TasksRemoved &&
+                l.DetailsJson!.Contains(moved.Id.ToString())),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Handle_EmptyChangeSet_SucceedsWithNoLogsOrSave()
     {
         var handler = Build();

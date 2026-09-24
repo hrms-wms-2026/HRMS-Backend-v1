@@ -13,7 +13,11 @@ namespace ONEVO.Infrastructure.Migrations
         {
             // Defensive re-sync: project_id was always written at creation, but make sure it matches
             // the owning objective before that link is dropped for good.
+            // sprints has FORCE ROW LEVEL SECURITY and migrations run as onevo_migrator (NOSUPERUSER
+            // NOBYPASSRLS), so this must run in admin context or it silently updates 0 rows.
             migrationBuilder.Sql(@"
+                SET LOCAL app.tenant_context_mode = 'admin';
+
                 UPDATE sprints s
                 SET project_id = o.project_id
                 FROM objectives o

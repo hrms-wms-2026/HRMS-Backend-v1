@@ -69,6 +69,9 @@ public class CompleteSprintCommandHandler : IRequestHandler<CompleteSprintComman
         if (!await _access.CanManageAsync(tenantId, sprint, _currentUser.UserId, callerEmployeeId.Value, ct))
             return Result<SprintResponse>.Forbidden("Only the sprint's creator or an owner of one of its tasks' modules can complete this sprint.");
 
+        if (sprint.Status != SprintStatuses.Active)
+            return Result<SprintResponse>.Conflict("Only an Active sprint can be completed.");
+
         if (request.Disposition == "sprint")
         {
             var targetSprint = await _sprints.GetByIdForTenantAsync(tenantId, request.TargetSprintId!.Value, ct);
@@ -105,6 +108,11 @@ public class CompleteSprintCommandHandler : IRequestHandler<CompleteSprintComman
             await _logs.AddAsync(SprintActivityLogFactory.Create(
                 tenantId, sprint.Id, callerEmployeeId.Value, SprintActivityActions.Completed, fromStatus, SprintStatuses.Complete,
                 new { disposition = request.Disposition, targetSprintId = request.TargetSprintId, movedTaskIds }), innerCt);
+
+            if (request.Disposition == "sprint" && movedTaskIds.Count > 0)
+                await _logs.AddAsync(SprintActivityLogFactory.Create(
+                    tenantId, request.TargetSprintId!.Value, callerEmployeeId.Value, SprintActivityActions.TasksAdded,
+                    details: new { taskIds = movedTaskIds }), innerCt);
 
             foreach (var employeeId in audience)
             {

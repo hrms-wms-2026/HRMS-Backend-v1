@@ -8,6 +8,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.Services;
@@ -31,6 +32,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
     private readonly IMilestoneMembershipCoordinator _membership;
     private readonly ICalendarEventRepository _calendarEvents;
     private readonly ITaskAssetLinker _assetLinker;
+    private readonly ISprintActivityLogRepository _sprintLogs;
 
     public CreateTaskCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveRepository objectives,
@@ -38,7 +40,8 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         ISprintRepository sprints, ITaskCategoryRepository categories, IObjectiveAllocationSlackCalculator slack, IUnitOfWork unitOfWork,
         IMilestoneMembershipCoordinator membership,
         ICalendarEventRepository calendarEvents,
-        ITaskAssetLinker assetLinker)
+        ITaskAssetLinker assetLinker,
+        ISprintActivityLogRepository sprintLogs)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -53,6 +56,7 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
         _membership = membership;
         _calendarEvents = calendarEvents;
         _assetLinker = assetLinker;
+        _sprintLogs = sprintLogs;
     }
 
     public async Task<Result<WorkTaskResponse>> Handle(CreateTaskCommand request, CancellationToken ct)
@@ -135,6 +139,12 @@ public class CreateTaskCommandHandler : IRequestHandler<CreateTaskCommand, Resul
             };
 
             await _tasks.AddAsync(task, innerCt);
+
+            if (task.SprintId is not null)
+                await _sprintLogs.AddAsync(SprintActivityLogFactory.Create(
+                    tenantId, task.SprintId.Value, callerEmployeeId.Value, SprintActivityActions.TasksAdded,
+                    details: new { taskIds = new[] { task.Id } }), innerCt);
+
             await _unitOfWork.SaveChangesAsync(innerCt);
 
             await _assetLinker.SyncAttachmentsAsync(tenantId, userId, task.Id, request.AttachmentFileIds ?? Array.Empty<Guid>(), innerCt);
