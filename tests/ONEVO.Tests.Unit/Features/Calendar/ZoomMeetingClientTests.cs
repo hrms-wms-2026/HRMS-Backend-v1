@@ -23,6 +23,9 @@ public sealed class ZoomMeetingClientTests
             Assert.Equal("https://api.zoom.us/v2/users/me/meetings", request.RequestUri!.ToString());
             return new HttpResponseMessage(HttpStatusCode.Created)
             {
+                // start_url is a JWT (ZAK token): a host credential that both overflows the
+                // organizer_join_url varchar(500) column and would be stored unencrypted if kept.
+                // Even when Zoom's response includes it, the client must never read/return it.
                 Content = JsonContent.Create(new
                 {
                     id = 987654321L,
@@ -39,8 +42,39 @@ public sealed class ZoomMeetingClientTests
 
         Assert.Equal("987654321", result.ExternalMeetingId);
         Assert.Equal("https://us05web.zoom.us/j/987654321?pwd=abc", result.JoinUrl);
-        Assert.Equal("https://us05web.zoom.us/s/987654321?zak=xyz", result.OrganizerJoinUrl);
+        Assert.Null(result.OrganizerJoinUrl);
         Assert.Equal("123456", result.PasscodeOrPin);
+    }
+
+    [Fact]
+    public async Task CreateMeetingAsync_DurationExceeds24Hours_ClampsTo1440Minutes()
+    {
+        // Zoom rejects scheduled meetings longer than 1440 minutes (24 hours) with a 400 - a
+        // multi-day calendar event must not turn that into an uncaught HttpRequestException.
+        HttpRequestMessage? capturedRequest = null;
+        string? capturedBody = null;
+        var handler = new StubHandler(request =>
+        {
+            capturedRequest = request;
+            capturedBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.Created)
+            {
+                Content = JsonContent.Create(new
+                {
+                    id = 987654321L,
+                    join_url = "https://us05web.zoom.us/j/987654321",
+                    password = "123456"
+                })
+            };
+        });
+        var client = new ZoomMeetingClient(new HttpClient(handler), NullLogger<ZoomMeetingClient>.Instance);
+        var start = DateTimeOffset.UtcNow;
+        var end = start.AddDays(3); // way beyond Zoom's 1440-minute cap
+
+        await client.CreateMeetingAsync("access-token", "Multi-day offsite", start, end, CancellationToken.None);
+
+        Assert.NotNull(capturedRequest);
+        Assert.Contains("\"duration\":1440", capturedBody);
     }
 
     [Fact]

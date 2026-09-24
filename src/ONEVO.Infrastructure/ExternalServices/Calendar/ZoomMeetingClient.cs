@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -8,17 +9,25 @@ namespace ONEVO.Infrastructure.ExternalServices.Calendar;
 
 public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeetingClient> logger) : IZoomMeetingClient
 {
+    // Zoom rejects scheduled meetings longer than 1440 minutes (24 hours) with a 400. Clamping here
+    // prevents a multi-day calendar event from turning into an uncaught HttpRequestException (500);
+    // it does not attempt to solve what a genuinely multi-day Zoom meeting should look like.
+    private const int MaxDurationMinutes = 1440;
+
     public async Task<ZoomMeetingDto> CreateMeetingAsync(
         string accessToken, string subject, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.zoom.us/v2/users/me/meetings");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        var durationMinutes = Math.Max(1, (int)(end - start).TotalMinutes);
+        var durationMinutes = Math.Clamp((int)(end - start).TotalMinutes, 1, MaxDurationMinutes);
         request.Content = JsonContent.Create(new
         {
             topic = subject,
             type = 2, // scheduled meeting
-            start_time = start.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss"),
+            // InvariantCulture is required: ':' in a custom .NET format string is a culture-dependent
+            // time-separator placeholder, so on a host whose culture uses a non-':' time separator this
+            // would silently emit the wrong string (see MicrosoftGraphCalendarClient for the same fix).
+            start_time = start.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture),
             duration = durationMinutes,
             timezone = "UTC",
             settings = new { join_before_host = false, waiting_room = true }
@@ -31,7 +40,12 @@ public sealed class ZoomMeetingClient(HttpClient httpClient, ILogger<ZoomMeeting
 
         var externalMeetingId = root.GetProperty("id").GetInt64().ToString();
         var joinUrl = root.GetProperty("join_url").GetString()!;
-        var organizerJoinUrl = root.TryGetProperty("start_url", out var startUrl) ? startUrl.GetString() : null;
+        // Deliberately never read Zoom's "start_url": it is a JWT (ZAK token) that routinely exceeds
+        // the organizer_join_url column's varchar(500) limit, causing meeting creation to fail AFTER
+        // the real Zoom meeting was already created remotely (orphaning it). It is also a host
+        // credential - anyone holding it can start the meeting as host - that would be stored
+        // unencrypted, unlike the encrypted token columns elsewhere in this schema.
+        string? organizerJoinUrl = null;
         var passcode = root.TryGetProperty("password", out var pwd) ? pwd.GetString() : null;
 
         return new ZoomMeetingDto(externalMeetingId, joinUrl, organizerJoinUrl, passcode);
