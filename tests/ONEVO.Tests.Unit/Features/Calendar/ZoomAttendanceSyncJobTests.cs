@@ -33,7 +33,7 @@ public sealed class ZoomAttendanceSyncJobTests
     private static ExternalCalendarConnection MakeConnection(Guid id) => new()
     {
         Id = id, TenantId = TenantId, UserId = Guid.NewGuid(),
-        Provider = CalendarExternalSources.OutlookCalendar, ExternalAccountEmail = "me@acme.com",
+        Provider = CalendarExternalSources.Zoom, ExternalAccountEmail = "me@acme.com",
         RefreshTokenEncrypted = [1], Status = ExternalCalendarConnectionStatuses.Active
     };
 
