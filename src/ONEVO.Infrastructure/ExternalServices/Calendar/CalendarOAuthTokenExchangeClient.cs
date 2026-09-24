@@ -60,9 +60,11 @@ public sealed class CalendarOAuthTokenExchangeClient(HttpClient httpClient, ILog
 
     public async Task<CalendarProviderAccount> GetAccountAsync(string provider, string accessToken, CancellationToken ct)
     {
-        return provider.Equals("google", StringComparison.OrdinalIgnoreCase)
-            ? await GetGoogleAccountAsync(accessToken, ct)
-            : await GetMicrosoftAccountAsync(accessToken, ct);
+        if (provider.Equals("google", StringComparison.OrdinalIgnoreCase))
+            return await GetGoogleAccountAsync(accessToken, ct);
+        if (provider.Equals("zoom", StringComparison.OrdinalIgnoreCase))
+            return await GetZoomAccountAsync(accessToken, ct);
+        return await GetMicrosoftAccountAsync(accessToken, ct);
     }
 
     private async Task<CalendarProviderAccount> GetGoogleAccountAsync(string accessToken, CancellationToken ct)
@@ -84,6 +86,20 @@ public sealed class CalendarOAuthTokenExchangeClient(HttpClient httpClient, ILog
             }
         }
         throw new InvalidOperationException("No primary Google calendar found for this account.");
+    }
+
+    private async Task<CalendarProviderAccount> GetZoomAccountAsync(string accessToken, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.zoom.us/v2/users/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+        var email = doc.RootElement.GetProperty("email").GetString()!;
+        // Zoom has no calendar concept (unlike Google/Microsoft) — this connection is
+        // meeting-only, so there is no primary calendar id/name to report.
+        return new CalendarProviderAccount(email, null, null);
     }
 
     private async Task<CalendarProviderAccount> GetMicrosoftAccountAsync(string accessToken, CancellationToken ct)

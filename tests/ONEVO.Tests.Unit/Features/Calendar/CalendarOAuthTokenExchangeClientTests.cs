@@ -64,4 +64,21 @@ public sealed class CalendarOAuthTokenExchangeClientTests
         Assert.Equal("me@example.com", result.AccountEmail);
         Assert.Equal("me@example.com", result.PrimaryCalendarId);
     }
+
+    [Fact]
+    public async Task GetAccountAsync_Zoom_ReturnsEmailWithNoCalendarInfo()
+    {
+        var handler = new StubHandler(request =>
+        {
+            Assert.Equal("https://api.zoom.us/v2/users/me", request.RequestUri!.ToString());
+            return JsonResponse(new { email = "organizer@acme.com" });
+        });
+        var sut = new CalendarOAuthTokenExchangeClient(new HttpClient(handler), NullLogger<CalendarOAuthTokenExchangeClient>.Instance);
+
+        var result = await sut.GetAccountAsync("zoom", "access-token", CancellationToken.None);
+
+        Assert.Equal("organizer@acme.com", result.AccountEmail);
+        Assert.Null(result.PrimaryCalendarId);
+        Assert.Null(result.PrimaryCalendarName);
+    }
 }
