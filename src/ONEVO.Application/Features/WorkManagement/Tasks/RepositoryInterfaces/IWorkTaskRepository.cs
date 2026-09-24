@@ -28,6 +28,11 @@ public interface IWorkTaskRepository
     Task<WorkTask?> GetTrackedByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<WorkTask>> GetByObjectiveIdAsync(Guid tenantId, Guid objectiveId, CancellationToken ct = default);
     Task<IReadOnlyList<WorkTask>> GetByParentTaskIdAsync(Guid tenantId, Guid parentTaskId, CancellationToken ct = default);
+
+    /// <summary>Tracked variant of <see cref="GetByParentTaskIdAsync"/> - for reparenting a task's
+    /// existing subtasks onto a new parent (convert-to-subtask flattening) where the children
+    /// themselves need to be mutated and saved, not just read.</summary>
+    Task<IReadOnlyList<WorkTask>> GetTrackedByParentTaskIdAsync(Guid tenantId, Guid parentTaskId, CancellationToken ct = default);
     Task<IReadOnlyList<WorkTask>> GetByProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default);
 
     /// <summary>SUM(EstimatedHours) across active tasks in this Objective — the "SUM(direct_tasks.estimated_hours)"

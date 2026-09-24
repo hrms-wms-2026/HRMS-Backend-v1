@@ -170,4 +170,85 @@ public class TaskAssetLinkerTests
             a.OwnerType == EntityAssetOwnerTypes.Comment &&
             a.AssetPurpose == UploadPurposeCatalog.CommentDescriptionImage && a.FileRecordId == fileId), It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    private static EntityAssetWithFile TaskAttachmentAsset(Guid fileId, string fileName = "report.pdf", string contentType = "application/pdf") =>
+        new(Guid.NewGuid(), fileId, fileName, 500, contentType, DateTimeOffset.UtcNow, UploadPurposeCatalog.TaskAttachment);
+
+    [Fact]
+    public async Task CopyAttachmentsAsync_SourceHasAttachment_UploadsANewFileAndLinksItToDestination()
+    {
+        var (linker, assets, fileStorage) = Build();
+        var sourceTaskId = Guid.NewGuid();
+        var destinationTaskId = Guid.NewGuid();
+        var sourceFileId = Guid.NewGuid();
+        var copiedFileId = Guid.NewGuid();
+
+        assets.Setup(x => x.ListByOwnerAsync(TenantId, EntityAssetOwnerTypes.Task, sourceTaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EntityAssetWithFile> { TaskAttachmentAsset(sourceFileId) });
+        fileStorage.Setup(x => x.OpenReadAsync(TenantId, sourceFileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileStreamDto>.Success(new FileStreamDto(new MemoryStream(new byte[] { 1, 2, 3 }), "application/pdf")));
+        fileStorage.Setup(x => x.UploadAsync(
+                TenantId, UserId, "report.pdf", "application/pdf", UploadPurposeCatalog.TaskAttachment, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(Uploaded(copiedFileId, UserId)));
+
+        await linker.CopyAttachmentsAsync(TenantId, UserId, sourceTaskId, destinationTaskId, CancellationToken.None);
+
+        assets.Verify(x => x.AddAsync(It.Is<EntityAsset>(a =>
+            a.OwnerType == EntityAssetOwnerTypes.Task && a.OwnerId == destinationTaskId &&
+            a.AssetPurpose == UploadPurposeCatalog.TaskAttachment && a.FileRecordId == copiedFileId), It.IsAny<CancellationToken>()), Times.Once);
+        // The copy must be a genuinely new file record, never the source's own file id - a file can
+        // only ever be linked to one owner, so reusing sourceFileId would silently attach to nothing.
+        assets.Verify(x => x.AddAsync(It.Is<EntityAsset>(a => a.FileRecordId == sourceFileId), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CopyAttachmentsAsync_NoAttachmentsOnSource_UploadsNothing()
+    {
+        var (linker, assets, fileStorage) = Build();
+        var sourceTaskId = Guid.NewGuid();
+        var destinationTaskId = Guid.NewGuid();
+        assets.Setup(x => x.ListByOwnerAsync(TenantId, EntityAssetOwnerTypes.Task, sourceTaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EntityAssetWithFile>());
+
+        await linker.CopyAttachmentsAsync(TenantId, UserId, sourceTaskId, destinationTaskId, CancellationToken.None);
+
+        fileStorage.Verify(x => x.UploadAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()), Times.Never);
+        assets.Verify(x => x.AddAsync(It.IsAny<EntityAsset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CopyAttachmentsAsync_SourceFileNoLongerOpens_SkipsItWithoutFailing()
+    {
+        var (linker, assets, fileStorage) = Build();
+        var sourceTaskId = Guid.NewGuid();
+        var destinationTaskId = Guid.NewGuid();
+        var sourceFileId = Guid.NewGuid();
+        assets.Setup(x => x.ListByOwnerAsync(TenantId, EntityAssetOwnerTypes.Task, sourceTaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EntityAssetWithFile> { TaskAttachmentAsset(sourceFileId) });
+        fileStorage.Setup(x => x.OpenReadAsync(TenantId, sourceFileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileStreamDto>.NotFound("File not found."));
+
+        await linker.CopyAttachmentsAsync(TenantId, UserId, sourceTaskId, destinationTaskId, CancellationToken.None);
+
+        assets.Verify(x => x.AddAsync(It.IsAny<EntityAsset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CopyAttachmentsAsync_IgnoresDescriptionImagePurpose_OnlyCopiesTaskAttachments()
+    {
+        var (linker, assets, fileStorage) = Build();
+        var sourceTaskId = Guid.NewGuid();
+        var destinationTaskId = Guid.NewGuid();
+        var descriptionImageFileId = Guid.NewGuid();
+        var descriptionImageAsset = new EntityAssetWithFile(
+            Guid.NewGuid(), descriptionImageFileId, "inline.png", 200, "image/png", DateTimeOffset.UtcNow, UploadPurposeCatalog.TaskDescriptionImage);
+        assets.Setup(x => x.ListByOwnerAsync(TenantId, EntityAssetOwnerTypes.Task, sourceTaskId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<EntityAssetWithFile> { descriptionImageAsset });
+
+        await linker.CopyAttachmentsAsync(TenantId, UserId, sourceTaskId, destinationTaskId, CancellationToken.None);
+
+        fileStorage.Verify(x => x.OpenReadAsync(TenantId, descriptionImageFileId, It.IsAny<CancellationToken>()), Times.Never);
+        assets.Verify(x => x.AddAsync(It.IsAny<EntityAsset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

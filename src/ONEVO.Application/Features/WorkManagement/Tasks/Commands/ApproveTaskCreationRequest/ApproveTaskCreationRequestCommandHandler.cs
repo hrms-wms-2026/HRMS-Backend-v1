@@ -172,7 +172,8 @@ public class ApproveTaskCreationRequestCommandHandler : IRequestHandler<ApproveT
             return Result<WorkTaskResponse>.Success(new WorkTaskResponse(
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
                 task.CategoryId, task.StatusId, task.Priority, task.StoryPoints,
-                task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId));
+                task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
+                CreatedAt: task.CreatedAt));
         }, ct);
     }
 }

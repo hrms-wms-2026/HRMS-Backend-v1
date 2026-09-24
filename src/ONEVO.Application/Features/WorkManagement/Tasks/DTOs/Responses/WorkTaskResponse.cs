@@ -19,7 +19,8 @@ public sealed record WorkTaskResponse(
     IReadOnlyList<TaskAttachmentDto>? Attachments = null,
     IReadOnlyList<TaskAssigneeIdentityDto>? Assignees = null,
     Guid? ParentTaskId = null, int SubtaskTotalCount = 0, int SubtaskCompletedCount = 0,
-    IReadOnlyList<Guid>? SubtaskAssigneeEmployeeIds = null);
+    IReadOnlyList<Guid>? SubtaskAssigneeEmployeeIds = null,
+    DateTimeOffset CreatedAt = default);
 
 public sealed record TaskCreationRequestResponse(
     Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt);

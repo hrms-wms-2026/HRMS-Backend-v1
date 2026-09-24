@@ -15,6 +15,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ClockInTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateSubtask;
 
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.ConvertTaskToSubtask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskEditRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCreationRequest;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.CreateTaskCategory;
@@ -25,6 +26,7 @@ using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskCategory;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskPendingUpload;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DeleteTaskStatus;
+using ONEVO.Application.Features.WorkManagement.Tasks.Commands.DuplicateTask;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskCategory;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
 using ONEVO.Application.Features.WorkManagement.Tasks.Commands.MoveTaskStatus;
@@ -385,6 +387,30 @@ public class TasksController : ControllerBase
 
         return result.IsSuccess
             ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("tasks/{id:guid}/duplicate")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> Duplicate(Guid id, [FromBody] DuplicateTaskRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new DuplicateTaskCommand(
+            id, request.DestinationObjectiveId, request.Title,
+            request.CopyAttachments, request.CopyAssignees, request.CopyComments, request.CopyDueDate), ct);
+
+        return result.IsSuccess
+            ? StatusCode(201, result.Value!.ToViewModel())
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("tasks/{id:guid}/convert-to-subtask")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> ConvertToSubtask(Guid id, [FromBody] ConvertTaskToSubtaskRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new ConvertTaskToSubtaskCommand(id, request.NewParentTaskId), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value!.ToViewModel())
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
