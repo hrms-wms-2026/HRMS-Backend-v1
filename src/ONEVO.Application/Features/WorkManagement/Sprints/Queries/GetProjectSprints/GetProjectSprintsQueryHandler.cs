@@ -7,6 +7,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 
 namespace ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetProjectSprints;
 
@@ -18,6 +19,7 @@ public sealed class GetProjectSprintsQueryHandler : IRequestHandler<GetProjectSp
     private readonly IProjectMemberRepository _members;
     private readonly IPermissionResolver _permissionResolver;
     private readonly ISprintRepository _sprints;
+    private readonly ISprintAccessService _access;
 
     public GetProjectSprintsQueryHandler(
         ICurrentUser currentUser,
@@ -25,7 +27,8 @@ public sealed class GetProjectSprintsQueryHandler : IRequestHandler<GetProjectSp
         IProjectRepository projects,
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
-        ISprintRepository sprints)
+        ISprintRepository sprints,
+        ISprintAccessService access)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -33,6 +36,7 @@ public sealed class GetProjectSprintsQueryHandler : IRequestHandler<GetProjectSp
         _members = members;
         _permissionResolver = permissionResolver;
         _sprints = sprints;
+        _access = access;
     }
 
     public async Task<Result<IReadOnlyList<SprintResponse>>> Handle(GetProjectSprintsQuery request, CancellationToken ct)
@@ -55,16 +59,13 @@ public sealed class GetProjectSprintsQueryHandler : IRequestHandler<GetProjectSp
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
         var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
-        var accessibleObjectiveIds = hasReadPermission
-            ? null
-            : (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct)).ToHashSet();
+        if (!hasReadPermission && !await _members.HasActiveMembershipAsync(tenantId, project.Id, callerEmployeeId.Value, ct))
+            return Result<IReadOnlyList<SprintResponse>>.Forbidden("You do not have access to this project.");
 
         var sprints = await _sprints.GetByProjectAsync(tenantId, project.Id, ct);
-        if (accessibleObjectiveIds is not null)
-            sprints = sprints.Where(s => accessibleObjectiveIds.Contains(s.ObjectiveId)).ToList();
+        var manageable = await _access.GetManageableSprintIdsAsync(tenantId, project.Id, sprints, userId, callerEmployeeId.Value, ct);
 
         return Result<IReadOnlyList<SprintResponse>>.Success(
-            sprints.Select(s => new SprintResponse(
-                s.Id, s.ObjectiveId, s.Name, s.Goal, s.StartDate, s.EndDate, s.Status, s.CompletedAt, s.AchievedAt)).ToList());
+            sprints.Select(s => SprintResponse.From(s, manageable.Contains(s.Id))).ToList());
     }
 }

@@ -11542,10 +11542,6 @@ namespace ONEVO.Infrastructure.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
 
-                    b.Property<Guid>("ObjectiveId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("objective_id");
-
                     b.Property<DateTimeOffset?>("OverdueNotifiedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("overdue_notified_at");
@@ -11575,10 +11571,85 @@ namespace ONEVO.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_sprints");
 
-                    b.HasIndex("TenantId", "ObjectiveId", "Status")
-                        .HasDatabaseName("ix_sprints_tenant_id_objective_id_status");
+                    b.HasIndex("TenantId", "ProjectId", "Status")
+                        .HasDatabaseName("ix_sprints_tenant_id_project_id_status");
 
                     b.ToTable("sprints", (string)null);
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Sprints.Entities.SprintActivityLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("action");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_id");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DetailsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("details_json");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<string>("FromStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("from_status");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid>("SprintId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sprint_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("ToStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("to_status");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_sprint_activity_logs");
+
+                    b.HasIndex("SprintId")
+                        .HasDatabaseName("ix_sprint_activity_logs_sprint_id");
+
+                    b.HasIndex("TenantId", "SprintId", "OccurredAt")
+                        .HasDatabaseName("ix_sprint_activity_logs_tenant_id_sprint_id_occurred_at");
+
+                    b.ToTable("sprint_activity_logs", (string)null);
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskAssignment", b =>
@@ -14345,6 +14416,16 @@ namespace ONEVO.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_release_calendar_versions_version_id");
+                });
+
+            modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Sprints.Entities.SprintActivityLog", b =>
+                {
+                    b.HasOne("ONEVO.Domain.Features.WorkManagement.Sprints.Entities.Sprint", null)
+                        .WithMany()
+                        .HasForeignKey("SprintId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_sprint_activity_logs_sprints_sprint_id");
                 });
 
             modelBuilder.Entity("ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskAssignment", b =>

@@ -6,6 +6,7 @@ using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetObjectiveSprints;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using Xunit;
@@ -39,7 +40,6 @@ public class GetObjectiveSprintsQueryHandlerTests
         Id = SprintId,
         TenantId = TenantId,
         ProjectId = ProjectId,
-        ObjectiveId = ObjectiveId,
         Name = "Sprint 1",
         StartDate = new DateOnly(2026, 8, 1),
         EndDate = new DateOnly(2026, 8, 14),
@@ -47,11 +47,16 @@ public class GetObjectiveSprintsQueryHandlerTests
         CreatedAt = DateTimeOffset.UtcNow
     };
 
+    private readonly Mock<IProjectMemberRepository> _members = new();
+    private readonly Mock<ISprintRepository> _sprints = new();
+    private readonly Mock<ISprintAccessService> _access = new();
+
     private GetObjectiveSprintsQueryHandler BuildHandler(
         Objective? objective,
         Objective? parent = null,
         bool hasReadPermission = false,
-        Func<IReadOnlyList<Guid>, bool>? membershipForIds = null)
+        Func<IReadOnlyList<Guid>, bool>? membershipForIds = null,
+        IReadOnlySet<Guid>? manageableSprintIds = null)
     {
         var currentUser = new Mock<ICurrentUser>();
         currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
@@ -69,8 +74,7 @@ public class GetObjectiveSprintsQueryHandlerTests
             objectives.Setup(x => x.GetByIdForTenantAsync(TenantId, parent.Id, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(parent);
 
-        var members = new Mock<IProjectMemberRepository>();
-        members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(
+        _members.Setup(x => x.HasActiveMembershipForAnyObjectiveAsync(
                 TenantId, ProjectId, CallerEmployeeId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid _, Guid _, Guid _, IReadOnlyList<Guid> ids, CancellationToken _) =>
                 membershipForIds?.Invoke(ids) ?? false);
@@ -79,28 +83,33 @@ public class GetObjectiveSprintsQueryHandlerTests
         permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
 
-        var sprints = new Mock<ISprintRepository>();
-        sprints.Setup(x => x.GetByObjectiveIdAsync(TenantId, ObjectiveId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Sprint> { SprintOnObjective() });
+        var sprintList = new List<Sprint> { SprintOnObjective() };
+        _sprints.Setup(x => x.GetContainingObjectiveTasksAsync(TenantId, ObjectiveId, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sprintList);
+
+        _access.Setup(x => x.GetManageableSprintIdsAsync(TenantId, ProjectId, It.IsAny<IReadOnlyList<Sprint>>(), UserId, CallerEmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(manageableSprintIds ?? new HashSet<Guid>());
 
         return new GetObjectiveSprintsQueryHandler(
-            currentUser.Object, identity.Object, objectives.Object, members.Object,
-            permissionResolver.Object, sprints.Object);
+            currentUser.Object, identity.Object, objectives.Object, _members.Object,
+            permissionResolver.Object, _sprints.Object, _access.Object);
     }
 
     [Fact]
-    public async Task Handle_ActiveMembershipOnObjective_ReturnsSprints()
+    public async Task Handle_ActiveMembershipOnObjective_ReturnsSprintsWithCanManage()
     {
         var handler = BuildHandler(
             Objective(ObjectiveId, parentId: null),
-            membershipForIds: ids => ids.Contains(ObjectiveId));
+            membershipForIds: ids => ids.Contains(ObjectiveId),
+            manageableSprintIds: new HashSet<Guid> { SprintId });
 
         var result = await handler.Handle(new GetObjectiveSprintsQuery(ObjectiveId, ActiveOnly: false), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         var sprint = Assert.Single(result.Value!);
         Assert.Equal(SprintId, sprint.Id);
-        Assert.Equal(ObjectiveId, sprint.ObjectiveId);
+        Assert.Equal(ProjectId, sprint.ProjectId);
+        Assert.True(sprint.CanManage);
     }
 
     [Fact]

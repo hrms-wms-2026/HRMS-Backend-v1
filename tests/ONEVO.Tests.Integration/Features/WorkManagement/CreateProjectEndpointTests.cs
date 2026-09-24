@@ -829,7 +829,7 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
     }
 
     [Fact]
-    public async Task EditObjective_ByCreatorHead_AppliesImmediately()
+    public async Task EditObjective_ByCreatorHead_CreatesPendingChangeRequest()
     {
         var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Edit Milestone Target", "EMT1");
         var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
@@ -838,12 +838,18 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
 
         var editResponse = await _fixture.SendEditObjectiveAsync(_fixture.TenantA, subId, "Editable Phase Renamed", new DateOnly(2026, 1, 10), new DateOnly(2026, 3, 15), 18m);
 
-        editResponse.StatusCode.Should().Be(HttpStatusCode.OK, await editResponse.Content.ReadAsStringAsync());
-        (await ReadJsonAsync(editResponse)).GetProperty("title").GetString().Should().Be("Editable Phase Renamed");
+        // Every Objective edit routes through the Reporting Manager for approval - even the
+        // creator's own edit is not applied directly (see EditObjectiveCommandHandler).
+        editResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, await editResponse.Content.ReadAsStringAsync());
+        var pending = await ReadJsonAsync(editResponse);
+        pending.GetProperty("objectiveId").GetGuid().Should().Be(subId);
+        pending.GetProperty("requestType").GetString().Should().Be("edit");
+        pending.GetProperty("status").GetString().Should().Be("pending");
+        pending.GetProperty("payloadJson").GetString().Should().Contain("Editable Phase Renamed");
     }
 
     [Fact]
-    public async Task EditObjective_ConflictingButByCreator_StillAppliesImmediately()
+    public async Task EditObjective_ConflictingByCreator_CreatesPendingChangeRequest()
     {
         var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Creator Conflict Target", "CCT1");
         var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
@@ -851,11 +857,15 @@ public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndp
         var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
 
         // Exceeds the Default Objective's own allocated hours (mirrors the Project's
-        // defaultObjectiveAllocatedHours=40 from SendCreateProjectAsync) - a real conflict, but
-        // the caller is this sub-objective's own creator, so it must still apply immediately.
+        // defaultObjectiveAllocatedHours=40 from SendCreateProjectAsync) - a real conflict. The
+        // request is still accepted as pending; the approver resolves the conflict at approval time.
         var editResponse = await _fixture.SendEditObjectiveAsync(_fixture.TenantA, subId, "Creator Conflict Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 999m);
 
-        editResponse.StatusCode.Should().Be(HttpStatusCode.OK, await editResponse.Content.ReadAsStringAsync());
+        editResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, await editResponse.Content.ReadAsStringAsync());
+        var pending = await ReadJsonAsync(editResponse);
+        pending.GetProperty("objectiveId").GetGuid().Should().Be(subId);
+        pending.GetProperty("status").GetString().Should().Be("pending");
+        pending.GetProperty("payloadJson").GetString().Should().Contain("999");
     }
 
     [Fact]

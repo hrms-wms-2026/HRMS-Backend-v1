@@ -3,7 +3,6 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
-using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
@@ -16,7 +15,6 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly ISprintRepository _sprints;
-    private readonly IObjectiveRepository _objectives;
     private readonly IProjectMemberRepository _members;
     private readonly IPermissionResolver _permissionResolver;
     private readonly IWorkTaskRepository _tasks;
@@ -26,7 +24,6 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
         ISprintRepository sprints,
-        IObjectiveRepository objectives,
         IProjectMemberRepository members,
         IPermissionResolver permissionResolver,
         IWorkTaskRepository tasks,
@@ -35,7 +32,6 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
         _currentUser = currentUser;
         _identity = identity;
         _sprints = sprints;
-        _objectives = objectives;
         _members = members;
         _permissionResolver = permissionResolver;
         _tasks = tasks;
@@ -60,31 +56,10 @@ public class GetSprintTasksQueryHandler : IRequestHandler<GetSprintTasksQuery, R
         if (sprint is null)
             return Result<IReadOnlyList<WorkTaskResponse>>.NotFound("Sprint not found.");
 
-        var objective = await _objectives.GetByIdForTenantAsync(tenantId, sprint.ObjectiveId, ct);
-        if (objective is null)
-            return Result<IReadOnlyList<WorkTaskResponse>>.NotFound("Objective not found.");
-
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
         var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
-
-        if (!hasReadPermission)
-        {
-            var selfAndAncestorIds = new List<Guid> { objective.Id };
-            var cursor = objective;
-            while (cursor.ParentObjectiveId is not null)
-            {
-                var ancestor = await _objectives.GetByIdForTenantAsync(tenantId, cursor.ParentObjectiveId.Value, ct);
-                if (ancestor is null)
-                    break;
-
-                selfAndAncestorIds.Add(ancestor.Id);
-                cursor = ancestor;
-            }
-
-            var hasAccess = await _members.HasActiveMembershipForAnyObjectiveAsync(tenantId, objective.ProjectId, callerEmployeeId.Value, selfAndAncestorIds, ct);
-            if (!hasAccess)
-                return Result<IReadOnlyList<WorkTaskResponse>>.Forbidden("You do not have access to this milestone.");
-        }
+        if (!hasReadPermission && !await _members.HasActiveMembershipAsync(tenantId, sprint.ProjectId, callerEmployeeId.Value, ct))
+            return Result<IReadOnlyList<WorkTaskResponse>>.Forbidden("You do not have access to this project.");
 
         var items = await _tasks.GetBySprintIdAsync(tenantId, request.SprintId, ct);
 

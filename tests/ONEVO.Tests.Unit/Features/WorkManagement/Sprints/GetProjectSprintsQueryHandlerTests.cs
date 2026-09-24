@@ -6,6 +6,7 @@ using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Sprints.Queries.GetProjectSprints;
 using ONEVO.Application.Features.WorkManagement.Sprints.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Sprints.Services;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Sprints.Entities;
 using Xunit;
@@ -18,8 +19,24 @@ public sealed class GetProjectSprintsQueryHandlerTests
     private static readonly Guid UserId = Guid.NewGuid();
     private static readonly Guid EmployeeId = Guid.NewGuid();
     private static readonly Guid ProjectId = Guid.NewGuid();
-    private static readonly Guid ObjectiveA = Guid.NewGuid();
-    private static readonly Guid ObjectiveB = Guid.NewGuid();
+
+    private readonly Mock<ICurrentUser> _currentUser = new();
+    private readonly Mock<ICallerIdentityResolver> _identity = new();
+    private readonly Mock<IProjectRepository> _projects = new();
+    private readonly Mock<IProjectMemberRepository> _members = new();
+    private readonly Mock<IPermissionResolver> _permissions = new();
+    private readonly Mock<ISprintRepository> _sprints = new();
+    private readonly Mock<ISprintAccessService> _access = new();
+
+    public GetProjectSprintsQueryHandlerTests()
+    {
+        _currentUser.SetupGet(x => x.IsAuthenticated).Returns(true);
+        _currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
+        _currentUser.SetupGet(x => x.UserId).Returns(UserId);
+
+        _identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmployeeId);
+    }
 
     private static Project ActiveProject() => new()
     {
@@ -31,11 +48,11 @@ public sealed class GetProjectSprintsQueryHandlerTests
         CreatedAt = DateTimeOffset.UtcNow
     };
 
-    private static Sprint Sprint(Guid objectiveId, string name) => new()
+    private static Sprint Sprint(string name) => new()
     {
         Id = Guid.NewGuid(),
         TenantId = TenantId,
-        ObjectiveId = objectiveId,
+        ProjectId = ProjectId,
         Name = name,
         StartDate = new DateOnly(2026, 8, 1),
         EndDate = new DateOnly(2026, 8, 31),
@@ -43,77 +60,89 @@ public sealed class GetProjectSprintsQueryHandlerTests
         CreatedAt = DateTimeOffset.UtcNow
     };
 
-    private static GetProjectSprintsQueryHandler BuildHandler(
-        Project? project,
-        IReadOnlyList<Guid> accessibleObjectiveIds,
-        bool hasReadPermission,
-        IReadOnlyList<Sprint>? sprints = null,
-        bool authenticated = true)
-    {
-        var currentUser = new Mock<ICurrentUser>();
-        currentUser.SetupGet(x => x.IsAuthenticated).Returns(authenticated);
-        currentUser.SetupGet(x => x.TenantId).Returns(TenantId);
-        currentUser.SetupGet(x => x.UserId).Returns(UserId);
-
-        var identity = new Mock<ICallerIdentityResolver>();
-        identity.Setup(x => x.ResolveCallerEmployeeIdAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(EmployeeId);
-
-        var projects = new Mock<IProjectRepository>();
-        projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(project);
-
-        var members = new Mock<IProjectMemberRepository>();
-        members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(
-                TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(accessibleObjectiveIds);
-
-        var permissions = new Mock<IPermissionResolver>();
-        permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
-
-        var sprintRepository = new Mock<ISprintRepository>();
-        sprintRepository.Setup(x => x.GetByProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(sprints ?? Array.Empty<Sprint>());
-
-        return new GetProjectSprintsQueryHandler(
-            currentUser.Object, identity.Object, projects.Object, members.Object,
-            permissions.Object, sprintRepository.Object);
-    }
+    private GetProjectSprintsQueryHandler Build() => new(
+        _currentUser.Object, _identity.Object, _projects.Object, _members.Object,
+        _permissions.Object, _sprints.Object, _access.Object);
 
     [Fact]
-    public async Task Handle_ReadPermission_ReturnsSprintsFromMultipleObjectives()
+    public async Task ReadPermissionCaller_SeesAllProjectSprints_WithCanManageFlags()
     {
-        var sprints = new[] { Sprint(ObjectiveA, "A sprint"), Sprint(ObjectiveB, "B sprint") };
-        var handler = BuildHandler(ActiveProject(), Array.Empty<Guid>(), hasReadPermission: true, sprints);
+        var mine = Sprint("A");
+        var other = Sprint("B");
+        _projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ActiveProject());
+        _sprints.Setup(x => x.GetByProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Sprint> { mine, other });
+        _permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string> { "projects:read" });
+        _access.Setup(x => x.GetManageableSprintIdsAsync(TenantId, ProjectId, It.IsAny<IReadOnlyList<Sprint>>(), UserId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<Guid> { mine.Id });
 
-        var result = await handler.Handle(new GetProjectSprintsQuery(ProjectId), CancellationToken.None);
+        var result = await Build().Handle(new GetProjectSprintsQuery(ProjectId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Count);
-        Assert.Contains(result.Value!, sprint => sprint.ObjectiveId == ObjectiveA);
-        Assert.Contains(result.Value!, sprint => sprint.ObjectiveId == ObjectiveB);
+        Assert.True(result.Value.Single(s => s.Id == mine.Id).CanManage);
+        Assert.False(result.Value.Single(s => s.Id == other.Id).CanManage);
+        _members.Verify(x => x.HasActiveMembershipAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Handle_NonPrivilegedMember_ReturnsOnlyAccessibleObjectives()
+    public async Task Member_SeesAllProjectSprints_WithCanManageFlags()
     {
-        var sprints = new[] { Sprint(ObjectiveA, "Visible"), Sprint(ObjectiveB, "Hidden") };
-        var handler = BuildHandler(ActiveProject(), new[] { ObjectiveA }, hasReadPermission: false, sprints);
+        var mine = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "A", Status = SprintStatuses.Draft };
+        var other = new Sprint { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "B", Status = SprintStatuses.Active };
+        _projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ActiveProject());
+        _sprints.Setup(x => x.GetByProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>())).ReturnsAsync(new List<Sprint> { mine, other });
+        _permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>())).ReturnsAsync(new List<string>());
+        _members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _access.Setup(x => x.GetManageableSprintIdsAsync(TenantId, ProjectId, It.IsAny<IReadOnlyList<Sprint>>(), UserId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<Guid> { mine.Id });
 
-        var result = await handler.Handle(new GetProjectSprintsQuery(ProjectId), CancellationToken.None);
+        var result = await Build().Handle(new GetProjectSprintsQuery(ProjectId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        var sprint = Assert.Single(result.Value!);
-        Assert.Equal(ObjectiveA, sprint.ObjectiveId);
+        Assert.Equal(2, result.Value!.Count);
+        Assert.True(result.Value.Single(s => s.Id == mine.Id).CanManage);
+        Assert.False(result.Value.Single(s => s.Id == other.Id).CanManage);
+    }
+
+    [Fact]
+    public async Task NonMember_ReturnsForbidden()
+    {
+        _projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ActiveProject());
+        _permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>())).ReturnsAsync(new List<string>());
+        _members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var result = await Build().Handle(new GetProjectSprintsQuery(ProjectId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
     }
 
     [Fact]
     public async Task Handle_MissingProject_ReturnsNotFound()
     {
-        var handler = BuildHandler(null, Array.Empty<Guid>(), hasReadPermission: true);
+        _projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Project?)null);
 
-        var result = await handler.Handle(new GetProjectSprintsQuery(ProjectId), CancellationToken.None);
+        var result = await Build().Handle(new GetProjectSprintsQuery(ProjectId), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Handle_InactiveProject_ReturnsNotFound()
+    {
+        var inactive = ActiveProject();
+        inactive.IsActive = false;
+        _projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(inactive);
+
+        var result = await Build().Handle(new GetProjectSprintsQuery(ProjectId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
@@ -122,9 +151,9 @@ public sealed class GetProjectSprintsQueryHandlerTests
     [Fact]
     public async Task Handle_UnauthenticatedCaller_ReturnsForbidden()
     {
-        var handler = BuildHandler(ActiveProject(), Array.Empty<Guid>(), hasReadPermission: true, authenticated: false);
+        _currentUser.SetupGet(x => x.IsAuthenticated).Returns(false);
 
-        var result = await handler.Handle(new GetProjectSprintsQuery(ProjectId), CancellationToken.None);
+        var result = await Build().Handle(new GetProjectSprintsQuery(ProjectId), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
