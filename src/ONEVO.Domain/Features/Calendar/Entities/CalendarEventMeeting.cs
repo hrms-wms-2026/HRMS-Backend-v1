@@ -5,7 +5,7 @@ namespace ONEVO.Domain.Features.Calendar.Entities;
 public static class CalendarEventMeetingProviders
 {
     public const string MicrosoftTeams = "microsoft_teams";
-    public const string Zoom = "zoom"; // unused until Phase 2 - reserved value, not yet writable
+    public const string Zoom = "zoom";
 }
 
 public static class CalendarEventMeetingStatuses

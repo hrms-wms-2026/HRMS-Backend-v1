@@ -111,9 +111,9 @@ public class CalendarController : ControllerBase
 
     [HttpPost("{id:guid}/meeting")]
     [RequirePermission("calendar:write")]
-    public async Task<IActionResult> CreateMeeting(Guid id, CancellationToken ct)
+    public async Task<IActionResult> CreateMeeting(Guid id, [FromBody] CreateEventMeetingRequestModel request, CancellationToken ct)
     {
-        var result = await _mediator.Send(new CreateEventMeetingCommand(id), ct);
+        var result = await _mediator.Send(new CreateEventMeetingCommand(id, request.Provider), ct);
         return result.IsSuccess
             ? Ok(new CreateEventMeetingResponseModel(result.Value!.JoinUrl))
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);

@@ -21,6 +21,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
     private readonly Mock<IExternalCalendarConnectionRepository> _connections = new();
     private readonly Mock<ICalendarConnectionTokenProvider> _tokenProvider = new();
     private readonly Mock<ITeamsMeetingClient> _teamsClient = new();
+    private readonly Mock<IZoomMeetingClient> _zoomClient = new();
     private readonly Mock<ICalendarEventMeetingRepository> _meetings = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
@@ -34,7 +35,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
             .Returns<Func<CancellationToken, Task<ONEVO.Application.Common.Models.Result<CreateEventMeetingResult>>>, CancellationToken>((op, ct) => op(ct));
         return new CreateEventMeetingCommandHandler(
             _currentUser.Object, _events.Object, _connections.Object, _tokenProvider.Object,
-            _teamsClient.Object, _meetings.Object, _unitOfWork.Object);
+            _teamsClient.Object, _zoomClient.Object, _meetings.Object, _unitOfWork.Object);
     }
 
     private static CalendarEvent MakeEvent() => new()
@@ -51,7 +52,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
         _connections.Setup(c => c.GetByTenantUserProviderAsync(TenantId, UserId, "outlook_calendar", It.IsAny<CancellationToken>()))
             .ReturnsAsync((ExternalCalendarConnection?)null);
 
-        var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId), CancellationToken.None);
+        var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.MicrosoftTeams), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Be("meeting_provider_not_connected");
@@ -69,7 +70,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
                 ScopesJson = "[\"Calendars.ReadWrite\"]" // no OnlineMeetings.ReadWrite
             });
 
-        var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId), CancellationToken.None);
+        var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.MicrosoftTeams), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Be("meeting_provider_not_connected");
@@ -93,7 +94,7 @@ public sealed class CreateEventMeetingCommandHandlerTests
         _teamsClient.Setup(t => t.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TeamsMeetingDto("graph-meeting-1", "https://teams.microsoft.com/l/meetup-join/abc", null, "123456"));
 
-        var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId), CancellationToken.None);
+        var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.MicrosoftTeams), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.JoinUrl.Should().Be("https://teams.microsoft.com/l/meetup-join/abc");
@@ -111,9 +112,55 @@ public sealed class CreateEventMeetingCommandHandlerTests
         _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(evt);
 
-        var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId), CancellationToken.None);
+        var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.MicrosoftTeams), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task Handle_ValidZoomConnection_CreatesZoomMeetingAndSetsMeetingLink()
+    {
+        var evt = MakeEvent();
+        var connection = new ExternalCalendarConnection
+        {
+            Id = Guid.NewGuid(), Status = ExternalCalendarConnectionStatuses.Active,
+            ScopesJson = "[\"meeting:write:meeting\",\"meeting:read:meeting\"]"
+        };
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(evt);
+        _connections.Setup(c => c.GetByTenantUserProviderAsync(TenantId, UserId, CalendarExternalSources.Zoom, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(connection);
+        _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "zoom", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("access-token");
+        _zoomClient.Setup(z => z.CreateMeetingAsync("access-token", evt.Title, evt.StartDate, evt.EndDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ZoomMeetingDto("987654321", "https://us05web.zoom.us/j/987654321", null, "123456"));
+
+        var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.Zoom), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.JoinUrl.Should().Be("https://us05web.zoom.us/j/987654321");
+        evt.MeetingLink.Should().Be("https://us05web.zoom.us/j/987654321");
+        _meetings.Verify(m => m.AddAsync(
+            It.Is<CalendarEventMeeting>(cm => cm.Provider == CalendarEventMeetingProviders.Zoom && cm.ExternalMeetingId == "987654321"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ZoomConnectionMissingWriteScope_ReturnsMeetingProviderNotConnectedConflict()
+    {
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeEvent());
+        _connections.Setup(c => c.GetByTenantUserProviderAsync(TenantId, UserId, CalendarExternalSources.Zoom, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExternalCalendarConnection
+            {
+                Id = Guid.NewGuid(), Status = ExternalCalendarConnectionStatuses.Active,
+                ScopesJson = "[\"meeting:read:meeting\"]" // no meeting:write:meeting
+            });
+
+        var result = await BuildSut().Handle(new CreateEventMeetingCommand(EventId, CalendarEventMeetingProviders.Zoom), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("meeting_provider_not_connected");
     }
 }

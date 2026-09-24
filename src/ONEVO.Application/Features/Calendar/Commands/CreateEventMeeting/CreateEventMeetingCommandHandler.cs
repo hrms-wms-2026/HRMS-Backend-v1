@@ -15,6 +15,7 @@ public sealed class CreateEventMeetingCommandHandler(
     IExternalCalendarConnectionRepository connections,
     ICalendarConnectionTokenProvider tokenProvider,
     ITeamsMeetingClient teamsClient,
+    IZoomMeetingClient zoomClient,
     ICalendarEventMeetingRepository meetings,
     IUnitOfWork unitOfWork)
     : IRequestHandler<CreateEventMeetingCommand, Result<CreateEventMeetingResult>>
@@ -32,45 +33,61 @@ public sealed class CreateEventMeetingCommandHandler(
         if (existing.CreatedById != currentUser.UserId)
             return Result<CreateEventMeetingResult>.Forbidden("Only the event organizer can add a meeting.");
 
-        var connection = await connections.GetByTenantUserProviderAsync(tenantId, currentUser.UserId, "outlook_calendar", ct);
+        var isZoom = request.Provider == CalendarEventMeetingProviders.Zoom;
+        var externalSource = isZoom ? CalendarExternalSources.Zoom : CalendarExternalSources.OutlookCalendar;
+        var oauthProvider = isZoom ? "zoom" : "microsoft";
+        var requiredScope = isZoom ? "meeting:write:meeting" : "OnlineMeetings.ReadWrite";
+
+        var connection = await connections.GetByTenantUserProviderAsync(tenantId, currentUser.UserId, externalSource, ct);
         if (connection is null
             || connection.Status != ExternalCalendarConnectionStatuses.Active
-            || !HasMeetingScope(connection.ScopesJson))
+            || !HasMeetingScope(connection.ScopesJson, requiredScope))
         {
             return Result<CreateEventMeetingResult>.Conflict("meeting_provider_not_connected");
         }
 
-        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, "microsoft", ct);
+        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, oauthProvider, ct);
         if (accessToken is null)
             return Result<CreateEventMeetingResult>.Conflict("meeting_provider_not_connected");
 
-        var meetingDto = await teamsClient.CreateMeetingAsync(accessToken, existing.Title, existing.StartDate, existing.EndDate, ct);
+        string externalMeetingId, joinUrl;
+        string? organizerJoinUrl, passcode;
+        if (isZoom)
+        {
+            var dto = await zoomClient.CreateMeetingAsync(accessToken, existing.Title, existing.StartDate, existing.EndDate, ct);
+            (externalMeetingId, joinUrl, organizerJoinUrl, passcode) = (dto.ExternalMeetingId, dto.JoinUrl, dto.OrganizerJoinUrl, dto.PasscodeOrPin);
+        }
+        else
+        {
+            var dto = await teamsClient.CreateMeetingAsync(accessToken, existing.Title, existing.StartDate, existing.EndDate, ct);
+            (externalMeetingId, joinUrl, organizerJoinUrl, passcode) = (dto.ExternalMeetingId, dto.JoinUrl, dto.OrganizerJoinUrl, dto.PasscodeOrPin);
+        }
 
         return await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
-            existing.MeetingLink = meetingDto.JoinUrl;
+            existing.MeetingLink = joinUrl;
             events.Update(existing);
 
             await meetings.AddAsync(new CalendarEventMeeting
             {
                 Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventId = existing.Id,
-                ExternalCalendarConnectionId = connection.Id, Provider = CalendarEventMeetingProviders.MicrosoftTeams,
-                ExternalMeetingId = meetingDto.ExternalMeetingId, JoinUrl = meetingDto.JoinUrl,
-                OrganizerJoinUrl = meetingDto.OrganizerJoinUrl, PasscodeOrPin = meetingDto.PasscodeOrPin,
+                ExternalCalendarConnectionId = connection.Id, Provider = request.Provider,
+                ExternalMeetingId = externalMeetingId, JoinUrl = joinUrl,
+                OrganizerJoinUrl = organizerJoinUrl, PasscodeOrPin = passcode,
                 Status = CalendarEventMeetingStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
             }, innerCt);
 
             await unitOfWork.SaveChangesAsync(innerCt);
-            return Result<CreateEventMeetingResult>.Success(new CreateEventMeetingResult(meetingDto.JoinUrl));
+            return Result<CreateEventMeetingResult>.Success(new CreateEventMeetingResult(joinUrl));
         }, ct);
     }
 
-    private static bool HasMeetingScope(string scopesJson)
+    private static bool HasMeetingScope(string scopesJson, string requiredScope)
     {
         try
         {
             var scopes = JsonSerializer.Deserialize<string[]>(scopesJson) ?? [];
-            return scopes.Contains("OnlineMeetings.ReadWrite", StringComparer.OrdinalIgnoreCase);
+            return scopes.Contains(requiredScope, StringComparer.OrdinalIgnoreCase);
         }
         catch (JsonException)
         {

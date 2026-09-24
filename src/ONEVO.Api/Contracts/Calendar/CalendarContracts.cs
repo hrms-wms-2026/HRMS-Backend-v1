@@ -76,6 +76,8 @@ public static class HolidayCalendarSettingsViewModelMapper
         dto.HolidaySyncEnabled, dto.LastSyncedYear, dto.LastSyncedAt);
 }
 
+public sealed record CreateEventMeetingRequestModel(string Provider);
+
 public sealed record CreateEventMeetingResponseModel(string JoinUrl);
 
 public sealed record MeetingAttendeeViewModel(string? Name, string? Email, DateTimeOffset JoinedAt, DateTimeOffset? LeftAt, int? DurationSeconds);
