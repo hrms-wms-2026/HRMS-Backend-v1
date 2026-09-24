@@ -74,16 +74,43 @@ public sealed class EfCalendarEventMeetingRepositoryTests
         dateTimeProvider.SetupGet(d => d.UtcNow).Returns(now);
 
         var repository = new EfCalendarEventMeetingRepository(db, dateTimeProvider.Object);
-        var result = await repository.GetDueForAttendanceSyncAsync(TenantId, CancellationToken.None);
+        var result = await repository.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.MicrosoftTeams, CancellationToken.None);
 
         Assert.Single(result);
         Assert.Equal(due.Id, result[0].Id);
     }
 
-    private static CalendarEventMeeting MakeMeeting(Guid calendarEventId) => new()
+    [Fact]
+    public async Task GetDueForAttendanceSyncAsync_FiltersByProvider()
+    {
+        await using var db = BuildInMemoryDb();
+        var now = new DateTimeOffset(2026, 9, 23, 12, 0, 0, TimeSpan.Zero);
+
+        var teamsEvent = MakeCalendarEvent(now.AddHours(-2), now.AddHours(-1));
+        var teamsMeeting = MakeMeeting(teamsEvent.Id, CalendarEventMeetingProviders.MicrosoftTeams);
+
+        var zoomEvent = MakeCalendarEvent(now.AddHours(-2), now.AddHours(-1));
+        var zoomMeeting = MakeMeeting(zoomEvent.Id, CalendarEventMeetingProviders.Zoom);
+
+        db.PersonalCalendarEvents.AddRange(teamsEvent, zoomEvent);
+        db.CalendarEventMeetings.AddRange(teamsMeeting, zoomMeeting);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var dateTimeProvider = new Mock<IDateTimeProvider>();
+        dateTimeProvider.SetupGet(d => d.UtcNow).Returns(now);
+
+        var repository = new EfCalendarEventMeetingRepository(db, dateTimeProvider.Object);
+        var result = await repository.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.Zoom, CancellationToken.None);
+
+        var meeting = Assert.Single(result);
+        Assert.Equal(zoomMeeting.Id, meeting.Id);
+    }
+
+    private static CalendarEventMeeting MakeMeeting(Guid calendarEventId, string provider = CalendarEventMeetingProviders.MicrosoftTeams) => new()
     {
         Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = calendarEventId,
-        ExternalCalendarConnectionId = Guid.NewGuid(), Provider = CalendarEventMeetingProviders.MicrosoftTeams,
+        ExternalCalendarConnectionId = Guid.NewGuid(), Provider = provider,
         ExternalMeetingId = "graph-meeting-1", JoinUrl = "https://teams.microsoft.com/l/meetup-join/abc",
         Status = CalendarEventMeetingStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
     };

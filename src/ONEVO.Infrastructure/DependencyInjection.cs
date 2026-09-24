@@ -617,6 +617,7 @@ public static class DependencyInjection
         services.AddHostedService<Services.WorkManagement.SprintLifecycleJob>();
         services.AddHostedService<Services.Calendar.CalendarSyncJob>();
         services.AddHostedService<Services.Calendar.TeamsAttendanceSyncJob>();
+        services.AddHostedService<Services.Calendar.ZoomAttendanceSyncJob>();
 
         // Auth services
         services.AddSingleton<IJwtTokenService, JwtTokenService>();

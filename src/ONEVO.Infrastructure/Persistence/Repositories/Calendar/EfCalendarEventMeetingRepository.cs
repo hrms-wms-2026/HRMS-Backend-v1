@@ -23,13 +23,14 @@ public class EfCalendarEventMeetingRepository : ICalendarEventMeetingRepository
         => await _db.CalendarEventMeetings.FirstOrDefaultAsync(
             m => m.TenantId == tenantId && m.CalendarEventId == calendarEventId, ct);
 
-    public async Task<IReadOnlyList<CalendarEventMeeting>> GetDueForAttendanceSyncAsync(Guid tenantId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<CalendarEventMeeting>> GetDueForAttendanceSyncAsync(Guid tenantId, string provider, CancellationToken ct = default)
     {
         var now = _dateTime.UtcNow;
         return await (
             from meeting in _db.CalendarEventMeetings.AsNoTracking()
             join calendarEvent in _db.PersonalCalendarEvents.AsNoTracking() on meeting.CalendarEventId equals calendarEvent.Id
             where meeting.TenantId == tenantId
+                && meeting.Provider == provider
                 && meeting.Status == CalendarEventMeetingStatuses.Active
                 && meeting.LastAttendanceSyncedAt == null
                 && calendarEvent.EndDate < now

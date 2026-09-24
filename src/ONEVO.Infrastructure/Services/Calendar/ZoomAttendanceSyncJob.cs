@@ -12,12 +12,13 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 namespace ONEVO.Infrastructure.Services.Calendar;
 
 /// <summary>
-/// Polls every active tenant's calendar_event_meetings whose event has ended and whose
-/// attendance has never been synced, pulls each one's Teams attendance report, and writes
-/// calendar_event_meeting_attendances. Same admin-mode tenant enumeration shape as
-/// CalendarSyncJob - see that class's own doc comment for why SetAdminMode() is required first.
+/// Polls every active tenant's calendar_event_meetings (Provider = "zoom") whose event has ended
+/// and whose attendance has never been synced, pulls each one's Zoom past-meeting participant
+/// report, and writes calendar_event_meeting_attendances. Mirrors TeamsAttendanceSyncJob exactly
+/// (same admin-mode tenant enumeration shape as CalendarSyncJob) - see that class's doc comments
+/// for why SetAdminMode() is required first.
 /// </summary>
-public sealed class TeamsAttendanceSyncJob(IServiceProvider services, ILogger<TeamsAttendanceSyncJob> logger) : BackgroundService
+public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<ZoomAttendanceSyncJob> logger) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
     private const int TenantPageSize = 100;
@@ -29,7 +30,7 @@ public sealed class TeamsAttendanceSyncJob(IServiceProvider services, ILogger<Te
         {
             try { await RunOnceAsync(stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception ex) { logger.LogError(ex, "TeamsAttendanceSyncJob run failed."); }
+            catch (Exception ex) { logger.LogError(ex, "ZoomAttendanceSyncJob run failed."); }
         }
     }
 
@@ -58,15 +59,15 @@ public sealed class TeamsAttendanceSyncJob(IServiceProvider services, ILogger<Te
                     var meetings = scope.ServiceProvider.GetRequiredService<ICalendarEventMeetingRepository>();
                     var connections = scope.ServiceProvider.GetRequiredService<IExternalCalendarConnectionRepository>();
                     var tokenProvider = scope.ServiceProvider.GetRequiredService<ICalendarConnectionTokenProvider>();
-                    var teamsClient = scope.ServiceProvider.GetRequiredService<ITeamsMeetingClient>();
+                    var zoomClient = scope.ServiceProvider.GetRequiredService<IZoomMeetingClient>();
                     var attendances = scope.ServiceProvider.GetRequiredService<ICalendarEventMeetingAttendanceRepository>();
                     var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-                    foreach (var meeting in await meetings.GetDueForAttendanceSyncAsync(tenant.Id, CalendarEventMeetingProviders.MicrosoftTeams, ct))
+                    foreach (var meeting in await meetings.GetDueForAttendanceSyncAsync(tenant.Id, CalendarEventMeetingProviders.Zoom, ct))
                     {
                         try
                         {
-                            await SyncOneMeetingAsync(tenant.Id, meeting, connections, tokenProvider, teamsClient, attendances, meetings, unitOfWork, ct);
+                            await SyncOneMeetingAsync(tenant.Id, meeting, connections, tokenProvider, zoomClient, attendances, meetings, unitOfWork, ct);
                         }
                         catch (Exception ex)
                         {
@@ -87,18 +88,18 @@ public sealed class TeamsAttendanceSyncJob(IServiceProvider services, ILogger<Te
     private static async Task SyncOneMeetingAsync(
         Guid tenantId, CalendarEventMeeting meeting,
         IExternalCalendarConnectionRepository connections, ICalendarConnectionTokenProvider tokenProvider,
-        ITeamsMeetingClient teamsClient, ICalendarEventMeetingAttendanceRepository attendances,
+        IZoomMeetingClient zoomClient, ICalendarEventMeetingAttendanceRepository attendances,
         ICalendarEventMeetingRepository meetings, IUnitOfWork unitOfWork, CancellationToken ct)
     {
         var connection = await connections.GetByIdForTenantAsync(tenantId, meeting.ExternalCalendarConnectionId, ct);
         if (connection is null)
             return;
 
-        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, "microsoft", ct);
+        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, "zoom", ct);
         if (accessToken is null)
             return; // reauth required - retried automatically next run once the connection is fixed
 
-        var records = await teamsClient.GetAttendanceAsync(accessToken, meeting.ExternalMeetingId, ct);
+        var records = await zoomClient.GetAttendanceAsync(accessToken, meeting.ExternalMeetingId, ct);
         var toAdd = records.Select(r => new CalendarEventMeetingAttendance
         {
             Id = Guid.NewGuid(), TenantId = tenantId, CalendarEventMeetingId = meeting.Id,

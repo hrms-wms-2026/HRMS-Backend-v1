@@ -13,7 +13,7 @@ using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Calendar;
 
-public sealed class TeamsAttendanceSyncJobTests
+public sealed class ZoomAttendanceSyncJobTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
 
@@ -25,7 +25,7 @@ public sealed class TeamsAttendanceSyncJobTests
     private static CalendarEventMeeting MakeMeeting(string? externalMeetingId = null) => new()
     {
         Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = Guid.NewGuid(),
-        ExternalCalendarConnectionId = Guid.NewGuid(), Provider = CalendarEventMeetingProviders.MicrosoftTeams,
+        ExternalCalendarConnectionId = Guid.NewGuid(), Provider = CalendarEventMeetingProviders.Zoom,
         ExternalMeetingId = externalMeetingId ?? "graph-meeting-1", JoinUrl = "https://teams.microsoft.com/l/meetup-join/abc",
         Status = CalendarEventMeetingStatuses.Active
     };
@@ -52,7 +52,7 @@ public sealed class TeamsAttendanceSyncJobTests
         var connection = MakeConnection(meeting.ExternalCalendarConnectionId);
 
         var meetingsRepoMock = new Mock<ICalendarEventMeetingRepository>();
-        meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.MicrosoftTeams, It.IsAny<CancellationToken>()))
+        meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.Zoom, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<CalendarEventMeeting> { meeting });
 
         var connectionsRepoMock = new Mock<IExternalCalendarConnectionRepository>();
@@ -60,12 +60,12 @@ public sealed class TeamsAttendanceSyncJobTests
             .ReturnsAsync(connection);
 
         var tokenProviderMock = new Mock<ICalendarConnectionTokenProvider>();
-        tokenProviderMock.Setup(t => t.GetFreshAccessTokenAsync(connection, "microsoft", It.IsAny<CancellationToken>()))
+        tokenProviderMock.Setup(t => t.GetFreshAccessTokenAsync(connection, "zoom", It.IsAny<CancellationToken>()))
             .ReturnsAsync("access-token");
 
-        var teamsClientMock = new Mock<ITeamsMeetingClient>();
-        teamsClientMock.Setup(t => t.GetAttendanceAsync("access-token", "graph-meeting-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TeamsAttendanceRecordDto>
+        var zoomClientMock = new Mock<IZoomMeetingClient>();
+        zoomClientMock.Setup(t => t.GetAttendanceAsync("access-token", "graph-meeting-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ZoomAttendanceRecordDto>
             {
                 new("Ada Lovelace", "ada@acme.com", DateTimeOffset.UtcNow.AddMinutes(-30), DateTimeOffset.UtcNow),
                 new("Grace Hopper", "grace@acme.com", DateTimeOffset.UtcNow.AddMinutes(-20), DateTimeOffset.UtcNow)
@@ -77,14 +77,14 @@ public sealed class TeamsAttendanceSyncJobTests
         services.AddSingleton(meetingsRepoMock.Object);
         services.AddSingleton(connectionsRepoMock.Object);
         services.AddSingleton(tokenProviderMock.Object);
-        services.AddSingleton(teamsClientMock.Object);
+        services.AddSingleton(zoomClientMock.Object);
         services.AddSingleton(attendancesRepoMock.Object);
         services.AddSingleton(Mock.Of<IUnitOfWork>());
         services.AddSingleton(Mock.Of<IWritableTenantContext>());
         services.AddSingleton(Mock.Of<ITenantContextSwitcher>());
         var provider = services.BuildServiceProvider();
 
-        var job = new TeamsAttendanceSyncJob(provider, NullLogger<TeamsAttendanceSyncJob>.Instance);
+        var job = new ZoomAttendanceSyncJob(provider, NullLogger<ZoomAttendanceSyncJob>.Instance);
         await job.RunOnceAsync(CancellationToken.None);
 
         attendancesRepoMock.Verify(a => a.AddRangeAsync(
@@ -111,7 +111,7 @@ public sealed class TeamsAttendanceSyncJobTests
         var succeedingConnection = MakeConnection(succeedingMeeting.ExternalCalendarConnectionId);
 
         var meetingsRepoMock = new Mock<ICalendarEventMeetingRepository>();
-        meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.MicrosoftTeams, It.IsAny<CancellationToken>()))
+        meetingsRepoMock.Setup(m => m.GetDueForAttendanceSyncAsync(TenantId, CalendarEventMeetingProviders.Zoom, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<CalendarEventMeeting> { failingMeeting, succeedingMeeting });
 
         var connectionsRepoMock = new Mock<IExternalCalendarConnectionRepository>();
@@ -121,14 +121,14 @@ public sealed class TeamsAttendanceSyncJobTests
             .ReturnsAsync(succeedingConnection);
 
         var tokenProviderMock = new Mock<ICalendarConnectionTokenProvider>();
-        tokenProviderMock.Setup(t => t.GetFreshAccessTokenAsync(It.IsAny<ExternalCalendarConnection>(), "microsoft", It.IsAny<CancellationToken>()))
+        tokenProviderMock.Setup(t => t.GetFreshAccessTokenAsync(It.IsAny<ExternalCalendarConnection>(), "zoom", It.IsAny<CancellationToken>()))
             .ReturnsAsync("access-token");
 
-        var teamsClientMock = new Mock<ITeamsMeetingClient>();
-        teamsClientMock.Setup(t => t.GetAttendanceAsync("access-token", failingMeeting.ExternalMeetingId, It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("simulated Graph 500"));
-        teamsClientMock.Setup(t => t.GetAttendanceAsync("access-token", succeedingMeeting.ExternalMeetingId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<TeamsAttendanceRecordDto> { new("Ada Lovelace", "ada@acme.com", DateTimeOffset.UtcNow, null) });
+        var zoomClientMock = new Mock<IZoomMeetingClient>();
+        zoomClientMock.Setup(t => t.GetAttendanceAsync("access-token", failingMeeting.ExternalMeetingId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("simulated Zoom 500"));
+        zoomClientMock.Setup(t => t.GetAttendanceAsync("access-token", succeedingMeeting.ExternalMeetingId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ZoomAttendanceRecordDto> { new("Ada Lovelace", "ada@acme.com", DateTimeOffset.UtcNow, null) });
 
         var attendancesRepoMock = new Mock<ICalendarEventMeetingAttendanceRepository>();
 
@@ -136,14 +136,14 @@ public sealed class TeamsAttendanceSyncJobTests
         services.AddSingleton(meetingsRepoMock.Object);
         services.AddSingleton(connectionsRepoMock.Object);
         services.AddSingleton(tokenProviderMock.Object);
-        services.AddSingleton(teamsClientMock.Object);
+        services.AddSingleton(zoomClientMock.Object);
         services.AddSingleton(attendancesRepoMock.Object);
         services.AddSingleton(Mock.Of<IUnitOfWork>());
         services.AddSingleton(Mock.Of<IWritableTenantContext>());
         services.AddSingleton(Mock.Of<ITenantContextSwitcher>());
         var provider = services.BuildServiceProvider();
 
-        var job = new TeamsAttendanceSyncJob(provider, NullLogger<TeamsAttendanceSyncJob>.Instance);
+        var job = new ZoomAttendanceSyncJob(provider, NullLogger<ZoomAttendanceSyncJob>.Instance);
 
         // Should not throw - the failing meeting's exception must be caught and logged, not
         // propagated, and the second meeting must still be synced.
