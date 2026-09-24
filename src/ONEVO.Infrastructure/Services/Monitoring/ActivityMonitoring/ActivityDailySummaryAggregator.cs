@@ -24,8 +24,6 @@ public static class ActivityDailySummaryAggregator
     /// <summary>Each MeetingDetector sample represents this many minutes (its fixed 2-minute sample interval).</summary>
     private const int MeetingMinutesPerSample = 2;
 
-    private const int TopAppsLimit = 5;
-
     public static ActivityDailySummary Aggregate(
         Guid tenantId,
         Guid employeeId,
@@ -127,7 +125,7 @@ public static class ActivityDailySummaryAggregator
             }
         }
 
-        var topApps = byProcess.Take(TopAppsLimit)
+        var topApps = byProcess
             .Select(x => new AppUsageSummary
             {
                 AppName = x.Process,
@@ -140,7 +138,7 @@ public static class ActivityDailySummaryAggregator
     }
 
     /// <summary>
-    /// Top 10 foreground processes by summed active seconds. Snapshots with no
+    /// Every foreground process by summed active seconds. Snapshots with no
     /// active time or no recorded process are excluded.
     /// </summary>
     private static string ComputeTopAppsJson(IReadOnlyList<ActivitySnapshot> ordered)
@@ -155,7 +153,6 @@ public static class ActivityDailySummaryAggregator
                 Category = string.Empty
             })
             .OrderByDescending(a => a.TotalSeconds)
-            .Take(10)
             .ToList();
 
         return topApps.Count == 0 ? "[]" : JsonSerializer.Serialize(topApps);
