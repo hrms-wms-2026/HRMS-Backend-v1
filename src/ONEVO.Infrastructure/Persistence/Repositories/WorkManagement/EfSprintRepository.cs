@@ -22,6 +22,7 @@ public class EfSprintRepository : ISprintRepository
     public async Task<IReadOnlyList<Sprint>> GetByProjectAsync(Guid tenantId, Guid projectId, CancellationToken ct = default)
         => await _db.Sprints.AsNoTracking()
             .Where(s => s.TenantId == tenantId && s.ProjectId == projectId)
+            .OrderBy(s => s.CreatedAt)
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Sprint>> GetContainingObjectiveTasksAsync(Guid tenantId, Guid objectiveId, bool activeOnly, CancellationToken ct = default)
