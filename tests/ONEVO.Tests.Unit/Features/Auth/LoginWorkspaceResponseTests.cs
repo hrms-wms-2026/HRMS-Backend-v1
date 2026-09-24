@@ -57,7 +57,7 @@ public sealed class LoginWorkspaceResponseTests
 
         var accepted = result.Should().BeOfType<ObjectResult>().Subject;
         accepted.StatusCode.Should().Be(202);
-        var body = accepted.Value.Should().BeOfType<TenantSessionExchangeResponseDto>().Subject;
+        var body = accepted.Value.Should().BeOfType<TenantSessionExchangeViewModel>().Subject;
         body.Authenticated.Should().BeFalse();
         body.RedirectRequired.Should().BeTrue();
         body.ContinueUrl.Should().Be(ExchangeMaterial.ContinueUrl);
@@ -94,7 +94,7 @@ public sealed class LoginWorkspaceResponseTests
 
         var accepted = result.Should().BeOfType<ObjectResult>().Subject;
         accepted.StatusCode.Should().Be(202);
-        var body = accepted.Value.Should().BeOfType<AuthSessionResponseDto>().Subject;
+        var body = accepted.Value.Should().BeOfType<AuthSessionViewModel>().Subject;
         body.MfaRequired.Should().BeTrue();
         body.Workspace.Should().NotBeNull();
         body.Workspace!.Slug.Should().Be("acme");
@@ -129,7 +129,7 @@ public sealed class LoginWorkspaceResponseTests
 
         var accepted = result.Should().BeOfType<ObjectResult>().Subject;
         accepted.StatusCode.Should().Be(202);
-        var body = accepted.Value.Should().BeOfType<AuthSessionResponseDto>().Subject;
+        var body = accepted.Value.Should().BeOfType<AuthSessionViewModel>().Subject;
         body.LegalAcceptanceRequired.Should().BeTrue();
         body.Workspace.Should().NotBeNull();
         body.Workspace!.Slug.Should().Be("acme");
@@ -158,7 +158,7 @@ public sealed class LoginWorkspaceResponseTests
 
         var accepted = result.Should().BeOfType<ObjectResult>().Subject;
         accepted.StatusCode.Should().Be(202);
-        var body = accepted.Value.Should().BeOfType<TenantSessionExchangeResponseDto>().Subject;
+        var body = accepted.Value.Should().BeOfType<TenantSessionExchangeViewModel>().Subject;
         body.Authenticated.Should().BeFalse();
         body.RedirectRequired.Should().BeTrue();
         body.Workspace.Slug.Should().Be("acme");
@@ -184,7 +184,7 @@ public sealed class LoginWorkspaceResponseTests
 
         var result = await controller.Login(new LoginRequest("owner@acme.test", "Password123!"), CancellationToken.None);
         var accepted = result.Should().BeOfType<ObjectResult>().Subject;
-        var body = accepted.Value.Should().BeOfType<TenantSessionExchangeResponseDto>().Subject;
+        var body = accepted.Value.Should().BeOfType<TenantSessionExchangeViewModel>().Subject;
 
         var json = System.Text.Json.JsonSerializer.Serialize(body);
         json.Should().NotContain("tenant_id");

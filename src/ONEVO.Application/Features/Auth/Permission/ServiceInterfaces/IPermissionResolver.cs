@@ -7,5 +7,7 @@ public interface IPermissionResolver
     /// Returns ["*"] for Super Admin. Filters by active roles (not expired) and by the tenant's active
     /// subscription modules so stale role rows cannot grant out-of-plan permissions.
     /// </summary>
-    Task<List<string>> ResolveAsync(Guid userId, Guid tenantId, CancellationToken ct = default);
+    /// <param name="activeLegalEntityId">When set, position-sourced role grants are limited to
+    /// that legal entity. Null skips entity filtering (union of all grants).</param>
+    Task<List<string>> ResolveAsync(Guid userId, Guid tenantId, Guid? activeLegalEntityId, CancellationToken ct = default);
 }

@@ -33,7 +33,11 @@ public sealed class IntegrationTestEnvironmentScope : IDisposable, IAsyncDisposa
         "DevAdmin__Password",
         "PlatformBootstrap__SuperAdminEmail",
         "PlatformBootstrap__SuperAdminFullName",
-        "Tenancy__RootDomain"
+        "Tenancy__RootDomain",
+        "AwsRekognition__Region",
+        "AwsRekognition__LivenessRoleArn",
+        "Kestrel__Certificates__Default__Path",
+        "Kestrel__Certificates__Default__KeyPath"
     };
 
     private readonly Dictionary<string, string?> _previousValues = new(StringComparer.Ordinal);
@@ -67,6 +71,19 @@ public sealed class IntegrationTestEnvironmentScope : IDisposable, IAsyncDisposa
         Set("PlatformBootstrap__SuperAdminEmail", "test_admin@onevo.dev");
         Set("PlatformBootstrap__SuperAdminFullName", "Integration Test Super Admin");
         Set("Tenancy__RootDomain", "localhost");
+        Set("AwsRekognition__Region", "us-east-1");
+        Set("AwsRekognition__LivenessRoleArn", "arn:aws:iam::000000000000:role/integration-test-face-liveness");
+
+        // Blank out the Kestrel cert paths appsettings.Development.json points at. Tests never
+        // serve real HTTPS traffic - WebApplicationFactory hosts run in-process against
+        // TestServer - but Program.cs's DevCertificateBootstrapper still runs eagerly whenever a
+        // test overrides the ASP.NET Core environment name back to "Development" (e.g.
+        // ApiBootTests.SwaggerEndpoint_ReturnsOk_InDevelopment, to exercise the Development-only
+        // Swagger gate). Without this, that bootstrapper tries to shell out to mkcert to generate
+        // the developer's local cert, which isn't installed in CI. An empty path makes it a no-op
+        // (see DevCertificateBootstrapper.EnsureCertificateExists's blank-path early return).
+        Set("Kestrel__Certificates__Default__Path", string.Empty);
+        Set("Kestrel__Certificates__Default__KeyPath", string.Empty);
     }
 
     private static string BuildConnectionString(string adminConnectionString, string username, string password)

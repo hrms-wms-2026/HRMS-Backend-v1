@@ -44,7 +44,7 @@ public class LoginSessionMaterialFactory : ILoginSessionMaterialFactory
         string? userAgent,
         CancellationToken ct = default)
     {
-        var permissions = await _permissionResolver.ResolveAsync(user.Id, user.TenantId, ct);
+        var permissions = await _permissionResolver.ResolveAsync(user.Id, user.TenantId, null, ct);
         var activeModules = await _entitlements.GetActiveModuleKeysForTenantAsync(user.TenantId, ct);
 
         var rawCsrfToken = _tokenService.GenerateCsrfToken();

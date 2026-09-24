@@ -8,6 +8,7 @@ using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.CreatePaymentGateway;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.RotatePaymentGatewayCredential;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.UpdatePaymentGatewayMetadata;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.DTOs;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.RepositoryInterfaces;
 using ONEVO.Domain.Features.SharedPlatform.PaymentGateway.Entities;
@@ -135,8 +136,23 @@ public class SystemConfigComplianceTests
                 Assert.Equal(PlatformPermissionCatalog.SystemConfigRead, permissionAttr.Permission);
             else if (method.Name == "ResolveForCountry")
                 Assert.Equal(PlatformPermissionCatalog.TenantsManage, permissionAttr.Permission);
-            else // CreateGateway, RotateCredential, VerifyCredentials
+            else // CreateGateway, UpdateGateway, RotateCredential, VerifyCredentials
                 Assert.Equal(PlatformPermissionCatalog.SystemConfigManage, permissionAttr.Permission);
         }
+    }
+
+    [Fact]
+    public void Authorization_UpdateGateway_UsesPutRouteAndManagePermission()
+    {
+        var method = typeof(SystemConfigPaymentGatewayController).GetMethod(nameof(SystemConfigPaymentGatewayController.UpdateGateway));
+        Assert.NotNull(method);
+
+        var httpPut = method!.GetCustomAttribute<HttpPutAttribute>();
+        Assert.NotNull(httpPut);
+        Assert.Equal("admin/v1/system-config/payment-gateways/{id:guid}", httpPut!.Template);
+
+        var permissionAttr = method.GetCustomAttribute<RequirePlatformPermissionAttribute>();
+        Assert.NotNull(permissionAttr);
+        Assert.Equal(PlatformPermissionCatalog.SystemConfigManage, permissionAttr!.Permission);
     }
 }

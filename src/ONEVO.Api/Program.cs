@@ -4,6 +4,7 @@ using ONEVO.Api.Configuration;
 using ONEVO.Api.Extensions;
 using ONEVO.Api.Middleware;
 using ONEVO.Application;
+using ONEVO.Application.Common.Json;
 using ONEVO.Infrastructure;
 using ONEVO.Infrastructure.Configuration;
 using Serilog;
@@ -17,11 +18,29 @@ ConfigurationStartupValidator.ValidateRequiredLocalConfiguration(
     builder.Configuration,
     builder.Environment.EnvironmentName);
 
+// Development only: generates the local mkcert certificate if it's missing, before anything
+// that depends on the database, so a fresh clone doesn't need a separate manual cert-setup
+// step. Production/Staging terminate TLS with a real certificate authority.
+if (builder.Environment.IsDevelopment())
+{
+    DevCertificateBootstrapper.EnsureCertificateExists(
+        builder.Configuration,
+        builder.Environment.ContentRootPath);
+}
+
 await DatabaseConnectionStartupValidator.ValidateAndOpenAsync(
     builder.Configuration,
     builder.Environment.EnvironmentName,
     DotEnvLoader.DefaultConnectionProcessOverrideActive
         || DotEnvLoader.MigrationConnectionProcessOverrideActive);
+
+// Development only: Test bootstraps its own Testcontainers database via
+// IntegrationDatabaseBootstrap before this process starts, and Production/Staging must apply
+// migrations through their own deployment pipeline, never automatically on process start.
+if (builder.Environment.IsDevelopment())
+{
+    await DatabaseMigrationRunner.MigrateIfPendingAsync(builder.Configuration);
+}
 
 builder.Host.UseSerilog((ctx, cfg) =>
     cfg.ReadFrom.Configuration(ctx.Configuration)
@@ -32,12 +51,22 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedHost);
 
 builder.Services.AddApplication();
+builder.Services.Configure<ONEVO.Application.Features.Monitoring.TrayActivation.Options.TrayPresenceOptions>(
+    builder.Configuration.GetSection("TrayPresence"));
+builder.Services.Configure<ONEVO.Api.Configuration.TrayReleasesOptions>(
+    builder.Configuration.GetSection(ONEVO.Api.Configuration.TrayReleasesOptions.SectionName));
+
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddMemoryCache();
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new TimeOnlyHhMmJsonConverter()));
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddApiAuthentication(builder.Environment);
+builder.Services.AddApiAuthentication(builder.Environment, builder.Configuration);
 builder.Services.AddApiAuthorization();
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<
+    ONEVO.Application.Features.Monitoring.Settings.ServiceInterfaces.ITrayPolicyRefreshNotifier,
+    ONEVO.Api.Hubs.SignalRTrayPolicyRefreshNotifier>();
 builder.Services.AddApiSwagger();
 builder.Services.AddApiCors(builder.Configuration);
 builder.Services.AddHealthChecks()
@@ -88,10 +117,14 @@ app.UseAuthentication();
 // Middleware removed as part of cookie auth migration
 app.UseMiddleware<CsrfProtectionMiddleware>();
 app.UseMiddleware<TenantEnforcementMiddleware>();
+app.UseMiddleware<TrayPresenceEnforcementMiddleware>();
+
 app.UseMiddleware<PermissionVersionMiddleware>();
+
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<ONEVO.Api.Hubs.AgentCommandsHub>("/hubs/agent-commands");
 // Liveness: process-only checks. Must NOT include dependency checks — a brief
 // DB outage should fail readiness, not liveness.
 app.MapHealthChecks("/health", new HealthCheckOptions

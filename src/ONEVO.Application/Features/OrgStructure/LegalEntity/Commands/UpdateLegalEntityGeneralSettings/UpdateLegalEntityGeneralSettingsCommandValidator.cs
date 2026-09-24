@@ -1,0 +1,135 @@
+using FluentValidation;
+using ONEVO.Application.Common.Helpers;
+
+namespace ONEVO.Application.Features.OrgStructure.Commands.UpdateLegalEntityGeneralSettings;
+
+public class UpdateLegalEntityGeneralSettingsCommandValidator
+    : AbstractValidator<UpdateLegalEntityGeneralSettingsCommand>
+{
+    private static readonly string[] AllowedTimeFormats = ["12h", "24h"];
+    private static readonly string[] AllowedStatuses = ["active", "inactive"];
+
+    public UpdateLegalEntityGeneralSettingsCommandValidator()
+    {
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Company name is required.")
+            .MaximumLength(200).WithMessage("Company name must be 200 characters or fewer.");
+
+        RuleFor(x => x.CompanyCode)
+            .NotEmpty().WithMessage("Company code is required.")
+            .MaximumLength(20).WithMessage("Company code must be 20 characters or fewer.");
+
+        RuleFor(x => x.RegistrationNumber)
+            .NotEmpty().WithMessage("Registration number is required.")
+            .MaximumLength(50).WithMessage("Registration number must be 50 characters or fewer.");
+
+        RuleFor(x => x.CountryCode)
+            .NotEmpty().WithMessage("Country is required.")
+            .MaximumLength(3).WithMessage("Country code must be an ISO 3166-1 alpha-3 code.");
+
+        RuleFor(x => x.CurrencyCode)
+            .NotEmpty().WithMessage("Currency is required.")
+            .MaximumLength(3).WithMessage("Currency code must be an ISO 4217 code.");
+
+        RuleFor(x => x.Timezone)
+            .NotEmpty().WithMessage("Invalid timezone selected.")
+            .MaximumLength(50).WithMessage("Invalid timezone selected.");
+
+        RuleFor(x => x.FinancialYearStartMonth)
+            .InclusiveBetween(1, 12)
+            .WithMessage("Financial year start month must be between 1 and 12.");
+
+        RuleFor(x => x.FirstDayOfWeek)
+            .InclusiveBetween(1, 7)
+            .WithMessage("First day of week must be between 1 and 7.");
+
+        RuleFor(x => x.StandardWorkingDays)
+            .NotEmpty().WithMessage("At least one standard working day is required.")
+            .Must(days => days.All(d => d is >= 1 and <= 7))
+            .WithMessage("Standard working days must contain valid weekday values.")
+            .Must(days => days.Distinct().Count() == days.Count)
+            .WithMessage("Standard working days must not contain duplicates.");
+
+        RuleFor(x => x.DefaultLanguage)
+            .NotEmpty().WithMessage("Default language is required.")
+            .MaximumLength(10).WithMessage("Default language must be 10 characters or fewer.");
+
+        RuleFor(x => x.DateFormat)
+            .NotEmpty().WithMessage("Date format is required.")
+            .MaximumLength(20).WithMessage("Date format must be 20 characters or fewer.");
+
+        RuleFor(x => x.TimeFormat)
+            .Must(AllowedTimeFormats.Contains)
+            .WithMessage("Time format must be '12h' or '24h'.");
+
+        RuleFor(x => x.Status)
+            .Must(s => AllowedStatuses.Contains(s?.ToLowerInvariant()))
+            .WithMessage("Status must be 'active' or 'inactive'.");
+
+        RuleFor(x => x.TaxRegistrationNumber)
+            .MaximumLength(80).WithMessage("Tax registration number must be 80 characters or fewer.")
+            .When(x => x.TaxRegistrationNumber is not null);
+
+        RuleFor(x => x.VatGstNumber)
+            .MaximumLength(50).WithMessage("VAT/GST number must be 50 characters or fewer.")
+            .When(x => x.VatGstNumber is not null);
+
+        RuleFor(x => x.Email)
+            .EmailAddress().WithMessage("Email address is invalid.")
+            .MaximumLength(254).WithMessage("Email address must be 254 characters or fewer.")
+            .When(x => !string.IsNullOrWhiteSpace(x.Email));
+
+        RuleFor(x => x.PhoneNumber)
+            .MaximumLength(20).WithMessage("Phone number is invalid.")
+            .When(x => x.PhoneNumber is not null);
+
+        RuleFor(x => x.Website)
+            .MaximumLength(255).WithMessage("Website URL is invalid.")
+            .Must(url => Uri.TryCreate(url, UriKind.Absolute, out _))
+            .WithMessage("Website URL is invalid.")
+            .When(x => !string.IsNullOrWhiteSpace(x.Website));
+
+        RuleFor(x => x.WorkEndTime)
+            .NotNull().WithMessage("Work end time is required when work start time is provided.")
+            .When(x => x.WorkStartTime is not null);
+
+        RuleFor(x => x.WorkStartTime)
+            .NotNull().WithMessage("Work start time is required when work end time is provided.")
+            .When(x => x.WorkEndTime is not null);
+
+        RuleFor(x => x.BreakDurationMinutes)
+            .Must((command, brk) =>
+            {
+                var hours = WorkDayHoursCalculator.TryCompute(command.WorkStartTime, command.WorkEndTime, brk);
+                return hours is null || hours > 0m;
+            })
+            .WithMessage("Break duration must be shorter than the work window.")
+            .When(x => x.WorkStartTime is not null && x.WorkEndTime is not null);
+
+        // Independent of work start/end time - may be set on its own. No
+        // upper bound: no existing backend validation pattern establishes
+        // one for a break-duration-style field, so none is invented here.
+        RuleFor(x => x.BreakDurationMinutes)
+            .GreaterThanOrEqualTo(0).WithMessage("Break duration must not be negative.")
+            .When(x => x.BreakDurationMinutes is not null);
+
+        RuleFor(x => x.OfficeAddress)
+            .MaximumLength(500).WithMessage("Office address must be 500 characters or fewer.")
+            .When(x => x.OfficeAddress is not null);
+
+        // Office location is all-or-nothing: partially configuring it would leave a
+        // legal entity with a point but no way to know it's really the office - the
+        // on-site location warning simply never fires until both are set. The radius
+        // for that check comes from MonitoringFeatureToggles.AllowedRadiusMeters, not from here
+        // (moved off ClockInPolicy in Task 14).
+        RuleFor(x => x.OfficeLatitude)
+            .NotNull().WithMessage("Office latitude and longitude must be set together.")
+            .InclusiveBetween(-90, 90).WithMessage("Office latitude must be between -90 and 90.")
+            .When(x => x.OfficeLongitude is not null);
+
+        RuleFor(x => x.OfficeLongitude)
+            .NotNull().WithMessage("Office latitude and longitude must be set together.")
+            .InclusiveBetween(-180, 180).WithMessage("Office longitude must be between -180 and 180.")
+            .When(x => x.OfficeLatitude is not null);
+    }
+}

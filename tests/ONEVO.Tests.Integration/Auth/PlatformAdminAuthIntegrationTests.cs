@@ -9,7 +9,6 @@ using ONEVO.Domain.Features.DevPlatform.PlatformAccess.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.Auth;
@@ -26,12 +25,6 @@ public class PlatformAdminAuthIntegrationTests : IAsyncLifetime
     private const string AdminEmail = "test_admin@onevo.dev";
     private const string AdminPassword = "test_password_123";
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
-        .WithDatabase("onevo_platform_auth_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private AdminTestFactory _factory = null!;
@@ -39,9 +32,7 @@ public class PlatformAdminAuthIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        var connectionString = _postgres.GetConnectionString();
-        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        var connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
         _factory = new AdminTestFactory(connectionString);
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -55,7 +46,6 @@ public class PlatformAdminAuthIntegrationTests : IAsyncLifetime
     {
         _client.Dispose();
         _factory.Dispose();
-        await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
     }
 

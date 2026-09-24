@@ -1,0 +1,118 @@
+using MediatR;
+using Microsoft.Extensions.Logging;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Screenshots.RepositoryInterfaces;
+using ONEVO.Application.Features.Storage.File.Helpers;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
+using ONEVO.Domain.Features.Monitoring.Screenshots.Entities;
+
+namespace ONEVO.Application.Features.Monitoring.Screenshots.Commands.SubmitPeriodicScreenshot;
+
+public class SubmitPeriodicScreenshotCommandHandler
+    : IRequestHandler<SubmitPeriodicScreenshotCommand, Result<Guid>>
+{
+    private readonly IFileStorageService _fileStorage;
+    private readonly IEvidenceAssetRepository _assets;
+    private readonly ITrayCurrentDevice _device;
+    private readonly ITenantRepository _tenants;
+    private readonly ITenantContextSwitcher _tenantSwitcher;
+    private readonly ITrayEmployeeIdentityResolver _employeeIdentity;
+    private readonly IDateTimeProvider _clock;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly ILogger<SubmitPeriodicScreenshotCommandHandler> _logger;
+
+    public SubmitPeriodicScreenshotCommandHandler(
+        IFileStorageService fileStorage,
+        IEvidenceAssetRepository assets,
+        ITrayCurrentDevice device,
+        ITenantRepository tenants,
+        ITenantContextSwitcher tenantSwitcher,
+        ITrayEmployeeIdentityResolver employeeIdentity,
+        IDateTimeProvider clock,
+        IUnitOfWork unitOfWork,
+        ILogger<SubmitPeriodicScreenshotCommandHandler> logger)
+    {
+        _fileStorage = fileStorage;
+        _assets = assets;
+        _device = device;
+        _tenants = tenants;
+        _tenantSwitcher = tenantSwitcher;
+        _employeeIdentity = employeeIdentity;
+        _clock = clock;
+        _unitOfWork = unitOfWork;
+        _logger = logger;
+    }
+
+    public async Task<Result<Guid>> Handle(SubmitPeriodicScreenshotCommand request, CancellationToken ct)
+    {
+        if (!_device.IsAuthenticated
+            || _device.TenantId == Guid.Empty
+            || _device.UserId == Guid.Empty
+            || _device.DeviceRegistrationId == Guid.Empty)
+        {
+            return Result<Guid>.Failure("A valid tray device token is required.", 401);
+        }
+
+        var tenant = await _tenants.GetByIdAsync(_device.TenantId, ct);
+        if (tenant is null)
+            return Result<Guid>.Failure("Tenant not found.", 401);
+
+        // Tray requests hit the base host (system mode), not a tenant subdomain, so no
+        // middleware has set tenant context yet. Without this, PostgreSQL RLS rejects the
+        // file_upload_reservations/file_records/monitoring_evidence_assets writes below with
+        // 42501 — see IngestActivitySnapshotsCommandHandler for the same pattern. Must happen
+        // before the upload call, since BeginReservationAsync writes a tenant-owned row too.
+        await _tenantSwitcher.SwitchToTenantAsync(
+            new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null),
+            ct);
+
+        var tenantId = _device.TenantId;
+        var deviceId = _device.DeviceRegistrationId;
+
+        var uploadResult = await _fileStorage.UploadAsync(
+            tenantId,
+            _device.UserId,
+            request.FileName,
+            request.ContentType,
+            UploadPurposeCatalog.MonitoringScreenshot,
+            request.Content,
+            ct);
+
+        if (!uploadResult.IsSuccess)
+            return Result<Guid>.Failure(uploadResult.Error!, uploadResult.StatusCode ?? 400);
+
+        // Resolves the real CoreHR Employee.Id to store, falling back to the raw UserId when no
+        // Employee row exists yet - see ITrayEmployeeIdentityResolver's own doc comment.
+        var employeeId = await _employeeIdentity.ResolveEmployeeIdAsync(
+            tenantId, _device.UserId, _device.LegalEntityId, ct);
+
+        var now = _clock.UtcNow;
+        var asset = new MonitoringEvidenceAsset
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EmployeeId = employeeId,
+            AgentDeviceId = deviceId,
+            AgentCommandId = null,
+            FileRecordId = uploadResult.Value!.Id,
+            EvidenceType = "screenshot",
+            Source = "agent",
+            TriggerType = "periodic",
+            CapturedAt = request.CapturedAt,
+            CreatedAt = now
+        };
+
+        _assets.Add(asset);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Periodic screenshot recorded. AssetId={AssetId} DeviceId={DeviceId}",
+            asset.Id, deviceId);
+
+        return Result<Guid>.Success(asset.Id);
+    }
+}

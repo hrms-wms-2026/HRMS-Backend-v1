@@ -6,6 +6,7 @@ namespace ONEVO.Tests.Unit.Fakes;
 public sealed class FakeObjectStorageAdapter : IObjectStorageAdapter
 {
     public bool ShouldFailPut { get; set; }
+    public bool ShouldFailGet { get; set; }
     public bool ObjectExistsResult { get; set; } = true;
     public List<string> PutObjectKeys { get; } = new();
     public List<string> DeletedObjectKeys { get; } = new();
@@ -29,11 +30,21 @@ public sealed class FakeObjectStorageAdapter : IObjectStorageAdapter
 
     public Task<Stream> GetObjectAsync(string objectKey, CancellationToken ct = default)
     {
+        if (ShouldFailGet)
+        {
+            throw new ObjectStorageException("simulated R2 read failure");
+        }
+
         return Task.FromResult<Stream>(new MemoryStream());
     }
 
     public Task<bool> ObjectExistsAsync(string objectKey, CancellationToken ct = default)
     {
         return Task.FromResult(ObjectExistsResult);
+    }
+
+    public Task<string> GetSignedUrlAsync(string objectKey, TimeSpan expiry, CancellationToken ct = default)
+    {
+        return Task.FromResult($"https://fake-r2.example.com/{objectKey}?expires={expiry.TotalSeconds}");
     }
 }

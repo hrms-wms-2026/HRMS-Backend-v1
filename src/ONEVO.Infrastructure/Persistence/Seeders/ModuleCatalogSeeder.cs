@@ -117,7 +117,7 @@ public class ModuleCatalogSeeder : IHostedService
             new { Key = "roles.permission_management", Module = "roles", Name = "Permission Management", Included = true },
             new { Key = "notifications.email_delivery", Module = "notifications", Name = "Email Delivery", Included = true },
             new { Key = "notifications.in_app_delivery", Module = "notifications", Name = "In-App Delivery", Included = true },
-            new { Key = "org.structure_management", Module = "org", Name = "Structure Management", Included = true },
+            new { Key = "org.structure_management", Module = "org_structure", Name = "Structure Management", Included = true },
             
             // Core HR
             new { Key = "core_hr.employee_profiles", Module = "core_hr", Name = "Employee Profiles", Included = true },
@@ -236,15 +236,18 @@ public class ModuleCatalogSeeder : IHostedService
 
             // notifications
             new { Module = "notifications", Perm = "notifications:manage" },
-            new { Module = "notifications", Perm = "settings:notifications" },
 
-            // org
-            new { Module = "org", Perm = "org:read" },
-            new { Module = "org", Perm = "org:manage" },
+            // org_structure
+            new { Module = "org_structure", Perm = "org:read" },
+            new { Module = "org_structure", Perm = "org:manage" },
+            new { Module = "org_structure", Perm = "legal_entity:create" },
+            new { Module = "org_structure", Perm = "legal_entity:update" },
+            new { Module = "org_structure", Perm = "legal_entity:delete" },
 
             // core_hr
             new { Module = "core_hr", Perm = "employees:read" },
             new { Module = "core_hr", Perm = "employees:write" },
+            new { Module = "core_hr", Perm = "employees:offboard" },
             new { Module = "core_hr", Perm = "employees:delete" },
 
             // time_off
@@ -280,9 +283,9 @@ public class ModuleCatalogSeeder : IHostedService
 
             // work_management
             new { Module = "work_management", Perm = "projects:read" },
-            new { Module = "work_management", Perm = "projects:write" },
-            new { Module = "work_management", Perm = "projects:create" },
+            new { Module = "work_management", Perm = "projects:access" },
             new { Module = "work_management", Perm = "tasks:read" },
+            new { Module = "work_management", Perm = "tasks:read-own" },
             new { Module = "work_management", Perm = "tasks:write" },
             new { Module = "work_management", Perm = "tasks:approve" },
             new { Module = "work_management", Perm = "tasks:delete" },
@@ -319,7 +322,20 @@ public class ModuleCatalogSeeder : IHostedService
 
             if (existingByCode.TryGetValue(def.Perm, out var ownership))
             {
-                ownership.ModuleKey = def.Module;
+                // ModuleKey is part of the composite key — EF cannot re-key an existing row in
+                // place. When the canonical module for a permission changed since the last seed,
+                // drop the stale mapping and re-add it under the new module (PermissionCode has
+                // a unique index, so this is the only row for that permission).
+                if (ownership.ModuleKey != def.Module)
+                {
+                    db.ModulePermissionOwnerships.Remove(ownership);
+                    db.ModulePermissionOwnerships.Add(new ModulePermissionOwnership
+                    {
+                        ModuleKey = def.Module,
+                        PermissionCode = def.Perm,
+                        IsDefaultPermission = true
+                    });
+                }
             }
             else
             {

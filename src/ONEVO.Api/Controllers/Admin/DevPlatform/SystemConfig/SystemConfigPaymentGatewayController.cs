@@ -5,6 +5,7 @@ using ONEVO.Api.Filters;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Helpers;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.CreatePaymentGateway;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.RotatePaymentGatewayCredential;
+using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.UpdatePaymentGatewayMetadata;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Commands.VerifyGatewayCredentials;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.DTOs;
 using ONEVO.Application.Features.DevPlatform.SystemConfig.PaymentGateway.Queries.ListPaymentGateways;
@@ -20,6 +21,7 @@ namespace ONEVO.Api.Controllers.Admin.DevPlatform.SystemConfig;
 ///   POST   /admin/v1/system-config/payment-gateways/verify -> verify credentials before save (not persisted)
 ///   POST   /admin/v1/system-config/payment-gateways        -> create gateway config + credential + country routes
 ///   POST   /admin/v1/system-config/payment-gateways/{id}/credentials/rotate -> rotate credential
+///   PUT    /admin/v1/system-config/payment-gateways/{id} -> update metadata and country routes
 ///   GET    /admin/v1/payment-gateways/resolve              -> resolve active gateway for country (tenant provisioning)
 ///
 /// SECURITY:
@@ -131,6 +133,38 @@ public sealed class SystemConfigPaymentGatewayController : ControllerBase
 
         return result.IsSuccess
             ? NoContent()
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>
+    /// Update payment gateway metadata and country routes. Secrets are not accepted.
+    /// PUT /admin/v1/system-config/payment-gateways/{id}
+    /// </summary>
+    [HttpPut("admin/v1/system-config/payment-gateways/{id:guid}")]
+    [RequirePlatformPermission(PlatformPermissionCatalog.SystemConfigManage)]
+    public async Task<IActionResult> UpdateGateway(
+        Guid id,
+        [FromBody] UpdatePaymentGatewayMetadataRequest request,
+        CancellationToken ct)
+    {
+        var actorId = _currentUser.UserId;
+        if (actorId is null)
+            return Forbid();
+
+        var result = await _mediator.Send(new UpdatePaymentGatewayMetadataCommand(
+            id,
+            request.DisplayName,
+            request.LogoUrl,
+            request.PublicKey,
+            request.MerchantId,
+            request.WebhookUrl,
+            request.IsActive,
+            request.CountryCodes,
+            request.CountryNameSnapshots,
+            actorId.Value), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 

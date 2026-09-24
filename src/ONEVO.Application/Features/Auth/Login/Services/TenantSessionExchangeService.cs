@@ -129,7 +129,7 @@ public sealed class TenantSessionExchangeService : ITenantSessionExchangeService
 
     /// <summary>
     /// Single place tenant continue URLs are ever built. Scheme/port come from Urls:AppBaseUrl
-    /// (the SPA's own base URL, e.g. http://localhost:4200 in dev); host is {slug}.{RootDomain} -
+    /// (the SPA's own base URL, e.g. https://localhost:4200 in dev); host is {slug}.{RootDomain} -
     /// never a shared parent-domain cookie, just a plain cross-subdomain top-level navigation.
     /// </summary>
     private string BuildContinueUrl(string slug, string rawCode)

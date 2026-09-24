@@ -12,6 +12,7 @@ public class PlatformUserInvite
     public string FullName { get; set; } = string.Empty;
     public string InviteTokenHash { get; set; } = string.Empty;
     public Guid InvitedById { get; set; }
+    public Guid? PlatformUserId { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? AcceptedAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }

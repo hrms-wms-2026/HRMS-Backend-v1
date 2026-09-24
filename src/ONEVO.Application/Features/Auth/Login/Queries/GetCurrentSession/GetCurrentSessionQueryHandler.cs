@@ -1,5 +1,6 @@
 using MediatR;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
@@ -13,17 +14,20 @@ public sealed class GetCurrentSessionQueryHandler
     private readonly ITenantContext _tenantContext;
     private readonly IModuleEntitlementService _entitlements;
     private readonly ITenantRepository _tenants;
+    private readonly IEmployeeRepository _employees;
 
     public GetCurrentSessionQueryHandler(
         ICurrentUser currentUser,
         ITenantContext tenantContext,
         IModuleEntitlementService entitlements,
-        ITenantRepository tenants)
+        ITenantRepository tenants,
+        IEmployeeRepository employees)
     {
         _currentUser = currentUser;
         _tenantContext = tenantContext;
         _entitlements = entitlements;
         _tenants = tenants;
+        _employees = employees;
     }
 
     public async Task<Result<AuthSessionResponseDto>> Handle(
@@ -48,12 +52,15 @@ public sealed class GetCurrentSessionQueryHandler
         if (tenant is null)
             return Result<AuthSessionResponseDto>.Failure("Authentication required.", 401);
 
+        var employee = await _employees.GetByUserIdAsync(_tenantContext.TenantId, _currentUser.UserId, ct);
+
         var response = new AuthSessionResponseDto(
             Authenticated: true,
             User: new CurrentUserDto(
                 _currentUser.UserId,
                 _currentUser.TenantId,
-                _currentUser.Email),
+                _currentUser.Email,
+                employee?.Id),
             Permissions: _currentUser.Permissions,
             ActiveModules: activeModules,
             MustChangePassword: false,

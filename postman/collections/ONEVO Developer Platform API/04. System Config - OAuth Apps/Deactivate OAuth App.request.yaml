@@ -1,8 +1,0 @@
-$kind: http-request
-name: Deactivate OAuth App
-method: POST
-url: '{{admin_base_url}}/admin/v1/system-config/oauth-apps/google/deactivate'
-order: 8000
-headers:
-  - key: X-CSRF-Token
-    value: '{{admin_csrf_token}}'

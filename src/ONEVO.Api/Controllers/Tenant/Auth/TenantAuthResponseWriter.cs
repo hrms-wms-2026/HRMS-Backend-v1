@@ -2,9 +2,13 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using ONEVO.Api.Contracts.Auth;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 using ONEVO.Infrastructure.Identity.Sessions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using ONEVO.Application.Common.ServiceInterfaces;
 
 namespace ONEVO.Api.Controllers.Tenant.Auth;
 
@@ -23,32 +27,41 @@ internal static class TenantAuthResponseWriter
         var dto = result.Value!;
 
         if (dto.RequiresPasswordChange)
-            return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()));
+            return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()).ToViewModel());
 
         if (dto.RequiresMfa)
         {
             controller.SetMfaChallengeCookie(dto.MfaChallenge, env);
-            return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()));
+            return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()).ToViewModel());
         }
 
         if (dto.RequiresLegalAcceptance)
         {
             controller.SetLegalPendingCookies(dto.LegalChallenge, dto.LegalCsrfToken, env);
-            return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()));
+            return controller.StatusCode(202, controller.WithContinueUrl(dto, dto.ToSessionResponse()).ToViewModel());
         }
 
         // Every gate cleared on the base host: hand off to the tenant host instead of signing in
         // here. No onevo_session/onevo_csrf are ever set on the base host.
         if (dto.RequiresTenantSessionExchange)
-            return controller.StatusCode(202, dto.ToTenantSessionExchangeResponse());
+            return controller.StatusCode(202, dto.ToTenantSessionExchangeResponse().ToViewModel());
 
         await controller.SignInAsync(dto, env);
-        return controller.Ok(dto.ToSessionResponse());
+        return controller.Ok(dto.ToSessionResponse().ToViewModel());
     }
 
     public static async Task SignInAsync(
         this ControllerBase controller, LoginResponseDto dto, IWebHostEnvironment env)
     {
+        // A browser calling login/session-exchange while it still holds a valid onevo_session
+        // cookie (e.g. re-login without logging out first) must not be left with that old
+        // session's cookie dangling: SignInAsync only issues a fresh onevo_csrf cookie below, so
+        // an un-cleared old onevo_session cookie would keep resolving to a session whose stored
+        // csrf_token_hash can never match the new onevo_csrf value, permanently failing CSRF
+        // checks (including logout) for that browser. Signing out first guarantees a clean pair.
+        if (controller.User.Identity?.IsAuthenticated == true)
+            await controller.HttpContext.SignOutAsync("TenantScheme");
+
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, dto.User!.UserId.ToString())
@@ -72,6 +85,12 @@ internal static class TenantAuthResponseWriter
             Path = "/",
             Expires = dto.ExpiresAt
         });
+
+        var configuration = controller.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        var tenantContext = controller.HttpContext.RequestServices.GetRequiredService<ITenantContext>();
+        var rootHost = configuration["Tenancy:RootDomain"];
+        if (!string.IsNullOrEmpty(rootHost) && !string.IsNullOrEmpty(tenantContext.Slug))
+            controller.SetLastTenantHintCookie(tenantContext.Slug, rootHost, env);
     }
 
     public static void ClearInvalidTenantSessionCookies(this ControllerBase controller, IWebHostEnvironment env)

@@ -7,7 +7,8 @@ namespace ONEVO.Application.Features.Auth.Login.DTOs.Responses;
 public record CurrentUserDto(
     [property: JsonIgnore] Guid UserId,
     [property: JsonIgnore] Guid TenantId,
-    [property: JsonPropertyName("email")] string Email
+    [property: JsonPropertyName("email")] string Email,
+    Guid? EmployeeId = null
 );
 
 /// <summary>

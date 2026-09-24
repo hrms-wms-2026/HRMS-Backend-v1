@@ -223,13 +223,16 @@ public sealed class FileStorageService : IFileStorageService
         return Result<FileRecordDto>.Success(new FileRecordDto(
             fileRecord.Id,
             fileRecord.TenantId,
+            fileRecord.StorageKey,
             fileRecord.OriginalFileName,
             fileRecord.SafeFileName,
             fileRecord.ContentType,
             fileRecord.FileSizeBytes,
             fileRecord.ChecksumSha256,
             fileRecord.Status,
-            fileRecord.CreatedAt));
+            fileRecord.CreatedAt,
+            fileRecord.UploadedByUserId,
+            fileRecord.DeletedAt));
     }
 
     public async Task<Result> CancelReservationAsync(
@@ -272,6 +275,20 @@ public sealed class FileStorageService : IFileStorageService
         await _unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();
+    }
+
+    public async Task<Result<string>> GetSignedUrlAsync(
+        Guid tenantId,
+        Guid fileRecordId,
+        TimeSpan expiry,
+        CancellationToken ct = default)
+    {
+        var fileRecord = await _fileRecords.GetByIdAsync(tenantId, fileRecordId, ct);
+        if (fileRecord is null)
+            return Result<string>.Failure("file_record_not_found", 404);
+
+        var url = await _objectStorage.GetSignedUrlAsync(fileRecord.StorageKey, expiry, ct);
+        return Result<string>.Success(url);
     }
 
     public async Task<Result<FileRecordDto>> UploadAsync(
@@ -338,5 +355,84 @@ public sealed class FileStorageService : IFileStorageService
         // Step 4: complete the reservation now that the object is durably in R2.
         return await CompleteUploadAsync(
             tenantId, reservation.Id, purpose, originalFileName, contentType, checksum, ct);
+    }
+
+    public async Task<Result<FileStreamDto>> OpenReadAsync(
+        Guid tenantId,
+        Guid fileId,
+        CancellationToken ct = default)
+    {
+        var record = await _fileRecords.GetByIdAsync(tenantId, fileId, ct);
+        if (record is null)
+        {
+            return Result<FileStreamDto>.NotFound("File not found.");
+        }
+
+        try
+        {
+            var stream = await _objectStorage.GetObjectAsync(record.StorageKey, ct);
+            return Result<FileStreamDto>.Success(new FileStreamDto(stream, record.ContentType));
+        }
+        catch (ObjectStorageException ex)
+        {
+            _logger.LogError(ex, "R2 read failed for tenant {TenantId}, file {FileId}.", tenantId, fileId);
+            return Result<FileStreamDto>.Failure("file_read_failed", 502);
+        }
+    }
+
+    public async Task<Result<FileRecordDto>> GetRecordAsync(
+        Guid tenantId, Guid fileRecordId, CancellationToken ct = default)
+    {
+        var record = await _fileRecords.GetByIdAsync(tenantId, fileRecordId, ct);
+        if (record is null)
+        {
+            return Result<FileRecordDto>.NotFound("File not found.");
+        }
+
+        return Result<FileRecordDto>.Success(new FileRecordDto(
+            record.Id,
+            record.TenantId,
+            record.StorageKey,
+            record.OriginalFileName,
+            record.SafeFileName,
+            record.ContentType,
+            record.FileSizeBytes,
+            record.ChecksumSha256,
+            record.Status,
+            record.CreatedAt,
+            record.UploadedByUserId,
+            record.DeletedAt));
+    }
+
+    public async Task<Result> DeleteAsync(Guid tenantId, Guid userId, Guid fileRecordId, CancellationToken ct = default)
+    {
+        var record = await _fileRecords.GetByIdAsync(tenantId, fileRecordId, ct);
+        if (record is null)
+            return Result.Failure("file_record_not_found", 404);
+
+        if (record.DeletedAt is not null)
+            return Result.Success();
+
+        var now = _clock.UtcNow;
+
+        try
+        {
+            await _objectStorage.DeleteObjectAsync(record.StorageKey, ct);
+            record.StorageDeletedAt = now;
+        }
+        catch (ObjectStorageException ex)
+        {
+            _logger.LogError(
+                ex, "Failed to delete R2 object for tenant {TenantId}, file {FileId}. Row is still marked deleted.",
+                tenantId, fileRecordId);
+        }
+
+        record.DeletedAt = now;
+        record.UpdatedAt = now;
+
+        await _unitOfWork.SaveChangesAsync(ct);
+        await _quota.ReleaseUsedStorageAsync(tenantId, record.FileSizeBytes, ct);
+
+        return Result.Success();
     }
 }

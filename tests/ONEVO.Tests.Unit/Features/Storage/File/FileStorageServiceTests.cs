@@ -1,5 +1,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.Storage.Quota.Helpers;
+using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Infrastructure.Configuration;
 using ONEVO.Infrastructure.Services.Storage.File;
 using ONEVO.Tests.Unit.Fakes;
@@ -41,6 +44,35 @@ public class FileStorageServiceTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(1, quota.ReserveCallCount);
+    }
+
+    /// <summary>
+    /// Proves the local/dev "logo upload blocked by storage_not_entitled" failure mode
+    /// propagates unmodified through FileStorageService: when IStorageQuotaService cannot
+    /// resolve a tenant storage allowance (403 storage_not_entitled), BeginReservationAsync
+    /// must surface that exact error code and status code, not a generic quota-exceeded
+    /// response.
+    /// </summary>
+    [Fact]
+    public async Task BeginReservationAsync_NotEntitled_PropagatesStorageNotEntitledWith403()
+    {
+        var reservations = new FakeFileUploadReservationRepository();
+        var quota = new FakeStorageQuotaService
+        {
+            ReserveShouldSucceed = false,
+            ReserveFailureError = StorageQuotaErrorCodes.NotEntitled,
+            ReserveFailureStatusCode = 403
+        };
+        var service = CreateService(
+            reservations, new FakeFileRecordRepository(), quota, new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var result = await service.BeginReservationAsync(
+            Guid.NewGuid(), Guid.NewGuid(), "logo.png", "image/png", 1024, "company_logo", CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal(StorageQuotaErrorCodes.NotEntitled, result.Error);
+        Assert.Equal(0, reservations.AtomicCompletionCount);
     }
 
     [Fact]
@@ -192,6 +224,14 @@ public class FileStorageServiceTests
         Assert.Equal(0, quota.ReleaseCallCount);
     }
 
+    /// <summary>
+    /// Reproduces the "logo upload now fails with 502 file_upload_failed after storage
+    /// quota entitlement was fixed" scenario: quota reservation succeeds, but
+    /// IObjectStorageAdapter.PutObjectAsync throws (e.g. Cloudflare R2 rejects the
+    /// upload). UploadAsync must surface exactly file_upload_failed/502 — not a generic
+    /// failure — and must cancel the reservation it already made so the bytes are not
+    /// left stranded as reserved-but-never-used.
+    /// </summary>
     [Fact]
     public async Task UploadAsync_ObjectStorageFailure_ReleasesReservationAndDoesNotComplete()
     {
@@ -206,11 +246,14 @@ public class FileStorageServiceTests
         using var content = new MemoryStream(bytes);
 
         var result = await service.UploadAsync(
-            tenantId, Guid.NewGuid(), "photo.png", "image/png", "employee_avatar", content, CancellationToken.None);
+            tenantId, Guid.NewGuid(), "logo.png", "image/png", "company_logo", content, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
+        Assert.Equal("file_upload_failed", result.Error);
+        Assert.Equal(502, result.StatusCode);
         Assert.Equal(1, quota.ReleaseCallCount);
         Assert.Equal(0, quota.CommitCallCount);
+        Assert.Equal(0, reservations.AtomicCompletionCount);
     }
 
     [Fact]
@@ -246,5 +289,147 @@ public class FileStorageServiceTests
 
         Assert.DoesNotContain("secretAccessKey", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("accessKeyId", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task OpenReadAsync_FileNotFound_ReturnsNotFound()
+    {
+        var reservations = new FakeFileUploadReservationRepository();
+        var quota = new FakeStorageQuotaService();
+        var service = CreateService(
+            reservations, new FakeFileRecordRepository(), quota, new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var result = await service.OpenReadAsync(Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task OpenReadAsync_Success_ReturnsStreamAndContentType()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileRecords = new FakeFileRecordRepository();
+        var record = new FileRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            StorageKey = "tenants/logo/photo.png",
+            OriginalFileName = "photo.png",
+            SafeFileName = "photo.png",
+            ContentType = "image/png",
+            FileSizeBytes = 1024,
+            ChecksumSha256 = new string('a', 64),
+            UploadedByUserId = Guid.NewGuid(),
+            Status = FileRecordStatus.PendingScan,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        await fileRecords.AddAsync(record, CancellationToken.None);
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), fileRecords, new FakeStorageQuotaService(),
+            new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var result = await service.OpenReadAsync(tenantId, record.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("image/png", result.Value!.ContentType);
+        Assert.NotNull(result.Value!.Content);
+    }
+
+    [Fact]
+    public async Task OpenReadAsync_ObjectStorageFailure_Returns502()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileRecords = new FakeFileRecordRepository();
+        var record = new FileRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            StorageKey = "tenants/logo/photo.png",
+            OriginalFileName = "photo.png",
+            SafeFileName = "photo.png",
+            ContentType = "image/png",
+            FileSizeBytes = 1024,
+            ChecksumSha256 = new string('a', 64),
+            UploadedByUserId = Guid.NewGuid(),
+            Status = FileRecordStatus.PendingScan,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        await fileRecords.AddAsync(record, CancellationToken.None);
+        var objectStorage = new FakeObjectStorageAdapter { ShouldFailGet = true };
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), fileRecords, new FakeStorageQuotaService(),
+            objectStorage, new FakeUnitOfWork());
+
+        var result = await service.OpenReadAsync(tenantId, record.Id, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(502, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ExistingRecord_MarksDeletedAndReleasesQuota()
+    {
+        var tenantId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var fileRecords = new FakeFileRecordRepository();
+        var record = new FileRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, StorageKey = "tenants/x/task-attachments/a.png",
+            OriginalFileName = "a.png", SafeFileName = "a.png", ContentType = "image/png",
+            FileSizeBytes = 1024, ChecksumSha256 = new string('a', 64), UploadedByUserId = userId,
+            Status = FileRecordStatus.Available, CreatedAt = DateTimeOffset.UtcNow
+        };
+        await fileRecords.AddAsync(record);
+        var quota = new FakeStorageQuotaService();
+        var objectStorage = new FakeObjectStorageAdapter();
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), fileRecords, quota, objectStorage, new FakeUnitOfWork());
+
+        var result = await service.DeleteAsync(tenantId, userId, record.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, quota.ReleaseUsedCallCount);
+        Assert.Equal(1024, quota.LastReleasedUsedBytes);
+        var reloaded = await fileRecords.GetByIdAsync(tenantId, record.Id);
+        Assert.NotNull(reloaded!.DeletedAt);
+        Assert.NotNull(reloaded.StorageDeletedAt);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_UnknownRecord_ReturnsNotFound()
+    {
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), new FakeFileRecordRepository(),
+            new FakeStorageQuotaService(), new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var result = await service.DeleteAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_AlreadyDeleted_IsIdempotentSuccess()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileRecords = new FakeFileRecordRepository();
+        var record = new FileRecord
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, StorageKey = "k", OriginalFileName = "a.png",
+            SafeFileName = "a.png", ContentType = "image/png", FileSizeBytes = 100,
+            ChecksumSha256 = new string('a', 64), UploadedByUserId = Guid.NewGuid(),
+            Status = FileRecordStatus.Available, CreatedAt = DateTimeOffset.UtcNow,
+            DeletedAt = DateTimeOffset.UtcNow, StorageDeletedAt = DateTimeOffset.UtcNow
+        };
+        await fileRecords.AddAsync(record);
+        var quota = new FakeStorageQuotaService();
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(), fileRecords, quota, new FakeObjectStorageAdapter(), new FakeUnitOfWork());
+
+        var result = await service.DeleteAsync(tenantId, record.UploadedByUserId, record.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, quota.ReleaseUsedCallCount);
     }
 }

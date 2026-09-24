@@ -1,0 +1,62 @@
+namespace ONEVO.Application.Features.Monitoring.CheckIn.Queries.GetTrayAttendanceStatus;
+
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.Monitoring.CheckIn.DTOs;
+using ONEVO.Application.Features.Monitoring.CheckIn.ServiceInterfaces;
+using ONEVO.Application.Features.Monitoring.Notifications.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.RepositoryInterfaces;
+using ONEVO.Application.Features.TimeAttendance.Services;
+
+public sealed class GetTrayAttendanceStatusQueryHandler(
+    ITrayCurrentDevice device,
+    IAttendanceTodayStateService todayState,
+    IAttendanceReadRepository attendance,
+    ITenantRepository tenants,
+    ITenantContextSwitcher tenantSwitcher,
+    INotificationRepository? notifications = null)
+    : IRequestHandler<GetTrayAttendanceStatusQuery, Result<TrayAttendanceStatusDto>>
+{
+    public async Task<Result<TrayAttendanceStatusDto>> Handle(
+        GetTrayAttendanceStatusQuery request, CancellationToken ct)
+    {
+        if (!device.IsAuthenticated || device.TenantId == Guid.Empty || device.UserId == Guid.Empty)
+            return Result<TrayAttendanceStatusDto>.Failure("A valid tray device token is required.", 401);
+
+        var tenant = await tenants.GetByIdAsync(device.TenantId, ct);
+        if (tenant is null)
+            return Result<TrayAttendanceStatusDto>.Failure("Tenant not found.", 401);
+
+        await tenantSwitcher.SwitchToTenantAsync(
+            new TenantRegistryEntry(tenant.Id, tenant.Slug, tenant.Status, PlanCode: null), ct);
+
+        var contextResult = await todayState.ResolveContextAsync(device.TenantId, device.UserId, ct);
+        if (!contextResult.IsSuccess)
+            return Result<TrayAttendanceStatusDto>.Failure(
+                contextResult.Error!, contextResult.StatusCode ?? 400);
+
+        var context = contextResult.Value!;
+        var record = await attendance.GetRecordAsync(
+            context.Employee.TenantId, context.Employee.Id, context.WorkDate, ct);
+
+        var isClockedIn = record?.ActualStart is not null && record.ActualEnd is null;
+
+        var openBreak = isClockedIn
+            ? await attendance.GetAnyOpenBreakTrackedAsync(
+                context.Employee.TenantId, context.Employee.Id, ct)
+            : null;
+
+        var allowance = await new BreakAllowanceMonitor(attendance, notifications).ObserveAsync(context, ct);
+
+        return Result<TrayAttendanceStatusDto>.Success(new TrayAttendanceStatusDto(
+            IsClockedIn: isClockedIn,
+            ClockedInAtUtc: isClockedIn ? record!.ActualStart : null,
+            IsOnBreak: openBreak is not null,
+            BreakStartedAtUtc: openBreak?.BreakStart,
+            CanStartBreak: allowance.CanStartBreak,
+            BreakAllowanceMinutes: allowance.AllowanceMinutes,
+            CompletedBreakMinutes: allowance.CompletedMinutes));
+    }
+}

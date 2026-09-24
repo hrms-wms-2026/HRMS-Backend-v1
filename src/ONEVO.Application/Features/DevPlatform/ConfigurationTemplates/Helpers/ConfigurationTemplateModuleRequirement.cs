@@ -11,7 +11,7 @@ internal static class ConfigurationTemplateModuleRequirement
             [ConfigurationTemplate.TypePositionTemplate] = "core_hr",
             [ConfigurationTemplate.TypeTimeOffPolicy] = "time_off",
             [ConfigurationTemplate.TypeMonitoringPolicy] = "monitoring",
-            [ConfigurationTemplate.TypeAppAllowlist] = "configuration",
+            [ConfigurationTemplate.TypeAppAllowlist] = "monitoring",
             [ConfigurationTemplate.TypeOnboarding] = "core_hr",
             [ConfigurationTemplate.TypeDataImportMapping] = "core_hr",
         };

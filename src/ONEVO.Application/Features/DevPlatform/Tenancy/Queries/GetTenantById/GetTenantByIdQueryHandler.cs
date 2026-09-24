@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.DevPlatform.Tenancy.DTOs.Responses;
 using ONEVO.Application.Features.DevPlatform.Subscription.RepositoryInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
+using ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.DevPlatform.Tenancy.Queries.GetTenantById;
 

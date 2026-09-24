@@ -14,5 +14,6 @@ public class Session : ITenantOwnedEntity
     public DateTimeOffset ExpiresAt { get; set; }
     public bool IsRevoked { get; set; } = false;
     public string CsrfTokenHash { get; set; } = string.Empty;
+    public Guid? ActiveEmployeeId { get; set; }
     public string KeyHash { get; set; } = string.Empty;
 }

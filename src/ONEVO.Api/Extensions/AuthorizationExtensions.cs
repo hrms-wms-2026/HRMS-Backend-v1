@@ -18,6 +18,11 @@ internal static class AuthorizationExtensions
                 policy.AddAuthenticationSchemes("AdminScheme")
                       .RequireAuthenticatedUser()
                       .RequireClaim("platform_role"));
+
+            options.AddPolicy("TrayDevicePolicy", policy =>
+                policy.AddAuthenticationSchemes("TrayDeviceScheme")
+                      .RequireAuthenticatedUser()
+                      .RequireClaim("token_type", "tray_device"));
         });
 
         return services;

@@ -1,0 +1,133 @@
+using MediatR;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Application.Features.Auth.Invite.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
+using ONEVO.Application.Features.CoreHr.Employee.Helpers;
+using ONEVO.Application.Features.CoreHr.Employee.Models;
+using ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
+using ONEVO.Application.Features.CoreHr.Employee.ServiceInterfaces;
+using ONEVO.Application.Features.CoreHr.OnboardingDrafts.RepositoryInterfaces;
+using ONEVO.Domain.Features.Auth.Entities;
+
+namespace ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
+
+/// <summary>
+/// Admin-facing full detail read for one employee - Job/Personal Info and Emergency Contacts are
+/// always included once the caller passes the same employees:read + coverage check
+/// GetEmployeeQueryHandler already enforces; Payroll is included only when the caller additionally
+/// holds employees:read:sensitive (omitted, not a separate 403, so the rest of the screen still
+/// renders for a caller without it).
+/// </summary>
+public class GetEmployeeDetailQueryHandler : IRequestHandler<GetEmployeeDetailQuery, Result<EmployeeDetailResponse>>
+{
+    private const string AttendanceReadPermission = "attendance:read";
+
+    private readonly IEmployeeRepository _employeeRepository;
+    private readonly IEmployeeVisibilityScopeResolver _visibilityScopeResolver;
+    private readonly IEmployeeProfileRepository _profile;
+    private readonly IInvitationTokenRepository _invitationTokenRepository;
+    private readonly IEncryptionService _encryption;
+    private readonly ICurrentUser _currentUser;
+    private readonly IDateTimeProvider _clock;
+    private readonly IEmploymentTypeRepository _employmentTypes;
+
+    public GetEmployeeDetailQueryHandler(
+        IEmployeeRepository employeeRepository,
+        IEmployeeVisibilityScopeResolver visibilityScopeResolver,
+        IEmployeeProfileRepository profile,
+        IInvitationTokenRepository invitationTokenRepository,
+        IEncryptionService encryption,
+        ICurrentUser currentUser,
+        IDateTimeProvider clock,
+        IEmploymentTypeRepository employmentTypes)
+    {
+        _employeeRepository = employeeRepository;
+        _visibilityScopeResolver = visibilityScopeResolver;
+        _profile = profile;
+        _invitationTokenRepository = invitationTokenRepository;
+        _encryption = encryption;
+        _currentUser = currentUser;
+        _clock = clock;
+        _employmentTypes = employmentTypes;
+    }
+
+    public async Task<Result<EmployeeDetailResponse>> Handle(GetEmployeeDetailQuery request, CancellationToken ct)
+    {
+        var tenantId = _currentUser.TenantId;
+
+        var existing = await _employeeRepository.GetByIdAsync(tenantId, request.EmployeeId, ct);
+        if (existing is null)
+            return Result<EmployeeDetailResponse>.NotFound("The employee or selected organization record could not be found.");
+
+        var scope = _currentUser.HasPermission("org:manage")
+            ? EmployeeVisibilityScope.Unrestricted()
+            : await _visibilityScopeResolver.ResolveAsync(tenantId, _currentUser.UserId, ct);
+
+        var visible = await _employeeRepository.GetVisibleByIdAsync(tenantId, scope, request.EmployeeId, ct);
+        if (visible is null)
+            return Result<EmployeeDetailResponse>.Forbidden("You do not have access to manage this employee.");
+
+        var addresses = await _profile.ListAddressesAsync(tenantId, request.EmployeeId, ct);
+        var emergencyContacts = await _profile.ListEmergencyContactsAsync(tenantId, request.EmployeeId, ct);
+
+        EmployeeDetailPayroll? payroll = null;
+        if (_currentUser.HasPermission("employees:read:sensitive"))
+        {
+            var bankDetail = await _profile.GetPrimaryBankDetailAsync(tenantId, request.EmployeeId, ct);
+            var maskedAccountNumber = bankDetail is null
+                ? null
+                : BankAccountMasker.Mask(_encryption.Decrypt(bankDetail.AccountNumberEncrypted));
+            payroll = new EmployeeDetailPayroll(bankDetail is not null, bankDetail?.BankName, maskedAccountNumber, bankDetail?.AccountType);
+        }
+
+        var invitation = await _invitationTokenRepository.GetLatestByEmployeeIdAsync(tenantId, request.EmployeeId, ct);
+
+        EmployeeListAttendanceSummaryResponse? attendanceSummary = null;
+        if (_currentUser.HasPermission(AttendanceReadPermission))
+        {
+            // Deliberately NOT EmployeeVisibilityScope.Unrestricted(): ListVisibleAsync's
+            // RestrictToEmployeeIds branch is what actually applies here (visibility for this
+            // employee was already verified above via GetVisibleByIdAsync), so this scope value
+            // is never read - but if a future refactor ever drops the RestrictToEmployeeIds
+            // branch or passes a null id set by mistake, this must fail closed (nothing visible)
+            // rather than fail open (Unrestricted() would fall through to "every tenant employee").
+            var noFallbackScope = new EmployeeVisibilityScope(
+                false, null, new HashSet<Guid>(), new HashSet<Guid>(), new HashSet<Guid>());
+            var filter = new EmployeeListFilter(null, null, null, new[] { request.EmployeeId });
+            var (items, _) = await _employeeRepository.ListVisibleAsync(
+                tenantId, noFallbackScope, filter, page: 1, pageSize: 1, ct,
+                new EmployeeListAttendanceOptions(_clock.UtcNow));
+            attendanceSummary = items.FirstOrDefault()?.AttendanceSummary;
+        }
+
+        var employmentTypeCode = await _employmentTypes.GetCodeByIdAsync(existing.EmploymentTypeId, ct) ?? string.Empty;
+
+        var jobInformation = new EmployeeDetailJobInformation(
+            visible.EmployeeNumber, existing.LegalEntityId, visible.LegalEntityName, visible.DepartmentName, visible.PositionName,
+            visible.PositionId, visible.ReportingManagerName, visible.EmploymentTypeLabel, visible.Status,
+            existing.HireDate, existing.ProbationEndDate, visible.WorkModeLabel,
+            employmentTypeCode, existing.WorkModeId);
+
+        var personalInformation = new EmployeeDetailPersonalInformation(
+            existing.FirstName, existing.LastName, existing.Email, existing.Phone, existing.DateOfBirth,
+            existing.Gender, existing.NationalityId,
+            addresses.Select(a => new EmployeeDetailAddress(a.Id, a.AddressType, a.AddressJson, a.IsPrimary)).ToList());
+
+        return Result<EmployeeDetailResponse>.Success(new EmployeeDetailResponse(
+            request.EmployeeId, jobInformation, personalInformation,
+            emergencyContacts.Select(c => new EmployeeDetailEmergencyContact(c.Id, c.Name, c.Relationship, c.Phone, c.Email, c.IsPrimary)).ToList(),
+            payroll,
+            InvitationStatusOf(invitation, _clock.UtcNow), invitation?.ExpiresAt,
+            attendanceSummary));
+    }
+
+    private static string? InvitationStatusOf(InvitationToken? invitation, DateTimeOffset now)
+    {
+        if (invitation is null) return null;
+        if (invitation.UsedAt is not null) return "accepted";
+        if (invitation.RevokedAt is not null) return "revoked";
+        if (invitation.ExpiresAt <= now) return "expired";
+        return "pending";
+    }
+}

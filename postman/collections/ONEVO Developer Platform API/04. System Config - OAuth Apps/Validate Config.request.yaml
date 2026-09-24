@@ -1,8 +1,0 @@
-$kind: http-request
-name: Validate OAuth Config
-method: POST
-url: '{{admin_base_url}}/admin/v1/system-config/oauth-apps/google/validate-config'
-order: 7000
-headers:
-  - key: X-CSRF-Token
-    value: '{{admin_csrf_token}}'

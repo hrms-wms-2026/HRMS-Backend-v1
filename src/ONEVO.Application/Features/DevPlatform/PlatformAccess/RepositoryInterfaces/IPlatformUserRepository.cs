@@ -5,6 +5,8 @@ namespace ONEVO.Application.Features.DevPlatform.PlatformAccess.RepositoryInterf
 public interface IPlatformUserRepository
 {
     Task<IReadOnlyList<PlatformUser>> ListUsersAsync(CancellationToken ct = default);
+    Task<IReadOnlyDictionary<Guid, string>> GetFirstRoleNamesByUserIdsAsync(
+        IEnumerable<Guid> userIds, CancellationToken ct = default);
     Task<PlatformUser?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<PlatformUser?> GetByEmailAsync(string email, CancellationToken ct = default);
     Task<PlatformUser?> GetByGoogleSubAsync(string googleSub, CancellationToken ct = default);

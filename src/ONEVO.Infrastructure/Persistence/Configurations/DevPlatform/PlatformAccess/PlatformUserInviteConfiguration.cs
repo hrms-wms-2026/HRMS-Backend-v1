@@ -22,5 +22,10 @@ public class PlatformUserInviteConfiguration : IEntityTypeConfiguration<Platform
             .WithMany()
             .HasForeignKey(i => i.InvitedById)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<PlatformUser>()
+            .WithMany()
+            .HasForeignKey(i => i.PlatformUserId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

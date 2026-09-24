@@ -1,0 +1,79 @@
+using System.Text.Json;
+using ONEVO.Application.Features.Leave.Request.DTOs.Responses;
+using ONEVO.Application.Features.Leave.Request.Services;
+using ONEVO.Domain.Features.Leave.Request.Entities;
+
+namespace ONEVO.Application.Features.Leave.Request.Mappers;
+
+public static class LeaveRequestMapper
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    public static LeaveRequestBalanceImpactResponse ToBalanceImpact(
+        decimal currentRemainingHours,
+        decimal currentPendingHours,
+        decimal paidHours) =>
+        new(
+            CurrentRemainingHours: currentRemainingHours,
+            PendingAfterSubmitHours: currentPendingHours + paidHours,
+            RemainingAfterSubmitHours: currentRemainingHours - paidHours);
+
+    public static LeaveRequestListItemResponse ToListItem(LeaveRequest request, string leaveTypeName, string leaveTypeCode) =>
+        new(
+            request.Id,
+            request.EmployeeId,
+            request.LeaveTypeId,
+            leaveTypeName,
+            leaveTypeCode,
+            request.StartAt,
+            request.EndAt,
+            request.TotalHours,
+            request.PaidHours,
+            request.UnpaidHours,
+            request.Status,
+            request.NoticePeriodMissed,
+            request.CreatedAt,
+            request.UpdatedAt);
+
+    public static string ToConflictSnapshotJson(
+        IReadOnlyList<LeaveRequestWarningResponse> warnings,
+        IReadOnlyList<LeaveRequestCalendarConflict> calendarConflicts,
+        decimal? teamAbsencePercent) =>
+        JsonSerializer.Serialize(
+            new LeaveRequestConflictSnapshotResponse(
+                warnings,
+                calendarConflicts.Select(c => new LeaveRequestCalendarConflictResponse(
+                    c.Source, c.Title, c.StartsAt, c.EndsAt)).ToList(),
+                teamAbsencePercent),
+            JsonOptions);
+
+    public static LeaveRequestResponse ToResponse(
+        LeaveRequest request,
+        string leaveTypeName,
+        string leaveTypeCode,
+        IReadOnlyList<LeaveRequestApprover> approvers,
+        LeaveRequestBalanceImpactResponse balanceImpact,
+        LeaveRequestConflictSnapshotResponse snapshot) =>
+        new(
+            request.Id,
+            request.EmployeeId,
+            request.LeaveTypeId,
+            leaveTypeName,
+            leaveTypeCode,
+            request.StartAt,
+            request.EndAt,
+            request.TotalHours,
+            request.PaidHours,
+            request.UnpaidHours,
+            request.Status,
+            request.NoticePeriodMissed,
+            request.SubmittedOnBehalfOfBy,
+            balanceImpact,
+            approvers.Select(a => new LeaveRequestApproverResponse(
+                a.ApproverEmployeeId, a.SequenceOrder, a.Status, a.DelegatedFromApproverId)).ToList(),
+            snapshot,
+            request.CreatedAt);
+}

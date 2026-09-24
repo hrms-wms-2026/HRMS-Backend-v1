@@ -59,4 +59,22 @@ public class CurrentUserService : ICurrentUser
             return DateTimeOffset.TryParse(value, out var expiresAt) ? expiresAt : null;
         }
     }
+
+    public Guid? SessionId
+    {
+        get
+        {
+            var value = _httpContextAccessor.HttpContext?.User?.FindFirstValue("session_id");
+            return Guid.TryParse(value, out var id) ? id : null;
+        }
+    }
+
+    public Guid? LegalEntityId
+    {
+        get
+        {
+            var value = _httpContextAccessor.HttpContext?.User?.FindFirstValue("legal_entity_id");
+            return Guid.TryParse(value, out var id) ? id : null;
+        }
+    }
 }

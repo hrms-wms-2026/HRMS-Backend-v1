@@ -5,6 +5,8 @@ using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.UpdatePlatf
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.UpdatePlatformUserRoles;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.RevokePlatformUserSession;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.RevokePlatformUserSessions;
+using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.InvitePlatformManager;
+using ONEVO.Application.Features.DevPlatform.PlatformAccess.Commands.RevokePlatformUserInvite;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Queries.ListPlatformUsers;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Queries.GetPlatformUserDetail;
 using ONEVO.Application.Features.DevPlatform.PlatformAccess.Queries.ListPlatformRoles;
@@ -85,6 +87,23 @@ public class PlatformAccessController : ControllerBase
     {
         await _mediator.Send(new UpdatePlatformUserRolesCommand(platformUserId, request.RoleIds), ct);
         return NoContent();
+    }
+
+    [HttpPost("users/invite")]
+    [RequirePlatformPermission(PlatformPermissionCatalog.AccountsManage)]
+    public async Task<IActionResult> InviteManager([FromBody] InvitePlatformManagerRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(
+            new InvitePlatformManagerCommand(request.Email, request.FullName, request.RoleIds), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    [HttpPost("users/{platformUserId}/revoke-invite")]
+    [RequirePlatformPermission(PlatformPermissionCatalog.AccountsManage)]
+    public async Task<IActionResult> RevokeInvite(Guid platformUserId, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new RevokePlatformUserInviteCommand(platformUserId), ct);
+        return result.IsSuccess ? NoContent() : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
     [HttpGet("users/{platformUserId}/sessions")]

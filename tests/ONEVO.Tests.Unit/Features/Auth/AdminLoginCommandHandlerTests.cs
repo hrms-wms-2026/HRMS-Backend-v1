@@ -57,6 +57,41 @@ public sealed class AdminLoginCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ValidDatabaseCredential_ReturnsResolvedPermissions()
+    {
+        var setup = SetupActiveUserAndCredential();
+        _passwordHasher.Setup(value => value.Verify("correct", "stored-hash")).Returns(true);
+
+        var result = await Handler().Handle(
+            new AdminLoginCommand(setup.User.Email, "correct"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Permissions.Should().BeEquivalentTo(
+            new[] { "platform.accounts.read", "platform.accounts.manage" });
+        result.Value!.ToSessionResponse().Permissions.Should().BeEquivalentTo(
+            new[] { "platform.accounts.read", "platform.accounts.manage" });
+    }
+
+    [Fact]
+    public async Task Handle_MfaEnrolledUser_SessionResponseHasEmptyPermissions()
+    {
+        var setup = SetupActiveUserAndCredential();
+        setup.User.MfaStatus = PlatformUser.MfaEnrolled;
+        _passwordHasher.Setup(value => value.Verify("correct", "stored-hash")).Returns(true);
+        _mfaChallenges
+            .Setup(value => value.CreateAsync(setup.User.Id, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("raw-mfa-challenge");
+
+        var result = await Handler().Handle(
+            new AdminLoginCommand(setup.User.Email, "correct"),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ToSessionResponse().Permissions.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Handle_WrongPassword_IncrementsFailureWithoutExposingPassword()
     {
         var setup = SetupActiveUserAndCredential();
@@ -191,7 +226,8 @@ public sealed class AdminLoginCommandHandlerTests
                 UserId = user.Id,
                 Email = user.Email,
                 Status = user.Status,
-                RoleNames = { "Platform Super Admin" }
+                RoleNames = { "Platform Super Admin" },
+                PermissionCodes = { "platform.accounts.read", "platform.accounts.manage" }
             });
         return user;
     }

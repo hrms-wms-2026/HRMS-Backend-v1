@@ -1,0 +1,55 @@
+using Microsoft.EntityFrameworkCore;
+using ONEVO.Application.Features.Monitoring.CheckIn.RepositoryInterfaces;
+using ONEVO.Domain.Features.Monitoring.CheckIn.Entities;
+
+namespace ONEVO.Infrastructure.Persistence.Repositories.Monitoring.CheckIn;
+
+public class EfCheckInRepository : ICheckInRepository
+{
+    private readonly ApplicationDbContext _db;
+
+    public EfCheckInRepository(ApplicationDbContext db) => _db = db;
+
+    public async Task AddCheckInAsync(EmployeeCheckIn checkIn, CancellationToken ct)
+        => await _db.EmployeeCheckIns.AddAsync(checkIn, ct);
+
+    public async Task<EmployeeCheckIn?> FindCheckInAsync(Guid checkInId, Guid tenantId, CancellationToken ct)
+        => await _db.EmployeeCheckIns
+            .FirstOrDefaultAsync(c => c.Id == checkInId && c.TenantId == tenantId, ct);
+
+    public async Task AddFaceScanAsync(MonitoringFaceScan faceScan, CancellationToken ct)
+        => await _db.MonitoringFaceScans.AddAsync(faceScan, ct);
+
+    public async Task UpdateFaceScanStatusAsync(Guid faceScanId, string status, CancellationToken ct)
+    {
+        await _db.MonitoringFaceScans
+            .Where(f => f.Id == faceScanId)
+            .ExecuteUpdateAsync(s => s.SetProperty(f => f.Status, status), ct);
+    }
+
+    public async Task<IReadOnlyList<EmployeeCheckIn>> ListForUserInRangeAsync(
+        Guid tenantId, Guid userId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+        => await _db.EmployeeCheckIns
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId
+                && c.UserId == userId
+                && c.CheckedInAt >= from
+                && c.CheckedInAt < to)
+            .OrderBy(c => c.CheckedInAt)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<EmployeeCheckIn>> ListForUsersInRangeAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> userIds, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        if (userIds.Count == 0) return Array.Empty<EmployeeCheckIn>();
+
+        return await _db.EmployeeCheckIns
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId
+                && userIds.Contains(c.UserId)
+                && c.CheckedInAt >= from
+                && c.CheckedInAt < to)
+            .OrderBy(c => c.CheckedInAt)
+            .ToListAsync(ct);
+    }
+}

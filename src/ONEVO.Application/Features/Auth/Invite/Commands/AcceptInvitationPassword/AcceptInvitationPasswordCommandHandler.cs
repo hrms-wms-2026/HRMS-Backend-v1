@@ -71,6 +71,9 @@ public sealed class AcceptInvitationPasswordCommandHandler
         if (inv.TenantId != _tenantContext.TenantId)
             return Result<LoginResponseDto>.NotFound("Invitation not found.");
 
+        if (inv.Purpose == InvitationToken.EmployeeOnboardingPurpose)
+            return Result<LoginResponseDto>.Failure("Employee onboarding invitations require the employee acceptance flow.", 400);
+
         var now = _clock.UtcNow;
         var check = CheckInvitationUsable(inv, now);
         if (check is not null)

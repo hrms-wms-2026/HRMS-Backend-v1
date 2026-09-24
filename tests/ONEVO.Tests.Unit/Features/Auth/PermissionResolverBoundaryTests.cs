@@ -45,7 +45,7 @@ public sealed class PermissionResolverBoundaryTests
             .Setup(p => p.UserHasPermissionCodeAsync(UserId, "*", Now, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         result.Should().Equal("*");
         _entitlements.Verify(
@@ -62,7 +62,7 @@ public sealed class PermissionResolverBoundaryTests
             .ReturnsAsync(new List<string> { "employees" });
 
         _permissions
-            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<CancellationToken>()))
+            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(
             [
                 new PermissionCodeWithModule("payroll:read", "payroll"),
@@ -73,7 +73,7 @@ public sealed class PermissionResolverBoundaryTests
             .Setup(o => o.ListForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         result.Should().Contain("employees:read");
         result.Should().NotContain("payroll:read");
@@ -90,7 +90,7 @@ public sealed class PermissionResolverBoundaryTests
             .ReturnsAsync(new List<string> { "employees" });
 
         _permissions
-            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<CancellationToken>()))
+            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
         _overrides
@@ -110,7 +110,7 @@ public sealed class PermissionResolverBoundaryTests
                 }
             ]);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         result.Should().NotContain("payroll:write");
     }
@@ -124,14 +124,14 @@ public sealed class PermissionResolverBoundaryTests
             .ReturnsAsync(new List<string> { "employees" });
 
         _permissions
-            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<CancellationToken>()))
+            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
         _overrides
             .Setup(o => o.ListForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([new UserPermissionOverrideGrant("employees:read-own", "revoke")]);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         // employees:read-own is a module auto-grant — revoke overrides cannot remove it
         result.Should().Contain("employees:read-own");
@@ -146,14 +146,14 @@ public sealed class PermissionResolverBoundaryTests
             .ReturnsAsync([]);
 
         _permissions
-            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<CancellationToken>()))
+            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([new PermissionCodeWithModule("employees:read", "employees")]);
 
         _overrides
             .Setup(o => o.ListForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         result.Should().BeEmpty();
     }

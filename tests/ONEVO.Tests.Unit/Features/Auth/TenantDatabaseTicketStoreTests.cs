@@ -11,7 +11,9 @@ using ONEVO.Application.Features.Auth.Login.RepositoryInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
 using ONEVO.Application.Features.DevPlatform.Tenancy.RepositoryInterfaces;
 using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.CoreHr.Entities;
 using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using CoreHrEmployeeRepository = ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces.IEmployeeRepository;
 using ONEVO.Infrastructure.Identity.Sessions;
 using Xunit;
 
@@ -32,6 +34,7 @@ public class TenantDatabaseTicketStoreTests
     private readonly IDateTimeProvider _clock = Substitute.For<IDateTimeProvider>();
     private readonly ITenantRepository _tenants = Substitute.For<ITenantRepository>();
     private readonly ITenantContextSwitcher _tenantSwitcher = Substitute.For<ITenantContextSwitcher>();
+    private readonly CoreHrEmployeeRepository _employees = Substitute.For<CoreHrEmployeeRepository>();
 
     public TenantDatabaseTicketStoreTests()
     {
@@ -44,6 +47,10 @@ public class TenantDatabaseTicketStoreTests
         _serviceProvider.GetService(typeof(IUnitOfWork)).Returns(_uow);
         _serviceProvider.GetService(typeof(ITenantRepository)).Returns(_tenants);
         _serviceProvider.GetService(typeof(ITenantContextSwitcher)).Returns(_tenantSwitcher);
+        _serviceProvider.GetService(typeof(CoreHrEmployeeRepository)).Returns(_employees);
+
+        _employees.GetDefaultForUserAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns((Employee?)null);
 
         _clock.UtcNow.Returns(FixedNow);
     }
@@ -88,6 +95,7 @@ public class TenantDatabaseTicketStoreTests
         Assert.Equal(tenantId, captured.TenantId);
         Assert.Equal(csrfHash, captured.CsrfTokenHash);
         Assert.NotEmpty(captured.KeyHash);
+        Assert.Null(captured.ActiveEmployeeId);
 
         await _uow.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
@@ -202,7 +210,7 @@ public class TenantDatabaseTicketStoreTests
             { Id = userId, Email = "a@b.com", IsActive = true };
         _users.GetByIdAsync(userId, Arg.Any<CancellationToken>()).Returns(user);
 
-        _permissions.ResolveAsync(userId, tenantId, Arg.Any<CancellationToken>())
+        _permissions.ResolveAsync(userId, tenantId, Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
                     .Returns(["perm.read"]);
 
         var sut = CreateSut();
@@ -214,6 +222,7 @@ public class TenantDatabaseTicketStoreTests
         Assert.Equal("perm.read", ticket.Principal.FindFirstValue("permission"));
         Assert.Equal(tenantId.ToString(), ticket.Properties.Items[TenantDatabaseTicketStore.TenantIdItemKey]);
         Assert.Equal("csrf-hash", ticket.Properties.Items[TenantDatabaseTicketStore.CsrfTokenHashItemKey]);
+        Assert.Equal(session.Id.ToString(), ticket.Principal.FindFirstValue("session_id"));
 
         await _tenantSwitcher.Received(1).SwitchToTenantAsync(
             Arg.Is<TenantRegistryEntry>(t => t.TenantId == tenantId), Arg.Any<CancellationToken>());
@@ -223,6 +232,41 @@ public class TenantDatabaseTicketStoreTests
             await _tenantSwitcher.SwitchToTenantAsync(Arg.Any<TenantRegistryEntry>(), Arg.Any<CancellationToken>());
             await _users.GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
         });
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WithActiveEmployeeId_PassesLegalEntityToResolver()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var legalEntityId = Guid.NewGuid();
+        var session = new Session
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            TenantId = tenantId,
+            IsRevoked = false,
+            StartedAt = FixedNow.AddMinutes(-10),
+            ExpiresAt = FixedNow.AddMinutes(10),
+            CsrfTokenHash = "csrf-hash",
+            ActiveEmployeeId = employeeId
+        };
+
+        _sessions.GetByKeyHashForTenantResolutionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                 .Returns(session);
+        _tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(ActiveTenant(tenantId));
+        _users.GetByIdAsync(userId, Arg.Any<CancellationToken>()).Returns(
+            new ONEVO.Domain.Features.InfrastructureModule.Entities.User { Id = userId, Email = "a@b.com", IsActive = true });
+        _employees.GetByIdAsync(tenantId, employeeId, Arg.Any<CancellationToken>()).Returns(
+            new Employee { Id = employeeId, TenantId = tenantId, UserId = userId, LegalEntityId = legalEntityId });
+        _permissions.ResolveAsync(userId, tenantId, legalEntityId, Arg.Any<CancellationToken>())
+                    .Returns(["employees:read"]);
+
+        var ticket = await CreateSut().RetrieveAsync("some-raw-key", null, CancellationToken.None);
+
+        Assert.NotNull(ticket);
+        await _permissions.Received(1).ResolveAsync(userId, tenantId, legalEntityId, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -262,7 +306,7 @@ public class TenantDatabaseTicketStoreTests
 
         Assert.Null(ticket);
         await _permissions.DidNotReceiveWithAnyArgs()
-            .ResolveAsync(default, default, default);
+            .ResolveAsync(default, default, default, default);
     }
 
     [Fact]

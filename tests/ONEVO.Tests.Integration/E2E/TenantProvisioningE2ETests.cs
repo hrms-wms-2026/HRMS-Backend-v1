@@ -10,7 +10,6 @@ using ONEVO.Domain.Features.InfrastructureModule.Entities;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Tests.Integration.Support;
 using ONEVO.Tests.Integration.Tenancy;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace ONEVO.Tests.Integration.E2E;
@@ -39,7 +38,6 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
 
     private readonly CapturingEmailService _email = new();
 
-    private PostgreSqlContainer? _postgres;
     private IntegrationTestEnvironmentScope _environmentScope = null!;
     private E2ETestFactory _factory = null!;
     private HttpClient _client = null!;
@@ -51,17 +49,12 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            _postgres = new PostgreSqlBuilder()
-                .WithImage("postgres:16-alpine")
-                .WithDatabase("onevo_e2e_test")
-                .WithUsername("test")
-                .WithPassword("test")
-                .Build();
-            await _postgres.StartAsync();
-            connectionString = _postgres.GetConnectionString();
+            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
         }
-
-        await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        else
+        {
+            await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        }
         _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
 
         _factory = new E2ETestFactory(connectionString, _email);
@@ -82,9 +75,44 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
     {
         _client.Dispose();
         _factory.Dispose();
-        if (_postgres is not null)
-            await _postgres.DisposeAsync();
         await _environmentScope.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Seeded_starter_plan_includes_exactly_the_canonical_phase1_product_modules()
+    {
+        // Regression guard: see PHASE1_SUBSCRIPTION_MODULE_SEED_RECONCILIATION_REPORT.md.
+        // included_modules_json for this exact plan (SeededPlanId) must equal exactly the
+        // canonical Phase 1 HR / Workforce Intelligence / WorkSync product package module
+        // keys - never platform capability keys ("auth"/"configuration"/"roles"/
+        // "notifications") and never the old mixed/aliased keys ("org"/"monitoring"/
+        // "workforce"/"verification"/"exceptions"/"analytics"/"work_management"/"chat"/
+        // "chat_ai"/"integrations"/"workflow_engine"). roles:read/roles:manage still reach
+        // the tenant Owner - not via this list, but via DefaultRoleSeeder's unconditional
+        // platform-baseline permission grant (see DefaultRoleSeederTests). org:read/
+        // org:manage reach the Owner because "org_structure" is a genuine product module
+        // in this list.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var plan = await db.Set<ONEVO.Domain.Features.SharedPlatform.Entities.SubscriptionPlan>()
+            .SingleAsync(p => p.Id == SeededPlanId);
+
+        var modules = plan.GetIncludedModules();
+
+        modules.Should().BeEquivalentTo(
+        [
+            "org_structure", "core_hr", "leave", "calendar", "time_attendance",
+            "activity_monitoring", "discrepancy_engine", "identity_verification",
+            "exception_engine", "productivity_analytics", "desktop_agent_gateway",
+            "worksync_foundation", "projects", "objectives_milestones", "tasks", "boards",
+            "planning_sprints"
+        ]);
+
+        modules.Should().NotContain(["auth", "configuration", "roles", "notifications"]);
+        modules.Should().NotContain([
+            "org", "monitoring", "workforce", "verification", "exceptions", "analytics",
+            "work_management", "chat", "chat_ai", "integrations", "workflow_engine"
+        ]);
     }
 
     [Fact]
@@ -184,6 +212,14 @@ public class TenantProvisioningE2ETests : IAsyncLifetime
         meBody.GetProperty("authenticated").GetBoolean().Should().BeTrue();
         meBody.GetProperty("user").TryGetProperty("tenant_id", out _).Should().BeFalse();
         meBody.GetProperty("user").TryGetProperty("user_id", out _).Should().BeFalse();
+
+        // active_modules must reflect the tenant's canonical Phase 1 product modules and
+        // must never expose platform capability keys - see
+        // PHASE1_SUBSCRIPTION_MODULE_SEED_RECONCILIATION_REPORT.md.
+        var activeModules = meBody.GetProperty("active_modules").EnumerateArray()
+            .Select(m => m.GetString()).ToList();
+        activeModules.Should().Contain(["org_structure", "core_hr", "leave", "calendar"]);
+        activeModules.Should().NotContain(["auth", "configuration", "roles", "notifications"]);
 
         var removedRefresh = await SendAsync(HttpMethod.Post, TenantHost, "/api/v1/auth/refresh",
             body: null,

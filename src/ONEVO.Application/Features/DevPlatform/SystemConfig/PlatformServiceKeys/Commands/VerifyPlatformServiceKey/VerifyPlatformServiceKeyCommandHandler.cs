@@ -61,7 +61,10 @@ public sealed class VerifyPlatformServiceKeyCommandHandler
         {
             Success = outcome.Success,
             CheckedAt = outcome.CheckedAt,
-            Message = outcome.Message
+            Message = outcome.Message,
+            Identity = outcome.Identity,
+            Region = outcome.Region,
+            Service = outcome.Service
         });
     }
 }

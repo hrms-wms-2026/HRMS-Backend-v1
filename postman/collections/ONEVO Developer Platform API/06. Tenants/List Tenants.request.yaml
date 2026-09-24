@@ -1,5 +1,0 @@
-$kind: http-request
-name: List Tenants
-method: GET
-url: '{{admin_base_url}}/admin/v1/tenants'
-order: 3000

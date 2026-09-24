@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using ONEVO.Api.Contracts.Auth;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.Queries.GetCurrentSession;
@@ -18,17 +19,20 @@ public class AuthSessionController : ControllerBase
     private readonly IWebHostEnvironment _env;
     private readonly ITenantContext _tenantContext;
     private readonly ITenantSessionExchangeService _tenantSessionExchange;
+    private readonly IConfiguration _configuration;
 
     public AuthSessionController(
         IMediator mediator,
         IWebHostEnvironment env,
         ITenantContext tenantContext,
-        ITenantSessionExchangeService tenantSessionExchange)
+        ITenantSessionExchangeService tenantSessionExchange,
+        IConfiguration configuration)
     {
         _mediator = mediator;
         _env = env;
         _tenantContext = tenantContext;
         _tenantSessionExchange = tenantSessionExchange;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -36,8 +40,10 @@ public class AuthSessionController : ControllerBase
     /// creates the real, host-scoped tenant session. Tenant-host-only: the tenant is resolved from
     /// the request host by HostTenantResolutionMiddleware, never from the request body/headers.
     /// </summary>
-    [HttpPost("session-exchange")]
+        [HttpPost("session-exchange")]
     [AllowAnonymous]
+    [ONEVO.Api.Middleware.AllowWithoutActiveTray]
+
     public async Task<IActionResult> SessionExchange([FromBody] TenantSessionExchangeRequest request, CancellationToken ct)
     {
         if (_tenantContext.ContextMode != TenantContextMode.Tenant)
@@ -53,20 +59,24 @@ public class AuthSessionController : ControllerBase
     }
 
     /// <summary>Return safe metadata for the current tenant session.</summary>
-    [HttpGet("me")]
+        [HttpGet("me")]
     [Authorize(Policy = "TenantPolicy")]
+    [ONEVO.Api.Middleware.AllowWithoutActiveTray]
+
     public async Task<IActionResult> Me(CancellationToken ct)
     {
         var result = await _mediator.Send(new GetCurrentSessionQuery(), ct);
         if (!result.IsSuccess)
             return Problem(result.Error, statusCode: result.StatusCode ?? 401);
 
-        return Ok(result.Value);
+        return Ok(result.Value!.ToViewModel());
     }
 
     /// <summary>Logout - revokes the server-side session.</summary>
-    [HttpPost("logout")]
+        [HttpPost("logout")]
     [Authorize(Policy = "TenantPolicy")]
+    [ONEVO.Api.Middleware.AllowWithoutActiveTray]
+
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
         await HttpContext.SignOutAsync("TenantScheme");
@@ -74,6 +84,9 @@ public class AuthSessionController : ControllerBase
         this.DeleteTenantCookie("onevo_mfa", httpOnly: true, _env, path: "/api/v1/auth/mfa/verify");
         this.DeleteTenantCookie("onevo_legal_pending", httpOnly: true, _env, path: "/api/v1/legal/acceptances/complete-login");
         this.DeleteTenantCookie("onevo_legal_csrf", httpOnly: false, _env);
+        var rootDomain = _configuration["Tenancy:RootDomain"];
+        if (!string.IsNullOrEmpty(rootDomain))
+            this.ClearLastTenantHintCookie(rootDomain, _env);
         return NoContent();
     }
 }

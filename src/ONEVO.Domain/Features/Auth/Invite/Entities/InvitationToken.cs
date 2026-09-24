@@ -9,11 +9,18 @@ namespace ONEVO.Domain.Features.Auth.Entities;
 /// </summary>
 public class InvitationToken : ITenantOwnedEntity
 {
+    public const string EmployeeOnboardingPurpose = "employee_onboarding";
+
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid UserId { get; set; }
     public Guid? RoleId { get; set; }
     public Guid? PositionId { get; set; }
+    public string Purpose { get; set; } = "general";
+    public Guid? LegalEntityId { get; set; }
+    public Guid? EmployeeId { get; set; }
+    public Guid? PositionAssignmentId { get; set; }
+    public Guid? OnboardingDraftId { get; set; }
 
     public string InvitedEmail { get; set; } = string.Empty;
     public string InvitedFullName { get; set; } = string.Empty;

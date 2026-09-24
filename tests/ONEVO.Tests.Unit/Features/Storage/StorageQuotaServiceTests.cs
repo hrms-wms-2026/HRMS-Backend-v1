@@ -97,6 +97,26 @@ public class StorageQuotaServiceTests
         Assert.Equal("platform_default", result.Value!.Source);
     }
 
+    /// <summary>
+    /// Reproduces the local/dev "logo upload blocked by storage_not_entitled" bug: an active
+    /// subscription whose selected modules exist in the catalog but every one has an empty/
+    /// placeholder storage_reference (the real seeded state of module_catalog today - see
+    /// PHASE1_SUBSCRIPTION_MODULE_SEED_RECONCILIATION_REPORT.md), with no platform default
+    /// configured. This must deny, never silently grant storage.
+    /// </summary>
+    [Fact]
+    public async Task Limit_Denied_WhenSubscriptionModulesContributeZeroAndNoDefaultConfigured()
+    {
+        GiveTenantActiveSubscription(TenantA);
+        _catalog.Items[0].IsStorageConsuming = false;
+
+        var result = await CreateService(defaultLimitGb: null).GetTenantStorageLimitAsync(TenantA);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Equal(StorageQuotaErrorCodes.NotEntitled, result.Error);
+    }
+
     [Fact]
     public async Task Limit_Denied_WhenNothingResolves()
     {
@@ -319,6 +339,48 @@ public class StorageQuotaServiceTests
         Assert.Equal(403, result.StatusCode);
     }
 
+    // ---- Used storage release ----
+
+    [Fact]
+    public async Task ReleaseUsedStorageAsync_DecrementsUsedBytes()
+    {
+        var tenantId = Guid.NewGuid();
+        _stats.Rows[tenantId] = new TenantStorageStats { TenantId = tenantId, UsedR2Bytes = 1000 };
+
+        var result = await CreateService().ReleaseUsedStorageAsync(tenantId, 500, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(500, _stats.Rows[tenantId].UsedR2Bytes);
+    }
+
+    [Fact]
+    public async Task ReleaseUsedStorageAsync_FloorsAtZero()
+    {
+        var tenantId = Guid.NewGuid();
+        _stats.Rows[tenantId] = new TenantStorageStats { TenantId = tenantId, UsedR2Bytes = 100 };
+
+        var result = await CreateService().ReleaseUsedStorageAsync(tenantId, 500, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, _stats.Rows[tenantId].UsedR2Bytes);
+    }
+
+    [Fact]
+    public async Task ReleaseUsedStorageAsync_EmptyTenantId_Fails()
+    {
+        var result = await CreateService().ReleaseUsedStorageAsync(Guid.Empty, 500, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task ReleaseUsedStorageAsync_NonPositiveBytes_SucceedsAsNoOp()
+    {
+        var result = await CreateService().ReleaseUsedStorageAsync(Guid.NewGuid(), 0, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
     // ---- Fakes ----
 
     private sealed class FakeTenantSubscriptionRepository : ITenantSubscriptionRepository
@@ -416,6 +478,17 @@ public class StorageQuotaServiceTests
             {
                 row.ReservedR2Bytes = Math.Max(0, row.ReservedR2Bytes - bytes);
                 row.UsedR2Bytes += bytes;
+                row.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task ReleaseUsedBytesAsync(Guid tenantId, long bytes, CancellationToken ct = default)
+        {
+            if (Rows.TryGetValue(tenantId, out var row))
+            {
+                row.UsedR2Bytes = Math.Max(0, row.UsedR2Bytes - bytes);
                 row.UpdatedAt = DateTimeOffset.UtcNow;
             }
 

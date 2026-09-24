@@ -86,11 +86,17 @@ public class PermissionSeeder : IHostedService
         Perm("employees:read", "View all employees in scope.", "core_hr"),
         Perm("employees:read-team", "View direct reports only.", "core_hr"),
         Perm("employees:write", "Create, update employees.", "core_hr"),
+        Perm("employees:offboard", "Start, cancel, or complete an employee's offboarding.", "core_hr"),
+        Perm("employees:read:sensitive", "View sensitive employee data (bank details) on the employee detail screen.", "core_hr"),
+        Perm("invitations:manage", "Resend or revoke employee onboarding invitations.", "core_hr"),
         Perm("employees:delete", "Delete employee records.", "core_hr"),
 
         // Organization
-        Perm("org:read", "View org structure, departments, hierarchy.", "org"),
-        Perm("org:manage", "Create and edit org structure, departments.", "org"),
+        Perm("org:read", "View org structure, departments, hierarchy.", "org_structure"),
+        Perm("org:manage", "Create and edit org structure, departments.", "org_structure"),
+        Perm("legal_entity:create", "Create a legal entity (company) inside the tenant.", "org_structure"),
+        Perm("legal_entity:update", "Edit a legal entity's general settings.", "org_structure"),
+        Perm("legal_entity:delete", "Deactivate (soft-delete) a legal entity.", "org_structure"),
 
         // Leave (Legacy compatibility alias - to be migrated to time_off. Not used for Module Catalog ownership)
         Perm("leave:read", "View leave records for all employees in scope.", "leave"),
@@ -109,7 +115,8 @@ public class PermissionSeeder : IHostedService
         Perm("calendar:read", "View company and team calendars.", "calendar"),
 
         // Monitoring
-        Perm("monitoring:read", "View monitoring data.", "monitoring"),
+        Perm("monitoring:read", "View monitoring data.", "activity_monitoring"),
+        Perm("activity:read:self", "View your own activity timeline.", "activity_monitoring"),
 
         // Attendance
         Perm("attendance:read", "View attendance records for all employees in scope.", "core_hr"),
@@ -155,7 +162,6 @@ public class PermissionSeeder : IHostedService
         Perm("settings:billing", "Manage subscription, plan, and payment methods.", "configuration"),
         Perm("settings:branding", "Manage company logo, colors, and custom domain.", "configuration"),
         Perm("settings:integrations", "Connect or disconnect tenant-wide app integrations.", "configuration"),
-        Perm("settings:notifications", "Manage notification templates and delivery channels.", "configuration"),
         Perm("settings:alerts", "Configure alert thresholds and escalation rules.", "configuration"),
         Perm("settings:system", "Manage system-level settings â€” audit config, data retention policies.", "configuration"),
         Perm("settings:device", "View biometric device connection status.", "configuration"),
@@ -184,7 +190,7 @@ public class PermissionSeeder : IHostedService
         Perm("analytics:write", "Create and save custom analytics views.", "analytics"),
 
         // Monitoring
-        Perm("monitoring:configure", "Enable/disable monitoring features, set employee overrides.", "monitoring"),
+        Perm("monitoring:configure", "Enable/disable monitoring features, set employee overrides.", "activity_monitoring"),
 
         // Exceptions
         Perm("exceptions:view", "View exception alerts.", "exceptions"),
@@ -201,10 +207,10 @@ public class PermissionSeeder : IHostedService
         Perm("workforce:manage", "Manage workforce intelligence settings.", "workforce"),
 
         // Agent Gateway
-        Perm("agent:command", "Send commands to agents.", "monitoring"),
-        Perm("agent:manage", "Manage agent configurations.", "monitoring"),
-        Perm("agent:register", "Register new agents.", "monitoring"),
-        Perm("agent:view-health", "View agent health and status.", "monitoring"),
+        Perm("agent:command", "Send commands to agents.", "desktop_agent_gateway"),
+        Perm("agent:manage", "Manage agent configurations.", "desktop_agent_gateway"),
+        Perm("agent:register", "Register new agents.", "desktop_agent_gateway"),
+        Perm("agent:view-health", "View agent health and status.", "desktop_agent_gateway"),
 
         // Documents
         Perm("documents:read", "View documents.", "documents"),
@@ -229,6 +235,7 @@ public class PermissionSeeder : IHostedService
 
         // Tasks
         Perm("tasks:read", "View tasks.", "work_management"),
+        Perm("tasks:read-own", "View your own assigned tasks.", "work_management"),
         Perm("tasks:write", "Create and edit tasks.", "work_management"),
         Perm("tasks:approve", "Approve task completions.", "work_management"),
         Perm("tasks:delete", "Delete tasks.", "work_management"),
@@ -240,8 +247,7 @@ public class PermissionSeeder : IHostedService
 
         // Projects
         Perm("projects:read", "View projects.", "work_management"),
-        Perm("projects:write", "Edit project details.", "work_management"),
-        Perm("projects:create", "Create new projects.", "work_management"),
+        Perm("projects:access", "Work Management module access — create/edit/delete your own projects and milestones.", "work_management"),
 
         // Work Management
         Perm("okr:read", "View OKRs and goals.", "work_management"),
@@ -257,6 +263,12 @@ public class PermissionSeeder : IHostedService
         Perm("resources:manage", "Manage resource planning.", "work_management"),
         Perm("roadmaps:read", "View roadmaps.", "work_management"),
         Perm("roadmaps:write", "Create and edit roadmaps.", "work_management"),
+
+        // Work Management — Projects (Foundation slice additions)
+        // (members:read, members:manage, invitations:manage, invitations:respond, versions:write,
+        // labels:manage retired 2026-08-04 - collapsed into projects:access per the milestone-hierarchy
+        // design's "multiple features mapped onto a single permission" decision. They were seeded
+        // ahead of any endpoint using them and are removed before any handler ever checked them.)
     ];
 
     private static Permission Perm(string code, string description, string module) => new()

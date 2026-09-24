@@ -84,7 +84,8 @@ public sealed class PlatformServiceKeysController : ControllerBase
             request.ServiceKey,
             request.DisplayName,
             request.ApiKey,
-            actorId.Value), ct);
+            actorId.Value,
+            request.Fields), ct);
 
         return result.IsSuccess
             ? Created($"admin/v1/system-config/service-keys/{result.Value!.ServiceKey}", result.Value)
@@ -124,7 +125,7 @@ public sealed class PlatformServiceKeysController : ControllerBase
             return Forbid();
 
         var result = await _mediator.Send(new RotatePlatformServiceKeyCommand(
-            serviceKey, request.ApiKey, actorId.Value), ct);
+            serviceKey, request.ApiKey, actorId.Value, request.Fields), ct);
 
         return result.IsSuccess
             ? Ok(result.Value)

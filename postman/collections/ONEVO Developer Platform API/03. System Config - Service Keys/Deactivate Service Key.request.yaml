@@ -1,8 +1,0 @@
-$kind: http-request
-name: Deactivate Service Key
-method: POST
-url: '{{admin_base_url}}/admin/v1/system-config/service-keys/{{service_key}}/deactivate'
-order: 8000
-headers:
-  - key: X-CSRF-Token
-    value: '{{admin_csrf_token}}'

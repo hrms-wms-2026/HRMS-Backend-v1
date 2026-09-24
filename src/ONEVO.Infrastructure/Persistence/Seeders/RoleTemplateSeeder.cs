@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -10,6 +11,12 @@ namespace ONEVO.Infrastructure.Persistence.Seeders;
 /// <summary>Boot-time seed for built-in (system) role templates. Idempotent by template name.</summary>
 public sealed class RoleTemplateSeeder : IHostedService
 {
+    public const string HrManagerPermissionCodesJson =
+        """["attendance:read","employees:read","leave:approve","leave:manage","leave:read"]""";
+
+    public static string[] HrManagerPermissionCodesForTest() =>
+        JsonSerializer.Deserialize<string[]>(HrManagerPermissionCodesJson)!;
+
     private readonly IServiceProvider _services;
     private readonly ILogger<RoleTemplateSeeder> _logger;
 
@@ -49,8 +56,7 @@ public sealed class RoleTemplateSeeder : IHostedService
                 Name = "HR Manager",
                 Description = "Core HR operations: employees, leave, and attendance (read-focused).",
                 ModuleKeysJson = """["core_hr","leave"]""",
-                PermissionCodesJson =
-                    """["attendance:read","employees:read","leave:approve","leave:read"]""",
+                PermissionCodesJson = HrManagerPermissionCodesJson,
                 IsSystem = true,
                 Version = 1,
                 IsActive = true,

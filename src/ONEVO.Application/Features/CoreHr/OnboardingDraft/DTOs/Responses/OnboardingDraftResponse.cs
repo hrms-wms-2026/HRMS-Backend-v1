@@ -1,0 +1,27 @@
+namespace ONEVO.Application.Features.CoreHr.OnboardingDrafts.DTOs.Responses;
+
+public record OnboardingDraftResponse(
+    Guid Id,
+    string FirstName,
+    string LastName,
+    string WorkEmail,
+    Guid LegalEntityId,
+    Guid? DepartmentId,
+    string? DepartmentName,
+    Guid? PositionId,
+    string? PositionName,
+    string EmploymentType,
+    DateOnly StartDate,
+    string? EmployeeNumber,
+    Guid? WorkModeId,
+    string? WorkModeLabel,
+    Guid? SelectedTemplateId,
+    string? EditedTasksJson,
+    string Status,
+    string? DraftReason,
+    string LastSavedStep,
+    Guid StartedById,
+    string Version,
+    Guid? ReportsToEmployeeId,
+    string? ReportingManagerName,
+    string? ReportingManagerPositionName);

@@ -27,7 +27,7 @@ public sealed class PermissionResolverModuleAutoGrantTests
             .Setup(p => p.UserHasPermissionCodeAsync(UserId, "*", Now, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         _permissions
-            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<CancellationToken>()))
+            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         _overrides
             .Setup(o => o.ListForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
@@ -44,7 +44,7 @@ public sealed class PermissionResolverModuleAutoGrantTests
             .Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(["leave"]);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         result.Should().Contain("leave:read-own");
         result.Should().NotContain("attendance:read-own");
@@ -58,7 +58,7 @@ public sealed class PermissionResolverModuleAutoGrantTests
             .Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(["attendance"]);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         result.Should().Contain("attendance:read-own");
         result.Should().Contain("attendance:write-own");
@@ -71,7 +71,7 @@ public sealed class PermissionResolverModuleAutoGrantTests
             .Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         result.Should().BeEmpty();
     }
@@ -83,10 +83,10 @@ public sealed class PermissionResolverModuleAutoGrantTests
             .Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(["leave"]);
         _permissions
-            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<CancellationToken>()))
+            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([new PermissionCodeWithModule("leave:approve", "leave")]);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         result.Should().Contain("inbox:read");
         result.Should().Contain("notifications:read");
@@ -99,10 +99,10 @@ public sealed class PermissionResolverModuleAutoGrantTests
             .Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(["employees", "leave"]);
         _permissions
-            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<CancellationToken>()))
+            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([new PermissionCodeWithModule("employees:read", "employees")]);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         result.Should().NotContain("inbox:read");
         result.Should().NotContain("notifications:read");
@@ -121,7 +121,7 @@ public sealed class PermissionResolverModuleAutoGrantTests
             .Setup(o => o.ListForUserAsync(TenantId, UserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([new UserPermissionOverrideGrant("employees:read-own", "revoke")]);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         result.Should().Contain("employees:read-own");
     }
@@ -133,7 +133,7 @@ public sealed class PermissionResolverModuleAutoGrantTests
             .Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(["employees"]);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         result.Should().NotContain("payroll:read-own");
         result.Should().NotContain("performance:read-own");
@@ -147,10 +147,10 @@ public sealed class PermissionResolverModuleAutoGrantTests
             .Setup(e => e.GetActiveModuleKeysForTenantAsync(TenantId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(["employees"]);
         _permissions
-            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<CancellationToken>()))
+            .Setup(p => p.ListRolePermissionCodesWithModulesAsync(UserId, Now, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([new PermissionCodeWithModule("payroll:read", "payroll")]);
 
-        var result = await Sut.ResolveAsync(UserId, TenantId, CancellationToken.None);
+        var result = await Sut.ResolveAsync(UserId, TenantId, null, CancellationToken.None);
 
         result.Should().NotContain("payroll:read");
     }

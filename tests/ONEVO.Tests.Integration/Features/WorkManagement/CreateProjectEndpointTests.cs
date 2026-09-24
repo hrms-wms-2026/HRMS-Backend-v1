@@ -1,0 +1,1056 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using FluentAssertions;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using ONEVO.Application.Common.Models;
+using ONEVO.Application.Common.ServiceInterfaces;
+using ONEVO.Domain.Features.Auth.Entities;
+using ONEVO.Domain.Features.InfrastructureModule.Entities;
+using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
+using ONEVO.Domain.Lookups;
+using ONEVO.Infrastructure.Persistence;
+using ONEVO.Tests.Integration.E2E;
+using ONEVO.Tests.Integration.Support;
+using ONEVO.Tests.Integration.Tenancy;
+using Xunit;
+
+namespace ONEVO.Tests.Integration.Features.WorkManagement;
+
+/// <summary>
+/// Shared, one-time-per-class setup for CreateProjectEndpointTests: clones the database, boots
+/// the WebApplicationFactory, provisions the two fixture tenants used by every [Fact] below.
+/// xUnit's IClassFixture constructs this ONCE and disposes it once after every fact in the class
+/// has run, instead of IAsyncLifetime's default of once PER fact - previously this class's own
+/// InitializeAsync (real WebApplicationFactory host boot + real bcrypt-hashed HTTP logins) ran 27
+/// times, once per [Fact]. Reviewed every fact: project identifiers are unique per fact (verified
+/// no cross-fact collisions), all count-style assertions are Contain/scoped-to-a-just-created-id,
+/// and the one fact that removes an objective member (AddThenRemoveObjectiveMember_HeadManagesMembership)
+/// asserts that removal is rejected (400, "cannot remove the current head") - it never actually
+/// succeeds, so GetMyObjectiveHistory_NoInactiveMemberships_ReturnsEmptyArray's assumption that
+/// TenantA's owner never accumulates an inactive membership still holds under shared state.
+/// </summary>
+public sealed class CreateProjectEndpointTestsFixture : IAsyncLifetime
+{
+    private const string AdminHost = "admin.localhost";
+    private static readonly Guid SeededPlanId = new("a1b2c3d4-0001-0001-0001-000000000001");
+
+    private readonly CapturingEmailService _email = new();
+
+    private IntegrationTestEnvironmentScope _environmentScope = null!;
+    private E2ETestFactory _factory = null!;
+    private HttpClient _client = null!;
+    private string _adminCookie = null!;
+    private string _adminCsrfToken = null!;
+
+    public HttpClient Client => _client;
+
+    public TenantSession TenantA { get; private set; } = null!;
+    public TenantSession TenantB { get; private set; } = null!;
+    public Guid TenantACategoryId { get; private set; }
+    public Guid TenantBCategoryId { get; private set; }
+
+    public async Task InitializeAsync()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("ONEVO_TEST_DB");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            connectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
+        }
+        else
+        {
+            await AdminTestFactory.MigrateDatabaseAsync(connectionString);
+        }
+        _environmentScope = new IntegrationTestEnvironmentScope(connectionString);
+
+        _factory = new E2ETestFactory(connectionString, _email);
+        _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = false
+        });
+
+        await WaitForSeedersAsync();
+
+        var loginResponse = await SendJsonAsync(HttpMethod.Post, AdminHost, "/admin/v1/auth/login",
+            new { email = "test_admin@onevo.dev", password = "test_password_123" });
+        var adminCookies = ParseSetCookies(loginResponse);
+        _adminCsrfToken = adminCookies["admin_csrf"];
+        _adminCookie = $"admin_session={adminCookies["admin_session"]}";
+
+        TenantA = await ProvisionAndLoginOwnerAsync("wm-int-a", "Work Mgmt Int A Co", "owner-a@wm-int.test");
+        TenantB = await ProvisionAndLoginOwnerAsync("wm-int-b", "Work Mgmt Int B Co", "owner-b@wm-int.test");
+
+        TenantACategoryId = await SeedProjectCategoryAsync(TenantA.TenantId, "General");
+        TenantBCategoryId = await SeedProjectCategoryAsync(TenantB.TenantId, "General");
+
+        // No employee-onboarding feature exists anywhere in this codebase yet
+        // (confirmed: zero "new Employee" call sites in src/) - tenant owners
+        // provisioned through the admin API get a users row but never an
+        // employees row. CreateProjectCommandHandler correctly requires one
+        // (project_members.employee_id is non-null per the locked spec), so
+        // the test fixture seeds it directly, exactly like SeedProjectCategoryAsync
+        // above already does for the missing category-creation endpoint.
+        await SeedEmployeeForOwnerAsync(TenantA.TenantId, "owner-a@wm-int.test");
+        await SeedEmployeeForOwnerAsync(TenantB.TenantId, "owner-b@wm-int.test");
+    }
+
+    public async Task DisposeAsync()
+    {
+        _client.Dispose();
+        _factory.Dispose();
+        await _environmentScope.DisposeAsync();
+    }
+
+    public async Task<HttpResponseMessage> SendCreateProjectAsync(
+        TenantSession session, Guid categoryId, string name, string identifier)
+    {
+        using var form = new MultipartFormDataContent
+        {
+            { new StringContent(categoryId.ToString()), "CategoryId" },
+            { new StringContent(name), "Name" },
+            { new StringContent(identifier), "Identifier" },
+            { new StringContent("2026-01-01"), "StartDate" },
+            { new StringContent("2026-06-01"), "TargetDate" },
+            { new StringContent("2026-06-15"), "ReleaseDate" },
+            { new StringContent("40"), "DefaultObjectiveAllocatedHours" }
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/work/projects")
+        {
+            Content = form
+        };
+        request.Headers.Host = session.Host;
+        request.Headers.Add("Cookie", session.SessionCookie);
+        request.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString());
+
+        return await _client.SendAsync(request);
+    }
+
+
+    public async Task<HttpResponseMessage> SendEditProjectAsync(TenantSession session, Guid projectId, string name, string? identifier)
+    {
+        var body = new
+        {
+            name,
+            description = "edited description",
+            categoryId = session == TenantA ? TenantACategoryId : TenantBCategoryId,
+            startDate = "2026-01-01",
+            targetDate = "2026-08-01",
+            color = "#123456",
+            actualHours = 5,
+            identifier
+        };
+
+        return await SendJsonAsync(HttpMethod.Put, session.Host, $"/api/v1/work/projects/{projectId}", body,
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+    }
+
+
+    public async Task<HttpResponseMessage> SendDeleteProjectAsync(TenantSession session, Guid projectId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/work/projects/{projectId}");
+        request.Headers.Host = session.Host;
+        request.Headers.Add("Cookie", session.SessionCookie);
+        request.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        return await _client.SendAsync(request);
+    }
+
+
+    public async Task<HttpResponseMessage> SendGetProjectAsync(TenantSession session, Guid projectId)
+        => await _client.SendAsync(BuildGetRequest(session, $"/api/v1/work/projects/{projectId}"));
+
+    // ── Objective (milestone) helpers ────────────────────────────────────────
+
+
+    public async Task<HttpResponseMessage> SendCreateObjectiveAsync(
+        TenantSession session, Guid parentObjectiveId, string title, DateOnly startDate, DateOnly endDate, decimal allocatedHours)
+    {
+        var body = new { parentObjectiveId, title, description = "test description", startDate, endDate, allocatedHours, headUserId = (Guid?)null };
+        return await SendJsonAsync(HttpMethod.Post, session.Host, "/api/v1/work/objectives", body,
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+    }
+
+
+    public async Task<HttpResponseMessage> SendEditObjectiveAsync(
+        TenantSession session, Guid objectiveId, string title, DateOnly startDate, DateOnly endDate, decimal allocatedHours)
+    {
+        var body = new { title, description = "edited description", startDate, endDate, allocatedHours };
+        return await SendJsonAsync(HttpMethod.Put, session.Host, $"/api/v1/work/objectives/{objectiveId}", body,
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+    }
+
+
+    public async Task<HttpResponseMessage> SendApproveObjectiveChangeRequestAsync(TenantSession session, Guid requestId)
+    {
+        var body = new { approvedAdditionalHours = (decimal?)null };
+        return await SendJsonAsync(HttpMethod.Post, session.Host, $"/api/v1/work/objectives/change-requests/{requestId}/approve", body,
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+    }
+
+
+    public async Task<HttpResponseMessage> SendDeleteObjectiveAsync(TenantSession session, Guid objectiveId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/work/objectives/{objectiveId}");
+        request.Headers.Host = session.Host;
+        request.Headers.Add("Cookie", session.SessionCookie);
+        request.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        return await _client.SendAsync(request);
+    }
+
+
+    public async Task<HttpResponseMessage> SendAddObjectiveMemberAsync(TenantSession session, Guid objectiveId, Guid employeeId)
+    {
+        var body = new { employeeId };
+        return await SendJsonAsync(HttpMethod.Post, session.Host, $"/api/v1/work/objectives/{objectiveId}/members", body,
+            cookie: session.SessionCookie, csrfToken: session.CsrfHeader);
+    }
+
+
+    public async Task<HttpResponseMessage> SendRemoveObjectiveMemberAsync(TenantSession session, Guid objectiveId, Guid employeeId)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/api/v1/work/objectives/{objectiveId}/members/{employeeId}");
+        request.Headers.Host = session.Host;
+        request.Headers.Add("Cookie", session.SessionCookie);
+        request.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        return await _client.SendAsync(request);
+    }
+
+
+    public async Task<HttpResponseMessage> SendAchieveObjectiveAsync(TenantSession session, Guid objectiveId)
+        => await SendPostNoBodyAsync(session, $"/api/v1/work/objectives/{objectiveId}/achieve");
+
+
+    public async Task<HttpResponseMessage> SendUnachieveObjectiveAsync(TenantSession session, Guid objectiveId)
+        => await SendPostNoBodyAsync(session, $"/api/v1/work/objectives/{objectiveId}/unachieve");
+
+
+    public async Task<HttpResponseMessage> SendAchieveProjectAsync(TenantSession session, Guid projectId)
+        => await SendPostNoBodyAsync(session, $"/api/v1/work/projects/{projectId}/achieve");
+
+
+    public async Task<HttpResponseMessage> SendUnachieveProjectAsync(TenantSession session, Guid projectId)
+        => await SendPostNoBodyAsync(session, $"/api/v1/work/projects/{projectId}/unachieve");
+
+
+    private async Task<HttpResponseMessage> SendPostNoBodyAsync(TenantSession session, string path)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, path);
+        request.Headers.Host = session.Host;
+        request.Headers.Add("Cookie", session.SessionCookie);
+        request.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        return await _client.SendAsync(request);
+    }
+
+
+    public HttpRequestMessage BuildGetRequest(TenantSession session, string path)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Host = session.Host;
+        request.Headers.Add("Cookie", session.SessionCookie);
+        request.Headers.Add("X-CSRF-Token", session.CsrfHeader);
+        return request;
+    }
+
+
+    public async Task SeedSecondMembershipViaExtraObjectiveAsync(Guid tenantId, Guid projectId, Guid userId, Guid defaultObjectiveId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+        await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenantId, tenantId.ToString(), TenantStatus.Active, null));
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var employee = await db.Employees.SingleAsync(e => e.TenantId == tenantId && e.UserId == userId);
+
+        var subObjective = new ONEVO.Domain.Features.WorkManagement.Objectives.Entities.Objective
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, ParentObjectiveId = defaultObjectiveId,
+            IsDefault = false, Title = "Sub Objective", OwnerId = employee.Id, IsActive = true,
+            StartDate = DateOnly.FromDateTime(DateTime.UtcNow), EndDate = DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(1)),
+            CreatedById = userId, CreatedAt = DateTimeOffset.UtcNow
+        };
+        db.Objectives.Add(subObjective);
+
+        db.ProjectMembers.Add(new ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities.ProjectMember
+        {
+            Id = Guid.NewGuid(), TenantId = tenantId, ProjectId = projectId, ObjectiveId = subObjective.Id,
+            EmployeeId = employee.Id,
+            MembershipSource = ONEVO.Domain.Features.WorkManagement.ProjectMembers.Entities.ProjectMembershipSources.ObjectiveInvitation,
+            IsActive = true, JoinedAt = DateTimeOffset.UtcNow, CreatedById = userId, CreatedAt = DateTimeOffset.UtcNow
+        });
+
+        await db.SaveChangesAsync();
+    }
+
+    // The Work Management identity model is employee-centric: /api/v1/work/projects?employeeId=…
+    // and POST …/objectives/{id}/members both key on the caller's employees row, not their
+    // users row. creatorMembership.userId in the create response is still the raw user id, so
+    // tests translate it to the seeded employee id here (same lookup as
+    // SeedSecondMembershipViaExtraObjectiveAsync).
+
+    public async Task<Guid> ResolveEmployeeIdAsync(Guid tenantId, Guid userId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+        await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenantId, tenantId.ToString(), TenantStatus.Active, null));
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var employee = await db.Employees.SingleAsync(e => e.TenantId == tenantId && e.UserId == userId);
+        return employee.Id;
+    }
+
+
+    private async Task<Guid> SeedProjectCategoryAsync(Guid tenantId, string name)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+        await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenantId, tenantId.ToString(), TenantStatus.Active, null));
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var category = new ProjectCategory
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            Name = name,
+            IsActive = true,
+            CreatedById = Guid.NewGuid(),
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        db.ProjectCategories.Add(category);
+        await db.SaveChangesAsync();
+        return category.Id;
+    }
+
+
+    private async Task SeedEmployeeForOwnerAsync(Guid tenantId, string ownerEmail)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+        await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenantId, tenantId.ToString(), TenantStatus.Active, null));
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var user = await db.Users.SingleAsync(u => u.TenantId == tenantId && u.Email == ownerEmail);
+
+        db.Employees.Add(new ONEVO.Domain.Features.CoreHr.Entities.Employee
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            UserId = user.Id,
+            EmployeeNumber = "OWNER-1",
+            FirstName = "Test",
+            LastName = "Owner",
+            Email = ownerEmail,
+            HireDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            EmploymentStatusId = EmploymentStatusIds.Active,
+            CreatedById = user.Id,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+    }
+
+
+    private async Task GrantWorkManagementAccessToOwnerRoleAsync(Guid tenantId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+        await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenantId, tenantId.ToString(), TenantStatus.Active, null));
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var ownerRole = await db.Roles.SingleAsync(r => r.TenantId == tenantId && r.Name == "Owner");
+
+        // Every permission tagged module "work_management" (projects:access, projects:read,
+        // okr:read, etc.) is missing from the Owner role - DefaultRoleSeeder.SeedOwnerRoleAsync
+        // only grants permissions whose module appears in the plan's included_modules_json, which
+        // uses the newer canonical Phase 1 keys ("projects", "objectives_milestones", ...) and
+        // never included the legacy "work_management" key these permissions are still tagged
+        // with. Grant the whole module's permission set, not just projects:access, since this
+        // test class exercises multiple Work Management permissions (projects:read via
+        // ListByUser, etc.) that hit the identical gap.
+        var workManagementPermissions = await db.Permissions.Where(p => p.Module == "work_management").ToListAsync();
+        var alreadyGrantedIds = (await db.RolePermissions
+                .Where(rp => rp.RoleId == ownerRole.Id)
+                .Select(rp => rp.PermissionId)
+                .ToListAsync())
+            .ToHashSet();
+
+        foreach (var permission in workManagementPermissions)
+        {
+            if (!alreadyGrantedIds.Contains(permission.Id))
+                db.RolePermissions.Add(new RolePermission { TenantId = tenantId, RoleId = ownerRole.Id, PermissionId = permission.Id });
+        }
+
+        // A granted RolePermission row alone is not enough: PermissionResolver.ResolveAsync
+        // filters every role-permission row live by the tenant's *active module keys*
+        // (TenantSubscription.SelectedModulesJson), matched against Permission.Module. Patching
+        // the module list here (test-tenant-scoped, not a change to seeded/global data) is the
+        // surgical fix; correcting the module tags themselves is a separate, real production
+        // concern out of scope for this test fixture.
+        var subscription = await db.TenantSubscriptions
+            .Where(s => s.TenantId == tenantId)
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstAsync();
+        var modules = JsonSerializer.Deserialize<List<string>>(subscription.SelectedModulesJson) ?? [];
+        if (!modules.Contains("work_management"))
+        {
+            modules.Add("work_management");
+            subscription.SelectedModulesJson = JsonSerializer.Serialize(modules);
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+
+    public async Task<bool> ExistsWhenScopedToTenantAsync(Guid tenantId, Guid projectId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var switcher = scope.ServiceProvider.GetRequiredService<ITenantContextSwitcher>();
+        await switcher.SwitchToTenantAsync(new TenantRegistryEntry(tenantId, tenantId.ToString(), TenantStatus.Active, null));
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        return await db.Projects.AnyAsync(p => p.Id == projectId);
+    }
+
+    // ── Provisioning helper (mirrors LegalEntitiesIntegrationTests) ─────────
+
+
+    public sealed record TenantSession(Guid TenantId, string Host, string SessionCookie, string CsrfHeader);
+
+    private async Task<TenantSession> ProvisionAndLoginOwnerAsync(string slug, string companyName, string ownerEmail)
+    {
+        const string ownerPassword = "OwnerPass@2026!";
+        var host = $"{slug}.localhost";
+
+        var createBody = new
+        {
+            company_name = companyName,
+            slug,
+            industry_profile = "technology",
+            company_size_range = "11-50",
+            legal_entity_name = companyName,
+            registration_number = $"PV-{slug}",
+            country = "LK",
+            timezone = "Asia/Colombo",
+            currency = "LKR",
+            subscription = new
+            {
+                plan_id = SeededPlanId,
+                billing_cycle = "monthly",
+                commercial_model = "standard"
+            },
+            owner_invite = new
+            {
+                email = ownerEmail,
+                first_name = "Test",
+                last_name = "Owner",
+                completion_methods = new[] { "password" }
+            }
+        };
+
+        var createResponse = await SendJsonAsync(HttpMethod.Post, AdminHost, "/admin/v1/tenants", createBody,
+            cookie: _adminCookie, csrfToken: _adminCsrfToken, idempotencyKey: Guid.NewGuid().ToString());
+        var createJson = await ReadJsonAsync(createResponse);
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created, createJson.ToString());
+        var tenantId = createJson.GetProperty("tenantId").GetGuid();
+
+        // The seeded plan's included_modules_json uses the canonical Phase 1 module keys
+        // (e.g. "projects", "objectives_milestones"), but every Work Management permission in
+        // PermissionSeeder.cs (including projects:access) is still tagged module "work_management"
+        // - a legacy key no active plan actually includes. DefaultRoleSeeder.SeedOwnerRoleAsync
+        // does an exact-string module match, so the Owner role created at tenant creation never
+        // gets projects:access from that path. Grant it directly to the Owner role here, before
+        // login below bakes permission claims into the session - RequirePermissionAttribute reads
+        // those claims, not a live resolve, so granting after login would have no effect until a
+        // second login (see design doc §7's known session-refresh limitation).
+        await GrantWorkManagementAccessToOwnerRoleAsync(tenantId);
+
+        var inviteToken = await WaitForInviteTokenForAsync(ownerEmail);
+        inviteToken.Should().NotBeNullOrEmpty();
+
+        var acceptResponse = await SendJsonAsync(HttpMethod.Post, host,
+            $"/api/v1/auth/invitations/{inviteToken}/accept-password",
+            new
+            {
+                password = ownerPassword,
+                confirm_password = ownerPassword,
+                acceptances = new[]
+                {
+                    new { document_type = "terms", version = "1.0", decision = "accepted" },
+                    new { document_type = "privacy_notice", version = "1.0", decision = "acknowledged" }
+                }
+            });
+        acceptResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var confirmResponse = await SendJsonAsync(HttpMethod.Patch, AdminHost,
+            $"/admin/v1/tenants/{tenantId}/provision/confirm", new { confirm = true },
+            cookie: _adminCookie, csrfToken: _adminCsrfToken);
+        confirmResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        const string baseHost = "localhost";
+        var loginResponse = await SendJsonAsync(HttpMethod.Post, baseHost, "/api/v1/auth/login",
+            new { email = ownerEmail, password = ownerPassword });
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var loginJson = await ReadJsonAsync(loginResponse);
+        var continueUrl = new Uri(loginJson.GetProperty("continue_url").GetString()!, UriKind.Absolute);
+        var exchangeCode = QueryHelpers.ParseQuery(continueUrl.Query)["code"].ToString();
+
+        var exchangeResponse = await SendJsonAsync(HttpMethod.Post, host, "/api/v1/auth/session-exchange",
+            new { code = exchangeCode });
+        exchangeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var cookies = ParseSetCookies(exchangeResponse);
+
+        var sessionCookie = $"onevo_session={cookies["onevo_session"]}; onevo_csrf={cookies["onevo_csrf"]}";
+        var csrfHeader = Uri.UnescapeDataString(cookies["onevo_csrf"]);
+
+        return new TenantSession(tenantId, host, sessionCookie, csrfHeader);
+    }
+
+
+    private async Task<string?> WaitForInviteTokenForAsync(string email)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < deadline)
+        {
+            foreach (var template in _email.Templates)
+            {
+                if (template.TemplateId != "tenant_owner_invite")
+                    continue;
+                if (!string.Equals(template.To, email, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (template.Data.TryGetProperty("invite_token", out var token))
+                    return token.GetString();
+            }
+            await Task.Delay(250);
+        }
+        return null;
+    }
+
+
+    private async Task WaitForSeedersAsync()
+    {
+        await using (var migrateScope = _factory.Services.CreateAsyncScope())
+        {
+            var migrateDb = migrateScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            await migrateDb.Database.MigrateAsync();
+        }
+
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < deadline)
+        {
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            try
+            {
+                var permissionsReady = await db.Set<ONEVO.Domain.Features.Auth.Entities.Permission>().AnyAsync();
+                var planReady = await db.Set<ONEVO.Domain.Features.SharedPlatform.Entities.SubscriptionPlan>()
+                    .AnyAsync(p => p.Id == SeededPlanId);
+                if (permissionsReady && planReady)
+                    return;
+            }
+            catch
+            {
+                // Schema not created yet; keep polling.
+            }
+            await Task.Delay(250);
+        }
+
+        throw new TimeoutException("Seeders did not finish within 30s (permissions / subscription plan missing).");
+    }
+
+    // ── HTTP helpers (mirrors LegalEntitiesIntegrationTests) ────────────────
+
+
+    private async Task<HttpResponseMessage> SendJsonAsync(
+        HttpMethod method, string host, string path, object? body,
+        string? cookie = null, string? csrfToken = null, string? idempotencyKey = null)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        request.Headers.Host = host;
+        if (cookie is not null)
+            request.Headers.Add("Cookie", cookie);
+        if (csrfToken is not null)
+            request.Headers.Add("X-CSRF-Token", csrfToken);
+        if (idempotencyKey is not null)
+            request.Headers.Add("Idempotency-Key", idempotencyKey);
+        if (body is not null)
+            request.Content = JsonContent.Create(body);
+
+        return await _client.SendAsync(request);
+    }
+
+
+    private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
+    {
+        var text = await response.Content.ReadAsStringAsync();
+        return string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone();
+    }
+
+
+    private static Dictionary<string, string> ParseSetCookies(HttpResponseMessage response)
+    {
+        var cookies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!response.Headers.TryGetValues("Set-Cookie", out var values))
+            return cookies;
+
+        foreach (var raw in values)
+        {
+            var pair = raw.Split(';', 2)[0];
+            var idx = pair.IndexOf('=');
+            if (idx > 0)
+                cookies[pair[..idx].Trim()] = pair[(idx + 1)..].Trim();
+        }
+
+        return cookies;
+    }
+
+}
+
+/// <summary>
+/// HTTP integration tests for POST /api/v1/work/projects against a real PostgreSQL
+/// database, mirroring the fixture pattern in
+/// OrgStructure/LegalEntity/LegalEntitiesIntegrationTests.cs (two fully-provisioned
+/// tenants via the admin API + owner invite acceptance + session exchange).
+///
+/// No project-category creation endpoint exists yet (that's a later slice), so each
+/// tenant's category is seeded directly through ApplicationDbContext in InitializeAsync.
+/// </summary>
+[Collection(WebApplicationFactoryCollection.Name)]
+public sealed class CreateProjectEndpointTests : IClassFixture<CreateProjectEndpointTestsFixture>
+{
+    private readonly CreateProjectEndpointTestsFixture _fixture;
+
+    public CreateProjectEndpointTests(CreateProjectEndpointTestsFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
+    [Fact]
+    public async Task Create_ValidRequest_Returns201WithDefaultObjectiveVersionAndMembership()
+    {
+        var response = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Website Revamp", "WEB1");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
+        response.Headers.Location.Should().NotBeNull();
+
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("defaultObjective").GetProperty("isDefault").GetBoolean().Should().BeTrue();
+        json.GetProperty("defaultVersion").GetProperty("statusId").GetInt32().Should().Be(1);
+        json.GetProperty("creatorMembership").GetProperty("membershipSource").GetString().Should().Be("system");
+    }
+
+    [Fact]
+    public async Task Create_DuplicateIdentifierSameTenant_Returns409()
+    {
+        var first = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Duplicate Target", "DUP1");
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var second = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Duplicate Target Again", "DUP1");
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task Create_ThenSecondTenantCannotSeeTheProjectRow_TenantIsolationHolds()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Isolation Check", "ISO1");
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        var projectId = (await ReadJsonAsync(created)).GetProperty("project").GetProperty("id").GetGuid();
+
+        var visibleToOtherTenant = await _fixture.ExistsWhenScopedToTenantAsync(_fixture.TenantB.TenantId, projectId);
+        visibleToOtherTenant.Should().BeFalse(
+            "the project belongs to tenant A and must be invisible under tenant B's EF query filter + PostgreSQL RLS");
+
+        var visibleToOwningTenant = await _fixture.ExistsWhenScopedToTenantAsync(_fixture.TenantA.TenantId, projectId);
+        visibleToOwningTenant.Should().BeTrue("the owning tenant must still be able to see its own row");
+    }
+
+    [Fact]
+    public async Task Edit_ValidRequest_UpdatesProjectAndCascadesDefaultObjective()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Edit Target", "EDT1");
+        var projectId = (await ReadJsonAsync(created)).GetProperty("project").GetProperty("id").GetGuid();
+
+        var editResponse = await _fixture.SendEditProjectAsync(_fixture.TenantA, projectId, "Edit Target Renamed", "EDT1");
+        editResponse.StatusCode.Should().Be(HttpStatusCode.OK, await editResponse.Content.ReadAsStringAsync());
+
+        var editJson = await ReadJsonAsync(editResponse);
+        editJson.GetProperty("name").GetString().Should().Be("Edit Target Renamed");
+
+        var getResponse = await _fixture.SendGetProjectAsync(_fixture.TenantA, projectId);
+        (await ReadJsonAsync(getResponse)).GetProperty("name").GetString().Should().Be("Edit Target Renamed");
+    }
+
+    [Fact]
+    public async Task Edit_IdentifierChangeAttempted_Returns400()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Immutable Id Target", "IMM1");
+        var projectId = (await ReadJsonAsync(created)).GetProperty("project").GetProperty("id").GetGuid();
+
+        var editResponse = await _fixture.SendEditProjectAsync(_fixture.TenantA, projectId, "Immutable Id Target", "CHANGED");
+
+        editResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Edit_CrossTenantProjectId_Returns404()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Cross Tenant Edit Target", "CTE1");
+        var projectId = (await ReadJsonAsync(created)).GetProperty("project").GetProperty("id").GetGuid();
+
+        var editResponse = await _fixture.SendEditProjectAsync(_fixture.TenantB, projectId, "Should Not Apply", "CTE1");
+
+        editResponse.StatusCode.Should().Be(HttpStatusCode.NotFound,
+            "tenant B must not be able to see or edit tenant A's project - RLS + EF global filter scoping");
+    }
+
+    [Fact]
+    public async Task Delete_ByLead_SoftDeletesAndExcludesFromGetById()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Delete Target", "DEL1");
+        var projectId = (await ReadJsonAsync(created)).GetProperty("project").GetProperty("id").GetGuid();
+
+        var deleteResponse = await _fixture.SendDeleteProjectAsync(_fixture.TenantA, projectId);
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var getResponse = await _fixture.SendGetProjectAsync(_fixture.TenantA, projectId);
+        getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound, "a soft-deleted project must not be viewable via GetById");
+    }
+
+    [Fact]
+    public async Task Delete_AlreadyDeleted_Returns409()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Double Delete Target", "DBL1");
+        var projectId = (await ReadJsonAsync(created)).GetProperty("project").GetProperty("id").GetGuid();
+
+        var first = await _fixture.SendDeleteProjectAsync(_fixture.TenantA, projectId);
+        first.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var second = await _fixture.SendDeleteProjectAsync(_fixture.TenantA, projectId);
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task GetById_OwningLead_ReturnsProjectWithIsLeadTrue()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "GetById Target", "GET1");
+        var projectId = (await ReadJsonAsync(created)).GetProperty("project").GetProperty("id").GetGuid();
+
+        var getResponse = await _fixture.SendGetProjectAsync(_fixture.TenantA, projectId);
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var json = await ReadJsonAsync(getResponse);
+        json.GetProperty("isLead").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ListMine_ReturnsOnlyCallersOwnProjects_RequiresOnlyBaseModuleAccess()
+    {
+        await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Mine List Target", "MIN1");
+
+        var response = await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, "/api/v1/work/projects/mine?pageSize=50"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("items").EnumerateArray().Any(p => p.GetProperty("identifier").GetString() == "MIN1").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ListByUser_RequiresProjectsReadPermission_OwnerHasItAndSucceeds()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "ByUser List Target", "BYU1");
+        var ownerUserId = (await ReadJsonAsync(created)).GetProperty("creatorMembership").GetProperty("userId").GetGuid();
+        var ownerEmployeeId = await _fixture.ResolveEmployeeIdAsync(_fixture.TenantA.TenantId, ownerUserId);
+
+        var response = await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, $"/api/v1/work/projects?employeeId={ownerEmployeeId}&pageSize=50"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("items").EnumerateArray().Any(p => p.GetProperty("identifier").GetString() == "BYU1").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ListForMember_MultiObjectiveMembership_DoesNotDuplicateProjectRow()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Dedup List Target", "DUP2");
+        var createdJson = await ReadJsonAsync(created);
+        var projectId = createdJson.GetProperty("project").GetProperty("id").GetGuid();
+        var ownerUserId = createdJson.GetProperty("creatorMembership").GetProperty("userId").GetGuid();
+        var defaultObjectiveId = createdJson.GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        // No sub-Objective creation endpoint exists yet (Objective CRUD is a later phase - see
+        // next-plan/Project Management.md) - seed a second Objective + a second membership row
+        // for the SAME project + SAME user directly, exactly as ListForMemberAsync's DISTINCT
+        // must handle: project_members' uniqueness is (tenant_id, project_id, objective_id,
+        // user_id), so this is a legitimate second row, not a data error.
+        await _fixture.SeedSecondMembershipViaExtraObjectiveAsync(_fixture.TenantA.TenantId, projectId, ownerUserId, defaultObjectiveId);
+
+        var response = await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, "/api/v1/work/projects/mine?pageSize=50"));
+        var json = await ReadJsonAsync(response);
+
+        json.GetProperty("items").EnumerateArray().Count(p => p.GetProperty("id").GetGuid() == projectId).Should().Be(1,
+            "a user with two active memberships in the same project (via two Objectives) must see that project exactly once");
+    }
+
+    [Fact]
+    public async Task CreateObjective_ByDefaultObjectiveHead_CreatesSubMilestone()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Milestone Tree Target", "MTT1");
+        var createdJson = await ReadJsonAsync(created);
+        var projectId = createdJson.GetProperty("project").GetProperty("id").GetGuid();
+        var defaultObjectiveId = createdJson.GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Design Phase", new DateOnly(2026, 1, 15), new DateOnly(2026, 3, 1), 20m);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
+        var json = await ReadJsonAsync(response);
+        json.GetProperty("parentObjectiveId").GetGuid().Should().Be(defaultObjectiveId);
+        json.GetProperty("isDefault").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CreateObjective_NestedUnderOwnSubMilestone_Succeeds()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Nested Milestone Target", "NST1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        var first = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Phase 1", new DateOnly(2026, 1, 1), new DateOnly(2026, 4, 1), 30m);
+        var firstId = (await ReadJsonAsync(first)).GetProperty("id").GetGuid();
+
+        var nested = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, firstId, "Phase 1a", new DateOnly(2026, 1, 5), new DateOnly(2026, 2, 1), 10m);
+
+        nested.StatusCode.Should().Be(HttpStatusCode.Created, await nested.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task CreateObjective_DatesOutsideParentRange_Returns400()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Conflict Target", "CFT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        // Default Objective mirrors the Project's own start/target dates (2026-01-01 to 2026-06-01
+        // for a project created via SendCreateProjectAsync) - this end date is well past that.
+        var response = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Out Of Range", new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 1), 5m);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task EditObjective_ByCreatorHead_CreatesPendingRequest_AppliedOnApproval()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Edit Milestone Target", "EMT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        var sub = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Editable Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 15m);
+        var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
+
+        // Every edit routes through the Reporting Manager for approval, even the creator's own.
+        var editResponse = await _fixture.SendEditObjectiveAsync(_fixture.TenantA, subId, "Editable Phase Renamed", new DateOnly(2026, 1, 10), new DateOnly(2026, 3, 15), 18m);
+
+        editResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, await editResponse.Content.ReadAsStringAsync());
+        var pending = await ReadJsonAsync(editResponse);
+        pending.GetProperty("objectiveId").GetGuid().Should().Be(subId);
+        pending.GetProperty("status").GetString().Should().Be("pending");
+        pending.GetProperty("requestType").GetString().Should().Be("edit");
+        pending.GetProperty("payloadJson").GetString().Should().Contain("Editable Phase Renamed");
+
+        var unchanged = await ReadJsonAsync(await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, $"/api/v1/work/objectives/{subId}")));
+        unchanged.GetProperty("title").GetString().Should().Be("Editable Phase");
+
+        // The test owner is also the sub-milestone's Reporting Manager (head of the Default Objective).
+        var approveResponse = await _fixture.SendApproveObjectiveChangeRequestAsync(_fixture.TenantA, pending.GetProperty("id").GetGuid());
+        approveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, await approveResponse.Content.ReadAsStringAsync());
+
+        var applied = await ReadJsonAsync(await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, $"/api/v1/work/objectives/{subId}")));
+        applied.GetProperty("title").GetString().Should().Be("Editable Phase Renamed");
+    }
+
+    [Fact]
+    public async Task EditObjective_ConflictingWithParent_CreatesPendingRequest_RejectedOnApproval()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Creator Conflict Target", "CCT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        var sub = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Creator Conflict Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 15m);
+        var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
+
+        // Exceeds the Default Objective's own allocated hours (mirrors the Project's
+        // defaultObjectiveAllocatedHours=40 from SendCreateProjectAsync). Submission still just
+        // creates a pending request - parent-constraint conflicts are validated at approval time.
+        var editResponse = await _fixture.SendEditObjectiveAsync(_fixture.TenantA, subId, "Creator Conflict Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 999m);
+
+        editResponse.StatusCode.Should().Be(HttpStatusCode.Accepted, await editResponse.Content.ReadAsStringAsync());
+        var pending = await ReadJsonAsync(editResponse);
+        pending.GetProperty("objectiveId").GetGuid().Should().Be(subId);
+        pending.GetProperty("status").GetString().Should().Be("pending");
+        pending.GetProperty("payloadJson").GetString().Should().Contain("999");
+        var requestId = pending.GetProperty("id").GetGuid();
+
+        var approveResponse = await _fixture.SendApproveObjectiveChangeRequestAsync(_fixture.TenantA, requestId);
+        approveResponse.StatusCode.Should().Be(HttpStatusCode.Conflict, await approveResponse.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task DeleteObjective_ByCreatorHead_SoftDeletesImmediately()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Delete Milestone Target", "DMT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        var sub = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Deletable Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 10m);
+        var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
+
+        var deleteResponse = await _fixture.SendDeleteObjectiveAsync(_fixture.TenantA, subId);
+
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task EditDeleteTransfer_OnDefaultObjective_Return400()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Default Carveout Target", "DCT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        (await _fixture.SendEditObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Should Not Apply", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 5m))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await _fixture.SendDeleteObjectiveAsync(_fixture.TenantA, defaultObjectiveId))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task CreateObjective_CrossTenantParentId_Returns404()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Cross Tenant Milestone Target", "CTM1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendCreateObjectiveAsync(_fixture.TenantB, defaultObjectiveId, "Should Not Apply", new DateOnly(2026, 1, 1), new DateOnly(2026, 2, 1), 5m);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound,
+            "tenant B must not be able to see or create under tenant A's Default Objective - RLS + EF global filter scoping");
+    }
+
+    [Fact]
+    public async Task GetObjectiveTree_ActiveMember_ReturnsFullTree()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Tree View Target", "TVT1");
+        var createdJson = await ReadJsonAsync(created);
+        var projectId = createdJson.GetProperty("project").GetProperty("id").GetGuid();
+        var defaultObjectiveId = createdJson.GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Tree Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 10m);
+
+        var response = await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, $"/api/v1/work/projects/{projectId}/objectives"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.EnumerateArray().Should().HaveCountGreaterThanOrEqualTo(2, "the Default Objective plus the one sub-milestone just created");
+    }
+
+    [Fact]
+    public async Task CreateObjective_ByCallerDefaultingToHead_CreatesProjectMembership()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Membership Sync Target", "MST1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+
+        var response = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Membership Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 10m);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
+        var objectiveId = (await ReadJsonAsync(response)).GetProperty("id").GetGuid();
+
+        var getResponse = await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, $"/api/v1/work/objectives/{objectiveId}"));
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK, "the caller (default Head) must already have membership-based access to what they just created");
+    }
+
+    [Fact]
+    public async Task AddThenRemoveObjectiveMember_HeadManagesMembership()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Member Mgmt Target", "MMT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        var sub = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Member Mgmt Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 10m);
+        var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
+        var ownerUserId = (await ReadJsonAsync(created)).GetProperty("creatorMembership").GetProperty("userId").GetGuid();
+        var ownerEmployeeId = await _fixture.ResolveEmployeeIdAsync(_fixture.TenantA.TenantId, ownerUserId);
+
+        var addResponse = await _fixture.SendAddObjectiveMemberAsync(_fixture.TenantA, subId, ownerEmployeeId);
+        addResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, await addResponse.Content.ReadAsStringAsync());
+
+        var removeHeadResponse = await _fixture.SendRemoveObjectiveMemberAsync(_fixture.TenantA, subId, ownerEmployeeId);
+        removeHeadResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest, "cannot remove the current head as a member - use Transfer instead");
+    }
+
+    [Fact]
+    public async Task AchieveObjective_ByCreatorHead_AppliesAndFreezesEdit()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Achieve Milestone Target", "AMT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        var sub = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Achievable Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 10m);
+        var subId = (await ReadJsonAsync(sub)).GetProperty("id").GetGuid();
+
+        var achieveResponse = await _fixture.SendAchieveObjectiveAsync(_fixture.TenantA, subId);
+        achieveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, await achieveResponse.Content.ReadAsStringAsync());
+
+        var editAfterAchieve = await _fixture.SendEditObjectiveAsync(_fixture.TenantA, subId, "Should Not Apply", new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 1), 5m);
+        editAfterAchieve.StatusCode.Should().Be(HttpStatusCode.BadRequest, "an achieved milestone must be frozen for edits");
+
+        var unachieveResponse = await _fixture.SendUnachieveObjectiveAsync(_fixture.TenantA, subId);
+        unachieveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task AchieveObjective_WithUnachievedChild_Returns400()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Achieve Blocked Target", "ABT1");
+        var defaultObjectiveId = (await ReadJsonAsync(created)).GetProperty("defaultObjective").GetProperty("id").GetGuid();
+        var parent = await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, defaultObjectiveId, "Parent Phase", new DateOnly(2026, 1, 1), new DateOnly(2026, 4, 1), 30m);
+        var parentId = (await ReadJsonAsync(parent)).GetProperty("id").GetGuid();
+        await _fixture.SendCreateObjectiveAsync(_fixture.TenantA, parentId, "Unachieved Child", new DateOnly(2026, 1, 5), new DateOnly(2026, 2, 1), 5m);
+
+        var achieveResponse = await _fixture.SendAchieveObjectiveAsync(_fixture.TenantA, parentId);
+
+        achieveResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest, "the child must be achieved before the parent can be");
+    }
+
+    [Fact]
+    public async Task AchieveThenUnachieveProject_LeadManagesTopLevelState()
+    {
+        var created = await _fixture.SendCreateProjectAsync(_fixture.TenantA, _fixture.TenantACategoryId, "Achieve Project Target", "APT1");
+        var projectId = (await ReadJsonAsync(created)).GetProperty("project").GetProperty("id").GetGuid();
+
+        var achieveResponse = await _fixture.SendAchieveProjectAsync(_fixture.TenantA, projectId);
+        achieveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, await achieveResponse.Content.ReadAsStringAsync());
+
+        var unachieveResponse = await _fixture.SendUnachieveProjectAsync(_fixture.TenantA, projectId);
+        unachieveResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task GetMyObjectiveHistory_NoInactiveMemberships_ReturnsEmptyArray()
+    {
+        var response = await _fixture.Client.SendAsync(_fixture.BuildGetRequest(_fixture.TenantA, "/api/v1/work/objectives/mine/history"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await ReadJsonAsync(response);
+        json.GetArrayLength().Should().Be(0);
+    }
+
+    private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
+    {
+        var text = await response.Content.ReadAsStringAsync();
+        return string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone();
+    }
+
+
+    private static Dictionary<string, string> ParseSetCookies(HttpResponseMessage response)
+    {
+        var cookies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!response.Headers.TryGetValues("Set-Cookie", out var values))
+            return cookies;
+
+        foreach (var raw in values)
+        {
+            var pair = raw.Split(';', 2)[0];
+            var idx = pair.IndexOf('=');
+            if (idx > 0)
+                cookies[pair[..idx].Trim()] = pair[(idx + 1)..].Trim();
+        }
+
+        return cookies;
+    }
+
+}

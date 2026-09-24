@@ -70,6 +70,17 @@ public sealed class DevSmokeTestTenantSeederArchitectureTests
     }
 
     [Fact]
+    public void Seeder_NeverReferencesRetiredEmployeeJobTitleOrManagerFields()
+    {
+        var source = ReadSeederSource();
+
+        Assert.DoesNotContain("JobTitleId", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ManagerId", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("job_title_id", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("manager_id", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProductionSource_DoesNotGrantBypassRls()
     {
         var sourceRoot = FindRepositoryPath("src");

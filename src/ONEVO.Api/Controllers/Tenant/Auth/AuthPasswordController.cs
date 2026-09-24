@@ -6,6 +6,7 @@ using ONEVO.Api.Contracts.Auth;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Login.Commands.BaseForgotPassword;
+using ONEVO.Application.Features.Auth.Login.Commands.ChangePassword;
 using ONEVO.Application.Features.Auth.Login.Commands.ForcePasswordChange;
 using ONEVO.Application.Features.Auth.Login.Commands.RequestPasswordReset;
 using ONEVO.Application.Features.Auth.Login.Commands.ResetPassword;
@@ -70,5 +71,17 @@ public class AuthPasswordController : ControllerBase
             return Problem(result.Error, statusCode: result.StatusCode ?? 400);
 
         return await this.HandleSessionResultAsync(result, _env);
+    }
+
+    /// <summary>Change the caller's own password while authenticated (not the forgot-password
+    /// flow). Requires the current password.</summary>
+    [HttpPost("change-password")]
+    [Authorize(Policy = "TenantPolicy")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new ChangePasswordCommand(request.CurrentPassword, request.NewPassword), ct);
+        return result.IsSuccess
+            ? Ok(new { message = "Password changed successfully." })
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 }

@@ -1,4 +1,4 @@
-@ONEVO.Api_HostAddress = http://localhost:5139
+@ONEVO.Api_HostAddress = https://localhost:7229
 
 GET {{ONEVO.Api_HostAddress}}/weatherforecast/
 Accept: application/json

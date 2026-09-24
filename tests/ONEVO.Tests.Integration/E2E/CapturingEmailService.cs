@@ -30,6 +30,15 @@ public sealed class CapturingEmailService : IEmailService
     public Task SendPasswordResetAsync(string to, string resetToken, string? tenantSlug = null, CancellationToken ct = default)
         => Task.CompletedTask;
 
+    public Task SendAdminPasswordResetAsync(string to, string resetToken, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task SendAdminPasswordChangedAsync(string to, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task SendPlatformManagerInviteAsync(string to, string fullName, string inviteToken, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     public string? LastInviteToken()
     {
         SentTemplate? last = null;
@@ -44,4 +53,16 @@ public sealed class CapturingEmailService : IEmailService
             ? token.GetString()
             : null;
     }
+
+    public Task SendEmployeeOnboardingInviteAsync(string to, string firstName, string lastName, string inviteToken, string? tenantSlug = null, CancellationToken ct = default)
+        => SendTemplateAsync(to, "employee_onboarding_invite", new { firstName, lastName, inviteToken, tenantSlug }, ct);
+
+    public Task SendInvoiceEmailAsync(string to, object templateData, CancellationToken ct = default)
+        => SendTemplateAsync(to, "invoice_email", templateData, ct);
+
+    public Task SendPositionChangeApprovalRequestAsync(string to, string employeeName, string positionName, string? changeReason, CancellationToken ct = default, string? tenantSlug = null)
+        => SendTemplateAsync(to, "position_change_approval_request", new { employeeName, positionName, changeReason, tenant_slug = tenantSlug }, ct);
+
+    public Task SendCalendarEventInviteAsync(string to, string recipientName, string eventTitle, DateTimeOffset startDateUtc, string? location, string organizerName, CancellationToken ct = default)
+        => SendTemplateAsync(to, "calendar_event_invite", new { recipientName, eventTitle, startDateUtc, location, organizerName }, ct);
 }

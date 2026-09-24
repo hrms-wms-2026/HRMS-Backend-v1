@@ -40,7 +40,8 @@ public sealed class GetAdminSessionContextQueryHandlerTests
                 UserId = user.Id,
                 Email = user.Email,
                 Status = user.Status,
-                RoleNames = { "Platform Super Admin" }
+                RoleNames = { "Platform Super Admin" },
+                PermissionCodes = { "platform.accounts.read", "platform.accounts.manage" }
             });
 
         var result = await Handler().Handle(new GetAdminSessionContextQuery(), CancellationToken.None);
@@ -51,6 +52,8 @@ public sealed class GetAdminSessionContextQueryHandlerTests
         result.Value!.PlatformRole.Should().Be("Platform Super Admin");
         result.Value!.MfaRequired.Should().BeFalse();
         result.Value!.ExpiresAt.Should().BeAfter(_now);
+        result.Value!.Permissions.Should().BeEquivalentTo(
+            new[] { "platform.accounts.read", "platform.accounts.manage" });
     }
 
     [Fact]

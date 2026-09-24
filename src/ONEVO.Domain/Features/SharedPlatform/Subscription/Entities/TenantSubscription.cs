@@ -9,6 +9,9 @@ public class TenantSubscription : ITenantOwnedEntity
     public Guid PlanId { get; set; }
     public string BillingCycle { get; set; } = "monthly";
     public string Status { get; set; } = "trialing";
+    // Authoritative tenant-wide seat policy. Null means billing has not supplied a policy.
+    public int? IncludedSeats { get; set; }
+    public bool? OverageAllowed { get; set; }
     public DateOnly CurrentPeriodStart { get; set; }
     public DateOnly CurrentPeriodEnd { get; set; }
     public string? PaymentProviderRef { get; set; }

@@ -1,8 +1,142 @@
 using ONEVO.Domain.Features.OrgStructure.Entities;
 
+// Namespace deliberately stops at the feature segment: a ".Position" segment would
+// collide with the Position entity type and force using-aliases everywhere (same
+// convention as IDepartmentRepository/ILegalEntityRepository).
 namespace ONEVO.Application.Features.OrgStructure.RepositoryInterfaces;
 
 public interface IPositionRepository
 {
+    Task AddAsync(Position position, CancellationToken ct = default);
+
+    void Update(Position position);
+
     Task<Position?> GetByIdAsync(Guid id, CancellationToken ct = default);
+
+    Task<Position?> GetByIdAsync(Guid tenantId, Guid positionId, CancellationToken ct = default);
+
+    Task<Position?> GetByIdForLegalEntityAsync(Guid tenantId, Guid legalEntityId, Guid positionId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Position>> GetByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Position>> ListByLegalEntityAsync(
+        Guid tenantId, Guid legalEntityId, bool includeInactive = false, Guid? departmentId = null, CancellationToken ct = default);
+
+    Task<bool> ExistsByCodeAsync(
+        Guid tenantId, Guid legalEntityId, string code, Guid? excludingPositionId = null, CancellationToken ct = default);
+
+    Task<bool> ExistsByNameAsync(
+        Guid tenantId, Guid legalEntityId, string name, Guid? excludingPositionId = null, CancellationToken ct = default);
+
+    Task<bool> ExistsInDepartmentAsync(
+        Guid tenantId, Guid legalEntityId, Guid departmentId, Guid positionId, CancellationToken ct = default);
+
+    Task<bool> IsDescendantAsync(
+        Guid tenantId, Guid legalEntityId, Guid positionId, Guid possibleDescendantId, CancellationToken ct = default);
+
+    Task<int> CountActiveByDepartmentAsync(
+        Guid tenantId, Guid legalEntityId, Guid departmentId, CancellationToken ct = default);
+
+    // Batched variant of CountActiveByDepartmentAsync: single grouped query for a page/tree of
+    // departments instead of one query per department. Missing keys mean zero active positions.
+    Task<IReadOnlyDictionary<Guid, int>> CountActiveByDepartmentIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> departmentIds, CancellationToken ct = default);
+
+    Task<int> CountActiveReportsToPositionAsync(
+        Guid tenantId, Guid legalEntityId, Guid positionId, CancellationToken ct = default);
+
+    Task<PositionPage> ListPageAsync(
+        Guid tenantId,
+        Guid legalEntityId,
+        Guid? departmentId,
+        string? search,
+        bool includeInactive,
+        string sortBy,
+        string sortDirection,
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
+
+    Task<int> CountHeadDepartmentReferencesAsync(
+        Guid tenantId, Guid legalEntityId, Guid positionId, CancellationToken ct = default);
+
+    // Ancillary reporting & coverage helpers for Position foundation
+    Task AddReportingHistoryAsync(PositionReportingHistory history, CancellationToken ct = default);
+
+    Task AddManagementCoverageRecordAsync(ManagementCoverageRecord record, CancellationToken ct = default);
+
+    Task<PositionReportingHistory?> GetCurrentReportingHistoryAsync(
+        Guid tenantId, Guid positionId, CancellationToken ct = default);
+
+    void UpdateReportingHistory(PositionReportingHistory history);
+
+    Task<ManagementCoverageRecord?> GetLockedReportingStructureCoverageAsync(
+        Guid tenantId, Guid ownerPositionId, Guid coveredPositionId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<ManagementCoverageRecord>> ListCoverageByOwnerPositionAsync(
+        Guid tenantId, Guid legalEntityId, Guid ownerPositionId, CancellationToken ct = default);
+
+    Task<ManagementCoverageRecord?> GetCoverageRecordByIdAsync(
+        Guid tenantId, Guid id, CancellationToken ct = default);
+
+    void RemoveCoverageRecord(ManagementCoverageRecord record);
+
+    // GetCoverageRecordByIdAsync returns a detached (AsNoTracking) entity, so a mutated OwnerOrder
+    // must be pushed back through this explicit Update call - mirrors UpdateReportingHistory/
+    // UpdateAccessTemplate - or SaveChangesAsync silently persists nothing.
+    void UpdateCoverageRecord(ManagementCoverageRecord record);
+
+    // Duplicate-order guard: true when an active coverage record already exists for the same
+    // covered target (position/department/company) at the given responsibility order, regardless
+    // of which position owns it - the uniqueness is per covered target, not per owner.
+    Task<bool> HasActiveCoverageConflictAsync(
+        Guid tenantId,
+        Guid legalEntityId,
+        string coveredTargetType,
+        Guid? coveredPositionId,
+        Guid? coveredDepartmentId,
+        int ownerOrder,
+        Guid? excludingRecordId = null,
+        CancellationToken ct = default);
+
+    // Every active coverage record for a specific covered target, regardless of owner - lets a
+    // caller (e.g. the "add coverage" UI) see which responsibility levels are already claimed by
+    // OTHER owner positions before submitting, rather than only being told after a 409 from
+    // HasActiveCoverageConflictAsync. excludingRecordId lets an edit-in-place flow exclude its own
+    // row from the occupied set.
+    Task<IReadOnlyList<ManagementCoverageRecord>> ListActiveCoverageByCoveredTargetAsync(
+        Guid tenantId,
+        Guid legalEntityId,
+        string coveredTargetType,
+        Guid? coveredPositionId,
+        Guid? coveredDepartmentId,
+        Guid? excludingRecordId = null,
+        CancellationToken ct = default);
+
+    // Batched variants of ListActiveCoverageByCoveredTargetAsync split by target type (a compound
+    // type+position+department equality doesn't translate to a single IN-list predicate) - each
+    // groups its results by the covered id, ordered OwnerOrder then Id within each group, same as
+    // the single-id version. Used by IEmployeeAuthorityResolver's batch approval-inbox scope
+    // resolution.
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<ManagementCoverageRecord>>> ListActivePositionCoverageByCoveredPositionIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> coveredPositionIds, CancellationToken ct = default);
+
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<ManagementCoverageRecord>>> ListActiveDepartmentCoverageByCoveredDepartmentIdsAsync(
+        Guid tenantId, Guid legalEntityId, IReadOnlyCollection<Guid> coveredDepartmentIds, CancellationToken ct = default);
+
+    // Access template helpers
+    /// <summary>Active access template for the position. Inactive templates are excluded so
+    /// routing (RequiresApproval) matches <see cref="GetRequiresApprovalByPositionIdsAsync"/>.</summary>
+    Task<PositionAccessTemplate?> GetAccessTemplateByPositionAsync(Guid tenantId, Guid positionId, CancellationToken ct = default);
+
+    /// <summary>Access template including inactive rows, so Get/Set Position Access can still
+    /// display and reactivate a deactivated template.</summary>
+    Task<PositionAccessTemplate?> GetAccessTemplateByPositionIncludingInactiveAsync(Guid tenantId, Guid positionId, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<Guid, bool>> GetRequiresApprovalByPositionIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> positionIds, CancellationToken ct = default);
+    Task AddAccessTemplateAsync(PositionAccessTemplate template, CancellationToken ct = default);
+    void UpdateAccessTemplate(PositionAccessTemplate template);
+
+    Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

@@ -16,7 +16,6 @@ using ONEVO.Infrastructure.Identity.Time;
 using ONEVO.Infrastructure.Persistence;
 using ONEVO.Infrastructure.Persistence.Interceptors;
 using ONEVO.Tests.Integration.Support;
-using Testcontainers.PostgreSql;
 
 namespace ONEVO.Tests.Integration.Auth;
 
@@ -30,13 +29,9 @@ namespace ONEVO.Tests.Integration.Auth;
 /// it directly; this class proves the same thing end-to-end through routing, host tenant
 /// resolution, and the real HTTP pipeline via AuthPasswordController. Requires Docker.
 /// </summary>
+[Collection(WebApplicationFactoryCollection.Name)]
 public sealed class BaseForgotPasswordRestrictedRoleHttpIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("onevo_forgot_password_restricted_http_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
 
     private string _adminConnectionString = null!;
     private IntegrationTestEnvironmentScope _environmentScope = null!;
@@ -45,10 +40,7 @@ public sealed class BaseForgotPasswordRestrictedRoleHttpIntegrationTests : IAsyn
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-        _adminConnectionString = _postgres.GetConnectionString();
-
-        await IntegrationDatabaseBootstrap.InitializeAsync(_adminConnectionString);
+        _adminConnectionString = await SharedPostgresTemplate.CreateDatabaseAsync();
 
         _environmentScope = new IntegrationTestEnvironmentScope(_adminConnectionString);
 
@@ -67,7 +59,6 @@ public sealed class BaseForgotPasswordRestrictedRoleHttpIntegrationTests : IAsyn
         _client.Dispose();
         await _factory.DisposeAsync();
         await _environmentScope.DisposeAsync();
-        await _postgres.DisposeAsync();
     }
 
     [Fact]
