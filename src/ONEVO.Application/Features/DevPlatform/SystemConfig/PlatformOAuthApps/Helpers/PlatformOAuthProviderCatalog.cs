@@ -72,14 +72,24 @@ public static class PlatformOAuthProviderCatalog
                 ClientSecretRequired: true,
                 Capabilities: new[] { CapabilityUserOAuth, CapabilityCalendar, CapabilityMeetings }),
 
+            // Scopes verified live against a real Zoom Marketplace "General App" (User-managed)
+            // 2026-09-24 — see docs/superpowers/specs/2026-09-23-teams-zoom-meeting-integration-design.md.
+            // meeting:read:list_past_participants is deliberately chosen over the live
+            // meeting:read:participant scope: attendance is only ever synced after the event's end
+            // time has passed (ZoomAttendanceSyncJob mirrors TeamsAttendanceSyncJob's timing), so
+            // the live-participant scope would be requested and never used.
             new PlatformOAuthProviderDefinition(
                 Provider: "zoom",
                 DisplayName: "Zoom",
                 AuthorizationUrl: "https://zoom.us/oauth/authorize",
                 TokenUrl: "https://zoom.us/oauth/token",
-                DefaultScopes: new[] { "meeting:read" },
+                DefaultScopes: new[]
+                {
+                    "meeting:write:meeting", "meeting:delete:meeting",
+                    "meeting:read:meeting", "meeting:read:list_past_participants"
+                },
                 ClientSecretRequired: true,
-                Capabilities: new[] { CapabilityUserOAuth })
+                Capabilities: new[] { CapabilityUserOAuth, CapabilityMeetings })
         }.ToDictionary(d => d.Provider, StringComparer.Ordinal);
 
     /// <summary>Phase 2 providers that are deliberately not approved yet.</summary>
