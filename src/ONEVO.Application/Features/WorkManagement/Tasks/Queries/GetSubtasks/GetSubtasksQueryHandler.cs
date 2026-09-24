@@ -115,7 +115,7 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
             TotalLoggedMinutes: totalLoggedMinutes.GetValueOrDefault(task.Id, 0),
             Assignees: assigneesByTaskId.GetValueOrDefault(task.Id, Array.Empty<Guid>())
                 .Select(employeeId => assigneeIdentityByEmployeeId[employeeId]).ToList(),
-            ParentTaskId: task.ParentTaskId)).ToList();
+            ParentTaskId: task.ParentTaskId, CreatedAt: task.CreatedAt)).ToList();
 
         return Result<IReadOnlyList<WorkTaskResponse>>.Success(responses);
     }

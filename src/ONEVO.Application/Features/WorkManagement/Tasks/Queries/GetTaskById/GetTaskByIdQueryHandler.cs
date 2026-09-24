@@ -108,7 +108,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
             activeEventLink?.CalendarEventId,
             activeEventLink?.EventName,
             attachments,
-            ParentTaskId: task.ParentTaskId);
+            ParentTaskId: task.ParentTaskId, CreatedAt: task.CreatedAt);
 
         return Result<WorkTaskResponse>.Success(response);
     }

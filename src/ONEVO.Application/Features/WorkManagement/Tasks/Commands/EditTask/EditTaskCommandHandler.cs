@@ -205,7 +205,7 @@ public class EditTaskCommandHandler : IRequestHandler<EditTaskCommand, Result<Wo
                 task.Id, task.ObjectiveId, task.ShortId, task.Title, task.Description,
                 task.CategoryId, task.StatusId, task.Priority, task.StoryPoints,
                 task.DueDate, task.EstimatedHours, task.CompletedHours, task.ProgressPercent, task.SprintId,
-                assigneeIds));
+                assigneeIds, CreatedAt: task.CreatedAt));
         }, ct);
     }
 }
