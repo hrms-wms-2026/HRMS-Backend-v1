@@ -18,6 +18,7 @@ public sealed class DeleteCalendarEventCommandHandler(
     IExternalCalendarConnectionRepository connections,
     ICalendarConnectionTokenProvider tokenProvider,
     ITeamsMeetingClient teamsClient,
+    IZoomMeetingClient zoomClient,
     IUnitOfWork unitOfWork)
     : IRequestHandler<DeleteCalendarEventCommand, Result>
 {
@@ -34,7 +35,7 @@ public sealed class DeleteCalendarEventCommandHandler(
         if (existing.CreatedById != currentUser.UserId)
             return Result.Forbidden("Only the event creator can delete this event.");
 
-        // Cancel any auto-generated Teams meeting before the event itself is removed, so a
+        // Cancel any auto-generated Teams/Zoom meeting before the event itself is removed, so a
         // failure here still lets the pending SaveChangesAsync below roll the whole delete back
         // rather than leaving an orphaned remote meeting with no local event.
         var meeting = await meetings.GetTrackedByCalendarEventAsync(tenantId, existing.Id, ct);
@@ -43,9 +44,16 @@ public sealed class DeleteCalendarEventCommandHandler(
             var connection = await connections.GetByIdForTenantAsync(tenantId, meeting.ExternalCalendarConnectionId, ct);
             if (connection is not null)
             {
-                var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, "microsoft", ct);
+                var isZoom = meeting.Provider == CalendarEventMeetingProviders.Zoom;
+                var oauthProvider = isZoom ? "zoom" : "microsoft";
+                var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, oauthProvider, ct);
                 if (accessToken is not null)
-                    await teamsClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, ct);
+                {
+                    if (isZoom)
+                        await zoomClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, ct);
+                    else
+                        await teamsClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, ct);
+                }
             }
         }
 
