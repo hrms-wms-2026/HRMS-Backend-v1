@@ -36,6 +36,16 @@ public sealed class CalendarSyncService(
         if (connection is null || connection.SyncDirection == CalendarSyncDirections.Disabled)
             return;
 
+        // Structural guard, not just a SyncDirection check: Task 2 relies on Zoom connections being
+        // created with SyncDirection = Disabled to keep them out of this calendar-sync path, but a
+        // connection owner can change SyncDirection afterward via UpdateCalendarConnectionCommand.
+        // Without this explicit Provider allow-list, a Zoom connection whose direction was changed
+        // away from Disabled would fall into the "microsoft" branch below (since it isn't
+        // GoogleCalendar) and drive Microsoft Graph calls with a Zoom access token. Zoom connections
+        // are meeting-only - there is no calendar to sync for them at all.
+        if (connection.Provider != CalendarExternalSources.GoogleCalendar && connection.Provider != CalendarExternalSources.OutlookCalendar)
+            return;
+
         var oauthProvider = connection.Provider == CalendarExternalSources.GoogleCalendar ? "google" : "microsoft";
 
         var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, oauthProvider, ct);

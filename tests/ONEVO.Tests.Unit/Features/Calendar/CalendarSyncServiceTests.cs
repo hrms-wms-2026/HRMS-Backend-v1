@@ -80,6 +80,26 @@ public sealed class CalendarSyncServiceTests
     }
 
     [Fact]
+    public async Task SyncConnectionAsync_ZoomConnectionWithSyncDirectionChangedAwayFromDisabled_StillSkipsSync()
+    {
+        // Task 2 relied entirely on SyncDirection = Disabled (set once, at connection-creation
+        // time) to keep Zoom connections out of this sync path - but a connection owner can change
+        // SyncDirection afterward via UpdateCalendarConnectionCommandHandler. If that happens for a
+        // Zoom connection, the guard must still be structural (Provider-based), not just
+        // data-dependent, otherwise this code would treat the connection as "microsoft" (since its
+        // Provider isn't GoogleCalendar) and drive Microsoft Graph calls with a Zoom access token.
+        var sut = BuildSut();
+        var connection = MakeConnection(CalendarSyncDirections.TwoWay);
+        connection.Provider = CalendarExternalSources.Zoom;
+        _connections.Setup(x => x.GetTrackedByIdForTenantAsync(TenantId, ConnectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+
+        await sut.SyncConnectionAsync(TenantId, ConnectionId, CancellationToken.None);
+
+        _googleClient.Verify(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+        _msClient.Verify(x => x.ListEventsAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTimeOffset>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task SyncConnectionAsync_PullOnly_UpsertsNewEventAsCalendarEvent()
     {
         var sut = BuildSut();
