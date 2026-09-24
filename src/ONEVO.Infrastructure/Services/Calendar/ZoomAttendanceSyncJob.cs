@@ -26,11 +26,22 @@ public sealed class ZoomAttendanceSyncJob(IServiceProvider services, ILogger<Zoo
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(Interval);
-        while (await timer.WaitForNextTickAsync(stoppingToken))
+        try
         {
-            try { await RunOnceAsync(stoppingToken); }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception ex) { logger.LogError(ex, "ZoomAttendanceSyncJob run failed."); }
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                try { await RunOnceAsync(stoppingToken); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+                catch (Exception ex) { logger.LogError(ex, "ZoomAttendanceSyncJob run failed."); }
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // PeriodicTimer.WaitForNextTickAsync throws when the token passed to it is
+            // cancelled (unlike disposing the timer itself, which returns false instead) -
+            // an ordinary host shutdown must not surface as an unhandled exception here,
+            // since HostOptions.BackgroundServiceExceptionBehavior = StopHost treats any
+            // unhandled exception from a BackgroundService as a crash.
         }
     }
 
