@@ -51,17 +51,39 @@ conversation and treated as settled requirements, not open questions:
 
 **Explicitly out of scope for this spec's *implementation* (Phase 2 — Zoom):**
 - `IZoomMeetingClient` (Zoom REST API meeting creation).
-- Zoom's real-time attendance webhook endpoint (`meeting.participant_joined`/`participant_left`,
-  signature validation, CRC challenge-response) — a new *public*, non-tenant-scoped controller in
-  the same family as `CalendarOAuthCallbackController`.
-- Confirming Zoom's exact current OAuth scope names for meeting creation (Zoom's granular-scope
-  model has changed over time; `PlatformOAuthProviderCatalog`'s existing `zoom` entry currently
-  only lists `meeting:read`, which is insufficient for *creating* a meeting — the correct scope(s)
-  must be verified against Zoom's live developer docs when Phase 2 starts, not guessed here).
+- Confirming Zoom's exact current OAuth scope names for meeting creation — **now resolved, see
+  below**; implementation itself is still Phase 2, not built in this spec.
 
-**Blocked on:** a real Zoom Marketplace OAuth app (client id/secret) — none exists yet. The data
+**Zoom OAuth scopes — verified live 2026-09-24** against a real Zoom Marketplace "General App"
+(User-managed, Client secret auth) created for this project. Supersedes the earlier placeholder
+(`PlatformOAuthProviderCatalog`'s existing `zoom` entry only lists `meeting:read`, which is
+insufficient for creating a meeting). The correct scopes for this feature:
+- `meeting:write:meeting` — create a meeting for a user.
+- `meeting:delete:meeting` — cancel/remove a meeting (mirrors `RemoveEventMeetingCommand`).
+- `meeting:read:meeting` — read meeting details/join URL after creation.
+- `meeting:read:list_past_participants` — list a past meeting's participants. This is the Zoom
+  equivalent of Microsoft Graph's attendance-report endpoint and is what makes the Teams
+  polling-job architecture directly reusable (see "Attendance sync" decision below).
+- Deliberately **not** requested: `meeting:read:participant` (live/in-progress participant list) —
+  unnecessary since attendance is only synced after `EndDate` has passed, same as Teams.
+
+**Attendance sync architecture decision — webhook dropped, polling reused instead.** The original
+placeholder above called for "Zoom's real-time attendance webhook endpoint
+(`meeting.participant_joined`/`participant_left`, signature validation, CRC challenge-response) —
+a new *public*, non-tenant-scoped controller." That is no longer needed:
+`meeting:read:list_past_participants` gives a pull-based, post-meeting participants list — the
+direct Zoom analogue of the Graph attendance-report call `TeamsAttendanceSyncJob` already polls.
+Phase 2's attendance sync should mirror `TeamsAttendanceSyncJob` exactly (a `ZoomAttendanceSyncJob`
+polling `calendar_event_meetings` where `Provider = "zoom"`, `Status = "active"`, event `EndDate <
+now`), avoiding an entire new public webhook surface (signature verification, CRC handshake,
+Event Subscriptions configuration) for no architectural benefit.
+
+**Blocked on:** a real Zoom Marketplace OAuth app (client id/secret) — **now created** (Development
+app "General app 34", User-managed, scopes above configured, OAuth redirect URL registered as
+`https://localhost:7229/api/v1/calendar/connections/zoom/callback` for local dev testing; a
+Production-tier app + redirect URL will be needed before this ships to real users). The data
 model, `Provider` enum value (`"zoom"`), and job/table shapes are Phase-2-ready by design so Phase
-2 is additive (new client + new webhook controller), not a rework, once credentials exist.
+2 is additive (new client + new background job, no new webhook controller), not a rework.
 
 **Explicitly out of scope, full stop (no phase):**
 - Wiring meeting attendance into the Work Pattern card's "Meeting time" metric (currently a
