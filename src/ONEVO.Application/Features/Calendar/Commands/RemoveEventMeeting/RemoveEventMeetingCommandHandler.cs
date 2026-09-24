@@ -15,6 +15,7 @@ public sealed class RemoveEventMeetingCommandHandler(
     IExternalCalendarConnectionRepository connections,
     ICalendarConnectionTokenProvider tokenProvider,
     ITeamsMeetingClient teamsClient,
+    IZoomMeetingClient zoomClient,
     IUnitOfWork unitOfWork)
     : IRequestHandler<RemoveEventMeetingCommand, Result>
 {
@@ -51,10 +52,15 @@ public sealed class RemoveEventMeetingCommandHandler(
         if (connection is null)
             return; // connection was disconnected since the meeting was created - nothing to cancel remotely
 
-        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, "microsoft", ct);
+        var isZoom = meeting.Provider == CalendarEventMeetingProviders.Zoom;
+        var oauthProvider = isZoom ? "zoom" : "microsoft";
+        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, oauthProvider, ct);
         if (accessToken is null)
             return; // reauth required - the remote meeting is orphaned but the local link is still cleared below
 
-        await teamsClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, ct);
+        if (isZoom)
+            await zoomClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, ct);
+        else
+            await teamsClient.CancelMeetingAsync(accessToken, meeting.ExternalMeetingId, ct);
     }
 }

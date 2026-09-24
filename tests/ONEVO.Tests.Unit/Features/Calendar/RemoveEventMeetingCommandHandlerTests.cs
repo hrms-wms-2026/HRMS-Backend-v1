@@ -21,6 +21,7 @@ public sealed class RemoveEventMeetingCommandHandlerTests
     private readonly Mock<IExternalCalendarConnectionRepository> _connections = new();
     private readonly Mock<ICalendarConnectionTokenProvider> _tokenProvider = new();
     private readonly Mock<ITeamsMeetingClient> _teamsClient = new();
+    private readonly Mock<IZoomMeetingClient> _zoomClient = new();
     private readonly Mock<ICalendarEventRepository> _events = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
 
@@ -31,7 +32,7 @@ public sealed class RemoveEventMeetingCommandHandlerTests
         _currentUser.SetupGet(x => x.UserId).Returns(UserId);
         return new RemoveEventMeetingCommandHandler(
             _currentUser.Object, _events.Object, _meetings.Object, _connections.Object,
-            _tokenProvider.Object, _teamsClient.Object, _unitOfWork.Object);
+            _tokenProvider.Object, _teamsClient.Object, _zoomClient.Object, _unitOfWork.Object);
     }
 
     [Fact]
@@ -85,5 +86,29 @@ public sealed class RemoveEventMeetingCommandHandlerTests
 
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task Handle_ZoomMeeting_CancelsViaZoomClient()
+    {
+        var evt = new CalendarEvent { Id = EventId, TenantId = TenantId, CreatedById = UserId, Title = "Event", MeetingLink = "https://us05web.zoom.us/j/987654321" };
+        var connectionId = Guid.NewGuid();
+        var meeting = new CalendarEventMeeting
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, CalendarEventId = EventId, ExternalCalendarConnectionId = connectionId,
+            Provider = CalendarEventMeetingProviders.Zoom, ExternalMeetingId = "987654321", JoinUrl = evt.MeetingLink,
+            Status = CalendarEventMeetingStatuses.Active, CreatedAt = DateTimeOffset.UtcNow
+        };
+        var connection = new ExternalCalendarConnection { Id = connectionId, Status = ExternalCalendarConnectionStatuses.Active };
+        _events.Setup(e => e.GetTrackedByIdForTenantAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(evt);
+        _meetings.Setup(m => m.GetTrackedByCalendarEventAsync(TenantId, EventId, It.IsAny<CancellationToken>())).ReturnsAsync(meeting);
+        _connections.Setup(c => c.GetByIdForTenantAsync(TenantId, connectionId, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        _tokenProvider.Setup(t => t.GetFreshAccessTokenAsync(connection, "zoom", It.IsAny<CancellationToken>())).ReturnsAsync("access-token");
+
+        var result = await BuildSut().Handle(new RemoveEventMeetingCommand(EventId), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        _zoomClient.Verify(z => z.CancelMeetingAsync("access-token", "987654321", It.IsAny<CancellationToken>()), Times.Once);
+        _teamsClient.Verify(t => t.CancelMeetingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
