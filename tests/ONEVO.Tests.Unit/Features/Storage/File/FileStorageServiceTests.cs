@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ONEVO.Application.Common.Models;
+using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.Storage.Quota.Helpers;
 using ONEVO.Domain.Features.Storage.File.Entities;
 using ONEVO.Infrastructure.Configuration;
@@ -17,7 +18,8 @@ public class FileStorageServiceTests
         FakeFileRecordRepository fileRecords,
         FakeStorageQuotaService quota,
         FakeObjectStorageAdapter objectStorage,
-        FakeUnitOfWork unitOfWork)
+        FakeUnitOfWork unitOfWork,
+        IAvatarImageProcessor? avatarImageProcessor = null)
     {
         return new FileStorageService(
             reservations,
@@ -25,6 +27,7 @@ public class FileStorageServiceTests
             quota,
             objectStorage,
             new UploadPurposePolicy(),
+            avatarImageProcessor ?? new FakeAvatarImageProcessor(),
             unitOfWork,
             new FakeDateTimeProvider(),
             Options.Create(new FileStorageOptions()),
@@ -274,6 +277,66 @@ public class FileStorageServiceTests
         Assert.Single(objectStorage.DeletedObjectKeys);
         Assert.Equal(1, quota.ReleaseCallCount);
         Assert.Equal(0, reservations.AtomicCompletionCount);
+    }
+
+    [Fact]
+    public async Task UploadAsync_EmployeeAvatar_StoresNormalizedWebpWithoutChangingOriginalName()
+    {
+        var tenantId = Guid.NewGuid();
+        var avatarProcessor = new FakeAvatarImageProcessor();
+        var objectStorage = new FakeObjectStorageAdapter();
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(),
+            new FakeFileRecordRepository(),
+            new FakeStorageQuotaService(),
+            objectStorage,
+            new FakeUnitOfWork(),
+            avatarProcessor);
+        using var content = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+
+        var result = await service.UploadAsync(
+            tenantId,
+            Guid.NewGuid(),
+            "employee-photo.png",
+            "image/png",
+            "employee_avatar",
+            content,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, avatarProcessor.CallCount);
+        Assert.Equal("employee-photo.png", result.Value!.OriginalFileName);
+        Assert.Equal("employee-photo.webp", result.Value.SafeFileName);
+        Assert.Equal("image/webp", result.Value.ContentType);
+        Assert.Equal("image/webp", objectStorage.LastPutContentType);
+        Assert.EndsWith("/employee-photo.webp", Assert.Single(objectStorage.PutObjectKeys));
+    }
+
+    [Fact]
+    public async Task UploadAsync_NonAvatar_DoesNotInvokeAvatarProcessor()
+    {
+        var avatarProcessor = new FakeAvatarImageProcessor();
+        var service = CreateService(
+            new FakeFileUploadReservationRepository(),
+            new FakeFileRecordRepository(),
+            new FakeStorageQuotaService(),
+            new FakeObjectStorageAdapter(),
+            new FakeUnitOfWork(),
+            avatarProcessor);
+        using var content = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+
+        var result = await service.UploadAsync(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "document.pdf",
+            "application/pdf",
+            "generic_document",
+            content,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, avatarProcessor.CallCount);
+        Assert.Equal("application/pdf", result.Value!.ContentType);
     }
 
     [Fact]

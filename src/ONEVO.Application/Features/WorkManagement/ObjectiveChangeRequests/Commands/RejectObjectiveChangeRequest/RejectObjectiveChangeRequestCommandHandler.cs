@@ -60,7 +60,7 @@ public class RejectObjectiveChangeRequestCommandHandler : IRequestHandler<Reject
 
         changeRequest.Status = ObjectiveChangeRequestStatuses.Rejected;
         changeRequest.DecidedAt = DateTimeOffset.UtcNow;
-        changeRequest.DecidedById = userId;
+        changeRequest.DecidedById = callerEmployeeId.Value;
         _changeRequests.Update(changeRequest);
 
         if (changeRequest.RequestType is ObjectiveChangeRequestTypes.ExtendAllocation or ObjectiveChangeRequestTypes.Edit)

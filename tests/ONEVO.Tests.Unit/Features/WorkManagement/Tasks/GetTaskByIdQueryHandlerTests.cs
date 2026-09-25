@@ -63,7 +63,7 @@ public sealed class GetTaskByIdQueryHandlerTests
 
         var permissions = new Mock<IPermissionResolver>();
         permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
+            .ReturnsAsync(hasReadPermission ? new List<string> { "*" } : new List<string>());
 
         var assignments = new Mock<ITaskAssignmentRepository>();
         assignments.Setup(x => x.GetByTaskIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))

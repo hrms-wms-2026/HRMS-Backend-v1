@@ -5,6 +5,7 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Mappers;
+using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 
 namespace ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.Queries.ListMyObjectiveChangeRequests;
 
@@ -13,13 +14,18 @@ public class ListMyObjectiveChangeRequestsQueryHandler : IRequestHandler<ListMyO
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly IObjectiveChangeRequestRepository _changeRequests;
+    private readonly IObjectiveRepository _objectives;
 
     public ListMyObjectiveChangeRequestsQueryHandler(
-        ICurrentUser currentUser, ICallerIdentityResolver identity, IObjectiveChangeRequestRepository changeRequests)
+        ICurrentUser currentUser,
+        ICallerIdentityResolver identity,
+        IObjectiveChangeRequestRepository changeRequests,
+        IObjectiveRepository objectives)
     {
         _currentUser = currentUser;
         _identity = identity;
         _changeRequests = changeRequests;
+        _objectives = objectives;
     }
 
     public async Task<Result<IReadOnlyList<ObjectiveChangeRequestResponse>>> Handle(ListMyObjectiveChangeRequestsQuery request, CancellationToken ct)
@@ -37,7 +43,19 @@ public class ListMyObjectiveChangeRequestsQueryHandler : IRequestHandler<ListMyO
             return Result<IReadOnlyList<ObjectiveChangeRequestResponse>>.Forbidden("No employee record for the current user.");
 
         var pending = await _changeRequests.ListPendingForApproverAsync(tenantId, callerEmployeeId.Value, ct);
-        var items = pending.Select(ObjectiveMapper.ToResponse).ToList();
+        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
+            tenantId, pending.Select(x => x.RequestedById).Distinct().ToList(), ct);
+        var objectives = await _objectives.GetByIdsForTenantAsync(
+            tenantId, pending.Select(x => x.ObjectiveId).Distinct().ToList(), ct);
+        var objectivesById = objectives.ToDictionary(x => x.Id);
+        var items = pending.Select(item =>
+        {
+            objectivesById.TryGetValue(item.ObjectiveId, out var objective);
+            return ObjectiveMapper.ToResponse(
+                item,
+                names.GetValueOrDefault(item.RequestedById) ?? "A teammate",
+                objective);
+        }).ToList();
 
         return Result<IReadOnlyList<ObjectiveChangeRequestResponse>>.Success(items);
     }

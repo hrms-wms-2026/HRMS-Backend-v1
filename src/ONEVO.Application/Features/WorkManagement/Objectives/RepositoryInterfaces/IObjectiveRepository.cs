@@ -19,6 +19,11 @@ public interface IObjectiveRepository
 
     Task<Objective?> GetByIdForTenantAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
+    /// <summary>Batch lookup used by approval lists to enrich requests with their target module
+    /// without issuing one query per request.</summary>
+    Task<IReadOnlyList<Objective>> GetByIdsForTenantAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+
     /// <summary>
     /// Same lookup as <see cref="GetByIdForTenantAsync"/>, but returns the entity tracked by the
     /// DbContext's change tracker instead of AsNoTracking. Use on write paths that later call

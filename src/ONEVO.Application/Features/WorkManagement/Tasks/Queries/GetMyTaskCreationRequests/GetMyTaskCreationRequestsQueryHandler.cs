@@ -34,10 +34,14 @@ public class GetMyTaskCreationRequestsQueryHandler : IRequestHandler<GetMyTaskCr
             return Result<IReadOnlyList<TaskCreationRequestResponse>>.Forbidden("No employee record for the current user.");
 
         var pending = await _requests.GetPendingForOwnerEmployeeIdAsync(tenantId, callerEmployeeId.Value, ct);
+        var names = await _identity.ResolveDisplayNamesByEmployeeIdAsync(
+            tenantId, pending.Select(r => r.RequestedByEmployeeId).Distinct().ToList(), ct);
         var items = pending.Select(r =>
         {
             var payload = JsonSerializer.Deserialize<TaskCreationRequestPayload>(r.PayloadJson)!;
-            return new TaskCreationRequestResponse(r.Id, r.ObjectiveId, r.Status, payload, r.CreatedAt);
+            return new TaskCreationRequestResponse(
+                r.Id, r.ObjectiveId, r.Status, payload, r.CreatedAt,
+                names.GetValueOrDefault(r.RequestedByEmployeeId) ?? "A teammate");
         }).ToList();
 
         return Result<IReadOnlyList<TaskCreationRequestResponse>>.Success(items);

@@ -59,7 +59,7 @@ public class CreateSprintCommandHandlerTests
 
         _permissionResolver = new Mock<IPermissionResolver>();
         _permissionResolver.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
+            .ReturnsAsync(hasReadPermission ? new List<string> { "*" } : new List<string>());
 
         _sprints = new Mock<ISprintRepository>();
 

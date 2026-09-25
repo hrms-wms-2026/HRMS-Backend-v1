@@ -12,6 +12,7 @@ using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
 using ONEVO.Domain.Features.WorkManagement.Projects.Entities;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 using TaskStatusEntity = ONEVO.Domain.Features.WorkManagement.Tasks.Entities.TaskStatus;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.WorkManagement.Tasks;
@@ -67,7 +68,7 @@ public class DeleteTaskStatusCommandHandlerTests
         membership.Setup(x => x.IsEffectiveManagerAsync(TenantId, ObjectiveId, resolvedCallerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(callerIsEffectiveManager ?? (resolvedCallerEmployeeId == OwnerEmployeeId));
 
-        var handler = new DeleteTaskStatusCommandHandler(currentUser.Object, identity.Object, objectives.Object, projects.Object, statuses.Object, tasks.Object, unitOfWork.Object, membership.Object);
+        var handler = new DeleteTaskStatusCommandHandler(currentUser.Object, identity.Object, objectives.Object, projects.Object, statuses.Object, tasks.Object, unitOfWork.Object, membership.Object, new Mock<ITaskStatusChangeRequestConflictSweeper>().Object);
         return (handler, statuses);
     }
 

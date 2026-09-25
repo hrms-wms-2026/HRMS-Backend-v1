@@ -4,6 +4,7 @@ using ONEVO.Api.Controllers.Tenant.CoreHr;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Features.CoreHr.Employee.DTOs.Responses;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.ListEmployees;
 using Microsoft.AspNetCore.Mvc;
 
@@ -86,6 +87,35 @@ public sealed class EmployeesControllerTests
             .ReturnsAsync(Result<EmployeeListItemResponse>.NotFound("missing"));
 
         var result = await _sut.GetById(id, CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
+        Assert.Equal(404, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetIdentity_ReturnsOk_OnSuccess()
+    {
+        var id = Guid.NewGuid();
+        var response = new EmployeeIdentityResponse(id, "Ada Lovelace", null);
+        _mediator
+            .Setup(m => m.Send(It.Is<GetEmployeeIdentityQuery>(q => q.EmployeeId == id), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeIdentityResponse>.Success(response));
+
+        var result = await _sut.GetIdentity(id, CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Same(response, okResult.Value);
+    }
+
+    [Fact]
+    public async Task GetIdentity_Returns404_WhenQueryReturnsNotFound()
+    {
+        var id = Guid.NewGuid();
+        _mediator
+            .Setup(m => m.Send(It.IsAny<GetEmployeeIdentityQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<EmployeeIdentityResponse>.NotFound("missing"));
+
+        var result = await _sut.GetIdentity(id, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(404, objectResult.StatusCode);

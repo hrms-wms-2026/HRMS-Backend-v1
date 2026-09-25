@@ -4,10 +4,14 @@ namespace ONEVO.Application.Features.WorkManagement.Tasks.DTOs.Responses;
 
 public sealed record TaskAttachmentDto(Guid FileId, string FileName, long FileSizeBytes, string ContentType);
 
-/// <summary>An assignee's coverage-free display identity (name + optional signed avatar URL), resolved
+/// <summary>An assignee's coverage-free display identity (name + optional avatar file id), resolved
 /// via ICallerIdentityResolver the same way objective member names are - unrelated to the
 /// management-coverage-scoped GET /employees/{id}, which 403s for most task assignees.</summary>
-public sealed record TaskAssigneeIdentityDto(Guid EmployeeId, string Name, string? AvatarUrl);
+public sealed record TaskAssigneeIdentityDto(
+    Guid EmployeeId,
+    string Name,
+    Guid? AvatarFileId,
+    string? AvatarUrl = null);
 
 public sealed record WorkTaskResponse(
     Guid Id, Guid ObjectiveId, string ShortId, string Title, string? Description,
@@ -23,7 +27,8 @@ public sealed record WorkTaskResponse(
     DateTimeOffset CreatedAt = default);
 
 public sealed record TaskCreationRequestResponse(
-    Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt);
+    Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt,
+    string? RequestedByName = null);
 
 public sealed record TaskEditRequestResponse(
     Guid Id, Guid TaskId, Guid ObjectiveId, string Status, TaskEditRequestPayload Payload, string RequestedByName, DateTimeOffset CreatedAt);

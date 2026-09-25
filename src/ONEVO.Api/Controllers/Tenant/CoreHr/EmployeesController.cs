@@ -20,6 +20,7 @@ using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdateEmployeeJobDetai
 using ONEVO.Application.Features.CoreHr.Employee.Commands.UpdatePersonalInformation;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployee;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeDetail;
+using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeeIdentity;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetEmployeePositionHistory;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyPayroll;
 using ONEVO.Application.Features.CoreHr.Employee.Queries.GetMyProfile;
@@ -67,6 +68,20 @@ public class EmployeesController : ControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct = default)
     {
         var result = await _mediator.Send(new GetEmployeeQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
+
+    /// <summary>Name and avatar only - universal display identity for any employee in this
+    /// tenant, deliberately gated on nothing beyond authentication (no employees:read, no
+    /// visibility-scope check). For showing "who owns/is assigned to this" elsewhere in the
+    /// app; the full HR record stays behind GetById/GetDetail above.</summary>
+    [HttpGet("{id:guid}/identity")]
+    public async Task<IActionResult> GetIdentity(Guid id, CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(new GetEmployeeIdentityQuery(id), ct);
 
         return result.IsSuccess
             ? Ok(result.Value)

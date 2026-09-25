@@ -385,6 +385,10 @@ public class TenantIsolationArchitectureTests
             // preserving tenant scoping with an explicit TenantId predicate in
             // EfTaskCommentRepository.
             "EfTaskCommentRepository.cs",
+            // Development/test demo seeder idempotency checks must see soft-deleted deterministic
+            // tasks and requests to avoid duplicate primary keys. Every bypass retains an explicit
+            // TenantId == DapiTenantId predicate.
+            "WorkManagementDapiDemoSeeder.Tasks.cs",
         };
 
         var srcDirectory = FindSrcDirectory();

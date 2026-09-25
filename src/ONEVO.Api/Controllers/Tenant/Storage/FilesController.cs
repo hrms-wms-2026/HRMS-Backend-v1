@@ -44,9 +44,24 @@ public sealed class FilesController : ControllerBase
     [HttpGet("{fileId:guid}")]
     public async Task<IActionResult> Get(Guid fileId, CancellationToken ct)
     {
-        var result = await _mediator.Send(new GetFileQuery(fileId), ct);
-        return result.IsSuccess
-            ? File(result.Value!.Content, result.Value.ContentType)
-            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+        var result = await _mediator.Send(
+            new GetFileQuery(fileId, Request.Headers.IfNoneMatch.ToString()), ct);
+        if (!result.IsSuccess)
+            return Problem(result.Error, statusCode: result.StatusCode ?? 400);
+
+        var download = result.Value!;
+        if (download.IsPrivateCacheableAvatar)
+        {
+            Response.Headers.CacheControl = "private, max-age=900";
+            Response.Headers.ETag = download.ETag;
+            Response.Headers.Vary = "Cookie";
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+        }
+
+        if (download.NotModified)
+            return StatusCode(StatusCodes.Status304NotModified);
+
+        Response.ContentLength = download.ContentLength;
+        return File(download.Content!, download.ContentType);
     }
 }

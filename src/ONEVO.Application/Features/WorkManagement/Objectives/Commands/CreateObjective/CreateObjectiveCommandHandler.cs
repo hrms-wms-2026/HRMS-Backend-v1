@@ -122,7 +122,6 @@ public class CreateObjectiveCommandHandler : IRequestHandler<CreateObjectiveComm
 
             await _objectives.AddAsync(objective, innerCt);
             await _membership.UpsertMembershipAsync(tenantId, objective.ProjectId, objective.Id, callerEmployeeId.Value, innerCt);
-            await _autoGrant.EnsureGrantedAsync(tenantId, userId, userId, "projects:access", innerCt);
 
             if (proposedHeadAssignee is not null)
             {

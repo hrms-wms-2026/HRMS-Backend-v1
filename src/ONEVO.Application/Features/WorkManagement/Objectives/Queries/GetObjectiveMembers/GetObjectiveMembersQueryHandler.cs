@@ -50,7 +50,7 @@ public class GetObjectiveMembersQueryHandler : IRequestHandler<GetObjectiveMembe
             return Result<ObjectiveMemberListResponse>.NotFound("Objective not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
 
         if (!hasReadPermission)
         {

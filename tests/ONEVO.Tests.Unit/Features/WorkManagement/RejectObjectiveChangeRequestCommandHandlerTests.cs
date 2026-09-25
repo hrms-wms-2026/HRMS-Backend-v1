@@ -70,7 +70,10 @@ public class RejectObjectiveChangeRequestCommandHandlerTests
         var result = await handler.Handle(new RejectObjectiveChangeRequestCommand(RequestId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
-        requests.Verify(x => x.Update(It.Is<ObjectiveChangeRequest>(r => r.Status == ObjectiveChangeRequestStatuses.Rejected)), Times.Once);
+        requests.Verify(x => x.Update(It.Is<ObjectiveChangeRequest>(r =>
+            r.Status == ObjectiveChangeRequestStatuses.Rejected
+            && r.DecidedById == ManagerEmployeeId
+            && r.DecidedAt != null)), Times.Once);
     }
 
     [Fact]
