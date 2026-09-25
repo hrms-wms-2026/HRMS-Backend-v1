@@ -27,7 +27,8 @@ public sealed record WorkTaskResponse(
     DateTimeOffset CreatedAt = default);
 
 public sealed record TaskCreationRequestResponse(
-    Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt);
+    Guid Id, Guid ObjectiveId, string Status, TaskCreationRequestPayload Payload, DateTimeOffset CreatedAt,
+    string? RequestedByName = null);
 
 public sealed record TaskEditRequestResponse(
     Guid Id, Guid TaskId, Guid ObjectiveId, string Status, TaskEditRequestPayload Payload, string RequestedByName, DateTimeOffset CreatedAt);

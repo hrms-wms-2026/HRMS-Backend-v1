@@ -28,12 +28,13 @@ public class GetMyTaskCreationRequestsQueryHandlerTests
 
         var payload = new ONEVO.Application.Features.WorkManagement.Tasks.DTOs.TaskCreationRequestPayload(
             "New task", null, Guid.NewGuid(), "medium", null, 5m, null, Guid.NewGuid());
+        var requesterId = Guid.NewGuid();
         var pending = new List<TaskCreationRequest>
         {
             new()
             {
                 Id = Guid.NewGuid(), TenantId = TenantId, ObjectiveId = Guid.NewGuid(),
-                RequestedByEmployeeId = Guid.NewGuid(),
+                RequestedByEmployeeId = requesterId,
                 PayloadJson = System.Text.Json.JsonSerializer.Serialize(payload),
                 Status = TaskCreationRequestStatuses.Pending, CreatedById = Guid.NewGuid(), CreatedAt = DateTimeOffset.UtcNow
             }
@@ -42,6 +43,9 @@ public class GetMyTaskCreationRequestsQueryHandlerTests
         var requests = new Mock<ITaskCreationRequestRepository>();
         requests.Setup(x => x.GetPendingForOwnerEmployeeIdAsync(TenantId, OwnerEmployeeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(pending);
+        identity.Setup(x => x.ResolveDisplayNamesByEmployeeIdAsync(
+                TenantId, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string> { [requesterId] = "Alex Silva" });
 
         var handler = new GetMyTaskCreationRequestsQueryHandler(currentUser.Object, identity.Object, requests.Object);
         var result = await handler.Handle(new GetMyTaskCreationRequestsQuery(), CancellationToken.None);
@@ -49,5 +53,6 @@ public class GetMyTaskCreationRequestsQueryHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Single(result.Value!);
         Assert.Equal("New task", result.Value![0].Payload.Title);
+        Assert.Equal("Alex Silva", result.Value[0].RequestedByName);
     }
 }

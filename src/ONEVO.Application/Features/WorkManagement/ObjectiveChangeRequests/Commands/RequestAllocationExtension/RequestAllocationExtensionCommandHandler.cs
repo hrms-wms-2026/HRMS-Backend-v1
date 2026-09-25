@@ -97,7 +97,8 @@ public class RequestAllocationExtensionCommandHandler : IRequestHandler<RequestA
 
             await _unitOfWork.SaveChangesAsync(innerCt);
 
-            return Result<ObjectiveChangeRequestResponse>.Success(ObjectiveMapper.ToResponse(entity));
+            return Result<ObjectiveChangeRequestResponse>.Success(
+                ObjectiveMapper.ToResponse(entity, requesterDisplayName, objective));
         }, ct);
     }
 }

@@ -36,7 +36,11 @@ public static class ObjectiveMapper
         objective.IsAchieved, objective.AchievedAt,
         childrenByParent[objective.Id].Select(c => ToSubtreeNode(c, childrenByParent, namesByEmployeeId, callerEmployeeId)).ToList());
 
-    public static ObjectiveChangeRequestResponse ToResponse(ObjectiveChangeRequest request) => new(
+    public static ObjectiveChangeRequestResponse ToResponse(
+        ObjectiveChangeRequest request,
+        string? requestedByName = null,
+        Objective? objective = null) => new(
         request.Id, request.ObjectiveId, request.RequestType, request.RequestedById, request.ReportingManagerId,
-        request.Status, request.PayloadJson, request.DecidedAt, request.DecidedById, request.CreatedAt);
+        request.Status, request.PayloadJson, request.DecidedAt, request.DecidedById, request.CreatedAt,
+        requestedByName, objective?.Title, objective?.ProjectId, objective?.AllocatedHours);
 }

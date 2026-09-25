@@ -2,4 +2,6 @@ namespace ONEVO.Application.Features.WorkManagement.ObjectiveChangeRequests.DTOs
 
 public sealed record ObjectiveChangeRequestResponse(
     Guid Id, Guid ObjectiveId, string RequestType, Guid RequestedById, Guid ReportingManagerId,
-    string Status, string? PayloadJson, DateTimeOffset? DecidedAt, Guid? DecidedById, DateTimeOffset CreatedAt);
+    string Status, string? PayloadJson, DateTimeOffset? DecidedAt, Guid? DecidedById, DateTimeOffset CreatedAt,
+    string? RequestedByName = null, string? ObjectiveTitle = null, Guid? ProjectId = null,
+    decimal? CurrentAllocatedHours = null);
