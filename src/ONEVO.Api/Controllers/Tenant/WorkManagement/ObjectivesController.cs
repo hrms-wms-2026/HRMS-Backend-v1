@@ -32,6 +32,7 @@ namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 [ApiController]
 [Route("api/v1/work/objectives")]
 [Authorize(Policy = "TenantPolicy")]
+[RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
 public class ObjectivesController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -40,7 +41,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>Creates a sub-milestone under an existing Objective. Caller must be the parent's current Head.</summary>
     [HttpPost]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Create([FromBody] CreateObjectiveRequest request, CancellationToken ct)
     {
         var command = new CreateObjectiveCommand(
@@ -83,7 +83,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>Edits a milestone. Always creates a pending approval request routed to the milestone's Reporting Manager - the head can no longer apply their own edits directly. Frozen (400) once the milestone is Achieved.</summary>
     [HttpPut("{id:guid}")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditObjectiveRequest request, CancellationToken ct)
     {
         var command = new EditObjectiveCommand(id, request.Title, request.Description, request.StartDate, request.EndDate, request.AllocatedHours);
@@ -99,7 +98,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>Soft-deletes a milestone. Applies immediately if the caller created it; otherwise creates a pending approval request routed to the milestone's Reporting Manager.</summary>
     [HttpDelete("{id:guid}")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new DeleteObjectiveCommand(id), ct);
@@ -114,7 +112,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>Reassigns a milestone's head (by employeeId). If the objective has a Reporting Manager, applies immediately for the creator or routes to that Reporting Manager for approval otherwise. If the objective has no Reporting Manager, skips approval and sends a leader invitation — the caller remains Head until accepted.</summary>
     [HttpPost("{id:guid}/transfer")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Transfer(Guid id, [FromBody] TransferObjectiveHeadRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new TransferObjectiveHeadCommand(id, request.NewHeadEmployeeId), ct);
@@ -129,7 +126,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>Invites an employee to this milestone. Head-only. Immediate no-op (204) if already an active member; otherwise creates a pending invitation (202) the invited employee must accept.</summary>
     [HttpPost("{id:guid}/members")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> AddMember(Guid id, [FromBody] AddObjectiveMemberRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new AddObjectiveMemberCommand(id, request.EmployeeId), ct);
@@ -144,7 +140,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>Removes a member from this milestone. Head-only. Rejects removing the current head - use Transfer instead.</summary>
     [HttpDelete("{id:guid}/members/{employeeId:guid}")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> RemoveMember(Guid id, Guid employeeId, CancellationToken ct)
     {
         var result = await _mediator.Send(new RemoveObjectiveMemberCommand(id, employeeId), ct);
@@ -154,7 +149,7 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Accepts a pending invitation. Caller must be the invited employee. Member invites create membership; leader invites reassign the milestone's head. No module-level projects:access gate: the invitee may not have that permission yet.</summary>
+    /// <summary>Accepts a pending invitation. Caller must be the invited employee. Member invites create membership; leader invites reassign the milestone's head.</summary>
     [HttpPost("invitations/{invitationId:guid}/accept")]
     public async Task<IActionResult> AcceptInvitation(Guid invitationId, CancellationToken ct)
     {
@@ -187,7 +182,6 @@ public class ObjectivesController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
     [HttpPost("{id:guid}/achieve")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Achieve(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new AchieveObjectiveCommand(id), ct);
@@ -202,7 +196,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>Reverts an Achieved milestone back to active. Same immediate-vs-pending split as Delete.</summary>
     [HttpPost("{id:guid}/unachieve")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Unachieve(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new UnachieveObjectiveCommand(id), ct);
@@ -217,7 +210,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>An Objective's parent detail plus its full nested descendant subtree. Caller must be {id}'s current Head.</summary>
     [HttpGet("{id:guid}/tree")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> GetSubtree(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetObjectiveSubtreeQuery(id), ct);
@@ -229,7 +221,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>Owner requests more allocated hours, routed to the Objective's Reporting Manager as an extend_allocation change request. Root (no reporting manager) returns 400 — edit the Project instead.</summary>
     [HttpPost("{id:guid}/allocation-requests")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> RequestAllocationExtension(Guid id, [FromBody] RequestAllocationExtensionRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new RequestAllocationExtensionCommand(id, request.RequestedAdditionalHours, request.Reason), ct);
@@ -241,7 +232,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>Approves a pending change request. Caller must be the request's Reporting Manager.</summary>
     [HttpPost("change-requests/{requestId:guid}/approve")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> ApproveChangeRequest(
         Guid requestId,
         [FromBody] ApproveObjectiveChangeRequestRequest? request,
@@ -262,7 +252,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>Rejects a pending change request. Caller must be the request's Reporting Manager. The Objective is left unchanged.</summary>
     [HttpPost("change-requests/{requestId:guid}/reject")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> RejectChangeRequest(Guid requestId, CancellationToken ct)
     {
         var result = await _mediator.Send(new RejectObjectiveChangeRequestCommand(requestId), ct);
@@ -274,7 +263,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>The caller's own approval queue - pending requests where they are the Reporting Manager.</summary>
     [HttpGet("change-requests/mine")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> ListMyChangeRequests(CancellationToken ct)
     {
         var result = await _mediator.Send(new ListMyObjectiveChangeRequestsQuery(), ct);
@@ -286,7 +274,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>Milestones the caller used to have active access to but no longer does (Transferred away, removed as a member, or Achieved with no other reason to stay in the project). Read-only.</summary>
     [HttpGet("mine/history")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> MyHistory(CancellationToken ct)
     {
         var result = await _mediator.Send(new GetMyObjectiveHistoryQuery(), ct);
@@ -309,7 +296,6 @@ public class ObjectivesController : ControllerBase
 
     /// <summary>Every milestone in this project the caller can act on: one they have a direct project_members row for (any status - the frontend filters by objectiveIsActive/isAchieved/membershipIsActive as needed), or one reachable via the cascading-ownership walk from an ancestor's owner/active member (IsEffectiveManagerAsync). Owner and Reporting Manager names are resolved server-side. No [RequirePermission] beyond the module base gate: this endpoint can only ever return the caller's own rows, so an unrelated projectId just yields an empty array, never 403/404.</summary>
     [HttpGet("~/api/v1/work/projects/{projectId:guid}/objectives/mine")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> GetMine(Guid projectId, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetMyProjectMilestonesQuery(projectId), ct);

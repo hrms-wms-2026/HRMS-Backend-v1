@@ -6,7 +6,9 @@ using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Objectives.Services;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.DTOs;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.Tasks.Services;
 using ONEVO.Domain.Features.WorkManagement.Tasks.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.Tasks.Commands.EditTaskStatus;
@@ -20,11 +22,12 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
     private readonly IProjectRepository _projects;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMilestoneMembershipCoordinator _membership;
+    private readonly ITaskStatusChangeRequestConflictSweeper _sweeper;
 
     public EditTaskStatusCommandHandler(
         ICurrentUser currentUser, ICallerIdentityResolver identity, ITaskStatusRepository statuses,
         IObjectiveRepository objectives, IProjectRepository projects, IUnitOfWork unitOfWork,
-        IMilestoneMembershipCoordinator membership)
+        IMilestoneMembershipCoordinator membership, ITaskStatusChangeRequestConflictSweeper sweeper)
     {
         _currentUser = currentUser;
         _identity = identity;
@@ -33,6 +36,7 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
         _projects = projects;
         _unitOfWork = unitOfWork;
         _membership = membership;
+        _sweeper = sweeper;
     }
 
     public async Task<Result> Handle(EditTaskStatusCommand request, CancellationToken ct)
@@ -75,6 +79,8 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
             && siblings.Count(s => s.Category == TaskStatusCategories.Active) <= 1)
             return Result.Conflict("A project must always have at least one Active status.");
 
+        var before = TaskStatusChangeSetApplier.Snapshot(status);
+
         return await _unitOfWork.ExecuteInTransactionAsync(async innerCt =>
         {
             status.Name = request.Name.Trim();
@@ -87,6 +93,12 @@ public class EditTaskStatusCommandHandler : IRequestHandler<EditTaskStatusComman
             status.MarksTaskComplete = request.Category == TaskStatusCategories.Done;
             status.UpdatedAt = DateTimeOffset.UtcNow;
             _statuses.Update(status);
+
+            if (!TaskStatusChangeSetApplier.Snapshot(status).Equals(before))
+                await _sweeper.MarkConflictingOutdatedAsync(
+                    tenantId, project.Id, project.Name,
+                    new TaskStatusChangeFootprint(new HashSet<Guid> { status.Id }, ReordersExisting: false), null, innerCt);
+
             await _unitOfWork.SaveChangesAsync(innerCt);
             return Result.Success();
         }, ct);

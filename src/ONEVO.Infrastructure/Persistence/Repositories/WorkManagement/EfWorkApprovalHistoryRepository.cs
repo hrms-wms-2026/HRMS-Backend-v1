@@ -98,6 +98,35 @@ public sealed class EfWorkApprovalHistoryRepository : IWorkApprovalHistoryReposi
                 request.DecidedAt)
         ).ToListAsync(ct);
 
+        var statusChanges = await (
+            from request in _db.TaskStatusChangeRequests.AsNoTracking()
+            join root in _db.Objectives.AsNoTracking() on request.ProjectId equals root.ProjectId
+            where request.TenantId == tenantId
+                  && request.ProjectId == projectId
+                  && root.IsDefault
+                  && (request.RequestedByEmployeeId == employeeId
+                      || request.DecidedByEmployeeId == employeeId
+                      || (request.Status == TaskStatusChangeRequestStatuses.Pending
+                          && (root.OwnerId == employeeId
+                              || _db.ProjectMembers.Any(m => m.TenantId == tenantId
+                                                             && m.ObjectiveId == root.Id
+                                                             && m.EmployeeId == employeeId
+                                                             && m.IsActive))))
+            select new WorkApprovalHistoryRecord(
+                request.Id,
+                root.Id,
+                "task_status_change",
+                request.Status,
+                "Task statuses",
+                request.ChangesJson,
+                request.RequestedByEmployeeId,
+                request.DecidedByEmployeeId ?? root.OwnerId,
+                request.DecidedByEmployeeId,
+                request.DecisionComment,
+                request.CreatedAt,
+                request.DecidedAt)
+        ).ToListAsync(ct);
+
         var invitations = await (
             from invitation in _db.ProjectMemberInvitations.AsNoTracking()
             join objective in _db.Objectives.AsNoTracking() on invitation.ObjectiveId equals objective.Id
@@ -142,6 +171,7 @@ public sealed class EfWorkApprovalHistoryRepository : IWorkApprovalHistoryReposi
         return taskCreation
             .Concat(taskEdits)
             .Concat(objectiveChanges)
+            .Concat(statusChanges)
             .Concat(invitations)
             .OrderByDescending(item => item.DecidedAt ?? item.CreatedAt)
             .ToList();

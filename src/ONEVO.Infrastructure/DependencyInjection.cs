@@ -369,6 +369,10 @@ public static class DependencyInjection
         services.AddScoped<ITaskEditLogRepository>(sp => sp.GetRequiredService<EfTaskEditLogRepository>());
         services.AddScoped<EfTaskStatusChangeLogRepository>();
         services.AddScoped<ITaskStatusChangeLogRepository>(sp => sp.GetRequiredService<EfTaskStatusChangeLogRepository>());
+        services.AddScoped<EfTaskStatusChangeRequestRepository>();
+        services.AddScoped<ITaskStatusChangeRequestRepository>(sp => sp.GetRequiredService<EfTaskStatusChangeRequestRepository>());
+        services.AddScoped<ITaskStatusChangeAccessService, TaskStatusChangeAccessService>();
+        services.AddScoped<ITaskStatusChangeRequestConflictSweeper, TaskStatusChangeRequestConflictSweeper>();
         services.AddScoped<EfTaskClockingSessionRepository>();
         services.AddScoped<ITaskClockingSessionRepository>(sp => sp.GetRequiredService<EfTaskClockingSessionRepository>());
         services.AddScoped<EfTaskPercentageLogRepository>();
@@ -708,7 +712,6 @@ public static class DependencyInjection
         services.AddHostedService<DapiOrgStructureSeeder>();
         services.AddHostedService<DapiLeaveSampleSeeder>();
         services.AddHostedService<PlatformOAuthProviderMetadataSeeder>();
-        services.AddHostedService<ProjectsAccessBootstrapSeeder>();
         services.AddHostedService<WorkManagementSampleDataSeeder>();
 
         // Boot-time configuration audit (warns about missing keys; never fatal).

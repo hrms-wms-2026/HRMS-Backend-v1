@@ -189,7 +189,7 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
     }
 
     [Fact]
-    public async Task SeedAsync_CreatesOneWorkManagementTeamMemberRoleWithExactly21Permissions()
+    public async Task SeedAsync_CreatesWorkManagementTeamMemberRoleWithoutGlobalPermissions()
     {
         using var db = CreateContext();
         await RunDevSmokeSeederAsync(db);
@@ -203,9 +203,7 @@ public sealed class WorkManagementDapiDemoSeederTests : IDisposable
             .ToListAsync();
 
         role.Name.Should().Be("Work Management Team Member");
-        grantedCodes.Should().HaveCount(23); // every Permission row tagged Module == "work_management"
-        grantedCodes.Should().NotContain(code => code.Contains("employees:"));
-        grantedCodes.Should().NotContain(code => code.Contains("payroll"));
+        grantedCodes.Should().BeEmpty();
     }
 
     [Fact]

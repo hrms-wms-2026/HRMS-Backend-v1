@@ -6,6 +6,7 @@ using ONEVO.Application.Features.WorkManagement.CalendarEvents.DTOs.Responses;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.Commands.CreateCalendarEvent;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
 
 namespace ONEVO.Application.Features.WorkManagement.CalendarEvents.Commands.CloseCalendarEvent;
@@ -15,17 +16,20 @@ public sealed class CloseCalendarEventCommandHandler : IRequestHandler<CloseCale
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
     private readonly ICalendarEventRepository _calendarEvents;
+    private readonly IProjectMemberRepository _members;
     private readonly IUnitOfWork _unitOfWork;
 
     public CloseCalendarEventCommandHandler(
         ICurrentUser currentUser,
         ICallerIdentityResolver identity,
         ICalendarEventRepository calendarEvents,
+        IProjectMemberRepository members,
         IUnitOfWork unitOfWork)
     {
         _currentUser = currentUser;
         _identity = identity;
         _calendarEvents = calendarEvents;
+        _members = members;
         _unitOfWork = unitOfWork;
     }
 
@@ -43,6 +47,9 @@ public sealed class CloseCalendarEventCommandHandler : IRequestHandler<CloseCale
         var calendarEvent = await _calendarEvents.GetByIdForTenantAsync(_currentUser.TenantId, request.Id, ct);
         if (calendarEvent is null)
             return Result<CalendarEventResponse>.NotFound("Calendar event not found.");
+        if (!await _members.HasActiveMembershipAsync(
+                _currentUser.TenantId, calendarEvent.ProjectId, employeeId.Value, ct))
+            return Result<CalendarEventResponse>.Forbidden("You do not have access to this project.");
         if (calendarEvent.Status == CalendarEventStatuses.Archived)
         {
             var archivedMemberships = await _calendarEvents.ListMembershipsForEventAsync(calendarEvent.Id, ct);

@@ -46,7 +46,7 @@ public sealed class GetSubtasksQueryHandlerTests
 
         var permissions = new Mock<IPermissionResolver>();
         permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(canRead ? new List<string> { "projects:read" } : new List<string>());
+            .ReturnsAsync(canRead ? new List<string> { "*" } : new List<string>());
 
         var members = new Mock<IProjectMemberRepository>();
         members.Setup(x => x.GetActiveObjectiveIdsForEmployeeInProjectAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))

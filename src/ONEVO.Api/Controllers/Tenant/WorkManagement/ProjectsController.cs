@@ -24,6 +24,7 @@ namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 [ApiController]
 [Route("api/v1/work/projects")]
 [Authorize(Policy = "TenantPolicy")]
+[RequireAnyModule("worksync_foundation", "projects", "objectives_milestones", "tasks", "boards", "planning_sprints")]
 public class ProjectsController : ControllerBase
 {
     private readonly IMediator _mediator;
@@ -35,7 +36,6 @@ public class ProjectsController : ControllerBase
     /// or previously approved/rejected.
     /// </summary>
     [HttpGet("{id:guid}/approval-history")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> ApprovalHistory(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetWorkApprovalHistoryQuery(id), ct);
@@ -47,7 +47,7 @@ public class ProjectsController : ControllerBase
 
     /// <summary>Creates a Project with its Default Objective, creator membership, Default Version, release reminder, optional labels, and optional logo — all in one atomic transaction.</summary>
     [HttpPost]
-    [RequirePermission("projects:access")]
+    [RequirePermission("projects:create")]
     [Idempotent]
     public async Task<IActionResult> Create([FromForm] CreateProjectFormRequest request, CancellationToken ct)
     {
@@ -92,7 +92,6 @@ public class ProjectsController : ControllerBase
 
     /// <summary>Updates a Project's editable fields (name, description, category, dates, color, actual hours, optional allocated hours). Cascades title/description/dates onto the Default Objective; allocated hours also cascade when provided.</summary>
     [HttpPut("{id:guid}")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Edit(Guid id, [FromBody] EditProjectRequest request, CancellationToken ct)
     {
         var command = new EditProjectCommand(
@@ -107,9 +106,8 @@ public class ProjectsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Soft-deletes a Project (is_active = false). Only the project lead may delete, even with projects:access. Already-deleted returns 409.</summary>
+    /// <summary>Soft-deletes a Project (is_active = false). Only the project lead may delete. Already-deleted returns 409.</summary>
     [HttpDelete("{id:guid}")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new DeleteProjectCommand(id), ct);
@@ -121,7 +119,6 @@ public class ProjectsController : ControllerBase
 
     /// <summary>Marks a Project Achieved. Requires every top-level milestone (direct child of the Default Objective) to already be Achieved. Lead-only, always immediate - the Project is the tree's root, no approval routing.</summary>
     [HttpPost("{id:guid}/achieve")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Achieve(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new AchieveProjectCommand(id), ct);
@@ -133,7 +130,6 @@ public class ProjectsController : ControllerBase
 
     /// <summary>Reverts an Achieved Project back to active. Lead-only, always immediate.</summary>
     [HttpPost("{id:guid}/unachieve")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> Unachieve(Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new UnachieveProjectCommand(id), ct);
@@ -143,7 +139,7 @@ public class ProjectsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Gets a single Project by id. No [RequirePermission] here on purpose: access is granted by projects:read/* OR by having an active project_members row for this project — the handler checks both, since the attribute alone would hard-block members who lack the tenant-wide permission.</summary>
+    /// <summary>Gets a single Project by id. The handler requires an active project relationship.</summary>
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
@@ -154,7 +150,7 @@ public class ProjectsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Streams a Project's cover/logo image. Same access rule as GetById (projects:read/* OR active membership) so the image is never more visible than the project itself. 404 if no logo is set.</summary>
+    /// <summary>Streams a Project's cover/logo image. Requires active project membership. 404 if no logo is set.</summary>
     [HttpGet("{id:guid}/logo")]
     public async Task<IActionResult> GetLogo(Guid id, CancellationToken ct)
     {
@@ -165,7 +161,7 @@ public class ProjectsController : ControllerBase
         return File(result.Value!.Content, result.Value!.ContentType);
     }
 
-    /// <summary>Streams a Project's banner image. Same access rule as GetById (projects:read/* OR active membership) so the image is never more visible than the project itself. 404 if no banner is set.</summary>
+    /// <summary>Streams a Project's banner image. Requires active project membership. 404 if no banner is set.</summary>
     [HttpGet("{id:guid}/banner")]
     public async Task<IActionResult> GetBanner(Guid id, CancellationToken ct)
     {
@@ -178,7 +174,6 @@ public class ProjectsController : ControllerBase
 
     /// <summary>Invites an employee to this project via its Default Objective. Project-owner (LeadId) only. Immediate no-op (204) if already an active member of the Default Objective; otherwise creates a pending invitation (202) the invited employee must accept.</summary>
     [HttpPost("{id:guid}/members")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> AddMember(Guid id, [FromBody] AddProjectMemberRequest request, CancellationToken ct)
     {
         var result = await _mediator.Send(new AddProjectMemberCommand(id, request.EmployeeId), ct);
@@ -191,9 +186,8 @@ public class ProjectsController : ControllerBase
             : StatusCode(202, result.Value.ToViewModel());
     }
 
-    /// <summary>The caller's own projects. Requires projects:access (the module-wide base gate) — this only ever returns the caller's own data, so no additional permission is needed beyond that base gate.</summary>
+    /// <summary>Lists the caller's own projects from active project relationships.</summary>
     [HttpGet("mine")]
-    [RequirePermission("projects:access")]
     public async Task<IActionResult> ListMine([FromQuery] PagedRequest paging, CancellationToken ct)
     {
         var result = await _mediator.Send(new ListProjectsQuery(null, paging), ct);
@@ -203,9 +197,8 @@ public class ProjectsController : ControllerBase
             : Problem(result.Error, statusCode: result.StatusCode ?? 400);
     }
 
-    /// <summary>Any given employee's projects (admin/company-owner path). If employeeId doesn't resolve to an employee with any active membership, returns an empty page, not 404 — list semantics. projects:read is unchanged by the 2026-08-04 permission-model update (it stays the sole "view others" gate); role configuration is expected to grant projects:access alongside it, not enforced here as a second attribute check.</summary>
+    /// <summary>Legacy route retained for compatibility. The handler rejects requests for another employee.</summary>
     [HttpGet]
-    [RequirePermission("projects:read")]
     public async Task<IActionResult> ListByUser([FromQuery] Guid employeeId, [FromQuery] PagedRequest paging, CancellationToken ct)
     {
         var result = await _mediator.Send(new ListProjectsQuery(employeeId, paging), ct);

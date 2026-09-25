@@ -53,6 +53,9 @@ public sealed class GetProjectCalendarQueryHandler
             return Result<ProjectCalendarResponse>.Forbidden("No employee record for the current user.");
 
         var memberships = await _members.ListForEmployeeInProjectAsync(tenantId, request.ProjectId, callerEmployeeId.Value, ct);
+        if (!memberships.Any(m => m.IsActive))
+            return Result<ProjectCalendarResponse>.Forbidden("You do not have access to this project.");
+
         var objectives = await _objectives.GetAllByProjectIdAsync(tenantId, request.ProjectId, ct);
         if (objectives.Count == 0)
             return Result<ProjectCalendarResponse>.Success(

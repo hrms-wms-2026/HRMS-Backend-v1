@@ -58,6 +58,6 @@ public sealed class ModuleAutoGrantsTests
     }
 
     [Fact]
-    public void WorkManagementModule_GrantsTasksReadOwn()
-        => ModuleAutoGrants.GetForModules(["work_management"]).Should().Contain("tasks:read-own");
+    public void WorkManagementModule_DoesNotCreateRolePermissionGrants()
+        => ModuleAutoGrants.GetForModules(["work_management"]).Should().BeEmpty();
 }

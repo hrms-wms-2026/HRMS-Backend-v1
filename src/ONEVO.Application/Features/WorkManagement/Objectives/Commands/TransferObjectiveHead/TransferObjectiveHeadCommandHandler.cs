@@ -97,7 +97,6 @@ public class TransferObjectiveHeadCommandHandler : IRequestHandler<TransferObjec
 
                 await _membership.UpsertMembershipAsync(tenantId, objective.ProjectId, objective.Id, request.NewHeadEmployeeId, innerCt);
                 await _membership.DeactivateMembershipAsync(tenantId, objective.ProjectId, objective.Id, oldHeadEmployeeId, innerCt);
-                await _autoGrant.EnsureGrantedAsync(tenantId, newHeadAssignee.UserId, userId, "projects:access", innerCt);
                 await _membership.HasOtherActiveAccessAsync(tenantId, objective.ProjectId, oldHeadEmployeeId, objective.Id, innerCt);
 
                 await _unitOfWork.SaveChangesAsync(innerCt);

@@ -111,6 +111,9 @@ public sealed class GetWorkApprovalHistoryQueryHandler
                     : $"Proposed title: {proposedTitle}";
             }
 
+            if (kind == "task_status_change")
+                return DescribeStatusChanges(root);
+
             if (kind == "objective_invitation")
             {
                 var inviteType = TryGetString(root, "inviteType");
@@ -126,6 +129,23 @@ public sealed class GetWorkApprovalHistoryQueryHandler
         }
 
         return null;
+    }
+
+    // Stored with default (PascalCase) System.Text.Json naming - see TaskStatusChangeSet.
+    private static string? DescribeStatusChanges(JsonElement root)
+    {
+        int Count(string name) => root.TryGetProperty(name, out var list) && list.ValueKind == JsonValueKind.Array
+            ? list.GetArrayLength()
+            : 0;
+
+        var parts = new List<string>();
+        var added = Count("Adds");
+        var edited = Count("Updates");
+        var deleted = Count("Deletes");
+        if (added > 0) parts.Add($"{added} added");
+        if (edited > 0) parts.Add($"{edited} edited");
+        if (deleted > 0) parts.Add($"{deleted} deleted");
+        return parts.Count == 0 ? "Reordered statuses" : string.Join(", ", parts);
     }
 
     private static string? TryGetString(JsonElement root, string propertyName)

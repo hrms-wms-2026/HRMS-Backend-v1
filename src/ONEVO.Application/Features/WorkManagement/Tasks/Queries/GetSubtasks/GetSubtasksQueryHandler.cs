@@ -60,7 +60,7 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
             return Result<IReadOnlyList<WorkTaskResponse>>.NotFound("Task not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        if (!permissions.Contains("projects:read") && !permissions.Contains("*"))
+        if (!permissions.Contains("*"))
         {
             var accessibleObjectiveIds =
                 (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct))

@@ -74,7 +74,7 @@ public sealed class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, 
             return Result<WorkTaskResponse>.NotFound("Task not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
         if (!hasReadPermission)
         {
             var accessibleObjectiveIds =

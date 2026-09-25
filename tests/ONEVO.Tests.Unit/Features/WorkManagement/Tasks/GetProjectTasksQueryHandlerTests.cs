@@ -76,7 +76,7 @@ public sealed class GetProjectTasksQueryHandlerTests
 
         var permissions = new Mock<IPermissionResolver>();
         permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(hasReadPermission ? new List<string> { "projects:read" } : new List<string>());
+            .ReturnsAsync(hasReadPermission ? new List<string> { "*" } : new List<string>());
 
         var taskRepository = new Mock<IWorkTaskRepository>();
         taskRepository.Setup(x => x.GetByProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))

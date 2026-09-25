@@ -312,6 +312,7 @@ public class ApplicationDbContext : DbContext
         public DbSet<TaskEditRequest> TaskEditRequests => Set<TaskEditRequest>();
     public DbSet<TaskEditLog> TaskEditLogs => Set<TaskEditLog>();
     public DbSet<TaskStatusChangeLog> TaskStatusChangeLogs => Set<TaskStatusChangeLog>();
+    public DbSet<TaskStatusChangeRequest> TaskStatusChangeRequests => Set<TaskStatusChangeRequest>();
     public DbSet<TaskClockingSession> TaskClockingSessions => Set<TaskClockingSession>();
     public DbSet<TaskPercentageLog> TaskPercentageLogs => Set<TaskPercentageLog>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();

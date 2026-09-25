@@ -280,13 +280,13 @@ public class CreateObjectiveCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ValidCreate_EnsuresProjectsAccessGrantedForCaller()
+    public async Task Handle_ValidCreate_DoesNotCreatePermissionOverrideForCaller()
     {
         var (handler, _, _, autoGrant) = BuildHandlerWithMembership(ParentObjective(ownerId: EmployeeId));
 
         await handler.Handle(ValidCommand(), CancellationToken.None);
 
-        autoGrant.Verify(x => x.EnsureGrantedAsync(TenantId, UserId, UserId, "projects:access", It.IsAny<CancellationToken>()), Times.Once);
+        autoGrant.VerifyNoOtherCalls();
     }
 
     [Fact]

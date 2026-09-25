@@ -57,6 +57,10 @@ public class ListProjectsQueryHandler : IRequestHandler<ListProjectsQuery, Resul
             return Result<PagedResult<ProjectListItemResponse>>.Forbidden("No employee record for the current user.");
 
         var targetEmployeeId = request.TargetEmployeeId ?? callerEmployeeId.Value;
+        if (targetEmployeeId != callerEmployeeId.Value)
+            return Result<PagedResult<ProjectListItemResponse>>.Forbidden(
+                "Work project visibility is relationship-based; you can only list your own projects.");
+
         var pageNumber = request.Paging.PageNumber < 1 ? 1 : request.Paging.PageNumber;
         var skip = (pageNumber - 1) * request.Paging.PageSize;
 

@@ -67,7 +67,7 @@ public sealed class GetProjectTasksQueryHandler : IRequestHandler<GetProjectTask
             return Result<IReadOnlyList<WorkTaskResponse>>.NotFound("Project not found.");
 
         var permissions = await _permissionResolver.ResolveAsync(userId, tenantId, null, ct);
-        var hasReadPermission = permissions.Contains("projects:read") || permissions.Contains("*");
+        var hasReadPermission = permissions.Contains("*");
         var accessibleObjectiveIds = hasReadPermission
             ? null
             : (await _members.GetActiveObjectiveIdsForEmployeeInProjectAsync(tenantId, project.Id, callerEmployeeId.Value, ct)).ToHashSet();

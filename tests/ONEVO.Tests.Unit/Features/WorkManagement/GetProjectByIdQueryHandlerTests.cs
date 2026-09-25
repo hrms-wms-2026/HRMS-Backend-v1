@@ -97,7 +97,7 @@ public class GetProjectByIdQueryHandlerTests
     [Fact]
     public async Task Handle_HasReadPermission_SucceedsWithoutCheckingMembership()
     {
-        var (handler, members, _, _, _) = BuildHandler(Project(), ["projects:read"], isActiveMember: false);
+        var (handler, members, _, _, _) = BuildHandler(Project(), ["*"], isActiveMember: false);
 
         var result = await handler.Handle(new GetProjectByIdQuery(ProjectId), CancellationToken.None);
 
@@ -139,7 +139,7 @@ public class GetProjectByIdQueryHandlerTests
     [Fact]
     public async Task Handle_InactiveProject_ReturnsNotFound()
     {
-        var (handler, _, _, _, _) = BuildHandler(Project(isActive: false), ["projects:read"], isActiveMember: false);
+        var (handler, _, _, _, _) = BuildHandler(Project(isActive: false), ["*"], isActiveMember: false);
 
         var result = await handler.Handle(new GetProjectByIdQuery(ProjectId), CancellationToken.None);
 
@@ -163,7 +163,7 @@ public class GetProjectByIdQueryHandlerTests
         var members = new Mock<IProjectMemberRepository>();
         SetupEmptyMemberLists(members);
         var permissionResolver = new Mock<IPermissionResolver>();
-        permissionResolver.Setup(x => x.ResolveAsync(LeadUserId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(["projects:read"]);
+        permissionResolver.Setup(x => x.ResolveAsync(LeadUserId, TenantId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>())).ReturnsAsync(["*"]);
         var entityAssets = BuildEmptyEntityAssets();
         var labels = BuildEmptyLabels();
 
@@ -180,7 +180,7 @@ public class GetProjectByIdQueryHandlerTests
     public async Task Handle_ProjectHasAPrimaryCoverAsset_AttachesItsFileIdAsLogoFileId()
     {
         var fileId = Guid.NewGuid();
-        var (handler, _, entityAssets, _, _) = BuildHandler(Project(), ["projects:read"], isActiveMember: false);
+        var (handler, _, entityAssets, _, _) = BuildHandler(Project(), ["*"], isActiveMember: false);
         entityAssets.Setup(x => x.GetPrimaryFileIdsByOwnerAsync(
                 TenantId, "project", It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(ProjectId)), "project_cover", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, Guid> { [ProjectId] = fileId });
@@ -193,7 +193,7 @@ public class GetProjectByIdQueryHandlerTests
     [Fact]
     public async Task Handle_ProjectHasNoCoverAsset_LogoFileIdIsNull()
     {
-        var (handler, _, _, _, _) = BuildHandler(Project(), ["projects:read"], isActiveMember: false);
+        var (handler, _, _, _, _) = BuildHandler(Project(), ["*"], isActiveMember: false);
 
         var result = await handler.Handle(new GetProjectByIdQuery(ProjectId), CancellationToken.None);
 
@@ -203,7 +203,7 @@ public class GetProjectByIdQueryHandlerTests
     [Fact]
     public async Task Handle_ProjectHasLabels_AttachesThemAsSummaries()
     {
-        var (handler, _, _, labels, _) = BuildHandler(Project(), ["projects:read"], isActiveMember: false);
+        var (handler, _, _, labels, _) = BuildHandler(Project(), ["*"], isActiveMember: false);
         var label = new Label { Id = Guid.NewGuid(), TenantId = TenantId, ProjectId = ProjectId, Name = "Personal", Color = "#8B5CF6" };
         labels.Setup(x => x.GetByProjectIdsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(ProjectId)), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<Label>> { [ProjectId] = [label] });
@@ -218,7 +218,7 @@ public class GetProjectByIdQueryHandlerTests
     [Fact]
     public async Task Handle_ProjectHasNoLabels_LabelsIsEmpty()
     {
-        var (handler, _, _, _, _) = BuildHandler(Project(), ["projects:read"], isActiveMember: false);
+        var (handler, _, _, _, _) = BuildHandler(Project(), ["*"], isActiveMember: false);
 
         var result = await handler.Handle(new GetProjectByIdQuery(ProjectId), CancellationToken.None);
 
@@ -229,7 +229,7 @@ public class GetProjectByIdQueryHandlerTests
     public async Task Handle_ProjectHasActiveMembers_AttachesResolvedDisplayNamesAndCount()
     {
         var memberEmployeeId = Guid.NewGuid();
-        var (handler, members, _, _, identity) = BuildHandler(Project(), ["projects:read"], isActiveMember: false);
+        var (handler, members, _, _, identity) = BuildHandler(Project(), ["*"], isActiveMember: false);
         members.Setup(x => x.ListDistinctActiveMemberEmployeeIdsAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(ProjectId)), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<Guid>> { [ProjectId] = [memberEmployeeId] });
         members.Setup(x => x.CountDistinctActiveMembersAsync(TenantId, It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(ProjectId)), It.IsAny<CancellationToken>()))
@@ -248,7 +248,7 @@ public class GetProjectByIdQueryHandlerTests
     [Fact]
     public async Task Handle_ProjectHasNoActiveMembers_MembersIsEmptyAndCountIsZero()
     {
-        var (handler, _, _, _, _) = BuildHandler(Project(), ["projects:read"], isActiveMember: false);
+        var (handler, _, _, _, _) = BuildHandler(Project(), ["*"], isActiveMember: false);
 
         var result = await handler.Handle(new GetProjectByIdQuery(ProjectId), CancellationToken.None);
 

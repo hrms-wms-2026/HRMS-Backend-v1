@@ -9,6 +9,7 @@ using ONEVO.Application.Features.WorkManagement.CalendarEvents.RepositoryInterfa
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.Objectives.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
+using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Tasks.RepositoryInterfaces;
 using ONEVO.Domain.Features.WorkManagement.CalendarEvents.Entities;
 using ONEVO.Domain.Features.WorkManagement.Objectives.Entities;
@@ -247,12 +248,15 @@ public sealed class CalendarEventCommandHandlerTests
         events.Setup(x => x.ListTaskMembershipsForEventAsync(eventId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<CalendarEventTask>());
         var unitOfWork = new Mock<IUnitOfWork>();
+        var members = new Mock<IProjectMemberRepository>();
+        members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         unitOfWork.Setup(x => x.ExecuteInTransactionAsync(It.IsAny<Func<CancellationToken, Task<bool>>>(), It.IsAny<CancellationToken>()))
             .Returns((Func<CancellationToken, Task<bool>> op, CancellationToken ct) => op(ct));
         unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         var handler = new CloseCalendarEventCommandHandler(
-            currentUser.Object, identity.Object, events.Object, unitOfWork.Object);
+            currentUser.Object, identity.Object, events.Object, members.Object, unitOfWork.Object);
         var result = await handler.Handle(new CloseCalendarEventCommand(eventId), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -295,6 +299,7 @@ public sealed class CalendarEventCommandHandlerTests
     private sealed class CreateHarness
     {
         private readonly Mock<IProjectRepository> _projects = new();
+        private readonly Mock<IProjectMemberRepository> _members = new();
         private readonly Mock<IObjectiveRepository> _objectives = new();
         private readonly Mock<IWorkTaskRepository> _tasks = new();
         private readonly Mock<ICalendarEventRepository> _events = new();
@@ -306,6 +311,8 @@ public sealed class CalendarEventCommandHandlerTests
         {
             _projects.Setup(x => x.GetByIdForTenantAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Project { Id = ProjectId, TenantId = TenantId, Name = "P", Identifier = "P" });
+            _members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
             _objectives.Setup(x => x.GetAllByProjectIdAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new List<Objective>());
             _tasks.Setup(x => x.GetByProjectAsync(TenantId, ProjectId, It.IsAny<CancellationToken>()))
@@ -342,7 +349,7 @@ public sealed class CalendarEventCommandHandlerTests
         {
             var (currentUser, identity) = UserContext();
             var handler = new CreateCalendarEventCommandHandler(
-                currentUser.Object, identity.Object, _projects.Object, _objectives.Object,
+                currentUser.Object, identity.Object, _projects.Object, _members.Object, _objectives.Object,
                 _tasks.Object, _events.Object, _uow.Object);
             return handler.Handle(command, CancellationToken.None);
         }
@@ -351,6 +358,7 @@ public sealed class CalendarEventCommandHandlerTests
     private sealed class UpdateHarness
     {
         private readonly Mock<IObjectiveRepository> _objectives = new();
+        private readonly Mock<IProjectMemberRepository> _members = new();
         private readonly Mock<IWorkTaskRepository> _tasks = new();
         private readonly Mock<ICalendarEventRepository> _events = new();
         private readonly Mock<IUnitOfWork> _uow = new();
@@ -367,6 +375,8 @@ public sealed class CalendarEventCommandHandlerTests
                     StartDate = start, EndDate = end, Status = CalendarEventStatuses.Active,
                     CreatedAt = DateTimeOffset.UtcNow, CreatedById = EmployeeId
                 });
+            _members.Setup(x => x.HasActiveMembershipAsync(TenantId, ProjectId, EmployeeId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
             _events.Setup(x => x.ListMembershipsForEventAsync(EventId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Array.Empty<CalendarEventObjective>());
             _events.Setup(x => x.ListTaskMembershipsForEventAsync(EventId, It.IsAny<CancellationToken>()))
@@ -405,7 +415,7 @@ public sealed class CalendarEventCommandHandlerTests
         {
             var (currentUser, identity) = UserContext();
             var handler = new UpdateCalendarEventCommandHandler(
-                currentUser.Object, identity.Object, _objectives.Object, _tasks.Object, _events.Object, _uow.Object);
+                currentUser.Object, identity.Object, _members.Object, _objectives.Object, _tasks.Object, _events.Object, _uow.Object);
             return handler.Handle(command, CancellationToken.None);
         }
     }

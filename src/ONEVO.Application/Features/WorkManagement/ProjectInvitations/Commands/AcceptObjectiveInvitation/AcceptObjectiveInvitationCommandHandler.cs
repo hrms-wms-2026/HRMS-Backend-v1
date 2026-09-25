@@ -96,7 +96,6 @@ public class AcceptObjectiveInvitationCommandHandler : IRequestHandler<AcceptObj
                 await _membership.UpsertMembershipAsync(tenantId, objective.ProjectId, objective.Id, invitation.InvitedEmployeeId, innerCt);
                 await _membership.DeactivateMembershipAsync(tenantId, objective.ProjectId, objective.Id, oldHeadEmployeeId, innerCt);
                 await _membership.HasOtherActiveAccessAsync(tenantId, objective.ProjectId, oldHeadEmployeeId, objective.Id, innerCt);
-                await _autoGrant.EnsureGrantedAsync(tenantId, invitee.UserId, userId, "projects:access", innerCt);
             }
             else
             {

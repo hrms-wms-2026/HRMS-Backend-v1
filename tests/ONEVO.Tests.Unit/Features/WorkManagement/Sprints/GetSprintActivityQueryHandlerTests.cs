@@ -94,7 +94,7 @@ public sealed class GetSprintActivityQueryHandlerTests
         _sprints.Setup(x => x.GetByIdForTenantAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Sprint());
         _permissions.Setup(x => x.ResolveAsync(UserId, TenantId, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<string> { "projects:read" });
+            .ReturnsAsync(new List<string> { "*" });
         _logs.Setup(x => x.GetForSprintAsync(TenantId, SprintId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<SprintActivityLog>());
 
