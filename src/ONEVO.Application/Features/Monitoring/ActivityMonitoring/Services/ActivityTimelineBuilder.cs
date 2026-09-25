@@ -5,10 +5,10 @@ namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
 
 /// <summary>
 /// Classifies a day's activity snapshots into Focus/Idle timeline segments with real
-/// start/end boundaries, for self-service display. Mirrors the focus-streak rule used by
-/// ActivityDailySummaryAggregator.ComputeFocus (30+ contiguous active minutes in the same
-/// foreground process), but kept as its own isolated implementation so this addition can't
-/// regress the already-tested daily aggregation job.
+/// start/end boundaries, for self-service display. Uses the same 30-minute threshold as
+/// WorkPatternWindowClassifier (which computes the authoritative Focus/Meeting/Productive
+/// totals) but is a separate implementation because this one needs interval boundaries for
+/// the Today's Activity timeline visualization, not just totals.
 /// </summary>
 public static class ActivityTimelineBuilder
 {
@@ -16,7 +16,7 @@ public static class ActivityTimelineBuilder
     public const string IdleType = "idle";
 
     /// <summary>Minimum contiguous active minutes to count as focus.</summary>
-    public const int FocusThresholdMinutes = 30;
+    public const int FocusThresholdMinutes = WorkPatternWindowClassifier.FocusThresholdMinutes;
 
     public static IReadOnlyList<ActivityTimelineSegmentDto> BuildSegments(
         IReadOnlyList<ActivitySnapshot> snapshots)
