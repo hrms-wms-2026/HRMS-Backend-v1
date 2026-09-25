@@ -1,5 +1,6 @@
 using ONEVO.Application.Features.Monitoring.ActivityMonitoring.DTOs.Responses;
 using ONEVO.Domain.Features.Monitoring.ActivityMonitoring.Entities;
+using ONEVO.Domain.Features.Monitoring.Meetings.Entities;
 
 namespace ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
 
@@ -14,13 +15,20 @@ public static class ActivityTimelineBuilder
 {
     public const string FocusType = "focus";
     public const string IdleType = "idle";
+    public const string MeetingType = "meeting";
 
     /// <summary>Minimum contiguous active minutes to count as focus.</summary>
     public const int FocusThresholdMinutes = WorkPatternWindowClassifier.FocusThresholdMinutes;
 
     public static IReadOnlyList<ActivityTimelineSegmentDto> BuildSegments(
-        IReadOnlyList<ActivitySnapshot> snapshots)
+        IReadOnlyList<ActivitySnapshot> snapshots,
+        IReadOnlyList<MeetingSignal>? meetingSignals = null)
     {
+        var meetingWindows = (meetingSignals ?? [])
+            .Where(m => m.IsMeetingAppRunning)
+            .Select(m => (Start: m.CapturedAt - TimeSpan.FromMinutes(2), End: m.CapturedAt))
+            .ToList();
+
         var ordered = snapshots
             .Where(s => s.ActiveSeconds + s.IdleSeconds > 0)
             .OrderBy(s => s.CapturedAt)
@@ -48,6 +56,14 @@ public static class ActivityTimelineBuilder
             var duration = TimeSpan.FromSeconds(snapshot.ActiveSeconds + snapshot.IdleSeconds);
             var start = snapshot.CapturedAt - duration;
             var end = snapshot.CapturedAt;
+
+            if (meetingWindows.Any(m => start < m.End && m.Start < end))
+            {
+                FlushStreak();
+                segments.Add(new ActivityTimelineSegmentDto(start, end, MeetingType));
+                continue;
+            }
+
             var isActive = snapshot.ActiveSeconds > 0;
             var process = snapshot.ForegroundProcessName ?? string.Empty;
 
