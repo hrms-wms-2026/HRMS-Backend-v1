@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ONEVO.Application.Common.Models.Auth;
@@ -193,12 +194,15 @@ public sealed class AdminDatabaseTicketStore : ITicketStore
             return;
 
         var env = httpContext.RequestServices.GetRequiredService<IWebHostEnvironment>();
+        var configuration = httpContext.RequestServices.GetRequiredService<IConfiguration>();
+        var adminCookieDomain = configuration["AdminCookieDomain"];
 
         httpContext.Response.Cookies.Append(cookieName, csrfValue, new CookieOptions
         {
             HttpOnly = false,
             Secure = !env.IsDevelopment(),
             SameSite = SameSiteMode.Strict,
+            Domain = string.IsNullOrWhiteSpace(adminCookieDomain) ? null : adminCookieDomain,
             Expires = expiresAt
         });
     }

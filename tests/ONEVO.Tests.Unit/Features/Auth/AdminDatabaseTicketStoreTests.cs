@@ -220,8 +220,10 @@ public class AdminDatabaseTicketStoreTests
         var httpContext = new DefaultHttpContext();
         var env = Substitute.For<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
         env.EnvironmentName.Returns("Development");
+        var configuration = Substitute.For<Microsoft.Extensions.Configuration.IConfiguration>();
         var mockSp = Substitute.For<IServiceProvider>();
         mockSp.GetService(typeof(Microsoft.AspNetCore.Hosting.IWebHostEnvironment)).Returns(env);
+        mockSp.GetService(typeof(Microsoft.Extensions.Configuration.IConfiguration)).Returns(configuration);
         httpContext.RequestServices = mockSp;
         httpContext.Request.Headers["Cookie"] = "admin_csrf=existing_csrf_val";
 
@@ -236,6 +238,45 @@ public class AdminDatabaseTicketStoreTests
 
         var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
         Assert.Contains("admin_csrf=existing_csrf_val", setCookieHeader);
+    }
+
+    [Fact]
+    public async Task RenewAsync_WithAdminCookieDomainConfigured_ReissuesCsrfCookieWithThatDomain()
+    {
+        // The admin frontend always lives on a different subdomain (admin.<domain>) than this
+        // shared API host - without an explicit Domain, admin_csrf is a host-only cookie that
+        // the frontend's own document.cookie read can never see, silently breaking every
+        // CSRF-guarded mutation (Add Service Key, logout, etc.). This proves AdminCookieDomain
+        // actually reaches the reissued Set-Cookie header.
+        var session = new PlatformUserSession
+        {
+            AccountId = Guid.NewGuid(),
+            CreatedAt = FixedNow.AddMinutes(-10),
+            ExpiresAt = FixedNow.AddMinutes(5),
+            CsrfTokenHash = "hash"
+        };
+        _sessions.GetByTokenHashAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                 .Returns(session);
+
+        var httpContext = new DefaultHttpContext();
+        var env = Substitute.For<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
+        env.EnvironmentName.Returns("Development");
+        var configuration = Substitute.For<Microsoft.Extensions.Configuration.IConfiguration>();
+        configuration["AdminCookieDomain"].Returns(".onexso.com");
+        var mockSp = Substitute.For<IServiceProvider>();
+        mockSp.GetService(typeof(Microsoft.AspNetCore.Hosting.IWebHostEnvironment)).Returns(env);
+        mockSp.GetService(typeof(Microsoft.Extensions.Configuration.IConfiguration)).Returns(configuration);
+        httpContext.RequestServices = mockSp;
+        httpContext.Request.Headers["Cookie"] = "admin_csrf=existing_csrf_val";
+
+        var sut = CreateSut();
+        var ticket = new AuthenticationTicket(new ClaimsPrincipal(), new AuthenticationProperties(), "AdminScheme");
+
+        await sut.RenewAsync("some-raw-key", ticket, httpContext, CancellationToken.None);
+
+        var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
+        Assert.Contains("admin_csrf=existing_csrf_val", setCookieHeader);
+        Assert.Contains("domain=.onexso.com", setCookieHeader, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
