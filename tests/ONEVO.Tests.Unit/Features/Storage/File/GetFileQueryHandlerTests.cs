@@ -32,7 +32,7 @@ public sealed class GetFileQueryHandlerTests
     }
 
     private static FileRecordDto Record(Guid uploader) => new(
-        FileId, TenantId, "key", "a.png", "a.png", "image/png", 100, "sha",
+        FileId, TenantId, "key", "a.png", "a.png", "image/png", 100, new string('a', 64),
         "active", DateTimeOffset.UtcNow, uploader, null);
 
     [Fact]
@@ -43,7 +43,10 @@ public sealed class GetFileQueryHandlerTests
         _fileStorage.Setup(x => x.GetRecordAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileRecordDto>.Success(Record(UserId)));
         using var stream = new MemoryStream();
-        _fileStorage.Setup(x => x.OpenReadAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
+        _fileStorage.Setup(x => x.OpenReadAsync(
+                TenantId,
+                It.Is<FileRecordDto>(record => record.Id == FileId),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileStreamDto>.Success(new FileStreamDto(stream, "image/png")));
 
         var result = await CreateHandler().Handle(new GetFileQuery(FileId), CancellationToken.None);
@@ -107,14 +110,85 @@ public sealed class GetFileQueryHandlerTests
         _entityAssets.Setup(x => x.GetByFileRecordIdAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EntityAsset
             {
-                TenantId = TenantId, OwnerType = "employee", OwnerId = OwnerId, FileRecordId = FileId
+                TenantId = TenantId, OwnerType = "employee", OwnerId = OwnerId,
+                FileRecordId = FileId, AssetPurpose = "employee_avatar"
             });
+        _fileStorage.Setup(x => x.GetRecordAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(Record(UserId)));
         using var stream = new MemoryStream();
-        _fileStorage.Setup(x => x.OpenReadAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
+        _fileStorage.Setup(x => x.OpenReadAsync(
+                TenantId,
+                It.Is<FileRecordDto>(record => record.Id == FileId),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<FileStreamDto>.Success(new FileStreamDto(stream, "image/png")));
 
         var result = await CreateHandler().Handle(new GetFileQuery(FileId), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
+        result.Value!.IsPrivateCacheableAvatar.Should().BeTrue();
+        result.Value.ETag.Should().Be($"\"sha256-{new string('a', 64)}\"");
+    }
+
+    [Fact]
+    public async Task Handle_LinkedAvatarMatchingEtag_ReturnsNotModifiedWithoutOpeningObject()
+    {
+        var policy = new Mock<IEntityAssetAccessPolicy>();
+        policy.Setup(x => x.CanReadAsync(TenantId, OwnerId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _policies.Setup(x => x.Resolve("employee")).Returns(policy.Object);
+        _entityAssets.Setup(x => x.GetByFileRecordIdAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EntityAsset
+            {
+                TenantId = TenantId,
+                OwnerType = "employee",
+                OwnerId = OwnerId,
+                FileRecordId = FileId,
+                AssetPurpose = "employee_avatar"
+            });
+        _fileStorage.Setup(x => x.GetRecordAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(Record(UserId)));
+        var etag = $"\"sha256-{new string('a', 64)}\"";
+
+        var result = await CreateHandler().Handle(
+            new GetFileQuery(FileId, etag), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.NotModified.Should().BeTrue();
+        result.Value.Content.Should().BeNull();
+        _fileStorage.Verify(x => x.OpenReadAsync(
+            It.IsAny<Guid>(), It.IsAny<FileRecordDto>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_LinkedNonAvatar_IgnoresConditionalHeaderAndStreamsFile()
+    {
+        var policy = new Mock<IEntityAssetAccessPolicy>();
+        policy.Setup(x => x.CanReadAsync(TenantId, OwnerId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _policies.Setup(x => x.Resolve("employee")).Returns(policy.Object);
+        _entityAssets.Setup(x => x.GetByFileRecordIdAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EntityAsset
+            {
+                TenantId = TenantId,
+                OwnerType = "employee",
+                OwnerId = OwnerId,
+                FileRecordId = FileId,
+                AssetPurpose = "generic_document"
+            });
+        _fileStorage.Setup(x => x.GetRecordAsync(TenantId, FileId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileRecordDto>.Success(Record(UserId)));
+        using var stream = new MemoryStream();
+        _fileStorage.Setup(x => x.OpenReadAsync(
+                TenantId,
+                It.Is<FileRecordDto>(record => record.Id == FileId),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result<FileStreamDto>.Success(new FileStreamDto(stream, "image/png")));
+
+        var result = await CreateHandler().Handle(
+            new GetFileQuery(FileId, $"\"sha256-{new string('a', 64)}\""),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.NotModified.Should().BeFalse();
+        result.Value.IsPrivateCacheableAvatar.Should().BeFalse();
+        result.Value.ETag.Should().BeNull();
     }
 }

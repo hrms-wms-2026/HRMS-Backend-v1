@@ -2,7 +2,6 @@ using MediatR;
 using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Auth.Permission.ServiceInterfaces;
-using ONEVO.Application.Features.Storage.File.ServiceInterfaces;
 using ONEVO.Application.Features.WorkManagement.Common.Services;
 using ONEVO.Application.Features.WorkManagement.ProjectMembers.RepositoryInterfaces;
 using ONEVO.Application.Features.WorkManagement.Projects.RepositoryInterfaces;
@@ -13,10 +12,8 @@ namespace ONEVO.Application.Features.WorkManagement.Tasks.Queries.GetSubtasks;
 
 public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, Result<IReadOnlyList<WorkTaskResponse>>>
 {
-    private static readonly TimeSpan AvatarUrlExpiry = TimeSpan.FromMinutes(15);
     private readonly ICurrentUser _currentUser;
     private readonly ICallerIdentityResolver _identity;
-    private readonly IFileStorageService _fileStorage;
     private readonly IWorkTaskRepository _tasks;
     private readonly IProjectRepository _projects;
     private readonly IProjectMemberRepository _members;
@@ -25,14 +22,13 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
     private readonly ITaskClockingSessionRepository _sessions;
 
     public GetSubtasksQueryHandler(
-        ICurrentUser currentUser, ICallerIdentityResolver identity, IFileStorageService fileStorage,
+        ICurrentUser currentUser, ICallerIdentityResolver identity,
         IWorkTaskRepository tasks, IProjectRepository projects, IProjectMemberRepository members,
         IPermissionResolver permissionResolver, ITaskAssignmentRepository assignments,
         ITaskClockingSessionRepository sessions)
     {
         _currentUser = currentUser;
         _identity = identity;
-        _fileStorage = fileStorage;
         _tasks = tasks;
         _projects = projects;
         _members = members;
@@ -89,17 +85,13 @@ public sealed class GetSubtasksQueryHandler : IRequestHandler<GetSubtasksQuery, 
         {
             if (!identitiesByEmployeeId.TryGetValue(employeeId, out var employeeIdentity))
             {
-                assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(employeeId, "Unknown employee", null);
+                assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(
+                    employeeId, "Unknown employee", null);
                 continue;
             }
 
-            string? avatarUrl = null;
-            if (employeeIdentity.AvatarFileId is { } avatarFileId)
-            {
-                var urlResult = await _fileStorage.GetSignedUrlAsync(tenantId, avatarFileId, AvatarUrlExpiry, ct);
-                avatarUrl = urlResult.IsSuccess ? urlResult.Value : null;
-            }
-            assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(employeeId, employeeIdentity.Name, avatarUrl);
+            assigneeIdentityByEmployeeId[employeeId] = new TaskAssigneeIdentityDto(
+                employeeId, employeeIdentity.Name, employeeIdentity.AvatarFileId);
         }
 
         var childIds = children.Select(child => child.Id).ToList();

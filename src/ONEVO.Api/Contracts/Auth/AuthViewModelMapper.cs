@@ -7,7 +7,7 @@ public static class AuthViewModelMapper
 {
     public static AuthSessionViewModel ToViewModel(this AuthSessionResponseDto dto) => new(
         dto.Authenticated,
-        dto.User is null ? null : new CurrentUserViewModel(dto.User.Email),
+        dto.User is null ? null : new CurrentUserViewModel(dto.User.Email, dto.User.DisplayName),
         dto.Permissions,
         dto.ActiveModules,
         dto.MustChangePassword,

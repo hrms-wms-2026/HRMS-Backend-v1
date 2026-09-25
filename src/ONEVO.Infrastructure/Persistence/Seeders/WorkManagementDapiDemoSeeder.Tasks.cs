@@ -186,8 +186,10 @@ public sealed partial class WorkManagementDapiDemoSeeder
             }
 
             var taskId = DeterministicGuid($"dapi-demo:task:{tree.ProjectKey}:{path}:{slotIndex}");
+            // IgnoreQueryFilters: a demo task soft-deleted from the app is still in the table, so the
+            // default is_deleted filter would hide it and the re-insert would hit pk_tasks at startup.
             if (db.WorkTasks.Local.Any(t => t.Id == taskId)
-                || await db.WorkTasks.AnyAsync(t => t.Id == taskId, ct))
+                || await db.WorkTasks.IgnoreQueryFilters().AnyAsync(t => t.Id == taskId, ct))
             {
                 continue;
             }
@@ -293,7 +295,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
             var requestId = DeterministicGuid(
                 $"dapi-demo:task-creation-request:{spec.ProjectKey}:{spec.ObjectivePath}:{spec.Title}");
             if (db.TaskCreationRequests.Local.Any(r => r.Id == requestId)
-                || await db.TaskCreationRequests.AnyAsync(r => r.Id == requestId, ct))
+                || await db.TaskCreationRequests.IgnoreQueryFilters().AnyAsync(r => r.Id == requestId, ct))
             {
                 continue;
             }
@@ -334,7 +336,7 @@ public sealed partial class WorkManagementDapiDemoSeeder
         {
             var requestId = DeterministicGuid($"dapi-demo:allocation-extend:{spec.ProjectKey}:{spec.ObjectivePath}");
             if (db.ObjectiveChangeRequests.Local.Any(r => r.Id == requestId)
-                || await db.ObjectiveChangeRequests.AnyAsync(r => r.Id == requestId, ct))
+                || await db.ObjectiveChangeRequests.IgnoreQueryFilters().AnyAsync(r => r.Id == requestId, ct))
             {
                 continue;
             }
