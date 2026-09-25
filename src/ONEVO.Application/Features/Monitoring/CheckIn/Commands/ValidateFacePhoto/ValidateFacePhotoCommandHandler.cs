@@ -18,6 +18,8 @@ public class ValidateFacePhotoCommandHandler
 {
     public const string FailurePoorLighting = "poor_lighting";
     public const string FailureFaceNotVisible = "face_not_visible";
+    public const string FailureNoFaceDetected = "no_face_detected";
+    public const string FailureMultipleFaces = "multiple_faces";
     public const string FailureSunglassesOrMask = "sunglasses_or_mask";
     public const string FailureNotMatched = "not_matched";
     public const string FailureNoReferencePhoto = "no_reference_photo";
@@ -105,6 +107,20 @@ public class ValidateFacePhotoCommandHandler
         var profile = await _profiles.GetByEmployeeIdAsync(_device.TenantId, employeeId, cancellationToken);
         if (profile?.ReferencePhotoFileId is null)
         {
+            // Only face setup may create the reference. Letting clock-in do it would make
+            // whoever sits at the laptop first the "enrolled" face for this employee.
+            if (!FacePhotoValidationPurpose.IsEnrollment(request.Purpose))
+            {
+                return Result<FacePhotoValidationResponseDto>.Success(new FacePhotoValidationResponseDto(
+                    quality.LightingOk,
+                    quality.FaceVisible,
+                    quality.NoSunglassesOrMask,
+                    IsMatch: false,
+                    CanProceed: false,
+                    SimilarityScore: null,
+                    FailureReason: FailureNoReferencePhoto));
+            }
+
             var enrolled = await EnrollReferenceFromCaptureAsync(
                 captured, request.ContentType, employeeId, profile, cancellationToken);
 
@@ -202,6 +218,8 @@ public class ValidateFacePhotoCommandHandler
 
     private static string FirstQualityFailure(FaceQualityOutcome quality)
     {
+        if (quality.FaceCount == 0) return FailureNoFaceDetected;
+        if (quality.FaceCount > 1) return FailureMultipleFaces;
         if (!quality.FaceVisible) return FailureFaceNotVisible;
         if (!quality.LightingOk) return FailurePoorLighting;
         return FailureSunglassesOrMask;
