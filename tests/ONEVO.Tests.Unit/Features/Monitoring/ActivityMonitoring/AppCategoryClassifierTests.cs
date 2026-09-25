@@ -1,5 +1,5 @@
 using FluentAssertions;
-using ONEVO.Infrastructure.Services.Monitoring.ActivityMonitoring;
+using ONEVO.Application.Features.Monitoring.ActivityMonitoring.Services;
 using Xunit;
 
 namespace ONEVO.Tests.Unit.Features.Monitoring.ActivityMonitoring;
