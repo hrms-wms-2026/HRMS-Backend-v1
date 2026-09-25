@@ -16,5 +16,9 @@ public class ValidateFacePhotoCommandValidator : AbstractValidator<ValidateFaceP
         RuleFor(x => x.FileSizeBytes)
             .InclusiveBetween(1, MaxFileSizeBytes)
             .WithMessage("Face scan image must be between 1 byte and 5 MB.");
+
+        RuleFor(x => x.Purpose)
+            .Must(p => p is null || FacePhotoValidationPurpose.All.Contains(p, StringComparer.OrdinalIgnoreCase))
+            .WithMessage("Purpose must be enrollment, clock_in, or clock_out.");
     }
 }
