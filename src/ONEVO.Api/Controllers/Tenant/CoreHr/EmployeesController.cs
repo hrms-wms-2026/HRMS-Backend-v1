@@ -51,10 +51,11 @@ public class EmployeesController : ControllerBase
         [FromQuery] Guid? legalEntityId = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 25,
+        [FromQuery] bool activeOnly = false,
         CancellationToken ct = default)
     {
         var result = await _mediator.Send(
-            new ListEmployeesQuery(search, departmentId, legalEntityId, page, pageSize), ct);
+            new ListEmployeesQuery(search, departmentId, legalEntityId, page, pageSize, activeOnly), ct);
 
         return result.IsSuccess
             ? Ok(result.Value)

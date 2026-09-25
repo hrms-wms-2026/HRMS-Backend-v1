@@ -11,7 +11,16 @@ namespace ONEVO.Application.Features.CoreHr.Employee.RepositoryInterfaces;
 /// unaffected). An empty (non-null) collection means "nothing visible".
 /// </summary>
 public sealed record EmployeeListFilter(
-    string? Search, Guid? DepartmentId, Guid? LegalEntityId, IReadOnlyCollection<Guid>? RestrictToEmployeeIds = null);
+    string? Search,
+    Guid? DepartmentId,
+    Guid? LegalEntityId,
+    IReadOnlyCollection<Guid>? RestrictToEmployeeIds = null,
+    // Opt-in, not a default-on filter: this list is shared by HR-admin screens that need to find
+    // an offboarded/terminated employee's record, as well as picker-style callers (e.g. calendar
+    // participants) that should only ever offer someone who could actually attend. Same
+    // definition of "active" as MilestoneMembershipCoordinator.GetActiveAssigneeAsync and
+    // CreateProjectCommandHandler already use elsewhere for assignment eligibility.
+    bool ActiveOnly = false);
 
 /// <summary>
 /// Enables the employee-list repository to calculate attendance warnings in one batch query. A

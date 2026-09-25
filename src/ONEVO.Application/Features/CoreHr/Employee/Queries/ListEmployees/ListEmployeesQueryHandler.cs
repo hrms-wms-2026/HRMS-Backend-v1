@@ -86,7 +86,8 @@ public class ListEmployeesQueryHandler : IRequestHandler<ListEmployeesQuery, Res
                 request.Search,
                 request.DepartmentId,
                 legalEntityId,
-                visibility.EmployeeIds.ToHashSet());
+                visibility.EmployeeIds.ToHashSet(),
+                request.ActiveOnly);
 
             (items, totalCount) = includeAttendanceWarnings
                 ? await _employeeRepository.ListVisibleAsync(

@@ -56,6 +56,19 @@ public sealed class EditRecurringOccurrenceCommandHandlerTests
         OriginalStart.AddHours(1), OriginalStart.AddHours(1).AddMinutes(30), false, "Room 2", null, "#ff0000");
 
     [Fact]
+    public async Task Handle_InvalidMeetingLink_ReturnsFailure()
+    {
+        var sut = BuildSut();
+
+        var result = await sut.Handle(
+            MakeCommand(RecurrenceEditScope.ThisEventOnly) with { MeetingLink = "not a url" },
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(400, result.StatusCode);
+    }
+
+    [Fact]
     public async Task Handle_NotOwner_ReturnsForbidden()
     {
         var sut = BuildSut();
