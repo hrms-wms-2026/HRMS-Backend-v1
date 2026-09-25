@@ -3,7 +3,6 @@ using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.ServiceInterfaces;
-using ONEVO.Application.Features.DevPlatform.SystemConfig.PlatformOAuthApps.ServiceInterfaces;
 using ONEVO.Domain.Features.Calendar.Entities;
 
 namespace ONEVO.Infrastructure.Services.Calendar;
@@ -12,10 +11,9 @@ public sealed class CalendarSyncService(
     IExternalCalendarConnectionRepository connections,
     IExternalCalendarEventLinkRepository links,
     ICalendarEventRepository events,
-    ICalendarOAuthTokenExchangeClient tokenExchangeClient,
+    ICalendarConnectionTokenProvider tokenProvider,
     IGoogleCalendarClient googleClient,
     IMicrosoftGraphCalendarClient msClient,
-    IPlatformOAuthAppResolver appResolver,
     IEncryptionService encryption,
     IUnitOfWork unitOfWork,
     ILogger<CalendarSyncService> logger)
@@ -38,11 +36,21 @@ public sealed class CalendarSyncService(
         if (connection is null || connection.SyncDirection == CalendarSyncDirections.Disabled)
             return;
 
+        // Structural guard, not just a SyncDirection check: Task 2 relies on Zoom connections being
+        // created with SyncDirection = Disabled to keep them out of this calendar-sync path, but a
+        // connection owner can change SyncDirection afterward via UpdateCalendarConnectionCommand.
+        // Without this explicit Provider allow-list, a Zoom connection whose direction was changed
+        // away from Disabled would fall into the "microsoft" branch below (since it isn't
+        // GoogleCalendar) and drive Microsoft Graph calls with a Zoom access token. Zoom connections
+        // are meeting-only - there is no calendar to sync for them at all.
+        if (connection.Provider != CalendarExternalSources.GoogleCalendar && connection.Provider != CalendarExternalSources.OutlookCalendar)
+            return;
+
         var oauthProvider = connection.Provider == CalendarExternalSources.GoogleCalendar ? "google" : "microsoft";
 
-        var accessToken = await EnsureFreshAccessTokenAsync(connection, oauthProvider, ct);
+        var accessToken = await tokenProvider.GetFreshAccessTokenAsync(connection, oauthProvider, ct);
         if (accessToken is null)
-            return; // refresh failed - EnsureFreshAccessTokenAsync already marked ReauthRequired and saved.
+            return; // refresh failed - GetFreshAccessTokenAsync already marked ReauthRequired and saved.
 
         try
         {
@@ -82,38 +90,6 @@ public sealed class CalendarSyncService(
 
         connections.Update(connection);
         await unitOfWork.SaveChangesAsync(ct);
-    }
-
-    private async Task<string?> EnsureFreshAccessTokenAsync(ExternalCalendarConnection connection, string oauthProvider, CancellationToken ct)
-    {
-        var needsRefresh = connection.ExpiresAt is null || connection.ExpiresAt <= DateTimeOffset.UtcNow.AddMinutes(5);
-        if (!needsRefresh && connection.AccessTokenEncrypted is not null)
-            return encryption.DecryptBytes(connection.AccessTokenEncrypted);
-
-        try
-        {
-            var app = await appResolver.GetActiveAppForProviderAsync(oauthProvider, ct);
-            var credential = await appResolver.GetActiveCredentialForProviderAsync(oauthProvider, ct);
-            if (app is null || credential is null)
-                throw new InvalidOperationException($"No active OAuth app configured for provider '{oauthProvider}'.");
-
-            var refreshToken = encryption.DecryptBytes(connection.RefreshTokenEncrypted);
-            var tokens = await tokenExchangeClient.RefreshTokenAsync(app.TokenUrl, credential.ClientId, credential.ClientSecret, refreshToken, ct);
-
-            connection.AccessTokenEncrypted = encryption.EncryptBytes(tokens.AccessToken);
-            connection.RefreshTokenEncrypted = encryption.EncryptBytes(tokens.RefreshToken ?? refreshToken);
-            connection.ExpiresAt = tokens.ExpiresAt;
-            return tokens.AccessToken;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Token refresh failed for connection {ConnectionId}; marking reauth_required.", connection.Id);
-            connection.Status = ExternalCalendarConnectionStatuses.ReauthRequired;
-            connection.LastError = ex.Message;
-            connections.Update(connection);
-            await unitOfWork.SaveChangesAsync(ct);
-            return null;
-        }
     }
 
     private async Task PullAsync(ExternalCalendarConnection connection, string accessToken, CancellationToken ct)
