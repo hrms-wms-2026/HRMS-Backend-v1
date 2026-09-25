@@ -74,7 +74,7 @@ public sealed class GetMyWorkPatternQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_PastDayUsesAggregatedSummaryAndDerivesAdminMinutes()
+    public async Task Handle_PastDayUsesAggregatedSummaryAndDerivesOtherActiveMinutes()
     {
         var sut = BuildSut();
         var pastDay = Today.AddDays(-2);
@@ -84,7 +84,7 @@ public sealed class GetMyWorkPatternQueryHandlerTests
                 {
                     Id = Guid.NewGuid(), TenantId = TenantId, EmployeeId = EmployeeId, Date = pastDay,
                     TotalActiveMinutes = 400, FocusMinutes = 180, TotalMeetingMinutes = 60,
-                    TotalIdleMinutes = 45, CreatedAt = DateTimeOffset.UtcNow
+                    TotalIdleMinutes = 45, ProductiveAppMinutes = 150, CreatedAt = DateTimeOffset.UtcNow
                 }
             ]);
 
@@ -94,8 +94,12 @@ public sealed class GetMyWorkPatternQueryHandlerTests
         var day = result.Value!.Days.Should().ContainSingle().Subject;
         day.FocusMinutes.Should().Be(180);
         day.MeetingMinutes.Should().Be(60);
-        day.AdminMinutes.Should().Be(160); // 400 - 180 - 60
+        day.OtherActiveMinutes.Should().Be(160); // 400 - 180 - 60, same subtraction as before - the MeetingBar/headline
+                                                  // split only matters for the LIVE path's own MeetingBar-vs-Active
+                                                  // exclusion; the persisted summary's TotalActiveMinutes already
+                                                  // excludes meeting-overlapping windows per the aggregator update.
         day.IdleMinutes.Should().Be(45);
+        day.ProductiveMinutes.Should().Be(150); // straight passthrough of the persisted, pre-aggregated value
     }
 
     [Fact]
@@ -111,7 +115,8 @@ public sealed class GetMyWorkPatternQueryHandlerTests
         var day = result.Value!.Days.Should().ContainSingle().Subject;
         day.FocusMinutes.Should().Be(0);
         day.MeetingMinutes.Should().Be(0);
-        day.AdminMinutes.Should().Be(0);
+        day.OtherActiveMinutes.Should().Be(0);
+        day.ProductiveMinutes.Should().Be(0);
     }
 
     [Fact]
@@ -125,7 +130,8 @@ public sealed class GetMyWorkPatternQueryHandlerTests
         var day = result.Value!.Days.Should().ContainSingle().Subject;
         day.FocusMinutes.Should().Be(0);
         day.MeetingMinutes.Should().Be(0);
-        day.AdminMinutes.Should().Be(0);
+        day.OtherActiveMinutes.Should().Be(0);
+        day.ProductiveMinutes.Should().Be(0);
         _summaries.Verify(x => x.GetRangeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -160,15 +166,16 @@ public sealed class GetMyWorkPatternQueryHandlerTests
         var result = await sut.Handle(new GetMyWorkPatternQuery(Today, Today), CancellationToken.None);
 
         var day = result.Value!.Days.Should().ContainSingle().Subject;
-        day.FocusMinutes.Should().Be(30);
-        day.MeetingMinutes.Should().Be(2); // 1 meeting sample * 2 min/sample
-        day.AdminMinutes.Should().Be(0); // 30 active minutes total, all accounted for by focus
-        day.IdleMinutes.Should().Be(5); // one trailing 300s-idle snapshot
+        day.FocusMinutes.Should().Be(30);       // unaffected - meeting signal doesn't overlap any snapshot window
+        day.MeetingMinutes.Should().Be(2);       // headline formula unchanged: 1 true sample * 2min
+        day.OtherActiveMinutes.Should().Be(0);   // 30 active minutes total, all in the focus streak
+        day.IdleMinutes.Should().Be(5);
+        day.ProductiveMinutes.Should().Be(30);   // code.exe is Productive-classified -> all 30 focus minutes count
         _summaries.Verify(x => x.GetRangeAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Handle_OverlappingFocusAndMeetingMinutes_ClampsAdminAtZero()
+    public async Task Handle_OverlappingFocusAndMeetingMinutes_ClampsOtherActiveAtZero()
     {
         var sut = BuildSut();
         var pastDay = Today.AddDays(-1);
@@ -183,7 +190,7 @@ public sealed class GetMyWorkPatternQueryHandlerTests
 
         var result = await sut.Handle(new GetMyWorkPatternQuery(pastDay, pastDay), CancellationToken.None);
 
-        result.Value!.Days[0].AdminMinutes.Should().Be(0); // would be -40 unclamped
+        result.Value!.Days[0].OtherActiveMinutes.Should().Be(0); // would be -40 unclamped
     }
 
     [Fact]

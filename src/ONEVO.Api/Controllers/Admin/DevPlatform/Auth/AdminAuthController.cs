@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.Configuration;
 using System.Security.Claims;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Infrastructure.Identity.Sessions;
@@ -26,11 +27,14 @@ public sealed class AdminAuthController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly IWebHostEnvironment _env;
+    private readonly string? _adminCookieDomain;
 
-    public AdminAuthController(IMediator mediator, IWebHostEnvironment env)
+    public AdminAuthController(IMediator mediator, IWebHostEnvironment env, IConfiguration configuration)
     {
         _mediator = mediator;
         _env = env;
+        var domain = configuration["AdminCookieDomain"];
+        _adminCookieDomain = string.IsNullOrWhiteSpace(domain) ? null : domain;
     }
 
     /// <summary>
@@ -193,7 +197,7 @@ public sealed class AdminAuthController : ControllerBase
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
         await HttpContext.SignOutAsync("AdminScheme");
-        Response.Cookies.Delete("admin_csrf");
+        Response.Cookies.Delete("admin_csrf", new CookieOptions { Domain = _adminCookieDomain });
         return NoContent();
     }
 
@@ -213,12 +217,14 @@ public sealed class AdminAuthController : ControllerBase
             HttpOnly = true,
             Secure = !_env.IsDevelopment(),
             SameSite = SameSiteMode.Strict,
+            Domain = _adminCookieDomain,
         });
         Response.Cookies.Delete("admin_csrf", new CookieOptions
         {
             HttpOnly = false,
             Secure = !_env.IsDevelopment(),
             SameSite = SameSiteMode.Strict,
+            Domain = _adminCookieDomain,
         });
     }
 
@@ -258,6 +264,7 @@ public sealed class AdminAuthController : ControllerBase
             HttpOnly = false,
             Secure = !_env.IsDevelopment(),
             SameSite = SameSiteMode.Strict,
+            Domain = _adminCookieDomain,
             Expires = dto.ExpiresAt
         });
     }
