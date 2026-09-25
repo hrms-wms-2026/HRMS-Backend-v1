@@ -25,6 +25,18 @@ public interface ILeaveRequestRepository
         DateOnly endDate,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<LeaveApprovalDelegateListRow>> ListDelegatesForApproverAsync(
+        Guid tenantId,
+        Guid approverEmployeeId,
+        CancellationToken ct = default);
+
+    Task AddDelegateAsync(LeaveApprovalDelegate entity, CancellationToken ct = default);
+
+    Task<LeaveApprovalDelegate?> GetTrackedDelegateAsync(
+        Guid tenantId, Guid id, CancellationToken ct = default);
+
+    void RemoveDelegate(LeaveApprovalDelegate entity);
+
     Task<int> CountDistinctEmployeesPendingOrApprovedInRangeAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> employeeIds,
@@ -56,8 +68,17 @@ public sealed record LeaveRequestListFilter(
 public sealed record LeaveRequestListRow(
     LeaveRequest Request,
     string LeaveTypeName,
-    string LeaveTypeCode);
+    string LeaveTypeCode,
+    string? ApprovedByName,
+    string? InfoQuestion);
 
 public sealed record LeaveApprovalDelegateRow(
     Guid ApproverEmployeeId,
     Guid DelegateEmployeeId);
+
+public sealed record LeaveApprovalDelegateListRow(
+    Guid Id,
+    Guid DelegateEmployeeId,
+    string DelegateName,
+    DateOnly StartDate,
+    DateOnly EndDate);

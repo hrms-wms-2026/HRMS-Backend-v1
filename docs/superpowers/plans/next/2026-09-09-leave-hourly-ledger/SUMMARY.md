@@ -1,6 +1,6 @@
 # 2026-09-09-leave-hourly-ledger (backend)
 
-**Status:** implemented on `feat/leave-hourly-ledger`. Design: `docs/superpowers/specs/next/2026-09-09-leave-hourly-ledger-design.md`. Companion frontend plan: `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-09-09-leave-hourly-ledger/`.
+**Status:** implemented on `feat/leave-hourly-ledger` (schema/calculator) plus `feature/leave-documents-and-hourly-ledger` (work-window GET, unused day calculator removed). Design: `docs/superpowers/specs/next/2026-09-09-leave-hourly-ledger-design.md`. Companion frontend plan: `Hrms--Web-application---front-end---v1/docs/superpowers/plans/next/2026-09-09-leave-hourly-ledger/`.
 
 Execute in order. Each part is independently testable; later parts fail compile until earlier ones land.
 

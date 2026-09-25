@@ -136,4 +136,17 @@ public class EfCalendarEventRepository : ICalendarEventRepository
                         && e.ExternalSource == CalendarExternalSources.CountryHoliday
                         && e.StartDate.Year == year)
             .ExecuteDeleteAsync(ct);
+
+    public async Task<IReadOnlyList<CalendarEvent>> ListBySourceTypeInRangeAsync(
+        Guid tenantId, string sourceType, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        => await _db.PersonalCalendarEvents.AsNoTracking()
+            .Where(e => e.TenantId == tenantId
+                        && e.SourceType == sourceType
+                        && !e.IsDeleted
+                        && !e.IsRecurrenceCancelled
+                        && e.EventStatus != CalendarEventStatuses.Cancelled
+                        && e.StartDate < to
+                        && e.EndDate > from)
+            .OrderBy(e => e.StartDate)
+            .ToListAsync(ct);
 }

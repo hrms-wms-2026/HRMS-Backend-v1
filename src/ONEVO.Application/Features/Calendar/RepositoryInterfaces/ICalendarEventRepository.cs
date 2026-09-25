@@ -68,4 +68,7 @@ public interface ICalendarEventRepository
     /// make holiday re-sync idempotent (delete-then-reinsert) instead of accumulating
     /// duplicates on every sync.</summary>
     Task RemoveHolidayEventsForYearAsync(Guid tenantId, int year, CancellationToken ct = default);
+
+    Task<IReadOnlyList<CalendarEvent>> ListBySourceTypeInRangeAsync(
+        Guid tenantId, string sourceType, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
 }
