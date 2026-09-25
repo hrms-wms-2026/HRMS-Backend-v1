@@ -68,6 +68,15 @@ internal static class AuthenticationExtensions
                     ? CookieSecurePolicy.SameAsRequest
                     : CookieSecurePolicy.Always;
                 options.Cookie.SameSite = SameSiteMode.Strict;
+                // Unlike TenantScheme, the admin frontend always lives on a different subdomain
+                // (admin.<domain>) than this shared API host - a host-only cookie (no Domain) is
+                // invisible to admin_csrf's document.cookie read on that page even though it's
+                // still auto-attached to requests here, which silently breaks every CSRF-guarded
+                // mutation. AdminCookieDomain lets deployments opt into subdomain-shared cookies;
+                // unset (the default) preserves today's host-only behavior.
+                var adminCookieDomain = configuration["AdminCookieDomain"];
+                if (!string.IsNullOrWhiteSpace(adminCookieDomain))
+                    options.Cookie.Domain = adminCookieDomain;
                 options.SlidingExpiration = true;
                 options.ExpireTimeSpan = ONEVO.Application.Common.Models.Auth.SessionPolicy.SlidingWindow;
                 // SessionStore is set via Options configuration below
