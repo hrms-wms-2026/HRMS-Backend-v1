@@ -17,6 +17,7 @@ using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectBanne
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectById;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.GetProjectLogo;
 using ONEVO.Application.Features.WorkManagement.Projects.Queries.ListProjects;
+using ONEVO.Application.Features.WorkManagement.Approvals.Queries.GetWorkApprovalHistory;
 
 namespace ONEVO.Api.Controllers.Tenant.WorkManagement;
 
@@ -28,6 +29,21 @@ public class ProjectsController : ControllerBase
     private readonly IMediator _mediator;
 
     public ProjectsController(IMediator mediator) => _mediator = mediator;
+
+    /// <summary>
+    /// Lists approval requests in this project that the caller sent, currently needs to decide,
+    /// or previously approved/rejected.
+    /// </summary>
+    [HttpGet("{id:guid}/approval-history")]
+    [RequirePermission("projects:access")]
+    public async Task<IActionResult> ApprovalHistory(Guid id, CancellationToken ct)
+    {
+        var result = await _mediator.Send(new GetWorkApprovalHistoryQuery(id), ct);
+
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Problem(result.Error, statusCode: result.StatusCode ?? 400);
+    }
 
     /// <summary>Creates a Project with its Default Objective, creator membership, Default Version, release reminder, optional labels, and optional logo — all in one atomic transaction.</summary>
     [HttpPost]

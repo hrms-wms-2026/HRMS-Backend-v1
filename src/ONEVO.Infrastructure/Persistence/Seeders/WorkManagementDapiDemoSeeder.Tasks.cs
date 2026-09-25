@@ -188,8 +188,10 @@ public sealed partial class WorkManagementDapiDemoSeeder
             var taskId = DeterministicGuid($"dapi-demo:task:{tree.ProjectKey}:{path}:{slotIndex}");
             // IgnoreQueryFilters: a demo task soft-deleted from the app is still in the table, so the
             // default is_deleted filter would hide it and the re-insert would hit pk_tasks at startup.
-            if (db.WorkTasks.Local.Any(t => t.Id == taskId)
-                || await db.WorkTasks.IgnoreQueryFilters().AnyAsync(t => t.Id == taskId, ct))
+            // Keep the tenant predicate explicit because IgnoreQueryFilters also bypasses tenant filters.
+            if (db.WorkTasks.Local.Any(t => t.TenantId == DapiTenantId && t.Id == taskId)
+                || await db.WorkTasks.IgnoreQueryFilters()
+                    .AnyAsync(t => t.TenantId == DapiTenantId && t.Id == taskId, ct))
             {
                 continue;
             }
@@ -294,8 +296,11 @@ public sealed partial class WorkManagementDapiDemoSeeder
         {
             var requestId = DeterministicGuid(
                 $"dapi-demo:task-creation-request:{spec.ProjectKey}:{spec.ObjectivePath}:{spec.Title}");
-            if (db.TaskCreationRequests.Local.Any(r => r.Id == requestId)
-                || await db.TaskCreationRequests.IgnoreQueryFilters().AnyAsync(r => r.Id == requestId, ct))
+            // IgnoreQueryFilters lets the idempotency check see soft-deleted demo requests. Retain
+            // explicit tenant scoping because the bypass also removes the global tenant filter.
+            if (db.TaskCreationRequests.Local.Any(r => r.TenantId == DapiTenantId && r.Id == requestId)
+                || await db.TaskCreationRequests.IgnoreQueryFilters()
+                    .AnyAsync(r => r.TenantId == DapiTenantId && r.Id == requestId, ct))
             {
                 continue;
             }
@@ -335,8 +340,11 @@ public sealed partial class WorkManagementDapiDemoSeeder
         foreach (var spec in WorkManagementDapiDemoData.AllocationExtends)
         {
             var requestId = DeterministicGuid($"dapi-demo:allocation-extend:{spec.ProjectKey}:{spec.ObjectivePath}");
-            if (db.ObjectiveChangeRequests.Local.Any(r => r.Id == requestId)
-                || await db.ObjectiveChangeRequests.IgnoreQueryFilters().AnyAsync(r => r.Id == requestId, ct))
+            // IgnoreQueryFilters lets the idempotency check see soft-deleted demo requests. Retain
+            // explicit tenant scoping because the bypass also removes the global tenant filter.
+            if (db.ObjectiveChangeRequests.Local.Any(r => r.TenantId == DapiTenantId && r.Id == requestId)
+                || await db.ObjectiveChangeRequests.IgnoreQueryFilters()
+                    .AnyAsync(r => r.TenantId == DapiTenantId && r.Id == requestId, ct))
             {
                 continue;
             }
