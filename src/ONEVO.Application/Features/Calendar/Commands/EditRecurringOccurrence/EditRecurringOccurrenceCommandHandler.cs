@@ -3,6 +3,7 @@ using ONEVO.Application.Common.Models;
 using ONEVO.Application.Common.RepositoryInterfaces;
 using ONEVO.Application.Common.ServiceInterfaces;
 using ONEVO.Application.Features.Calendar.DTOs.Responses;
+using ONEVO.Application.Features.Calendar.Helpers;
 using ONEVO.Application.Features.Calendar.RepositoryInterfaces;
 using ONEVO.Application.Features.Calendar.Services;
 using ONEVO.Domain.Features.Calendar.Entities;
@@ -24,6 +25,9 @@ public sealed class EditRecurringOccurrenceCommandHandler(
 
         if (request.EndDate < request.StartDate)
             return Result<CalendarEventItem>.Failure("End date cannot be before start date.", 400);
+
+        if (!CalendarEventValidation.IsValidMeetingLink(request.MeetingLink))
+            return Result<CalendarEventItem>.Failure("Meeting link must be a valid http(s) URL.", 400);
 
         var tenantId = currentUser.TenantId;
         var master = await events.GetTrackedByIdForTenantAsync(tenantId, request.MasterId, ct);
